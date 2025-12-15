@@ -16,11 +16,111 @@
 #include "handlers/hikari_wrapper.h"
 #include "handlers/savedregs.h"
 #include "handlers/objc_resolve.h"
+#include "handlers/global_const.h"
+#include "handlers/ptr_resolve.h"
 
 bool chernobog_t::s_active = false;
 deobf_ctx_t chernobog_t::s_ctx;
 
+// Forward declaration
+static void run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx);
+
 static chernobog_t *g_deobf = nullptr;
+static chernobog_optblock_t *g_optblock = nullptr;
+
+// Track functions we've already processed to avoid duplicate analysis
+static std::set<ea_t> s_processed_functions;
+
+//--------------------------------------------------------------------------
+// Block-level optimizer callback - runs at various maturity levels
+//--------------------------------------------------------------------------
+int idaapi chernobog_optblock_t::func(mblock_t *blk) {
+    // Debug: log every call to see if we're being invoked
+    if (!blk || !blk->mba) {
+        msg("[optblock] Called with null blk or mba\n");
+        return 0;
+    }
+
+    if (!chernobog_t::s_active) {
+        // Only log once per function to avoid spam
+        static ea_t last_inactive_ea = BADADDR;
+        if (blk->mba->entry_ea != last_inactive_ea) {
+            last_inactive_ea = blk->mba->entry_ea;
+            msg("[optblock] s_active=false, skipping %a\n", blk->mba->entry_ea);
+        }
+        return 0;
+    }
+
+    mbl_array_t *mba = blk->mba;
+    ea_t func_ea = mba->entry_ea;
+    int maturity = mba->maturity;
+
+    // Track which function+maturity combinations we've processed to avoid duplicate work
+    // Key: (func_ea << 4) | maturity (assuming maturity < 16)
+    static std::set<uint64_t> processed;
+    uint64_t key = ((uint64_t)func_ea << 4) | (maturity & 0xF);
+
+    if (processed.count(key))
+        return 0;
+    processed.insert(key);
+
+    msg("[optblock] Processing %a at maturity %d (blk %d)\n", func_ea, maturity, blk->serial);
+
+    // Two-phase deflattening approach:
+    //
+    // NOTE: optblock handlers are typically NOT called at maturity 0.
+    // IDA only starts invoking optblock at MMAT_LOCOPT (3) and above.
+    //
+    // So we do both analysis and application at maturity 3 (MMAT_LOCOPT),
+    // which is the earliest maturity where optblock is invoked and where
+    // the CFG is stable enough for modification.
+    //
+    // At maturity 3, the state machine patterns are still visible (switch/case
+    // with state constants), but the CFG has explicit gotos that can be modified.
+
+    // Only process at MMAT_LOCOPT (3) - this is where CFG is stable but
+    // patterns are still visible
+    if (maturity != MMAT_LOCOPT)
+        return 0;
+
+    // Check if already analyzed
+    if (deflatten_handler_t::has_pending_analysis(func_ea)) {
+        msg("[optblock] Already have pending analysis for %a, applying...\n", func_ea);
+
+        deobf_ctx_t ctx;
+        ctx.mba = mba;
+        ctx.func_ea = func_ea;
+
+        int changes = deflatten_handler_t::apply_deferred(mba, &ctx);
+        if (changes > 0) {
+            msg("[optblock] Applied %d CFG changes\n", changes);
+            return changes;
+        }
+        return 0;
+    }
+
+    // Analyze and apply in one pass at maturity 3
+    deobf_ctx_t ctx;
+    ctx.mba = mba;
+    ctx.func_ea = func_ea;
+
+    if (!deflatten_handler_t::detect(mba, &ctx)) {
+        msg("[optblock] No flattening detected at %a\n", func_ea);
+        return 0;
+    }
+
+    msg("[optblock] Detected flattening at %a, analyzing and applying...\n", func_ea);
+
+    // Run the full deflattening pass
+    int changes = deflatten_handler_t::run(mba, &ctx);
+    if (changes > 0) {
+        msg("[optblock] Deflattening applied %d changes\n", changes);
+    } else {
+        msg("[optblock] Deflattening found patterns but made no changes\n");
+    }
+
+    return changes;
+}
 
 //--------------------------------------------------------------------------
 // Constructor/Destructor
@@ -47,7 +147,28 @@ int idaapi chernobog_t::func(mblock_t *blk, minsn_t *ins, int optflags) {
     // Try to resolve constant XOR patterns
     changes += const_decrypt_handler_t::simplify_insn(blk, ins, &s_ctx);
 
+    // Try to inline global constants
+    changes += global_const_handler_t::simplify_insn(blk, ins, &s_ctx);
+
     return changes;
+}
+
+//--------------------------------------------------------------------------
+// Main deobfuscation entry point - from mba (used by auto mode)
+//--------------------------------------------------------------------------
+void chernobog_t::deobfuscate_mba(mbl_array_t *mba) {
+    if (!mba)
+        return;
+
+    deobf::log("[chernobog] Deobfuscating %a\n", mba->entry_ea);
+
+    s_ctx = deobf_ctx_t();
+    s_ctx.mba = mba;
+    s_ctx.cfunc = nullptr;
+    s_ctx.func_ea = mba->entry_ea;
+
+    // Run the core deobfuscation logic
+    run_deobfuscation_passes(mba, &s_ctx);
 }
 
 //--------------------------------------------------------------------------
@@ -64,109 +185,136 @@ void chernobog_t::deobfuscate_function(cfunc_t *cfunc) {
     s_ctx.cfunc = cfunc;
     s_ctx.func_ea = cfunc->entry_ea;
 
+    // Run the core deobfuscation logic
+    run_deobfuscation_passes(cfunc->mba, &s_ctx);
+}
+
+//--------------------------------------------------------------------------
+// Core deobfuscation passes (shared by all entry points)
+//--------------------------------------------------------------------------
+static void run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx) {
+    if (!mba || !ctx)
+        return;
+
     // Detect what obfuscations are present
-    s_ctx.detected_obf = detect_obfuscations(cfunc->mba);
+    ctx->detected_obf = chernobog_t::detect_obfuscations(mba);
 
-    deobf::log("[chernobog] Detected obfuscations: 0x%x\n", s_ctx.detected_obf);
+    deobf::log("[chernobog] Detected obfuscations: 0x%x\n", ctx->detected_obf);
 
-    if (s_ctx.detected_obf & OBF_STRING_ENC) {
+    if (ctx->detected_obf & OBF_STRING_ENC) {
         deobf::log("[chernobog] - String encryption detected\n");
     }
-    if (s_ctx.detected_obf & OBF_CONST_ENC) {
+    if (ctx->detected_obf & OBF_CONST_ENC) {
         deobf::log("[chernobog] - Constant encryption detected\n");
     }
-    if (s_ctx.detected_obf & OBF_FLATTENED) {
+    if (ctx->detected_obf & OBF_FLATTENED) {
         deobf::log("[chernobog] - Control flow flattening detected\n");
     }
-    if (s_ctx.detected_obf & OBF_BOGUS_CF) {
+    if (ctx->detected_obf & OBF_BOGUS_CF) {
         deobf::log("[chernobog] - Bogus control flow detected\n");
     }
-    if (s_ctx.detected_obf & OBF_INDIRECT_BR) {
+    if (ctx->detected_obf & OBF_INDIRECT_BR) {
         deobf::log("[chernobog] - Indirect branches detected\n");
     }
-    if (s_ctx.detected_obf & OBF_SUBSTITUTION) {
+    if (ctx->detected_obf & OBF_SUBSTITUTION) {
         deobf::log("[chernobog] - Instruction substitution detected\n");
     }
-    if (s_ctx.detected_obf & OBF_SAVEDREGS) {
+    if (ctx->detected_obf & OBF_SAVEDREGS) {
         deobf::log("[chernobog] - Register demotion (savedregs) detected\n");
     }
-    if (s_ctx.detected_obf & OBF_OBJC_OBFUSC) {
+    if (ctx->detected_obf & OBF_OBJC_OBFUSC) {
         deobf::log("[chernobog] - Obfuscated ObjC calls detected\n");
+    }
+    if (ctx->detected_obf & OBF_GLOBAL_CONST) {
+        deobf::log("[chernobog] - Global constants detected\n");
+    }
+    if (ctx->detected_obf & OBF_PTR_INDIRECT) {
+        deobf::log("[chernobog] - Indirect pointer references detected\n");
     }
 
     // Initialize stack tracker for virtual stack analysis
-    stack_tracker_t::analyze_function(cfunc->mba);
+    stack_tracker_t::analyze_function(mba);
 
     // Apply deobfuscation passes in order
     int total_changes = 0;
 
     // 1. First merge split blocks (simplest transformation)
-    if (s_ctx.detected_obf & OBF_SPLIT_BLOCKS) {
-        total_changes += merge_blocks(cfunc->mba, &s_ctx);
+    if (ctx->detected_obf & OBF_SPLIT_BLOCKS) {
+        total_changes += chernobog_t::merge_blocks(mba, ctx);
     }
 
     // 2. Decrypt strings
-    if (s_ctx.detected_obf & OBF_STRING_ENC) {
-        total_changes += decrypt_strings(cfunc->mba, &s_ctx);
+    if (ctx->detected_obf & OBF_STRING_ENC) {
+        total_changes += chernobog_t::decrypt_strings(mba, ctx);
     }
 
     // 2.5. Reconstruct stack strings
-    if (s_ctx.detected_obf & OBF_STACK_STRING) {
-        total_changes += stack_string_handler_t::run(cfunc->mba, &s_ctx);
+    if (ctx->detected_obf & OBF_STACK_STRING) {
+        total_changes += stack_string_handler_t::run(mba, ctx);
     }
 
     // 3. Decrypt constants
-    if (s_ctx.detected_obf & OBF_CONST_ENC) {
-        total_changes += decrypt_consts(cfunc->mba, &s_ctx);
+    if (ctx->detected_obf & OBF_CONST_ENC) {
+        total_changes += chernobog_t::decrypt_consts(mba, ctx);
+    }
+
+    // 3.5. Inline global constants
+    if (ctx->detected_obf & OBF_GLOBAL_CONST) {
+        total_changes += global_const_handler_t::run(mba, ctx);
+    }
+
+    // 3.6. Resolve indirect pointer references
+    if (ctx->detected_obf & OBF_PTR_INDIRECT) {
+        total_changes += ptr_resolve_handler_t::run(mba, ctx);
     }
 
     // 4. Simplify substituted expressions
-    if (s_ctx.detected_obf & OBF_SUBSTITUTION) {
-        total_changes += simplify_substitutions(cfunc->mba, &s_ctx);
+    if (ctx->detected_obf & OBF_SUBSTITUTION) {
+        total_changes += chernobog_t::simplify_substitutions(mba, ctx);
     }
 
     // 5. Resolve indirect branches
-    if (s_ctx.detected_obf & OBF_INDIRECT_BR) {
-        total_changes += resolve_indirect_branches(cfunc->mba, &s_ctx);
+    if (ctx->detected_obf & OBF_INDIRECT_BR) {
+        total_changes += chernobog_t::resolve_indirect_branches(mba, ctx);
     }
 
     // 5.5. Resolve identity function calls
-    if (s_ctx.detected_obf & OBF_IDENTITY_CALL) {
-        total_changes += identity_call_handler_t::run(cfunc->mba, &s_ctx);
+    if (ctx->detected_obf & OBF_IDENTITY_CALL) {
+        total_changes += identity_call_handler_t::run(mba, ctx);
     }
 
     // 5.6. Resolve Hikari function wrappers
-    if (s_ctx.detected_obf & OBF_FUNC_WRAPPER) {
-        total_changes += hikari_wrapper_handler_t::run(cfunc->mba, &s_ctx);
+    if (ctx->detected_obf & OBF_FUNC_WRAPPER) {
+        total_changes += hikari_wrapper_handler_t::run(mba, ctx);
     }
 
     // 5.7. Resolve savedregs (register demotion) patterns
-    if (s_ctx.detected_obf & OBF_SAVEDREGS) {
-        total_changes += savedregs_handler_t::run(cfunc->mba, &s_ctx);
+    if (ctx->detected_obf & OBF_SAVEDREGS) {
+        total_changes += savedregs_handler_t::run(mba, ctx);
     }
 
     // 5.8. Resolve obfuscated ObjC method calls
-    if (s_ctx.detected_obf & OBF_OBJC_OBFUSC) {
-        total_changes += objc_resolve_handler_t::run(cfunc->mba, &s_ctx);
+    if (ctx->detected_obf & OBF_OBJC_OBFUSC) {
+        total_changes += objc_resolve_handler_t::run(mba, ctx);
     }
 
     // 6. Remove bogus control flow
-    if (s_ctx.detected_obf & OBF_BOGUS_CF) {
-        total_changes += remove_bogus_cf(cfunc->mba, &s_ctx);
+    if (ctx->detected_obf & OBF_BOGUS_CF) {
+        total_changes += chernobog_t::remove_bogus_cf(mba, ctx);
     }
 
     // 7. Deflatten control flow (most complex, do last)
-    if (s_ctx.detected_obf & OBF_FLATTENED) {
-        total_changes += deflatten(cfunc->mba, &s_ctx);
+    if (ctx->detected_obf & OBF_FLATTENED) {
+        total_changes += chernobog_t::deflatten(mba, ctx);
     }
 
     deobf::log("[chernobog] Deobfuscation complete. Total changes: %d\n", total_changes);
-    deobf::log("[chernobog]   Blocks merged: %d\n", s_ctx.blocks_merged);
-    deobf::log("[chernobog]   Branches simplified: %d\n", s_ctx.branches_simplified);
-    deobf::log("[chernobog]   Strings decrypted: %d\n", s_ctx.strings_decrypted);
-    deobf::log("[chernobog]   Constants decrypted: %d\n", s_ctx.consts_decrypted);
-    deobf::log("[chernobog]   Expressions simplified: %d\n", s_ctx.expressions_simplified);
-    deobf::log("[chernobog]   Indirect calls resolved: %d\n", s_ctx.indirect_resolved);
+    deobf::log("[chernobog]   Blocks merged: %d\n", ctx->blocks_merged);
+    deobf::log("[chernobog]   Branches simplified: %d\n", ctx->branches_simplified);
+    deobf::log("[chernobog]   Strings decrypted: %d\n", ctx->strings_decrypted);
+    deobf::log("[chernobog]   Constants decrypted: %d\n", ctx->consts_decrypted);
+    deobf::log("[chernobog]   Expressions simplified: %d\n", ctx->expressions_simplified);
+    deobf::log("[chernobog]   Indirect calls resolved: %d\n", ctx->indirect_resolved);
 }
 
 //--------------------------------------------------------------------------
@@ -228,6 +376,8 @@ void chernobog_t::analyze_function(ea_t ea) {
     if (obf & OBF_STACK_STRING) msg("  - Stack string construction\n");
     if (obf & OBF_SAVEDREGS) msg("  - Register demotion (savedregs patterns)\n");
     if (obf & OBF_OBJC_OBFUSC) msg("  - Obfuscated ObjC method calls\n");
+    if (obf & OBF_GLOBAL_CONST) msg("  - Inlinable global constants\n");
+    if (obf & OBF_PTR_INDIRECT) msg("  - Indirect pointer references\n");
     if (obf == OBF_NONE) msg("  - No obfuscation detected\n");
 }
 
@@ -285,6 +435,14 @@ uint32_t chernobog_t::detect_obfuscations(mbl_array_t *mba) {
     // Check for obfuscated ObjC method calls
     if (objc_resolve_handler_t::detect(mba))
         detected |= OBF_OBJC_OBFUSC;
+
+    // Check for inlinable global constants
+    if (global_const_handler_t::detect(mba))
+        detected |= OBF_GLOBAL_CONST;
+
+    // Check for indirect pointer references
+    if (ptr_resolve_handler_t::detect(mba))
+        detected |= OBF_PTR_INDIRECT;
 
     return detected;
 }
@@ -353,19 +511,39 @@ bool deobf_active() {
 }
 
 void deobf_init() {
+    // Install instruction-level optimizer
     g_deobf = new chernobog_t();
     install_optinsn_handler(g_deobf);
+
+    // Install block-level optimizer for CFG modifications (deflattening)
+    g_optblock = new chernobog_optblock_t();
+    install_optblock_handler(g_optblock);
+
     chernobog_t::s_active = true;
-    deobf::log("[chernobog] Deobfuscator initialized\n");
+    deobf::log("[chernobog] Deobfuscator initialized (optinsn + optblock handlers)\n");
 }
 
 void deobf_done() {
     chernobog_t::s_active = false;
+
+    // Remove instruction-level optimizer
     if (g_deobf) {
         remove_optinsn_handler(g_deobf);
         delete g_deobf;
         g_deobf = nullptr;
     }
+
+    // Remove block-level optimizer
+    if (g_optblock) {
+        remove_optblock_handler(g_optblock);
+        delete g_optblock;
+        g_optblock = nullptr;
+    }
+
+    // Clear any pending analysis
+    deflatten_handler_t::s_deferred_analysis.clear();
+    s_processed_functions.clear();
+
     deobf::log("[chernobog] Deobfuscator terminated\n");
 }
 
@@ -385,6 +563,8 @@ struct deobf_action_handler_t : public action_handler_t {
     }
 
     virtual action_state_t idaapi update(action_update_ctx_t *ctx) override {
+        if (!ctx || !ctx->widget)
+            return AST_DISABLE_FOR_WIDGET;
         vdui_t *vu = get_widget_vdui(ctx->widget);
         return vu ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET;
     }

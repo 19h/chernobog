@@ -1,7 +1,10 @@
 #include "opaque_eval.h"
+#include "z3_solver.h"
 
 // Static members
 std::map<ea_t, uint64_t> opaque_eval_t::s_global_cache;
+static bool s_z3_enabled = true;
+static unsigned s_z3_timeout_ms = 1000;
 
 //--------------------------------------------------------------------------
 // Clear cache
@@ -523,4 +526,146 @@ int64_t opaque_eval_t::sign_extend(uint64_t val, int size) {
         case 8:
         default: return (int64_t)val;
     }
+}
+
+//--------------------------------------------------------------------------
+// Z3-enhanced API implementation
+//--------------------------------------------------------------------------
+
+void opaque_eval_t::set_z3_enabled(bool enabled) {
+    s_z3_enabled = enabled;
+}
+
+bool opaque_eval_t::is_z3_enabled() {
+    return s_z3_enabled;
+}
+
+void opaque_eval_t::set_z3_timeout(unsigned ms) {
+    s_z3_timeout_ms = ms;
+    if (s_z3_enabled) {
+        z3_solver::set_global_timeout(ms);
+    }
+}
+
+//--------------------------------------------------------------------------
+// Evaluate with detailed result information
+//--------------------------------------------------------------------------
+opaque_eval_t::eval_result_t opaque_eval_t::evaluate_detailed(minsn_t *expr) {
+    if (!expr)
+        return eval_result_t::unknown("null expression");
+
+    // First try fast constant propagation
+    eval_state_t state;
+    state.depth = 0;
+    auto simple_result = eval_insn(expr, state);
+
+    if (simple_result.has_value()) {
+        return eval_result_t::success(*simple_result);
+    }
+
+    // Fall back to Z3 if enabled
+    if (s_z3_enabled) {
+        try {
+            z3_solver::set_global_timeout(s_z3_timeout_ms);
+            auto z3_result = z3_solver::evaluate_to_constant(expr);
+
+            if (z3_result.is_constant) {
+                eval_result_t r;
+                r.status = EVAL_SUCCESS;
+                r.is_constant = true;
+                r.value = z3_result.value;
+                r.reason = "Z3 evaluation";
+                return r;
+            }
+        } catch (...) {
+            // Z3 exception - fall through to unknown
+        }
+    }
+
+    return eval_result_t::unknown("could not evaluate");
+}
+
+//--------------------------------------------------------------------------
+// Check if condition is an opaque predicate using Z3
+//--------------------------------------------------------------------------
+opaque_eval_t::opaque_result_t opaque_eval_t::check_opaque_predicate(minsn_t *cond) {
+    if (!cond)
+        return OPAQUE_UNKNOWN;
+
+    // First try simple evaluation
+    bool result;
+    if (evaluate_condition(cond, &result)) {
+        return result ? OPAQUE_ALWAYS_TRUE : OPAQUE_ALWAYS_FALSE;
+    }
+
+    // Use Z3 for complex predicates
+    if (!s_z3_enabled)
+        return OPAQUE_UNKNOWN;
+
+    try {
+        z3_solver::set_global_timeout(s_z3_timeout_ms);
+        z3_solver::opaque_predicate_solver_t solver(z3_solver::get_global_context());
+        auto z3_result = solver.analyze_condition(cond);
+
+        switch (z3_result) {
+            case z3_solver::opaque_predicate_solver_t::PRED_ALWAYS_TRUE:
+                return OPAQUE_ALWAYS_TRUE;
+            case z3_solver::opaque_predicate_solver_t::PRED_ALWAYS_FALSE:
+                return OPAQUE_ALWAYS_FALSE;
+            case z3_solver::opaque_predicate_solver_t::PRED_DEPENDS_ON_INPUT:
+                return OPAQUE_NOT_OPAQUE;
+            default:
+                return OPAQUE_UNKNOWN;
+        }
+    } catch (...) {
+        return OPAQUE_UNKNOWN;
+    }
+}
+
+//--------------------------------------------------------------------------
+// Prove two expressions are equivalent using Z3
+//--------------------------------------------------------------------------
+bool opaque_eval_t::prove_equivalent(minsn_t *a, minsn_t *b) {
+    if (!a || !b)
+        return false;
+
+    // Quick check: if both evaluate to same constant, they're equivalent
+    auto val_a = evaluate_expr(a);
+    auto val_b = evaluate_expr(b);
+
+    if (val_a.has_value() && val_b.has_value()) {
+        return *val_a == *val_b;
+    }
+
+    // Use Z3 for symbolic equivalence
+    if (!s_z3_enabled)
+        return false;
+
+    try {
+        z3_solver::set_global_timeout(s_z3_timeout_ms);
+        return z3_solver::instructions_equivalent(a, b);
+    } catch (...) {
+        return false;
+    }
+}
+
+//--------------------------------------------------------------------------
+// Simplify expression using Z3 and return simplified form if possible
+//--------------------------------------------------------------------------
+std::optional<uint64_t> opaque_eval_t::z3_simplify(minsn_t *expr) {
+    if (!expr || !s_z3_enabled)
+        return std::nullopt;
+
+    try {
+        z3_solver::set_global_timeout(s_z3_timeout_ms);
+        auto result = z3_solver::evaluate_to_constant(expr);
+
+        if (result.is_constant) {
+            return result.value;
+        }
+    } catch (...) {
+        // Z3 exception
+    }
+
+    return std::nullopt;
 }

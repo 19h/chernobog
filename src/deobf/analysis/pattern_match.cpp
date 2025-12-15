@@ -98,99 +98,355 @@ bool is_always_false(minsn_t *insn) {
 //--------------------------------------------------------------------------
 // Control flow flattening detection
 //--------------------------------------------------------------------------
-bool detect_flatten_pattern(mbl_array_t *mba, flatten_info_t *out) {
-    if (!mba || mba->qty < 4)
+// Helper: Check if a value looks like a Hikari state constant
+//--------------------------------------------------------------------------
+static bool is_hikari_state_const(uint64_t val) {
+    // Hikari uses distinctive patterns for state constants
+    // Common patterns: 0xAAAAxxxx, 0xBEEFxxxx, 0xCAFExxxx, 0xDEADxxxx, etc.
+
+    // Must be at least 0x10000000 (has meaningful high bits)
+    // and not look like an address (typical addresses are larger)
+    if (val < 0x10000000 || val > 0xFFFFFFFF)
         return false;
 
-    // Look for the dispatcher pattern:
-    // 1. A block that loads a state variable
-    // 2. A switch/jump table based on that variable
-    // 3. Multiple case blocks that update the state variable
+    uint32_t high = (val >> 16) & 0xFFFF;
 
-    int dispatcher = -1;
-    mop_t state_var;
+    // The high part must be non-zero and match a known pattern
+    if (high == 0)
+        return false;
 
-    // Find blocks with switch-like behavior (jtbl instruction)
+    // Check for known Hikari patterns
+    switch (high) {
+        case 0xAAAA:
+        case 0xABCD:  // Common Hikari pattern (0xABCD0001, 0xABCD0002, etc.)
+        case 0xBBBB:
+        case 0xCCCC:
+        case 0xDDDD:
+        case 0xBEEF:
+        case 0xCAFE:
+        case 0xDEAD:
+        case 0x1111:
+        case 0x2222:
+        case 0x3333:
+        case 0x4444:
+        case 0x5555:
+        case 0x6666:
+        case 0x7777:
+        case 0x8888:
+        case 0x9999:
+        case 0xFEED:
+        case 0xFACE:
+        case 0xBABE:
+        case 0xC0DE:
+        case 0xF00D:
+            return true;
+        default:
+            break;
+    }
+
+    return false;
+}
+
+//--------------------------------------------------------------------------
+// Helper: Find comparisons against constants in a block
+//--------------------------------------------------------------------------
+struct state_cmp_t {
+    minsn_t *insn;
+    mop_t var;          // Variable being compared
+    uint64_t const_val; // Constant it's compared against
+    int block_idx;
+};
+
+static void find_state_comparisons(mbl_array_t *mba, std::vector<state_cmp_t> &cmps) {
+    cmps.clear();
+
+    // Also look for any large constants that could be state values
+    std::set<uint64_t> potential_states;
+
     for (int i = 0; i < mba->qty; i++) {
         mblock_t *blk = mba->get_mblock(i);
         if (!blk)
             continue;
 
-        // Look for jtbl (jump table) instruction
-        minsn_t *tail = blk->tail;
-        if (tail && tail->opcode == m_jtbl) {
-            dispatcher = i;
-            // The operand being switched on is our state variable
-            state_var = tail->l;
-            break;
-        }
-
-        // Also check for cascading conditional jumps
-        // (another form of switch implementation)
-        int jcc_count = 0;
         for (minsn_t *ins = blk->head; ins; ins = ins->next) {
-            if (deobf::is_jcc(ins->opcode))
-                jcc_count++;
-        }
+            // Scan all instructions for potential state constants
+            if (ins->l.t == mop_n && is_hikari_state_const(ins->l.nnn->value)) {
+                potential_states.insert(ins->l.nnn->value);
+            }
+            if (ins->r.t == mop_n && is_hikari_state_const(ins->r.nnn->value)) {
+                potential_states.insert(ins->r.nnn->value);
+            }
 
-        // Many conditional jumps in one block suggests a switch
-        if (jcc_count >= 3) {
-            dispatcher = i;
-            break;
-        }
-    }
+            // Look for conditional jumps
+            if (!deobf::is_jcc(ins->opcode))
+                continue;
 
-    if (dispatcher < 0)
-        return false;
+            // The condition is in ins->l (for jcc, it's the result of a setXX or cmp)
+            // We need to trace back to find the actual comparison
+            // In microcode, jcc typically follows a setXX instruction
 
-    // Look for loop structure: a block that jumps back to dispatcher
-    int loop_end = -1;
-    for (int i = 0; i < mba->qty; i++) {
-        if (i == dispatcher)
-            continue;
+            // Check if comparing against a constant
+            // Pattern: jz/jnz after a comparison sub-instruction
+            if (ins->l.t == mop_d && ins->l.d) {
+                minsn_t *cond = ins->l.d;
+                // setXX instructions compare their operands
+                if (is_mcode_set(cond->opcode)) {
+                    // l and r are the comparison operands
+                    uint64_t const_val = 0;
+                    mop_t var;
+                    bool found = false;
 
-        mblock_t *blk = mba->get_mblock(i);
-        if (!blk || !blk->tail)
-            continue;
+                    if (cond->l.t == mop_n && cond->r.t != mop_n) {
+                        const_val = cond->l.nnn->value;
+                        var = cond->r;
+                        found = true;
+                    } else if (cond->r.t == mop_n && cond->l.t != mop_n) {
+                        const_val = cond->r.nnn->value;
+                        var = cond->l;
+                        found = true;
+                    }
 
-        // Check if this block jumps to dispatcher
-        if (blk->tail->opcode == m_goto && blk->tail->l.t == mop_b) {
-            if (blk->tail->l.b == dispatcher) {
-                loop_end = i;
-                break;
+                    if (found && is_hikari_state_const(const_val)) {
+                        state_cmp_t cmp;
+                        cmp.insn = ins;
+                        cmp.var = var;
+                        cmp.const_val = const_val;
+                        cmp.block_idx = i;
+                        cmps.push_back(cmp);
+                    }
+                }
+            }
+
+            // Also check direct comparison pattern
+            // jcc with mop_n operand directly
+            if (ins->r.t == mop_n) {
+                uint64_t const_val = ins->r.nnn->value;
+                if (is_hikari_state_const(const_val)) {
+                    state_cmp_t cmp;
+                    cmp.insn = ins;
+                    cmp.var = ins->l;
+                    cmp.const_val = const_val;
+                    cmp.block_idx = i;
+                    cmps.push_back(cmp);
+                }
             }
         }
     }
+}
 
-    // Look for state variable updates in case blocks
-    std::map<uint64_t, int> state_map;
+//--------------------------------------------------------------------------
+// Helper: Find the most common comparison variable (likely the state var)
+//--------------------------------------------------------------------------
+static bool find_likely_state_var(const std::vector<state_cmp_t> &cmps, mop_t *out_var) {
+    if (cmps.empty())
+        return false;
+
+    // Count how many times each variable type/location is compared
+    // For simplicity, group by operand type and size
+    std::map<std::pair<mopt_t, int>, int> var_counts;
+    std::map<std::pair<mopt_t, int>, mop_t> var_examples;
+
+    for (const auto &cmp : cmps) {
+        auto key = std::make_pair(cmp.var.t, cmp.var.size);
+        var_counts[key]++;
+        var_examples[key] = cmp.var;
+    }
+
+    // Find the most common
+    int max_count = 0;
+    mop_t best_var;
+    for (const auto &kv : var_counts) {
+        if (kv.second > max_count) {
+            max_count = kv.second;
+            best_var = var_examples[kv.first];
+        }
+    }
+
+    if (max_count >= 2) {
+        *out_var = best_var;
+        return true;
+    }
+
+    return false;
+}
+
+//--------------------------------------------------------------------------
+// Helper: Find state variable assignments
+//--------------------------------------------------------------------------
+static void find_state_assignments(mbl_array_t *mba, const mop_t &state_var,
+                                   std::map<uint64_t, int> &state_map) {
+    state_map.clear();
+
     for (int i = 0; i < mba->qty; i++) {
-        if (i == dispatcher || i == loop_end)
-            continue;
-
         mblock_t *blk = mba->get_mblock(i);
         if (!blk)
             continue;
 
-        // Look for store to state variable
         for (minsn_t *ins = blk->head; ins; ins = ins->next) {
-            if (ins->opcode == m_mov || ins->opcode == m_stx) {
-                // Check if storing a constant to state variable location
-                if (ins->l.t == mop_n && ins->d.t == state_var.t) {
-                    uint64_t state_val = ins->l.nnn->value;
-                    state_map[state_val] = i;
+            // Look for mov with constant source to state variable location
+            if (ins->opcode == m_mov && ins->l.t == mop_n) {
+                uint64_t val = ins->l.nnn->value;
+                if (is_hikari_state_const(val)) {
+                    // Check if destination matches state variable pattern
+                    // (same type and similar structure)
+                    if (ins->d.t == state_var.t) {
+                        state_map[val] = i;
+                    }
+                }
+            }
+        }
+    }
+}
+
+//--------------------------------------------------------------------------
+// Alternative detection: find all Hikari-style constants in the function
+//--------------------------------------------------------------------------
+static int count_state_constants(mbl_array_t *mba, std::set<uint64_t> *out_constants = nullptr) {
+    std::set<uint64_t> constants;
+    std::set<uint64_t> all_numbers;  // For debugging
+
+    for (int i = 0; i < mba->qty; i++) {
+        mblock_t *blk = mba->get_mblock(i);
+        if (!blk)
+            continue;
+
+        for (minsn_t *ins = blk->head; ins; ins = ins->next) {
+            // Check all operands for Hikari constants
+            if (ins->l.t == mop_n) {
+                uint64_t val = ins->l.nnn->value;
+                if (val >= 0x10000000 && val <= 0xFFFFFFFF)
+                    all_numbers.insert(val);
+                if (is_hikari_state_const(val)) {
+                    constants.insert(val);
+                }
+            }
+            if (ins->r.t == mop_n) {
+                uint64_t val = ins->r.nnn->value;
+                if (val >= 0x10000000 && val <= 0xFFFFFFFF)
+                    all_numbers.insert(val);
+                if (is_hikari_state_const(val)) {
+                    constants.insert(val);
+                }
+            }
+            if (ins->d.t == mop_n) {
+                uint64_t val = ins->d.nnn->value;
+                if (val >= 0x10000000 && val <= 0xFFFFFFFF)
+                    all_numbers.insert(val);
+                if (is_hikari_state_const(val)) {
+                    constants.insert(val);
                 }
             }
         }
     }
 
-    // Need at least a few state mappings to confirm flattening
-    if (state_map.size() < 2)
+    // Debug: log all large constants found
+    if (!all_numbers.empty()) {
+        deobf::log("[pattern] All large constants in microcode:\n");
+        for (uint64_t v : all_numbers) {
+            uint32_t high = (v >> 16) & 0xFFFF;
+            deobf::log("[pattern]   0x%llx (high=0x%04x) %s\n",
+                (unsigned long long)v, high,
+                is_hikari_state_const(v) ? "MATCH" : "no-match");
+        }
+    }
+
+    if (out_constants)
+        *out_constants = constants;
+
+    return (int)constants.size();
+}
+
+//--------------------------------------------------------------------------
+bool detect_flatten_pattern(mbl_array_t *mba, flatten_info_t *out) {
+    if (!mba || mba->qty < 4)
         return false;
+
+    // First, quick check: does this function use many Hikari-style constants?
+    std::set<uint64_t> state_constants;
+    int const_count = count_state_constants(mba, &state_constants);
+
+    if (const_count >= 3) {
+        deobf::log("[pattern] Found %d Hikari-style state constants\n", const_count);
+        for (uint64_t c : state_constants) {
+            deobf::log("[pattern]   0x%llx\n", (unsigned long long)c);
+        }
+
+        // If we have enough state constants, this is likely flattened
+        if (out) {
+            out->dispatcher_block = 0;  // Will be refined later
+            out->loop_end_block = -1;
+        }
+        return true;
+    }
+
+    // Strategy:
+    // 1. Find all comparisons against Hikari-style state constants
+    // 2. Identify the most commonly compared variable as the state var
+    // 3. Find all assignments to the state variable
+    // 4. If we have enough comparisons and assignments, it's flattened
+
+    std::vector<state_cmp_t> comparisons;
+    find_state_comparisons(mba, comparisons);
+
+    deobf::log("[pattern] Found %zu state comparisons\n", comparisons.size());
+
+    if (comparisons.size() < 3)
+        return false;
+
+    // Find the state variable
+    mop_t state_var;
+    if (!find_likely_state_var(comparisons, &state_var)) {
+        return false;
+    }
+
+    deobf::log("[pattern] Identified state variable type %d, size %d\n",
+              state_var.t, state_var.size);
+
+    // Find state assignments
+    std::map<uint64_t, int> state_map;
+    find_state_assignments(mba, state_var, state_map);
+
+    deobf::log("[pattern] Found %zu state assignments\n", state_map.size());
+
+    // Also count unique state values from comparisons
+    std::set<uint64_t> unique_states;
+    for (const auto &cmp : comparisons) {
+        unique_states.insert(cmp.const_val);
+    }
+
+    deobf::log("[pattern] Found %zu unique state values in comparisons\n", unique_states.size());
+
+    // Need at least a few states to confirm flattening
+    if (unique_states.size() < 3 && state_map.size() < 2)
+        return false;
+
+    // Find the dispatcher block (block with most comparisons)
+    std::map<int, int> block_cmp_count;
+    for (const auto &cmp : comparisons) {
+        block_cmp_count[cmp.block_idx]++;
+    }
+
+    int dispatcher = -1;
+    int max_cmps = 0;
+    for (const auto &kv : block_cmp_count) {
+        if (kv.second > max_cmps) {
+            max_cmps = kv.second;
+            dispatcher = kv.first;
+        }
+    }
+
+    // If no single block has many comparisons, the dispatcher might be
+    // spread across multiple blocks (cascading pattern)
+    if (max_cmps < 3) {
+        // Use the first block with comparisons as the entry point
+        if (!comparisons.empty()) {
+            dispatcher = comparisons[0].block_idx;
+        }
+    }
 
     if (out) {
         out->dispatcher_block = dispatcher;
-        out->loop_end_block = loop_end;
+        out->loop_end_block = -1;  // Will need to find this later
         out->state_var = state_var;
         out->state_to_block = state_map;
     }

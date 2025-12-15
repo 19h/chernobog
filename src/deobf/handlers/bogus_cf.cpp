@@ -137,7 +137,7 @@ bool bogus_cf_handler_t::is_opaque_predicate(minsn_t *cond, bool *is_true) {
     if (!cond)
         return false;
 
-    // Try different opaque patterns
+    // Try different opaque patterns (fast path first)
 
     if (check_const_comparison(cond, is_true))
         return true;
@@ -147,6 +147,21 @@ bool bogus_cf_handler_t::is_opaque_predicate(minsn_t *cond, bool *is_true) {
 
     if (check_global_var_pattern(cond, is_true))
         return true;
+
+    // Use Z3-based analysis for complex predicates
+    auto z3_result = opaque_eval_t::check_opaque_predicate(cond);
+    switch (z3_result) {
+        case opaque_eval_t::OPAQUE_ALWAYS_TRUE:
+            *is_true = true;
+            deobf::log_verbose("[bogus_cf] Z3 determined predicate is always true\n");
+            return true;
+        case opaque_eval_t::OPAQUE_ALWAYS_FALSE:
+            *is_true = false;
+            deobf::log_verbose("[bogus_cf] Z3 determined predicate is always false\n");
+            return true;
+        default:
+            break;
+    }
 
     return false;
 }

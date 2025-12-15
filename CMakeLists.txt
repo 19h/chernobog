@@ -13,6 +13,58 @@ IF( NOT CMAKE_BUILD_TYPE )
 ENDIF()
 SET(CMAKE_SKIP_RPATH TRUE)
 
+# Find Z3 library
+# First check if Z3_ROOT is set and use it preferentially
+if(DEFINED ENV{Z3_ROOT})
+    set(Z3_ROOT_DIR "$ENV{Z3_ROOT}")
+    message(STATUS "Using Z3_ROOT: ${Z3_ROOT_DIR}")
+
+    find_library(Z3_LIBRARY NAMES z3 libz3
+        PATHS
+            "${Z3_ROOT_DIR}/install/lib"
+            "${Z3_ROOT_DIR}/lib"
+            "${Z3_ROOT_DIR}/bin"
+            "${Z3_ROOT_DIR}/build"
+        NO_DEFAULT_PATH
+    )
+    find_path(Z3_INCLUDE_DIR z3++.h
+        PATHS
+            "${Z3_ROOT_DIR}/install/include"
+            "${Z3_ROOT_DIR}/include"
+            "${Z3_ROOT_DIR}/src/api/c++"
+            "${Z3_ROOT_DIR}/src/api"
+        NO_DEFAULT_PATH
+    )
+endif()
+
+# Fall back to system search if not found via Z3_ROOT
+if(NOT Z3_LIBRARY OR NOT Z3_INCLUDE_DIR)
+    find_package(Z3 CONFIG QUIET)
+    if(NOT Z3_FOUND)
+        find_library(Z3_LIBRARY NAMES z3 libz3
+            PATHS
+                /usr/lib
+                /usr/lib/x86_64-linux-gnu
+                /usr/local/lib
+                /opt/homebrew/lib
+        )
+        find_path(Z3_INCLUDE_DIR z3++.h
+            PATHS
+                /usr/include
+                /usr/local/include
+                /opt/homebrew/include
+        )
+    endif()
+endif()
+
+if(Z3_LIBRARY AND Z3_INCLUDE_DIR)
+    set(Z3_FOUND TRUE)
+    message(STATUS "Found Z3 library: ${Z3_LIBRARY}")
+    message(STATUS "Found Z3 include: ${Z3_INCLUDE_DIR}")
+elseif(NOT Z3_FOUND)
+    message(FATAL_ERROR "Z3 not found. Please install Z3 or set Z3_ROOT environment variable.")
+endif()
+
 include(${CMAKE_CURRENT_LIST_DIR}/ida-cmake/bootstrap.cmake)
 find_package(idasdk REQUIRED)
 
@@ -28,6 +80,7 @@ ida_add_plugin(chernobog
     src/deobf/analysis/cfg_analysis.cpp
     src/deobf/analysis/opaque_eval.cpp
     src/deobf/analysis/stack_tracker.cpp
+    src/deobf/analysis/z3_solver.cpp
     src/deobf/handlers/deflatten.cpp
     src/deobf/handlers/bogus_cf.cpp
     src/deobf/handlers/string_decrypt.cpp
@@ -40,4 +93,16 @@ ida_add_plugin(chernobog
     src/deobf/handlers/hikari_wrapper.cpp
     src/deobf/handlers/savedregs.cpp
     src/deobf/handlers/objc_resolve.cpp
+    src/deobf/handlers/global_const.cpp
+    src/deobf/handlers/ptr_resolve.cpp
 )
+
+# Link Z3 library
+if(Z3_FOUND)
+    if(TARGET z3::libz3)
+        target_link_libraries(chernobog PRIVATE z3::libz3)
+    else()
+        target_include_directories(chernobog PRIVATE ${Z3_INCLUDE_DIR})
+        target_link_libraries(chernobog PRIVATE ${Z3_LIBRARY})
+    endif()
+endif()

@@ -3,7 +3,7 @@
 #include "../plugin/component_registry.h"
 
 //--------------------------------------------------------------------------
-// Main deobfuscator class - Hex-Rays optimizer callback
+// Main deobfuscator class - Hex-Rays optimizer callback (instruction level)
 //--------------------------------------------------------------------------
 class chernobog_t : public optinsn_t {
 public:
@@ -16,6 +16,7 @@ public:
     // Main entry points
     static void deobfuscate_function(cfunc_t *cfunc);
     static void deobfuscate_function(ea_t ea);
+    static void deobfuscate_mba(mbl_array_t *mba);
     static void analyze_function(ea_t ea);
 
     // Detection
@@ -38,6 +39,16 @@ public:
 public:
     static bool s_active;
     static deobf_ctx_t s_ctx;
+};
+
+//--------------------------------------------------------------------------
+// Block-level optimizer for CFG modifications (e.g., deflattening)
+// This runs at different maturity levels during microcode optimization
+//--------------------------------------------------------------------------
+class chernobog_optblock_t : public optblock_t {
+public:
+    // optblock_t interface - called for each block during optimization
+    virtual int idaapi func(mblock_t *blk) override;
 };
 
 //--------------------------------------------------------------------------

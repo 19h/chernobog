@@ -46,6 +46,8 @@ enum obf_type_t : uint32_t {
     OBF_STACK_STRING    = 1 << 9,   // Stack string construction
     OBF_SAVEDREGS       = 1 << 10,  // Register demotion (savedregs patterns)
     OBF_OBJC_OBFUSC     = 1 << 11,  // Obfuscated ObjC method calls
+    OBF_GLOBAL_CONST    = 1 << 12,  // Global constants that can be inlined
+    OBF_PTR_INDIRECT    = 1 << 13,  // Indirect pointer references (off_XXXX -> symbol)
 };
 
 //--------------------------------------------------------------------------
@@ -73,6 +75,14 @@ struct deobf_ctx_t {
     mop_t *switch_var;          // Switch variable for deflattening
     int switch_block;           // Block containing the dispatcher switch
     std::map<uint64_t, int> case_to_block;  // Case value -> real block mapping
+
+    // State transitions: {from_block, to_block, state_value}
+    struct transition_t {
+        int from_block;
+        int to_block;
+        uint64_t state_value;
+    };
+    std::vector<transition_t> transitions;
 
     // String encryption
     std::map<ea_t, std::string> decrypted_strings;
