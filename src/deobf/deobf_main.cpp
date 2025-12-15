@@ -83,33 +83,33 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk) {
     if (maturity != MMAT_LOCOPT)
         return 0;
 
-    // Check if already analyzed
-    if (deflatten_handler_t::has_pending_analysis(func_ea)) {
-        msg("[optblock] Already have pending analysis for %a, applying...\n", func_ea);
-
-        deobf_ctx_t ctx;
-        ctx.mba = mba;
-        ctx.func_ea = func_ea;
-
-        int changes = deflatten_handler_t::apply_deferred(mba, &ctx);
-        if (changes > 0) {
-            msg("[optblock] Applied %d CFG changes\n", changes);
-            return changes;
-        }
-        return 0;
-    }
-
-    // Analyze and apply in one pass at maturity 3
     deobf_ctx_t ctx;
     ctx.mba = mba;
     ctx.func_ea = func_ea;
 
+    // Check if we have pending analysis from maturity 0
+    // The maturity 0 analysis uses block ADDRESSES which are stable across maturities
+    if (deflatten_handler_t::has_pending_analysis(func_ea)) {
+        msg("[optblock] Applying deferred analysis from maturity 0 for %a\n", func_ea);
+        int changes = deflatten_handler_t::apply_deferred(mba, &ctx);
+        if (changes > 0) {
+            msg("[optblock] Deflattening applied %d changes from deferred analysis\n", changes);
+        } else {
+            msg("[optblock] Deferred analysis made no changes, trying fresh analysis\n");
+            // Fall through to fresh analysis
+        }
+        // apply_deferred clears the deferred analysis, so we won't try again
+        if (changes > 0)
+            return changes;
+    }
+
+    // No deferred analysis or it didn't help - try fresh analysis at maturity 3
     if (!deflatten_handler_t::detect(mba, &ctx)) {
         msg("[optblock] No flattening detected at %a\n", func_ea);
         return 0;
     }
 
-    msg("[optblock] Detected flattening at %a, analyzing and applying...\n", func_ea);
+    msg("[optblock] Detected flattening at %a, running fresh analysis...\n", func_ea);
 
     // Run the full deflattening pass
     int changes = deflatten_handler_t::run(mba, &ctx);

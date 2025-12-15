@@ -28,16 +28,31 @@
 //--------------------------------------------------------------------------
 
 //--------------------------------------------------------------------------
+// State transition - represents a transition from one state to another
+// This is stable across maturities since it uses state VALUES, not block indices
+//--------------------------------------------------------------------------
+struct state_transition_t {
+    uint64_t from_state;      // State being handled
+    uint64_t to_state;        // State being transitioned to
+    bool is_conditional;      // True if transition depends on a condition
+    bool is_true_branch;      // For conditional: is this the true branch?
+
+    state_transition_t() : from_state(0), to_state(0),
+                          is_conditional(false), is_true_branch(false) {}
+};
+
+//--------------------------------------------------------------------------
 // Deferred CFG edge - stored for later application
+// Uses addresses instead of block indices since indices change between maturities
 //--------------------------------------------------------------------------
 struct deferred_edge_t {
-    int from_block;
-    int to_block;
-    uint64_t state_value;
+    ea_t from_addr;           // Start address of source block
+    ea_t to_addr;             // Start address of target block (for verification)
+    uint64_t state_value;     // State value being written (to look up target at apply time)
     bool is_conditional;
     bool is_true_branch;
 
-    deferred_edge_t() : from_block(-1), to_block(-1), state_value(0),
+    deferred_edge_t() : from_addr(BADADDR), to_addr(BADADDR), state_value(0),
                        is_conditional(false), is_true_branch(false) {}
 };
 
@@ -46,7 +61,8 @@ struct deferred_edge_t {
 //--------------------------------------------------------------------------
 struct deferred_analysis_t {
     ea_t func_ea;
-    std::vector<deferred_edge_t> edges;
+    std::vector<deferred_edge_t> edges;               // Block-level edges (may not work across maturities)
+    std::vector<state_transition_t> state_transitions; // State-level transitions (stable)
     std::set<int> dispatcher_blocks;
     int analysis_maturity;
     bool analysis_complete;
@@ -78,6 +94,13 @@ public:
 
     // Check if we have pending analysis for a function
     static bool has_pending_analysis(ea_t func_ea);
+
+    //----------------------------------------------------------------------
+    // Utilities (public for use by helper functions)
+    //----------------------------------------------------------------------
+
+    // Check if a value is a Hikari-style state constant
+    static bool is_state_constant(uint64_t val);
 
 private:
     //----------------------------------------------------------------------
@@ -172,13 +195,6 @@ private:
 
     // Build state map
     static bool build_state_map(mbl_array_t *mba, deobf_ctx_t *ctx);
-
-    //----------------------------------------------------------------------
-    // Utilities
-    //----------------------------------------------------------------------
-
-    // Check if a value is a Hikari-style state constant
-    static bool is_state_constant(uint64_t val);
 
     // Find all state constants in a block
     static std::set<uint64_t> find_state_constants(const mblock_t *blk);

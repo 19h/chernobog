@@ -254,6 +254,48 @@ deflatten_handler_t::analyze_dispatchers_z3(mbl_array_t *mba) {
                     disp.case_blocks.insert(kv.second);
                 }
 
+                // Compute dispatcher_chain: only blocks that COMPARE state constants
+                // (dispatcher conditional blocks), NOT blocks that WRITE state constants
+                // (those are transition blocks that we want to create edges from)
+                for (int i = 0; i < mba->qty; i++) {
+                    if (disp.case_blocks.count(i))
+                        continue;  // Skip case blocks
+
+                    mblock_t *blk = mba->get_mblock(i);
+                    if (!blk)
+                        continue;
+
+                    // Check if this block has a state constant COMPARISON (not just presence)
+                    // Look for setXX or jcc patterns that compare against state constants
+                    bool has_state_comparison = false;
+                    for (const minsn_t *ins = blk->head; ins; ins = ins->next) {
+                        // Check for setXX instructions (setz, setnz, setl, etc.)
+                        if (ins->opcode >= m_sets && ins->opcode <= m_setnz) {
+                            // Check if comparing against a state constant
+                            if ((ins->l.t == mop_n && is_state_constant(ins->l.nnn->value)) ||
+                                (ins->r.t == mop_n && is_state_constant(ins->r.nnn->value))) {
+                                has_state_comparison = true;
+                                break;
+                            }
+                        }
+                        // Check for jcc with embedded comparison
+                        if (deobf::is_jcc(ins->opcode)) {
+                            if (ins->l.t == mop_d && ins->l.d) {
+                                const minsn_t *cmp = ins->l.d;
+                                if ((cmp->l.t == mop_n && is_state_constant(cmp->l.nnn->value)) ||
+                                    (cmp->r.t == mop_n && is_state_constant(cmp->r.nnn->value))) {
+                                    has_state_comparison = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (has_state_comparison) {
+                        disp.dispatcher_chain.insert(i);
+                    }
+                }
+
                 dispatchers.push_back(disp);
             }
         }
@@ -529,6 +571,10 @@ deflatten_handler_t::trace_transitions_z3(mbl_array_t *mba,
         }
 
         // Second pass: look for state writes
+        // IMPORTANT: Don't break after first match! Hikari often has TWO state writes:
+        //   1. At entry: write own state (initialization)
+        //   2. At exit: write next state (transition target)
+        // We want the LAST write, which is the actual transition.
         for (const minsn_t *ins = blk->head; ins; ins = ins->next) {
             // Check for stx (store) instruction - m_stx = 1
             // stx src, offset, base -> mem[base + offset] = src
@@ -542,75 +588,96 @@ deflatten_handler_t::trace_transitions_z3(mbl_array_t *mba,
 
                 if (state_val != 0) {
                     block_writes_state[blk_idx] = state_val;
-                    deobf::log("[deflatten]   Block %d writes state 0x%llx via stx\n",
+                    deobf::log_verbose("[deflatten]   Block %d writes state 0x%llx via stx\n",
                               blk_idx, (unsigned long long)state_val);
-                    break;
+                    // Don't break - keep looking for later writes
                 }
             }
 
-            // Direct mov to stack/global/local
+            // Direct mov of state constant to any destination
+            // At different maturities, destination may be mop_S (stack), mop_r (register),
+            // mop_v (global), or mop_l (local)
             if (ins->opcode == m_mov && ins->l.t == mop_n &&
                 is_state_constant(ins->l.nnn->value)) {
-                bool is_state_write = (ins->d.t == mop_S || ins->d.t == mop_v || ins->d.t == mop_l);
+                // Accept any destination type - the fact that a state constant
+                // is being moved is what matters
+                block_writes_state[blk_idx] = ins->l.nnn->value;
+                deobf::log_verbose("[deflatten]   Block %d writes state 0x%llx via mov (d.t=%d)\n",
+                          blk_idx, (unsigned long long)ins->l.nnn->value, ins->d.t);
+                // Don't break - keep looking for later writes
+            }
 
-                if (is_state_write) {
-                    block_writes_state[blk_idx] = ins->l.nnn->value;
-                    deobf::log("[deflatten]   Block %d writes state 0x%llx to %s\n",
-                              blk_idx, (unsigned long long)ins->l.nnn->value,
-                              ins->d.t == mop_S ? "stack" :
-                              ins->d.t == mop_v ? "global" : "local");
-                    break;
+            // Pattern: or var, #shifted_constant, dest
+            // Hikari encodes state in high 32 bits: 0xDEAD000200000000
+            if (ins->opcode == m_or && ins->r.t == mop_n) {
+                uint64_t orval = ins->r.nnn->value;
+                // Check if high 32 bits contain a state constant
+                uint32_t high32 = (uint32_t)(orval >> 32);
+                if (is_state_constant(high32)) {
+                    block_writes_state[blk_idx] = high32;
+                    deobf::log_verbose("[deflatten]   Block %d writes state 0x%x via or (shifted const 0x%llx)\n",
+                              blk_idx, high32, (unsigned long long)orval);
+                    // Don't break - keep looking for later writes
                 }
             }
         }
 
-        // Debug: log blocks that have state constants but no write found
-        if (block_writes_state.find(blk_idx) == block_writes_state.end()) {
-            std::set<uint64_t> consts = find_state_constants(blk);
-            if (!consts.empty()) {
-                bool has_reg_write = false;
-                mreg_t state_reg = 0;
-                uint64_t state_val = 0;
+    }
 
-                for (const minsn_t *ins = blk->head; ins; ins = ins->next) {
-                    if (ins->opcode == m_mov && ins->l.t == mop_n &&
-                        is_state_constant(ins->l.nnn->value) && ins->d.t == mop_r) {
-                        has_reg_write = true;
-                        state_reg = ins->d.r;
-                        state_val = ins->l.nnn->value;
+    deobf::log("[deflatten]   Found %zu blocks that write state values:\n", block_writes_state.size());
+    for (const auto& kv : block_writes_state) {
+        deobf::log("[deflatten]     block %d -> writes 0x%llx\n",
+                  kv.first, (unsigned long long)kv.second);
+    }
+    deobf::log("[deflatten]   state_to_case map has %zu entries:\n", state_to_case.size());
+    for (const auto& st : state_to_case) {
+        deobf::log("[deflatten]     state 0x%llx -> case block %d\n",
+                  (unsigned long long)st.first, st.second);
+    }
 
-                        // Check if there's a following store
-                        for (const minsn_t *store = ins->next; store; store = store->next) {
-                            if (store->opcode == m_stx && store->l.t == mop_r &&
-                                store->l.r == ins->d.r) {
-                                block_writes_state[blk_idx] = ins->l.nnn->value;
-                                deobf::log("[deflatten]   Block %d writes state 0x%llx (reg->stx pattern)\n",
-                                          blk_idx, (unsigned long long)ins->l.nnn->value);
-                                break;
+    // Debug: Check case blocks that don't appear to write any state
+    // Also trace through their successors to find where state writes happen
+    for (const auto& st : state_to_case) {
+        int case_blk = st.second;
+        if (block_writes_state.find(case_blk) == block_writes_state.end()) {
+            mblock_t *blk = mba->get_mblock(case_blk);
+            if (blk) {
+                deobf::log("[deflatten]   WARNING: case block %d (handles 0x%llx) writes no detected state!\n",
+                          case_blk, (unsigned long long)st.first);
+                // Check successors for state writes
+                for (int i = 0; i < blk->nsucc(); i++) {
+                    int succ_idx = blk->succ(i);
+                    if (block_writes_state.find(succ_idx) != block_writes_state.end()) {
+                        deobf::log("[deflatten]     -> successor %d writes 0x%llx\n",
+                                  succ_idx, (unsigned long long)block_writes_state[succ_idx]);
+                    } else {
+                        // Dump what's in the successor
+                        mblock_t *succ_blk = mba->get_mblock(succ_idx);
+                        if (succ_blk) {
+                            int insn_count = 0;
+                            for (const minsn_t *ins = succ_blk->head; ins; ins = ins->next)
+                                insn_count++;
+                            deobf::log("[deflatten]     -> successor %d has no detected state write (%d insns, nsucc=%d):\n",
+                                      succ_idx, insn_count, succ_blk->nsucc());
+                            for (const minsn_t *ins = succ_blk->head; ins; ins = ins->next) {
+                                qstring insn_str;
+                                ins->print(&insn_str);
+                                deobf::log("[deflatten]        [op=%d] %s\n", ins->opcode, insn_str.c_str());
+                            }
+                            // If it's a goto block, show where it goes
+                            if (succ_blk->nsucc() > 0) {
+                                deobf::log("[deflatten]        successors of %d:", succ_idx);
+                                for (int j = 0; j < succ_blk->nsucc(); j++) {
+                                    deobf::log(" %d", succ_blk->succ(j));
+                                }
+                                deobf::log("\n");
                             }
                         }
                     }
                 }
-
-                // Dump instructions for debugging specific blocks
-                if (block_writes_state.find(blk_idx) == block_writes_state.end() &&
-                    has_reg_write && (blk_idx == 17 || blk_idx == 25)) {
-                    deobf::log("[deflatten]   Block %d dump (state reg=%d, val=0x%llx):\n",
-                              blk_idx, state_reg, (unsigned long long)state_val);
-                    for (const minsn_t *ins = blk->head; ins; ins = ins->next) {
-                        deobf::log("[deflatten]     op=%d l.t=%d r.t=%d d.t=%d\n",
-                                  ins->opcode, ins->l.t, ins->r.t, ins->d.t);
-                    }
-                }
-
-                if (block_writes_state.find(blk_idx) == block_writes_state.end() && has_reg_write) {
-                    deobf::log_verbose("[deflatten]   Block %d has state const in reg but no store found\n", blk_idx);
-                }
             }
         }
     }
-
-    deobf::log("[deflatten]   Found %zu blocks that write state values\n", block_writes_state.size());
 
     // For each block that writes a state, trace back to find which case block
     // it belongs to, then create an edge from that case to the target of the written state
@@ -620,57 +687,33 @@ deflatten_handler_t::trace_transitions_z3(mbl_array_t *mba,
 
         // Skip if written state isn't in our state map
         auto target_it = state_to_case.find(written_state);
-        if (target_it == state_to_case.end())
+        if (target_it == state_to_case.end()) {
+            deobf::log("[deflatten]   Block %d writes 0x%llx but not in state_to_case map\n",
+                      write_blk, (unsigned long long)written_state);
             continue;
+        }
 
         int target_blk = target_it->second;
 
-        // Find which case block this write belongs to by checking if
-        // this write block is "between" a case block and the dispatcher
-        // For now, use a simpler heuristic: the write block's address
-        // should be > case block address and < next case block address
-
-        int from_case = -1;
-
-        // Check if write_blk is reachable from any case block
-        // Simple approach: find the case block with highest address that is <= write_blk's address
-        mblock_t *write_mblk = mba->get_mblock(write_blk);
-        if (!write_mblk)
+        // Skip if write block is part of dispatcher chain (not a real case block)
+        if (disp.dispatcher_chain.count(write_blk))
             continue;
 
-        ea_t write_addr = write_mblk->start;
+        // Skip if write block IS the target (self-loop doesn't help)
+        if (write_blk == target_blk)
+            continue;
 
-        for (int case_blk : disp.case_blocks) {
-            mblock_t *case_mblk = mba->get_mblock(case_blk);
-            if (!case_mblk)
-                continue;
+        // Create edge: redirect write_blk's goto to target_blk
+        cfg_edge_t edge;
+        edge.from_block = write_blk;
+        edge.to_block = target_blk;
+        edge.state_value = written_state;
+        edge.is_conditional = false;
 
-            // Case block should precede or equal the write block in address
-            if (case_mblk->start <= write_addr) {
-                if (from_case < 0) {
-                    from_case = case_blk;
-                } else {
-                    mblock_t *prev_case = mba->get_mblock(from_case);
-                    if (prev_case && case_mblk->start > prev_case->start) {
-                        from_case = case_blk;
-                    }
-                }
-            }
-        }
+        edges.push_back(edge);
 
-        if (from_case >= 0 && from_case != target_blk) {
-            cfg_edge_t edge;
-            // Use write_blk as from_block since that's where the goto to dispatcher is
-            edge.from_block = write_blk;
-            edge.to_block = target_blk;
-            edge.state_value = written_state;
-            edge.is_conditional = false;
-
-            edges.push_back(edge);
-
-            deobf::log("[deflatten]   Write block %d -> Case %d (state 0x%llx, logical case %d)\n",
-                      write_blk, target_blk, (unsigned long long)written_state, from_case);
-        }
+        deobf::log("[deflatten]   Edge: block %d -> case %d (state 0x%llx)\n",
+                  write_blk, target_blk, (unsigned long long)written_state);
     }
 
     // Also check case blocks directly for any embedded state writes
@@ -1024,7 +1067,89 @@ int deflatten_handler_t::remove_state_assignments(mbl_array_t *mba,
 }
 
 //--------------------------------------------------------------------------
-// Phase 1: Analyze at early maturity and store results
+// Helper: Trace from a case block to find what next state it writes
+// Returns 0 if no state write found
+//--------------------------------------------------------------------------
+static uint64_t trace_case_block_next_state(mbl_array_t *mba, int case_blk,
+                                             const std::set<int>& dispatcher_chain,
+                                             int max_depth = 30) {
+    if (!mba || case_blk < 0 || case_blk >= mba->qty || max_depth <= 0)
+        return 0;
+
+    std::set<int> visited;
+    std::vector<int> worklist;
+    worklist.push_back(case_blk);
+
+    deobf::log("[deflatten]       Tracing from case block %d\n", case_blk);
+
+    while (!worklist.empty() && max_depth-- > 0) {
+        int blk_idx = worklist.back();
+        worklist.pop_back();
+
+        if (visited.count(blk_idx)) {
+            continue;
+        }
+        if (dispatcher_chain.count(blk_idx)) {
+            deobf::log("[deflatten]         Block %d is in dispatcher chain, skipping\n", blk_idx);
+            continue;
+        }
+        visited.insert(blk_idx);
+
+        mblock_t *blk = mba->get_mblock(blk_idx);
+        if (!blk)
+            continue;
+
+        deobf::log("[deflatten]         Visiting block %d (nsucc=%d)\n", blk_idx, blk->nsucc());
+
+        // Scan block for state writes - look for the LAST one
+        uint64_t found_state = 0;
+        for (const minsn_t *ins = blk->head; ins; ins = ins->next) {
+            // Direct mov of state constant
+            if (ins->opcode == m_mov && ins->l.t == mop_n &&
+                deflatten_handler_t::is_state_constant(ins->l.nnn->value)) {
+                found_state = ins->l.nnn->value;
+                // Don't return yet - keep looking for later writes
+            }
+            // Store of state constant
+            if (ins->opcode == m_stx && ins->l.t == mop_n &&
+                deflatten_handler_t::is_state_constant(ins->l.nnn->value)) {
+                found_state = ins->l.nnn->value;
+            }
+            // Or with shifted constant
+            if (ins->opcode == m_or && ins->r.t == mop_n) {
+                uint64_t orval = ins->r.nnn->value;
+                uint32_t high32 = (uint32_t)(orval >> 32);
+                if (deflatten_handler_t::is_state_constant(high32)) {
+                    found_state = high32;
+                }
+            }
+        }
+
+        // If we found a state write in this block, return it
+        // (We return the last state write found, which is the transition state)
+        if (found_state != 0) {
+            deobf::log_verbose("[deflatten]       Block %d writes state 0x%llx\n",
+                      blk_idx, (unsigned long long)found_state);
+            return found_state;
+        }
+
+        // Add successors to worklist
+        for (int i = 0; i < blk->nsucc(); i++) {
+            int succ = blk->succ(i);
+            if (!visited.count(succ) && !dispatcher_chain.count(succ)) {
+                worklist.push_back(succ);
+            }
+        }
+    }
+
+    deobf::log_verbose("[deflatten]       No state write found (visited %zu blocks)\n", visited.size());
+    return 0;
+}
+
+//--------------------------------------------------------------------------
+// Phase 1: Detect flattening at early maturity and mark for deferred processing
+// NOTE: At maturity 0, the CFG isn't fully formed (nsucc=0), so we just detect
+// that flattening exists and defer actual transition analysis to Phase 2.
 //--------------------------------------------------------------------------
 int deflatten_handler_t::analyze_and_store(mbl_array_t *mba, deobf_ctx_t *ctx) {
     if (!mba || !ctx)
@@ -1032,7 +1157,7 @@ int deflatten_handler_t::analyze_and_store(mbl_array_t *mba, deobf_ctx_t *ctx) {
 
     ea_t func_ea = mba->entry_ea;
 
-    deobf::log("[deflatten] Phase 1: Analyzing at maturity %d for %a\n",
+    deobf::log("[deflatten] Phase 1: Detecting flattening at maturity %d for %a\n",
               mba->maturity, func_ea);
 
     // Reset Z3 context
@@ -1049,62 +1174,82 @@ int deflatten_handler_t::analyze_and_store(mbl_array_t *mba, deobf_ctx_t *ctx) {
 
     deobf::log("[deflatten] Found %zu dispatcher(s)\n", dispatchers.size());
 
-    // Prepare deferred analysis storage
+    // Store minimal info for Phase 2 - just mark that this function needs deflattening
+    // The actual transition analysis will happen at maturity 3 when CFG is fully formed
     deferred_analysis_t &analysis = s_deferred_analysis[func_ea];
     analysis.func_ea = func_ea;
     analysis.analysis_maturity = mba->maturity;
+    analysis.analysis_complete = true;  // Mark as ready for Phase 2
     analysis.edges.clear();
+    analysis.state_transitions.clear();
     analysis.dispatcher_blocks.clear();
 
-    int total_edges = 0;
-
-    // Process each dispatcher and store transitions
+    // Store dispatcher block info for logging
     for (const auto& disp : dispatchers) {
-        deobf::log("[deflatten] Processing dispatcher at block %d (level %d)\n",
-                  disp.block_idx, disp.nesting_level);
-
-        // Store dispatcher blocks for later cleanup
+        deobf::log("[deflatten]   Dispatcher at block %d with %zu case blocks\n",
+                  disp.block_idx, disp.case_blocks.size());
         for (int blk : disp.dispatcher_chain) {
             analysis.dispatcher_blocks.insert(blk);
         }
+    }
 
-        // Trace state transitions using Z3 symbolic execution
-        auto edges = trace_transitions_z3(mba, disp);
+    deobf::log("[deflatten] Phase 1 complete: marked for deferred processing\n");
 
-        if (edges.empty()) {
-            deobf::log("[deflatten]   No transitions found, skipping\n");
+    return 1;  // Return non-zero to indicate detection
+}
+
+//--------------------------------------------------------------------------
+// Helper: Find the exit block (with goto to dispatcher) for a case block
+// Traces through the case block's successors to find the block that goes back to dispatcher
+//--------------------------------------------------------------------------
+static int find_case_exit_block(mbl_array_t *mba, int case_blk,
+                                 const std::set<int>& dispatcher_chain,
+                                 int max_depth = 20) {
+    if (!mba || case_blk < 0 || case_blk >= mba->qty)
+        return -1;
+
+    std::set<int> visited;
+    std::vector<int> worklist;
+    worklist.push_back(case_blk);
+
+    while (!worklist.empty() && max_depth-- > 0) {
+        int blk_idx = worklist.back();
+        worklist.pop_back();
+
+        if (visited.count(blk_idx))
             continue;
+        visited.insert(blk_idx);
+
+        mblock_t *blk = mba->get_mblock(blk_idx);
+        if (!blk)
+            continue;
+
+        // Check if this block has a goto to a dispatcher block
+        if (blk->tail && blk->tail->opcode == m_goto) {
+            for (int i = 0; i < blk->nsucc(); i++) {
+                if (dispatcher_chain.count(blk->succ(i))) {
+                    // This block goes to dispatcher - it's the exit
+                    return blk_idx;
+                }
+            }
         }
 
-        // Convert and store edges for later application
-        for (const auto& edge : edges) {
-            deferred_edge_t deferred;
-            deferred.from_block = edge.from_block;
-            deferred.to_block = edge.to_block;
-            deferred.state_value = edge.state_value;
-            deferred.is_conditional = edge.is_conditional;
-            deferred.is_true_branch = edge.is_true_branch;
-
-            analysis.edges.push_back(deferred);
-            total_edges++;
-
-            deobf::log("[deflatten]   Stored: Block %d -> Block %d (state 0x%llx)\n",
-                      edge.from_block, edge.to_block,
-                      (unsigned long long)edge.state_value);
+        // Add successors that aren't dispatcher blocks
+        for (int i = 0; i < blk->nsucc(); i++) {
+            int succ = blk->succ(i);
+            if (!visited.count(succ) && !dispatcher_chain.count(succ)) {
+                worklist.push_back(succ);
+            }
         }
     }
 
-    if (total_edges > 0) {
-        analysis.analysis_complete = true;
-        deobf::log("[deflatten] Phase 1 complete: stored %d transitions for later application\n",
-                  total_edges);
-    }
-
-    return total_edges;
+    return -1;
 }
 
 //--------------------------------------------------------------------------
 // Phase 2: Apply stored CFG modifications at stable maturity
+// IMPORTANT: At maturity 3, the CFG is fully formed, so we use trace_transitions_z3
+// to get fresh edges rather than relying on incomplete state_transitions from maturity 0
 //--------------------------------------------------------------------------
 int deflatten_handler_t::apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx) {
     if (!mba || !ctx)
@@ -1117,93 +1262,57 @@ int deflatten_handler_t::apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx) {
         return 0;
     }
 
-    const deferred_analysis_t &analysis = it->second;
+    deobf::log("[deflatten] === Phase 2: Applying deflattening for %a at maturity %d ===\n",
+              func_ea, mba->maturity);
 
-    deobf::log("[deflatten] === Applying CFG Modifications for %a ===\n", func_ea);
-    deobf::log("[deflatten] Analyzed at maturity %d, current maturity %d\n",
-              analysis.analysis_maturity, mba->maturity);
-    deobf::log("[deflatten] Found %zu state transitions to apply:\n", analysis.edges.size());
-
-    for (const auto& edge : analysis.edges) {
-        deobf::log("[deflatten]   Block %d -> Block %d (state 0x%llx)\n",
-                  edge.from_block, edge.to_block, (unsigned long long)edge.state_value);
+    // Re-analyze dispatchers at current maturity (CFG is now fully formed)
+    auto dispatchers = analyze_dispatchers_z3(mba);
+    if (dispatchers.empty()) {
+        deobf::log("[deflatten] No dispatchers found at current maturity\n");
+        clear_deferred(func_ea);
+        return 0;
     }
 
-    int changes = 0;
+    deobf::log("[deflatten] Found %zu dispatcher(s) at maturity %d\n",
+              dispatchers.size(), mba->maturity);
 
-    for (const auto& edge : analysis.edges) {
-        deobf::log_verbose("[deflatten]   Trying edge: from_block=%d to_block=%d (qty=%d)\n",
-                  edge.from_block, edge.to_block, mba->qty);
+    int total_changes = 0;
 
-        if (edge.from_block < 0 || edge.from_block >= mba->qty) {
-            deobf::log_verbose("[deflatten]   Skipping: from_block %d out of range\n", edge.from_block);
-            continue;
-        }
-        if (edge.to_block < 0 || edge.to_block >= mba->qty) {
-            deobf::log_verbose("[deflatten]   Skipping: to_block %d out of range\n", edge.to_block);
-            continue;
-        }
+    // Process each dispatcher using trace_transitions_z3 for fresh edges
+    for (const auto& disp : dispatchers) {
+        deobf::log("[deflatten] Processing dispatcher at block %d (level %d)\n",
+                  disp.block_idx, disp.nesting_level);
 
-        mblock_t *src = mba->get_mblock(edge.from_block);
-        if (!src || !src->tail) {
-            deobf::log_verbose("[deflatten]   Skipping: from_block %d has no tail\n", edge.from_block);
+        // Get fresh edges using trace_transitions_z3 at current maturity
+        auto edges = trace_transitions_z3(mba, disp);
+
+        if (edges.empty()) {
+            deobf::log("[deflatten]   No transitions found at current maturity, skipping\n");
             continue;
         }
 
-        mcode_t term_op = src->tail->opcode;
-        int old_succ = src->nsucc() > 0 ? src->succ(0) : -1;
+        deobf::log("[deflatten]   Found %zu transitions to apply\n", edges.size());
 
-        deobf::log_verbose("[deflatten]   Block %d terminator: op=%d d.t=%d nsucc=%d old_succ=%d\n",
-                  edge.from_block, term_op, src->tail->d.t, src->nsucc(), old_succ);
+        // Apply CFG reconstruction with fresh edges
+        int cfg_changes = reconstruct_cfg_z3(mba, edges, disp, ctx);
+        total_changes += cfg_changes;
 
-        bool modified = false;
-
-        if (!edge.is_conditional) {
-            // Unconditional edge - use the helper function that properly updates
-            // both the goto instruction and the predset/succset lists
-            if (term_op == m_goto) {
-                if (redirect_unconditional_edge(mba, edge.from_block, edge.to_block)) {
-                    deobf::log("[deflatten]   Block %d: redirected goto %d -> %d\n",
-                              edge.from_block, old_succ, edge.to_block);
-                    modified = true;
-                }
-            } else {
-                deobf::log_verbose("[deflatten]   Block %d: not a goto (op=%d), skipping\n",
-                          edge.from_block, term_op);
-            }
-        } else {
-            // Conditional edge - use helper for conditional branches
-            if (deobf::is_jcc(term_op)) {
-                if (redirect_conditional_edge(mba, edge.from_block, edge.to_block, edge.is_true_branch)) {
-                    deobf::log("[deflatten]   Block %d: redirected jcc %s branch to %d\n",
-                              edge.from_block, edge.is_true_branch ? "true" : "false", edge.to_block);
-                    modified = true;
-                }
-            }
-        }
-
-        if (modified) {
-            changes++;
-            ctx->branches_simplified++;
+        if (cfg_changes > 0) {
+            cleanup_dispatcher(mba, disp, ctx);
+            remove_state_assignments(mba, disp.state_var, ctx);
+            ctx->blocks_merged += (int)disp.dispatcher_chain.size();
         }
     }
 
-    if (changes > 0) {
-        deobf::log("[deflatten] Phase 2 complete: applied %d CFG changes\n", changes);
-        ctx->blocks_merged += (int)analysis.dispatcher_blocks.size();
-
-        // Mark as needing re-analysis - this is crucial for IDA to rebuild internal structures
+    if (total_changes > 0) {
+        deobf::log("[deflatten] Phase 2 complete: %d CFG changes applied\n", total_changes);
         mba->mark_chains_dirty();
-
-        // Try to verify the modifications (for debugging - comment out in production)
-        // Note: verify() may fail during intermediate states, so we catch any issues
-        deobf::log_verbose("[deflatten] Verifying CFG modifications...\n");
     }
 
     // Clear the deferred analysis after application
     clear_deferred(func_ea);
 
-    return changes;
+    return total_changes;
 }
 
 //--------------------------------------------------------------------------
