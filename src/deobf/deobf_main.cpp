@@ -62,6 +62,9 @@ void chernobog_clear_all_tracking() {
 // Block-level optimizer callback - runs at various maturity levels
 //--------------------------------------------------------------------------
 int idaapi chernobog_optblock_t::func(mblock_t *blk) {
+    // TEMPORARILY DISABLED - debugging crash
+    return 0;
+
     // Debug: log every call to see if we're being invoked
     if (!blk || !blk->mba) {
         msg("[optblock] Called with null blk or mba\n");
@@ -176,20 +179,12 @@ chernobog_t::~chernobog_t() {
 // This is where we do instruction-level simplification
 //--------------------------------------------------------------------------
 int idaapi chernobog_t::func(mblock_t *blk, minsn_t *ins, int optflags) {
-    if (!s_active)
+    if (!blk || !ins) {
         return 0;
+    }
 
-    int changes = 0;
-
-    // Try to simplify MBA obfuscated expressions
-    changes += mba_simplify_handler_t::simplify_insn(blk, ins, &s_ctx);
-
-    // Try to resolve constant XOR patterns
-    changes += const_decrypt_handler_t::simplify_insn(blk, ins, &s_ctx);
-
-    // Try to inline global constants
-    changes += global_const_handler_t::simplify_insn(blk, ins, &s_ctx);
-
+    // Try MBA simplification on this instruction
+    int changes = mba_simplify_handler_t::simplify_insn(blk, ins, nullptr);
     return changes;
 }
 
@@ -197,18 +192,8 @@ int idaapi chernobog_t::func(mblock_t *blk, minsn_t *ins, int optflags) {
 // Main deobfuscation entry point - from mba (used by auto mode)
 //--------------------------------------------------------------------------
 void chernobog_t::deobfuscate_mba(mbl_array_t *mba) {
-    if (!mba)
-        return;
-
-    deobf::log("[chernobog] Deobfuscating %a\n", mba->entry_ea);
-
-    s_ctx = deobf_ctx_t();
-    s_ctx.mba = mba;
-    s_ctx.cfunc = nullptr;
-    s_ctx.func_ea = mba->entry_ea;
-
-    // Run the core deobfuscation logic
-    run_deobfuscation_passes(mba, &s_ctx);
+    // TEMPORARILY DISABLED - debugging crash
+    return;
 }
 
 //--------------------------------------------------------------------------
@@ -551,6 +536,9 @@ bool deobf_active() {
 }
 
 void deobf_init() {
+    // Initialize MBA simplification rules first (before handlers)
+    mba_simplify_handler_t::initialize();
+
     // Install instruction-level optimizer
     g_deobf = new chernobog_t();
     install_optinsn_handler(g_deobf);

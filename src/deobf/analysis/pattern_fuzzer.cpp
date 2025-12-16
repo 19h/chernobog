@@ -495,7 +495,7 @@ std::vector<std::vector<AstPtr>> PatternFuzzer::permute(
         results.push_back(perm);
 
         // Limit to prevent explosion
-        if (results.size() >= 120) {  // 5! = 120
+        if (results.size() >= 24) {  // 4! = 24 (was 5! = 120)
             break;
         }
     } while (std::next_permutation(indices.begin(), indices.end()));
@@ -522,7 +522,7 @@ PatternFuzzer::permute_signed(const std::vector<SignedOperand>& operands) {
         }
         results.push_back(perm);
 
-        if (results.size() >= 120) {
+        if (results.size() >= 24) {  // 4! = 24 (was 5! = 120)
             break;
         }
     } while (std::next_permutation(indices.begin(), indices.end()));

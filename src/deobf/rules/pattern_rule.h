@@ -56,8 +56,9 @@ public:
     // Optional overrides
     //----------------------------------------------------------------------
 
-    // Whether to generate fuzzed variants (default: true)
-    virtual bool fuzz_pattern() const { return true; }
+    // Whether to generate fuzzed variants (default: false for fast init)
+    // TODO: Re-enable after optimizing fuzzer performance
+    virtual bool fuzz_pattern() const { return false; }
 
     // Extra validation after structural match
     // candidate: the matched AST with mops filled in from instruction
@@ -158,10 +159,10 @@ inline AstPtr x_1() { return make_leaf("x_1"); }
 inline AstPtr x_2() { return make_leaf("x_2"); }
 inline AstPtr x_3() { return make_leaf("x_3"); }
 
-// Create constant leaves
-inline AstPtr c_0() { return make_const(0); }
-inline AstPtr c_1() { return make_const(1); }
-inline AstPtr c_2() { return make_const(2); }
+// Create constant leaves (named for check_constants validation)
+inline AstPtr c_0() { return make_named_const("c_0", 0); }
+inline AstPtr c_1() { return make_named_const("c_1", 1); }
+inline AstPtr c_2() { return make_named_const("c_2", 2); }
 inline AstPtr c_minus_1() { return make_named_const("c_minus_1", 0xFFFFFFFFFFFFFFFFULL); }
 inline AstPtr c_minus_2() { return make_named_const("c_minus_2", 0xFFFFFFFFFFFFFFFEULL); }
 

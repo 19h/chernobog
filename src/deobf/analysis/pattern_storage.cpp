@@ -8,7 +8,7 @@ namespace chernobog {
 namespace ast {
 
 //--------------------------------------------------------------------------
-// SignatureUtils implementation
+// SignatureUtils implementation (kept for compatibility)
 //--------------------------------------------------------------------------
 std::string SignatureUtils::join_signature(const std::vector<std::string>& sig) {
     std::ostringstream ss;
@@ -99,7 +99,7 @@ int SignatureUtils::count_specific_elements(const std::vector<std::string>& sig)
 }
 
 //--------------------------------------------------------------------------
-// PatternStorage implementation
+// PatternStorage implementation - Simple flat storage
 //--------------------------------------------------------------------------
 PatternStorage::PatternStorage(int depth)
     : depth_(depth)
@@ -111,35 +111,16 @@ void PatternStorage::add_pattern_for_rule(AstPtr pattern, PatternMatchingRule* r
         return;
     }
 
-    // Get signature at current depth
-    std::vector<std::string> sig = pattern->get_depth_signature(depth_);
-    std::string sig_key = SignatureUtils::join_signature(sig);
-
-    // Check if all elements are "N" (tree fully traversed at this depth)
-    bool all_none = true;
-    for (const auto& s : sig) {
-        if (s != "N") {
-            all_none = false;
-            break;
-        }
+    // Get root opcode (-1 for leaf patterns)
+    int opcode = -1;
+    if (pattern->is_node()) {
+        auto node = std::static_pointer_cast<AstNode>(pattern);
+        opcode = static_cast<int>(node->opcode);
     }
 
-    if (all_none) {
-        // Pattern fully resolved at this depth
-        resolved_rules_.emplace_back(rule, pattern);
-    } else {
-        // Need to go deeper
-        auto it = next_layer_patterns_.find(sig_key);
-        if (it == next_layer_patterns_.end()) {
-            NextLayerEntry entry;
-            entry.split_sig = sig;
-            entry.storage = std::make_unique<PatternStorage>(depth_ + 1);
-            next_layer_patterns_[sig_key] = std::move(entry);
-            it = next_layer_patterns_.find(sig_key);
-        }
-
-        it->second.storage->add_pattern_for_rule(pattern, rule);
-    }
+    // Simply add to the vector for this opcode - O(1) amortized
+    patterns_by_opcode_[opcode].emplace_back(rule, pattern);
+    total_patterns_++;
 }
 
 std::vector<RulePatternInfo> PatternStorage::get_matching_rules(AstPtr candidate) {
@@ -147,85 +128,34 @@ std::vector<RulePatternInfo> PatternStorage::get_matching_rules(AstPtr candidate
         return {};
     }
 
-    return explore_one_level(candidate, depth_);
-}
-
-std::vector<RulePatternInfo> PatternStorage::explore_one_level(
-    AstPtr candidate, int cur_level) {
-
-    std::vector<RulePatternInfo> matched;
-
-    // Add rules resolved at this level
-    matched.insert(matched.end(), resolved_rules_.begin(), resolved_rules_.end());
-
-    if (next_layer_patterns_.empty()) {
-        return matched;
+    // Get candidate's root opcode
+    int opcode = -1;
+    if (candidate->is_node()) {
+        auto node = std::static_pointer_cast<AstNode>(candidate);
+        opcode = static_cast<int>(node->opcode);
     }
 
-    // Get candidate's signature at current level
-    std::vector<std::string> cand_sig = candidate->get_depth_signature(cur_level);
-
-    // Count specific (non-wildcard) elements
-    int specific_count = SignatureUtils::count_specific_elements(cand_sig);
-
-    // Calculate number of possible signatures: 2^specific_count
-    int nb_possible_sigs = 1 << specific_count;
-
-    // Choose matching strategy based on density
-    if (nb_possible_sigs < static_cast<int>(next_layer_patterns_.size())) {
-        // Strategy 1: Generate all possible signatures and look them up
-        // More efficient when signature space is smaller than storage
-        auto possible_sigs = SignatureUtils::generate_compatible_signatures(cand_sig);
-
-        for (const auto& sig : possible_sigs) {
-            std::string sig_key = SignatureUtils::join_signature(sig);
-            auto it = next_layer_patterns_.find(sig_key);
-            if (it != next_layer_patterns_.end()) {
-                // Found matching signature, recurse
-                auto sub_matches = it->second.storage->explore_one_level(
-                    candidate, cur_level + 1);
-                matched.insert(matched.end(), sub_matches.begin(), sub_matches.end());
-            }
-        }
-    } else {
-        // Strategy 2: Iterate storage and check compatibility
-        // More efficient when storage is sparser
-        for (const auto& kv : next_layer_patterns_) {
-            if (SignatureUtils::compatible(cand_sig, kv.second.split_sig)) {
-                auto sub_matches = kv.second.storage->explore_one_level(
-                    candidate, cur_level + 1);
-                matched.insert(matched.end(), sub_matches.begin(), sub_matches.end());
-            }
-        }
+    // Return all patterns with matching root opcode
+    auto it = patterns_by_opcode_.find(opcode);
+    if (it != patterns_by_opcode_.end()) {
+        return it->second;
     }
 
-    return matched;
+    return {};
 }
 
 size_t PatternStorage::pattern_count() const {
-    size_t count = resolved_rules_.size();
-    for (const auto& kv : next_layer_patterns_) {
-        count += kv.second.storage->pattern_count();
-    }
-    return count;
+    return total_patterns_;
 }
 
 void PatternStorage::dump(int indent) const {
     std::string prefix(indent * 2, ' ');
 
-    msg("%sPatternStorage[depth=%d]:\n", prefix.c_str(), depth_);
+    msg("%sPatternStorage (flat):\n", prefix.c_str());
+    msg("%s  Total patterns: %zu\n", prefix.c_str(), total_patterns_);
 
-    if (!resolved_rules_.empty()) {
-        msg("%s  Resolved rules: %zu\n", prefix.c_str(), resolved_rules_.size());
-        for (const auto& rp : resolved_rules_) {
-            msg("%s    - %s\n", prefix.c_str(),
-                rp.pattern ? rp.pattern->to_string().c_str() : "(null)");
-        }
-    }
-
-    for (const auto& kv : next_layer_patterns_) {
-        msg("%s  [%s]:\n", prefix.c_str(), kv.first.c_str());
-        kv.second.storage->dump(indent + 2);
+    for (const auto& kv : patterns_by_opcode_) {
+        msg("%s  Opcode %d: %zu patterns\n", prefix.c_str(), kv.first, kv.second.size());
     }
 }
 

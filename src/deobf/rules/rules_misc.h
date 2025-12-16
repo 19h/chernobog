@@ -172,6 +172,10 @@ public:
     AstPtr get_replacement() const override {
         return c_0();
     }
+
+    bool check_constants(const std::map<std::string, mop_t>& bindings) override {
+        return check_const_value(bindings, "c_0", 0, 8);
+    }
 };
 
 //==========================================================================
@@ -192,6 +196,10 @@ public:
     AstPtr get_replacement() const override {
         return c_0();
     }
+
+    bool check_constants(const std::map<std::string, mop_t>& bindings) override {
+        return check_const_value(bindings, "c_0", 0, 8);
+    }
 };
 
 // x * 1 -> x
@@ -208,6 +216,10 @@ public:
     AstPtr get_replacement() const override {
         return x_0();
     }
+
+    bool check_constants(const std::map<std::string, mop_t>& bindings) override {
+        return check_const_value(bindings, "c_1", 1, 8);
+    }
 };
 
 // x * 2 -> x + x
@@ -223,6 +235,10 @@ public:
 
     AstPtr get_replacement() const override {
         return add(x_0(), x_0());
+    }
+
+    bool check_constants(const std::map<std::string, mop_t>& bindings) override {
+        return check_const_value(bindings, "c_2", 2, 8);
     }
 };
 
@@ -294,6 +310,10 @@ public:
     AstPtr get_replacement() const override {
         return x_0();
     }
+
+    bool check_constants(const std::map<std::string, mop_t>& bindings) override {
+        return check_const_value(bindings, "c_0", 0, 8);
+    }
 };
 
 // 0 + x -> x
@@ -309,6 +329,10 @@ public:
 
     AstPtr get_replacement() const override {
         return x_0();
+    }
+
+    bool check_constants(const std::map<std::string, mop_t>& bindings) override {
+        return check_const_value(bindings, "c_0", 0, 8);
     }
 };
 

@@ -187,6 +187,10 @@ public:
     AstPtr get_replacement() const override {
         return x_0();
     }
+
+    bool check_constants(const std::map<std::string, mop_t>& bindings) override {
+        return check_const_value(bindings, "c_0", 0, 8);
+    }
 };
 
 // x - x -> 0
@@ -218,6 +222,10 @@ public:
 
     AstPtr get_replacement() const override {
         return neg(x_0());
+    }
+
+    bool check_constants(const std::map<std::string, mop_t>& bindings) override {
+        return check_const_value(bindings, "c_0", 0, 8);
     }
 };
 

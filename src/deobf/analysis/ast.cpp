@@ -100,29 +100,36 @@ bool mops_equal_ignore_size(const mop_t& a, const mop_t& b) {
 
     switch (a.t) {
         case mop_n:  // Number constant
+            if (!a.nnn || !b.nnn) return false;
             return a.nnn->value == b.nnn->value;
         case mop_r:  // Register
             return a.r == b.r;
         case mop_S:  // Stack variable
+            if (!a.s || !b.s) return false;
             return a.s->off == b.s->off;
         case mop_v:  // Global variable
             return a.g == b.g;
         case mop_l:  // Local variable
+            if (!a.l || !b.l) return false;
             return a.l->idx == b.l->idx && a.l->off == b.l->off;
         case mop_d:  // Result of another instruction
             // Compare by string representation
+            if (!a.d || !b.d) return false;
             return a.d->dstr() == b.d->dstr();
         case mop_b:  // Block reference
             return a.b == b.b;
         case mop_f:  // Function call
             return false;  // Too complex to compare
         case mop_a:  // Address
+            if (!a.a || !b.a) return false;
             if (a.a->t != b.a->t)
                 return false;
             return mops_equal_ignore_size(*a.a, *b.a);
         case mop_h:  // Helper function
+            if (!a.helper || !b.helper) return false;
             return strcmp(a.helper, b.helper) == 0;
         case mop_str:  // String
+            if (!a.cstr || !b.cstr) return false;
             return strcmp(a.cstr, b.cstr) == 0;
         case mop_z:  // Empty
             return true;
@@ -450,19 +457,23 @@ std::string AstLeaf::name_from_mop(const mop_t& m) {
             ss << "r" << m.r;
             break;
         case mop_S:
-            ss << "s" << std::hex << m.s->off;
+            if (m.s) ss << "s" << std::hex << m.s->off;
+            else ss << "s_null";
             break;
         case mop_v:
             ss << "g" << std::hex << m.g;
             break;
         case mop_l:
-            ss << "l" << m.l->idx << "_" << m.l->off;
+            if (m.l) ss << "l" << m.l->idx << "_" << m.l->off;
+            else ss << "l_null";
             break;
         case mop_n:
-            ss << "n" << std::hex << m.nnn->value;
+            if (m.nnn) ss << "n" << std::hex << m.nnn->value;
+            else ss << "n_null";
             break;
         case mop_d:
-            ss << "d_" << m.d->dstr();
+            if (m.d) ss << "d_" << m.d->dstr();
+            else ss << "d_null";
             break;
         default:
             ss << "m" << static_cast<int>(m.t);

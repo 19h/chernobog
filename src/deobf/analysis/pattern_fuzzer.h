@@ -55,9 +55,9 @@ public:
     // Configuration
     struct Config {
         bool fuzz_commutative = true;   // Reorder commutative operands
-        bool fuzz_add_sub = true;       // Generate add/sub equivalences
-        bool fuzz_associative = true;   // Restructure associative trees
-        int max_variants = 1000;        // Limit to prevent explosion
+        bool fuzz_add_sub = false;      // Generate add/sub equivalences (DISABLED - slow)
+        bool fuzz_associative = false;  // Restructure associative trees (DISABLED - slow)
+        int max_variants = 16;          // Limit to prevent explosion (was 1000)
     };
 
     static void set_config(const Config& cfg);

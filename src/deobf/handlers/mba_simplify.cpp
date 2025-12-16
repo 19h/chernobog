@@ -25,10 +25,17 @@ void mba_simplify_handler_t::initialize() {
         return;
     }
 
-    // Initialize the rule registry (builds pattern index)
-    RuleRegistry::instance().initialize();
-    initialized_ = true;
+    msg("[chernobog-debug] MBA simplify handler initializing...\n");
 
+    // Initialize the rule registry (builds pattern index)
+    try {
+        RuleRegistry::instance().initialize();
+    } catch (...) {
+        msg("[chernobog] ERROR: Exception during rule registry initialization\n");
+        return;
+    }
+
+    initialized_ = true;
     msg("[chernobog] MBA simplify handler initialized\n");
 }
 
@@ -144,12 +151,15 @@ int mba_simplify_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx) {
 // Instruction-level simplification
 //--------------------------------------------------------------------------
 int mba_simplify_handler_t::simplify_insn(mblock_t *blk, minsn_t *ins, deobf_ctx_t *ctx) {
+    // Early null check before anything else
     if (!blk || !ins) {
         return 0;
     }
 
+    // Only try to simplify if registry is initialized
     if (!initialized_) {
-        initialize();
+        // Don't initialize here - do it at plugin init time
+        return 0;
     }
 
     int changes = try_simplify_instruction(blk, ins);
@@ -169,13 +179,28 @@ int mba_simplify_handler_t::try_simplify_instruction(mblock_t *blk, minsn_t *ins
         return 0;
     }
 
-    // Try to find a matching rule
-    auto match = RuleRegistry::instance().find_match(ins);
+    // Ensure initialized
+    if (!initialized_) {
+        initialize();
+    }
 
-    if (!match.matched()) {
+    // Debug: log that we're trying to simplify
+    static int call_count = 0;
+    if (call_count < 5) {
+        msg("[chernobog-debug] try_simplify_instruction called, opcode=%d, registry has %zu rules\n",
+            ins->opcode, RuleRegistry::instance().rule_count());
+        call_count++;
+    }
+
+    // Try to find a matching rule (registry builds AST internally)
+    auto match = RuleRegistry::instance().find_match(ins);
+    if (!match.rule) {
         return 0;
     }
 
+    msg("[chernobog] MBA rule matched: %s (opcode %d -> ?)\n", match.rule->name(), ins->opcode);
+
+    // Apply the matched rule
     return apply_match(blk, ins, match);
 }
 
@@ -189,27 +214,44 @@ int mba_simplify_handler_t::apply_match(mblock_t *blk, minsn_t *ins,
     minsn_t *replacement = match.rule->apply_replacement(match.bindings, blk, ins);
 
     if (!replacement) {
+        msg("[chernobog-debug] apply_replacement returned null\n");
         return 0;
     }
 
-    // Copy the replacement into the original instruction
+    msg("[chernobog-debug] replacement: opcode=%d, l.t=%d l.size=%d, r.t=%d r.size=%d\n",
+        replacement->opcode, replacement->l.t, replacement->l.size,
+        replacement->r.t, replacement->r.size);
+
+    // Save original properties
     ea_t orig_ea = ins->ea;
-    int orig_dest_size = ins->d.size;
     mop_t orig_dest = ins->d;
 
-    // Replace the instruction content
+    msg("[chernobog-debug] original: opcode=%d, d.t=%d d.size=%d\n",
+        ins->opcode, orig_dest.t, orig_dest.size);
+
+    // Copy replacement instruction fields
     ins->opcode = replacement->opcode;
-    ins->l = replacement->l;
-    ins->r = replacement->r;
+    ins->l.swap(replacement->l);  // Use swap for proper mop_t handling
+    ins->r.swap(replacement->r);
+
+    // Restore original ea and destination
     ins->ea = orig_ea;
     ins->d = orig_dest;
-    ins->d.size = orig_dest_size;
+
+    // Ensure operand sizes match destination
+    if (ins->l.size == 0 && orig_dest.size > 0) {
+        ins->l.size = orig_dest.size;
+    }
+    if (ins->r.size == 0 && orig_dest.size > 0 && ins->r.t != mop_z) {
+        ins->r.size = orig_dest.size;
+    }
+
+    msg("[chernobog-debug] after apply: opcode=%d, l.t=%d l.size=%d, r.t=%d r.size=%d, d.size=%d\n",
+        ins->opcode, ins->l.t, ins->l.size, ins->r.t, ins->r.size, ins->d.size);
 
     delete replacement;
 
     total_simplified_++;
-
-    deobf::log_verbose("[MBA] Applied rule '%s' at %a\n", match.rule->name(), orig_ea);
 
     return 1;
 }

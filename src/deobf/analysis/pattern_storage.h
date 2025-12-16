@@ -6,19 +6,13 @@
 #include <string>
 
 //--------------------------------------------------------------------------
-// Hierarchical Pattern Storage for Efficient Pattern Matching
+// Pattern Storage for Efficient Pattern Matching
 //
-// This system provides O(log n) pattern lookup by organizing patterns
-// in a multi-level trie-like structure indexed by depth signatures.
+// Uses simple flat storage indexed by root opcode for fast initialization.
+// Patterns are grouped by their root operation for quick lookup during
+// matching.
 //
-// Key concepts:
-//   - Depth signature: At each tree depth, a signature is generated
-//     encoding opcodes ("10"), leaves ("L"), constants ("C"), or none ("N")
-//   - Patterns are stored at the depth where they become unique
-//   - Matching uses adaptive algorithm: either enumerate signatures
-//     or iterate storage depending on density
-//
-// Ported from d810-ng's handler.py PatternStorage class
+// Ported from d810-ng's handler.py PatternStorage class (simplified)
 //--------------------------------------------------------------------------
 
 namespace chernobog {
@@ -45,7 +39,7 @@ struct RulePatternInfo {
 };
 
 //--------------------------------------------------------------------------
-// Signature utilities
+// Signature utilities (kept for compatibility)
 //--------------------------------------------------------------------------
 class SignatureUtils {
 public:
@@ -71,13 +65,13 @@ public:
 };
 
 //--------------------------------------------------------------------------
-// Hierarchical Pattern Storage
+// Simple Flat Pattern Storage - Fast initialization, reasonable lookup
 //--------------------------------------------------------------------------
 class PatternStorage {
 public:
     explicit PatternStorage(int depth = 1);
 
-    // Add a pattern for a rule
+    // Add a pattern for a rule - O(1) operation
     void add_pattern_for_rule(AstPtr pattern, PatternMatchingRule* rule);
 
     // Find all rules whose patterns match the candidate AST
@@ -90,21 +84,13 @@ public:
     void dump(int indent = 0) const;
 
 private:
-    int depth_;  // Current depth level
+    int depth_;  // Unused in simplified version, kept for API compatibility
 
-    // Next layer patterns: signature -> (split_sig, next_storage)
-    struct NextLayerEntry {
-        std::vector<std::string> split_sig;
-        std::unique_ptr<PatternStorage> storage;
-    };
-    std::map<std::string, NextLayerEntry> next_layer_patterns_;
+    // Patterns indexed by root opcode (-1 for leaf patterns)
+    std::map<int, std::vector<RulePatternInfo>> patterns_by_opcode_;
 
-    // Rules resolved at this depth (pattern fully matched)
-    std::vector<RulePatternInfo> resolved_rules_;
-
-    // Internal: explore patterns at this level and below
-    std::vector<RulePatternInfo> explore_one_level(
-        AstPtr candidate, int cur_level);
+    // Total pattern count
+    size_t total_patterns_ = 0;
 };
 
 //--------------------------------------------------------------------------

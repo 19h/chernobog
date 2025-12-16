@@ -16,9 +16,11 @@ MopKey MopKey::from_mop(const mop_t& mop) {
 
     switch (mop.t) {
         case mop_n:  // Number constant
-            key.value1 = mop.nnn->value;
-            // Include original value for constants to distinguish different occurrences
-            key.value2 = mop.nnn->org_value;
+            if (mop.nnn) {
+                key.value1 = mop.nnn->value;
+                // Include original value for constants to distinguish different occurrences
+                key.value2 = mop.nnn->org_value;
+            }
             break;
 
         case mop_r:  // Register
@@ -26,7 +28,9 @@ MopKey MopKey::from_mop(const mop_t& mop) {
             break;
 
         case mop_S:  // Stack variable
-            key.value1 = static_cast<uint64_t>(mop.s->off);
+            if (mop.s) {
+                key.value1 = static_cast<uint64_t>(mop.s->off);
+            }
             break;
 
         case mop_v:  // Global variable
@@ -34,13 +38,17 @@ MopKey MopKey::from_mop(const mop_t& mop) {
             break;
 
         case mop_l:  // Local variable
-            key.value1 = mop.l->idx;
-            key.value2 = mop.l->off;
+            if (mop.l) {
+                key.value1 = mop.l->idx;
+                key.value2 = mop.l->off;
+            }
             break;
 
         case mop_d:  // Result of another instruction
             // Use string representation for complex operands
-            key.str_value = mop.d->dstr();
+            if (mop.d) {
+                key.str_value = mop.d->dstr();
+            }
             break;
 
         case mop_b:  // Block reference
@@ -248,6 +256,11 @@ static AstPtr mop_to_ast_internal(const mop_t& mop, AstBuilderContext& ctx, bool
     switch (mop.t) {
         case mop_n: {
             // Numeric constant
+            if (!mop.nnn) {
+                // Fallback to leaf if nnn is null
+                result = std::make_shared<AstLeaf>(mop);
+                break;
+            }
             auto c = std::make_shared<AstConstant>(mop.nnn->value, mop.size);
             c->mop = mop;
             c->dest_size = mop.size;
@@ -257,6 +270,11 @@ static AstPtr mop_to_ast_internal(const mop_t& mop, AstBuilderContext& ctx, bool
 
         case mop_d: {
             // Result of another instruction - recurse
+            if (!mop.d) {
+                // Fallback to leaf if d is null
+                result = std::make_shared<AstLeaf>(mop);
+                break;
+            }
             result = convert_mop_d(mop.d, ctx);
             if (result) {
                 result->mop = mop;
@@ -381,18 +399,21 @@ mop_t ast_leaf_to_mop(AstLeafPtr leaf, const std::map<std::string, mop_t>& bindi
         return mop_t();
     }
 
+    // Check if it's a constant FIRST - constants in replacements should use
+    // their literal values, not values captured from the pattern
+    if (leaf->is_constant()) {
+        auto constant = std::static_pointer_cast<AstConstant>(leaf);
+        mop_t result;
+        // Use a reasonable default size if dest_size is 0
+        int size = leaf->dest_size > 0 ? leaf->dest_size : 4;
+        result.make_number(constant->value, size);
+        return result;
+    }
+
     // Check if it's a named variable with a binding
     auto it = bindings.find(leaf->name);
     if (it != bindings.end()) {
         return it->second;
-    }
-
-    // Check if it's a constant
-    if (leaf->is_constant()) {
-        auto constant = std::static_pointer_cast<AstConstant>(leaf);
-        mop_t result;
-        result.make_number(constant->value, leaf->dest_size);
-        return result;
     }
 
     // Return the original mop if available

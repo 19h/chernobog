@@ -1,15 +1,47 @@
 #include "rule_registry.h"
 #include "../analysis/ast_builder.h"
 
+// Raw POSIX includes for early debugging
+#include <unistd.h>
+#include <fcntl.h>
+#include <string.h>
+
+// Very early constructor that runs before ANY C++ static init
+// This helps identify if the .so is being loaded at all
+__attribute__((constructor(101)))
+static void very_early_init() {
+    int fd = ::open("/tmp/chernobog_loaded.log", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0) {
+        const char* msg = "chernobog.so loaded - early constructor running\n";
+        ::write(fd, msg, strlen(msg));
+        ::close(fd);
+    }
+}
+
 namespace chernobog {
 namespace rules {
 
 using namespace ast;
 
+// Simple debug write using raw POSIX syscalls - completely bypasses any IDA redirection
+static void debug_write(const char* msg) {
+    int fd = ::open("/tmp/chernobog_early.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd >= 0) {
+        ::write(fd, msg, strlen(msg));
+        ::close(fd);
+    }
+}
+
 //--------------------------------------------------------------------------
 // Singleton implementation
 //--------------------------------------------------------------------------
 RuleRegistry& RuleRegistry::instance() {
+    // Debug: log that singleton is being accessed (happens at static init)
+    static bool first_access = true;
+    if (first_access) {
+        first_access = false;
+        debug_write("RuleRegistry::instance() first access - creating singleton\n");
+    }
     static RuleRegistry instance;
     return instance;
 }
@@ -18,27 +50,56 @@ RuleRegistry& RuleRegistry::instance() {
 // Registration
 //--------------------------------------------------------------------------
 void RuleRegistry::register_rule(std::unique_ptr<PatternMatchingRule> rule) {
+    // Debug: log static registration using raw POSIX syscalls
+    static bool first_call = true;
+    if (first_call) {
+        first_call = false;
+        debug_write("First call to register_rule - static init starting\n");
+    }
+
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (rule) {
+        // Log each rule registration
+        const char* name = rule->name();
+        if (name) {
+            debug_write("Registering rule: ");
+            debug_write(name);
+            debug_write("\n");
+        } else {
+            debug_write("Registering rule: (null)\n");
+        }
         rules_.push_back(std::move(rule));
     }
 }
 
 void RuleRegistry::initialize() {
+    // Debug logging - msg() output may not appear before crash, so also write to file
+    FILE* dbg_fp = qfopen("/tmp/chernobog_debug.log", "a");
+    #define DBG_LOG(...) do { \
+        msg(__VA_ARGS__); \
+        if (dbg_fp) { qfprintf(dbg_fp, __VA_ARGS__); qflush(dbg_fp); } \
+    } while(0)
+
+    DBG_LOG("[chernobog-debug] RuleRegistry::initialize() ENTRY\n");
+
     std::lock_guard<std::mutex> lock(mutex_);
+
+    DBG_LOG("[chernobog-debug] Got mutex lock, initialized_=%d\n", initialized_);
 
     if (initialized_) {
         return;
     }
 
+    DBG_LOG("[chernobog-debug] %zu rules registered, creating PatternStorage\n", rules_.size());
+
     // Build pattern storage from all rules
     storage_ = PatternStorage(1);
 
+    // Build patterns with minimal logging
     for (auto& rule : rules_) {
         if (!rule) continue;
 
-        // Get all patterns (including fuzzed variants)
         auto patterns = rule->get_all_patterns();
 
         for (const auto& pattern : patterns) {
@@ -50,8 +111,11 @@ void RuleRegistry::initialize() {
 
     initialized_ = true;
 
-    msg("[chernobog] MBA rule registry initialized: %zu rules, %zu patterns\n",
-        rules_.size(), pattern_count());
+    DBG_LOG("[chernobog] MBA rule registry initialized: %zu rules, %zu patterns\n",
+            rules_.size(), pattern_count());
+
+    #undef DBG_LOG
+    if (dbg_fp) qfclose(dbg_fp);
 }
 
 void RuleRegistry::reinitialize() {
