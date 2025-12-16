@@ -10,7 +10,7 @@
 #include "handlers/const_decrypt.h"
 #include "handlers/indirect_branch.h"
 #include "handlers/block_merge.h"
-#include "handlers/substitution.h"
+#include "handlers/mba_simplify.h"
 #include "handlers/identity_call.h"
 #include "handlers/stack_string.h"
 #include "handlers/hikari_wrapper.h"
@@ -181,8 +181,8 @@ int idaapi chernobog_t::func(mblock_t *blk, minsn_t *ins, int optflags) {
 
     int changes = 0;
 
-    // Try to simplify substituted expressions
-    changes += substitution_handler_t::simplify_insn(blk, ins, &s_ctx);
+    // Try to simplify MBA obfuscated expressions
+    changes += mba_simplify_handler_t::simplify_insn(blk, ins, &s_ctx);
 
     // Try to resolve constant XOR patterns
     changes += const_decrypt_handler_t::simplify_insn(blk, ins, &s_ctx);
@@ -448,8 +448,8 @@ uint32_t chernobog_t::detect_obfuscations(mbl_array_t *mba) {
     if (has_indirect_branches(mba))
         detected |= OBF_INDIRECT_BR;
 
-    // Check for instruction substitution patterns
-    if (substitution_handler_t::detect(mba))
+    // Check for instruction substitution / MBA obfuscation patterns
+    if (mba_simplify_handler_t::detect(mba))
         detected |= OBF_SUBSTITUTION;
 
     // Check for split blocks (many small blocks with unconditional jumps)
@@ -535,7 +535,7 @@ int chernobog_t::merge_blocks(mbl_array_t *mba, deobf_ctx_t *ctx) {
 }
 
 int chernobog_t::simplify_substitutions(mbl_array_t *mba, deobf_ctx_t *ctx) {
-    return substitution_handler_t::run(mba, ctx);
+    return mba_simplify_handler_t::run(mba, ctx);
 }
 
 //--------------------------------------------------------------------------

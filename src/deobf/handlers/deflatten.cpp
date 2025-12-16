@@ -1,4 +1,5 @@
 #include "deflatten.h"
+#include "identity_call.h"
 #include "../analysis/cfg_analysis.h"
 #include "../analysis/pattern_match.h"
 #include "../analysis/opaque_eval.h"
@@ -611,9 +612,25 @@ bool deflatten_handler_t::analyze_jump_table_flattening(mbl_array_t *mba,
     ea_t table = primary_si.jumps;
     int num_cases = (int)primary_si.get_jtable_size();
 
+    int identity_resolved_count = 0;
     for (int idx = 0; idx < num_cases && idx < 300; idx++) {
-        ea_t target = 0;
-        if (get_bytes(&target, sizeof(ea_t), table + idx * sizeof(ea_t)) == sizeof(ea_t)) {
+        ea_t raw_target = 0;
+        if (get_bytes(&raw_target, sizeof(ea_t), table + idx * sizeof(ea_t)) == sizeof(ea_t)) {
+            ea_t target = raw_target;
+
+            // Resolve through identity call trampolines if present
+            // This handles Hikari's pattern where table entries point to
+            // wrapper functions that use identity calls for indirection
+            ea_t resolved = identity_call_handler_t::resolve_trampoline_chain(raw_target);
+            if (resolved != raw_target && resolved != BADADDR) {
+                // Resolved through a trampoline chain
+                identity_resolved_count++;
+                deobf::log_verbose("[deflatten] Table[%d]: %a -> %a (identity resolved)\n",
+                                  idx, raw_target, resolved);
+                target = resolved;
+            }
+
+            // Find the block containing this target
             for (int bi = 0; bi < mba->qty; bi++) {
                 mblock_t *blk = mba->get_mblock(bi);
                 if (blk && blk->start <= target && target < blk->end) {
@@ -625,6 +642,10 @@ bool deflatten_handler_t::analyze_jump_table_flattening(mbl_array_t *mba,
         }
     }
 
+    if (identity_resolved_count > 0) {
+        deobf::log("[deflatten] Resolved %d/%d table entries through identity call chains\n",
+                  identity_resolved_count, num_cases);
+    }
     deobf::log("[deflatten] Built state_to_block with %zu mappings\n", disp.state_to_block.size());
 
     // Step 4: Build a map of index variable offsets -> their usage

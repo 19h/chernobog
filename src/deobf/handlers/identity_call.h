@@ -65,6 +65,22 @@ public:
     // Resolve pointer chain recursively (public for use by other handlers)
     static ea_t resolve_trampoline_chain(ea_t start_addr, int max_depth = 32);
 
+    // Resolve a global pointer to get actual target address
+    static ea_t resolve_global_pointer(ea_t ptr_addr);
+
+    // Resolve an indexed table access - returns both entries if different
+    // Returns: pair<entry0_target, entry1_target>
+    // If both resolve to same target, second will equal first
+    // If resolution fails, returns BADADDR
+    struct table_resolution_t {
+        ea_t table_base;
+        ea_t entry0_target;   // Final resolved target for index 0
+        ea_t entry1_target;   // Final resolved target for index 1
+        bool both_same;       // True if both entries resolve to same target
+        bool is_cff_dispatcher; // True if targets loop back (CFF pattern)
+    };
+    static table_resolution_t resolve_indexed_table(ea_t table_base, ea_t func_ea = BADADDR);
+
     // Deferred analysis storage (public for clearing on refresh)
     static std::map<ea_t, std::vector<deferred_identity_call_t>> s_deferred_analysis;
 
@@ -88,9 +104,6 @@ private:
 
     // Analyze a potential identity function
     static bool analyze_identity_func(ea_t ea);
-
-    // Resolve the target from global pointer
-    static ea_t resolve_global_pointer(ea_t ptr_addr);
 
     // Check if a code location is a trampoline (loads ptr, calls identity, jumps)
     static bool is_trampoline_code(ea_t addr, ea_t *next_ptr_out = nullptr);

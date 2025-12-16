@@ -39,7 +39,7 @@ enum obf_type_t : uint32_t {
     OBF_STRING_ENC      = 1 << 2,   // String encryption
     OBF_CONST_ENC       = 1 << 3,   // Constant encryption
     OBF_INDIRECT_BR     = 1 << 4,   // Indirect branches
-    OBF_SUBSTITUTION    = 1 << 5,   // Instruction substitution
+    OBF_SUBSTITUTION    = 1 << 5,   // Instruction substitution (legacy, now MBA)
     OBF_SPLIT_BLOCKS    = 1 << 6,   // Split basic blocks
     OBF_FUNC_WRAPPER    = 1 << 7,   // Hikari function wrappers
     OBF_IDENTITY_CALL   = 1 << 8,   // Identity function indirect calls
@@ -48,6 +48,10 @@ enum obf_type_t : uint32_t {
     OBF_OBJC_OBFUSC     = 1 << 11,  // Obfuscated ObjC method calls
     OBF_GLOBAL_CONST    = 1 << 12,  // Global constants that can be inlined
     OBF_PTR_INDIRECT    = 1 << 13,  // Indirect pointer references (off_XXXX -> symbol)
+    OBF_MBA_COMPLEX     = 1 << 14,  // Complex MBA expressions (Mixed Boolean-Arithmetic)
+    OBF_CHAIN_OPS       = 1 << 15,  // Chained XOR/AND/OR/ADD operations
+    OBF_OPAQUE_JUMP     = 1 << 16,  // Opaque predicate jumps
+    OBF_CONST_OBFUSC    = 1 << 17,  // Obfuscated constants (detectable via Z3)
 };
 
 //--------------------------------------------------------------------------
@@ -98,10 +102,19 @@ struct deobf_ctx_t {
     int expressions_simplified;
     int indirect_resolved;
 
+    // MBA simplification statistics
+    int mba_simplified;           // MBA expressions simplified
+    int chains_simplified;        // Chain operations simplified
+    int opaque_jumps_resolved;    // Opaque predicate jumps resolved
+    int z3_consts_recovered;      // Constants recovered via Z3
+    int peephole_opts;            // Peephole optimizations applied
+
     deobf_ctx_t() : mba(nullptr), cfunc(nullptr), func_ea(BADADDR),
                    detected_obf(OBF_NONE), switch_var(nullptr), switch_block(-1),
                    blocks_merged(0), branches_simplified(0), strings_decrypted(0),
-                   consts_decrypted(0), expressions_simplified(0), indirect_resolved(0) {}
+                   consts_decrypted(0), expressions_simplified(0), indirect_resolved(0),
+                   mba_simplified(0), chains_simplified(0), opaque_jumps_resolved(0),
+                   z3_consts_recovered(0), peephole_opts(0) {}
 };
 
 //--------------------------------------------------------------------------

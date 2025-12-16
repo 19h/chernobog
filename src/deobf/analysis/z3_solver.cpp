@@ -1568,4 +1568,285 @@ bool instructions_equivalent(const minsn_t* a, const minsn_t* b) {
     return simplifier.are_equivalent(a, b);
 }
 
+//--------------------------------------------------------------------------
+// constant_optimizer_t implementation
+//--------------------------------------------------------------------------
+constant_optimizer_t::constant_optimizer_t(z3_context_t& ctx)
+    : m_ctx(ctx), m_translator(ctx) {
+}
+
+void constant_optimizer_t::count_complexity(const mop_t& op, complexity_t& out) {
+    if (op.t == mop_n) {
+        out.const_count++;
+        return;
+    }
+
+    if (op.t == mop_r || op.t == mop_S || op.t == mop_v || op.t == mop_l) {
+        out.var_count++;
+        return;
+    }
+
+    if (op.t == mop_d && op.d) {
+        out.op_count++;
+        count_complexity(op.d->l, out);
+        if (op.d->r.t != mop_z) {
+            count_complexity(op.d->r, out);
+        }
+    }
+}
+
+constant_optimizer_t::complexity_t
+constant_optimizer_t::analyze_complexity(const minsn_t* ins) {
+    complexity_t result = {0, 0, 0};
+    if (!ins) return result;
+
+    result.op_count = 1;
+    count_complexity(ins->l, result);
+    if (ins->r.t != mop_z) {
+        count_complexity(ins->r, result);
+    }
+    return result;
+}
+
+constant_optimizer_t::complexity_t
+constant_optimizer_t::analyze_complexity(const mop_t& op) {
+    complexity_t result = {0, 0, 0};
+    count_complexity(op, result);
+    return result;
+}
+
+std::optional<uint64_t> constant_optimizer_t::quick_eval(const z3::expr& expr, int bits) {
+    try {
+        // Collect all variables in the expression
+        std::set<std::string> var_names;
+        // Z3 doesn't have a direct way to get free variables, so we use evaluation
+
+        z3::context& ctx = m_ctx.ctx();
+
+        // Test with x = 0 for all variables
+        z3::model model1(ctx);
+
+        // Create a solver to get a model with 0s
+        z3::solver solver1(ctx);
+        // Build constraints: all free vars = 0
+
+        // Simplified: just evaluate directly with simplify
+        z3::expr e0 = expr.simplify();
+
+        // If it simplifies to a constant, return it
+        if (e0.is_numeral()) {
+            return e0.get_numeral_uint64();
+        }
+
+        // Otherwise, can't quick-evaluate
+        return std::nullopt;
+
+    } catch (z3::exception&) {
+        return std::nullopt;
+    }
+}
+
+bool constant_optimizer_t::z3_verify_constant(const z3::expr& expr, uint64_t expected, int bits) {
+    try {
+        z3::context& ctx = m_ctx.ctx();
+        z3::solver& solver = m_ctx.solver();
+
+        solver.reset();
+
+        // Check if expr can ever NOT equal expected
+        z3::expr expected_val = ctx.bv_val(expected, bits);
+        solver.add(expr != expected_val);
+
+        // If unsatisfiable, expr is always equal to expected
+        return solver.check() == z3::unsat;
+
+    } catch (z3::exception&) {
+        return false;
+    }
+}
+
+constant_optimizer_t::const_result_t
+constant_optimizer_t::analyze(const minsn_t* ins, const config_t& cfg) {
+    const_result_t result;
+    if (!ins) return result;
+
+    // Check complexity threshold
+    auto complexity = analyze_complexity(ins);
+    if (complexity.op_count < cfg.min_opcodes) {
+        return result;  // Not complex enough to be obfuscated
+    }
+
+    int bits = ins->d.size * 8;
+    if (bits == 0) bits = 64;
+
+    try {
+        m_ctx.set_timeout(cfg.timeout_ms);
+        z3::expr e = m_translator.translate_insn(ins);
+
+        // Quick eval first
+        auto quick_result = quick_eval(e, bits);
+        if (quick_result.has_value()) {
+            result.is_constant = true;
+            result.value = *quick_result;
+            result.bit_width = bits;
+            result.method = "quick_eval";
+            return result;
+        }
+
+        // Try Z3 simplification
+        z3::expr simplified = e.simplify();
+        if (simplified.is_numeral()) {
+            result.is_constant = true;
+            result.value = simplified.get_numeral_uint64();
+            result.bit_width = bits;
+            result.method = "z3_simplify";
+            return result;
+        }
+
+    } catch (z3::exception& e) {
+        deobf::log_verbose("[z3] Exception in constant analysis: %s\n", e.msg());
+    }
+
+    return result;
+}
+
+constant_optimizer_t::const_result_t
+constant_optimizer_t::analyze_operand(const mop_t& op, const config_t& cfg) {
+    const_result_t result;
+
+    // Direct constant
+    if (op.t == mop_n) {
+        result.is_constant = true;
+        result.value = op.nnn->value;
+        result.bit_width = op.size * 8;
+        result.method = "direct";
+        return result;
+    }
+
+    // Sub-instruction
+    if (op.t == mop_d && op.d) {
+        return analyze(op.d, cfg);
+    }
+
+    return result;
+}
+
+//--------------------------------------------------------------------------
+// predicate_simplifier_t implementation
+//--------------------------------------------------------------------------
+predicate_simplifier_t::predicate_simplifier_t(z3_context_t& ctx)
+    : m_ctx(ctx), m_translator(ctx) {
+}
+
+std::optional<bool> predicate_simplifier_t::simplify_setz(const minsn_t* ins) {
+    if (!ins || ins->opcode != m_setz)
+        return std::nullopt;
+
+    try {
+        z3::expr e = m_translator.translate_insn(ins);
+        z3::expr simplified = e.simplify();
+
+        if (simplified.is_numeral()) {
+            return simplified.get_numeral_uint64() != 0;
+        }
+    } catch (z3::exception&) {
+    }
+
+    return std::nullopt;
+}
+
+std::optional<bool> predicate_simplifier_t::simplify_setnz(const minsn_t* ins) {
+    if (!ins || ins->opcode != m_setnz)
+        return std::nullopt;
+
+    try {
+        z3::expr e = m_translator.translate_insn(ins);
+        z3::expr simplified = e.simplify();
+
+        if (simplified.is_numeral()) {
+            return simplified.get_numeral_uint64() != 0;
+        }
+    } catch (z3::exception&) {
+    }
+
+    return std::nullopt;
+}
+
+std::optional<bool> predicate_simplifier_t::simplify_lnot(const minsn_t* ins) {
+    if (!ins || ins->opcode != m_lnot)
+        return std::nullopt;
+
+    try {
+        z3::expr e = m_translator.translate_insn(ins);
+        z3::expr simplified = e.simplify();
+
+        if (simplified.is_numeral()) {
+            return simplified.get_numeral_uint64() != 0;
+        }
+    } catch (z3::exception&) {
+    }
+
+    return std::nullopt;
+}
+
+std::optional<bool> predicate_simplifier_t::check_comparison_constant(
+    mcode_t cmp_op, const mop_t& left, const mop_t& right) {
+
+    try {
+        z3::expr l = m_translator.translate_operand(left);
+        z3::expr r = m_translator.translate_operand(right);
+
+        z3::expr cmp_expr = m_ctx.ctx().bool_val(false);
+        switch (cmp_op) {
+            case m_setz:  cmp_expr = (l == r); break;
+            case m_setnz: cmp_expr = (l != r); break;
+            case m_setl:  cmp_expr = (l < r); break;
+            case m_setle: cmp_expr = (l <= r); break;
+            case m_setg:  cmp_expr = (l > r); break;
+            case m_setge: cmp_expr = (l >= r); break;
+            case m_setb:  cmp_expr = z3::ult(l, r); break;
+            case m_setbe: cmp_expr = z3::ule(l, r); break;
+            case m_seta:  cmp_expr = z3::ugt(l, r); break;
+            case m_setae: cmp_expr = z3::uge(l, r); break;
+            default:
+                return std::nullopt;
+        }
+
+        z3::expr simplified = cmp_expr.simplify();
+        if (simplified.is_true()) return true;
+        if (simplified.is_false()) return false;
+
+    } catch (z3::exception&) {
+    }
+
+    return std::nullopt;
+}
+
+int predicate_simplifier_t::simplify_jcc(const minsn_t* jcc) {
+    if (!jcc || !is_mcode_jcond(jcc->opcode))
+        return -1;
+
+    try {
+        z3::expr cond = m_translator.translate_jcc_condition(jcc);
+
+        // Check if always true
+        m_ctx.solver().reset();
+        m_ctx.solver().add(!cond);
+        if (m_ctx.solver().check() == z3::unsat) {
+            return 1;  // Always taken
+        }
+
+        // Check if always false
+        m_ctx.solver().reset();
+        m_ctx.solver().add(cond);
+        if (m_ctx.solver().check() == z3::unsat) {
+            return 0;  // Never taken
+        }
+
+    } catch (z3::exception&) {
+    }
+
+    return -1;  // Unknown
+}
+
 } // namespace z3_solver

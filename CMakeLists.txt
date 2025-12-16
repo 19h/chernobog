@@ -71,23 +71,50 @@ find_package(idasdk REQUIRED)
 # Set plugin variables before including addons.cmake
 ida_add_plugin(chernobog
   SOURCES
+    # Plugin core
     src/plugin/deobf_plugin.cpp
     src/plugin/component_registry.cpp
     src/deobf/deobf_main.cpp
     src/deobf/deobf_utils.cpp
+
+    # Analysis modules (existing)
     src/deobf/analysis/pattern_match.cpp
     src/deobf/analysis/expr_simplify.cpp
     src/deobf/analysis/cfg_analysis.cpp
     src/deobf/analysis/opaque_eval.cpp
     src/deobf/analysis/stack_tracker.cpp
     src/deobf/analysis/z3_solver.cpp
+
+    # NEW: AST-based pattern matching system
+    src/deobf/analysis/ast.cpp
+    src/deobf/analysis/ast_builder.cpp
+    src/deobf/analysis/pattern_storage.cpp
+    src/deobf/analysis/pattern_fuzzer.cpp
+    src/deobf/analysis/chain_simplify.cpp
+
+    # NEW: MBA rule system
+    src/deobf/rules/pattern_rule.cpp
+    src/deobf/rules/rule_registry.cpp
+    src/deobf/rules/rules_add.cpp
+    src/deobf/rules/rules_sub.cpp
+    src/deobf/rules/rules_xor.cpp
+    src/deobf/rules/rules_and.cpp
+    src/deobf/rules/rules_or.cpp
+    src/deobf/rules/rules_misc.cpp
+    src/deobf/rules/jump_rules.cpp
+    src/deobf/rules/rules_predicate.cpp
+
+    # Handlers
+    src/deobf/handlers/peephole.cpp
+    src/deobf/handlers/jump_optimizer.cpp
     src/deobf/handlers/deflatten.cpp
+    src/deobf/handlers/unflattener_base.cpp
     src/deobf/handlers/bogus_cf.cpp
     src/deobf/handlers/string_decrypt.cpp
     src/deobf/handlers/const_decrypt.cpp
     src/deobf/handlers/indirect_branch.cpp
     src/deobf/handlers/block_merge.cpp
-    src/deobf/handlers/substitution.cpp
+    src/deobf/handlers/mba_simplify.cpp
     src/deobf/handlers/identity_call.cpp
     src/deobf/handlers/stack_string.cpp
     src/deobf/handlers/hikari_wrapper.cpp

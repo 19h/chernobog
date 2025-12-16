@@ -47,15 +47,20 @@ bool identity_call_handler_t::detect(mbl_array_t *mba) {
     };
 
     // Scan all blocks
+    bool found_icall = false;
     for (int i = 0; i < mba->qty; i++) {
         mblock_t *blk = mba->get_mblock(i);
         if (!blk || !blk->head)
             continue;
 
         for (minsn_t *ins = blk->head; ins; ins = ins->next) {
-            // Check for ijmp
+            // Check for ijmp (indirect jump)
             if (ins->opcode == m_ijmp) {
                 found_ijmp = true;
+            }
+            // Check for icall (indirect call) - used in "call identity; return v()" pattern
+            if (ins->opcode == m_icall) {
+                found_icall = true;
             }
 
             // Check for call to identity function
@@ -70,8 +75,9 @@ bool identity_call_handler_t::detect(mbl_array_t *mba) {
         }
     }
 
-    if (found_identity_call && found_ijmp) {
-        deobf::log("[identity_call] Detected pattern: identity call to %a + ijmp\n", identity_func_addr);
+    if (found_identity_call && (found_ijmp || found_icall)) {
+        deobf::log("[identity_call] Detected pattern: identity call to %a + %s\n",
+                  identity_func_addr, found_ijmp ? "ijmp" : "icall");
         return true;
     }
 
@@ -341,25 +347,33 @@ int identity_call_handler_t::apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx) 
 
                     changes++;
 
-                    // Now find the ijmp and convert it to m_nop
-                    // This is the safest transformation - just remove the ijmp
-                    // The call result becomes unused, which is fine for tail calls
+                    // Now find the indirect branch (ijmp or icall) and handle it
                     for (int j = 0; j < mba->qty; j++) {
                         mblock_t *blk2 = mba->get_mblock(j);
-                        if (!blk2 || !blk2->tail)
+                        if (!blk2)
                             continue;
 
-                        minsn_t *tail = blk2->tail;
-                        if (tail->opcode == m_ijmp && tail->ea == dc.ijmp_ea) {
-                            deobf::log("[identity_call] Found ijmp in block %d, converting to nop\n", j);
+                        for (minsn_t *check_ins = blk2->head; check_ins; check_ins = check_ins->next) {
+                            if (check_ins->ea != dc.ijmp_ea)
+                                continue;
 
-                            // Convert ijmp to nop - simplest safe transformation
-                            tail->opcode = m_nop;
-                            tail->l.erase();
-                            tail->r.erase();
-                            tail->d.erase();
-
-                            changes++;
+                            if (check_ins->opcode == m_ijmp) {
+                                deobf::log("[identity_call] Found ijmp in block %d, converting to nop\n", j);
+                                check_ins->opcode = m_nop;
+                                check_ins->l.erase();
+                                check_ins->r.erase();
+                                check_ins->d.erase();
+                                changes++;
+                            } else if (check_ins->opcode == m_icall) {
+                                deobf::log("[identity_call] Found icall in block %d, converting to nop\n", j);
+                                // For icall pattern: the identity call result is called
+                                // Just nop it since we've already redirected the identity call
+                                check_ins->opcode = m_nop;
+                                check_ins->l.erase();
+                                check_ins->r.erase();
+                                check_ins->d.erase();
+                                changes++;
+                            }
                             break;
                         }
                     }
@@ -527,9 +541,9 @@ identity_call_handler_t::find_identity_calls(mbl_array_t *mba, deobf_ctx_t *ctx)
         return info;
     };
 
-    // First pass: collect all call instructions and ijmp instructions
+    // First pass: collect all call instructions and ijmp/icall instructions
     std::vector<std::pair<int, call_info_t>> calls;
-    std::vector<std::pair<int, minsn_t*>> ijmps;
+    std::vector<std::pair<int, minsn_t*>> indirect_branches;  // ijmp or icall
 
     for (int i = 0; i < mba->qty; i++) {
         mblock_t *blk = mba->get_mblock(i);
@@ -537,8 +551,9 @@ identity_call_handler_t::find_identity_calls(mbl_array_t *mba, deobf_ctx_t *ctx)
             continue;
 
         for (minsn_t *ins = blk->head; ins; ins = ins->next) {
-            if (ins->opcode == m_ijmp) {
-                ijmps.push_back({i, ins});
+            // Collect both ijmp and icall patterns
+            if (ins->opcode == m_ijmp || ins->opcode == m_icall) {
+                indirect_branches.push_back({i, ins});
             }
 
             call_info_t cinfo = get_call_info(ins);
@@ -548,10 +563,10 @@ identity_call_handler_t::find_identity_calls(mbl_array_t *mba, deobf_ctx_t *ctx)
         }
     }
 
-    deobf::log_verbose("[identity_call] find: found %zu calls, %zu ijmps\n",
-                      calls.size(), ijmps.size());
+    deobf::log_verbose("[identity_call] find: found %zu calls, %zu indirect branches\n",
+                      calls.size(), indirect_branches.size());
 
-    // Match calls to identity functions with ijmps
+    // Match calls to identity functions with indirect branches (ijmp or icall)
     for (const auto &call_pair : calls) {
         int call_blk = call_pair.first;
         const call_info_t &cinfo = call_pair.second;
@@ -562,54 +577,192 @@ identity_call_handler_t::find_identity_calls(mbl_array_t *mba, deobf_ctx_t *ctx)
         deobf::log_verbose("[identity_call] find: identity call to %a in block %d, arg=%a\n",
                           cinfo.target, call_blk, cinfo.global_ptr);
 
-        // Find matching ijmp
-        for (const auto &ijmp_pair : ijmps) {
-            int ijmp_blk = ijmp_pair.first;
-            minsn_t *ijmp_ins = ijmp_pair.second;
+        // Find matching indirect branch (ijmp or icall)
+        for (const auto &branch_pair : indirect_branches) {
+            int branch_blk = branch_pair.first;
+            minsn_t *branch_ins = branch_pair.second;
 
-            // Check if ijmp is related to call
+            // Check if branch is related to call
             bool is_match = false;
-            if (ijmp_blk == call_blk) {
+            if (branch_blk == call_blk) {
                 for (minsn_t *p = cinfo.container_ins->next; p; p = p->next) {
-                    if (p == ijmp_ins) {
+                    if (p == branch_ins) {
                         is_match = true;
                         break;
                     }
                 }
             } else {
-                // At early maturity, accept any ijmp
+                // At early maturity, accept any indirect branch
                 is_match = true;
             }
 
             if (!is_match)
                 continue;
 
-            if (cinfo.global_ptr == BADADDR) {
-                deobf::log_verbose("[identity_call] find: pattern found but no global ptr\n");
+            ea_t global_ptr = cinfo.global_ptr;
+            ea_t resolved = BADADDR;
+            ea_t final_target = BADADDR;
+
+            // Try to resolve the pointer
+            if (global_ptr != BADADDR) {
+                resolved = resolve_global_pointer(global_ptr);
+                if (resolved != BADADDR) {
+                    final_target = resolve_trampoline_chain(resolved);
+
+                    // Check if this is a self-reference - if so, likely wrong pointer
+                    func_t *curr_func = get_func(mba->entry_ea);
+                    if (final_target == mba->entry_ea ||
+                        (curr_func && final_target >= curr_func->start_ea &&
+                         final_target < curr_func->end_ea)) {
+                        deobf::log("[identity_call] Initial ptr %a resolved to self-ref %a, trying LEA search\n",
+                                  global_ptr, final_target);
+                        // Clear and try LEA-based table search instead
+                        global_ptr = BADADDR;
+                        resolved = BADADDR;
+                        final_target = BADADDR;
+                    }
+                }
+            }
+
+            // If no simple global pointer or it was wrong, try to extract table base from x86
+            // Pattern: lea rax, table; mov rdi, [rax+rcx*8]; call identity
+            if (final_target == BADADDR && cinfo.call_ea != BADADDR) {
+                ea_t search_ea = cinfo.call_ea;
+                insn_t asm_ins;
+                int search_count = 0;
+                ea_t table_base = BADADDR;
+                ea_t simple_ptr = BADADDR;
+
+                while (search_count++ < 30 && search_ea > 0) {
+                    ea_t prev_ea = get_item_head(search_ea - 1);
+                    if (prev_ea == BADADDR || prev_ea >= search_ea)
+                        break;
+                    search_ea = prev_ea;
+
+                    if (decode_insn(&asm_ins, search_ea) == 0)
+                        break;
+
+                    // Look for lea reg, [table] - loads the table base address
+                    // Only take the first (closest to call) LEA we find
+                    if (table_base == BADADDR && asm_ins.itype == NN_lea && asm_ins.Op2.type == o_mem) {
+                        ea_t base = asm_ins.Op2.addr;
+                        if (base != BADADDR && is_valid_global_ptr(base, cinfo.target)) {
+                            table_base = base;
+                            deobf::log("[identity_call] Found table base via LEA: %a\n", base);
+                        }
+                    }
+
+                    // Also check for direct mov rdi, [mem] (simple case)
+                    if (asm_ins.itype == NN_mov &&
+                        asm_ins.Op1.type == o_reg && asm_ins.Op1.reg == 7 &&
+                        asm_ins.Op2.type == o_mem) {
+                        ea_t ptr = asm_ins.Op2.addr;
+                        if (ptr != BADADDR && is_valid_global_ptr(ptr, cinfo.target)) {
+                            simple_ptr = ptr;
+                            // Don't break - continue to look for LEA
+                        }
+                    }
+                }
+
+                // Prefer LEA-based table resolution over simple pointer
+                // (LEA indicates indexed table which is a more specific pattern)
+                if (table_base != BADADDR) {
+                    global_ptr = table_base;
+
+                    // Read both table entries and check if they resolve to same target
+                    ea_t target0 = resolve_global_pointer(table_base);
+                    ea_t target1 = resolve_global_pointer(table_base + 8);
+
+                    deobf::log("[identity_call] Table at %a: [0]=%a, [1]=%a\n",
+                              table_base, target0, target1);
+
+                    if (target0 != BADADDR) {
+                        ea_t final0 = resolve_trampoline_chain(target0);
+                        ea_t final1 = (target1 != BADADDR) ? resolve_trampoline_chain(target1) : BADADDR;
+
+                        deobf::log("[identity_call] Resolved: [0]=%a->%a, [1]=%a->%a\n",
+                                  target0, final0, target1, final1);
+
+                        // Check if both targets are different and neither is self-reference
+                        func_t *curr_func = get_func(mba->entry_ea);
+                        bool t0_is_self = (final0 == mba->entry_ea) ||
+                            (curr_func && final0 >= curr_func->start_ea && final0 < curr_func->end_ea);
+                        bool t1_is_self = (final1 == mba->entry_ea) ||
+                            (curr_func && final1 >= curr_func->start_ea && final1 < curr_func->end_ea);
+
+                        // If both resolve to the same target, we can simplify
+                        if (final0 == final1 || final1 == BADADDR) {
+                            resolved = target0;
+                            final_target = final0;
+                            deobf::log("[identity_call] Both table entries resolve to %a\n", final_target);
+                        } else if (!t0_is_self && t1_is_self) {
+                            // Entry 0 is valid, entry 1 is self-ref - use entry 0
+                            resolved = target0;
+                            final_target = final0;
+                            deobf::log("[identity_call] Using table[0]=%a (table[1] is self-ref)\n", final_target);
+                        } else if (t0_is_self && !t1_is_self) {
+                            // Entry 1 is valid, entry 0 is self-ref - use entry 1
+                            resolved = target1;
+                            final_target = final1;
+                            deobf::log("[identity_call] Using table[1]=%a (table[0] is self-ref)\n", final_target);
+                        } else if (!t0_is_self && !t1_is_self) {
+                            // Both are valid different targets - conditional, use first
+                            resolved = target0;
+                            final_target = final0;
+                            deobf::log("[identity_call] Conditional: targets differ, using %a\n", final_target);
+                        } else {
+                            // Both are self-reference - this is a CFF dispatcher
+                            // The deflatten handler should handle this pattern
+                            deobf::log("[identity_call] CFF dispatcher detected: both table entries loop back to function\n");
+
+                            // Add annotation so user knows this is CFF
+                            qstring comment;
+                            comment.sprnt("CFF DISPATCHER: table@%a, targets loop back to function", table_base);
+                            set_cmt(cinfo.call_ea, comment.c_str(), false);
+                        }
+                    }
+                }
+
+                // Fall back to simple pointer if table resolution didn't work
+                if (final_target == BADADDR && simple_ptr != BADADDR) {
+                    global_ptr = simple_ptr;
+                    resolved = resolve_global_pointer(simple_ptr);
+                    if (resolved != BADADDR) {
+                        final_target = resolve_trampoline_chain(resolved);
+                        deobf::log("[identity_call] Fallback to simple ptr %a -> %a\n", simple_ptr, final_target);
+                    }
+                }
+            }
+
+            if (final_target == BADADDR) {
+                deobf::log_verbose("[identity_call] find: pattern found but couldn't resolve target\n");
                 continue;
             }
 
-            // Resolve the pointer
-            ea_t resolved = resolve_global_pointer(cinfo.global_ptr);
-            if (resolved == BADADDR) {
-                deobf::log_verbose("[identity_call] find: failed to resolve ptr %a\n", cinfo.global_ptr);
+            // Skip self-referencing patterns (would create infinite recursion)
+            if (final_target == mba->entry_ea) {
+                deobf::log("[identity_call] Skipping self-reference: target %a == function entry\n", final_target);
                 continue;
             }
 
-            // Follow trampoline chain
-            ea_t final_target = resolve_trampoline_chain(resolved);
+            // Also skip if target is within the current function (internal jump)
+            func_t *curr_func = get_func(mba->entry_ea);
+            if (curr_func && final_target >= curr_func->start_ea && final_target < curr_func->end_ea) {
+                deobf::log("[identity_call] Skipping internal reference: target %a is within function\n", final_target);
+                continue;
+            }
 
             identity_call_t ic;
-            ic.block_idx = ijmp_blk;
+            ic.block_idx = branch_blk;
             ic.call_insn = cinfo.container_ins;
-            ic.ijmp_insn = ijmp_ins;
+            ic.ijmp_insn = branch_ins;
             ic.identity_func = cinfo.target;
-            ic.global_ptr = cinfo.global_ptr;
+            ic.global_ptr = global_ptr;
             ic.resolved_target = resolved;
             ic.final_target = final_target;
             ic.call_ea = cinfo.call_ea;
-            ic.ijmp_ea = ijmp_ins->ea;
-            ic.is_ijmp_pattern = true;
+            ic.ijmp_ea = branch_ins->ea;
+            ic.is_ijmp_pattern = (branch_ins->opcode == m_ijmp);
 
             deobf::log("[identity_call] find: pattern matched: call@%a -> ptr=%a -> %a -> final %a\n",
                       cinfo.call_ea, cinfo.global_ptr, resolved, final_target);
@@ -902,4 +1055,66 @@ minsn_t *identity_call_handler_t::create_call_insn(mbl_array_t *mba, ea_t target
     // This is complex and depends on the target function's prototype
 
     return call;
+}
+
+//--------------------------------------------------------------------------
+// Resolve an indexed table to get both entries and determine pattern type
+// This is the main utility function for other handlers (like deflatten)
+//--------------------------------------------------------------------------
+identity_call_handler_t::table_resolution_t
+identity_call_handler_t::resolve_indexed_table(ea_t table_base, ea_t func_ea) {
+    table_resolution_t result;
+    result.table_base = table_base;
+    result.entry0_target = BADADDR;
+    result.entry1_target = BADADDR;
+    result.both_same = false;
+    result.is_cff_dispatcher = false;
+
+    if (table_base == BADADDR)
+        return result;
+
+    // Read both table entries
+    ea_t target0 = resolve_global_pointer(table_base);
+    ea_t target1 = resolve_global_pointer(table_base + 8);
+
+    if (target0 == BADADDR) {
+        deobf::log_verbose("[identity_call] resolve_indexed_table: no valid target at %a\n", table_base);
+        return result;
+    }
+
+    // Resolve trampoline chains to get final targets
+    ea_t final0 = resolve_trampoline_chain(target0);
+    ea_t final1 = (target1 != BADADDR) ? resolve_trampoline_chain(target1) : BADADDR;
+
+    result.entry0_target = final0;
+    result.entry1_target = final1;
+
+    deobf::log_verbose("[identity_call] resolve_indexed_table: %a -> [0]=%a, [1]=%a\n",
+                      table_base, final0, final1);
+
+    // Check if both entries resolve to the same target
+    if (final0 == final1 || final1 == BADADDR) {
+        result.both_same = true;
+    }
+
+    // Check for CFF dispatcher pattern (targets loop back to function)
+    if (func_ea != BADADDR) {
+        func_t *func = get_func(func_ea);
+        bool t0_is_self = (final0 == func_ea) ||
+            (func && final0 >= func->start_ea && final0 < func->end_ea);
+        bool t1_is_self = (final1 == func_ea) ||
+            (func && final1 >= func->start_ea && final1 < func->end_ea);
+
+        // If both targets loop back to the function, it's a CFF dispatcher
+        if (t0_is_self && t1_is_self) {
+            result.is_cff_dispatcher = true;
+            deobf::log("[identity_call] resolve_indexed_table: CFF dispatcher detected at %a\n", table_base);
+        }
+        // If one target loops back, annotate but not full CFF
+        else if (t0_is_self || t1_is_self) {
+            deobf::log_verbose("[identity_call] resolve_indexed_table: partial self-ref at %a\n", table_base);
+        }
+    }
+
+    return result;
 }

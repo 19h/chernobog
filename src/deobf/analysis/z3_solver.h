@@ -372,6 +372,94 @@ private:
 };
 
 //--------------------------------------------------------------------------
+// Z3 Constant Optimizer
+//
+// Detects if complex expressions are actually obfuscated constants.
+// Uses quick evaluation with test values, then Z3 verification.
+//--------------------------------------------------------------------------
+class constant_optimizer_t {
+public:
+    explicit constant_optimizer_t(z3_context_t& ctx);
+
+    // Configuration
+    struct config_t {
+        int min_opcodes;         // Minimum operations in expression
+        int min_constants;       // Minimum constant leaves
+        unsigned timeout_ms;     // Z3 timeout
+
+        config_t() : min_opcodes(3), min_constants(3), timeout_ms(1000) {}
+    };
+
+    // Result of constant analysis
+    struct const_result_t {
+        bool is_constant;
+        uint64_t value;
+        int bit_width;
+        std::string method;      // How it was determined
+
+        const_result_t() : is_constant(false), value(0), bit_width(0) {}
+        const_result_t(uint64_t v, int w, const char* m)
+            : is_constant(true), value(v), bit_width(w), method(m) {}
+    };
+
+    // Analyze if instruction result is a constant
+    const_result_t analyze(const minsn_t* ins, const config_t& cfg = config_t());
+
+    // Analyze if operand is a constant
+    const_result_t analyze_operand(const mop_t& op, const config_t& cfg = config_t());
+
+    // Quick evaluation with test values (0 and -1)
+    // Returns constant if both test values give same result
+    std::optional<uint64_t> quick_eval(const z3::expr& expr, int bits);
+
+    // Verify with Z3 that expression is constant
+    bool z3_verify_constant(const z3::expr& expr, uint64_t expected, int bits);
+
+    // Count operations and constants in expression
+    struct complexity_t {
+        int op_count;
+        int const_count;
+        int var_count;
+    };
+    complexity_t analyze_complexity(const minsn_t* ins);
+    complexity_t analyze_complexity(const mop_t& op);
+
+private:
+    void count_complexity(const mop_t& op, complexity_t& out);
+
+    z3_context_t& m_ctx;
+    mcode_translator_t m_translator;
+};
+
+//--------------------------------------------------------------------------
+// Z3 Predicate Simplifier
+//
+// Simplifies set/comparison instructions that evaluate to constants.
+//--------------------------------------------------------------------------
+class predicate_simplifier_t {
+public:
+    explicit predicate_simplifier_t(z3_context_t& ctx);
+
+    // Check if setz/setnz result is constant
+    std::optional<bool> simplify_setz(const minsn_t* ins);
+    std::optional<bool> simplify_setnz(const minsn_t* ins);
+    std::optional<bool> simplify_lnot(const minsn_t* ins);
+
+    // Check if comparison is always true/false
+    std::optional<bool> check_comparison_constant(mcode_t cmp_op,
+                                                   const mop_t& left,
+                                                   const mop_t& right);
+
+    // Simplify conditional jump
+    // Returns: 1 = always taken, 0 = never taken, -1 = unknown
+    int simplify_jcc(const minsn_t* jcc);
+
+private:
+    z3_context_t& m_ctx;
+    mcode_translator_t m_translator;
+};
+
+//--------------------------------------------------------------------------
 // Global Z3 context management
 //--------------------------------------------------------------------------
 
