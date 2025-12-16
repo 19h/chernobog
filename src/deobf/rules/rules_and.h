@@ -291,7 +291,7 @@ public:
     }
 
     bool check_constants(const std::map<std::string, mop_t>& bindings) override {
-        return check_const_value(bindings, "c_0", 0, 8);
+        return check_const_value(bindings, "0", 0, 8);
     }
 };
 

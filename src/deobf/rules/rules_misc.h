@@ -174,7 +174,7 @@ public:
     }
 
     bool check_constants(const std::map<std::string, mop_t>& bindings) override {
-        return check_const_value(bindings, "c_0", 0, 8);
+        return check_const_value(bindings, "0", 0, 8);
     }
 };
 
@@ -198,7 +198,7 @@ public:
     }
 
     bool check_constants(const std::map<std::string, mop_t>& bindings) override {
-        return check_const_value(bindings, "c_0", 0, 8);
+        return check_const_value(bindings, "0", 0, 8);
     }
 };
 
@@ -218,7 +218,7 @@ public:
     }
 
     bool check_constants(const std::map<std::string, mop_t>& bindings) override {
-        return check_const_value(bindings, "c_1", 1, 8);
+        return check_const_value(bindings, "1", 1, 8);
     }
 };
 
@@ -238,7 +238,7 @@ public:
     }
 
     bool check_constants(const std::map<std::string, mop_t>& bindings) override {
-        return check_const_value(bindings, "c_2", 2, 8);
+        return check_const_value(bindings, "2", 2, 8);
     }
 };
 
@@ -312,7 +312,7 @@ public:
     }
 
     bool check_constants(const std::map<std::string, mop_t>& bindings) override {
-        return check_const_value(bindings, "c_0", 0, 8);
+        return check_const_value(bindings, "0", 0, 8);
     }
 };
 
@@ -332,7 +332,7 @@ public:
     }
 
     bool check_constants(const std::map<std::string, mop_t>& bindings) override {
-        return check_const_value(bindings, "c_0", 0, 8);
+        return check_const_value(bindings, "0", 0, 8);
     }
 };
 

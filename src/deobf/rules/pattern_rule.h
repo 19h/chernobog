@@ -159,10 +159,12 @@ inline AstPtr x_1() { return make_leaf("x_1"); }
 inline AstPtr x_2() { return make_leaf("x_2"); }
 inline AstPtr x_3() { return make_leaf("x_3"); }
 
-// Create constant leaves (named for check_constants validation)
-inline AstPtr c_0() { return make_named_const("c_0", 0); }
-inline AstPtr c_1() { return make_named_const("c_1", 1); }
-inline AstPtr c_2() { return make_named_const("c_2", 2); }
+// Create constant leaves
+// Note: make_const creates constants with name = stringified value ("0", "1", "2")
+// check_const_value calls must use these names, not "c_0", "c_1", "c_2"
+inline AstPtr c_0() { return make_const(0); }
+inline AstPtr c_1() { return make_const(1); }
+inline AstPtr c_2() { return make_const(2); }
 inline AstPtr c_minus_1() { return make_named_const("c_minus_1", 0xFFFFFFFFFFFFFFFFULL); }
 inline AstPtr c_minus_2() { return make_named_const("c_minus_2", 0xFFFFFFFFFFFFFFFEULL); }
 
