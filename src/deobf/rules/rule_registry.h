@@ -54,6 +54,9 @@ public:
     // Re-initialize (e.g., after configuration change)
     void reinitialize();
 
+    // Clear all data (call before library unload to prevent destruction crashes)
+    void clear();
+
     //----------------------------------------------------------------------
     // Matching
     //----------------------------------------------------------------------

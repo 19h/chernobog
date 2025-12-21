@@ -18,6 +18,8 @@
 #include "handlers/objc_resolve.h"
 #include "handlers/global_const.h"
 #include "handlers/ptr_resolve.h"
+#include "analysis/ast_builder.h"
+#include "rules/rule_registry.h"
 
 bool chernobog_t::s_active = false;
 deobf_ctx_t chernobog_t::s_ctx;
@@ -568,7 +570,7 @@ bool deobf_active() {
 }
 
 void deobf_init() {
-    // Initialize MBA simplification rules first (before handlers)
+    // Initialize MBA simplification (pattern matching rules)
     mba_simplify_handler_t::initialize();
 
     // Install instruction-level optimizer
@@ -603,6 +605,11 @@ void deobf_done() {
     // Clear any pending analysis
     deflatten_handler_t::s_deferred_analysis.clear();
     s_processed_functions.clear();
+
+    // Clear AST caches (the RuleRegistry singleton intentionally leaks
+    // on exit to avoid crashes during static destruction)
+    chernobog::ast::clear_ast_caches();
+    chernobog::rules::RuleRegistry::instance().clear();
 
     deobf::log("[chernobog] Deobfuscator terminated\n");
 }

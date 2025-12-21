@@ -152,8 +152,16 @@ AstBase::AstBase(const AstBase& other)
 
 void AstBase::freeze() {
     frozen = true;
+
+    // CRITICAL: Clear mop fields to prevent crashes during static destruction.
+    // When the AstCache destructor runs during program exit, IDA's internal
+    // structures are already freed. The mop_t objects contain pointers to
+    // these structures, so we must clear them before caching.
+    mop.erase();
+
     // Recursively freeze children if this is a node
     if (auto node = dynamic_cast<AstNode*>(this)) {
+        node->dst_mop.erase();
         if (node->left) {
             node->left->freeze();
         }
@@ -320,6 +328,20 @@ bool AstNode::copy_mops_from_ast(AstPtr other) {
             auto left_leaf = std::static_pointer_cast<AstLeaf>(left);
             if (!other_node->left->is_leaf())
                 return false;
+
+            // If pattern leaf is a constant, verify the candidate's value matches
+            if (left_leaf->is_constant()) {
+                auto const_leaf = std::static_pointer_cast<AstConstant>(left);
+                // Candidate must be a number constant with matching value
+                if (other_node->left->mop.t != mop_n || !other_node->left->mop.nnn)
+                    return false;
+                uint64_t expected = const_leaf->value;
+                uint64_t actual = other_node->left->mop.nnn->value;
+                uint64_t mask = size_mask(other_node->left->mop.size);
+                if ((expected & mask) != (actual & mask))
+                    return false;
+            }
+
             left_leaf->mop = other_node->left->mop;
             left_leaf->dest_size = other_node->left->dest_size;
             left_leaf->ea = other_node->left->ea;
@@ -339,6 +361,20 @@ bool AstNode::copy_mops_from_ast(AstPtr other) {
             auto right_leaf = std::static_pointer_cast<AstLeaf>(right);
             if (!other_node->right->is_leaf())
                 return false;
+
+            // If pattern leaf is a constant, verify the candidate's value matches
+            if (right_leaf->is_constant()) {
+                auto const_leaf = std::static_pointer_cast<AstConstant>(right);
+                // Candidate must be a number constant with matching value
+                if (other_node->right->mop.t != mop_n || !other_node->right->mop.nnn)
+                    return false;
+                uint64_t expected = const_leaf->value;
+                uint64_t actual = other_node->right->mop.nnn->value;
+                uint64_t mask = size_mask(other_node->right->mop.size);
+                if ((expected & mask) != (actual & mask))
+                    return false;
+            }
+
             right_leaf->mop = other_node->right->mop;
             right_leaf->dest_size = other_node->right->dest_size;
             right_leaf->ea = other_node->right->ea;

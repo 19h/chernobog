@@ -54,11 +54,6 @@ struct const_fold_visitor_t : public ctree_visitor_t {
         if (obj_addr == BADADDR)
             return 0;
 
-        // Get the global address
-        ea_t obj_addr = obj_expr->obj_ea;
-        if (obj_addr == BADADDR)
-            return 0;
-
         // Check if it's a byte/word/dword in a data section
         flags64_t flags = get_flags(obj_addr);
         if (!is_data(flags))
@@ -66,7 +61,7 @@ struct const_fold_visitor_t : public ctree_visitor_t {
 
         // Read the value based on size
         uint64_t obj_val = 0;
-        int size = e->x->type.get_size();
+        int size = val_expr->type.get_size();
         if (size <= 0 || size > 8)
             return 0;
 

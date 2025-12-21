@@ -1,5 +1,6 @@
 #include "pattern_storage.h"
 #include "ast_builder.h"
+#include "../rules/pattern_rule.h"
 #include <sstream>
 #include <algorithm>
 #include <cmath>

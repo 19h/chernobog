@@ -242,7 +242,11 @@ static AstPtr mop_to_ast_internal(const mop_t& mop, AstBuilderContext& ctx, bool
         return ctx.get(key);
     }
 
-    // Check global cache
+    // NOTE: Global cache is DISABLED because freeze() erases mop fields,
+    // and the cloned AST nodes have mop_z which breaks pattern matching.
+    // The mop field is needed to verify implicit equalities (e.g., x_0 == x_0).
+    // TODO: Fix caching to preserve or restore mop fields after cloning.
+    /*
     if (use_cache) {
         AstPtr cached = AstCache::instance().get(key);
         if (cached) {
@@ -250,6 +254,7 @@ static AstPtr mop_to_ast_internal(const mop_t& mop, AstBuilderContext& ctx, bool
             return cached;
         }
     }
+    */
 
     AstPtr result = nullptr;
 
@@ -302,10 +307,12 @@ static AstPtr mop_to_ast_internal(const mop_t& mop, AstBuilderContext& ctx, bool
         result->dest_size = mop.size;
         ctx.add(key, result);
 
-        // Add to global cache
+        // NOTE: Global cache put is DISABLED - see note above about mop erasing
+        /*
         if (use_cache) {
             AstCache::instance().put(key, result->clone());
         }
+        */
     }
 
     return result;
@@ -478,6 +485,14 @@ minsn_t* ast_to_minsn(AstPtr ast,
 
     // Set destination size
     ins->d.size = node->dest_size > 0 ? node->dest_size : 8;
+
+    // Ensure operand sizes are valid (mop_t default constructor leaves size uninitialized)
+    if (ins->l.t == mop_z) {
+        ins->l.size = 0;
+    }
+    if (ins->r.t == mop_z) {
+        ins->r.size = 0;
+    }
 
     return ins;
 }

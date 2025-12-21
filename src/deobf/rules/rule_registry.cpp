@@ -1,107 +1,52 @@
 #include "rule_registry.h"
 #include "../analysis/ast_builder.h"
 
-// Raw POSIX includes for early debugging
-#include <unistd.h>
-#include <fcntl.h>
-#include <string.h>
-
-// Very early constructor that runs before ANY C++ static init
-// This helps identify if the .so is being loaded at all
-__attribute__((constructor(101)))
-static void very_early_init() {
-    int fd = ::open("/tmp/chernobog_loaded.log", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd >= 0) {
-        const char* msg = "chernobog.so loaded - early constructor running\n";
-        ::write(fd, msg, strlen(msg));
-        ::close(fd);
-    }
-}
-
 namespace chernobog {
 namespace rules {
 
 using namespace ast;
 
-// Simple debug write using raw POSIX syscalls - completely bypasses any IDA redirection
-static void debug_write(const char* msg) {
-    int fd = ::open("/tmp/chernobog_early.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if (fd >= 0) {
-        ::write(fd, msg, strlen(msg));
-        ::close(fd);
-    }
-}
-
 //--------------------------------------------------------------------------
 // Singleton implementation
 //--------------------------------------------------------------------------
 RuleRegistry& RuleRegistry::instance() {
-    // Debug: log that singleton is being accessed (happens at static init)
-    static bool first_access = true;
-    if (first_access) {
-        first_access = false;
-        debug_write("RuleRegistry::instance() first access - creating singleton\n");
-    }
-    static RuleRegistry instance;
-    return instance;
+    // CRITICAL: Use heap-allocated singleton that intentionally leaks on exit.
+    // This is necessary because the RuleRegistry contains AST nodes with mop_t
+    // members, and mop_t's destructor calls IDA functions. During static
+    // destruction at exit, IDA's library is already unloaded, so calling any
+    // mop_t method (including the destructor) causes a crash.
+    //
+    // By using a heap-allocated singleton that never gets deleted, we avoid
+    // the destructor being called during exit. The memory leak is intentional
+    // and harmless since the process is exiting anyway.
+    static RuleRegistry* instance = new RuleRegistry();
+    return *instance;
 }
 
 //--------------------------------------------------------------------------
 // Registration
 //--------------------------------------------------------------------------
 void RuleRegistry::register_rule(std::unique_ptr<PatternMatchingRule> rule) {
-    // Debug: log static registration using raw POSIX syscalls
-    static bool first_call = true;
-    if (first_call) {
-        first_call = false;
-        debug_write("First call to register_rule - static init starting\n");
-    }
-
     std::lock_guard<std::mutex> lock(mutex_);
-
     if (rule) {
-        // Log each rule registration
-        const char* name = rule->name();
-        if (name) {
-            debug_write("Registering rule: ");
-            debug_write(name);
-            debug_write("\n");
-        } else {
-            debug_write("Registering rule: (null)\n");
-        }
         rules_.push_back(std::move(rule));
     }
 }
 
 void RuleRegistry::initialize() {
-    // Debug logging - msg() output may not appear before crash, so also write to file
-    FILE* dbg_fp = qfopen("/tmp/chernobog_debug.log", "a");
-    #define DBG_LOG(...) do { \
-        msg(__VA_ARGS__); \
-        if (dbg_fp) { qfprintf(dbg_fp, __VA_ARGS__); qflush(dbg_fp); } \
-    } while(0)
-
-    DBG_LOG("[chernobog-debug] RuleRegistry::initialize() ENTRY\n");
-
     std::lock_guard<std::mutex> lock(mutex_);
-
-    DBG_LOG("[chernobog-debug] Got mutex lock, initialized_=%d\n", initialized_);
 
     if (initialized_) {
         return;
     }
 
-    DBG_LOG("[chernobog-debug] %zu rules registered, creating PatternStorage\n", rules_.size());
-
     // Build pattern storage from all rules
     storage_ = PatternStorage(1);
 
-    // Build patterns with minimal logging
     for (auto& rule : rules_) {
         if (!rule) continue;
 
         auto patterns = rule->get_all_patterns();
-
         for (const auto& pattern : patterns) {
             if (pattern) {
                 storage_.add_pattern_for_rule(pattern, rule.get());
@@ -111,11 +56,8 @@ void RuleRegistry::initialize() {
 
     initialized_ = true;
 
-    DBG_LOG("[chernobog] MBA rule registry initialized: %zu rules, %zu patterns\n",
-            rules_.size(), pattern_count());
-
-    #undef DBG_LOG
-    if (dbg_fp) qfclose(dbg_fp);
+    msg("[chernobog] MBA rule registry initialized: %zu rules, %zu patterns\n",
+        rules_.size(), pattern_count());
 }
 
 void RuleRegistry::reinitialize() {
@@ -138,6 +80,21 @@ void RuleRegistry::reinitialize() {
     }
 
     initialized_ = true;
+}
+
+void RuleRegistry::clear() {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    // Clear pattern storage first (it has shared_ptrs to patterns)
+    storage_ = PatternStorage(1);
+
+    // Clear rules (this destroys the rule objects)
+    rules_.clear();
+
+    // Reset state
+    initialized_ = false;
+    total_matches_ = 0;
+    successful_matches_ = 0;
 }
 
 //--------------------------------------------------------------------------
@@ -193,6 +150,9 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t* ins) {
                 // Success!
                 successful_matches_++;
                 rp.rule->increment_hit_count();
+
+                // Debug: log successful match
+                msg("[chernobog] MBA rule '%s' matched\n", rp.rule->name());
 
                 MatchResult result;
                 result.rule = rp.rule;

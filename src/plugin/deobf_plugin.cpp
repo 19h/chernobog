@@ -13,6 +13,9 @@
 // Track which functions we've already auto-deobfuscated to avoid infinite loops
 static std::set<ea_t> s_auto_deobfuscated;
 
+// Track which functions we've already run ctree_const_fold on to avoid re-entry
+static std::set<ea_t> s_ctree_const_folded;
+
 //--------------------------------------------------------------------------
 // Check if auto mode is enabled
 //--------------------------------------------------------------------------
@@ -85,11 +88,11 @@ static ssize_t idaapi hexrays_callback(void *, hexrays_event_t event, va_list va
         if (vu && vu->cfunc) {
             ea_t func_ea = vu->cfunc->entry_ea;
             s_auto_deobfuscated.erase(func_ea);
+            s_ctree_const_folded.erase(func_ea);
             chernobog_clear_function_tracking(func_ea);
         }
     }
     // Auto-deobfuscate at microcode stage for analysis
-    // Note: CFG modifications at maturity 0 are risky
     else if (event == hxe_microcode) {
         mbl_array_t *mba = va_arg(va, mbl_array_t *);
         if (mba && is_auto_mode_enabled()) {
@@ -101,14 +104,24 @@ static ssize_t idaapi hexrays_callback(void *, hexrays_event_t event, va_list va
         }
     }
     // Apply ctree-level constant folding after decompilation
+    // DISABLED: Modifying ctree at CMAT_FINAL is unsafe - needs proper
+    // cexpr_t replacement (cleanup, type handling, etc.)
+    // TODO: Fix ctree_const_fold to use proper Hex-Rays ctree modification APIs
+    /*
     else if (event == hxe_maturity) {
         cfunc_t *cfunc = va_arg(va, cfunc_t *);
-        ctree_maturity_t maturity = va_arg(va, ctree_maturity_t);
+        ctree_maturity_t maturity = va_argi(va, ctree_maturity_t);
         // Run at CMAT_FINAL when the ctree is complete
+        // Track by function to avoid infinite recursion if ctree modification triggers reprocessing
         if (cfunc && maturity == CMAT_FINAL && is_auto_mode_enabled()) {
-            ctree_const_fold_handler_t::run(cfunc);
+            ea_t func_ea = cfunc->entry_ea;
+            if (s_ctree_const_folded.find(func_ea) == s_ctree_const_folded.end()) {
+                s_ctree_const_folded.insert(func_ea);
+                ctree_const_fold_handler_t::run(cfunc);
+            }
         }
     }
+    */
     return 0;
 }
 
@@ -130,6 +143,7 @@ static bool try_init_hexrays() {
     // This forces full redecompilation of all functions
     if (is_reset_mode_enabled()) {
         s_auto_deobfuscated.clear();
+        s_ctree_const_folded.clear();
         chernobog_clear_all_tracking();
         clear_cached_cfuncs();
         msg("[chernobog] Cleared Hex-Rays decompiler cache (CHERNOBOG_RESET=1)\n");
@@ -187,8 +201,6 @@ static plugmod_t * idaapi init(void) {
 }
 
 static void idaapi term(void) {
-    msg("[chernobog] Plugin terminating\n");
-
     // Remove callbacks
     unhook_from_notification_point(HT_IDB, idb_callback, nullptr);
 
@@ -199,7 +211,7 @@ static void idaapi term(void) {
         component_registry_t::unregister_all_actions();
 
         int terminated = component_registry_t::done_all();
-        msg("[chernobog] Plugin done (%d components terminated)\n", terminated);
+        msg("[chernobog] Plugin terminated (%d components)\n", terminated);
     }
 }
 

@@ -41,7 +41,12 @@ bool is_mba_opcode(mcode_t op);
 //--------------------------------------------------------------------------
 class AstBase : public std::enable_shared_from_this<AstBase> {
 public:
-    virtual ~AstBase() = default;
+    // Virtual destructor that safely clears mop_t before destruction.
+    // This is critical because mop_t's destructor may call IDA functions
+    // that are unavailable during static destruction (after IDA unloads).
+    virtual ~AstBase() {
+        mop.erase();
+    }
 
     // Type checking
     virtual bool is_node() const = 0;
@@ -94,6 +99,11 @@ public:
     // Constructors
     AstNode(mcode_t op, AstPtr l, AstPtr r = nullptr);
     AstNode(const AstNode& other);
+
+    // Destructor - clear dst_mop before destruction
+    ~AstNode() override {
+        dst_mop.erase();
+    }
 
     // Type checking
     bool is_node() const override { return true; }
