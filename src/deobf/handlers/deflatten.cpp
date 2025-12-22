@@ -598,6 +598,8 @@ bool deflatten_handler_t::analyze_jump_table_flattening(mbl_array_t *mba,
     // Build the main dispatcher
     dispatcher_info_t disp;
     disp.is_solved = true;
+    disp.is_jump_table = true;  // Jump-table style uses small integer states
+    disp.max_state = max_cases;
 
     // Find the dispatcher block
     for (int i = 0; i < mba->qty; i++) {
@@ -1012,7 +1014,8 @@ deflatten_handler_t::analyze_dispatchers_z3(mbl_array_t *mba) {
 std::optional<uint64_t> deflatten_handler_t::solve_written_state(
     mbl_array_t *mba,
     int block_idx,
-    const symbolic_var_t &state_var) {
+    const symbolic_var_t &state_var,
+    int max_jump_table_state) {
 
     if (!mba || block_idx < 0 || block_idx >= mba->qty)
         return std::nullopt;
@@ -1020,6 +1023,17 @@ std::optional<uint64_t> deflatten_handler_t::solve_written_state(
     mblock_t *blk = mba->get_mblock(block_idx);
     if (!blk)
         return std::nullopt;
+
+    // Helper lambda: validate state value based on dispatcher type
+    auto is_valid_state = [max_jump_table_state](uint64_t val) -> bool {
+        if (max_jump_table_state > 0) {
+            // Jump-table: accept small indices [0..max]
+            return val <= (uint64_t)max_jump_table_state;
+        } else {
+            // Hikari: require magic constant patterns
+            return is_state_constant(val);
+        }
+    };
 
     // Use Z3 symbolic execution
     symbolic_executor_t executor(get_global_context());
@@ -1031,7 +1045,7 @@ std::optional<uint64_t> deflatten_handler_t::solve_written_state(
     auto value = executor.get_value(state_var);
     if (value.has_value()) {
         auto concrete = executor.solve_for_value(value.value());
-        if (concrete.has_value() && is_state_constant(*concrete)) {
+        if (concrete.has_value() && is_valid_state(*concrete)) {
             return concrete;
         }
     }
@@ -1041,7 +1055,7 @@ std::optional<uint64_t> deflatten_handler_t::solve_written_state(
         if (ins->opcode != m_mov)
             continue;
 
-        if (ins->l.t != mop_n || !is_state_constant(ins->l.nnn->value))
+        if (ins->l.t != mop_n || !is_valid_state(ins->l.nnn->value))
             continue;
 
         // Check if destination matches state variable
@@ -1163,19 +1177,22 @@ deflatten_handler_t::trace_transitions_z3(mbl_array_t *mba,
     deobf::log("[deflatten] Tracing transitions for dispatcher at block %d\n", disp.block_idx);
     deobf::log("[deflatten]   %zu case blocks to analyze\n", disp.case_blocks.size());
 
-    // Check if this is a jump-table style dispatcher (small integer states)
-    // If all state values in state_to_block are < 500, it's a jump-table dispatcher
-    bool is_jump_table = !disp.state_to_block.empty();
-    for (const auto &kv : disp.state_to_block) {
-        if (kv.first >= 500) {
-            is_jump_table = false;
-            break;
+    // Use the dispatcher's is_jump_table flag, or detect if not set
+    bool is_jump_table = disp.is_jump_table;
+    if (!is_jump_table && !disp.state_to_block.empty()) {
+        // Fall back to heuristic detection if flag not set
+        is_jump_table = true;
+        for (const auto &kv : disp.state_to_block) {
+            if (kv.first >= 500) {
+                is_jump_table = false;
+                break;
+            }
         }
     }
     if (is_jump_table) {
         deobf::log("[deflatten] Using jump-table tracing (small integer states)\n");
 
-        int max_cases = (int)disp.state_to_block.size();
+        int max_cases = disp.max_state > 0 ? disp.max_state : (int)disp.state_to_block.size();
 
         // Build set of all case blocks for reference
         std::set<int> case_blocks;
@@ -1529,11 +1546,12 @@ deflatten_handler_t::trace_transitions_z3(mbl_array_t *mba,
     }
 
     // Also check case blocks directly for any embedded state writes
+    int jt_max = disp.is_jump_table ? disp.max_state : -1;
     for (int case_blk : disp.case_blocks) {
         if (disp.dispatcher_chain.count(case_blk))
             continue;
 
-        auto next_state = solve_written_state(mba, case_blk, disp.state_var);
+        auto next_state = solve_written_state(mba, case_blk, disp.state_var, jt_max);
         if (next_state.has_value()) {
             auto it = disp.state_to_block.find(*next_state);
             if (it != disp.state_to_block.end() && it->second != case_blk) {
@@ -2120,16 +2138,12 @@ int deflatten_handler_t::cleanup_dispatcher(mbl_array_t *mba,
 
     int removed = 0;
 
-    // NOTE: We intentionally do NOT eliminate dispatcher jtbl instructions.
-    // Converting jtbl to goto either:
-    // 1. Breaks control flow if done too aggressively (all jtbl -> same target)
-    // 2. Has no effect on decompiler output if done too conservatively
-    //
-    // The CFG redirections in reconstruct_cfg_z3 are sufficient to fix the
-    // actual control flow at the microcode level. The decompiler output
-    // will still show switch statements, but the underlying CFG is correct.
-    //
-    // Future improvement: selectively convert jtbl based on reachability analysis
+    // Try to eliminate the dispatcher jtbl instruction by converting to goto.
+    // This is safe if the edges have been successfully redirected, since each
+    // case block now goes directly to its target instead of through the dispatcher.
+    // Converting the jtbl to goto pointing to the initial case eliminates the
+    // switch statement from the decompiled output.
+    removed += eliminate_dispatcher_switches(mba, disp);
 
     // Mark dispatcher chain blocks for removal
     // Note: IDA's microcode framework doesn't support direct block removal,
@@ -2158,9 +2172,21 @@ int deflatten_handler_t::cleanup_dispatcher(mbl_array_t *mba,
 //--------------------------------------------------------------------------
 int deflatten_handler_t::remove_state_assignments(mbl_array_t *mba,
                                                    const symbolic_var_t &state_var,
-                                                   deobf_ctx_t *ctx) {
+                                                   deobf_ctx_t *ctx,
+                                                   int max_jump_table_state) {
     if (!mba || !ctx)
         return 0;
+
+    // Helper lambda: validate state value based on dispatcher type
+    auto is_valid_state = [max_jump_table_state](uint64_t val) -> bool {
+        if (max_jump_table_state > 0) {
+            // Jump-table: accept small indices [0..max]
+            return val <= (uint64_t)max_jump_table_state;
+        } else {
+            // Hikari: require magic constant patterns
+            return is_state_constant(val);
+        }
+    };
 
     int removed = 0;
 
@@ -2174,7 +2200,7 @@ int deflatten_handler_t::remove_state_assignments(mbl_array_t *mba,
             minsn_t *next = ins->next;
 
             if (ins->opcode == m_mov && ins->l.t == mop_n) {
-                if (is_state_constant(ins->l.nnn->value)) {
+                if (is_valid_state(ins->l.nnn->value)) {
                     // Check if destination matches state variable
                     bool matches = false;
                     if (ins->d.t == mop_S && state_var.kind() == symbolic_var_t::VAR_STACK) {
@@ -2435,7 +2461,8 @@ int deflatten_handler_t::apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx) {
 
         if (cfg_changes > 0) {
             cleanup_dispatcher(mba, disp, ctx);
-            remove_state_assignments(mba, disp.state_var, ctx);
+            int jt_max = disp.is_jump_table ? disp.max_state : -1;
+            remove_state_assignments(mba, disp.state_var, ctx, jt_max);
             ctx->blocks_merged += (int)disp.dispatcher_chain.size();
         }
     }
@@ -2528,7 +2555,8 @@ int deflatten_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx) {
 
             if (cfg_changes > 0) {
                 cleanup_dispatcher(mba, disp, ctx);
-                remove_state_assignments(mba, disp.state_var, ctx);
+                int jt_max = disp.is_jump_table ? disp.max_state : -1;
+                remove_state_assignments(mba, disp.state_var, ctx, jt_max);
                 ctx->blocks_merged += (int)disp.dispatcher_chain.size();
             }
         }

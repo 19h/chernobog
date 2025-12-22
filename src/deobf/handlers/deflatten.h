@@ -115,9 +115,12 @@ public:
         std::map<uint64_t, int> state_to_block;  // State -> target block
         std::set<int> dispatcher_chain;  // All blocks that form the dispatcher
         bool is_solved;             // True if successfully analyzed
+        bool is_jump_table;         // True if jump-table style (small int states 0..n)
+        int max_state;              // Maximum state value for jump-table validation
 
         dispatcher_info_t() : block_idx(-1), parent_dispatcher(-1),
-                             nesting_level(0), is_solved(false) {}
+                             nesting_level(0), is_solved(false),
+                             is_jump_table(false), max_state(0) {}
     };
 
 private:
@@ -157,10 +160,12 @@ private:
         const dispatcher_info_t &disp);
 
     // Solve for the next state value written by a block
+    // max_jump_table_state: if > 0, accept small indices [0..max] instead of Hikari constants
     static std::optional<uint64_t> solve_written_state(
         mbl_array_t *mba,
         int block_idx,
-        const z3_solver::symbolic_var_t &state_var);
+        const z3_solver::symbolic_var_t &state_var,
+        int max_jump_table_state = -1);
 
     // Handle conditional transitions within case blocks
     static std::vector<cfg_edge_t> analyze_conditional_transitions(
@@ -184,9 +189,11 @@ private:
                                    deobf_ctx_t *ctx);
 
     // Remove state variable assignments (they're no longer needed)
+    // max_jump_table_state: if > 0, treat small indices as valid state values
     static int remove_state_assignments(mbl_array_t *mba,
                                          const z3_solver::symbolic_var_t &state_var,
-                                         deobf_ctx_t *ctx);
+                                         deobf_ctx_t *ctx,
+                                         int max_jump_table_state = -1);
 
     //----------------------------------------------------------------------
     // Legacy compatibility (delegates to Z3 solver)

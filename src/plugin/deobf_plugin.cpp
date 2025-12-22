@@ -7,6 +7,7 @@
 // Include component headers to trigger registration
 #include "../deobf/deobf_main.h"
 #include "../deobf/handlers/ctree_const_fold.h"
+#include "../deobf/handlers/ctree_switch_fold.h"
 
 #include <set>
 
@@ -15,6 +16,9 @@ static std::set<ea_t> s_auto_deobfuscated;
 
 // Track which functions we've already run ctree_const_fold on to avoid re-entry
 static std::set<ea_t> s_ctree_const_folded;
+
+// Track which functions we've already run ctree_switch_fold on to avoid re-entry
+static std::set<ea_t> s_ctree_switch_folded;
 
 //--------------------------------------------------------------------------
 // Check if auto mode is enabled
@@ -89,6 +93,7 @@ static ssize_t idaapi hexrays_callback(void *, hexrays_event_t event, va_list va
             ea_t func_ea = vu->cfunc->entry_ea;
             s_auto_deobfuscated.erase(func_ea);
             s_ctree_const_folded.erase(func_ea);
+            s_ctree_switch_folded.erase(func_ea);
             chernobog_clear_function_tracking(func_ea);
         }
     }
@@ -103,7 +108,7 @@ static ssize_t idaapi hexrays_callback(void *, hexrays_event_t event, va_list va
             }
         }
     }
-    // Apply ctree-level constant folding after decompilation
+    // Apply ctree-level optimizations after decompilation
     else if (event == hxe_maturity) {
         cfunc_t *cfunc = va_arg(va, cfunc_t *);
         ctree_maturity_t maturity = va_argi(va, ctree_maturity_t);
@@ -111,9 +116,15 @@ static ssize_t idaapi hexrays_callback(void *, hexrays_event_t event, va_list va
         // Track by function to avoid infinite recursion if ctree modification triggers reprocessing
         if (cfunc && maturity == CMAT_FINAL && is_auto_mode_enabled()) {
             ea_t func_ea = cfunc->entry_ea;
+            // Constant folding for XOR patterns
             if (s_ctree_const_folded.find(func_ea) == s_ctree_const_folded.end()) {
                 s_ctree_const_folded.insert(func_ea);
                 ctree_const_fold_handler_t::run(cfunc);
+            }
+            // Switch folding for opaque predicates
+            if (s_ctree_switch_folded.find(func_ea) == s_ctree_switch_folded.end()) {
+                s_ctree_switch_folded.insert(func_ea);
+                ctree_switch_fold_handler_t::run(cfunc);
             }
         }
     }
@@ -139,6 +150,7 @@ static bool try_init_hexrays() {
     if (is_reset_mode_enabled()) {
         s_auto_deobfuscated.clear();
         s_ctree_const_folded.clear();
+        s_ctree_switch_folded.clear();
         chernobog_clear_all_tracking();
         clear_cached_cfuncs();
         msg("[chernobog] Cleared Hex-Rays decompiler cache (CHERNOBOG_RESET=1)\n");
