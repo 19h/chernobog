@@ -1,5 +1,6 @@
 #include "identity_call.h"
 #include "../analysis/pattern_match.h"
+#include "../analysis/arch_utils.h"
 #include <allins.hpp>  // For NN_mov, NN_jmp, etc.
 
 // Static members
@@ -110,79 +111,13 @@ bool identity_call_handler_t::is_identity_function(ea_t func_ea) {
 //--------------------------------------------------------------------------
 // Analyze if a function is an identity function
 // Identity function: just returns its first argument
-// Pattern: mov rax, rdi; ret (or equivalent)
+// Pattern varies by architecture:
+//   x86-64: mov rax, rdi; ret
+//   ARM64:  ret (x0 is both first arg and return reg)
 //--------------------------------------------------------------------------
 bool identity_call_handler_t::analyze_identity_func(ea_t ea) {
-    func_t *func = get_func(ea);
-    if (!func)
-        return false;
-
-    // Identity functions are typically very short (< 32 bytes)
-    if (func->end_ea - func->start_ea > 32)
-        return false;
-
-    // Analyze at assembly level
-    // Look for: mov rax, rdi; ret (or similar)
-    ea_t curr = func->start_ea;
-    insn_t insn;
-    int insn_count = 0;
-    bool saw_mov_rax_rdi = false;
-    bool saw_ret = false;
-
-    while (curr < func->end_ea && insn_count < 10) {
-        if (decode_insn(&insn, curr) == 0)
-            break;
-
-        insn_count++;
-
-        // Skip nops
-        if (insn.size == 1 && get_byte(insn.ea) == 0x90) {
-            curr = insn.ea + insn.size;
-            continue;
-        }
-
-        // Check for "mov rax, rdi" (x64)
-        if (insn.itype == NN_mov) {
-            if (insn.Op1.type == o_reg && insn.Op1.reg == 0 &&  // rax
-                insn.Op2.type == o_reg && insn.Op2.reg == 7) {   // rdi
-                saw_mov_rax_rdi = true;
-            }
-        }
-
-        // Check for ret
-        if (is_ret_insn(insn)) {
-            saw_ret = true;
-            break;
-        }
-
-        // If we see a call, check if it's to another identity function
-        if (is_call_insn(insn)) {
-            ea_t call_target = get_first_fcref_from(insn.ea);
-            if (call_target != BADADDR && call_target != ea) {
-                if (!s_non_identity_funcs.count(call_target)) {
-                    s_non_identity_funcs.insert(ea);
-                    if (is_identity_function(call_target)) {
-                        saw_mov_rax_rdi = true;
-                    }
-                    s_non_identity_funcs.erase(ea);
-                }
-            }
-        }
-
-        curr = insn.ea + insn.size;
-    }
-
-    // Very short function with return - check pattern
-    if (insn_count <= 5 && saw_ret) {
-        if (saw_mov_rax_rdi)
-            return true;
-
-        // Trivial function that just returns
-        if (insn_count <= 3)
-            return true;
-    }
-
-    return false;
+    // Use the architecture-independent analysis from arch_utils
+    return arch::analyze_identity_function(ea);
 }
 
 //--------------------------------------------------------------------------
@@ -463,7 +398,7 @@ identity_call_handler_t::find_identity_calls(mbl_array_t *mba, deobf_ctx_t *ctx)
                     info.global_ptr = arg0.a->g;
             }
 
-            // At early maturity, search x86 instructions for argument
+            // At early maturity, search native instructions for argument
             if (info.global_ptr == BADADDR && ins->ea != BADADDR) {
                 ea_t search_ea = ins->ea;
                 insn_t asm_ins;
@@ -477,13 +412,11 @@ identity_call_handler_t::find_identity_calls(mbl_array_t *mba, deobf_ctx_t *ctx)
                     if (decode_insn(&asm_ins, search_ea) == 0)
                         break;
 
-                    // Look for mov rdi, [mem]
-                    if (asm_ins.itype == NN_mov &&
-                        asm_ins.Op1.type == o_reg && asm_ins.Op1.reg == 7 &&
-                        asm_ins.Op2.type == o_mem) {
-                        ea_t ptr = asm_ins.Op2.addr;
-                        if (is_valid_global_ptr(ptr, info.target)) {
-                            info.global_ptr = ptr;
+                    // Look for argument load from memory (arch-independent)
+                    ea_t mem_addr = BADADDR;
+                    if (arch::is_arg_load_from_mem(asm_ins, &mem_addr)) {
+                        if (is_valid_global_ptr(mem_addr, info.target)) {
+                            info.global_ptr = mem_addr;
                             break;
                         }
                     }
@@ -511,7 +444,7 @@ identity_call_handler_t::find_identity_calls(mbl_array_t *mba, deobf_ctx_t *ctx)
                         info.global_ptr = arg0.g;
                 }
 
-                // Search x86 instructions
+                // Search native instructions for argument (arch-independent)
                 if (info.global_ptr == BADADDR && ins->ea != BADADDR) {
                     ea_t search_ea = ins->ea;
                     insn_t asm_ins;
@@ -525,12 +458,10 @@ identity_call_handler_t::find_identity_calls(mbl_array_t *mba, deobf_ctx_t *ctx)
                         if (decode_insn(&asm_ins, search_ea) == 0)
                             break;
 
-                        if (asm_ins.itype == NN_mov &&
-                            asm_ins.Op1.type == o_reg && asm_ins.Op1.reg == 7 &&
-                            asm_ins.Op2.type == o_mem) {
-                            ea_t ptr = asm_ins.Op2.addr;
-                            if (is_valid_global_ptr(ptr, info.target)) {
-                                info.global_ptr = ptr;
+                        ea_t mem_addr = BADADDR;
+                        if (arch::is_arg_load_from_mem(asm_ins, &mem_addr)) {
+                            if (is_valid_global_ptr(mem_addr, info.target)) {
+                                info.global_ptr = mem_addr;
                                 break;
                             }
                         }
@@ -624,8 +555,9 @@ identity_call_handler_t::find_identity_calls(mbl_array_t *mba, deobf_ctx_t *ctx)
                 }
             }
 
-            // If no simple global pointer or it was wrong, try to extract table base from x86
-            // Pattern: lea rax, table; mov rdi, [rax+rcx*8]; call identity
+            // If no simple global pointer or it was wrong, try to extract table base
+            // Pattern (x86-64): lea rax, table; mov rdi, [rax+rcx*8]; call identity
+            // Pattern (ARM64):  adrp x8, table; ldr x0, [x8, #off]; bl identity
             if (final_target == BADADDR && cinfo.call_ea != BADADDR) {
                 ea_t search_ea = cinfo.call_ea;
                 insn_t asm_ins;
@@ -642,24 +574,30 @@ identity_call_handler_t::find_identity_calls(mbl_array_t *mba, deobf_ctx_t *ctx)
                     if (decode_insn(&asm_ins, search_ea) == 0)
                         break;
 
-                    // Look for lea reg, [table] - loads the table base address
-                    // Only take the first (closest to call) LEA we find
-                    if (table_base == BADADDR && asm_ins.itype == NN_lea && asm_ins.Op2.type == o_mem) {
-                        ea_t base = asm_ins.Op2.addr;
+                    // Look for LEA/ADR instruction - loads the table base address
+                    // Only take the first (closest to call) we find
+                    if (table_base == BADADDR && arch::is_lea_insn(asm_ins.itype)) {
+                        ea_t base = BADADDR;
+                        // x86: LEA reg, [mem] - address in Op2
+                        // ARM64: ADR/ADRP - computed address
+                        if (asm_ins.Op2.type == o_mem) {
+                            base = asm_ins.Op2.addr;
+                        } else if (asm_ins.Op1.type == o_imm) {
+                            // Some disassemblers put the address in Op1
+                            base = (ea_t)asm_ins.Op1.value;
+                        }
                         if (base != BADADDR && is_valid_global_ptr(base, cinfo.target)) {
                             table_base = base;
-                            deobf::log("[identity_call] Found table base via LEA: %a\n", base);
+                            deobf::log("[identity_call] Found table base via LEA/ADR: %a\n", base);
                         }
                     }
 
-                    // Also check for direct mov rdi, [mem] (simple case)
-                    if (asm_ins.itype == NN_mov &&
-                        asm_ins.Op1.type == o_reg && asm_ins.Op1.reg == 7 &&
-                        asm_ins.Op2.type == o_mem) {
-                        ea_t ptr = asm_ins.Op2.addr;
-                        if (ptr != BADADDR && is_valid_global_ptr(ptr, cinfo.target)) {
-                            simple_ptr = ptr;
-                            // Don't break - continue to look for LEA
+                    // Also check for argument load from memory (simple case)
+                    ea_t mem_addr = BADADDR;
+                    if (arch::is_arg_load_from_mem(asm_ins, &mem_addr)) {
+                        if (mem_addr != BADADDR && is_valid_global_ptr(mem_addr, cinfo.target)) {
+                            simple_ptr = mem_addr;
+                            // Don't break - continue to look for LEA/ADR
                         }
                     }
                 }
@@ -782,20 +720,8 @@ ea_t identity_call_handler_t::resolve_global_pointer(ea_t ptr_addr) {
     if (ptr_addr == BADADDR)
         return BADADDR;
 
-    ea_t target = BADADDR;
-    int ptr_size = (inf_is_64bit()) ? 8 : 4;
-
-    if (ptr_size == 8) {
-        uint64_t val = 0;
-        if (get_bytes(&val, 8, ptr_addr) == 8) {
-            target = (ea_t)val;
-        }
-    } else {
-        uint32_t val = 0;
-        if (get_bytes(&val, 4, ptr_addr) == 4) {
-            target = (ea_t)val;
-        }
-    }
+    // Use architecture-independent pointer reading
+    ea_t target = arch::read_ptr(ptr_addr);
 
     // Validate target is in code
     if (target != BADADDR) {
@@ -812,69 +738,8 @@ ea_t identity_call_handler_t::resolve_global_pointer(ea_t ptr_addr) {
 // Check if a code location is a trampoline
 //--------------------------------------------------------------------------
 bool identity_call_handler_t::is_trampoline_code(ea_t addr, ea_t *next_ptr_out) {
-    if (addr == BADADDR)
-        return false;
-
-    insn_t insn;
-    ea_t curr = addr;
-    int insn_count = 0;
-
-    ea_t potential_ptr = BADADDR;
-    bool saw_identity_call = false;
-    bool saw_jmp_rax = false;
-
-    while (insn_count < 30) {
-        if (decode_insn(&insn, curr) == 0)
-            break;
-
-        insn_count++;
-
-        // Look for mov rdi, [ptr]
-        if (insn.itype == NN_mov) {
-            if (insn.Op1.type == o_reg && insn.Op1.reg == 7) {
-                if (insn.Op2.type == o_mem) {
-                    potential_ptr = insn.Op2.addr;
-                }
-            }
-        }
-
-        // Look for call to identity function
-        if (is_call_insn(insn)) {
-            ea_t call_target = get_first_fcref_from(insn.ea);
-            if (call_target != BADADDR && is_identity_function(call_target)) {
-                saw_identity_call = true;
-            } else {
-                qstring fname;
-                if (call_target != BADADDR && get_func_name(&fname, call_target) > 0) {
-                    if (fname.find("HikariFunctionWrapper") != qstring::npos) {
-                        saw_identity_call = true;
-                    }
-                }
-            }
-        }
-
-        // Look for jmp rax
-        if (insn.itype == NN_jmpni || insn.itype == NN_jmp) {
-            if (insn.Op1.type == o_reg && insn.Op1.reg == 0) {
-                saw_jmp_rax = true;
-                break;
-            }
-        }
-
-        if (is_ret_insn(insn)) {
-            break;
-        }
-
-        curr = insn.ea + insn.size;
-    }
-
-    if (saw_identity_call && saw_jmp_rax && potential_ptr != BADADDR) {
-        if (next_ptr_out)
-            *next_ptr_out = potential_ptr;
-        return true;
-    }
-
-    return false;
+    // Use architecture-independent trampoline detection
+    return arch::is_trampoline_code(addr, next_ptr_out);
 }
 
 //--------------------------------------------------------------------------
@@ -922,12 +787,11 @@ ea_t identity_call_handler_t::resolve_trampoline_chain(ea_t start_addr, int max_
 }
 
 //--------------------------------------------------------------------------
-// Transform identity call by patching x86 instructions
+// Transform identity call by patching native instructions
 // This approach patches the actual binary instructions in IDA's database,
 // which is more reliable than microcode manipulation.
 //
-// Transform: call identity(ptr); jmp rax  ->  call target; nop...
-// Or:        call identity(ptr); jmp rax  ->  jmp target (if no return needed)
+// Transform: call identity(ptr); jmp reg  ->  jmp target; nop...
 //--------------------------------------------------------------------------
 int identity_call_handler_t::transform_identity_call(mbl_array_t *mba,
     const deferred_identity_call_t &dc, deobf_ctx_t *ctx) {
@@ -946,18 +810,15 @@ int identity_call_handler_t::transform_identity_call(mbl_array_t *mba,
     if (decode_insn(&jmp_insn, dc.ijmp_ea) == 0)
         return 0;
 
-    // Verify we have the expected pattern
-    if (!is_call_insn(call_insn)) {
+    // Verify we have the expected pattern (arch-independent)
+    if (!arch::is_call_insn(call_insn.itype)) {
         deobf::log("[identity_call] Expected call at %a\n", dc.call_ea);
         return 0;
     }
 
-    // Check if jmp rax (indirect jump via register)
-    bool is_jmp_rax = (jmp_insn.itype == NN_jmpni || jmp_insn.itype == NN_jmp) &&
-                      jmp_insn.Op1.type == o_reg && jmp_insn.Op1.reg == 0;
-
-    if (!is_jmp_rax) {
-        deobf::log("[identity_call] Expected jmp rax at %a, got type %d\n",
+    // Check for indirect jump via register (arch-independent)
+    if (!arch::is_indirect_jump_via_return_reg(jmp_insn)) {
+        deobf::log("[identity_call] Expected indirect jump at %a, got type %d\n",
                   dc.ijmp_ea, jmp_insn.itype);
         return 0;
     }
@@ -970,25 +831,27 @@ int identity_call_handler_t::transform_identity_call(mbl_array_t *mba,
     deobf::log("[identity_call] Patching %zu bytes at %a: call(%zu) + jmp(%zu)\n",
               total_size, dc.call_ea, call_size, jmp_size);
 
-    // Strategy: Replace with "jmp target" (direct jump)
-    // E9 xx xx xx xx (5-byte near jump)
-    // If we have more space, pad with NOPs
+    // Build the patch using arch-independent instruction building
+    uint8_t patch[32];
+    memset(patch, 0, sizeof(patch));
 
-    // Calculate relative offset for jmp
-    ea_t jmp_end = dc.call_ea + 5;  // After the 5-byte jmp instruction
-    int32_t rel_offset = (int32_t)(target - jmp_end);
+    // Build direct jump instruction
+    size_t jmp_len = arch::build_direct_jump(patch, sizeof(patch), dc.call_ea, target);
+    if (jmp_len == 0) {
+        deobf::log("[identity_call] Failed to build jump instruction (target may be out of range)\n");
+        // Fallback to annotations
+        qstring comment;
+        comment.sprnt("TRAMPOLINE -> %s (%a)", dc.target_name.c_str(), target);
+        set_cmt(dc.call_ea, comment.c_str(), false);
+        return 0;
+    }
 
-    // Build the patch: E9 <rel32>
-    uint8_t patch[16];
-    patch[0] = 0xE9;  // JMP rel32
-    patch[1] = (uint8_t)(rel_offset & 0xFF);
-    patch[2] = (uint8_t)((rel_offset >> 8) & 0xFF);
-    patch[3] = (uint8_t)((rel_offset >> 16) & 0xFF);
-    patch[4] = (uint8_t)((rel_offset >> 24) & 0xFF);
-
-    // Fill rest with NOPs (0x90)
-    for (size_t i = 5; i < total_size && i < sizeof(patch); i++) {
-        patch[i] = 0x90;
+    // Fill rest with NOPs
+    size_t nop_size = arch::get_min_insn_size();
+    for (size_t i = jmp_len; i + nop_size <= total_size && i < sizeof(patch); ) {
+        size_t written = arch::get_nop_bytes(patch + i, sizeof(patch) - i);
+        if (written == 0) break;
+        i += written;
     }
 
     // Apply the patch

@@ -22,16 +22,28 @@ static std::set<ea_t> s_ctree_switch_folded;
 
 //--------------------------------------------------------------------------
 // Check if auto mode is enabled
+// Supports: CHERNOBOG_AUTO=1 env var, or ~/.chernobog_auto file
 //--------------------------------------------------------------------------
 static bool is_auto_mode_enabled() {
     static int cached = -1;
     if (cached == -1) {
+        cached = 0;
+        // Try qgetenv first
         qstring env_val;
-        if (qgetenv("CHERNOBOG_AUTO", &env_val) && env_val == "1") {
+        if (qgetenv("CHERNOBOG_AUTO", &env_val) && !env_val.empty() && env_val[0] == '1') {
             cached = 1;
-            msg("[chernobog] Auto-deobfuscation mode enabled (CHERNOBOG_AUTO=1)\n");
-        } else {
-            cached = 0;
+        }
+        // Also check for ~/.chernobog_auto file as fallback
+        if (cached == 0) {
+            qstring home;
+            if (qgetenv("HOME", &home)) {
+                qstring auto_file = home + "/.chernobog_auto";
+                FILE *f = qfopen(auto_file.c_str(), "r");
+                if (f) {
+                    qfclose(f);
+                    cached = 1;
+                }
+            }
         }
     }
     return cached == 1;
@@ -159,8 +171,11 @@ static bool try_init_hexrays() {
     // Check verbose mode before any output
     check_verbose_mode();
 
-    msg("[chernobog] Chernobog (Hikari Deobfuscator) initializing (%d components registered)\n",
-        (int)component_registry_t::get_count());
+    // Check auto mode early and print debug info
+    bool auto_mode = is_auto_mode_enabled();
+    
+    msg("[chernobog] Chernobog (Hikari Deobfuscator) initializing (%d components registered, auto=%d)\n",
+        (int)component_registry_t::get_count(), auto_mode ? 1 : 0);
 
     // Install hexrays callback for popup menus and auto-deobfuscation
     install_hexrays_callback(hexrays_callback, nullptr);
@@ -169,7 +184,7 @@ static bool try_init_hexrays() {
     msg("[chernobog] Plugin ready (%d components initialized)\n", initialized);
 
     // Check auto mode at startup
-    if (is_auto_mode_enabled()) {
+    if (auto_mode) {
         msg("[chernobog] *** AUTO MODE ACTIVE - will deobfuscate on decompilation ***\n");
     }
 

@@ -84,6 +84,7 @@ ida_add_plugin(chernobog
     src/deobf/analysis/opaque_eval.cpp
     src/deobf/analysis/stack_tracker.cpp
     src/deobf/analysis/z3_solver.cpp
+    src/deobf/analysis/arch_utils.cpp
 
     # NEW: AST-based pattern matching system
     src/deobf/analysis/ast.cpp
