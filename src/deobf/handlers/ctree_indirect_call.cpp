@@ -289,23 +289,53 @@ int ctree_indirect_call_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx) {
         if (target == BADADDR)
             continue;
         
-        ctree_icall_debug("[ctree_icall] Resolved: table[%lld] - %lld = 0x%llx\n",
-                          (long long)idx_val, (long long)offset_val, (unsigned long long)target);
+        // Get the target function name
+        qstring target_name;
+        get_name(&target_name, target);
         
-        // Replace the call target with a direct reference
-        // Create a new obj expression for the target function
+        ctree_icall_debug("[ctree_icall] Resolved: table[%lld] - %lld = 0x%llx (%s)\n",
+                          (long long)idx_val, (long long)offset_val, 
+                          (unsigned long long)target, target_name.c_str());
+        
+        // Replace the call target with a direct reference to the resolved function
+        // The call expression is: call(complex_expr, args...)
+        // We want to change it to: call(target_func, args...)
+        
+        // Get the original callee to preserve its type info
+        cexpr_t *old_callee = call_expr->x;
+        tinfo_t callee_type = old_callee->type;
+        
+        // Create a cot_obj expression that references the target function directly
+        // This is the correct way to represent a direct function reference in ctree
         cexpr_t *new_callee = new cexpr_t();
         new_callee->op = cot_obj;
         new_callee->obj_ea = target;
-        new_callee->type = call_expr->x->type;  // Keep the same type
+        new_callee->exflags = 0;
+        new_callee->ea = call_expr->ea;  // Use call's EA for the callee
         
-        // Replace the old callee with the new one
-        // This is tricky because we need to properly update the tree
-        // For now, just add a comment
-        qstring target_name;
-        get_name(&target_name, target);
+        // Get the type of the target function if available
+        tinfo_t func_type;
+        if (get_tinfo(&func_type, target)) {
+            // Make it a pointer to the function type for the call expression
+            tinfo_t ptr_type;
+            ptr_type.create_ptr(func_type);
+            new_callee->type = ptr_type;
+            ctree_icall_debug("[ctree_icall] Got function type for target\n");
+        } else {
+            // Fall back to the original callee type
+            new_callee->type = callee_type;
+            ctree_icall_debug("[ctree_icall] Using original callee type\n");
+        }
+        
+        // Replace the callee in the call expression
+        call_expr->x = new_callee;
+        
+        ctree_icall_debug("[ctree_icall] Replaced callee with cot_obj to 0x%llx (%s)\n", 
+                          (unsigned long long)target, target_name.c_str());
+        
+        // Also add a comment for documentation
         qstring comment;
-        comment.sprnt("DEOBF: Indirect call to %s (0x%llX)", 
+        comment.sprnt("DEOBF: Resolved indirect call -> %s (0x%llX)", 
                       target_name.c_str(), (unsigned long long)target);
         set_cmt(call_expr->ea, comment.c_str(), false);
         
