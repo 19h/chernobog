@@ -1,7 +1,11 @@
 #include "identity_call.h"
 #include "../analysis/pattern_match.h"
 #include "../analysis/arch_utils.h"
+
+#ifndef ALLINS_HPP_INCLUDED
+#define ALLINS_HPP_INCLUDED
 #include <allins.hpp>  // For NN_mov, NN_jmp, etc.
+#endif
 
 // Static members
 std::set<ea_t> identity_call_handler_t::s_identity_funcs;

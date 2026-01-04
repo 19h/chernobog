@@ -12,6 +12,7 @@
 #include <funcs.hpp>
 #include <segment.hpp>
 #include <auto.hpp>
+#include <ua.hpp>
 #include "../common/warn_on.h"
 
 #include <vector>

@@ -1,5 +1,12 @@
 #include "ctree_indirect_call.h"
 
+// Include allins.hpp for instruction types (NN_cmp, NN_mov, etc.)
+// This header has no include guards, so only include once per translation unit
+#ifndef ALLINS_HPP_INCLUDED
+#define ALLINS_HPP_INCLUDED
+#include <allins.hpp>
+#endif
+
 //--------------------------------------------------------------------------
 // File-based debug logging
 //--------------------------------------------------------------------------
@@ -18,6 +25,225 @@ static void ctree_icall_debug(const char *fmt, ...) {
         write(fd, buf, len);
         close(fd);
     }
+}
+
+//--------------------------------------------------------------------------
+// Dispatcher analysis - for chained indirect call resolution
+//--------------------------------------------------------------------------
+
+// Info about a dispatcher function's behavior
+struct dispatcher_info_t {
+    bool is_dispatcher;       // Is this a dispatcher function?
+    ea_t table_addr;          // Table address used
+    int64_t offset;           // Offset subtracted
+    int cmp_arg_idx;          // Which argument is compared (-1 if none)
+    uint64_t cmp_value;       // Value compared against
+    int true_index;           // Table index if comparison is true
+    int false_index;          // Table index if comparison is false
+};
+
+// Visitor to analyze dispatcher functions
+struct dispatcher_analyzer_t : public ctree_visitor_t {
+    dispatcher_info_t info;
+    cfunc_t *cfunc;
+    
+    dispatcher_analyzer_t(cfunc_t *cf) : ctree_visitor_t(CV_FAST), cfunc(cf) {
+        memset(&info, 0, sizeof(info));
+        info.cmp_arg_idx = -1;
+    }
+    
+    int idaapi visit_expr(cexpr_t *e) override {
+        // Look for comparison: arg == constant
+        if (e->op == cot_eq || e->op == cot_ne || e->op == cot_slt || 
+            e->op == cot_sge || e->op == cot_ult || e->op == cot_uge) {
+            // Check if comparing an argument to a constant
+            cexpr_t *left = e->x;
+            cexpr_t *right = e->y;
+            
+            // One side should be a number
+            if (right && right->op == cot_num) {
+                info.cmp_value = right->numval();
+                // Left side might be an argument (var with arg index)
+                if (left && left->op == cot_var) {
+                    lvars_t *lvars = cfunc->get_lvars();
+                    if (lvars && left->v.idx < lvars->size()) {
+                        lvar_t &lv = (*lvars)[left->v.idx];
+                        if (lv.is_arg_var()) {
+                            // Simplified: assume first arg for now
+                            info.cmp_arg_idx = 0;
+                            ctree_icall_debug("[dispatcher] Found cmp: arg%d vs 0x%llx\n",
+                                              info.cmp_arg_idx, (unsigned long long)info.cmp_value);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Look for the indirect call pattern (table[idx] - offset)
+        if (e->op == cot_sub) {
+            cexpr_t *right = e->y;
+            if (right && right->op == cot_num) {
+                info.offset = right->numval();
+                if (info.offset > 0x10000) {
+                    info.is_dispatcher = true;
+                    ctree_icall_debug("[dispatcher] Found sub with offset 0x%llx\n",
+                                      (unsigned long long)info.offset);
+                }
+            }
+        }
+        
+        return 0;
+    }
+};
+
+// Analyze a dispatcher function at assembly level to extract comparison and offset
+struct asm_dispatcher_info_t {
+    bool valid;
+    uint32_t cmp_value;     // Value compared with first arg
+    bool is_equal_cmp;      // true = setz (==), false = setl (<)
+    int64_t offset;         // Computed offset (negated XOR result)
+};
+
+static asm_dispatcher_info_t analyze_dispatcher_asm(ea_t func_addr) {
+    asm_dispatcher_info_t info = {false, 0, false, 0};
+    
+    func_t *func = get_func(func_addr);
+    if (!func) return info;
+    
+    ea_t ea = func->start_ea;
+    ea_t end = func->end_ea;
+    
+    uint32_t xor_operand = 0;
+    ea_t dword_addr = 0;
+    
+    while (ea < end) {
+        insn_t insn;
+        if (decode_insn(&insn, ea) <= 0) break;
+        
+        // Look for: cmp eax, XXXXXXXX
+        if (insn.itype == NN_cmp && insn.ops[0].type == o_reg && 
+            insn.ops[0].reg == 0 && insn.ops[1].type == o_imm) {
+            info.cmp_value = (uint32_t)insn.ops[1].value;
+            ctree_icall_debug("[asm_disp] Found cmp eax, 0x%x\n", info.cmp_value);
+        }
+        
+        // Look for: sete/setl cl (sete = set if equal, setl = set if less)
+        if ((insn.itype == NN_sete || insn.itype == NN_setne || 
+             insn.itype == NN_setl || insn.itype == NN_setge) && 
+            insn.ops[0].type == o_reg && insn.ops[0].reg == 1) {
+            info.is_equal_cmp = (insn.itype == NN_sete);
+            ctree_icall_debug("[asm_disp] Found %s cl\n", 
+                              info.is_equal_cmp ? "setz" : "setl/other");
+        }
+        
+        // Look for: mov esi/ecx, cs:dword_XXXXX (the encrypted offset)
+        if (insn.itype == NN_mov && insn.ops[0].type == o_reg &&
+            insn.ops[1].type == o_mem) {
+            dword_addr = insn.ops[1].addr;
+            ctree_icall_debug("[asm_disp] Found mov from dword_0x%llx\n", (unsigned long long)dword_addr);
+        }
+        
+        // Look for: mov edi/edx, XXXXXXXX (the XOR operand, right before xor)
+        if (insn.itype == NN_mov && insn.ops[0].type == o_reg &&
+            insn.ops[1].type == o_imm && insn.ops[1].value > 0x10000) {
+            xor_operand = (uint32_t)insn.ops[1].value;
+            ctree_icall_debug("[asm_disp] Found mov with XOR operand 0x%x\n", xor_operand);
+        }
+        
+        ea = next_head(ea, end);
+    }
+    
+    // Compute the offset if we found the encrypted value
+    if (dword_addr != 0 && xor_operand != 0) {
+        uint32_t dword_val = get_dword(dword_addr);
+        uint32_t xored = dword_val ^ xor_operand;
+        // neg = two's complement
+        info.offset = -(int32_t)xored;
+        info.valid = true;
+        ctree_icall_debug("[asm_disp] Computed offset: dword=0x%x ^ 0x%x = 0x%x, neg = %lld\n",
+                          dword_val, xor_operand, xored, (long long)info.offset);
+    }
+    
+    return info;
+}
+
+// Try to resolve the next level of a chained indirect call using ASM analysis
+static ea_t resolve_dispatcher_chain(ea_t initial_target, const carglist_t &args, int max_depth = 3) {
+    ea_t current = initial_target;
+    
+    for (int depth = 0; depth < max_depth; depth++) {
+        ctree_icall_debug("[chain] Depth %d: analyzing 0x%llx\n", depth, (unsigned long long)current);
+        
+        // Ensure it's a function
+        if (!get_func(current)) {
+            if (!add_func(current)) break;
+        }
+        
+        // Analyze at assembly level
+        asm_dispatcher_info_t disp_info = analyze_dispatcher_asm(current);
+        if (!disp_info.valid) {
+            ctree_icall_debug("[chain] 0x%llx is not a recognized dispatcher\n", (unsigned long long)current);
+            break;
+        }
+        
+        // Determine table index from first argument
+        int table_index = 0;
+        if (args.size() > 0 && args[0].op == cot_num) {
+            uint64_t arg_val = args[0].numval();
+            bool cmp_result;
+            if (disp_info.is_equal_cmp) {
+                cmp_result = ((uint32_t)arg_val == disp_info.cmp_value);
+            } else {
+                cmp_result = ((int32_t)arg_val < (int32_t)disp_info.cmp_value);
+            }
+            table_index = cmp_result ? 1 : 0;
+            ctree_icall_debug("[chain] arg=0x%llx, cmp with 0x%x -> %s, idx=%d\n",
+                              (unsigned long long)arg_val, disp_info.cmp_value,
+                              cmp_result ? "true" : "false", table_index);
+        }
+        
+        // The dispatcher reads table from stack - we need to find which table
+        // For now, try to find a table where table[index] - offset is valid code
+        ea_t next_target = BADADDR;
+        segment_t *seg = get_first_seg();
+        while (seg) {
+            if (seg->type == SEG_DATA) {
+                ea_t ea = seg->start_ea;
+                while (ea < seg->end_ea) {
+                    ea_t entry_addr = ea + table_index * 8;
+                    if (entry_addr < seg->end_ea) {
+                        uint64_t entry_val = 0;
+                        if (get_bytes(&entry_val, 8, entry_addr) == 8 && entry_val != 0) {
+                            ea_t target = (ea_t)((int64_t)entry_val + disp_info.offset);
+                            if (target > 0x100000000LL && target < 0x200000000LL) {
+                                if (is_code(get_flags(target)) || get_func(target)) {
+                                    next_target = target;
+                                    ctree_icall_debug("[chain] Found: table[%d]=0x%llx + %lld = 0x%llx\n",
+                                                      table_index, (unsigned long long)entry_val,
+                                                      (long long)disp_info.offset,
+                                                      (unsigned long long)target);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    ea = next_head(ea, seg->end_ea);
+                    if (ea == BADADDR) break;
+                }
+            }
+            if (next_target != BADADDR) break;
+            seg = get_next_seg(seg->start_ea);
+        }
+        
+        if (next_target == BADADDR) {
+            ctree_icall_debug("[chain] Could not resolve next target\n");
+            break;
+        }
+        
+        current = next_target;
+    }
+    
+    return current;
 }
 
 //--------------------------------------------------------------------------
@@ -289,13 +515,50 @@ int ctree_indirect_call_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx) {
         if (target == BADADDR)
             continue;
         
+        // Ensure target is a function - create one if needed
+        func_t *target_func = get_func(target);
+        if (!target_func) {
+            // Target is orphan code - create a function
+            if (add_func(target)) {
+                ctree_icall_debug("[ctree_icall] Created function at target 0x%llx\n",
+                                  (unsigned long long)target);
+                target_func = get_func(target);
+            } else {
+                ctree_icall_debug("[ctree_icall] Failed to create function at 0x%llx\n",
+                                  (unsigned long long)target);
+            }
+        } else if (target_func->start_ea != target) {
+            // Target is mid-function - this might be a jump into another function
+            ctree_icall_debug("[ctree_icall] Target 0x%llx is inside func 0x%llx (+0x%llx)\n",
+                              (unsigned long long)target,
+                              (unsigned long long)target_func->start_ea,
+                              (unsigned long long)(target - target_func->start_ea));
+        }
+        
         // Get the target function name
         qstring target_name;
         get_name(&target_name, target);
         
-        ctree_icall_debug("[ctree_icall] Resolved: table[%lld] - %lld = 0x%llx (%s)\n",
+        ctree_icall_debug("[ctree_icall] Initial target: table[%lld] - %lld = 0x%llx (%s)\n",
                           (long long)idx_val, (long long)offset_val, 
                           (unsigned long long)target, target_name.c_str());
+        
+        // Try to resolve through dispatcher chain if the target is another dispatcher
+        // Extract call arguments to pass to chain resolver
+        ea_t final_target = target;
+        if (call_expr->a && call_expr->a->size() > 0) {
+            final_target = resolve_dispatcher_chain(target, *call_expr->a);
+            if (final_target != target) {
+                // Ensure final target is also a function
+                if (!get_func(final_target)) {
+                    add_func(final_target);
+                }
+                get_name(&target_name, final_target);
+                ctree_icall_debug("[ctree_icall] Chain resolved to: 0x%llx (%s)\n",
+                                  (unsigned long long)final_target, target_name.c_str());
+            }
+        }
+        target = final_target;
         
         // Replace the call target with a direct reference to the resolved function
         // The call expression is: call(complex_expr, args...)

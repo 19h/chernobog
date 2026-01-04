@@ -3,7 +3,10 @@
 // Include x86 instruction definitions
 // Note: ARM instruction IDs are not available via allins.hpp in plugins;
 // we define them manually based on IDA's ARM processor module
+#ifndef ALLINS_HPP_INCLUDED
+#define ALLINS_HPP_INCLUDED
 #include <allins.hpp>
+#endif
 
 // ARM64 instruction IDs (from IDA's ARM processor module)
 // These are the instruction types used by ARM64 disassembly
