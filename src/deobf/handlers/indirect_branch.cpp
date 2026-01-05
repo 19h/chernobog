@@ -1,5 +1,6 @@
 #include "indirect_branch.h"
 #include "../analysis/cfg_analysis.h"
+#include "../analysis/stack_tracker.h"
 
 //--------------------------------------------------------------------------
 // XOR key extraction info - tracks XOR operations with global variables
@@ -631,6 +632,64 @@ int indirect_branch_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx) {
             if (changes > 0) {
                 total_changes += changes;
                 continue;
+            }
+        }
+        
+        // Try frameless continuation analysis
+        // This handles cases where the ijmp target is an external "trampoline" function
+        // that uses the caller's stack frame to compute the next jump target
+        if (ibr.targets.size() == 1) {
+            ea_t continuation_ea = ibr.targets[0];
+            
+            // Check if target is a frameless continuation
+            if (frameless_continuation_t::is_frameless_continuation(continuation_ea)) {
+                deobf::log("[indirect_branch] Block %d: target 0x%llx is frameless continuation\n",
+                          blk->serial, (unsigned long long)continuation_ea);
+                
+                // Build caller context from this function
+                caller_context_t caller_ctx = frameless_continuation_t::build_caller_context(mba, blk);
+                caller_ctx.caller_func = mba->entry_ea;
+                caller_ctx.callee_func = continuation_ea;
+                
+                // Resolve the continuation's final jump target
+                ea_t final_target = frameless_continuation_t::resolve_continuation_jump(continuation_ea, caller_ctx);
+                
+                if (final_target != BADADDR && is_code(get_flags(final_target))) {
+                    deobf::log("[indirect_branch] Resolved frameless continuation: 0x%llx -> 0x%llx\n",
+                              (unsigned long long)continuation_ea, (unsigned long long)final_target);
+                    
+                    // Find the block containing the final target
+                    int target_blk = -1;
+                    for (int bi = 0; bi < mba->qty; bi++) {
+                        mblock_t *b = mba->get_mblock(bi);
+                        if (b && b->start <= final_target && final_target < b->end) {
+                            target_blk = bi;
+                            break;
+                        }
+                    }
+                    
+                    if (target_blk >= 0) {
+                        // Convert ijmp to direct goto
+                        std::vector<ea_t> resolved_targets = {final_target};
+                        int changes = convert_ijmp_to_direct(mba, blk, resolved_targets, ctx);
+                        if (changes > 0) {
+                            total_changes += changes;
+                            continue;
+                        }
+                    } else {
+                        // Target is outside current microcode - annotate
+                        qstring comment;
+                        comment.sprnt("DEOBF: Frameless continuation resolved\n"
+                                     "  Continuation: 0x%llX\n"
+                                     "  Final target: 0x%llX (external)",
+                                     (unsigned long long)continuation_ea,
+                                     (unsigned long long)final_target);
+                        set_cmt(blk->start, comment.c_str(), false);
+                        ctx->branches_simplified++;
+                        total_changes++;
+                        continue;
+                    }
+                }
             }
         }
         

@@ -51,6 +51,15 @@ private:
         ea_t resolved_target;       // Computed target address
         bool is_resolved;           // Whether we successfully resolved it
         qstring target_name;        // Name of resolved target (if any)
+        
+        // Frameless continuation support
+        bool is_frameless_continuation;  // True if this is a call to a frameless continuation
+        ea_t continuation_target;        // Original continuation function address
+        
+        indirect_call_t() : block_idx(-1), call_insn(nullptr), table_addr(BADADDR),
+                           table_index(-1), offset(0), resolved_target(BADADDR),
+                           is_resolved(false), is_frameless_continuation(false),
+                           continuation_target(BADADDR) {}
     };
 
     // Find all indirect calls in the function
