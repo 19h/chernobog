@@ -757,21 +757,36 @@ bool ctree_string_decrypt_handler_t::detect(cfunc_t *cfunc) {
                 
             if (e->op == cot_call && e->x) {
                 cexpr_t *callee = e->x;
+                qstring name;
+                
+                // Check for direct function reference
                 if (callee->op == cot_obj) {
-                    qstring name;
-                    if (get_name(&name, callee->obj_ea) > 0) {
-                        if (name.find("strcpy") != qstring::npos ||
-                            name.find("memcpy") != qstring::npos ||
-                            name.find("CCCrypt") != qstring::npos) {
-                            found = true;
-                            return 1;
-                        }
+                    get_name(&name, callee->obj_ea);
+                }
+                // Check for helper function (used by decompiler for recognized patterns)
+                else if (callee->op == cot_helper) {
+                    name = callee->helper;
+                }
+                
+                if (!name.empty()) {
+                    if (name.find("strcpy") != qstring::npos ||
+                        name.find("memcpy") != qstring::npos ||
+                        name.find("qmemcpy") != qstring::npos ||
+                        name.find("CCCrypt") != qstring::npos) {
+                        found = true;
+                        return 1;
                     }
                 }
             }
             
-            // Check for array index assignments
+            // Check for array index assignments: buffer[i] = value
             if (e->op == cot_asg && e->x && e->x->op == cot_idx) {
+                found = true;
+                return 1;
+            }
+            
+            // Check for pointer dereference assignments: *buffer = value, *(buffer+i) = value
+            if (e->op == cot_asg && e->x && e->x->op == cot_ptr) {
                 found = true;
                 return 1;
             }
