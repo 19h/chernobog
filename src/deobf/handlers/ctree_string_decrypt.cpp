@@ -188,20 +188,25 @@ struct string_call_visitor_t : public ctree_visitor_t {
         if (!get_func_name(&func_name, callee))
             return 0;
             
-        // Check for string copy functions
-        if (func_name == "strcpy" || func_name == "_strcpy" ||
-            func_name == "strncpy" || func_name == "_strncpy" ||
-            func_name == "strlcpy" || func_name == "_strlcpy") {
+        // Check for string copy functions (including __strcpy_chk, ___strcpy_chk variants)
+        // Use substring matching to handle all underscore prefix/suffix variations
+        if (func_name.find("strcpy") != qstring::npos ||
+            func_name.find("strncpy") != qstring::npos ||
+            func_name.find("strlcpy") != qstring::npos) {
             process_strcpy(e, func_name);
         }
-        else if (func_name == "memcpy" || func_name == "_memcpy" ||
-                 func_name == "memmove" || func_name == "_memmove" ||
-                 func_name == "qmemcpy" || func_name == "bcopy") {
+        else if (func_name.find("memcpy") != qstring::npos ||
+                 func_name.find("memmove") != qstring::npos ||
+                 func_name.find("qmemcpy") != qstring::npos ||
+                 func_name.find("bcopy") != qstring::npos ||
+                 func_name.find("memset") != qstring::npos) {
             process_memcpy(e, func_name);
         }
-        else if (func_name == "CCCrypt" || func_name == "_CCCrypt" ||
-                 func_name == "CCCryptorCreate" || func_name == "AES_decrypt" ||
-                 func_name == "EVP_DecryptInit" || func_name == "EVP_DecryptUpdate") {
+        else if (func_name.find("CCCrypt") != qstring::npos ||
+                 func_name.find("AES_decrypt") != qstring::npos ||
+                 func_name.find("AES_cbc_encrypt") != qstring::npos ||
+                 func_name.find("EVP_Decrypt") != qstring::npos ||
+                 func_name.find("EVP_Cipher") != qstring::npos) {
             process_crypto_call(e, func_name);
         }
         
@@ -479,7 +484,12 @@ struct char_assign_visitor_t : public ctree_visitor_t {
         if (!lhs || !rhs)
             return 0;
             
-        // Check for array index pattern
+        // Value must be a constant (or simple transform of constant)
+        uint8_t value;
+        if (!extract_byte_value(rhs, &value))
+            return 0;
+        
+        // Check for array index pattern: buffer[index] = value
         if (lhs->op == cot_idx) {
             cexpr_t *base = lhs->x;
             cexpr_t *index = lhs->y;
@@ -491,11 +501,6 @@ struct char_assign_visitor_t : public ctree_visitor_t {
             if (index->op != cot_num)
                 return 0;
             int idx = (int)index->numval();
-            
-            // Value must be a constant (or simple transform of constant)
-            uint8_t value;
-            if (!extract_byte_value(rhs, &value))
-                return 0;
                 
             // Get the base variable
             if (base->op == cot_var) {
@@ -505,6 +510,84 @@ struct char_assign_visitor_t : public ctree_visitor_t {
             else if (base->op == cot_obj) {
                 ea_t addr = base->obj_ea;
                 global_assignments[addr][idx] = std::make_pair(value, e->ea);
+            }
+        }
+        // Check for pointer dereference pattern: *buffer = value (index 0)
+        else if (lhs->op == cot_ptr) {
+            cexpr_t *ptr_expr = lhs->x;
+            if (!ptr_expr)
+                return 0;
+            
+            // Simple case: *buffer = value (index 0)
+            if (ptr_expr->op == cot_var) {
+                int var_idx = ptr_expr->v.idx;
+                var_assignments[var_idx][0] = std::make_pair(value, e->ea);
+            }
+            else if (ptr_expr->op == cot_obj) {
+                ea_t addr = ptr_expr->obj_ea;
+                global_assignments[addr][0] = std::make_pair(value, e->ea);
+            }
+            // Pointer arithmetic: *(buffer + N) = value
+            else if (ptr_expr->op == cot_add) {
+                cexpr_t *base = ptr_expr->x;
+                cexpr_t *offset = ptr_expr->y;
+                
+                // Handle both orderings: (var + num) or (num + var)
+                if (base && offset) {
+                    if (base->op == cot_num && offset->op != cot_num) {
+                        std::swap(base, offset);
+                    }
+                    
+                    if (offset->op == cot_num) {
+                        int idx = (int)offset->numval();
+                        
+                        if (base->op == cot_var) {
+                            int var_idx = base->v.idx;
+                            var_assignments[var_idx][idx] = std::make_pair(value, e->ea);
+                        }
+                        else if (base->op == cot_obj) {
+                            ea_t addr = base->obj_ea;
+                            global_assignments[addr][idx] = std::make_pair(value, e->ea);
+                        }
+                        // Handle cast around variable: *((_BYTE*)buffer + N)
+                        else if (base->op == cot_cast && base->x) {
+                            cexpr_t *inner = base->x;
+                            if (inner->op == cot_var) {
+                                int var_idx = inner->v.idx;
+                                var_assignments[var_idx][idx] = std::make_pair(value, e->ea);
+                            }
+                            else if (inner->op == cot_obj) {
+                                ea_t addr = inner->obj_ea;
+                                global_assignments[addr][idx] = std::make_pair(value, e->ea);
+                            }
+                        }
+                    }
+                }
+            }
+            // Cast around the whole expression: *(_BYTE*)(buffer + N)
+            else if (ptr_expr->op == cot_cast && ptr_expr->x && ptr_expr->x->op == cot_add) {
+                cexpr_t *add_expr = ptr_expr->x;
+                cexpr_t *base = add_expr->x;
+                cexpr_t *offset = add_expr->y;
+                
+                if (base && offset) {
+                    if (base->op == cot_num && offset->op != cot_num) {
+                        std::swap(base, offset);
+                    }
+                    
+                    if (offset->op == cot_num) {
+                        int idx = (int)offset->numval();
+                        
+                        if (base->op == cot_var) {
+                            int var_idx = base->v.idx;
+                            var_assignments[var_idx][idx] = std::make_pair(value, e->ea);
+                        }
+                        else if (base->op == cot_obj) {
+                            ea_t addr = base->obj_ea;
+                            global_assignments[addr][idx] = std::make_pair(value, e->ea);
+                        }
+                    }
+                }
             }
         }
         
