@@ -16,10 +16,10 @@
 
 // Debug file logging for batch mode where msg() might not be visible
 // Using raw syscalls to bypass IDA's file wrappers
-#include <fcntl.h>
-#include <unistd.h>
+#include "../common/compat.h"
 
 static void debug_log(const char *fmt, ...) {
+#ifndef _WIN32
     char buf[4096];
     va_list args;
     va_start(args, fmt);
@@ -31,9 +31,13 @@ static void debug_log(const char *fmt, ...) {
         write(fd, buf, len);
         close(fd);
     }
+#else
+    (void)fmt; // Debug logging disabled on Windows
+#endif
 }
 
-// Global constructor to trace when dylib is loaded
+#ifndef _WIN32
+// Global constructor to trace when dylib is loaded (Unix only)
 __attribute__((constructor))
 static void dylib_loaded() {
     // Write directly to a marker file to prove we loaded
@@ -45,6 +49,7 @@ static void dylib_loaded() {
     }
     debug_log("[chernobog] DYLIB LOADED (constructor called)\n");
 }
+#endif
 
 // Track which functions we've already auto-deobfuscated to avoid infinite loops
 static std::set<ea_t> s_auto_deobfuscated;

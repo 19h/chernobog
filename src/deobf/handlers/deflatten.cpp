@@ -4,6 +4,7 @@
 #include "../analysis/pattern_match.h"
 #include "../analysis/opaque_eval.h"
 #include "../analysis/z3_solver.h"
+#include "../../common/compat.h"
 #include <algorithm>  // for std::find
 
 using namespace z3_solver;
@@ -82,7 +83,7 @@ bool deflatten_handler_t::is_state_constant(uint64_t val) {
     
     // Accept as potential state constant if it has entropy in both halves
     // Count set bits - genuine state constants tend to have moderate bit density
-    int bit_count = __builtin_popcount((uint32_t)val);
+    int bit_count = portable_popcount((uint32_t)val);
     
     // State constants typically have 8-24 bits set (not all 0s or all 1s)
     if (bit_count >= 6 && bit_count <= 26) {

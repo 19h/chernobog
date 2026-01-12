@@ -1,5 +1,6 @@
 #include "cfg_analysis.h"
 #include "pattern_match.h"
+#include <iterator>  // for std::inserter
 
 namespace cfg_analysis {
 

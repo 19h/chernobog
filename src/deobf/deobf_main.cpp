@@ -65,10 +65,10 @@ void chernobog_clear_all_tracking() {
 //--------------------------------------------------------------------------
 // File-based debug logging for optblock
 //--------------------------------------------------------------------------
-#include <fcntl.h>
-#include <unistd.h>
+#include "../common/compat.h"
 
 static void optblock_debug(const char *fmt, ...) {
+#ifndef _WIN32
     char buf[4096];
     va_list args;
     va_start(args, fmt);
@@ -80,6 +80,9 @@ static void optblock_debug(const char *fmt, ...) {
         write(fd, buf, len);
         close(fd);
     }
+#else
+    (void)fmt;
+#endif
 }
 
 //--------------------------------------------------------------------------

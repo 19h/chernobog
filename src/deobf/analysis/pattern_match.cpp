@@ -1,5 +1,6 @@
 #include "pattern_match.h"
 #include "expr_simplify.h"
+#include "../../common/compat.h"
 
 namespace pattern_match {
 
@@ -158,7 +159,7 @@ static bool is_hikari_state_const(uint64_t val) {
         return false;
     
     // Check bit density - state constants typically have 6-26 bits set
-    int bit_count = __builtin_popcount((uint32_t)val);
+    int bit_count = portable_popcount((uint32_t)val);
     if (bit_count >= 6 && bit_count <= 26) {
         return true;
     }

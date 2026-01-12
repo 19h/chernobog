@@ -1,0 +1,321 @@
+name: Build Chernobog Plugin
+
+on:
+  push:
+    branches: [ master, main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+env:
+  IDA_SDK_REPO: HexRaysSA/ida-sdk
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # IDA stable builds
+          - os: macos-latest
+            name: macos-x86_64
+            cmake_arch: x86_64
+            ida_branch: ""
+            ida_suffix: ""
+          - os: macos-latest
+            name: macos-arm64
+            cmake_arch: arm64
+            ida_branch: ""
+            ida_suffix: ""
+          - os: ubuntu-latest
+            name: linux-x86_64
+            ida_branch: ""
+            ida_suffix: ""
+          - os: windows-latest
+            name: windows-x86_64
+            cmake_arch: x64
+            ida_branch: ""
+            ida_suffix: ""
+          # IDA 9.3 beta builds
+          - os: macos-latest
+            name: macos-x86_64
+            cmake_arch: x86_64
+            ida_branch: releases/9.3.0-beta
+            ida_suffix: "-ida93beta"
+          - os: macos-latest
+            name: macos-arm64
+            cmake_arch: arm64
+            ida_branch: releases/9.3.0-beta
+            ida_suffix: "-ida93beta"
+          - os: ubuntu-latest
+            name: linux-x86_64
+            ida_branch: releases/9.3.0-beta
+            ida_suffix: "-ida93beta"
+          - os: windows-latest
+            name: windows-x86_64
+            cmake_arch: x64
+            ida_branch: releases/9.3.0-beta
+            ida_suffix: "-ida93beta"
+
+    runs-on: ${{ matrix.os }}
+    name: Build ${{ matrix.name }}${{ matrix.ida_suffix }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Checkout IDA SDK (stable)
+        if: matrix.ida_branch == ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.IDA_SDK_REPO }}
+          path: ida-sdk
+
+      - name: Checkout IDA SDK (beta)
+        if: matrix.ida_branch != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.IDA_SDK_REPO }}
+          ref: ${{ matrix.ida_branch }}
+          path: ida-sdk
+
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.cmake_arch }}
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+
+      - name: Cache Z3
+        id: cache-z3
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/z3-install
+          key: z3-4.15.4-${{ matrix.name }}
+
+      - name: Download Z3 (macOS)
+        if: runner.os == 'macOS' && steps.cache-z3.outputs.cache-hit != 'true'
+        run: |
+          Z3_VERSION="4.15.4"
+          if [ "${{ matrix.cmake_arch }}" = "arm64" ]; then
+            Z3_ARCHIVE="z3-${Z3_VERSION}-arm64-osx-13.7.6.zip"
+          else
+            Z3_ARCHIVE="z3-${Z3_VERSION}-x64-osx-13.7.6.zip"
+          fi
+          Z3_URL="https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/${Z3_ARCHIVE}"
+
+          curl -L -o z3.zip "$Z3_URL"
+          unzip z3.zip
+          mv z3-${Z3_VERSION}-* z3-install
+
+          echo "Z3 installed to: $(pwd)/z3-install"
+          ls -la z3-install/
+
+      - name: Download Z3 (Linux)
+        if: runner.os == 'Linux' && steps.cache-z3.outputs.cache-hit != 'true'
+        run: |
+          Z3_VERSION="4.15.4"
+          Z3_ARCHIVE="z3-${Z3_VERSION}-x64-glibc-2.39.zip"
+          Z3_URL="https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/${Z3_ARCHIVE}"
+
+          curl -L -o z3.zip "$Z3_URL"
+          unzip z3.zip
+          mv z3-${Z3_VERSION}-* z3-install
+
+          echo "Z3 installed to: $(pwd)/z3-install"
+          ls -la z3-install/
+
+      - name: Download Z3 (Windows)
+        if: runner.os == 'Windows' && steps.cache-z3.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $z3Version = "4.15.4"
+          $z3Archive = "z3-$z3Version-x64-win.zip"
+          $z3Url = "https://github.com/Z3Prover/z3/releases/download/z3-$z3Version/$z3Archive"
+
+          Invoke-WebRequest -Uri $z3Url -OutFile z3.zip
+          Expand-Archive -Path z3.zip -DestinationPath . -Force
+          $extractedDir = Get-ChildItem -Directory -Filter "z3-$z3Version-*" | Select-Object -First 1
+          Rename-Item $extractedDir.Name "z3-install"
+
+          Write-Host "Z3 installed to: ${{ github.workspace }}/z3-install"
+          Write-Host "Directory structure:"
+          Get-ChildItem z3-install/ -Recurse | Where-Object { $_.Extension -in ".dll", ".lib", ".h" } | ForEach-Object { $_.FullName }
+
+      - name: Set environment variables (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "Z3_ROOT=${{ github.workspace }}/z3-install" >> $GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=${{ github.workspace }}/z3-install" >> $GITHUB_ENV
+          echo "IDASDK=${{ github.workspace }}/ida-sdk" >> $GITHUB_ENV
+
+      - name: Set environment variables (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          echo "Z3_ROOT=${{ github.workspace }}/z3-install" >> $env:GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=${{ github.workspace }}/z3-install" >> $env:GITHUB_ENV
+          echo "IDASDK=${{ github.workspace }}/ida-sdk" >> $env:GITHUB_ENV
+
+      - name: Configure CMake (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_arch }} \
+            -DZ3_USE_CUSTOM=ON \
+            -DZ3_CUSTOM_INCLUDE_DIR=${{ github.workspace }}/z3-install/include \
+            -DZ3_CUSTOM_LIBRARY=${{ github.workspace }}/z3-install/bin/libz3.dylib
+
+      - name: Configure CMake (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DZ3_USE_CUSTOM=ON \
+            -DZ3_CUSTOM_INCLUDE_DIR=${{ github.workspace }}/z3-install/include \
+            -DZ3_CUSTOM_LIBRARY=${{ github.workspace }}/z3-install/bin/libz3.so
+
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          mkdir build -Force
+          cd build
+          # Find the import library - could be in bin/ or lib/
+          $z3Root = "${{ github.workspace }}/z3-install"
+          $implib = if (Test-Path "$z3Root/lib/libz3.lib") { "$z3Root/lib/libz3.lib" } else { "$z3Root/bin/libz3.lib" }
+          Write-Host "Using Z3 import library: $implib"
+          cmake .. -G "Visual Studio 17 2022" -A ${{ matrix.cmake_arch }} -DZ3_USE_CUSTOM=ON "-DZ3_CUSTOM_INCLUDE_DIR=$z3Root/include" "-DZ3_CUSTOM_LIBRARY=$z3Root/bin/libz3.dll" "-DZ3_CUSTOM_IMPLIB=$implib"
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd build
+          cmake --build . --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd build
+          cmake --build . --config Release
+
+      - name: Find built plugin (macOS)
+        if: runner.os == 'macOS'
+        id: find_plugin_macos
+        run: |
+          # GitHub SDK has src/ subdir, bootstrap.cmake adjusts IDASDK internally
+          PLUGIN_FILE="${IDASDK}/src/bin/plugins/chernobog.dylib"
+          if [ ! -f "$PLUGIN_FILE" ]; then
+            echo "ERROR: Could not find built plugin at $PLUGIN_FILE"
+            find . -name "chernobog*" -type f 2>/dev/null || true
+            exit 1
+          fi
+          echo "plugin_file=$PLUGIN_FILE" >> $GITHUB_OUTPUT
+          echo "extension=dylib" >> $GITHUB_OUTPUT
+
+      - name: Find built plugin (Linux)
+        if: runner.os == 'Linux'
+        id: find_plugin_linux
+        run: |
+          # GitHub SDK has src/ subdir, bootstrap.cmake adjusts IDASDK internally
+          PLUGIN_FILE="${IDASDK}/src/bin/plugins/chernobog.so"
+          if [ ! -f "$PLUGIN_FILE" ]; then
+            echo "ERROR: Could not find built plugin at $PLUGIN_FILE"
+            find . -name "chernobog*" -type f 2>/dev/null || true
+            exit 1
+          fi
+          echo "plugin_file=$PLUGIN_FILE" >> $GITHUB_OUTPUT
+          echo "extension=so" >> $GITHUB_OUTPUT
+
+      - name: Find built plugin (Windows)
+        if: runner.os == 'Windows'
+        id: find_plugin_windows
+        shell: pwsh
+        run: |
+          # GitHub SDK has src/ subdir, bootstrap.cmake adjusts IDASDK internally
+          $pluginFile = "$env:IDASDK/src/bin/plugins/chernobog.dll"
+          
+          if (-not (Test-Path $pluginFile)) {
+            Write-Error "Could not find built plugin at $pluginFile"
+            Get-ChildItem -Path . -Recurse -Filter "chernobog*" -ErrorAction SilentlyContinue
+            exit 1
+          }
+          
+          echo "plugin_file=$pluginFile" >> $env:GITHUB_OUTPUT
+          echo "extension=dll" >> $env:GITHUB_OUTPUT
+          Write-Host "Found plugin: $pluginFile"
+
+      - name: Prepare artifact (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p artifacts
+          cp "${{ steps.find_plugin_macos.outputs.plugin_file }}" "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_macos.outputs.extension }}"
+          # Copy Z3 library
+          cp "${{ github.workspace }}/z3-install/bin/libz3.dylib" "artifacts/libz3_${{ matrix.name }}.dylib"
+
+      - name: Prepare artifact (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p artifacts
+          cp "${{ steps.find_plugin_linux.outputs.plugin_file }}" "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_linux.outputs.extension }}"
+          # Copy Z3 library
+          cp "${{ github.workspace }}/z3-install/bin/libz3.so" "artifacts/libz3_${{ matrix.name }}.so"
+
+      - name: Prepare artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts
+          Copy-Item "${{ steps.find_plugin_windows.outputs.plugin_file }}" "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_windows.outputs.extension }}"
+          # Copy Z3 library
+          Copy-Item "${{ github.workspace }}/z3-install/bin/libz3.dll" "artifacts/libz3_${{ matrix.name }}.dll"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chernobog${{ matrix.ida_suffix }}-${{ matrix.name }}
+          path: artifacts/
+          retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          # Copy all plugin and Z3 library files
+          find artifacts -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.dll" \) -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
