@@ -11,6 +11,14 @@
 #define HAS_COMMONCRYPTO 0
 #endif
 
+#ifndef kCCOptionECBMode
+#define kCCOptionECBMode 0x0002
+#endif
+
+#ifndef kCCOptionPKCS7Padding
+#define kCCOptionPKCS7Padding 0x0001
+#endif
+
 //--------------------------------------------------------------------------
 // Debug logging
 //--------------------------------------------------------------------------
@@ -32,17 +40,115 @@ static void ctree_str_debug(const char *fmt, ...) {
 }
 
 //--------------------------------------------------------------------------
+// Base64 helpers
+//--------------------------------------------------------------------------
+static bool is_base64_char(uint8_t c) {
+    return (c >= 'A' && c <= 'Z') ||
+           (c >= 'a' && c <= 'z') ||
+           (c >= '0' && c <= '9') ||
+           c == '+' || c == '/';
+}
+
+static bool looks_like_base64(const uint8_t *data, size_t len) {
+    if (!data || len < 8)
+        return false;
+
+    size_t end = len;
+    while (end > 0 && data[end - 1] == 0)
+        end--;
+
+    if (end < 8 || (end % 4) != 0)
+        return false;
+
+    bool saw_pad = false;
+    size_t pad_count = 0;
+    for (size_t i = 0; i < end; i++) {
+        uint8_t c = data[i];
+        if (c == '=') {
+            saw_pad = true;
+            pad_count++;
+            continue;
+        }
+        if (saw_pad)
+            return false;
+        if (!is_base64_char(c))
+            return false;
+    }
+
+    return pad_count <= 2;
+}
+
+static int base64_value(uint8_t c) {
+    if (c >= 'A' && c <= 'Z')
+        return c - 'A';
+    if (c >= 'a' && c <= 'z')
+        return c - 'a' + 26;
+    if (c >= '0' && c <= '9')
+        return c - '0' + 52;
+    if (c == '+')
+        return 62;
+    if (c == '/')
+        return 63;
+    if (c == '=')
+        return -2;
+    return -1;
+}
+
+static bool decode_base64(const uint8_t *data, size_t len, std::vector<uint8_t> *out) {
+    if (!data || !out)
+        return false;
+
+    out->clear();
+
+    size_t end = len;
+    while (end > 0 && data[end - 1] == 0)
+        end--;
+
+    if (end == 0 || (end % 4) != 0)
+        return false;
+
+    for (size_t i = 0; i < end; i += 4) {
+        int v0 = base64_value(data[i]);
+        int v1 = base64_value(data[i + 1]);
+        int v2 = base64_value(data[i + 2]);
+        int v3 = base64_value(data[i + 3]);
+
+        if (v0 < 0 || v1 < 0)
+            return false;
+        if (v2 == -1 || v3 == -1)
+            return false;
+        if (v2 == -2 && v3 != -2)
+            return false;
+
+        uint32_t triple = ((uint32_t)v0 << 18) | ((uint32_t)v1 << 12);
+        if (v2 >= 0)
+            triple |= ((uint32_t)v2 << 6);
+        if (v3 >= 0)
+            triple |= (uint32_t)v3;
+
+        out->push_back((triple >> 16) & 0xFF);
+        if (v2 >= 0)
+            out->push_back((triple >> 8) & 0xFF);
+        if (v3 >= 0)
+            out->push_back(triple & 0xFF);
+    }
+
+    return !out->empty();
+}
+
+//--------------------------------------------------------------------------
 // AES Decryption Support
 //--------------------------------------------------------------------------
 #if HAS_COMMONCRYPTO
 
-// AES-CBC decryption using CommonCrypto
+// AES-CBC/ECB decryption using CommonCrypto
 // Returns decrypted data, empty on failure
-static std::vector<uint8_t> aes_decrypt_cbc(
+static std::vector<uint8_t> aes_decrypt(
     const std::vector<uint8_t> &ciphertext,
     const std::vector<uint8_t> &key,
     const std::vector<uint8_t> &iv,
-    bool pkcs7_padding = true)
+    bool pkcs7_padding,
+    bool use_ecb)
 {
     std::vector<uint8_t> plaintext;
     
@@ -59,7 +165,7 @@ static std::vector<uint8_t> aes_decrypt_cbc(
     }
     
     // IV must be 16 bytes for AES-CBC
-    if (!iv.empty() && iv.size() != kCCBlockSizeAES128) {
+    if (!use_ecb && !iv.empty() && iv.size() != kCCBlockSizeAES128) {
         ctree_str_debug("[aes] Invalid IV size: %zu (expected 16)\n", iv.size());
         return plaintext;
     }
@@ -69,12 +175,16 @@ static std::vector<uint8_t> aes_decrypt_cbc(
     plaintext.resize(out_size);
     size_t decrypted_size = 0;
     
+    int options = pkcs7_padding ? kCCOptionPKCS7Padding : 0;
+    if (use_ecb)
+        options |= kCCOptionECBMode;
+
     CCCryptorStatus status = CCCrypt(
         kCCDecrypt,
         kCCAlgorithmAES,
-        pkcs7_padding ? kCCOptionPKCS7Padding : 0,
+        options,
         key.data(), key_size,
-        iv.empty() ? nullptr : iv.data(),
+        use_ecb ? nullptr : (iv.empty() ? nullptr : iv.data()),
         ciphertext.data(), ciphertext.size(),
         plaintext.data(), out_size,
         &decrypted_size
@@ -87,7 +197,8 @@ static std::vector<uint8_t> aes_decrypt_cbc(
     }
     
     plaintext.resize(decrypted_size);
-    ctree_str_debug("[aes] Decrypted %zu bytes successfully\n", decrypted_size);
+    ctree_str_debug("[aes] Decrypted %zu bytes successfully (ecb=%d)\n",
+                   decrypted_size, use_ecb ? 1 : 0);
     return plaintext;
 }
 
@@ -97,6 +208,8 @@ static bool try_aes_decrypt_at_address(
     size_t data_len,
     const std::vector<uint8_t> &key,
     const std::vector<uint8_t> &iv,
+    bool pkcs7_padding,
+    bool use_ecb,
     qstring *out_plaintext)
 {
     if (data_addr == BADADDR || data_len == 0 || !out_plaintext)
@@ -110,8 +223,35 @@ static bool try_aes_decrypt_at_address(
         return false;
     }
     
+    if (looks_like_base64(ciphertext.data(), ciphertext.size())) {
+        std::vector<uint8_t> decoded;
+        if (decode_base64(ciphertext.data(), ciphertext.size(), &decoded) &&
+            (decoded.size() % kCCBlockSizeAES128) == 0) {
+            ciphertext.swap(decoded);
+            ctree_str_debug("[aes] Base64-decoded ciphertext (%zu bytes)\n", ciphertext.size());
+        }
+    }
+
+    bool iv_all_zero = iv.empty();
+    if (!iv_all_zero) {
+        iv_all_zero = true;
+        for (uint8_t b : iv) {
+            if (b != 0) {
+                iv_all_zero = false;
+                break;
+            }
+        }
+    }
+
     // Try decryption
-    std::vector<uint8_t> plaintext = aes_decrypt_cbc(ciphertext, key, iv, true);
+    std::vector<uint8_t> plaintext = aes_decrypt(ciphertext, key, iv, pkcs7_padding, use_ecb);
+    if (plaintext.empty()) {
+        if (use_ecb && !iv.empty()) {
+            plaintext = aes_decrypt(ciphertext, key, iv, pkcs7_padding, false);
+        } else if (!use_ecb && iv_all_zero) {
+            plaintext = aes_decrypt(ciphertext, key, iv, pkcs7_padding, true);
+        }
+    }
     if (plaintext.empty())
         return false;
     
@@ -144,11 +284,12 @@ static bool try_aes_decrypt_at_address(
 
 #else
 // No CommonCrypto - stub implementations
-static std::vector<uint8_t> aes_decrypt_cbc(
+static std::vector<uint8_t> aes_decrypt(
     const std::vector<uint8_t> &ciphertext,
     const std::vector<uint8_t> &key,
     const std::vector<uint8_t> &iv,
-    bool pkcs7_padding = true)
+    bool pkcs7_padding,
+    bool use_ecb)
 {
     ctree_str_debug("[aes] CommonCrypto not available on this platform\n");
     return {};
@@ -159,6 +300,8 @@ static bool try_aes_decrypt_at_address(
     size_t data_len,
     const std::vector<uint8_t> &key,
     const std::vector<uint8_t> &iv,
+    bool pkcs7_padding,
+    bool use_ecb,
     qstring *out_plaintext)
 {
     return false;
@@ -325,38 +468,97 @@ private:
         
         if (func_name == "CCCrypt" || func_name == "_CCCrypt") {
             if (args->size() >= 8) {
+                bool is_decrypt = true;
+                bool is_aes = true;
+                bool use_ecb = false;
+                bool use_pkcs7 = true;
+
+                if (args->size() >= 1 && (*args)[0].op == cot_num) {
+                    uint64_t op_val = (*args)[0].numval();
+                    is_decrypt = (op_val == 1);
+                }
+                if (args->size() >= 2 && (*args)[1].op == cot_num) {
+                    uint64_t alg_val = (*args)[1].numval();
+                    if (alg_val != 0)
+                        is_aes = false;
+                }
+                if (args->size() >= 3 && (*args)[2].op == cot_num) {
+                    uint64_t opts = (*args)[2].numval();
+                    use_ecb = (opts & kCCOptionECBMode) != 0;
+                    use_pkcs7 = (opts & kCCOptionPKCS7Padding) != 0;
+                }
+
                 // Get key (arg 3) and keyLen (arg 4)
                 cexpr_t *key_arg = &(*args)[3];
                 cexpr_t *keylen_arg = &(*args)[4];
-                
+
+                size_t key_len = 16;
+                bool has_key_len = false;
+                if (keylen_arg->op == cot_num) {
+                    key_len = (size_t)keylen_arg->numval();
+                    has_key_len = true;
+                }
+
                 // Try to extract key if it's a string constant or global
                 qstring key_str;
                 if (extract_string_constant(key_arg, &key_str)) {
-                    for (size_t i = 0; i < key_str.length(); i++) {
-                        crypto.key.push_back((uint8_t)key_str[i]);
+                    std::vector<uint8_t> decoded;
+                    bool used_decoded = false;
+                    if (looks_like_base64(reinterpret_cast<const uint8_t *>(key_str.c_str()),
+                                          key_str.length()) &&
+                        decode_base64(reinterpret_cast<const uint8_t *>(key_str.c_str()),
+                                      key_str.length(), &decoded)) {
+                        if (decoded.size() == 16 || decoded.size() == 24 || decoded.size() == 32) {
+                            if (!has_key_len || decoded.size() == key_len) {
+                                crypto.key = decoded;
+                                used_decoded = true;
+                            } else if (has_key_len && decoded.size() < key_len && key_len <= 32) {
+                                crypto.key = decoded;
+                                crypto.key.resize(key_len, 0);
+                                used_decoded = true;
+                            }
+                        }
+                    }
+                    if (!used_decoded) {
+                        size_t copy_len = key_str.length();
+                        if (has_key_len && key_len < copy_len)
+                            copy_len = key_len;
+                        crypto.key.assign(reinterpret_cast<const uint8_t *>(key_str.c_str()),
+                                          reinterpret_cast<const uint8_t *>(key_str.c_str()) + copy_len);
+                        if (has_key_len && key_len > copy_len && key_len <= 32) {
+                            crypto.key.resize(key_len, 0);
+                        }
                     }
                 } else if (key_arg->op == cot_obj) {
                     // Key is at a global address - try to read it
                     ea_t key_addr = key_arg->obj_ea;
-                    size_t key_len = 16;  // Default to AES-128
-                    if (keylen_arg->op == cot_num) {
-                        key_len = (size_t)keylen_arg->numval();
-                    }
-                    if (key_addr != BADADDR && key_len <= 32) {
-                        crypto.key.resize(key_len);
-                        if (get_bytes(crypto.key.data(), key_len, key_addr) == key_len) {
+                    if (key_addr != BADADDR && key_len <= 64) {
+                        std::vector<uint8_t> raw_key(key_len);
+                        if (get_bytes(raw_key.data(), key_len, key_addr) == key_len) {
+                            if (looks_like_base64(raw_key.data(), raw_key.size())) {
+                                std::vector<uint8_t> decoded;
+                                if (decode_base64(raw_key.data(), raw_key.size(), &decoded)) {
+                                    if (!decoded.empty()) {
+                                        crypto.key = decoded;
+                                    }
+                                }
+                            }
+                            if (crypto.key.empty())
+                                crypto.key = raw_key;
                             ctree_str_debug("[crypto] Read key from 0x%llx (%zu bytes)\n",
                                            (unsigned long long)key_addr, key_len);
-                        } else {
-                            crypto.key.clear();
                         }
                     }
                 }
-                
+
                 // Determine algorithm based on key length
                 if (keylen_arg->op == cot_num) {
                     uint64_t keylen = keylen_arg->numval();
                     crypto.algorithm = (keylen == 32) ? 1 : 0;  // AES-256 or AES-128
+                } else if (crypto.key.size() == 32) {
+                    crypto.algorithm = 1;
+                } else {
+                    crypto.algorithm = 0;
                 }
                 
                 // Try to get IV (arg 5)
@@ -384,6 +586,12 @@ private:
                 if (data_in_len_arg->op == cot_num) {
                     crypto.input_len = (size_t)data_in_len_arg->numval();
                 }
+                if (crypto.input_len == 0 && crypto.input_addr != BADADDR) {
+                    size_t guess_len = get_max_strlit_length(crypto.input_addr, STRTYPE_C, ALOPT_IGNCLT);
+                    if (guess_len > 0 && guess_len < 4096) {
+                        crypto.input_len = guess_len;
+                    }
+                }
                 
                 // Get output address (arg 8) if available
                 if (args->size() >= 9) {
@@ -394,12 +602,14 @@ private:
                 }
                 
                 // If we have key and input data, try to decrypt
-                if (!crypto.key.empty() && crypto.input_addr != BADADDR && crypto.input_len > 0) {
+                if (is_decrypt && is_aes && !crypto.key.empty() &&
+                    crypto.input_addr != BADADDR && crypto.input_len > 0) {
                     ctree_str_debug("[crypto] Attempting AES decryption: input=0x%llx len=%zu key_len=%zu\n",
                                    (unsigned long long)crypto.input_addr, crypto.input_len, crypto.key.size());
                     
                     if (try_aes_decrypt_at_address(crypto.input_addr, crypto.input_len,
-                                                   crypto.key, crypto.iv, &crypto.decrypted)) {
+                                                   crypto.key, crypto.iv, use_pkcs7,
+                                                   use_ecb, &crypto.decrypted)) {
                         ctree_str_debug("[crypto] Decryption SUCCESS: \"%s\"\n", crypto.decrypted.c_str());
                     }
                 }
@@ -462,6 +672,162 @@ private:
 };
 
 //--------------------------------------------------------------------------
+// Expression evaluation helpers
+//--------------------------------------------------------------------------
+static cexpr_t *strip_cast_ref(cexpr_t *e) {
+    while (e && (e->op == cot_cast || e->op == cot_ref)) {
+        e = e->x;
+    }
+    return e;
+}
+
+static bool read_value_at_address(ea_t addr, size_t size, uint64_t *out) {
+    if (!out || addr == BADADDR || !is_loaded(addr))
+        return false;
+
+    switch (size) {
+        case 1: *out = get_byte(addr); return true;
+        case 2: *out = get_word(addr); return true;
+        case 4: *out = get_dword(addr); return true;
+        case 8: *out = get_qword(addr); return true;
+        default: break;
+    }
+
+    return false;
+}
+
+static bool resolve_const_address(cexpr_t *e, ea_t *out_addr) {
+    if (!e || !out_addr)
+        return false;
+
+    e = strip_cast_ref(e);
+    if (!e)
+        return false;
+
+    if (e->op == cot_obj) {
+        *out_addr = e->obj_ea;
+        return true;
+    }
+
+    if (e->op == cot_num) {
+        *out_addr = (ea_t)e->numval();
+        return true;
+    }
+
+    if (e->op == cot_add) {
+        cexpr_t *base = e->x;
+        cexpr_t *offset = e->y;
+        if (!base || !offset)
+            return false;
+
+        if (base->op == cot_num && offset->op != cot_num)
+            std::swap(base, offset);
+
+        if (offset->op != cot_num)
+            return false;
+
+        ea_t base_addr = BADADDR;
+        if (!resolve_const_address(base, &base_addr))
+            return false;
+
+        *out_addr = base_addr + (ea_t)offset->numval();
+        return true;
+    }
+
+    return false;
+}
+
+static bool eval_expr_u64(cexpr_t *e, const std::map<int, uint64_t> &locals,
+                          uint64_t *out, int size_hint, int depth = 0) {
+    if (!e || !out || depth > 16)
+        return false;
+
+    switch (e->op) {
+        case cot_num:
+            *out = e->numval();
+            return true;
+        case cot_cast:
+            return eval_expr_u64(e->x, locals, out, size_hint, depth + 1);
+        case cot_var: {
+            auto it = locals.find(e->v.idx);
+            if (it == locals.end())
+                return false;
+            *out = it->second;
+            return true;
+        }
+        case cot_obj: {
+            int tsize = e->type.get_size();
+            int read_size = size_hint ? size_hint : tsize;
+            if (read_size <= 0)
+                read_size = size_hint ? size_hint : 1;
+            if (size_hint == 1 && tsize > 1)
+                return false;
+            if (size_hint == 8 && tsize > 0 && tsize < 8)
+                return false;
+            return read_value_at_address(e->obj_ea, (size_t)read_size, out);
+        }
+        case cot_ptr: {
+            ea_t addr = BADADDR;
+            if (!resolve_const_address(e->x, &addr))
+                return false;
+            int tsize = e->type.get_size();
+            int read_size = size_hint ? size_hint : tsize;
+            if (read_size <= 0)
+                read_size = size_hint ? size_hint : 1;
+            return read_value_at_address(addr, (size_t)read_size, out);
+        }
+        case cot_add:
+        case cot_sub:
+        case cot_mul:
+        case cot_band:
+        case cot_bor:
+        case cot_xor:
+        case cot_shl:
+        case cot_sshr:
+        case cot_ushr: {
+            uint64_t l = 0, r = 0;
+            if (!eval_expr_u64(e->x, locals, &l, size_hint, depth + 1))
+                return false;
+            if (!eval_expr_u64(e->y, locals, &r, size_hint, depth + 1))
+                return false;
+            if ((e->op == cot_shl || e->op == cot_sshr || e->op == cot_ushr) && r >= 64)
+                return false;
+            switch (e->op) {
+                case cot_add: *out = l + r; break;
+                case cot_sub: *out = l - r; break;
+                case cot_mul: *out = l * r; break;
+                case cot_band: *out = l & r; break;
+                case cot_bor: *out = l | r; break;
+                case cot_xor: *out = l ^ r; break;
+                case cot_shl: *out = l << r; break;
+                case cot_sshr: *out = (uint64_t)((int64_t)l >> r); break;
+                case cot_ushr: *out = l >> r; break;
+                default: return false;
+            }
+            return true;
+        }
+        case cot_bnot: {
+            uint64_t v = 0;
+            if (!eval_expr_u64(e->x, locals, &v, size_hint, depth + 1))
+                return false;
+            *out = ~v;
+            return true;
+        }
+        case cot_neg: {
+            uint64_t v = 0;
+            if (!eval_expr_u64(e->x, locals, &v, size_hint, depth + 1))
+                return false;
+            *out = (uint64_t)(-(int64_t)v);
+            return true;
+        }
+        default:
+            break;
+    }
+
+    return false;
+}
+
+//--------------------------------------------------------------------------
 // Visitor to find character-by-character assignments
 //--------------------------------------------------------------------------
 struct char_assign_visitor_t : public ctree_visitor_t {
@@ -470,11 +836,11 @@ struct char_assign_visitor_t : public ctree_visitor_t {
     // Map: variable -> (offset -> (value, ea))
     std::map<int, std::map<int, std::pair<uint8_t, ea_t>>> var_assignments;
     std::map<ea_t, std::map<int, std::pair<uint8_t, ea_t>>> global_assignments;
+    std::map<int, uint64_t> local_values;
     
     char_assign_visitor_t(cfunc_t *cf) : ctree_visitor_t(CV_FAST), cfunc(cf) {}
     
     int idaapi visit_expr(cexpr_t *e) override {
-        // Look for: var[index] = value
         if (e->op != cot_asg)
             return 0;
             
@@ -483,114 +849,31 @@ struct char_assign_visitor_t : public ctree_visitor_t {
         
         if (!lhs || !rhs)
             return 0;
-            
-        // Value must be a constant (or simple transform of constant)
-        uint8_t value;
+        
+        if (lhs->op == cot_var) {
+            uint64_t val = 0;
+            int size_hint = lhs->type.get_size();
+            if (size_hint <= 0 || size_hint > 8)
+                size_hint = 0;
+            if (eval_expr_u64(rhs, local_values, &val, size_hint)) {
+                local_values[lhs->v.idx] = val;
+            } else {
+                local_values.erase(lhs->v.idx);
+            }
+        }
+
+        if (try_handle_vector_assign(lhs, rhs, e->ea))
+            return 0;
+
+        uint8_t value = 0;
         if (!extract_byte_value(rhs, &value))
             return 0;
-        
-        // Check for array index pattern: buffer[index] = value
-        if (lhs->op == cot_idx) {
-            cexpr_t *base = lhs->x;
-            cexpr_t *index = lhs->y;
-            
-            if (!base || !index)
-                return 0;
-                
-            // Index must be a constant
-            if (index->op != cot_num)
-                return 0;
-            int idx = (int)index->numval();
-                
-            // Get the base variable
-            if (base->op == cot_var) {
-                int var_idx = base->v.idx;
-                var_assignments[var_idx][idx] = std::make_pair(value, e->ea);
-            }
-            else if (base->op == cot_obj) {
-                ea_t addr = base->obj_ea;
-                global_assignments[addr][idx] = std::make_pair(value, e->ea);
-            }
-        }
-        // Check for pointer dereference pattern: *buffer = value (index 0)
-        else if (lhs->op == cot_ptr) {
-            cexpr_t *ptr_expr = lhs->x;
-            if (!ptr_expr)
-                return 0;
-            
-            // Simple case: *buffer = value (index 0)
-            if (ptr_expr->op == cot_var) {
-                int var_idx = ptr_expr->v.idx;
-                var_assignments[var_idx][0] = std::make_pair(value, e->ea);
-            }
-            else if (ptr_expr->op == cot_obj) {
-                ea_t addr = ptr_expr->obj_ea;
-                global_assignments[addr][0] = std::make_pair(value, e->ea);
-            }
-            // Pointer arithmetic: *(buffer + N) = value
-            else if (ptr_expr->op == cot_add) {
-                cexpr_t *base = ptr_expr->x;
-                cexpr_t *offset = ptr_expr->y;
-                
-                // Handle both orderings: (var + num) or (num + var)
-                if (base && offset) {
-                    if (base->op == cot_num && offset->op != cot_num) {
-                        std::swap(base, offset);
-                    }
-                    
-                    if (offset->op == cot_num) {
-                        int idx = (int)offset->numval();
-                        
-                        if (base->op == cot_var) {
-                            int var_idx = base->v.idx;
-                            var_assignments[var_idx][idx] = std::make_pair(value, e->ea);
-                        }
-                        else if (base->op == cot_obj) {
-                            ea_t addr = base->obj_ea;
-                            global_assignments[addr][idx] = std::make_pair(value, e->ea);
-                        }
-                        // Handle cast around variable: *((_BYTE*)buffer + N)
-                        else if (base->op == cot_cast && base->x) {
-                            cexpr_t *inner = base->x;
-                            if (inner->op == cot_var) {
-                                int var_idx = inner->v.idx;
-                                var_assignments[var_idx][idx] = std::make_pair(value, e->ea);
-                            }
-                            else if (inner->op == cot_obj) {
-                                ea_t addr = inner->obj_ea;
-                                global_assignments[addr][idx] = std::make_pair(value, e->ea);
-                            }
-                        }
-                    }
-                }
-            }
-            // Cast around the whole expression: *(_BYTE*)(buffer + N)
-            else if (ptr_expr->op == cot_cast && ptr_expr->x && ptr_expr->x->op == cot_add) {
-                cexpr_t *add_expr = ptr_expr->x;
-                cexpr_t *base = add_expr->x;
-                cexpr_t *offset = add_expr->y;
-                
-                if (base && offset) {
-                    if (base->op == cot_num && offset->op != cot_num) {
-                        std::swap(base, offset);
-                    }
-                    
-                    if (offset->op == cot_num) {
-                        int idx = (int)offset->numval();
-                        
-                        if (base->op == cot_var) {
-                            int var_idx = base->v.idx;
-                            var_assignments[var_idx][idx] = std::make_pair(value, e->ea);
-                        }
-                        else if (base->op == cot_obj) {
-                            ea_t addr = base->obj_ea;
-                            global_assignments[addr][idx] = std::make_pair(value, e->ea);
-                        }
-                    }
-                }
-            }
-        }
-        
+
+        assign_target_t target;
+        if (!resolve_assignment_target(lhs, &target))
+            return 0;
+
+        record_assignment(target, target.base_index, value, e->ea);
         return 0;
     }
     
@@ -649,39 +932,178 @@ struct char_assign_visitor_t : public ctree_visitor_t {
     }
     
 private:
-    bool extract_byte_value(cexpr_t *e, uint8_t *out) {
-        if (!e)
+    struct assign_target_t {
+        bool is_global = false;
+        int var_idx = -1;
+        ea_t addr = BADADDR;
+        int base_index = 0;
+    };
+
+    bool get_call_name(qstring *out, cexpr_t *callee) {
+        if (!out || !callee)
             return false;
-            
-        // Direct number
-        if (e->op == cot_num) {
-            *out = (uint8_t)(e->numval() & 0xFF);
+        if (callee->op == cot_obj) {
+            return get_name(out, callee->obj_ea) > 0;
+        }
+        if (callee->op == cot_helper) {
+            *out = callee->helper;
             return true;
         }
-        
-        // NOT (~) operation
-        if (e->op == cot_bnot && e->x && e->x->op == cot_num) {
-            *out = (uint8_t)(~e->x->numval() & 0xFF);
-            return true;
-        }
-        
-        // XOR operation with constants
-        if (e->op == cot_xor) {
-            uint8_t left = 0, right = 0;
-            if (e->x && e->x->op == cot_num)
-                left = (uint8_t)(e->x->numval() & 0xFF);
-            if (e->y && e->y->op == cot_num)
-                right = (uint8_t)(e->y->numval() & 0xFF);
-            *out = left ^ right;
-            return true;
-        }
-        
-        // Cast expression
-        if (e->op == cot_cast) {
-            return extract_byte_value(e->x, out);
-        }
-        
         return false;
+    }
+
+    bool resolve_base_target(cexpr_t *base, int idx, assign_target_t *out) {
+        if (!out)
+            return false;
+
+        base = strip_cast_ref(base);
+        if (!base)
+            return false;
+
+        if (base->op == cot_var) {
+            out->is_global = false;
+            out->var_idx = base->v.idx;
+            out->base_index = idx;
+            return true;
+        }
+        if (base->op == cot_obj) {
+            out->is_global = true;
+            out->addr = base->obj_ea;
+            out->base_index = idx;
+            return true;
+        }
+
+        return false;
+    }
+
+    bool resolve_ptr_target(cexpr_t *ptr_expr, assign_target_t *out) {
+        if (!ptr_expr || !out)
+            return false;
+
+        ptr_expr = strip_cast_ref(ptr_expr);
+        if (!ptr_expr)
+            return false;
+
+        if (ptr_expr->op == cot_var || ptr_expr->op == cot_obj) {
+            return resolve_base_target(ptr_expr, 0, out);
+        }
+
+        if (ptr_expr->op == cot_add) {
+            cexpr_t *base = ptr_expr->x;
+            cexpr_t *offset = ptr_expr->y;
+            if (!base || !offset)
+                return false;
+
+            if (base->op == cot_num && offset->op != cot_num)
+                std::swap(base, offset);
+
+            if (offset->op != cot_num)
+                return false;
+
+            int idx = (int)offset->numval();
+            return resolve_base_target(base, idx, out);
+        }
+
+        return false;
+    }
+
+    bool resolve_assignment_target(cexpr_t *lhs, assign_target_t *out) {
+        if (!lhs || !out)
+            return false;
+
+        lhs = strip_cast_ref(lhs);
+        if (!lhs)
+            return false;
+
+        if (lhs->op == cot_idx) {
+            cexpr_t *base = lhs->x;
+            cexpr_t *index = lhs->y;
+            if (!base || !index || index->op != cot_num)
+                return false;
+            return resolve_base_target(base, (int)index->numval(), out);
+        }
+
+        if (lhs->op == cot_ptr) {
+            return resolve_ptr_target(lhs->x, out);
+        }
+
+        return false;
+    }
+
+    void record_assignment(const assign_target_t &target, int idx, uint8_t value, ea_t ea) {
+        if (idx < 0)
+            return;
+
+        if (target.is_global) {
+            auto &slots = global_assignments[target.addr];
+            if (slots.find(idx) == slots.end())
+                slots[idx] = std::make_pair(value, ea);
+        } else {
+            auto &slots = var_assignments[target.var_idx];
+            if (slots.find(idx) == slots.end())
+                slots[idx] = std::make_pair(value, ea);
+        }
+    }
+
+    bool extract_byte_value(cexpr_t *e, uint8_t *out) {
+        if (!e || !out)
+            return false;
+
+        uint64_t val = 0;
+        if (!eval_expr_u64(e, local_values, &val, 1))
+            return false;
+
+        *out = (uint8_t)(val & 0xFF);
+        return true;
+    }
+
+    bool extract_qword_value(cexpr_t *e, uint64_t *out) {
+        if (!e || !out)
+            return false;
+
+        return eval_expr_u64(e, local_values, out, 8);
+    }
+
+    bool try_handle_vector_assign(cexpr_t *lhs, cexpr_t *rhs, ea_t ea) {
+        if (!lhs || !rhs)
+            return false;
+
+        cexpr_t *call_expr = rhs;
+        if (call_expr->op == cot_cast)
+            call_expr = call_expr->x;
+
+        if (!call_expr || call_expr->op != cot_call || !call_expr->x)
+            return false;
+
+        qstring func_name;
+        if (!get_call_name(&func_name, call_expr->x))
+            return false;
+
+        if (func_name.find("veor_s8") == qstring::npos &&
+            func_name.find("veorq_s8") == qstring::npos)
+            return false;
+
+        if (!call_expr->a || call_expr->a->size() < 2)
+            return false;
+
+        uint64_t left = 0;
+        uint64_t right = 0;
+        if (!extract_qword_value(&(*call_expr->a)[0], &left))
+            return false;
+        if (!extract_qword_value(&(*call_expr->a)[1], &right))
+            return false;
+
+        assign_target_t target;
+        if (!resolve_assignment_target(lhs, &target))
+            return false;
+
+        uint64_t result = left ^ right;
+        for (int i = 0; i < 8; i++) {
+            uint8_t b = (uint8_t)((result >> (i * 8)) & 0xFF);
+            record_assignment(target, target.base_index + i, b, ea);
+        }
+
+        return true;
     }
     
     bool try_reconstruct(const std::map<int, std::pair<uint8_t, ea_t>> &offsets,
@@ -700,12 +1122,15 @@ private:
         // Build the string
         qstring str;
         bool all_printable = true;
-        
+        int printable_count = 0;
+        int missing_count = 0;
+
         for (int i = min_idx; i <= max_idx; i++) {
             auto it = offsets.find(i);
             if (it == offsets.end()) {
-                // Gap in assignments - might be end of string
-                break;
+                missing_count++;
+                str += '?';
+                continue;
             }
             
             uint8_t c = it->second.first;
@@ -724,10 +1149,20 @@ private:
             }
             
             str += (char)c;
+            printable_count++;
         }
         
-        if (!all_printable || str.length() < 3)
+        if (!all_printable || printable_count < 3)
             return false;
+
+        if (missing_count > 0) {
+            int total = printable_count + missing_count;
+            if (total > 0 && (printable_count * 100 / total) < 60)
+                return false;
+        }
+
+        while (str.length() > 0 && str[str.length() - 1] == '?')
+            str.resize(str.length() - 1);
             
         out->reconstructed = str;
         if (!out->insn_addrs.empty()) {

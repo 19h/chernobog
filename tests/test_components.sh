@@ -9,7 +9,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-IDUMP="/home/null/local/bin/idump"
+IDUMP="${IDUMP:-/home/null/local/bin/idump}"
 TEST_BINARY="$PROJECT_DIR/fake_hikari"
 RESULTS_DIR="$SCRIPT_DIR/results/components"
 
