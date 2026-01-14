@@ -1,4 +1,5 @@
 #include "ast.h"
+#include "../../common/simd.h"
 #include <sstream>
 #include <algorithm>
 
@@ -92,44 +93,45 @@ const char* opcode_name(mcode_t op) {
 }
 
 //--------------------------------------------------------------------------
-// Mop comparison ignoring size
+// Mop comparison ignoring size - OPTIMIZED
+// Uses equal_insns() for mop_d instead of expensive dstr() string comparison
 //--------------------------------------------------------------------------
 bool mops_equal_ignore_size(const mop_t& a, const mop_t& b) {
-    if (a.t != b.t)
+    // Fast path: type must match
+    if (SIMD_UNLIKELY(a.t != b.t))
         return false;
 
     switch (a.t) {
-        case mop_n:  // Number constant
-            if (!a.nnn || !b.nnn) return false;
-            return a.nnn->value == b.nnn->value;
-        case mop_r:  // Register
+        case mop_r:  // Register - single int comparison (hot path)
             return a.r == b.r;
+        case mop_n:  // Number constant
+            if (SIMD_UNLIKELY(!a.nnn || !b.nnn)) return a.nnn == b.nnn;
+            return a.nnn->value == b.nnn->value;
         case mop_S:  // Stack variable
-            if (!a.s || !b.s) return false;
+            if (SIMD_UNLIKELY(!a.s || !b.s)) return a.s == b.s;
             return a.s->off == b.s->off;
-        case mop_v:  // Global variable
+        case mop_v:  // Global variable - single uint64 comparison
             return a.g == b.g;
         case mop_l:  // Local variable
-            if (!a.l || !b.l) return false;
-            return a.l->idx == b.l->idx && a.l->off == b.l->off;
+            if (SIMD_UNLIKELY(!a.l || !b.l)) return a.l == b.l;
+            return (a.l->idx == b.l->idx) & (a.l->off == b.l->off);
         case mop_d:  // Result of another instruction
-            // Compare by string representation
-            if (!a.d || !b.d) return false;
-            return a.d->dstr() == b.d->dstr();
+            // OPTIMIZED: Use equal_insns() instead of expensive dstr() string comparison
+            // dstr() creates a string allocation on every call - extremely slow
+            if (SIMD_UNLIKELY(!a.d || !b.d)) return a.d == b.d;
+            return a.d->equal_insns(*b.d, EQ_IGNSIZE);
         case mop_b:  // Block reference
             return a.b == b.b;
         case mop_f:  // Function call
             return false;  // Too complex to compare
         case mop_a:  // Address
-            if (!a.a || !b.a) return false;
-            if (a.a->t != b.a->t)
-                return false;
+            if (SIMD_UNLIKELY(!a.a || !b.a)) return a.a == b.a;
             return mops_equal_ignore_size(*a.a, *b.a);
         case mop_h:  // Helper function
-            if (!a.helper || !b.helper) return false;
+            if (SIMD_UNLIKELY(!a.helper || !b.helper)) return a.helper == b.helper;
             return strcmp(a.helper, b.helper) == 0;
         case mop_str:  // String
-            if (!a.cstr || !b.cstr) return false;
+            if (SIMD_UNLIKELY(!a.cstr || !b.cstr)) return a.cstr == b.cstr;
             return strcmp(a.cstr, b.cstr) == 0;
         case mop_z:  // Empty
             return true;
@@ -575,6 +577,100 @@ std::string AstConstant::to_string() const {
     std::ostringstream ss;
     ss << "0x" << std::hex << value;
     return ss.str();
+}
+
+//--------------------------------------------------------------------------
+// Non-mutating pattern match implementation - OPTIMIZED
+// Matches pattern against candidate without modifying either AST
+//--------------------------------------------------------------------------
+
+// Internal recursive match function
+static bool match_pattern_internal(const AstBase* pattern, const AstBase* candidate, 
+                                   MatchBindings& bindings) {
+    if (!pattern || !candidate) {
+        return pattern == candidate;
+    }
+    
+    // Handle leaf patterns
+    if (pattern->is_leaf()) {
+        if (pattern->is_constant()) {
+            // Constant pattern - candidate must be a constant with matching value
+            auto pat_const = static_cast<const AstConstant*>(pattern);
+            
+            // Candidate must have a number operand
+            if (candidate->mop.t != mop_n || !candidate->mop.nnn) {
+                return false;
+            }
+            
+            // Named constants (like c_minus_1) - just capture binding
+            if (!pat_const->const_name.empty()) {
+                bindings.add(pat_const->const_name.c_str(), candidate->mop, 
+                            candidate->dest_size, candidate->ea);
+                return true;
+            }
+            
+            // Value constants must match
+            uint64_t expected = pat_const->value;
+            uint64_t actual = candidate->mop.nnn->value;
+            uint64_t mask = size_mask(candidate->mop.size);
+            return (expected & mask) == (actual & mask);
+        }
+        
+        // Variable leaf - capture binding
+        auto pat_leaf = static_cast<const AstLeaf*>(pattern);
+        
+        // Check if this variable was already bound
+        const mop_t* existing = bindings.find(pat_leaf->name);
+        if (existing) {
+            // Same variable must have same value (implicit equality)
+            return mops_equal_ignore_size(*existing, candidate->mop);
+        }
+        
+        // New binding
+        bindings.add(pat_leaf->name.c_str(), candidate->mop, 
+                    candidate->dest_size, candidate->ea);
+        return true;
+    }
+    
+    // Pattern is a node - candidate must also be a node
+    if (!candidate->is_node()) {
+        return false;
+    }
+    
+    auto pat_node = static_cast<const AstNode*>(pattern);
+    auto cand_node = static_cast<const AstNode*>(candidate);
+    
+    // Opcode must match
+    if (pat_node->opcode != cand_node->opcode) {
+        return false;
+    }
+    
+    // Match left operand
+    if (pat_node->left) {
+        if (!cand_node->left) return false;
+        if (!match_pattern_internal(pat_node->left.get(), cand_node->left.get(), bindings)) {
+            return false;
+        }
+    }
+    
+    // Match right operand
+    if (pat_node->right) {
+        if (!cand_node->right) return false;
+        if (!match_pattern_internal(pat_node->right.get(), cand_node->right.get(), bindings)) {
+            return false;
+        }
+    } else if (cand_node->right) {
+        // Pattern has no right but candidate does
+        return false;
+    }
+    
+    return true;
+}
+
+bool match_pattern(const AstBase* pattern, const AstBase* candidate, 
+                   MatchBindings& bindings) {
+    bindings.clear();
+    return match_pattern_internal(pattern, candidate, bindings);
 }
 
 } // namespace ast

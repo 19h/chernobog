@@ -213,6 +213,47 @@ public:
 };
 
 //--------------------------------------------------------------------------
+// Pattern match bindings - stores captured operands without mutating pattern
+//--------------------------------------------------------------------------
+struct MatchBindings {
+    static constexpr size_t MAX_BINDINGS = 8;  // x_0 through x_7 typically
+    
+    struct Binding {
+        const char* name;  // Variable name (pointer to interned string)
+        mop_t mop;         // Captured operand
+        int dest_size;     // Size in bytes
+        ea_t ea;           // Address
+    };
+    
+    Binding bindings[MAX_BINDINGS];
+    size_t count = 0;
+    
+    void clear() { count = 0; }
+    
+    bool add(const char* name, const mop_t& mop, int size, ea_t ea) {
+        if (count >= MAX_BINDINGS) return false;
+        bindings[count++] = {name, mop, size, ea};
+        return true;
+    }
+    
+    const mop_t* find(const std::string& name) const {
+        for (size_t i = 0; i < count; i++) {
+            if (name == bindings[i].name) {
+                return &bindings[i].mop;
+            }
+        }
+        return nullptr;
+    }
+};
+
+//--------------------------------------------------------------------------
+// Non-mutating pattern match function (doesn't modify pattern AST)
+// Returns true if pattern matches candidate, fills bindings
+//--------------------------------------------------------------------------
+bool match_pattern(const AstBase* pattern, const AstBase* candidate, 
+                   MatchBindings& bindings);
+
+//--------------------------------------------------------------------------
 // Helper functions for creating AST nodes (for rule definitions)
 //--------------------------------------------------------------------------
 

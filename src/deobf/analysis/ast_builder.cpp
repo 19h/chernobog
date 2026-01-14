@@ -1,18 +1,46 @@
 #include "ast_builder.h"
-#include <functional>
+#include "../../common/simd.h"
 
 namespace chernobog {
 namespace ast {
 
 //--------------------------------------------------------------------------
-// MopKey implementation
+// MopKey implementation - OPTIMIZED
+// Uses pre-computed hash to eliminate string allocations and enable O(1) lookup
 //--------------------------------------------------------------------------
+
+// Hash an instruction structure recursively (for mop_d operands)
+uint64_t MopKey::hash_insn(const minsn_t* ins) {
+    if (!ins) return 0;
+    
+    // Combine opcode, operand info, and recursive structure
+    uint64_t h = simd::hash_u64(static_cast<uint64_t>(ins->opcode));
+    
+    // Hash left operand
+    if (ins->l.t != mop_z) {
+        MopKey left_key = from_mop(ins->l);
+        h = simd::hash_combine(h, left_key.hash);
+    }
+    
+    // Hash right operand
+    if (ins->r.t != mop_z) {
+        MopKey right_key = from_mop(ins->r);
+        h = simd::hash_combine(h, right_key.hash);
+    }
+    
+    // Include destination size
+    h = simd::hash_combine(h, static_cast<uint64_t>(ins->d.size));
+    
+    return h;
+}
+
 MopKey MopKey::from_mop(const mop_t& mop) {
     MopKey key;
-    key.type = mop.t;
-    key.size = mop.size;
+    key.type = static_cast<uint16_t>(mop.t);
+    key.size = static_cast<uint16_t>(mop.size);
     key.value1 = 0;
     key.value2 = 0;
+    key._pad = 0;
 
     switch (mop.t) {
         case mop_n:  // Number constant
@@ -45,9 +73,14 @@ MopKey MopKey::from_mop(const mop_t& mop) {
             break;
 
         case mop_d:  // Result of another instruction
-            // Use string representation for complex operands
+            // OPTIMIZED: Hash instruction structure instead of string
             if (mop.d) {
-                key.str_value = mop.d->dstr();
+                key.value1 = hash_insn(mop.d);
+                // Use secondary hash for collision resistance
+                key.value2 = simd::hash_combine(
+                    static_cast<uint64_t>(mop.d->opcode),
+                    static_cast<uint64_t>(mop.d->ea)
+                );
             }
             break;
 
@@ -58,135 +91,115 @@ MopKey MopKey::from_mop(const mop_t& mop) {
         case mop_a:  // Address operand
             if (mop.a) {
                 MopKey inner = from_mop(*mop.a);
-                key.value1 = inner.value1;
-                key.value2 = inner.value2;
-                key.str_value = "a:" + inner.str_value;
+                key.value1 = inner.hash;  // Use inner hash
+                key.value2 = inner.value1;
             }
             break;
 
         case mop_h:  // Helper function
-            key.str_value = mop.helper ? mop.helper : "";
+            if (mop.helper) {
+                key.value1 = simd::hash_bytes(mop.helper, strlen(mop.helper));
+            }
             break;
 
         case mop_str:  // String
-            key.str_value = mop.cstr ? mop.cstr : "";
+            if (mop.cstr) {
+                key.value1 = simd::hash_bytes(mop.cstr, strlen(mop.cstr));
+            }
             break;
 
         default:
             break;
     }
 
+    // Compute final hash combining all fields
+    key.hash = simd::hash_u64(key.type);
+    key.hash = simd::hash_combine(key.hash, simd::hash_u64(key.size));
+    key.hash = simd::hash_combine(key.hash, simd::hash_u64(key.value1));
+    key.hash = simd::hash_combine(key.hash, simd::hash_u64(key.value2));
+
     return key;
 }
 
-bool MopKey::operator<(const MopKey& other) const {
-    if (type != other.type) return type < other.type;
-    if (size != other.size) return size < other.size;
-    if (value1 != other.value1) return value1 < other.value1;
-    if (value2 != other.value2) return value2 < other.value2;
-    return str_value < other.str_value;
-}
-
-bool MopKey::operator==(const MopKey& other) const {
-    return type == other.type &&
-           size == other.size &&
-           value1 == other.value1 &&
-           value2 == other.value2 &&
-           str_value == other.str_value;
-}
-
-size_t MopKey::Hash::operator()(const MopKey& k) const {
-    size_t h = std::hash<int>()(static_cast<int>(k.type));
-    h ^= std::hash<int>()(k.size) << 1;
-    h ^= std::hash<uint64_t>()(k.value1) << 2;
-    h ^= std::hash<uint64_t>()(k.value2) << 3;
-    h ^= std::hash<std::string>()(k.str_value) << 4;
-    return h;
-}
-
 //--------------------------------------------------------------------------
-// AstBuilderContext implementation
+// AstBuilderContext implementation - OPTIMIZED
+// Uses unordered_map with pre-computed hash for O(1) lookup
 //--------------------------------------------------------------------------
 AstPtr AstBuilderContext::get_or_create(const mop_t& mop) {
     MopKey key = MopKey::from_mop(mop);
-
-    if (has(key)) {
-        return get(key);
+    
+    // O(1) lookup with pre-computed hash
+    auto it = mop_to_ast_.find(key);
+    if (it != mop_to_ast_.end()) {
+        return it->second;
     }
 
     // Will be created by caller and added
     return nullptr;
 }
 
-bool AstBuilderContext::has(const MopKey& key) const {
-    return mop_to_ast.count(key) > 0;
-}
-
-AstPtr AstBuilderContext::get(const MopKey& key) const {
-    auto it = mop_to_ast.find(key);
-    return (it != mop_to_ast.end()) ? it->second : nullptr;
-}
-
-void AstBuilderContext::add(const MopKey& key, AstPtr ast) {
-    ast->ast_index = next_index++;
-    mop_to_ast[key] = ast;
-}
-
-void AstBuilderContext::clear() {
-    mop_to_ast.clear();
-    next_index = 0;
-}
-
 //--------------------------------------------------------------------------
-// AstCache implementation
+// AstCache implementation - OPTIMIZED
+// Uses unordered_map with pre-computed hash for O(1) lookup
+// Features:
+//   - Prefetching hints for hot path
+//   - Batch eviction to amortize cost
+//   - Lock-free read path (future: reader-writer lock)
 //--------------------------------------------------------------------------
 AstCache& AstCache::instance() {
-    static AstCache instance;
-    return instance;
+    static AstCache inst;
+    return inst;
 }
 
 AstPtr AstCache::get(const MopKey& key) {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<std::mutex> lock(mutex_);
 
-    auto it = cache.find(key);
-    if (it != cache.end()) {
-        hit_count++;
+    // Prefetch likely bucket location based on hash
+    size_t bucket = cache_.bucket(key);
+    if (bucket < cache_.bucket_count()) {
+        // Prefetch bucket memory for faster iteration
+        auto bucket_begin = cache_.begin(bucket);
+        if (bucket_begin != cache_.end(bucket)) {
+            SIMD_PREFETCH_READ(&(*bucket_begin));
+        }
+    }
+
+    auto it = cache_.find(key);
+    if (SIMD_LIKELY(it != cache_.end())) {
+        hit_count_++;
         // Return a mutable copy (the cached one is frozen)
         return it->second->clone();
     }
 
-    miss_count++;
+    miss_count_++;
     return nullptr;
 }
 
 void AstCache::put(const MopKey& key, AstPtr ast) {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<std::mutex> lock(mutex_);
 
     evict_if_needed();
 
     // Freeze and cache
     ast->freeze();
-    cache[key] = ast;
+    cache_.emplace(key, std::move(ast));
 }
 
 void AstCache::clear() {
-    std::lock_guard<std::mutex> lock(mutex);
-    cache.clear();
-    hit_count = 0;
-    miss_count = 0;
-}
-
-size_t AstCache::size() const {
-    return cache.size();
+    std::lock_guard<std::mutex> lock(mutex_);
+    cache_.clear();
+    hit_count_ = 0;
+    miss_count_ = 0;
 }
 
 void AstCache::evict_if_needed() {
-    // Simple eviction: remove 10% of entries when full
-    if (cache.size() >= MAX_CACHE_SIZE) {
-        size_t to_remove = MAX_CACHE_SIZE / 10;
-        auto it = cache.begin();
-        for (size_t i = 0; i < to_remove && it != cache.end(); i++) {
-            it = cache.erase(it);
+    // Simple eviction: remove EVICTION_BATCH entries when full
+    // Use batch eviction to amortize the cost of resizing
+    if (SIMD_UNLIKELY(cache_.size() >= MAX_CACHE_SIZE)) {
+        // Remove entries from the front (pseudo-FIFO)
+        auto it = cache_.begin();
+        for (size_t i = 0; i < EVICTION_BATCH && it != cache_.end(); i++) {
+            it = cache_.erase(it);
         }
     }
 }

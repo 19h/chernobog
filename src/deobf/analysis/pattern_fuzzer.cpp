@@ -1,12 +1,19 @@
 #include "pattern_fuzzer.h"
+#include "../../common/simd.h"
 #include <algorithm>
 #include <numeric>
+#include <unordered_set>
 
 namespace chernobog {
 namespace ast {
 
-// Default configuration
-PatternFuzzer::Config PatternFuzzer::config_;
+// Default configuration - OPTIMIZED defaults
+PatternFuzzer::Config PatternFuzzer::config_ = {
+    true,   // fuzz_commutative - Enable commutative - critical for matching
+    false,  // fuzz_add_sub - Disabled - slow and rarely needed
+    false,  // fuzz_associative - Disabled - slow
+    32      // max_variants - Increased limit with optimization
+};
 
 void PatternFuzzer::set_config(const Config& cfg) {
     config_ = cfg;
@@ -109,23 +116,37 @@ std::vector<AstPtr> PatternFuzzer::fuzz_commutative_op(
             operand_variants.push_back(variants);
         }
 
-        // Build all combinations of fuzzed operands
-        // Start with first operand's variants
-        std::vector<std::vector<AstPtr>> combos = {{}};
-        for (const auto& ov : operand_variants) {
-            std::vector<std::vector<AstPtr>> new_combos;
-            for (const auto& combo : combos) {
-                for (const auto& variant : ov) {
-                    auto new_combo = combo;
-                    new_combo.push_back(variant);
-                    new_combos.push_back(new_combo);
-                }
+        // OPTIMIZED: Build combinations without copying vectors on every iteration
+        // Use indices to track current combination, avoiding O(n!) allocations
+        std::vector<size_t> indices(operand_variants.size(), 0);
+        std::vector<std::vector<AstPtr>> combos;
+        combos.reserve(config_.max_variants);
+        
+        bool done = false;
+        while (!done) {
+            // Build current combination from indices
+            std::vector<AstPtr> combo;
+            combo.reserve(operand_variants.size());
+            for (size_t i = 0; i < operand_variants.size(); i++) {
+                combo.push_back(operand_variants[i][indices[i]]);
             }
-            combos = new_combos;
-
-            // Limit explosion
-            if (combos.size() > static_cast<size_t>(config_.max_variants)) {
+            combos.push_back(std::move(combo));
+            
+            // Check limit
+            if (combos.size() >= static_cast<size_t>(config_.max_variants)) {
                 break;
+            }
+            
+            // Increment indices (like counting in mixed radix)
+            done = true;
+            for (size_t i = operand_variants.size(); i > 0; --i) {
+                size_t idx = i - 1;
+                indices[idx]++;
+                if (indices[idx] < operand_variants[idx].size()) {
+                    done = false;
+                    break;
+                }
+                indices[idx] = 0;
             }
         }
 
@@ -183,21 +204,33 @@ std::vector<AstPtr> PatternFuzzer::fuzz_add_sub_op(
             operand_variants.push_back(sov);
         }
 
-        // Build combinations
-        std::vector<std::vector<SignedOperand>> combos = {{}};
-        for (const auto& ov : operand_variants) {
-            std::vector<std::vector<SignedOperand>> new_combos;
-            for (const auto& combo : combos) {
-                for (const auto& variant : ov) {
-                    auto new_combo = combo;
-                    new_combo.push_back(variant);
-                    new_combos.push_back(new_combo);
-                }
+        // OPTIMIZED: Build combinations without copying vectors on every iteration
+        std::vector<size_t> indices(operand_variants.size(), 0);
+        std::vector<std::vector<SignedOperand>> combos;
+        combos.reserve(config_.max_variants);
+        
+        bool done = false;
+        while (!done) {
+            std::vector<SignedOperand> combo;
+            combo.reserve(operand_variants.size());
+            for (size_t i = 0; i < operand_variants.size(); i++) {
+                combo.push_back(operand_variants[i][indices[i]]);
             }
-            combos = new_combos;
-
-            if (combos.size() > static_cast<size_t>(config_.max_variants)) {
+            combos.push_back(std::move(combo));
+            
+            if (combos.size() >= static_cast<size_t>(config_.max_variants)) {
                 break;
+            }
+            
+            done = true;
+            for (size_t i = operand_variants.size(); i > 0; --i) {
+                size_t idx = i - 1;
+                indices[idx]++;
+                if (indices[idx] < operand_variants[idx].size()) {
+                    done = false;
+                    break;
+                }
+                indices[idx] = 0;
             }
         }
 
@@ -531,17 +564,40 @@ PatternFuzzer::permute_signed(const std::vector<SignedOperand>& operands) {
 }
 
 //--------------------------------------------------------------------------
-// Deduplication
+// Deduplication - OPTIMIZED
+// Uses hash-based comparison instead of expensive string generation
 //--------------------------------------------------------------------------
+static uint64_t compute_ast_hash(const AstBase* node) {
+    if (!node) return 0;
+    
+    if (node->is_leaf()) {
+        if (node->is_constant()) {
+            auto c = static_cast<const AstConstant*>(node);
+            return simd::hash_combine(simd::hash_u64(0xCAFE), simd::hash_u64(c->value));
+        }
+        auto leaf = static_cast<const AstLeaf*>(node);
+        return simd::hash_bytes(leaf->name.data(), leaf->name.size());
+    }
+    
+    auto n = static_cast<const AstNode*>(node);
+    uint64_t h = simd::hash_u64(static_cast<uint64_t>(n->opcode));
+    h = simd::hash_combine(h, compute_ast_hash(n->left.get()));
+    h = simd::hash_combine(h, compute_ast_hash(n->right.get()));
+    return h;
+}
+
 std::vector<AstPtr> PatternFuzzer::deduplicate(const std::vector<AstPtr>& variants) {
     std::vector<AstPtr> unique;
-    std::set<std::string> seen;
+    std::unordered_set<uint64_t> seen;
+    
+    unique.reserve(variants.size());
+    seen.reserve(variants.size());
 
     for (const auto& v : variants) {
         if (v) {
-            std::string repr = v->to_string();
-            if (seen.count(repr) == 0) {
-                seen.insert(repr);
+            uint64_t h = compute_ast_hash(v.get());
+            if (seen.find(h) == seen.end()) {
+                seen.insert(h);
                 unique.push_back(v);
             }
         }

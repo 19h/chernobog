@@ -98,10 +98,12 @@ void RuleRegistry::clear() {
 }
 
 //--------------------------------------------------------------------------
-// Matching
+// Matching - OPTIMIZED
+// Uses non-mutating match path to eliminate pattern cloning per attempt.
+// Uses stack-allocated MatchBindings to avoid heap allocations.
 //--------------------------------------------------------------------------
 RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t* ins) {
-    if (!ins || !initialized_) {
+    if (SIMD_UNLIKELY(!ins || !initialized_)) {
         return MatchResult();
     }
 
@@ -109,57 +111,54 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t* ins) {
 
     // Convert instruction to AST
     AstPtr candidate = minsn_to_ast(ins);
-    if (!candidate) {
+    if (SIMD_UNLIKELY(!candidate)) {
         return MatchResult();
     }
 
-    // Get matching patterns from storage
-    auto matches = storage_.get_matching_rules(candidate);
+    // Get matching patterns from storage - const ref, no copy
+    const auto& matches = storage_.get_matching_rules(candidate);
+
+    // Stack-allocated bindings - NO HEAP ALLOCATION PER MATCH ATTEMPT
+    MatchBindings match_bindings;
 
     // Try each match
     for (const auto& rp : matches) {
-        if (!rp.rule || !rp.pattern) {
+        if (SIMD_UNLIKELY(!rp.rule || !rp.pattern)) {
             continue;
         }
 
-        std::map<std::string, mop_t> bindings;
-
-        // Clone pattern for matching
-        AstPtr pattern_copy = rp.pattern->clone();
-
-        if (pattern_copy->is_node()) {
-            auto node = std::static_pointer_cast<AstNode>(pattern_copy);
-
-            if (node->check_pattern_and_copy_mops(candidate)) {
-                // Extract bindings
-                auto leaves = node->get_leafs_by_name();
-                for (const auto& kv : leaves) {
-                    bindings[kv.first] = kv.second->mop;
-                }
-
-                // Check extra validation
-                if (!rp.rule->check_candidate(pattern_copy)) {
-                    continue;
-                }
-
-                // Check constant constraints
-                if (!rp.rule->check_constants(bindings)) {
-                    continue;
-                }
-
-                // Success!
-                successful_matches_++;
-                rp.rule->increment_hit_count();
-
-                // Debug: log successful match
-                msg("[chernobog] MBA rule '%s' matched\n", rp.rule->name());
-
-                MatchResult result;
-                result.rule = rp.rule;
-                result.matched_pattern = rp.pattern;
-                result.bindings = bindings;
-                return result;
+        // OPTIMIZED: Non-mutating match - NO PATTERN CLONING
+        // match_pattern() doesn't modify pattern, just fills bindings
+        if (match_pattern(rp.pattern.get(), candidate.get(), match_bindings)) {
+            // Only convert to std::map when we have a structural match
+            // This moves the allocation cost to the success path
+            std::map<std::string, mop_t> bindings;
+            for (size_t i = 0; i < match_bindings.count; i++) {
+                bindings[match_bindings.bindings[i].name] = match_bindings.bindings[i].mop;
             }
+
+            // Check extra validation - pass candidate (unchanged)
+            if (!rp.rule->check_candidate(candidate)) {
+                continue;
+            }
+
+            // Check constant constraints
+            if (!rp.rule->check_constants(bindings)) {
+                continue;
+            }
+
+            // Success!
+            successful_matches_++;
+            rp.rule->increment_hit_count();
+
+            // Debug: log successful match
+            msg("[chernobog] MBA rule '%s' matched\n", rp.rule->name());
+
+            MatchResult result;
+            result.rule = rp.rule;
+            result.matched_pattern = rp.pattern;
+            result.bindings = std::move(bindings);
+            return result;
         }
     }
 
@@ -171,50 +170,51 @@ std::vector<RuleRegistry::MatchResult> RuleRegistry::find_all_matches(
 
     std::vector<MatchResult> results;
 
-    if (!ins || !initialized_) {
+    if (SIMD_UNLIKELY(!ins || !initialized_)) {
         return results;
     }
 
     // Convert instruction to AST
     AstPtr candidate = minsn_to_ast(ins);
-    if (!candidate) {
+    if (SIMD_UNLIKELY(!candidate)) {
         return results;
     }
 
-    // Get matching patterns
-    auto matches = storage_.get_matching_rules(candidate);
+    // Get matching patterns - const ref, no copy
+    const auto& matches = storage_.get_matching_rules(candidate);
+    
+    // Reserve for typical case
+    results.reserve(4);
+
+    // Stack-allocated bindings - NO HEAP ALLOCATION PER MATCH ATTEMPT
+    MatchBindings match_bindings;
 
     for (const auto& rp : matches) {
-        if (!rp.rule || !rp.pattern) {
+        if (SIMD_UNLIKELY(!rp.rule || !rp.pattern)) {
             continue;
         }
 
-        std::map<std::string, mop_t> bindings;
-        AstPtr pattern_copy = rp.pattern->clone();
-
-        if (pattern_copy->is_node()) {
-            auto node = std::static_pointer_cast<AstNode>(pattern_copy);
-
-            if (node->check_pattern_and_copy_mops(candidate)) {
-                auto leaves = node->get_leafs_by_name();
-                for (const auto& kv : leaves) {
-                    bindings[kv.first] = kv.second->mop;
-                }
-
-                if (!rp.rule->check_candidate(pattern_copy)) {
-                    continue;
-                }
-
-                if (!rp.rule->check_constants(bindings)) {
-                    continue;
-                }
-
-                MatchResult result;
-                result.rule = rp.rule;
-                result.matched_pattern = rp.pattern;
-                result.bindings = bindings;
-                results.push_back(result);
+        // OPTIMIZED: Non-mutating match - NO PATTERN CLONING
+        if (match_pattern(rp.pattern.get(), candidate.get(), match_bindings)) {
+            // Convert bindings only on successful structural match
+            std::map<std::string, mop_t> bindings;
+            for (size_t i = 0; i < match_bindings.count; i++) {
+                bindings[match_bindings.bindings[i].name] = match_bindings.bindings[i].mop;
             }
+
+            if (!rp.rule->check_candidate(candidate)) {
+                continue;
+            }
+
+            if (!rp.rule->check_constants(bindings)) {
+                continue;
+            }
+
+            MatchResult result;
+            result.rule = rp.rule;
+            result.matched_pattern = rp.pattern;
+            result.bindings = std::move(bindings);
+            results.push_back(std::move(result));
         }
     }
 

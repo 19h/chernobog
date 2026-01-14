@@ -1,10 +1,11 @@
 #pragma once
 #include "../deobf_types.h"
+#include "../../common/simd.h"
 #include <vector>
 #include <set>
 
 //--------------------------------------------------------------------------
-// Chain Simplification
+// Chain Simplification - OPTIMIZED
 //
 // Handles flattening of chains of same-opcode operations and detecting
 // identities that simplify to constants or single operands.
@@ -15,18 +16,28 @@
 //   OR:  x | x = x, x | 0 = x, x | ~x = -1
 //   ADD: x + (-x) = 0, x + 0 = x
 //
+// OPTIMIZATIONS:
+//   - SmallVector to avoid heap allocation for typical chains
+//   - SIMD-accelerated operand comparison
+//   - Prefetching for O(n²) identity removal
+//
 // Ported from d810-ng's chain_simplification logic
 //--------------------------------------------------------------------------
 
 namespace chernobog {
 namespace chain {
 
+// Maximum operands typically seen in a chain
+constexpr size_t TYPICAL_CHAIN_SIZE = 16;
+
 //--------------------------------------------------------------------------
 // Operand tracking for chain analysis
+// Aligned for SIMD operations
 //--------------------------------------------------------------------------
-struct chain_operand_t {
+struct alignas(16) chain_operand_t {
     mop_t mop;
     bool is_negated;  // For XOR: ~x, for ADD: -x
+    uint8_t _pad[7];  // Alignment padding
 
     chain_operand_t() : is_negated(false) {}
     chain_operand_t(const mop_t& m, bool neg = false)

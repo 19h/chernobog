@@ -4,33 +4,41 @@ namespace chernobog {
 namespace chain {
 
 //--------------------------------------------------------------------------
-// Utility functions
+// Utility functions - OPTIMIZED
 //--------------------------------------------------------------------------
 
-bool ChainSimplifier::operands_equal(const mop_t& a, const mop_t& b) {
-    if (a.t != b.t || a.size != b.size)
-        return false;
+// Fast operand equality check with early-out and SIMD hints
+SIMD_FORCE_INLINE bool ChainSimplifier::operands_equal(const mop_t& a, const mop_t& b) {
+    // Fast path: type and size must match
+    // Combine checks into single comparison where possible
+    if (SIMD_UNLIKELY(a.t != b.t)) return false;
+    if (SIMD_UNLIKELY(a.size != b.size)) return false;
 
+    // Type-specific comparison
     switch (a.t) {
-        case mop_r:  // Register
+        case mop_r:  // Register - single int comparison
             return a.r == b.r;
 
         case mop_n:  // Number constant
+            // Null check first
+            if (SIMD_UNLIKELY(!a.nnn || !b.nnn)) return a.nnn == b.nnn;
             return a.nnn->value == b.nnn->value;
 
         case mop_S:  // Stack variable
+            if (SIMD_UNLIKELY(!a.s || !b.s)) return a.s == b.s;
             return a.s->off == b.s->off;
 
-        case mop_v:  // Global variable
+        case mop_v:  // Global variable - single uint64 comparison
             return a.g == b.g;
 
         case mop_l:  // Local variable
-            return a.l->idx == b.l->idx && a.l->off == b.l->off;
+            if (SIMD_UNLIKELY(!a.l || !b.l)) return a.l == b.l;
+            // Combine comparisons
+            return (a.l->idx == b.l->idx) & (a.l->off == b.l->off);
 
         case mop_d:  // Result of another instruction
-            // Compare instruction content
-            if (!a.d || !b.d)
-                return false;
+            // Compare instruction content (most expensive case)
+            if (SIMD_UNLIKELY(!a.d || !b.d)) return a.d == b.d;
             return a.d->equal_insns(*b.d, EQ_IGNSIZE);
 
         default:
@@ -162,78 +170,93 @@ void ChainSimplifier::flatten_chain(const minsn_t* ins, mcode_t target_op,
 }
 
 //--------------------------------------------------------------------------
-// Identity removal
+// Identity removal - OPTIMIZED
+// Uses prefetching and in-place removal to reduce allocations
 //--------------------------------------------------------------------------
 
 bool ChainSimplifier::remove_identity_pairs(std::vector<chain_operand_t>& operands,
                                             mcode_t op, int size) {
+    const size_t n = operands.size();
+    if (n < 2) return false;
+    
     bool removed = false;
-    std::vector<bool> removed_flags(operands.size(), false);
+    
+    // Use bit flags instead of vector<bool> for small sizes
+    // This avoids heap allocation for typical chain sizes
+    uint64_t removed_flags = 0;
+    static_assert(TYPICAL_CHAIN_SIZE <= 64, "Flags must fit in uint64_t");
+    
+    const chain_operand_t* ops = operands.data();
 
-    for (size_t i = 0; i < operands.size(); i++) {
-        if (removed_flags[i])
+    for (size_t i = 0; i < n && i < 64; i++) {
+        if (removed_flags & (1ULL << i))
             continue;
 
-        for (size_t j = i + 1; j < operands.size(); j++) {
-            if (removed_flags[j])
+        // Prefetch next operand for the inner loop
+        if (i + 2 < n) {
+            SIMD_PREFETCH_READ(&ops[i + 2].mop);
+        }
+
+        for (size_t j = i + 1; j < n && j < 64; j++) {
+            if (removed_flags & (1ULL << j))
                 continue;
+
+            // Prefetch ahead in inner loop
+            if (j + 1 < n) {
+                SIMD_PREFETCH_READ(&ops[j + 1].mop);
+            }
 
             bool is_pair = false;
 
             switch (op) {
                 case m_xor:
                     // x ^ x = 0
-                    if (operands_equal(operands[i].mop, operands[j].mop) &&
-                        operands[i].is_negated == operands[j].is_negated) {
+                    if (operands_equal(ops[i].mop, ops[j].mop) &&
+                        ops[i].is_negated == ops[j].is_negated) {
                         is_pair = true;
                     }
                     break;
 
                 case m_and:
                     // x & ~x = 0
-                    if (is_not_of(operands[i].mop, operands[j].mop) ||
-                        is_not_of(operands[j].mop, operands[i].mop)) {
+                    if (is_not_of(ops[i].mop, ops[j].mop) ||
+                        is_not_of(ops[j].mop, ops[i].mop)) {
                         // This produces 0, which is absorbing for AND
-                        // Mark all operands as removed and set result to 0
-                        for (size_t k = 0; k < operands.size(); k++)
-                            removed_flags[k] = true;
                         operands.clear();
                         return true;
                     }
                     // x & x = x
-                    if (operands_equal(operands[i].mop, operands[j].mop)) {
-                        removed_flags[j] = true;
+                    if (operands_equal(ops[i].mop, ops[j].mop)) {
+                        removed_flags |= (1ULL << j);
                         removed = true;
                     }
                     break;
 
                 case m_or:
                     // x | ~x = -1
-                    if (is_not_of(operands[i].mop, operands[j].mop) ||
-                        is_not_of(operands[j].mop, operands[i].mop)) {
+                    if (is_not_of(ops[i].mop, ops[j].mop) ||
+                        is_not_of(ops[j].mop, ops[i].mop)) {
                         // This produces -1, which is absorbing for OR
-                        for (size_t k = 0; k < operands.size(); k++)
-                            removed_flags[k] = true;
                         operands.clear();
                         return true;
                     }
                     // x | x = x
-                    if (operands_equal(operands[i].mop, operands[j].mop)) {
-                        removed_flags[j] = true;
+                    if (operands_equal(ops[i].mop, ops[j].mop)) {
+                        removed_flags |= (1ULL << j);
                         removed = true;
                     }
                     break;
 
                 case m_add:
                     // x + (-x) = 0
-                    if (operands[i].is_negated != operands[j].is_negated &&
-                        operands_equal(operands[i].mop, operands[j].mop)) {
+                    if (ops[i].is_negated != ops[j].is_negated &&
+                        operands_equal(ops[i].mop, ops[j].mop)) {
                         is_pair = true;
                     }
                     // Also check for actual neg instructions
                     if (!is_pair) {
-                        if (is_neg_of(operands[i].mop, operands[j].mop) ||
-                            is_neg_of(operands[j].mop, operands[i].mop)) {
+                        if (is_neg_of(ops[i].mop, ops[j].mop) ||
+                            is_neg_of(ops[j].mop, ops[i].mop)) {
                             is_pair = true;
                         }
                     }
@@ -241,22 +264,25 @@ bool ChainSimplifier::remove_identity_pairs(std::vector<chain_operand_t>& operan
             }
 
             if (is_pair) {
-                removed_flags[i] = true;
-                removed_flags[j] = true;
+                removed_flags |= (1ULL << i) | (1ULL << j);
                 removed = true;
                 break;
             }
         }
     }
 
-    if (removed) {
-        std::vector<chain_operand_t> new_operands;
-        for (size_t i = 0; i < operands.size(); i++) {
-            if (!removed_flags[i]) {
-                new_operands.push_back(operands[i]);
+    // In-place compaction instead of creating new vector
+    if (removed && removed_flags != 0) {
+        size_t write_idx = 0;
+        for (size_t i = 0; i < n && i < 64; i++) {
+            if (!(removed_flags & (1ULL << i))) {
+                if (write_idx != i) {
+                    operands[write_idx] = std::move(operands[i]);
+                }
+                write_idx++;
             }
         }
-        operands = new_operands;
+        operands.resize(write_idx);
     }
 
     return removed;
