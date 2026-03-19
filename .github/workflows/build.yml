@@ -20,6 +20,8 @@ jobs:
       matrix:
         include:
           # IDA stable builds
+          # Build x86_64 on the newer Apple Silicon image: Z3 4.16 uses
+          # C++20 aggregate initialization that older Xcode images reject.
           - os: macos-latest
             name: macos-x86_64
             cmake_arch: x86_64
@@ -79,75 +81,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential cmake
 
-      - name: Cache Z3
-        id: cache-z3
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/z3-install
-          key: z3-4.16.0-${{ matrix.name }}
-
-      - name: Download Z3 (macOS)
-        if: runner.os == 'macOS' && steps.cache-z3.outputs.cache-hit != 'true'
-        run: |
-          Z3_VERSION="4.16.0"
-          if [ "${{ matrix.cmake_arch }}" = "arm64" ]; then
-            Z3_ARCHIVE="z3-${Z3_VERSION}-arm64-osx-15.7.3.zip"
-          else
-            Z3_ARCHIVE="z3-${Z3_VERSION}-x64-osx-15.7.3.zip"
-          fi
-          Z3_URL="https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/${Z3_ARCHIVE}"
-
-          curl -L -o z3.zip "$Z3_URL"
-          unzip z3.zip
-          mv z3-${Z3_VERSION}-* z3-install
-
-          echo "Z3 installed to: $(pwd)/z3-install"
-          ls -la z3-install/
-
-      - name: Download Z3 (Linux)
-        if: runner.os == 'Linux' && steps.cache-z3.outputs.cache-hit != 'true'
-        run: |
-          Z3_VERSION="4.16.0"
-          Z3_ARCHIVE="z3-${Z3_VERSION}-x64-glibc-2.39.zip"
-          Z3_URL="https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/${Z3_ARCHIVE}"
-
-          curl -L -o z3.zip "$Z3_URL"
-          unzip z3.zip
-          mv z3-${Z3_VERSION}-* z3-install
-
-          echo "Z3 installed to: $(pwd)/z3-install"
-          ls -la z3-install/
-
-      - name: Download Z3 (Windows)
-        if: runner.os == 'Windows' && steps.cache-z3.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          $z3Version = "4.16.0"
-          $z3Archive = "z3-$z3Version-x64-win.zip"
-          $z3Url = "https://github.com/Z3Prover/z3/releases/download/z3-$z3Version/$z3Archive"
-
-          Invoke-WebRequest -Uri $z3Url -OutFile z3.zip
-          Expand-Archive -Path z3.zip -DestinationPath . -Force
-          $extractedDir = Get-ChildItem -Directory -Filter "z3-$z3Version-*" | Select-Object -First 1
-          Rename-Item $extractedDir.Name "z3-install"
-
-          Write-Host "Z3 installed to: ${{ github.workspace }}/z3-install"
-          Write-Host "Directory structure:"
-          Get-ChildItem z3-install/ -Recurse | Where-Object { $_.Extension -in ".dll", ".lib", ".h" } | ForEach-Object { $_.FullName }
-
       - name: Set environment variables (Unix)
         if: runner.os != 'Windows'
         run: |
-          echo "Z3_ROOT=${{ github.workspace }}/z3-install" >> $GITHUB_ENV
-          echo "CMAKE_PREFIX_PATH=${{ github.workspace }}/z3-install" >> $GITHUB_ENV
           echo "IDASDK=${{ github.workspace }}/ida-sdk" >> $GITHUB_ENV
 
       - name: Set environment variables (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          echo "Z3_ROOT=${{ github.workspace }}/z3-install" >> $env:GITHUB_ENV
-          echo "CMAKE_PREFIX_PATH=${{ github.workspace }}/z3-install" >> $env:GITHUB_ENV
           echo "IDASDK=${{ github.workspace }}/ida-sdk" >> $env:GITHUB_ENV
 
       - name: Configure CMake (macOS)
@@ -157,10 +99,7 @@ jobs:
           cd build
           cmake .. \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_arch }} \
-            -DZ3_USE_CUSTOM=ON \
-            -DZ3_CUSTOM_INCLUDE_DIR=${{ github.workspace }}/z3-install/include \
-            -DZ3_CUSTOM_LIBRARY=${{ github.workspace }}/z3-install/bin/libz3.dylib
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_arch }}
 
       - name: Configure CMake (Linux)
         if: runner.os == 'Linux'
@@ -168,10 +107,7 @@ jobs:
           mkdir -p build
           cd build
           cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DZ3_USE_CUSTOM=ON \
-            -DZ3_CUSTOM_INCLUDE_DIR=${{ github.workspace }}/z3-install/include \
-            -DZ3_CUSTOM_LIBRARY=${{ github.workspace }}/z3-install/bin/libz3.so
+            -DCMAKE_BUILD_TYPE=Release
 
       - name: Configure CMake (Windows)
         if: runner.os == 'Windows'
@@ -179,11 +115,7 @@ jobs:
         run: |
           mkdir build -Force
           cd build
-          # Find the import library - could be in bin/ or lib/
-          $z3Root = "${{ github.workspace }}/z3-install"
-          $implib = if (Test-Path "$z3Root/lib/libz3.lib") { "$z3Root/lib/libz3.lib" } else { "$z3Root/bin/libz3.lib" }
-          Write-Host "Using Z3 import library: $implib"
-          cmake .. -G "Visual Studio 17 2022" -A ${{ matrix.cmake_arch }} -DZ3_USE_CUSTOM=ON "-DZ3_CUSTOM_INCLUDE_DIR=$z3Root/include" "-DZ3_CUSTOM_LIBRARY=$z3Root/bin/libz3.dll" "-DZ3_CUSTOM_IMPLIB=$implib"
+          cmake .. -G "Visual Studio 17 2022" -A ${{ matrix.cmake_arch }}
 
       - name: Build (Unix)
         if: runner.os != 'Windows'
@@ -232,13 +164,13 @@ jobs:
         run: |
           # GitHub SDK has src/ subdir, bootstrap.cmake adjusts IDASDK internally
           $pluginFile = "$env:IDASDK/src/bin/plugins/chernobog.dll"
-          
+
           if (-not (Test-Path $pluginFile)) {
             Write-Error "Could not find built plugin at $pluginFile"
             Get-ChildItem -Path . -Recurse -Filter "chernobog*" -ErrorAction SilentlyContinue
             exit 1
           }
-          
+
           echo "plugin_file=$pluginFile" >> $env:GITHUB_OUTPUT
           echo "extension=dll" >> $env:GITHUB_OUTPUT
           Write-Host "Found plugin: $pluginFile"
@@ -248,16 +180,12 @@ jobs:
         run: |
           mkdir -p artifacts
           cp "${{ steps.find_plugin_macos.outputs.plugin_file }}" "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_macos.outputs.extension }}"
-          # Copy Z3 library
-          cp "${{ github.workspace }}/z3-install/bin/libz3.dylib" "artifacts/libz3_${{ matrix.name }}.dylib"
 
       - name: Prepare artifact (Linux)
         if: runner.os == 'Linux'
         run: |
           mkdir -p artifacts
           cp "${{ steps.find_plugin_linux.outputs.plugin_file }}" "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_linux.outputs.extension }}"
-          # Copy Z3 library
-          cp "${{ github.workspace }}/z3-install/bin/libz3.so" "artifacts/libz3_${{ matrix.name }}.so"
 
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
@@ -265,8 +193,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifacts
           Copy-Item "${{ steps.find_plugin_windows.outputs.plugin_file }}" "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_windows.outputs.extension }}"
-          # Copy Z3 library
-          Copy-Item "${{ github.workspace }}/z3-install/bin/libz3.dll" "artifacts/libz3_${{ matrix.name }}.dll"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -291,7 +217,7 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
-          # Copy all plugin and Z3 library files
+          # Copy all built plugin files
           find artifacts -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.dll" \) -exec cp {} release/ \;
           ls -la release/
 

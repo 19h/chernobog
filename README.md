@@ -97,19 +97,16 @@ Applied after microcode optimization for additional cleanup:
 ## Requirements
 
 - IDA Pro 9.0+ with Hex-Rays decompiler
-- CMake 3.10+
+- CMake 3.27+
 - Ninja build system
 - IDA SDK (set `IDASDK` environment variable)
-- **Z3 Theorem Prover** (set `Z3_ROOT` environment variable or install system-wide)
+- Git
 
 ## Building
 
 ```bash
 # Set your IDA SDK path
 export IDASDK=/path/to/idasdk
-
-# Set Z3 path (if not installed system-wide)
-export Z3_ROOT=/path/to/z3
 
 # Build the plugin
 make build
@@ -119,6 +116,9 @@ mkdir build && cd build
 cmake .. -G Ninja
 ninja
 ```
+
+The build always fetches and statically links Z3 from source, so the first
+configure/build takes longer and does not require a separate Z3 installation.
 
 ## Installation
 

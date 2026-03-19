@@ -1,5 +1,7 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.27)
 project(chernobog)
+
+include(FetchContent)
 
 # Find IDA SDK
 SET(IDASDK_VER "92" CACHE STRING "92")
@@ -12,112 +14,46 @@ IF( NOT CMAKE_BUILD_TYPE )
 	set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
 ENDIF()
 SET(CMAKE_SKIP_RPATH TRUE)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # ============================================================================
 # Z3 Theorem Prover Integration
 # ============================================================================
 
-# Allow specifying custom Z3 location (used by CI/CD builds)
-option(Z3_USE_CUSTOM "Use custom Z3 library instead of system" OFF)
-set(Z3_CUSTOM_INCLUDE_DIR "" CACHE PATH "Custom Z3 include directory")
-set(Z3_CUSTOM_LIBRARY "" CACHE FILEPATH "Custom Z3 library path")
-set(Z3_CUSTOM_IMPLIB "" CACHE FILEPATH "Custom Z3 import library path (Windows only)")
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL
+    "Do not re-check FetchContent remotes on every build" FORCE)
 
-if(Z3_USE_CUSTOM AND Z3_CUSTOM_INCLUDE_DIR AND Z3_CUSTOM_LIBRARY)
-    message(STATUS "Using custom Z3: ${Z3_CUSTOM_LIBRARY}")
-    set(Z3_FOUND TRUE)
-    set(Z3_CUSTOM TRUE)
+message(STATUS "Building bundled Z3 from source")
 
-    # Create imported target for custom Z3
-    add_library(z3_custom SHARED IMPORTED)
-    if(WIN32)
-        # On Windows, we need the import library (.lib) for linking
-        if(Z3_CUSTOM_IMPLIB)
-            set_target_properties(z3_custom PROPERTIES
-                IMPORTED_LOCATION "${Z3_CUSTOM_LIBRARY}"
-                IMPORTED_IMPLIB "${Z3_CUSTOM_IMPLIB}"
-                INTERFACE_INCLUDE_DIRECTORIES "${Z3_CUSTOM_INCLUDE_DIR}"
-            )
-        else()
-            # Try to find .lib next to .dll or in lib/ directory
-            get_filename_component(Z3_LIB_DIR "${Z3_CUSTOM_LIBRARY}" DIRECTORY)
-            get_filename_component(Z3_LIB_DIR_PARENT "${Z3_LIB_DIR}" DIRECTORY)
-            find_file(Z3_IMPLIB_FOUND
-                NAMES libz3.lib z3.lib
-                PATHS "${Z3_LIB_DIR}" "${Z3_LIB_DIR_PARENT}/lib"
-                NO_DEFAULT_PATH
-            )
-            if(Z3_IMPLIB_FOUND)
-                message(STATUS "Found Z3 import library: ${Z3_IMPLIB_FOUND}")
-                set_target_properties(z3_custom PROPERTIES
-                    IMPORTED_LOCATION "${Z3_CUSTOM_LIBRARY}"
-                    IMPORTED_IMPLIB "${Z3_IMPLIB_FOUND}"
-                    INTERFACE_INCLUDE_DIRECTORIES "${Z3_CUSTOM_INCLUDE_DIR}"
-                )
-            else()
-                message(FATAL_ERROR "Z3_CUSTOM_IMPLIB not set and could not find import library (.lib) for Z3")
-            endif()
-        endif()
-    else()
-        set_target_properties(z3_custom PROPERTIES
-            IMPORTED_LOCATION "${Z3_CUSTOM_LIBRARY}"
-            INTERFACE_INCLUDE_DIRECTORIES "${Z3_CUSTOM_INCLUDE_DIR}"
-        )
-    endif()
-else()
-    set(Z3_CUSTOM FALSE)
+FetchContent_Declare(
+    z3
+    GIT_REPOSITORY https://github.com/Z3Prover/z3.git
+    GIT_TAG        z3-4.16.0
+)
 
-    # Check if Z3_ROOT is set and use it preferentially
-    if(DEFINED ENV{Z3_ROOT})
-        set(Z3_ROOT_DIR "$ENV{Z3_ROOT}")
-        message(STATUS "Using Z3_ROOT: ${Z3_ROOT_DIR}")
+set(Z3_BUILD_LIBZ3_SHARED OFF CACHE BOOL "Build static Z3" FORCE)
+set(Z3_BUILD_EXECUTABLE OFF CACHE BOOL "Skip Z3 executable" FORCE)
+set(Z3_BUILD_TEST_EXECUTABLES OFF CACHE BOOL "Skip Z3 tests" FORCE)
+set(Z3_ENABLE_EXAMPLE_TARGETS OFF CACHE BOOL "Skip Z3 examples" FORCE)
+set(Z3_BUILD_DOCUMENTATION OFF CACHE BOOL "Skip Z3 docs" FORCE)
+set(WARNINGS_AS_ERRORS OFF CACHE BOOL "Disable warnings as errors" FORCE)
 
-        find_library(Z3_LIBRARY NAMES z3 libz3
-            PATHS
-                "${Z3_ROOT_DIR}/install/lib"
-                "${Z3_ROOT_DIR}/lib"
-                "${Z3_ROOT_DIR}/bin"
-                "${Z3_ROOT_DIR}/build"
-            NO_DEFAULT_PATH
-        )
-        find_path(Z3_INCLUDE_DIR z3++.h
-            PATHS
-                "${Z3_ROOT_DIR}/install/include"
-                "${Z3_ROOT_DIR}/include"
-                "${Z3_ROOT_DIR}/src/api/c++"
-                "${Z3_ROOT_DIR}/src/api"
-            NO_DEFAULT_PATH
-        )
-    endif()
+FetchContent_MakeAvailable(z3)
 
-    # Fall back to system search if not found via Z3_ROOT
-    if(NOT Z3_LIBRARY OR NOT Z3_INCLUDE_DIR)
-        find_package(Z3 CONFIG QUIET)
-        if(NOT Z3_FOUND)
-            find_library(Z3_LIBRARY NAMES z3 libz3
-                PATHS
-                    /usr/lib
-                    /usr/lib/x86_64-linux-gnu
-                    /usr/local/lib
-                    /opt/homebrew/lib
-            )
-            find_path(Z3_INCLUDE_DIR z3++.h
-                PATHS
-                    /usr/include
-                    /usr/local/include
-                    /opt/homebrew/include
-            )
-        endif()
-    endif()
-
-    if(Z3_LIBRARY AND Z3_INCLUDE_DIR)
-        set(Z3_FOUND TRUE)
-        message(STATUS "Found Z3 library: ${Z3_LIBRARY}")
-        message(STATUS "Found Z3 include: ${Z3_INCLUDE_DIR}")
-    elseif(NOT Z3_FOUND)
-        message(FATAL_ERROR "Z3 not found. Please install Z3 or set Z3_ROOT environment variable.")
-    endif()
+if(NOT TARGET libz3)
+    message(FATAL_ERROR "Expected Z3 target 'libz3' was not created")
 endif()
+
+if(TARGET libz3 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(libz3 PRIVATE $<$<CONFIG:Release>:-O3>)
+elseif(TARGET libz3 AND MSVC)
+    target_compile_options(libz3 PRIVATE $<$<CONFIG:Release>:/O2>)
+endif()
+
+set(CHERNOBOG_Z3_INCLUDE_DIRS
+    "${z3_SOURCE_DIR}/src/api"
+    "${z3_SOURCE_DIR}/src/api/c++"
+)
 
 include(${CMAKE_CURRENT_LIST_DIR}/ida-cmake/bootstrap.cmake)
 find_package(idasdk REQUIRED)
@@ -184,17 +120,5 @@ ida_add_plugin(chernobog
     src/deobf/handlers/ctree_string_decrypt.cpp
 )
 
-# Link Z3 library
-if(Z3_FOUND)
-    if(Z3_CUSTOM)
-        # Use the custom imported target (for CI/CD builds)
-        target_link_libraries(chernobog PRIVATE z3_custom)
-    elseif(TARGET z3::libz3)
-        # Use system Z3 via CMake package
-        target_link_libraries(chernobog PRIVATE z3::libz3)
-    else()
-        # Use manually found Z3
-        target_include_directories(chernobog PRIVATE ${Z3_INCLUDE_DIR})
-        target_link_libraries(chernobog PRIVATE ${Z3_LIBRARY})
-    endif()
-endif()
+target_include_directories(chernobog PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
+target_link_libraries(chernobog PRIVATE libz3)
