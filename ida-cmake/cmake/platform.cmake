@@ -105,8 +105,13 @@ endif()
 
 # Construct library directory (always EA64)
 set(IDA_EA_SIZE "64")
-set(IDA_LIB_SUFFIX "${IDA_ARCH}_${IDA_PLATFORM_NAME}_${IDA_COMPILER}_64")
+# IDA 9.3 uses <arch>_<platform>_64; older SDKs include the compiler name.
+set(IDA_LIB_SUFFIX "${IDA_ARCH}_${IDA_PLATFORM_NAME}_64")
 set(IDA_LIB_DIR "${IDASDK}/lib/${IDA_LIB_SUFFIX}")
+if(NOT EXISTS "${IDA_LIB_DIR}")
+    set(IDA_LIB_SUFFIX "${IDA_ARCH}_${IDA_PLATFORM_NAME}_${IDA_COMPILER}_64")
+    set(IDA_LIB_DIR "${IDASDK}/lib/${IDA_LIB_SUFFIX}")
+endif()
 
 # Platform-specific library names (using consistent platform detection)
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")

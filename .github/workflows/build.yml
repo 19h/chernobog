@@ -10,6 +10,8 @@ on:
 
 env:
   IDA_SDK_REPO: HexRaysSA/ida-sdk
+  # Pin CI to a reproducible 9.3 SDK tag instead of tracking ida-sdk/main.
+  IDA_SDK_STABLE_REF: v9.3.0-sdk.2
 
 jobs:
   build:
@@ -37,26 +39,6 @@ jobs:
             cmake_arch: x64
             ida_branch: ""
             ida_suffix: ""
-          # IDA 9.3 beta builds
-          - os: macos-latest
-            name: macos-x86_64
-            cmake_arch: x86_64
-            ida_branch: releases/9.3.0-beta
-            ida_suffix: "-ida93beta"
-          - os: macos-latest
-            name: macos-arm64
-            cmake_arch: arm64
-            ida_branch: releases/9.3.0-beta
-            ida_suffix: "-ida93beta"
-          - os: ubuntu-latest
-            name: linux-x86_64
-            ida_branch: releases/9.3.0-beta
-            ida_suffix: "-ida93beta"
-          - os: windows-latest
-            name: windows-x86_64
-            cmake_arch: x64
-            ida_branch: releases/9.3.0-beta
-            ida_suffix: "-ida93beta"
 
     runs-on: ${{ matrix.os }}
     name: Build ${{ matrix.name }}${{ matrix.ida_suffix }}
@@ -72,7 +54,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.IDA_SDK_REPO }}
+          ref: ${{ env.IDA_SDK_STABLE_REF }}
           path: ida-sdk
+          submodules: recursive
 
       - name: Checkout IDA SDK (beta)
         if: matrix.ida_branch != ''
@@ -81,6 +65,7 @@ jobs:
           repository: ${{ env.IDA_SDK_REPO }}
           ref: ${{ matrix.ida_branch }}
           path: ida-sdk
+          submodules: recursive
 
       - name: Setup MSVC (Windows)
         if: runner.os == 'Windows'
@@ -99,16 +84,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/z3-install
-          key: z3-4.15.4-${{ matrix.name }}
+          key: z3-4.16.0-${{ matrix.name }}
 
       - name: Download Z3 (macOS)
         if: runner.os == 'macOS' && steps.cache-z3.outputs.cache-hit != 'true'
         run: |
-          Z3_VERSION="4.15.4"
+          Z3_VERSION="4.16.0"
           if [ "${{ matrix.cmake_arch }}" = "arm64" ]; then
-            Z3_ARCHIVE="z3-${Z3_VERSION}-arm64-osx-13.7.6.zip"
+            Z3_ARCHIVE="z3-${Z3_VERSION}-arm64-osx-15.7.3.zip"
           else
-            Z3_ARCHIVE="z3-${Z3_VERSION}-x64-osx-13.7.6.zip"
+            Z3_ARCHIVE="z3-${Z3_VERSION}-x64-osx-15.7.3.zip"
           fi
           Z3_URL="https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/${Z3_ARCHIVE}"
 
@@ -122,7 +107,7 @@ jobs:
       - name: Download Z3 (Linux)
         if: runner.os == 'Linux' && steps.cache-z3.outputs.cache-hit != 'true'
         run: |
-          Z3_VERSION="4.15.4"
+          Z3_VERSION="4.16.0"
           Z3_ARCHIVE="z3-${Z3_VERSION}-x64-glibc-2.39.zip"
           Z3_URL="https://github.com/Z3Prover/z3/releases/download/z3-${Z3_VERSION}/${Z3_ARCHIVE}"
 
@@ -137,7 +122,7 @@ jobs:
         if: runner.os == 'Windows' && steps.cache-z3.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $z3Version = "4.15.4"
+          $z3Version = "4.16.0"
           $z3Archive = "z3-$z3Version-x64-win.zip"
           $z3Url = "https://github.com/Z3Prover/z3/releases/download/z3-$z3Version/$z3Archive"
 
