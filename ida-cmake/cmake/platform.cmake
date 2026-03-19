@@ -16,9 +16,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     endif()
 
     # Compiler detection for Windows
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    if(MSVC)
         set(IDA_COMPILER "vc")
-        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+            set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        endif()
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND MINGW)
         set(IDA_COMPILER "mingw")
     else()

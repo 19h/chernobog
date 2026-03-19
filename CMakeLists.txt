@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.27)
-project(chernobog)
+
+if(POLICY CMP0091)
+    cmake_policy(SET CMP0091 NEW)
+endif()
+
+project(chernobog LANGUAGES C CXX)
 
 include(FetchContent)
 
@@ -45,10 +50,10 @@ if(NOT TARGET libz3)
     message(FATAL_ERROR "Expected Z3 target 'libz3' was not created")
 endif()
 
-if(TARGET libz3 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(libz3 PRIVATE $<$<CONFIG:Release>:-O3>)
-elseif(TARGET libz3 AND MSVC)
+if(TARGET libz3 AND MSVC)
     target_compile_options(libz3 PRIVATE $<$<CONFIG:Release>:/O2>)
+elseif(TARGET libz3 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(libz3 PRIVATE $<$<CONFIG:Release>:-O3>)
 endif()
 
 set(CHERNOBOG_Z3_INCLUDE_DIRS

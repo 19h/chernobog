@@ -22,31 +22,54 @@ target_compile_definitions(ida_compiler_settings INTERFACE
 
 # Platform-specific compiler configurations
 if(MSVC)
-    # MSVC specific flags
-    target_compile_options(ida_compiler_settings INTERFACE
-        /W3             # Warning level 3
-        /MP             # Multi-processor compilation
-        /GF             # String pooling
-        /Gy             # Function-level linking
-        /EHsc           # C++ exceptions
-        /permissive-    # Standards conformance
-        /Zc:__cplusplus # Report correct __cplusplus
-        /utf-8          # UTF-8 source and execution character sets
-        # Configuration-specific flags
-        $<$<CONFIG:Debug>:/Od>          # No optimization
-        $<$<CONFIG:Debug>:/RTC1>        # Runtime checks
-        $<$<CONFIG:Debug>:/Zi>          # Debug info
-        $<$<CONFIG:Release>:/O2>        # Optimize for speed
-        $<$<CONFIG:Release>:/GL>        # Whole program optimization
-        $<$<CONFIG:Release>:/Oi>        # Intrinsic functions
-    )
+    # MSVC-style flags (also used by clang-cl when targeting the MSVC ABI)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        target_compile_options(ida_compiler_settings INTERFACE
+            /W3             # Warning level 3
+            /MP             # Multi-processor compilation
+            /GF             # String pooling
+            /Gy             # Function-level linking
+            /EHsc           # C++ exceptions
+            /permissive-    # Standards conformance
+            /Zc:__cplusplus # Report correct __cplusplus
+            /utf-8          # UTF-8 source and execution character sets
+            # Configuration-specific flags
+            $<$<CONFIG:Debug>:/Od>          # No optimization
+            $<$<CONFIG:Debug>:/RTC1>        # Runtime checks
+            $<$<CONFIG:Debug>:/Zi>          # Debug info
+            $<$<CONFIG:Release>:/O2>        # Optimize for speed
+            $<$<CONFIG:Release>:/Oi>        # Intrinsic functions
+        )
 
-    # Linker flags
-    target_link_options(ida_compiler_settings INTERFACE
-        $<$<CONFIG:Release>:/LTCG>      # Link-time code generation
-        $<$<CONFIG:Release>:/OPT:REF>   # Remove unreferenced code
-        $<$<CONFIG:Release>:/OPT:ICF>   # Remove duplicate code
-    )
+        target_link_options(ida_compiler_settings INTERFACE
+            $<$<CONFIG:Release>:/OPT:REF>   # Remove unreferenced code
+            $<$<CONFIG:Release>:/OPT:ICF>   # Remove duplicate code
+        )
+    else()
+        target_compile_options(ida_compiler_settings INTERFACE
+            /W3             # Warning level 3
+            /MP             # Multi-processor compilation
+            /GF             # String pooling
+            /Gy             # Function-level linking
+            /EHsc           # C++ exceptions
+            /permissive-    # Standards conformance
+            /Zc:__cplusplus # Report correct __cplusplus
+            /utf-8          # UTF-8 source and execution character sets
+            # Configuration-specific flags
+            $<$<CONFIG:Debug>:/Od>          # No optimization
+            $<$<CONFIG:Debug>:/RTC1>        # Runtime checks
+            $<$<CONFIG:Debug>:/Zi>          # Debug info
+            $<$<CONFIG:Release>:/O2>        # Optimize for speed
+            $<$<CONFIG:Release>:/GL>        # Whole program optimization
+            $<$<CONFIG:Release>:/Oi>        # Intrinsic functions
+        )
+
+        target_link_options(ida_compiler_settings INTERFACE
+            $<$<CONFIG:Release>:/LTCG>      # Link-time code generation
+            $<$<CONFIG:Release>:/OPT:REF>   # Remove unreferenced code
+            $<$<CONFIG:Release>:/OPT:ICF>   # Remove duplicate code
+        )
+    endif()
 
     # Create a separate interface library for warning suppression
     add_library(ida_warnings_disabled INTERFACE)

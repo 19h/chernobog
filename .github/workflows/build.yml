@@ -12,6 +12,7 @@ env:
   IDA_SDK_REPO: HexRaysSA/ida-sdk
   # Pin CI to a reproducible 9.3 SDK tag instead of tracking ida-sdk/main.
   IDA_SDK_STABLE_REF: v9.3.0-sdk.2
+  XWIN_VERSION: 0.8.0
 
 jobs:
   build:
@@ -34,11 +35,6 @@ jobs:
             ida_suffix: ""
           - os: ubuntu-latest
             name: linux-x86_64
-            ida_branch: ""
-            ida_suffix: ""
-          - os: windows-latest
-            name: windows-x86_64
-            cmake_arch: x64
             ida_branch: ""
             ida_suffix: ""
 
@@ -69,12 +65,6 @@ jobs:
           path: ida-sdk
           submodules: recursive
 
-      - name: Setup MSVC (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: ${{ matrix.cmake_arch }}
-
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -92,9 +82,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: build-v2-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
+          key: build-v3-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
           restore-keys: |
-            build-v2-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'ida-cmake/**', '.github/workflows/build.yml') }}-
+            build-v3-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'ida-cmake/**', '.github/workflows/build.yml') }}-
 
       - name: Cache ccache
         if: runner.os != 'Windows'
@@ -113,12 +103,6 @@ jobs:
           echo "CCACHE_BASEDIR=${{ github.workspace }}" >> $GITHUB_ENV
           echo "CCACHE_COMPRESS=true" >> $GITHUB_ENV
           echo "CCACHE_MAXSIZE=1G" >> $GITHUB_ENV
-
-      - name: Set environment variables (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          echo "IDASDK=${{ github.workspace }}/ida-sdk" >> $env:GITHUB_ENV
 
       - name: Configure CMake (macOS)
         if: runner.os == 'macOS'
@@ -143,25 +127,11 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
-      - name: Configure CMake (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          mkdir build -Force
-          cd build
-          cmake .. -G "Visual Studio 17 2022" -A ${{ matrix.cmake_arch }}
-
       - name: Build (Unix)
         if: runner.os != 'Windows'
         run: |
           cd build
           cmake --build . --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
-
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          cd build
-          cmake --build . --config Release
 
       - name: Show ccache stats
         if: runner.os != 'Windows'
@@ -195,24 +165,6 @@ jobs:
           echo "plugin_file=$PLUGIN_FILE" >> $GITHUB_OUTPUT
           echo "extension=so" >> $GITHUB_OUTPUT
 
-      - name: Find built plugin (Windows)
-        if: runner.os == 'Windows'
-        id: find_plugin_windows
-        shell: pwsh
-        run: |
-          # GitHub SDK has src/ subdir, bootstrap.cmake adjusts IDASDK internally
-          $pluginFile = "$env:IDASDK/src/bin/plugins/chernobog.dll"
-
-          if (-not (Test-Path $pluginFile)) {
-            Write-Error "Could not find built plugin at $pluginFile"
-            Get-ChildItem -Path . -Recurse -Filter "chernobog*" -ErrorAction SilentlyContinue
-            exit 1
-          }
-
-          echo "plugin_file=$pluginFile" >> $env:GITHUB_OUTPUT
-          echo "extension=dll" >> $env:GITHUB_OUTPUT
-          Write-Host "Found plugin: $pluginFile"
-
       - name: Prepare artifact (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -225,13 +177,6 @@ jobs:
           mkdir -p artifacts
           cp "${{ steps.find_plugin_linux.outputs.plugin_file }}" "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_linux.outputs.extension }}"
 
-      - name: Prepare artifact (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts
-          Copy-Item "${{ steps.find_plugin_windows.outputs.plugin_file }}" "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_windows.outputs.extension }}"
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -239,9 +184,173 @@ jobs:
           path: artifacts/
           retention-days: 30
 
+  build-windows-cross:
+    runs-on: ubuntu-latest
+    name: Build windows-x86_64-clang
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Checkout IDA SDK (stable)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.IDA_SDK_REPO }}
+          ref: ${{ env.IDA_SDK_STABLE_REF }}
+          path: ida-sdk
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          . /etc/os-release
+          sudo apt-get update
+          sudo apt-get install -y curl wget gpg ca-certificates ninja-build ccache
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
+          echo "deb http://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-20 main" | sudo tee /etc/apt/sources.list.d/llvm.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y clang-20 lld-20 llvm-20 llvm-20-tools libclang-rt-20-dev
+
+      - name: Prepare LLVM shims
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+          import stat
+          import sys
+
+          workspace = os.environ["GITHUB_WORKSPACE"]
+          out_dir = os.path.join(workspace, ".ci-bin")
+          os.makedirs(out_dir, exist_ok=True)
+
+          def pick(*patterns):
+              matches = []
+              for pattern in patterns:
+                  matches.extend(glob.glob(pattern))
+              matches = sorted({m for m in matches if os.path.isfile(m) and os.access(m, os.X_OK)})
+              return matches[-1] if matches else None
+
+          clang = pick("/usr/bin/clang", "/usr/bin/clang-*", "/usr/lib/llvm-*/bin/clang")
+          lld_link = pick("/usr/bin/lld-link", "/usr/bin/lld-link-*", "/usr/lib/llvm-*/bin/lld-link")
+          ld_lld = pick("/usr/bin/ld.lld", "/usr/bin/ld.lld-*", "/usr/lib/llvm-*/bin/ld.lld")
+          llvm_lib = pick("/usr/bin/llvm-lib", "/usr/bin/llvm-lib-*", "/usr/lib/llvm-*/bin/llvm-lib")
+          llvm_rc = pick("/usr/bin/llvm-rc", "/usr/bin/llvm-rc-*", "/usr/lib/llvm-*/bin/llvm-rc")
+
+          missing = []
+          if not clang:
+              missing.append("clang")
+          if not lld_link and not ld_lld:
+              missing.append("lld-link or ld.lld")
+          if not llvm_lib:
+              missing.append("llvm-lib")
+          if not llvm_rc:
+              missing.append("llvm-rc")
+
+          if missing:
+              raise SystemExit(f"Missing LLVM tools: {', '.join(missing)}")
+
+          def write_wrapper(name, command):
+              path = os.path.join(out_dir, name)
+              with open(path, "w", encoding="ascii") as handle:
+                  handle.write("#!/usr/bin/env bash\nset -euo pipefail\n")
+                  handle.write(f"exec {command} \"$@\"\n")
+              os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR |
+                            stat.S_IRGRP | stat.S_IXGRP |
+                            stat.S_IROTH | stat.S_IXOTH)
+
+          write_wrapper("clang-cl", f'"{clang}" --driver-mode=cl')
+          write_wrapper("llvm-lib", f'"{llvm_lib}"')
+          write_wrapper("llvm-rc", f'"{llvm_rc}"')
+          if lld_link:
+              write_wrapper("lld-link", f'"{lld_link}"')
+          else:
+              write_wrapper("lld-link", f'"{ld_lld}" -flavor link')
+
+          print(f"Prepared LLVM shims in {out_dir}")
+          print(f"  clang-cl -> {clang} --driver-mode=cl")
+          print(f"  llvm-lib -> {llvm_lib}")
+          print(f"  llvm-rc  -> {llvm_rc}")
+          print(f"  lld-link -> {lld_link or (ld_lld + ' -flavor link')}")
+          PY
+          echo "${{ github.workspace }}/.ci-bin" >> "$GITHUB_PATH"
+
+      - name: Install xwin
+        run: |
+          curl -fsSL "https://github.com/Jake-Shadle/xwin/releases/download/${{ env.XWIN_VERSION }}/xwin-${{ env.XWIN_VERSION }}-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz
+          sudo install -m 0755 "xwin-${{ env.XWIN_VERSION }}-x86_64-unknown-linux-musl/xwin" /usr/local/bin/xwin
+
+      - name: Prepare xwin sysroot
+        run: |
+          xwin --accept-license --arch x86_64 splat --output "${{ github.workspace }}/xwin"
+
+      - name: Cache build tree
+        uses: actions/cache@v4
+        with:
+          path: out/build/windows-clang-release
+          key: build-v3-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/toolchains/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
+          restore-keys: |
+            build-v3-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/toolchains/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-v1-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/toolchains/**', 'ida-cmake/**', 'src/**', '.github/workflows/build.yml') }}
+          restore-keys: |
+            ccache-v1-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-
+
+      - name: Set environment variables
+        run: |
+          echo "IDASDK=${{ github.workspace }}/ida-sdk" >> $GITHUB_ENV
+          echo "XWIN_ROOT=${{ github.workspace }}/xwin" >> $GITHUB_ENV
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> $GITHUB_ENV
+          echo "CCACHE_COMPILERCHECK=content" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESS=true" >> $GITHUB_ENV
+          echo "CCACHE_MAXSIZE=1G" >> $GITHUB_ENV
+
+      - name: Configure CMake (Windows cross)
+        run: |
+          ccache --zero-stats || true
+          cmake --preset windows-clang-release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build (Windows cross)
+        run: cmake --build --preset windows-clang-release --parallel $(nproc)
+
+      - name: Show ccache stats
+        run: ccache --show-stats || true
+
+      - name: Find built plugin (Windows cross)
+        id: find_plugin_windows_cross
+        run: |
+          PLUGIN_FILE="${IDASDK}/src/bin/plugins/chernobog.dll"
+          if [ ! -f "$PLUGIN_FILE" ]; then
+            echo "ERROR: Could not find built plugin at $PLUGIN_FILE"
+            find . -name "chernobog*" -type f 2>/dev/null || true
+            exit 1
+          fi
+          echo "plugin_file=$PLUGIN_FILE" >> $GITHUB_OUTPUT
+          echo "extension=dll" >> $GITHUB_OUTPUT
+
+      - name: Prepare artifact (Windows cross)
+        run: |
+          mkdir -p artifacts
+          cp "${{ steps.find_plugin_windows_cross.outputs.plugin_file }}" "artifacts/chernobog_windows-x86_64-clang.${{ steps.find_plugin_windows_cross.outputs.extension }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chernobog-windows-x86_64-clang
+          path: artifacts/
+          retention-days: 30
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, build-windows-cross]
     runs-on: ubuntu-latest
     permissions:
       contents: write

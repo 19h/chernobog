@@ -120,6 +120,28 @@ ninja
 The build always fetches and statically links Z3 from source, so the first
 configure/build takes longer and does not require a separate Z3 installation.
 
+### Windows Cross-Compile With Clang
+
+Windows builds can be cross-compiled with `clang-cl` targeting
+`x86_64-pc-windows-msvc`; no MinGW GCC toolchain or GitHub Windows runner is
+required.
+
+```bash
+# Prepare an xwin CRT/SDK sysroot once
+xwin --accept-license splat --output /path/to/xwin
+
+# Point the build at the sysroot and configure/build
+export XWIN_ROOT=/path/to/xwin
+cmake --preset windows-clang-release
+cmake --build --preset windows-clang-release
+
+# Or via Makefile
+make build-windows-clang
+```
+
+This preset expects LLVM tools (`clang-cl`, `lld-link`, `llvm-lib`, and
+`llvm-rc`) to be available in `PATH`.
+
 ## Installation
 
 ```bash
