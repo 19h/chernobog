@@ -42,6 +42,8 @@ ida_add_plugin(my_plugin
 - `IDASDK` - Path to IDA SDK directory (required)
 - `IDABIN` - Path to IDA installation binary directory (optional, defaults to $IDASDK/bin)
 
-## Origin
+## Credits
 
-This is a customized version of the ida-cmake build system, adapted specifically for this project.
+This is a customized version of [ida-cmake](https://github.com/allthingsida/ida-cmake) by [allthingsida](https://github.com/allthingsida), adapted specifically for this project.
+
+The original project is licensed under the [Mozilla Public License 2.0](LICENSE).
