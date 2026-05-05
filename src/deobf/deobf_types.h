@@ -54,6 +54,7 @@ enum obf_type_t : uint32_t {
     OBF_OPAQUE_JUMP     = 1 << 16,  // Opaque predicate jumps
     OBF_CONST_OBFUSC    = 1 << 17,  // Obfuscated constants (detectable via Z3)
     OBF_INDIRECT_CALL   = 1 << 18,  // Indirect call obfuscation (Hikari IndirectCall)
+    OBF_VM_MBA          = 1 << 19,  // VM-family MBA handlers
 };
 
 //--------------------------------------------------------------------------

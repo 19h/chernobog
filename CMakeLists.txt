@@ -113,6 +113,7 @@ ida_add_plugin(chernobog
     src/deobf/handlers/indirect_call.cpp
     src/deobf/handlers/block_merge.cpp
     src/deobf/handlers/mba_simplify.cpp
+    src/deobf/handlers/vm_mba.cpp
     src/deobf/handlers/identity_call.cpp
     src/deobf/handlers/stack_string.cpp
     src/deobf/handlers/hikari_wrapper.cpp
