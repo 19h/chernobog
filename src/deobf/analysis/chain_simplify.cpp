@@ -68,6 +68,344 @@ bool ChainSimplifier::is_neg_of(const mop_t& a, const mop_t& b) {
     return operands_equal(a.d->l, b);
 }
 
+static bool get_insn_operand(const mop_t& mop, mcode_t opcode, const minsn_t** out) {
+    if (mop.t != mop_d || !mop.d || mop.d->opcode != opcode)
+        return false;
+
+    if (out)
+        *out = mop.d;
+    return true;
+}
+
+static bool is_const_value(const mop_t& mop, uint64_t value) {
+    return mop.t == mop_n && mop.nnn && mop.nnn->value == value;
+}
+
+static bool make_binop_mop(mop_t* out,
+                           mcode_t opcode,
+                           const mop_t& lhs,
+                           const mop_t& rhs,
+                           ea_t ea,
+                           int size) {
+    if (!out)
+        return false;
+
+    minsn_t tmp(ea);
+    tmp.opcode = opcode;
+    tmp.l = lhs;
+    tmp.r = rhs;
+    tmp.d.size = size;
+    out->create_from_insn(&tmp);
+    out->size = size;
+    return out->t != mop_z;
+}
+
+static bool get_and_not_operands(const mop_t& mop,
+                                 mop_t* base,
+                                 mop_t* added) {
+    const minsn_t* and_ins = nullptr;
+    if (!get_insn_operand(mop, m_and, &and_ins))
+        return false;
+
+    const minsn_t* not_ins = nullptr;
+    if (get_insn_operand(and_ins->l, m_bnot, &not_ins)) {
+        if (base) *base = not_ins->l;
+        if (added) *added = and_ins->r;
+        return true;
+    }
+
+    if (get_insn_operand(and_ins->r, m_bnot, &not_ins)) {
+        if (base) *base = not_ins->l;
+        if (added) *added = and_ins->l;
+        return true;
+    }
+
+    return false;
+}
+
+static bool get_and_operands(const mop_t& mop, mop_t* lhs, mop_t* rhs) {
+    const minsn_t* and_ins = nullptr;
+    if (!get_insn_operand(mop, m_and, &and_ins))
+        return false;
+
+    if (lhs) *lhs = and_ins->l;
+    if (rhs) *rhs = and_ins->r;
+    return true;
+}
+
+static bool get_or_operands(const mop_t& mop, mop_t* lhs, mop_t* rhs) {
+    const minsn_t* or_ins = nullptr;
+    if (!get_insn_operand(mop, m_or, &or_ins))
+        return false;
+
+    if (lhs) *lhs = or_ins->l;
+    if (rhs) *rhs = or_ins->r;
+    return true;
+}
+
+static bool get_xor_operands(const mop_t& mop, mop_t* lhs, mop_t* rhs) {
+    const minsn_t* xor_ins = nullptr;
+    if (!get_insn_operand(mop, m_xor, &xor_ins))
+        return false;
+
+    if (lhs) *lhs = xor_ins->l;
+    if (rhs) *rhs = xor_ins->r;
+    return true;
+}
+
+static bool get_mul2_and_operands(const mop_t& mop, mop_t* lhs, mop_t* rhs) {
+    const minsn_t* mul_ins = nullptr;
+    if (!get_insn_operand(mop, m_mul, &mul_ins))
+        return false;
+
+    const mop_t* and_mop = nullptr;
+    if (is_const_value(mul_ins->l, 2)) {
+        and_mop = &mul_ins->r;
+    } else if (is_const_value(mul_ins->r, 2)) {
+        and_mop = &mul_ins->l;
+    } else {
+        return false;
+    }
+
+    return get_and_operands(*and_mop, lhs, rhs);
+}
+
+static bool unordered_pair_equal(const mop_t& a0, const mop_t& a1,
+                                 const mop_t& b0, const mop_t& b1) {
+    return (a0.equal_mops(b0, EQ_IGNSIZE) &&
+            a1.equal_mops(b1, EQ_IGNSIZE)) ||
+           (a0.equal_mops(b1, EQ_IGNSIZE) &&
+            a1.equal_mops(b0, EQ_IGNSIZE));
+}
+
+static void erase_two_operands(std::vector<chain_operand_t>& operands,
+                               size_t i,
+                               size_t j) {
+    if (i > j)
+        std::swap(i, j);
+    operands.erase(operands.begin() + j);
+    operands.erase(operands.begin() + i);
+}
+
+static void erase_three_operands(std::vector<chain_operand_t>& operands,
+                                 size_t i,
+                                 size_t j,
+                                 size_t k) {
+    if (i > j) std::swap(i, j);
+    if (j > k) std::swap(j, k);
+    if (i > j) std::swap(i, j);
+    operands.erase(operands.begin() + k);
+    operands.erase(operands.begin() + j);
+    operands.erase(operands.begin() + i);
+}
+
+static bool find_positive_operand(const std::vector<chain_operand_t>& operands,
+                                  const mop_t& needle,
+                                  size_t skip,
+                                  size_t* out_idx) {
+    for (size_t i = 0; i < operands.size(); ++i) {
+        if (i == skip || operands[i].is_negated)
+            continue;
+        if (operands[i].mop.equal_mops(needle, EQ_IGNSIZE)) {
+            if (out_idx) *out_idx = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool find_positive_and_not_of(const std::vector<chain_operand_t>& operands,
+                                     const mop_t& whole,
+                                     const mop_t& removed_part,
+                                     size_t skip_a,
+                                     size_t skip_b,
+                                     size_t* out_idx) {
+    for (size_t i = 0; i < operands.size(); ++i) {
+        if (i == skip_a || i == skip_b || operands[i].is_negated)
+            continue;
+
+        const minsn_t* and_ins = nullptr;
+        if (!get_insn_operand(operands[i].mop, m_and, &and_ins))
+            continue;
+
+        const minsn_t* not_ins = nullptr;
+        if (get_insn_operand(and_ins->l, m_bnot, &not_ins) &&
+            and_ins->r.equal_mops(whole, EQ_IGNSIZE) &&
+            not_ins->l.equal_mops(removed_part, EQ_IGNSIZE)) {
+            if (out_idx) *out_idx = i;
+            return true;
+        }
+        if (get_insn_operand(and_ins->r, m_bnot, &not_ins) &&
+            and_ins->l.equal_mops(whole, EQ_IGNSIZE) &&
+            not_ins->l.equal_mops(removed_part, EQ_IGNSIZE)) {
+            if (out_idx) *out_idx = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+static uint64_t mask_for_size(int size) {
+    if (size >= 8)
+        return ~0ULL;
+    if (size <= 0)
+        return ~0ULL;
+    return (1ULL << (size * 8)) - 1;
+}
+
+bool ChainSimplifier::combine_add_pairs(std::vector<chain_operand_t>& operands,
+                                        uint64_t& const_result,
+                                        ea_t ea,
+                                        int size) {
+    if (operands.size() < 2)
+        return false;
+
+    uint64_t mask = mask_for_size(size);
+
+    if ((const_result & mask) != 0) {
+        for (size_t i = 0; i < operands.size(); ++i) {
+            if (operands[i].is_negated)
+                continue;
+
+            mop_t or_l, or_r;
+            if (!get_or_operands(operands[i].mop, &or_l, &or_r))
+                continue;
+
+            const minsn_t* not_ins = nullptr;
+            mop_t x, y;
+            if (get_insn_operand(or_l, m_bnot, &not_ins)) {
+                x = not_ins->l;
+                y = or_r;
+            } else if (get_insn_operand(or_r, m_bnot, &not_ins)) {
+                x = not_ins->l;
+                y = or_l;
+            } else {
+                continue;
+            }
+
+            size_t j = 0;
+            if (!find_positive_operand(operands, x, i, &j))
+                continue;
+
+            mop_t repl;
+            if (!make_binop_mop(&repl, m_and, x, y, ea, size))
+                return false;
+            erase_two_operands(operands, i, j);
+            operands.push_back(chain_operand_t(repl, false));
+            const_result = (const_result - 1) & mask;
+            return true;
+        }
+    }
+
+    for (size_t i = 0; i < operands.size(); ++i) {
+        if (!operands[i].is_negated)
+            continue;
+
+        mop_t or_l, or_r;
+        if (!get_or_operands(operands[i].mop, &or_l, &or_r))
+            continue;
+
+        size_t pos_idx = 0;
+        size_t and_idx = 0;
+        if (find_positive_operand(operands, or_l, i, &pos_idx) &&
+            find_positive_and_not_of(operands, operands[i].mop, or_l, i, pos_idx, &and_idx)) {
+            erase_three_operands(operands, i, pos_idx, and_idx);
+            return true;
+        }
+        if (find_positive_operand(operands, or_r, i, &pos_idx) &&
+            find_positive_and_not_of(operands, operands[i].mop, or_r, i, pos_idx, &and_idx)) {
+            erase_three_operands(operands, i, pos_idx, and_idx);
+            return true;
+        }
+    }
+
+    for (size_t i = 0; i < operands.size(); ++i) {
+        if (operands[i].is_negated)
+            continue;
+
+        for (size_t j = i + 1; j < operands.size(); ++j) {
+            if (operands[j].is_negated)
+                continue;
+
+            mop_t base, added;
+            if (get_and_not_operands(operands[j].mop, &base, &added) &&
+                operands_equal(operands[i].mop, base)) {
+                mop_t repl;
+                if (!make_binop_mop(&repl, m_or, base, added, ea, size))
+                    return false;
+                erase_two_operands(operands, i, j);
+                operands.push_back(chain_operand_t(repl, false));
+                return true;
+            }
+            if (get_and_not_operands(operands[i].mop, &base, &added) &&
+                operands_equal(operands[j].mop, base)) {
+                mop_t repl;
+                if (!make_binop_mop(&repl, m_or, base, added, ea, size))
+                    return false;
+                erase_two_operands(operands, i, j);
+                operands.push_back(chain_operand_t(repl, false));
+                return true;
+            }
+
+            mop_t x0, y0, x1, y1;
+            if (get_and_operands(operands[i].mop, &x0, &y0) &&
+                get_and_not_operands(operands[j].mop, &x1, &y1) &&
+                operands_equal(y0, y1) &&
+                operands_equal(x0, x1)) {
+                erase_two_operands(operands, i, j);
+                operands.push_back(chain_operand_t(y0, false));
+                return true;
+            }
+            if (get_and_operands(operands[j].mop, &x0, &y0) &&
+                get_and_not_operands(operands[i].mop, &x1, &y1) &&
+                operands_equal(y0, y1) &&
+                operands_equal(x0, x1)) {
+                erase_two_operands(operands, i, j);
+                operands.push_back(chain_operand_t(y0, false));
+                return true;
+            }
+            if (get_and_operands(operands[i].mop, &x0, &y0) &&
+                get_and_not_operands(operands[j].mop, &x1, &y1) &&
+                operands_equal(operands[i].mop, x1)) {
+                erase_two_operands(operands, i, j);
+                operands.push_back(chain_operand_t(y1, false));
+                return true;
+            }
+            if (get_and_operands(operands[j].mop, &x0, &y0) &&
+                get_and_not_operands(operands[i].mop, &x1, &y1) &&
+                operands_equal(operands[j].mop, x1)) {
+                erase_two_operands(operands, i, j);
+                operands.push_back(chain_operand_t(y1, false));
+                return true;
+            }
+
+            mop_t xor_l, xor_r, and_l, and_r;
+            if (get_xor_operands(operands[i].mop, &xor_l, &xor_r) &&
+                get_mul2_and_operands(operands[j].mop, &and_l, &and_r) &&
+                unordered_pair_equal(xor_l, xor_r, and_l, and_r)) {
+                mop_t repl;
+                if (!make_binop_mop(&repl, m_add, xor_l, xor_r, ea, size))
+                    return false;
+                erase_two_operands(operands, i, j);
+                operands.push_back(chain_operand_t(repl, false));
+                return true;
+            }
+            if (get_xor_operands(operands[j].mop, &xor_l, &xor_r) &&
+                get_mul2_and_operands(operands[i].mop, &and_l, &and_r) &&
+                unordered_pair_equal(xor_l, xor_r, and_l, and_r)) {
+                mop_t repl;
+                if (!make_binop_mop(&repl, m_add, xor_l, xor_r, ea, size))
+                    return false;
+                erase_two_operands(operands, i, j);
+                operands.push_back(chain_operand_t(repl, false));
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 bool ChainSimplifier::get_const_value(const mop_t& mop, uint64_t* out) {
     if (mop.t != mop_n)
         return false;
@@ -128,6 +466,24 @@ void ChainSimplifier::flatten_operand(const mop_t& mop, mcode_t target_op,
         return;
     }
 
+    // Treat subtraction inside an ADD chain as addition of a negated term.
+    if (target_op == m_add && mop.t == mop_d && mop.d && mop.d->opcode == m_sub) {
+        flatten_operand(mop.d->l, target_op, operands, constants, size);
+
+        std::vector<chain_operand_t> rhs_operands;
+        std::vector<uint64_t> rhs_constants;
+        flatten_operand(mop.d->r, target_op, rhs_operands, rhs_constants, size);
+
+        uint64_t mask = mask_for_size(size);
+        for (chain_operand_t& rhs : rhs_operands) {
+            rhs.is_negated = !rhs.is_negated;
+            operands.push_back(rhs);
+        }
+        for (uint64_t c : rhs_constants)
+            constants.push_back((-c) & mask);
+        return;
+    }
+
     // Check for nested same opcode
     if (mop.t == mop_d && mop.d && mop.d->opcode == target_op) {
         flatten_chain(mop.d, target_op, operands, constants, size);
@@ -162,7 +518,27 @@ void ChainSimplifier::flatten_chain(const minsn_t* ins, mcode_t target_op,
                                     std::vector<chain_operand_t>& operands,
                                     std::vector<uint64_t>& constants,
                                     int size) {
-    if (!ins || ins->opcode != target_op)
+    if (!ins)
+        return;
+
+    if (target_op == m_add && ins->opcode == m_sub) {
+        flatten_operand(ins->l, target_op, operands, constants, size);
+
+        std::vector<chain_operand_t> rhs_operands;
+        std::vector<uint64_t> rhs_constants;
+        flatten_operand(ins->r, target_op, rhs_operands, rhs_constants, size);
+
+        uint64_t mask = mask_for_size(size);
+        for (chain_operand_t& rhs : rhs_operands) {
+            rhs.is_negated = !rhs.is_negated;
+            operands.push_back(rhs);
+        }
+        for (uint64_t c : rhs_constants)
+            constants.push_back((-c) & mask);
+        return;
+    }
+
+    if (ins->opcode != target_op)
         return;
 
     flatten_operand(ins->l, target_op, operands, constants, size);
@@ -453,7 +829,7 @@ chain_result_t ChainSimplifier::analyze_or_chain(mblock_t* blk, minsn_t* ins) {
 chain_result_t ChainSimplifier::analyze_add_chain(mblock_t* blk, minsn_t* ins) {
     chain_result_t result;
 
-    if (!ins || ins->opcode != m_add)
+    if (!ins || (ins->opcode != m_add && ins->opcode != m_sub))
         return result;
 
     std::vector<chain_operand_t> operands;
@@ -474,9 +850,17 @@ chain_result_t ChainSimplifier::analyze_add_chain(mblock_t* blk, minsn_t* ins) {
     }
 
     // Remove identity pairs (x + (-x) = 0)
+    bool changed_any = false;
     bool changed = true;
     while (changed) {
         changed = remove_identity_pairs(operands, m_add, size);
+        changed_any |= changed;
+    }
+
+    changed = true;
+    while (changed) {
+        changed = combine_add_pairs(operands, const_result, ins->ea, size);
+        changed_any |= changed;
     }
 
     result.const_result = const_result;
@@ -493,6 +877,8 @@ chain_result_t ChainSimplifier::analyze_add_chain(mblock_t* blk, minsn_t* ins) {
     } else if (operands.size() == 1 && const_result == 0) {
         result.simplified = true;
         result.is_single_operand = true;
+    } else if (changed_any || (constants.size() > 1 && const_result != 0)) {
+        result.simplified = true;
     }
 
     return result;
@@ -525,23 +911,57 @@ minsn_t* ChainSimplifier::build_simplified(mblock_t* blk, minsn_t* orig,
         return new_ins;
     }
 
-    // Build chain from remaining operands
-    // Start with first two operands (or first operand and constant)
-    minsn_t* new_ins = new minsn_t(orig->ea);
-    new_ins->opcode = op;
-    new_ins->d = orig->d;
-
-    if (result.operands.size() >= 2) {
-        new_ins->l = result.operands[0].mop;
-        new_ins->r = result.operands[1].mop;
-    } else if (result.operands.size() == 1 && result.has_const) {
-        new_ins->l = result.operands[0].mop;
-        new_ins->r.make_number(result.const_result, size);
-    } else {
-        delete new_ins;
-        return nullptr;
+    std::vector<mop_t> terms;
+    terms.reserve(result.operands.size() + (result.has_const ? 1 : 0));
+    for (const auto& operand : result.operands) {
+        if (op == m_add && operand.is_negated) {
+            mop_t neg;
+            minsn_t tmp(orig->ea);
+            tmp.opcode = m_neg;
+            tmp.l = operand.mop;
+            tmp.d.size = size;
+            neg.create_from_insn(&tmp);
+            neg.size = size;
+            terms.push_back(neg);
+        } else {
+            terms.push_back(operand.mop);
+        }
+    }
+    if (result.has_const) {
+        mop_t c;
+        c.make_number(result.const_result, size);
+        terms.push_back(c);
     }
 
+    if (terms.empty())
+        return nullptr;
+
+    if (terms.size() == 1) {
+        minsn_t* new_ins = new minsn_t(orig->ea);
+        new_ins->opcode = m_mov;
+        new_ins->l = terms[0];
+        new_ins->d = orig->d;
+        return new_ins;
+    }
+
+    mop_t accum = terms[0];
+    for (size_t i = 1; i + 1 < terms.size(); ++i) {
+        mop_t next;
+        minsn_t tmp(orig->ea);
+        tmp.opcode = op;
+        tmp.l = accum;
+        tmp.r = terms[i];
+        tmp.d.size = size;
+        next.create_from_insn(&tmp);
+        next.size = size;
+        accum = next;
+    }
+
+    minsn_t* new_ins = new minsn_t(orig->ea);
+    new_ins->opcode = op;
+    new_ins->l = accum;
+    new_ins->r = terms.back();
+    new_ins->d = orig->d;
     return new_ins;
 }
 
@@ -554,6 +974,7 @@ int ChainSimplifier::simplify_chain(mblock_t* blk, minsn_t* ins) {
         return 0;
 
     chain_result_t result;
+    mcode_t rebuild_op = ins->opcode;
 
     switch (ins->opcode) {
         case m_xor:
@@ -567,6 +988,10 @@ int ChainSimplifier::simplify_chain(mblock_t* blk, minsn_t* ins) {
             break;
         case m_add:
             result = analyze_add_chain(blk, ins);
+            break;
+        case m_sub:
+            result = analyze_add_chain(blk, ins);
+            rebuild_op = m_add;
             break;
         default:
             return 0;
@@ -614,7 +1039,15 @@ int ChainSimplifier::simplify_chain(mblock_t* blk, minsn_t* ins) {
         return 1;
     }
 
-    return 0;
+    minsn_t* rebuilt = build_simplified(blk, ins, result, rebuild_op);
+    if (!rebuilt)
+        return 0;
+
+    ins->opcode = rebuilt->opcode;
+    ins->l.swap(rebuilt->l);
+    ins->r.swap(rebuilt->r);
+    delete rebuilt;
+    return 1;
 }
 
 //--------------------------------------------------------------------------
@@ -632,7 +1065,8 @@ bool chain_simplify_handler_t::detect(mbl_array_t* mba) {
 
         for (minsn_t* ins = blk->head; ins; ins = ins->next) {
             if (ins->opcode != m_xor && ins->opcode != m_and &&
-                ins->opcode != m_or && ins->opcode != m_add)
+                ins->opcode != m_or && ins->opcode != m_add &&
+                ins->opcode != m_sub)
                 continue;
 
             // Check for nested same opcode

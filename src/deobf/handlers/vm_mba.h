@@ -66,6 +66,7 @@ private:
     static std::unordered_set<ea_t> candidates_;
     static std::map<ea_t, handler_summary_t> summaries_;
     static std::map<uint32_t, int> carrier_hits_;
+    static std::unordered_set<uint64_t> pair_no_compact_cache_;
 
     static bool enabled();
     static bool name_matches(ea_t ea, qstring *out_name = nullptr);
@@ -91,6 +92,7 @@ private:
     static int strip_masked_or_caps(mop_t *mop, uint64_t live_mask, int size, int depth);
     static int simplify_nested_constant_ops(minsn_t *ins);
     static int simplify_local_identities(minsn_t *ins);
+    static int simplify_hikari_pair_mba(minsn_t *ins);
     static int simplify_pack_idiom_marker(minsn_t *ins);
     static int split_scalar_pack_store(mblock_t *blk, minsn_t *ins);
     static bool match_pack_idiom(const mop_t &mop, mop_t *lo, mop_t *hi);
@@ -105,6 +107,17 @@ private:
     static int simplify_single_var_residual(minsn_t *ins);
     static bool replace_with_operand(minsn_t *ins, const mop_t &src);
     static bool replace_with_constant(minsn_t *ins, uint64_t value, int size = 0);
+    static bool replace_with_and_not(minsn_t *ins, const mop_t &value,
+                                     const mop_t &mask);
+    static bool match_and_with_operand(const mop_t &mop, const mop_t &value,
+                                       mop_t *other);
+    static bool match_add_const(const mop_t &mop, mop_t *value, uint64_t *constant);
+    static bool match_sub_operands(const mop_t &mop, mop_t *left, mop_t *right);
+    static bool match_pair_mba_core(const mop_t &mop, mop_t *x, mop_t *y,
+                                    uint64_t *constant);
+    static bool replace_with_binary_const_expr(minsn_t *ins, mcode_t base_op,
+                                               const mop_t &left, const mop_t &right,
+                                               mcode_t outer_op, uint64_t constant);
     static bool eval_const_insn(const minsn_t *ins, uint64_t *out, int *out_size = nullptr);
     static bool is_pure_expr(const minsn_t *ins);
     static int expr_op_count(const minsn_t *ins);

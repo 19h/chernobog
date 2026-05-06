@@ -198,6 +198,21 @@ static ssize_t idaapi hexrays_callback(void *, hexrays_event_t event, va_list va
             }
         }
     }
+    else if ( event == hxe_glbopt )
+    {
+        mbl_array_t *mba = va_arg(va, mbl_array_t *);
+        if ( mba )
+        {
+            int changes = chernobog_t::optimize_mba(mba);
+            if ( changes > 0 )
+            {
+                debug_log("[chernobog] hxe_glbopt: optimized %d MBA expressions at 0x%llx\n",
+                          changes, (unsigned long long)mba->entry_ea);
+                mba->verify(false);
+                return MERR_LOOP;
+            }
+        }
+    }
     // Apply ctree-level optimizations after decompilation
     else if ( event == hxe_maturity )
     {

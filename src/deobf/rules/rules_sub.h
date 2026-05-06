@@ -266,5 +266,37 @@ public:
     }
 };
 
+// (x + y) - y -> x
+class Sub_AddCancelRule_1 : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Sub_AddCancelRule_1"; }
+
+    AstPtr get_pattern() const override
+    {
+        return sub(add(x_0(), x_1()), x_1());
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return x_0();
+    }
+};
+
+// (x + y) - x -> y
+class Sub_AddCancelRule_2 : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Sub_AddCancelRule_2"; }
+
+    AstPtr get_pattern() const override
+    {
+        return sub(add(x_0(), x_1()), x_0());
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return x_1();
+    }
+};
+
 } // namespace rules
 } // namespace chernobog

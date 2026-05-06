@@ -38,16 +38,41 @@ bool vm_mba_handler_t::initialized_ = false;
 std::unordered_set<ea_t> vm_mba_handler_t::candidates_;
 std::map<ea_t, vm_mba_handler_t::handler_summary_t> vm_mba_handler_t::summaries_;
 std::map<uint32_t, int> vm_mba_handler_t::carrier_hits_;
+std::unordered_set<uint64_t> vm_mba_handler_t::pair_no_compact_cache_;
 
-static const uint32_t kCarrierPool[] = {
-    0x77DEDEEB, 0x57DEDEEB, 0x779EDEEB, 0x649B4EA0, 0x74B257B9,
-    0x6917D777, 0x6957D777, 0xEEFFA330, 0xC099572D, 0xBF5FDB37,
-    0xA4173818, 0x42C7D070, 0x42C7F071, 0x777B8FF6, 0xF7FB8FF6,
-    0x3A5F03FA, 0x4B7EBB84, 0x6EF9E3C1, 0x55C8A398, 0x4EA9D032,
-    0x3FE99379, 0x2A1CE984, 0x370370F1, 0x4A5A939A, 0x417A1C15,
-    0x5DD3431E, 0x7DB39EF4, 0x4127, 0x9379, 0x4EA0, 0xCFB3,
-    0xB350, 0x781C, 0x70F1, 0x8038
-};
+static const std::vector<uint32_t> &carrier_pool()
+{
+    static bool loaded = false;
+    static std::vector<uint32_t> pool;
+    if ( loaded )
+        return pool;
+
+    loaded = true;
+    qstring env;
+    if ( !qgetenv("CHERNOBOG_VM_CARRIER_POOL", &env) || env.empty() )
+        return pool;
+
+    const char *p = env.c_str();
+    while ( p && *p )
+    {
+        while ( *p == ',' || *p == ';' || std::isspace((unsigned char)*p) )
+            ++p;
+        if ( !*p )
+            break;
+        char *end = nullptr;
+        uint64_t value = strtoull(p, &end, 0);
+        if ( end != p )
+        {
+            pool.push_back((uint32_t)value);
+            p = end;
+        }
+        else
+        {
+            ++p;
+        }
+    }
+    return pool;
+}
 
 static std::string clean_microcode_text(const qstring &text)
 {
@@ -358,7 +383,7 @@ void vm_mba_handler_t::initialize()
         return;
     initialized_ = true;
     msg("[chernobog:vm] VM MBA handler initialized (%zu carrier constants)\n",
-        sizeof(kCarrierPool) / sizeof(kCarrierPool[0]));
+        carrier_pool().size());
 }
 
 void vm_mba_handler_t::clear()
@@ -366,6 +391,7 @@ void vm_mba_handler_t::clear()
     candidates_.clear();
     summaries_.clear();
     carrier_hits_.clear();
+    pair_no_compact_cache_.clear();
 }
 
 bool vm_mba_handler_t::enabled()
@@ -520,6 +546,7 @@ int vm_mba_handler_t::simplify_insn(mblock_t *blk, minsn_t *ins, deobf_ctx_t *ct
     changes += simplify_masked_bitwise_carriers(ins);
     changes += simplify_nested_constant_ops(ins);
     changes += simplify_local_identities(ins);
+    changes += simplify_hikari_pair_mba(ins);
     changes += simplify_single_var_residual(ins);
     changes += simplify_pack_idiom_marker(ins);
     changes += split_scalar_pack_store(blk, ins);
@@ -571,7 +598,7 @@ bool vm_mba_handler_t::is_carrier_constant(uint64_t value, int size)
 {
     uint64_t mask = mask_for_size(size > 0 ? size : 4);
     uint64_t v = value & mask;
-    for ( uint32_t k : kCarrierPool )
+    for ( uint32_t k : carrier_pool() )
     {
         if ( (k & mask) == v )
             return true;
@@ -1142,6 +1169,130 @@ bool vm_mba_handler_t::replace_with_constant(minsn_t *ins, uint64_t value, int s
     return true;
 }
 
+bool vm_mba_handler_t::replace_with_and_not(minsn_t *ins, const mop_t &value,
+                                            const mop_t &mask)
+{
+    if ( !ins || value.t == mop_z || mask.t == mop_z )
+        return false;
+
+    int size = ins->d.size > 0 ? ins->d.size : value.size;
+    if ( size <= 0 || size > 8 )
+        return false;
+    if ( (value.size > 0 && value.size != size) || (mask.size > 0 && mask.size != size) )
+        return false;
+
+    mop_t and_l(value);
+    and_l.size = size;
+    mop_t and_r;
+
+    if ( mask.t == mop_d && mask.d && mask.d->opcode == m_bnot )
+    {
+        and_r = mask.d->l;
+        and_r.size = size;
+    }
+    else
+    {
+        minsn_t bnot(ins->ea);
+        bnot.opcode = m_bnot;
+        bnot.l = mask;
+        bnot.l.size = size;
+        bnot.d.size = size;
+        and_r.create_from_insn(&bnot);
+    }
+
+    return replace_with_binary_expr(ins, m_and, and_l, and_r);
+}
+
+bool vm_mba_handler_t::match_and_with_operand(const mop_t &mop, const mop_t &value,
+                                              mop_t *other)
+{
+    if ( mop.t != mop_d || !mop.d || mop.d->opcode != m_and )
+        return false;
+    if ( mops_same(mop.d->l, value) )
+    {
+        if ( other )
+            *other = mop.d->r;
+        return true;
+    }
+    if ( mops_same(mop.d->r, value) )
+    {
+        if ( other )
+            *other = mop.d->l;
+        return true;
+    }
+    return false;
+}
+
+bool vm_mba_handler_t::match_add_const(const mop_t &mop, mop_t *value, uint64_t *constant)
+{
+    if ( mop.t != mop_d || !mop.d || mop.d->opcode != m_add )
+        return false;
+
+    uint64_t k = 0;
+    if ( get_const(mop.d->l, &k) )
+    {
+        if ( value )
+            *value = mop.d->r;
+        if ( constant )
+            *constant = k;
+        return true;
+    }
+    if ( get_const(mop.d->r, &k) )
+    {
+        if ( value )
+            *value = mop.d->l;
+        if ( constant )
+            *constant = k;
+        return true;
+    }
+    return false;
+}
+
+bool vm_mba_handler_t::match_sub_operands(const mop_t &mop, mop_t *left, mop_t *right)
+{
+    if ( mop.t != mop_d || !mop.d || mop.d->opcode != m_sub )
+        return false;
+    if ( left )
+        *left = mop.d->l;
+    if ( right )
+        *right = mop.d->r;
+    return true;
+}
+
+bool vm_mba_handler_t::match_pair_mba_core(const mop_t &mop, mop_t *x, mop_t *y,
+                                           uint64_t *constant)
+{
+    if ( mop.t != mop_d || !mop.d || mop.d->opcode != m_and )
+        return false;
+
+    auto try_match = [&](const mop_t &a, const mop_t &b) -> bool {
+        mop_t add_x;
+        mop_t add_delta;
+        uint64_t c1 = 0, c2 = 0;
+        if ( !match_add_const(a, &add_x, &c1) || !match_add_const(b, &add_delta, &c2) )
+            return false;
+        if ( c1 != c2 )
+            return false;
+
+        mop_t sub_l;
+        mop_t sub_r;
+        if ( !match_sub_operands(add_delta, &sub_l, &sub_r) )
+            return false;
+        if ( !mops_same(sub_r, add_x) )
+            return false;
+
+        if ( x )
+            *x = add_x;
+        if ( y )
+            *y = sub_l;
+        if ( constant )
+            *constant = c1;
+        return true;
+    };
+
+    return try_match(mop.d->l, mop.d->r) || try_match(mop.d->r, mop.d->l);
+}
+
 bool vm_mba_handler_t::eval_const_insn(const minsn_t *ins, uint64_t *out, int *out_size)
 {
     if ( !ins )
@@ -1234,20 +1385,43 @@ int vm_mba_handler_t::simplify_local_identities(minsn_t *ins)
 
     switch ( ins->opcode )
     {
-        case m_add:
         case m_or:
-        case m_xor:
+        {
+            mop_t ignored;
+            if ( match_and_with_operand(ins->r, ins->l, &ignored) )
+                return replace_with_operand(ins, ins->l) ? 1 : 0;
+            if ( match_and_with_operand(ins->l, ins->r, &ignored) )
+                return replace_with_operand(ins, ins->r) ? 1 : 0;
             if ( rconst && (rc & full) == 0 )
                 return replace_with_operand(ins, ins->l) ? 1 : 0;
             if ( lconst && (lc & full) == 0 )
                 return replace_with_operand(ins, ins->r) ? 1 : 0;
             break;
+        }
+        case m_xor:
+        {
+            mop_t other;
+            if ( match_and_with_operand(ins->r, ins->l, &other) )
+                return replace_with_and_not(ins, ins->l, other) ? 1 : 0;
+            if ( match_and_with_operand(ins->l, ins->r, &other) )
+                return replace_with_and_not(ins, ins->r, other) ? 1 : 0;
+            if ( rconst && (rc & full) == 0 )
+                return replace_with_operand(ins, ins->l) ? 1 : 0;
+            if ( lconst && (lc & full) == 0 )
+                return replace_with_operand(ins, ins->r) ? 1 : 0;
+            break;
+        }
         case m_sub:
+        {
+            mop_t other;
+            if ( match_and_with_operand(ins->r, ins->l, &other) )
+                return replace_with_and_not(ins, ins->l, other) ? 1 : 0;
             if ( rconst && (rc & full) == 0 )
                 return replace_with_operand(ins, ins->l) ? 1 : 0;
             if ( mops_same(ins->l, ins->r) )
                 return replace_with_constant(ins, 0, ins->d.size) ? 1 : 0;
             break;
+        }
         case m_and:
             if ( rconst && (rc & full) == full )
                 return replace_with_operand(ins, ins->l) ? 1 : 0;
@@ -1255,6 +1429,12 @@ int vm_mba_handler_t::simplify_local_identities(minsn_t *ins)
                 return replace_with_operand(ins, ins->r) ? 1 : 0;
             if ( (rconst && (rc & full) == 0) || (lconst && (lc & full) == 0) )
                 return replace_with_constant(ins, 0, ins->d.size) ? 1 : 0;
+            break;
+        case m_add:
+            if ( rconst && (rc & full) == 0 )
+                return replace_with_operand(ins, ins->l) ? 1 : 0;
+            if ( lconst && (lc & full) == 0 )
+                return replace_with_operand(ins, ins->r) ? 1 : 0;
             break;
         case m_mul:
             if ( rconst && (rc & full) == 1 )
@@ -1433,6 +1613,47 @@ bool vm_mba_handler_t::replace_with_binary_expr(minsn_t *ins, mcode_t op,
     return true;
 }
 
+bool vm_mba_handler_t::replace_with_binary_const_expr(minsn_t *ins, mcode_t base_op,
+                                                      const mop_t &left, const mop_t &right,
+                                                      mcode_t outer_op, uint64_t constant)
+{
+    if ( !ins )
+        return false;
+
+    int size = ins->d.size > 0 ? ins->d.size : left.size;
+    if ( size <= 0 || size > 8 )
+        return false;
+    if ( (left.size > 0 && left.size != size) || (right.size > 0 && right.size != size) )
+        return false;
+
+    uint64_t mask = mask_for_size(size);
+    constant &= mask;
+    if ( constant == 0 && (outer_op == m_xor || outer_op == m_add || outer_op == m_sub) )
+        return replace_with_binary_expr(ins, base_op, left, right);
+
+    minsn_t inner(ins->ea);
+    inner.opcode = base_op;
+    inner.l = left;
+    inner.l.size = size;
+    inner.r = right;
+    inner.r.size = size;
+    inner.d.size = size;
+    mop_t inner_mop;
+    inner_mop.create_from_insn(&inner);
+
+    std::string before = clean_insn_text(ins);
+    mop_t dst = ins->d;
+    dst.size = size;
+    ins->opcode = outer_op;
+    ins->l = inner_mop;
+    ins->r.make_number(constant, size);
+    ins->d = dst;
+    vm_debug("[vm:pair] rewrite %a base=%d outer=%d const=0x%llx before=%s\n",
+             ins->ea, (int)base_op, (int)outer_op,
+             (unsigned long long)constant, before.c_str());
+    return true;
+}
+
 static bool z3_eval_uint64(z3_solver::z3_context_t &ctx,
                            const z3::expr &expr,
                            const z3::expr &var,
@@ -1458,6 +1679,113 @@ static bool z3_equiv(z3_solver::z3_context_t &ctx,
     ctx.solver().reset();
     ctx.solver().add(a != b);
     return ctx.solver().check() == z3::unsat;
+}
+
+int vm_mba_handler_t::simplify_hikari_pair_mba(minsn_t *ins)
+{
+    if ( !ins || ins->opcode != m_xor || ins->d.size != 4 )
+        return 0;
+
+    mop_t *core = nullptr;
+    uint64_t outer_const = 0;
+    if ( !split_bin_const(m_xor, &ins->l, &ins->r, &core, &outer_const, nullptr) )
+        return 0;
+    if ( !core )
+        return 0;
+
+    mop_t x;
+    mop_t y;
+    uint64_t add_const = 0;
+    if ( !match_pair_mba_core(*core, &x, &y, &add_const) )
+        return 0;
+    if ( x.size > 0 && x.size != 4 )
+        return 0;
+    if ( y.size > 0 && y.size != 4 )
+        return 0;
+    x.size = 4;
+    y.size = 4;
+
+    uint64_t cache_key = chernobog::simd::hash_combine(hash_insn(ins), outer_const);
+    cache_key = chernobog::simd::hash_combine(cache_key, add_const);
+    if ( pair_no_compact_cache_.find(cache_key) != pair_no_compact_cache_.end() )
+        return 0;
+
+    try
+    {
+        z3_solver::z3_context_t zctx;
+        zctx.set_timeout(100);
+        z3_solver::mcode_translator_t translator(zctx);
+        z3::expr expr = translator.translate_insn(ins);
+        z3::expr zx = translator.translate_operand(x, 4);
+        z3::expr zy = translator.translate_operand(y, 4);
+        z3::expr zero = zctx.ctx().bv_val(0, 32);
+        auto bv32 = [&](const z3::expr &e) -> z3::expr {
+            unsigned bits = e.get_sort().bv_size();
+            if ( bits == 32 )
+                return e;
+            if ( bits > 32 )
+                return e.extract(31, 0);
+            return z3::zext(e, 32 - bits);
+        };
+        expr = bv32(expr);
+        zx = bv32(zx);
+        zy = bv32(zy);
+
+        auto eval_at_zero = [&](const z3::expr &candidate, uint64_t *out) -> bool {
+            zctx.solver().reset();
+            zctx.solver().add(zx == zero);
+            zctx.solver().add(zy == zero);
+            if ( zctx.solver().check() != z3::sat )
+                return false;
+            z3::expr val = zctx.solver().get_model().eval(candidate, true);
+            return Z3_get_numeral_uint64(zctx.ctx(), val, out);
+        };
+
+        auto try_candidate = [&](mcode_t base_op,
+                                 const mop_t &left_mop,
+                                 const mop_t &right_mop,
+                                 const z3::expr &base_expr) -> bool {
+            z3::expr base = bv32(base_expr);
+            uint64_t c = 0;
+            if ( eval_at_zero(expr ^ base, &c)
+              && z3_equiv(zctx, expr, base ^ zctx.ctx().bv_val(c, 32)) )
+                return replace_with_binary_const_expr(ins, base_op, left_mop, right_mop, m_xor, c);
+            if ( eval_at_zero(expr - base, &c)
+              && z3_equiv(zctx, expr, base + zctx.ctx().bv_val(c, 32)) )
+                return replace_with_binary_const_expr(ins, base_op, left_mop, right_mop, m_add, c);
+            if ( eval_at_zero(base - expr, &c)
+              && z3_equiv(zctx, expr, base - zctx.ctx().bv_val(c, 32)) )
+                return replace_with_binary_const_expr(ins, base_op, left_mop, right_mop, m_sub, c);
+            return false;
+        };
+
+        if ( try_candidate(m_and, x, y, zx & zy) )
+            return 1;
+        if ( try_candidate(m_or, x, y, zx | zy) )
+            return 1;
+        if ( try_candidate(m_xor, x, y, zx ^ zy) )
+            return 1;
+        if ( try_candidate(m_add, x, y, zx + zy) )
+            return 1;
+        if ( try_candidate(m_sub, x, y, zx - zy) )
+            return 1;
+        if ( try_candidate(m_sub, y, x, zy - zx) )
+            return 1;
+
+        vm_debug("[vm:pair] no compact form at %a C=0x%llx K=0x%llx\n",
+                 ins->ea, (unsigned long long)add_const, (unsigned long long)outer_const);
+        pair_no_compact_cache_.insert(cache_key);
+    }
+    catch ( const z3::exception &e )
+    {
+        vm_debug("[vm:pair] z3 exception at %a: %s\n", ins->ea, e.msg());
+    }
+    catch ( ... )
+    {
+        vm_debug("[vm:pair] exception at %a\n", ins->ea);
+    }
+
+    return 0;
 }
 
 int vm_mba_handler_t::simplify_single_var_residual(minsn_t *ins)

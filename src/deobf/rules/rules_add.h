@@ -107,6 +107,150 @@ public:
     }
 };
 
+// x + (y & ~x) -> x | y
+class Add_CarryFreeOrRule_1 : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Add_CarryFreeOrRule_1"; }
+
+    AstPtr get_pattern() const override
+    {
+        return add(x_0(), band(x_1(), bnot(x_0())));
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return bor(x_0(), x_1());
+    }
+};
+
+// x + (~x & y) -> x | y
+class Add_CarryFreeOrRule_2 : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Add_CarryFreeOrRule_2"; }
+
+    AstPtr get_pattern() const override
+    {
+        return add(x_0(), band(bnot(x_0()), x_1()));
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return bor(x_0(), x_1());
+    }
+};
+
+// (y & ~x) + x -> x | y
+class Add_CarryFreeOrRule_3 : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Add_CarryFreeOrRule_3"; }
+
+    AstPtr get_pattern() const override
+    {
+        return add(band(x_1(), bnot(x_0())), x_0());
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return bor(x_0(), x_1());
+    }
+};
+
+// (~x & y) + x -> x | y
+class Add_CarryFreeOrRule_4 : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Add_CarryFreeOrRule_4"; }
+
+    AstPtr get_pattern() const override
+    {
+        return add(band(bnot(x_0()), x_1()), x_0());
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return bor(x_0(), x_1());
+    }
+};
+
+// ((y | ~x) + x) + 1 -> x & y
+class Add_OrNotCarryRule_1 : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Add_OrNotCarryRule_1"; }
+
+    AstPtr get_pattern() const override
+    {
+        return add(add(bor(x_1(), bnot(x_0())), x_0()), c_1());
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return band(x_0(), x_1());
+    }
+};
+
+// ((~x | y) + x) + 1 -> x & y
+class Add_OrNotCarryRule_2 : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Add_OrNotCarryRule_2"; }
+
+    AstPtr get_pattern() const override
+    {
+        return add(add(bor(bnot(x_0()), x_1()), x_0()), c_1());
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return band(x_0(), x_1());
+    }
+};
+
+// 1 + ((y | ~x) + x) -> x & y
+class Add_OrNotCarryRule_3 : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Add_OrNotCarryRule_3"; }
+
+    AstPtr get_pattern() const override
+    {
+        return add(c_1(), add(bor(x_1(), bnot(x_0())), x_0()));
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return band(x_0(), x_1());
+    }
+};
+
+// (x & y) + (~x & y) -> y
+class Add_DisjointAndRule_1 : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Add_DisjointAndRule_1"; }
+
+    AstPtr get_pattern() const override
+    {
+        return add(band(x_0(), x_1()), band(bnot(x_0()), x_1()));
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return x_1();
+    }
+};
+
+// (~x & y) + (x & y) -> y
+class Add_DisjointAndRule_2 : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Add_DisjointAndRule_2"; }
+
+    AstPtr get_pattern() const override
+    {
+        return add(band(bnot(x_0()), x_1()), band(x_0(), x_1()));
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return x_1();
+    }
+};
+
 //--------------------------------------------------------------------------
 // OLLVM Addition Rules
 //--------------------------------------------------------------------------

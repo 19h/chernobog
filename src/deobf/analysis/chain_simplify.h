@@ -122,6 +122,12 @@ private:
     // Check if operand is NEG of another
     static bool is_neg_of(const mop_t& a, const mop_t& b);
 
+    // Combine separated ADD-chain MBA pairs, such as x+(y&~x).
+    static bool combine_add_pairs(std::vector<chain_operand_t>& operands,
+                                  uint64_t& const_result,
+                                  ea_t ea,
+                                  int size);
+
     // Get constant value from mop
     static bool get_const_value(const mop_t& mop, uint64_t* out);
 

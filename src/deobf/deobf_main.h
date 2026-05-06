@@ -17,6 +17,7 @@ public:
     static void deobfuscate_function(cfunc_t *cfunc);
     static void deobfuscate_function(ea_t ea);
     static void deobfuscate_mba(mbl_array_t *mba);
+    static int optimize_mba(mbl_array_t *mba);
     static void analyze_function(ea_t ea);
 
     // Detection

@@ -208,6 +208,17 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
                 return 1;  // Signal that we made changes
             }
         }
+
+        if ( mba_simplify_handler_t::detect(mba) )
+        {
+            msg("[optblock] Detected MBA substitutions at maturity %d\n", maturity);
+            int changes = mba_simplify_handler_t::run(mba, &icall_ctx);
+            if ( changes > 0 )
+            {
+                msg("[optblock] MBA simplifier applied %d changes\n", changes);
+                return changes;
+            }
+        }
         return 0;
     }
 
@@ -235,6 +246,20 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
         if ( changes > 0 )
         {
             msg("[optblock] Global const handler applied %d changes\n", changes);
+            total_changes += changes;
+        }
+    }
+
+    // Some MBA substitutions only reach a stable canonical form after LOCOPT.
+    // Re-run the generic MBA simplifier at later maturities so rules can match
+    // post-canonicalization trees without relying on sample-specific constants.
+    if ( maturity > MMAT_LOCOPT && mba_simplify_handler_t::detect(mba) )
+    {
+        msg("[optblock] Detected MBA substitutions at maturity %d\n", maturity);
+        int changes = mba_simplify_handler_t::run(mba, &ctx);
+        if ( changes > 0 )
+        {
+            msg("[optblock] MBA simplifier applied %d changes\n", changes);
             total_changes += changes;
         }
     }
@@ -358,6 +383,29 @@ void chernobog_t::deobfuscate_mba(mbl_array_t *mba)
 
     // Run the core deobfuscation logic
     run_deobfuscation_passes(mba, &s_ctx);
+}
+
+int chernobog_t::optimize_mba(mbl_array_t *mba)
+{
+    if ( !mba )
+        return 0;
+
+    deobf_ctx_t ctx;
+    ctx.mba = mba;
+    ctx.func_ea = mba->entry_ea;
+
+    int total_changes = 0;
+
+    if ( vm_mba_handler_t::detect(mba) )
+        total_changes += vm_mba_handler_t::run(mba, &ctx);
+
+    if ( mba_simplify_handler_t::detect(mba) )
+        total_changes += mba_simplify_handler_t::run(mba, &ctx);
+
+    if ( total_changes > 0 )
+        ctx.expressions_simplified += total_changes;
+
+    return total_changes;
 }
 
 //--------------------------------------------------------------------------
@@ -789,6 +837,13 @@ bool deobf_active()
 
 void deobf_init()
 {
+    qstring verbose_env;
+    if ( qgetenv("CHERNOBOG_VERBOSE", &verbose_env)
+      && !verbose_env.empty() && verbose_env[0] != '0' )
+    {
+        deobf::set_verbose(true);
+    }
+
     // Initialize MBA simplification (pattern matching rules)
     mba_simplify_handler_t::initialize();
     vm_mba_handler_t::initialize();

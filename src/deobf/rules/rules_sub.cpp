@@ -16,6 +16,8 @@ REGISTER_MBA_RULE(Sub_SpecialConstantRule_1);
 REGISTER_MBA_RULE(Sub_Rule_1);
 REGISTER_MBA_RULE(Sub_Rule_2);
 REGISTER_MBA_RULE(Sub_Rule_3);
+REGISTER_MBA_RULE(Sub_AddCancelRule_1);
+REGISTER_MBA_RULE(Sub_AddCancelRule_2);
 
 } // namespace rules
 } // namespace chernobog
