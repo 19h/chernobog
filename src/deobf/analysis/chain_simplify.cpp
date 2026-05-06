@@ -312,9 +312,21 @@ bool ChainSimplifier::combine_add_pairs(std::vector<chain_operand_t>& operands,
             erase_three_operands(operands, i, pos_idx, and_idx);
             return true;
         }
+        if (find_positive_operand(operands, or_l, i, &pos_idx) &&
+            find_positive_and_not_of(operands, operands[i].mop, or_r, i, pos_idx, &and_idx)) {
+            erase_three_operands(operands, i, pos_idx, and_idx);
+            operands.push_back(chain_operand_t(or_r, true));
+            return true;
+        }
         if (find_positive_operand(operands, or_r, i, &pos_idx) &&
             find_positive_and_not_of(operands, operands[i].mop, or_r, i, pos_idx, &and_idx)) {
             erase_three_operands(operands, i, pos_idx, and_idx);
+            return true;
+        }
+        if (find_positive_operand(operands, or_r, i, &pos_idx) &&
+            find_positive_and_not_of(operands, operands[i].mop, or_l, i, pos_idx, &and_idx)) {
+            erase_three_operands(operands, i, pos_idx, and_idx);
+            operands.push_back(chain_operand_t(or_l, true));
             return true;
         }
     }
