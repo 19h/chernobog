@@ -252,5 +252,22 @@ public:
     }
 };
 
+// (x + y) - y -> x
+// The matcher handles the commutative form of the inner ADD.
+class Sub_AddCancelRule : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Sub_AddCancelRule"; }
+
+    AstPtr get_pattern() const override
+    {
+        return sub(add(x_0(), x_1()), x_1());
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return x_0();
+    }
+};
+
 } // namespace rules
 } // namespace chernobog

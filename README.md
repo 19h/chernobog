@@ -38,7 +38,7 @@ Chernobog automatically detects and reverses the following Hikari obfuscation te
 - **Stack String Construction** - Reconstructs strings built character-by-character on the stack
 - **Global Constant Inlining** - Replaces loads from read-only globals with immediate values
 
-### Code Transformation (104 MBA Rules)
+### Code Transformation (108 MBA Rules)
 Mixed Boolean-Arithmetic (MBA) simplification using Z3-certified rules and lazy commutative matching:
 
 **Addition patterns:**
@@ -52,6 +52,7 @@ Mixed Boolean-Arithmetic (MBA) simplification using Z3-certified rules and lazy 
 - `x + ~y + 1` → `x - y`
 - `~(~x + y)` → `x - y`
 - `x + (-y)` → `x - y`
+- `(x + y) - y` → `x`
 
 **XOR patterns:**
 - `(x | y) - (x & y)` → `x ^ y`
@@ -69,7 +70,19 @@ Mixed Boolean-Arithmetic (MBA) simplification using Z3-certified rules and lazy 
 - `~(~x & ~y)` → `x | y` (De Morgan)
 - `x | (x & y)` → `x` (absorption)
 
-**And many more...** (104 registered rules derived from Hacker's Delight, OLLVM patterns, and algebraic factorizations)
+Additional carry-disjoint rules include `x + (y & ~x)` → `x | y`,
+`((y | ~x) + x) + 1` → `x & y`, and
+`(x & y) + (~x & y)` → `y`. All 108 registered rules are checked for
+8-, 16-, 32-, and 64-bit equivalence before admission.
+
+### VM-Family MBA Recovery
+
+With `CHERNOBOG_VM=1`, functions named `prog_bb_<digits>` are admitted only
+after structural checks for instruction-pointer advancement, bytecode reads,
+and accumulator writes or threaded successors. The handler recovers SSE/scalar
+accumulator packing, removes masked carrier constants, simplifies local MBA
+identities, and persists handler summaries. Its optional Z3 residual pass is
+enabled separately with `CHERNOBOG_VM_Z3=1`.
 
 ### Opaque Predicate Elimination
 - **Jump Optimization** - Z3-based analysis for complex conditional simplification
@@ -203,6 +216,13 @@ To see what obfuscation types are present without making changes:
 | `CHERNOBOG_VERBOSE=1` | Enable verbose logging |
 | `CHERNOBOG_DEBUG=1` | Enable debug output to `/tmp/chernobog_debug.log` |
 | `CHERNOBOG_RESET=1` | Clear decompiler cache on startup |
+| `CHERNOBOG_MBA_AFFINE=1` | Enable exact-Z3 affine MBA reconstruction (opt-in) |
+| `CHERNOBOG_MBA_DEBUG=1` | Log affine decisions to `/tmp/chernobog_mba_debug.log` |
+| `CHERNOBOG_VM=1` | Enable VM-family detection and rewriting (opt-in) |
+| `CHERNOBOG_VM_Z3=1` | Enable additional exact-Z3 VM residual simplification |
+| `CHERNOBOG_VM_CARRIER_POOL=...` | Comma-separated VM carrier constants, parsed with base autodetection |
+| `CHERNOBOG_VM_DEBUG=1` | Log VM decisions to `/tmp/chernobog_vm_debug.log` |
+| `CHERNOBOG_VM_DUMP_JSON=1` | Dump VM summaries to `/tmp/chernobog_vm_summary_<EA>.json` |
 
 ### Plugin Info
 

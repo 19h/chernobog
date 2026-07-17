@@ -8,6 +8,36 @@
 namespace chernobog {
 namespace z3_utils {
 
+// Prove fixed-width bit-vector equivalence. SAT, UNKNOWN, malformed input,
+// context mismatch, and every Z3 exception fail closed.
+inline bool prove_bv_equivalent(const z3::expr &left,
+                                const z3::expr &right,
+                                unsigned timeout_ms = 0) noexcept
+{
+    try
+    {
+        if ( &left.ctx() != &right.ctx() || !left.is_bv() || !right.is_bv()
+          || left.get_sort().bv_size() != right.get_sort().bv_size() )
+        {
+            return false;
+        }
+
+        z3::solver proof(left.ctx());
+        if ( timeout_ms != 0 )
+        {
+            z3::params parameters(left.ctx());
+            parameters.set("timeout", timeout_ms);
+            proof.set(parameters);
+        }
+        proof.add(left != right);
+        return proof.check() == z3::unsat;
+    }
+    catch ( ... )
+    {
+        return false;
+    }
+}
+
 // Return a bit-vector value only when the current solver constraints admit
 // exactly one value. The caller owns the surrounding solver assertions.
 // Two satisfiability checks are sufficient: obtain one model, then exclude

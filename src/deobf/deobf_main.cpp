@@ -7,6 +7,7 @@
 #include "handlers/indirect_branch.h"
 #include "handlers/block_merge.h"
 #include "handlers/mba_simplify.h"
+#include "handlers/vm_mba.h"
 #include "handlers/identity_call.h"
 #include "handlers/stack_string.h"
 #include "handlers/hikari_wrapper.h"
@@ -43,6 +44,7 @@ void chernobog_clear_function_tracking(ea_t func_ea)
     // Clear deferred analysis for all handlers
     deflatten_handler_t::clear_deferred(func_ea);
     identity_call_handler_t::clear_caches();
+    vm_mba_handler_t::clear_function(func_ea);
 }
 
 // Clear ALL tracking caches (called on database load if CHERNOBOG_RESET=1)
@@ -53,6 +55,7 @@ void chernobog_clear_all_tracking()
     identity_call_handler_t::clear_caches();
     hikari_wrapper_handler_t::clear_cache();
     opaque_eval_t::clear_cache();
+    vm_mba_handler_t::clear();
     deobf::log_verbose("[chernobog] Cleared all deobfuscation caches\n");
 }
 
@@ -108,7 +111,7 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
     // maturity already declared above
 
     if ( maturity != MMAT_LOCOPT && maturity != MMAT_CALLS &&
-         maturity != MMAT_GLBOPT1 )
+         maturity != MMAT_GLBOPT1 && maturity != MMAT_GLBOPT2 )
         return 0;
 
     // Track which function+maturity combinations we've processed to avoid duplicate work
@@ -161,23 +164,44 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
     // This is when mcallinfo is available, making it safe to modify calls
     if ( maturity == MMAT_CALLS )
     {
+        deobf_ctx_t icall_ctx;
+        icall_ctx.mba = mba;
+        icall_ctx.func_ea = func_ea;
+
+        int total_changes = 0;
+        if ( vm_mba_handler_t::detect(mba) )
+            total_changes += vm_mba_handler_t::run(mba, &icall_ctx);
+
         if ( indirect_call_handler_t::detect(mba) )
         {
             optblock_debug("[optblock] Running indirect call handler at MMAT_CALLS\n");
             deobf::log_verbose("[optblock] Running indirect call deobfuscation "
                                "at maturity %d (MMAT_CALLS)\n", maturity);
-            deobf_ctx_t icall_ctx;
-            icall_ctx.mba = mba;
-            icall_ctx.func_ea = func_ea;
             int changes = indirect_call_handler_t::run(mba, &icall_ctx);
             if ( changes > 0 )
             {
                 deobf::log_verbose("[optblock] Resolved %d indirect calls at MMAT_CALLS\n",
                                    icall_ctx.indirect_resolved);
-                return 1;  // Signal that we made changes
+                total_changes += changes;
             }
         }
-        return 0;
+        return total_changes;
+    }
+
+    if ( maturity == MMAT_GLBOPT2 )
+    {
+        deobf_ctx_t late_ctx;
+        late_ctx.mba = mba;
+        late_ctx.func_ea = func_ea;
+        int late_changes = 0;
+        if ( vm_mba_handler_t::detect(mba) )
+        {
+            late_changes += vm_mba_handler_t::run(mba, &late_ctx);
+            vm_mba_handler_t::dump_summary(func_ea);
+        }
+        if ( mba_simplify_handler_t::detect(mba) )
+            late_changes += mba_simplify_handler_t::run(mba, &late_ctx);
+        return late_changes;
     }
 
     deobf_ctx_t ctx;
@@ -300,6 +324,10 @@ int idaapi chernobog_t::func(mblock_t *blk, minsn_t *ins, int optflags)
     // Try global constant inlining
     changes += global_const_handler_t::simplify_insn(blk, ins, nullptr);
 
+    // VM rewrites are restricted to functions structurally admitted by the
+    // opt-in detector at an earlier block maturity.
+    changes += vm_mba_handler_t::simplify_insn(blk, ins, nullptr);
+
     // Try MBA simplification on this instruction
     changes += mba_simplify_handler_t::simplify_insn(blk, ins, nullptr);
 
@@ -404,9 +432,18 @@ static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx)
     {
         deobf::log("[chernobog] - Indirect call obfuscation detected\n");
     }
+    if ( ctx->detected_obf & OBF_VM_MBA )
+    {
+        deobf::log("[chernobog] - VM-family MBA handler detected\n");
+    }
 
     // Apply deobfuscation passes in order
     int total_changes = 0;
+
+    if ( ctx->detected_obf & OBF_VM_MBA )
+    {
+        total_changes += vm_mba_handler_t::run(mba, ctx);
+    }
 
     // 1. First merge split blocks (simplest transformation)
     if ( ctx->detected_obf & OBF_SPLIT_BLOCKS )
@@ -587,6 +624,7 @@ void chernobog_t::analyze_function(ea_t ea)
     if ( obf & OBF_GLOBAL_CONST ) msg("  - Inlinable global constants\n");
     if ( obf & OBF_PTR_INDIRECT ) msg("  - Indirect pointer references\n");
     if ( obf & OBF_INDIRECT_CALL ) msg("  - Indirect call obfuscation (Hikari)\n");
+    if ( obf & OBF_VM_MBA ) msg("  - VM-family MBA handler\n");
     if ( obf == OBF_NONE ) msg("  - No obfuscation detected\n");
 }
 
@@ -662,6 +700,9 @@ uint32_t chernobog_t::detect_obfuscations(mbl_array_t *mba)
     // Check for indirect call obfuscation (Hikari IndirectCall)
     if ( indirect_call_handler_t::detect(mba) )
         detected |= OBF_INDIRECT_CALL;
+
+    if ( vm_mba_handler_t::detect(mba) )
+        detected |= OBF_VM_MBA;
 
     return detected;
 }
@@ -786,6 +827,8 @@ void deobf_done()
     // Clear any pending analysis
     deflatten_handler_t::s_deferred_analysis.clear();
     identity_call_handler_t::clear_caches();
+    vm_mba_handler_t::dump_statistics();
+    vm_mba_handler_t::clear();
     s_optblock_processed.clear();
 
     // NOTE: Do NOT call RuleRegistry::instance().clear() here!

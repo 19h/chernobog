@@ -66,11 +66,34 @@ void test_unique_model_values()
           "the full uint64_t domain endpoint is supported");
 }
 
+void test_fail_closed_equivalence()
+{
+    z3::context context;
+    const z3::expr x = context.bv_const("eq_x", 32);
+    const z3::expr y = context.bv_const("eq_y", 32);
+    const z3::expr carry_form = (x ^ y) + ((x & y) * context.bv_val(2, 32));
+
+    check(chernobog::z3_utils::prove_bv_equivalent(carry_form, x + y, 100),
+          "equivalent bit-vector expressions require an UNSAT mismatch proof");
+    check(!chernobog::z3_utils::prove_bv_equivalent(x & y, x + y, 100),
+          "a SAT mismatch rejects a non-equivalent rewrite");
+
+    const z3::expr narrow = context.bv_const("eq_narrow", 16);
+    check(!chernobog::z3_utils::prove_bv_equivalent(x, narrow, 100),
+          "different bit widths fail closed");
+
+    z3::context other_context;
+    const z3::expr foreign = other_context.bv_const("eq_foreign", 32);
+    check(!chernobog::z3_utils::prove_bv_equivalent(x, foreign, 100),
+          "different Z3 contexts fail closed");
+}
+
 } // namespace
 
 int main()
 {
     test_unique_model_values();
+    test_fail_closed_equivalence();
     if ( failures != 0 )
         std::fprintf(stderr, "%d Z3 test(s) failed\n", failures);
     return failures == 0 ? 0 : 1;

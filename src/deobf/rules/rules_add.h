@@ -108,6 +108,61 @@ public:
 };
 
 //--------------------------------------------------------------------------
+// Carry-disjoint Addition Rules
+//--------------------------------------------------------------------------
+
+// x + (y & ~x) -> x | y
+// The matcher handles the commutative forms of both ADD and AND.
+class Add_CarryFreeOrRule : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Add_CarryFreeOrRule"; }
+
+    AstPtr get_pattern() const override
+    {
+        return add(x_0(), band(x_1(), bnot(x_0())));
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return bor(x_0(), x_1());
+    }
+};
+
+// ((y | ~x) + x) + 1 -> x & y
+// The matcher handles the commutative forms of OR and both ADD nodes.
+class Add_OrNotCarryRule : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Add_OrNotCarryRule"; }
+
+    AstPtr get_pattern() const override
+    {
+        return add(add(bor(x_1(), bnot(x_0())), x_0()), c_1());
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return band(x_0(), x_1());
+    }
+};
+
+// (x & y) + (~x & y) -> y
+// The matcher handles operand order in ADD and both AND nodes.
+class Add_DisjointAndRule : public PatternMatchingRule {
+public:
+    const char* name() const override { return "Add_DisjointAndRule"; }
+
+    AstPtr get_pattern() const override
+    {
+        return add(band(x_0(), x_1()), band(bnot(x_0()), x_1()));
+    }
+
+    AstPtr get_replacement() const override
+    {
+        return x_1();
+    }
+};
+
+//--------------------------------------------------------------------------
 // OLLVM Addition Rules
 //--------------------------------------------------------------------------
 

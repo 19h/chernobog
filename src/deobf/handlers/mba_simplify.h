@@ -8,9 +8,11 @@
 // This handler replaces the old substitution_handler_t with the new
 // AST-based pattern matching system. It provides:
 //
-//   - 104 semantically certified MBA simplification rules
+//   - Semantically certified MBA simplification rules
 //   - Lazy commutative matching with binding rollback
 //   - O(1) average root-opcode lookup
+//   - Strict-width chain folding
+//   - Opt-in affine reconstruction with exact Z3 equivalence proofs
 //   - Statistics tracking per rule
 //
 // The handler integrates with IDA's microcode optimization through

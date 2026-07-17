@@ -414,7 +414,8 @@ static bool idaapi run(size_t)
     msg("  - Stack String Construction\n");
     msg("  - Hikari Function Wrappers\n");
     msg("  - Register Demotion (savedregs)\n");
-    msg("  - Obfuscated ObjC Method Calls\n\n");
+    msg("  - Obfuscated ObjC Method Calls\n");
+    msg("  - VM-family MBA handlers (CHERNOBOG_VM=1)\n\n");
     msg("Usage:\n");
     msg("  1. Open a function in the decompiler\n");
     msg("  2. Right-click and select 'Deobfuscate (Chernobog)'\n");
