@@ -19,27 +19,42 @@
 #include "handlers/ctree_string_decrypt.h"
 #include "rules/rule_registry.h"
 
-bool chernobog_t::s_active = false;
-deobf_ctx_t chernobog_t::s_ctx;
-
 // Forward declaration
 static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx);
 
-static chernobog_t *g_deobf = nullptr;
-static chernobog_optblock_t *g_optblock = nullptr;
+struct deobf_module_state_t
+{
+    chernobog_t *deobf = nullptr;
+    chernobog_optblock_t *optblock = nullptr;
+    bool active = false;
+    ea_t last_inactive_ea = BADADDR;
+    std::set<std::pair<ea_t, int>> optblock_processed;
+};
+
+// IDA stores one pointer for this data ID in each database context.
+static int s_deobf_data_id = 0;
+
+static deobf_module_state_t *get_deobf_state()
+{
+    if ( s_deobf_data_id == 0 || get_dbctx_id() < 0 )
+        return nullptr;
+    return static_cast<deobf_module_state_t *>(get_module_data(s_deobf_data_id));
+}
 
 static void register_deobf_actions();
 static void unregister_deobf_actions();
 
-// Track optblock processed combinations (cleared on refresh)
-static std::set<std::pair<ea_t, int>> s_optblock_processed;
-
 // Clear tracking for a function to allow re-deobfuscation
 void chernobog_clear_function_tracking(ea_t func_ea)
 {
+    deobf_module_state_t *state = get_deobf_state();
+
     // Clear all maturity combinations for this function from optblock tracking
-    for ( int m = 0; m < 16; ++m )
-        s_optblock_processed.erase({func_ea, m});
+    if ( state != nullptr )
+    {
+        for ( int m = 0; m < 16; ++m )
+            state->optblock_processed.erase({func_ea, m});
+    }
 
     // Clear deferred analysis for all handlers
     deflatten_handler_t::clear_deferred(func_ea);
@@ -50,7 +65,9 @@ void chernobog_clear_function_tracking(ea_t func_ea)
 // Clear ALL tracking caches (called on database load if CHERNOBOG_RESET=1)
 void chernobog_clear_all_tracking()
 {
-    s_optblock_processed.clear();
+    deobf_module_state_t *state = get_deobf_state();
+    if ( state != nullptr )
+        state->optblock_processed.clear();
     deflatten_handler_t::s_deferred_analysis.clear();
     identity_call_handler_t::clear_caches();
     hikari_wrapper_handler_t::clear_cache();
@@ -88,20 +105,21 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
     }
 
     int maturity = blk->mba->maturity;
-    optblock_debug("[optblock] s_active=%d, entry_ea=%llx, maturity=%d, blk=%d\n",
-                   chernobog_t::s_active ? 1 : 0,
+    deobf_module_state_t *state = get_deobf_state();
+    const bool active = state != nullptr && state->active;
+    optblock_debug("[optblock] active=%d, entry_ea=%llx, maturity=%d, blk=%d\n",
+                   active ? 1 : 0,
                    (unsigned long long)blk->mba->entry_ea,
                    maturity,
                    blk->serial);
 
-    if ( !chernobog_t::s_active )
+    if ( !active )
     {
         // Only log once per function to avoid spam
-        static ea_t last_inactive_ea = BADADDR;
-        if ( blk->mba->entry_ea != last_inactive_ea )
+        if ( state != nullptr && blk->mba->entry_ea != state->last_inactive_ea )
         {
-            last_inactive_ea = blk->mba->entry_ea;
-            msg("[optblock] s_active=false, skipping %a\n", blk->mba->entry_ea);
+            state->last_inactive_ea = blk->mba->entry_ea;
+            msg("[optblock] inactive, skipping %a\n", blk->mba->entry_ea);
         }
         return 0;
     }
@@ -117,13 +135,13 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
     // Track which function+maturity combinations we've processed to avoid duplicate work
     const auto key = std::make_pair(func_ea, maturity);
 
-    if ( s_optblock_processed.count(key) )
+    if ( state->optblock_processed.count(key) )
     {
         optblock_debug("[optblock] Already processed %llx/%d\n",
                        (unsigned long long)func_ea, maturity);
         return 0;
     }
-    s_optblock_processed.insert(key);
+    state->optblock_processed.insert(key);
 
     optblock_debug("[optblock] NEW processing: maturity=%d, func=%llx\n", maturity, (unsigned long long)func_ea);
     deobf::log_verbose("[optblock] Processing %a at maturity %d (blk %d)\n",
@@ -344,12 +362,12 @@ void chernobog_t::deobfuscate_mba(mbl_array_t *mba)
 
     deobf::log("[chernobog] Deobfuscating %a (from mba)\n", mba->entry_ea);
 
-    s_ctx = deobf_ctx_t();
-    s_ctx.mba = mba;
-    s_ctx.func_ea = mba->entry_ea;
+    deobf_ctx_t ctx;
+    ctx.mba = mba;
+    ctx.func_ea = mba->entry_ea;
 
     // Run the core deobfuscation logic
-    run_deobfuscation_passes(mba, &s_ctx);
+    run_deobfuscation_passes(mba, &ctx);
 }
 
 //--------------------------------------------------------------------------
@@ -362,13 +380,13 @@ void chernobog_t::deobfuscate_function(cfunc_t *cfunc)
 
     deobf::log("[chernobog] Deobfuscating %a\n", cfunc->entry_ea);
 
-    s_ctx = deobf_ctx_t();
-    s_ctx.mba = cfunc->mba;
-    s_ctx.cfunc = cfunc;
-    s_ctx.func_ea = cfunc->entry_ea;
+    deobf_ctx_t ctx;
+    ctx.mba = cfunc->mba;
+    ctx.cfunc = cfunc;
+    ctx.func_ea = cfunc->entry_ea;
 
     // Run the core deobfuscation logic
-    run_deobfuscation_passes(cfunc->mba, &s_ctx);
+    run_deobfuscation_passes(cfunc->mba, &ctx);
 }
 
 //--------------------------------------------------------------------------
@@ -781,47 +799,58 @@ bool deobf_avail()
 
 bool deobf_active()
 {
-    return chernobog_t::s_active;
+    deobf_module_state_t *state = get_deobf_state();
+    return state != nullptr && state->active;
 }
 
 void deobf_init()
 {
+    if ( get_deobf_state() != nullptr )
+        return;
+
+    deobf_module_state_t *state = new deobf_module_state_t();
+    set_module_data(&s_deobf_data_id, state);
+
     // Initialize MBA simplification (pattern matching rules)
     mba_simplify_handler_t::initialize();
 
     // Install instruction-level optimizer
-    g_deobf = new chernobog_t();
-    install_optinsn_handler(g_deobf);
+    state->deobf = new chernobog_t();
+    install_optinsn_handler(state->deobf);
 
     // Install block-level optimizer for CFG modifications (deflattening)
-    g_optblock = new chernobog_optblock_t();
-    install_optblock_handler(g_optblock);
+    state->optblock = new chernobog_optblock_t();
+    install_optblock_handler(state->optblock);
 
     register_deobf_actions();
 
-    chernobog_t::s_active = true;
-    msg("[chernobog] Deobfuscator initialized (optinsn + optblock handlers, s_active=true)\n");
+    state->active = true;
+    msg("[chernobog] Deobfuscator initialized (optinsn + optblock handlers, active=true)\n");
 }
 
 void deobf_done()
 {
-    chernobog_t::s_active = false;
+    deobf_module_state_t *state = get_deobf_state();
+    if ( state == nullptr )
+        return;
+
+    state->active = false;
     unregister_deobf_actions();
 
     // Remove instruction-level optimizer
-    if ( g_deobf )
+    if ( state->deobf )
     {
-        remove_optinsn_handler(g_deobf);
-        delete g_deobf;
-        g_deobf = nullptr;
+        remove_optinsn_handler(state->deobf);
+        delete state->deobf;
+        state->deobf = nullptr;
     }
 
     // Remove block-level optimizer
-    if ( g_optblock )
+    if ( state->optblock )
     {
-        remove_optblock_handler(g_optblock);
-        delete g_optblock;
-        g_optblock = nullptr;
+        remove_optblock_handler(state->optblock);
+        delete state->optblock;
+        state->optblock = nullptr;
     }
 
     // Clear any pending analysis
@@ -829,13 +858,17 @@ void deobf_done()
     identity_call_handler_t::clear_caches();
     vm_mba_handler_t::dump_statistics();
     vm_mba_handler_t::clear();
-    s_optblock_processed.clear();
+    state->optblock_processed.clear();
 
     // NOTE: Do NOT call RuleRegistry::instance().clear() here!
     // The RuleRegistry singleton intentionally leaks to avoid crashes from
     // mop_t destructors calling IDA functions that are unavailable at shutdown.
 
     deobf::log("[chernobog] Deobfuscator terminated\n");
+
+    deobf_module_state_t *removed = static_cast<deobf_module_state_t *>(
+        clr_module_data(s_deobf_data_id));
+    delete removed;
 }
 
 //--------------------------------------------------------------------------
@@ -909,10 +942,12 @@ void deobf_attach_popup(TWidget *widget, TPopupMenu *popup, vdui_t *vu)
 }
 
 static bool s_actions_registered = false;
+static size_t s_action_users = 0;
 
 static void register_deobf_actions()
 {
-    if ( s_actions_registered )
+    ++s_action_users;
+    if ( s_action_users > 1 )
         return;
     bool registered_any = false;
     for ( const auto &act : actions )
@@ -924,7 +959,10 @@ static void register_deobf_actions()
 
 static void unregister_deobf_actions()
 {
-    if ( !s_actions_registered )
+    if ( s_action_users == 0 )
+        return;
+    --s_action_users;
+    if ( s_action_users != 0 || !s_actions_registered )
         return;
     for ( const auto &act : actions )
     {

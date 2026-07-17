@@ -5,7 +5,6 @@
 
 struct stored_component_t {
     component_desc_t d;
-    bool initialized = false;
 };
 
 static std::vector<stored_component_t> &repo()
@@ -18,7 +17,6 @@ void component_registry_t::register_component(const component_desc_t &d)
 {
     stored_component_t sc;
     sc.d = d;
-    sc.initialized = false;
     repo().push_back(sc);
 }
 
@@ -32,12 +30,14 @@ int component_registry_t::init_all()
     int inited = 0;
     for ( stored_component_t &sc: repo() )
     {
-        if ( sc.d.avail && sc.d.avail() )
+        const bool available = sc.d.avail == nullptr || sc.d.avail();
+        const bool active = sc.d.active != nullptr && sc.d.active();
+        if ( available && !active )
         {
             if ( sc.d.init )
                 sc.d.init();
-            sc.initialized = true;
-            ++inited;
+            if ( sc.d.active == nullptr || sc.d.active() )
+                ++inited;
         }
     }
     return inited;
@@ -48,10 +48,9 @@ int component_registry_t::done_all()
     int donec = 0;
     for ( stored_component_t &sc: repo() )
     {
-        if ( sc.initialized && sc.d.done )
+        if ( sc.d.active && sc.d.active() && sc.d.done )
         {
             sc.d.done();
-            sc.initialized = false;
             ++donec;
         }
     }
@@ -62,7 +61,7 @@ void component_registry_t::attach_to_popup(TWidget *widget, TPopupMenu *popup, v
 {
     for ( stored_component_t &sc: repo() )
     {
-        if ( sc.initialized && sc.d.attach_popup )
+        if ( sc.d.active && sc.d.active() && sc.d.attach_popup )
         {
             sc.d.attach_popup(widget, popup, vu);
         }

@@ -36,9 +36,6 @@ public:
     static int merge_blocks(mbl_array_t *mba, deobf_ctx_t *ctx);
     static int simplify_substitutions(mbl_array_t *mba, deobf_ctx_t *ctx);
 
-public:
-    static bool s_active;
-    static deobf_ctx_t s_ctx;
 };
 
 //--------------------------------------------------------------------------

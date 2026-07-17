@@ -46,30 +46,29 @@ static void dylib_loaded()
 }
 #endif
 
-// Track which functions we've already auto-deobfuscated to avoid infinite loops
-static std::set<ea_t> s_auto_deobfuscated;
-
-// Track which functions we've already run ctree_const_fold on to avoid re-entry
-static std::set<ea_t> s_ctree_const_folded;
-
-// Track which functions we've already run ctree_switch_fold on to avoid re-entry
-static std::set<ea_t> s_ctree_switch_folded;
-
-// Track which functions we've already run ctree_indirect_call on
-static std::set<ea_t> s_ctree_indirect_call_processed;
-
-// Track which functions we've already run ctree_string_decrypt on
-static std::set<ea_t> s_ctree_string_decrypt_processed;
-
-static void clear_idb_processing_state()
+struct chernobog_plugmod_t final : public plugmod_t
 {
-    s_auto_deobfuscated.clear();
-    s_ctree_const_folded.clear();
-    s_ctree_switch_folded.clear();
-    s_ctree_indirect_call_processed.clear();
-    s_ctree_string_decrypt_processed.clear();
-    chernobog_clear_all_tracking();
-}
+    bool hexrays_initialized = false;
+    bool components_initialized = false;
+    bool ui_hooked = false;
+    bool idb_hooked = false;
+    bool first_hexrays_callback = true;
+
+    // All address-keyed state belongs to this database instance.
+    std::set<ea_t> auto_deobfuscated;
+    std::set<ea_t> ctree_const_folded;
+    std::set<ea_t> ctree_switch_folded;
+    std::set<ea_t> ctree_indirect_call_processed;
+    std::set<ea_t> ctree_string_decrypt_processed;
+
+    chernobog_plugmod_t();
+    virtual ~chernobog_plugmod_t();
+
+    bool activate();
+    void deactivate();
+    void clear_processing_state();
+    virtual bool idaapi run(size_t arg) override;
+};
 
 //--------------------------------------------------------------------------
 // Check if auto mode is enabled
@@ -139,15 +138,18 @@ static void check_verbose_mode()
 //--------------------------------------------------------------------------
 // Hexrays Callback - Add popup menu items and auto-deobfuscate
 //--------------------------------------------------------------------------
-static ssize_t idaapi hexrays_callback(void *, hexrays_event_t event, va_list va)
+static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list va)
 {
+    chernobog_plugmod_t *self = static_cast<chernobog_plugmod_t *>(ud);
+    if ( self == nullptr )
+        return 0;
+
     // Debug: log all events
     debug_log("[chernobog] hexrays_callback event=%d\n", (int)event);
 
-    static bool first_call = true;
-    if ( first_call )
+    if ( self->first_hexrays_callback )
     {
-        first_call = false;
+        self->first_hexrays_callback = false;
         debug_log("[chernobog] First hexrays callback, auto_mode=%d\n", is_auto_mode_enabled() ? 1 : 0);
         msg("[chernobog] Hexrays callback registered and active\n");
     }
@@ -173,11 +175,11 @@ static ssize_t idaapi hexrays_callback(void *, hexrays_event_t event, va_list va
         if ( vu && vu->cfunc )
         {
             ea_t func_ea = vu->cfunc->entry_ea;
-            s_auto_deobfuscated.erase(func_ea);
-            s_ctree_const_folded.erase(func_ea);
-            s_ctree_switch_folded.erase(func_ea);
-            s_ctree_indirect_call_processed.erase(func_ea);
-            s_ctree_string_decrypt_processed.erase(func_ea);
+            self->auto_deobfuscated.erase(func_ea);
+            self->ctree_const_folded.erase(func_ea);
+            self->ctree_switch_folded.erase(func_ea);
+            self->ctree_indirect_call_processed.erase(func_ea);
+            self->ctree_string_decrypt_processed.erase(func_ea);
             chernobog_clear_function_tracking(func_ea);
         }
     }
@@ -189,11 +191,11 @@ static ssize_t idaapi hexrays_callback(void *, hexrays_event_t event, va_list va
         if ( mba && is_auto_mode_enabled() )
         {
             ea_t func_ea = mba->entry_ea;
-            bool already_done = s_auto_deobfuscated.find(func_ea) != s_auto_deobfuscated.end();
+            bool already_done = self->auto_deobfuscated.find(func_ea) != self->auto_deobfuscated.end();
             debug_log("[chernobog] func_ea=0x%llx, already_done=%d\n", (unsigned long long)func_ea, already_done ? 1 : 0);
             if ( !already_done )
             {
-                s_auto_deobfuscated.insert(func_ea);
+                self->auto_deobfuscated.insert(func_ea);
                 debug_log("[chernobog] Calling deobfuscate_mba...\n");
                 chernobog_t::deobfuscate_mba(mba);
                 debug_log("[chernobog] deobfuscate_mba returned\n");
@@ -211,30 +213,30 @@ static ssize_t idaapi hexrays_callback(void *, hexrays_event_t event, va_list va
         {
             ea_t func_ea = cfunc->entry_ea;
             // Constant folding for XOR patterns
-            if ( s_ctree_const_folded.find(func_ea) == s_ctree_const_folded.end() )
+            if ( self->ctree_const_folded.find(func_ea) == self->ctree_const_folded.end() )
             {
-                s_ctree_const_folded.insert(func_ea);
+                self->ctree_const_folded.insert(func_ea);
                 ctree_const_fold_handler_t::run(cfunc);
             }
             // Switch folding for opaque predicates
-            if ( s_ctree_switch_folded.find(func_ea) == s_ctree_switch_folded.end() )
+            if ( self->ctree_switch_folded.find(func_ea) == self->ctree_switch_folded.end() )
             {
-                s_ctree_switch_folded.insert(func_ea);
+                self->ctree_switch_folded.insert(func_ea);
                 ctree_switch_fold_handler_t::run(cfunc);
             }
             // Indirect call resolution (Hikari IndirectCall)
-            if ( s_ctree_indirect_call_processed.find(func_ea) == s_ctree_indirect_call_processed.end() )
+            if ( self->ctree_indirect_call_processed.find(func_ea) == self->ctree_indirect_call_processed.end() )
             {
-                s_ctree_indirect_call_processed.insert(func_ea);
+                self->ctree_indirect_call_processed.insert(func_ea);
                 if ( ctree_indirect_call_handler_t::detect(cfunc) )
                 {
                     ctree_indirect_call_handler_t::run(cfunc, nullptr);
                 }
             }
             // String decryption (strcpy reveals, char-by-char, AES keys)
-            if ( s_ctree_string_decrypt_processed.find(func_ea) == s_ctree_string_decrypt_processed.end() )
+            if ( self->ctree_string_decrypt_processed.find(func_ea) == self->ctree_string_decrypt_processed.end() )
             {
-                s_ctree_string_decrypt_processed.insert(func_ea);
+                self->ctree_string_decrypt_processed.insert(func_ea);
                 if ( ctree_string_decrypt_handler_t::detect(cfunc) )
                 {
                     deobf_ctx_t str_ctx;
@@ -253,15 +255,33 @@ static ssize_t idaapi hexrays_callback(void *, hexrays_event_t event, va_list va
 }
 
 //--------------------------------------------------------------------------
-// Deferred initialization - called when hexrays becomes available
+// Per-database plugin lifecycle
 //--------------------------------------------------------------------------
-static bool s_hexrays_initialized = false;
-
-static bool try_init_hexrays()
+static bool is_hexrays_plugin(const plugin_t *entry)
 {
-    debug_log("[chernobog] try_init_hexrays called, already_init=%d\n", s_hexrays_initialized ? 1 : 0);
+    if ( entry == nullptr || entry->wanted_name == nullptr )
+        return false;
+    return streq(entry->wanted_name, "Hex-Rays Decompiler")
+        || streq(entry->wanted_name, "Hex-Rays Cloud Decompiler");
+}
 
-    if ( s_hexrays_initialized )
+void chernobog_plugmod_t::clear_processing_state()
+{
+    auto_deobfuscated.clear();
+    ctree_const_folded.clear();
+    ctree_switch_folded.clear();
+    ctree_indirect_call_processed.clear();
+    ctree_string_decrypt_processed.clear();
+    chernobog_clear_all_tracking();
+}
+
+bool chernobog_plugmod_t::activate()
+{
+    debug_log("[chernobog] activate called, already_init=%d, dbctx=%lld\n",
+        hexrays_initialized ? 1 : 0,
+        static_cast<long long>(get_dbctx_id()));
+
+    if ( hexrays_initialized )
         return true;
 
     if ( !init_hexrays_plugin() )
@@ -271,136 +291,168 @@ static bool try_init_hexrays()
     }
 
     debug_log("[chernobog] init_hexrays_plugin() succeeded\n");
-    s_hexrays_initialized = true;
 
-    // Clear decompiler cache if CHERNOBOG_RESET is set
-    // This forces full redecompilation of all functions
-    if ( is_reset_mode_enabled() )
+    // A unique plugmod pointer distinguishes callbacks in concurrent IDBs.
+    debug_log("[chernobog] Installing Hex-Rays callback...\n");
+    if ( !install_hexrays_callback(hexrays_callback, this) )
     {
-        clear_idb_processing_state();
-        clear_cached_cfuncs();
-        msg("[chernobog] Cleared Hex-Rays decompiler cache (CHERNOBOG_RESET=1)\n");
+        debug_log("[chernobog] install_hexrays_callback() failed\n");
+        msg("[chernobog] Failed to install Hex-Rays callback\n");
+        return false;
     }
+    hexrays_initialized = true;
+    debug_log("[chernobog] Hex-Rays callback installed\n");
 
-    // Check verbose mode before any output
     check_verbose_mode();
-
-    // Check auto mode early and print debug info
-    bool auto_mode = is_auto_mode_enabled();
+    const bool auto_mode = is_auto_mode_enabled();
 
     debug_log("[chernobog] Components registered: %d, auto=%d\n",
         (int)component_registry_t::get_count(), auto_mode ? 1 : 0);
     msg("[chernobog] Chernobog (Hikari Deobfuscator) initializing (%d components registered, auto=%d)\n",
         (int)component_registry_t::get_count(), auto_mode ? 1 : 0);
 
-    // Install hexrays callback for popup menus and auto-deobfuscation
-    debug_log("[chernobog] Installing hexrays callback...\n");
-    install_hexrays_callback(hexrays_callback, nullptr);
-    debug_log("[chernobog] Hexrays callback installed\n");
-
     debug_log("[chernobog] Calling init_all()...\n");
-    int initialized = component_registry_t::init_all();
+    const int initialized = component_registry_t::init_all();
+    components_initialized = initialized > 0;
     debug_log("[chernobog] init_all() returned %d components initialized\n", initialized);
-    msg("[chernobog] Plugin ready (%d components initialized)\n", initialized);
 
-    // Check auto mode at startup
-    if ( auto_mode )
+    if ( component_registry_t::get_count() != 0 && !components_initialized )
     {
-        msg("[chernobog] *** AUTO MODE ACTIVE - will deobfuscate on decompilation ***\n");
+        msg("[chernobog] No components initialized; activation failed\n");
+        remove_hexrays_callback(hexrays_callback, this);
+        hexrays_initialized = false;
+        return false;
     }
+
+    // Clear address-keyed state for this database. The optional cache reset
+    // additionally invalidates Hex-Rays' persisted decompilation results.
+    clear_processing_state();
+    if ( is_reset_mode_enabled() )
+    {
+        clear_cached_cfuncs();
+        msg("[chernobog] Cleared Hex-Rays decompiler cache (CHERNOBOG_RESET=1)\n");
+    }
+
+    msg("[chernobog] Plugin ready (%d components initialized)\n", initialized);
+    if ( auto_mode )
+        msg("[chernobog] *** AUTO MODE ACTIVE - will deobfuscate on decompilation ***\n");
 
     msg("[chernobog] Use Ctrl+Shift+D to deobfuscate current function\n");
     msg("[chernobog] Use Ctrl+Shift+A to analyze obfuscation types\n");
-
     return true;
 }
 
-//--------------------------------------------------------------------------
-// UI event handler - initialize exactly when the Hex-Rays plugin becomes
-// available. Retrying on every IDB event can execute millions of failed
-// initialization attempts during auto-analysis.
-//--------------------------------------------------------------------------
-static ssize_t idaapi ui_callback(void *, int event_id, va_list va)
+void chernobog_plugmod_t::deactivate()
 {
-    if ( s_hexrays_initialized )
-        return 0;
+    if ( !hexrays_initialized && !components_initialized )
+        return;
 
-    if ( event_id == ui_ready_to_run )
+    // ui_destroying_plugmod invokes this while the decompiler dispatcher is
+    // still valid. This prevents teardown calls after Hex-Rays module data is
+    // destroyed, irrespective of plugin unload order.
+    if ( get_hexdsp() == nullptr )
     {
-        try_init_hexrays();
-        return 0;
+        debug_log("[chernobog] Hex-Rays disappeared before teardown\n");
+        hexrays_initialized = false;
+        components_initialized = false;
+        return;
     }
 
-    if ( event_id == ui_plugin_loaded )
+    if ( hexrays_initialized )
     {
-        const plugin_info_t *plugin = va_arg(va, const plugin_info_t *);
-        if ( plugin && plugin->entry
-          && streq(plugin->entry->wanted_name, "Hex-Rays Decompiler") )
-        {
-            try_init_hexrays();
-        }
+        const int removed = remove_hexrays_callback(hexrays_callback, this);
+        debug_log("[chernobog] Removed %d Hex-Rays callbacks\n", removed);
+        hexrays_initialized = false;
+    }
+
+    int terminated = 0;
+    if ( components_initialized )
+    {
+        terminated = component_registry_t::done_all();
+        components_initialized = false;
+    }
+
+    first_hexrays_callback = true;
+    clear_processing_state();
+    msg("[chernobog] Plugin deactivated (%d components)\n", terminated);
+}
+
+static ssize_t idaapi ui_callback(void *ud, int event_id, va_list va)
+{
+    chernobog_plugmod_t *self = static_cast<chernobog_plugmod_t *>(ud);
+    if ( self == nullptr )
+        return 0;
+
+    if ( event_id == ui_ready_to_run || event_id == ui_database_inited )
+    {
+        self->activate();
+    }
+    else if ( event_id == ui_plugin_loaded )
+    {
+        // Retrying once per plugin load is bounded and also supports renamed
+        // or cloud decompiler variants without relying on display strings.
+        (void)va_arg(va, const plugin_info_t *);
+        if ( !self->hexrays_initialized )
+            self->activate();
+    }
+    else if ( event_id == ui_destroying_plugmod )
+    {
+        (void)va_arg(va, const plugmod_t *);
+        const plugin_t *entry = va_arg(va, const plugin_t *);
+        if ( is_hexrays_plugin(entry) )
+            self->deactivate();
     }
     return 0;
 }
 
-//--------------------------------------------------------------------------
-// IDB event handler - invalidate address-keyed state between databases.
-//--------------------------------------------------------------------------
-static ssize_t idaapi idb_callback(void *, int event_id, va_list)
+static ssize_t idaapi idb_callback(void *ud, int event_id, va_list)
 {
-    if ( event_id == idb_event::closebase )
-        clear_idb_processing_state();
+    chernobog_plugmod_t *self = static_cast<chernobog_plugmod_t *>(ud);
+    if ( self != nullptr && event_id == idb_event::closebase )
+        self->clear_processing_state();
     return 0;
 }
 
-//--------------------------------------------------------------------------
-// Plugin Initialization
-//--------------------------------------------------------------------------
-static plugmod_t * idaapi init(void)
+chernobog_plugmod_t::chernobog_plugmod_t()
 {
-    debug_log("[chernobog] Plugin init() called\n");
+    debug_log("[chernobog] Per-IDB plugmod created, dbctx=%lld\n",
+        static_cast<long long>(get_dbctx_id()));
 
-    // Keep this hook for the full plugin lifetime: it also invalidates all
-    // address-keyed state before another IDB can reuse the same addresses.
-    hook_to_notification_point(HT_IDB, idb_callback, nullptr);
-    hook_to_notification_point(HT_UI, ui_callback, nullptr);
-
-    // Try immediate init (works if hexrays loaded first)
-    if ( try_init_hexrays() )
+    idb_hooked = hook_to_notification_point(HT_IDB, idb_callback, this);
+    ui_hooked = hook_to_notification_point(HT_UI, ui_callback, this);
+    if ( !idb_hooked || !ui_hooked )
     {
-        debug_log("[chernobog] init() returning PLUGIN_KEEP (hexrays ready)\n");
-        return PLUGIN_KEEP;
+        debug_log("[chernobog] Hook registration failed: IDB=%d UI=%d\n",
+            idb_hooked ? 1 : 0, ui_hooked ? 1 : 0);
     }
 
-    // Hexrays not ready yet; ui_plugin_loaded will retry once it is available.
-    debug_log("[chernobog] Hexrays not ready, waiting for ui_plugin_loaded\n");
-    msg("[chernobog] Waiting for Hex-Rays decompiler...\n");
-
-    return PLUGIN_KEEP;
-}
-
-static void idaapi term(void)
-{
-    // Remove callbacks
-    unhook_from_notification_point(HT_IDB, idb_callback, nullptr);
-    unhook_from_notification_point(HT_UI, ui_callback, nullptr);
-
-    if ( s_hexrays_initialized )
+    if ( !activate() )
     {
-        remove_hexrays_callback(hexrays_callback, nullptr);
-
-        int terminated = component_registry_t::done_all();
-        msg("[chernobog] Plugin terminated (%d components)\n", terminated);
-        s_hexrays_initialized = false;
+        debug_log("[chernobog] Hex-Rays not ready; activation deferred\n");
+        msg("[chernobog] Waiting for Hex-Rays decompiler...\n");
     }
-
-    clear_idb_processing_state();
 }
 
-static bool idaapi run(size_t)
+chernobog_plugmod_t::~chernobog_plugmod_t()
 {
+    if ( idb_hooked )
+        unhook_from_notification_point(HT_IDB, idb_callback, this);
+    if ( ui_hooked )
+        unhook_from_notification_point(HT_UI, ui_callback, this);
+
+    deactivate();
+    clear_processing_state();
+    debug_log("[chernobog] Per-IDB plugmod destroyed\n");
+}
+
+bool idaapi chernobog_plugmod_t::run(size_t)
+{
+    const bool ready = activate();
+
     // Plugin can be invoked manually - show info
     msg("\n=== Chernobog - Hikari Deobfuscator ===\n");
+    if ( !ready )
+        msg("Hex-Rays is not available for the current database.\n\n");
     msg("This plugin deobfuscates code protected with Hikari LLVM obfuscator.\n\n");
     msg("Supported obfuscations:\n");
     msg("  - Control Flow Flattening (CFF)\n");
@@ -430,16 +482,21 @@ static bool idaapi run(size_t)
     return true;
 }
 
+static plugmod_t *idaapi init()
+{
+    return new chernobog_plugmod_t();
+}
+
 //--------------------------------------------------------------------------
 // Plugin Descriptor
 //--------------------------------------------------------------------------
 plugin_t PLUGIN =
 {
     IDP_INTERFACE_VERSION,
-    PLUGIN_FIX,                         // plugin flags
+    PLUGIN_MULTI,                       // one plugmod instance per database
     init,                               // initialize
-    term,                               // terminate
-    run,                                // invoke plugin
+    nullptr,                            // PLUGIN_MULTI uses plugmod destructor
+    nullptr,                            // PLUGIN_MULTI uses plugmod_t::run
     "Chernobog - Hikari LLVM Deobfuscator", // long comment
     "Deobfuscates Hikari-protected binaries for Hex-Rays", // help text
     "Chernobog",                        // preferred short name
