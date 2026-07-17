@@ -21,7 +21,9 @@ namespace mop {
 // Fast mop_t equality check
 // Ignores size differences for pattern matching compatibility
 //--------------------------------------------------------------------------
-SIMD_FORCE_INLINE bool equal_ignore_size(const mop_t& a, const mop_t& b) {
+// Recursive operand walks cannot use always_inline: GNU rejects forced
+// recursive expansion once its inline growth limit is reached.
+inline bool equal_ignore_size(const mop_t& a, const mop_t& b) {
     // Fast path: type must match
     if ( SIMD_UNLIKELY(a.t != b.t) ) return false;
     
@@ -76,7 +78,7 @@ SIMD_FORCE_INLINE bool equal_ignore_size(const mop_t& a, const mop_t& b) {
 // Fast mop_t hash computation
 // Used for hash tables and deduplication
 //--------------------------------------------------------------------------
-SIMD_FORCE_INLINE uint64_t hash(const mop_t& m) {
+inline uint64_t hash(const mop_t& m) {
     uint64_t h = simd::hash_u64(static_cast<uint64_t>(m.t));
     
     switch (m.t) {

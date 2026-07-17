@@ -5,6 +5,7 @@
 #include "../analysis/z3_solver.h"
 #include "../../common/compat.h"
 #include <algorithm>  // for std::find
+#include <limits>
 
 using namespace z3_solver;
 
