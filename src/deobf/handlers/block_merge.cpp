@@ -5,49 +5,71 @@
 //--------------------------------------------------------------------------
 bool block_merge_handler_t::detect_split_blocks(mbl_array_t *mba)
 {
-    if ( !mba ) 
+    if ( !mba || mba->qty <= 0 )
         return false;
 
-    // Count small blocks and check for chains
-    int small_blocks = 0;
-    int chain_length = 0;
-    int max_chain = 0;
+    // CFG rewriting is unsafe when Hex-Rays has already observed inconsistent
+    // stack-pointer state. Such functions can naturally produce long runs of
+    // tiny goto blocks, but those runs are not evidence of block splitting.
+    if ( mba->has_bad_sp() || mba->bad_call_sp_detected() )
+        return false;
 
-    for ( int i = 0; i < mba->qty; ++i ) 
+    // Classify candidate blocks first, then follow real successor edges. The
+    // old detector accumulated a "chain" while iterating blocks in serial
+    // order and did not reset it for non-candidates, so unrelated blocks could
+    // form a false chain.
+    std::vector<bool> candidates(static_cast<size_t>(mba->qty), false);
+    int small_blocks = 0;
+
+    for ( int i = 0; i < mba->qty; ++i )
     {
         mblock_t *blk = mba->get_mblock(i);
-        if ( !blk ) 
+        if ( !blk )
             continue;
 
-        int insn_count = count_insns(blk);
-
-        // Small block with single successor
-        if ( insn_count <= 2 && has_single_goto_succ(blk) ) 
+        if ( count_insns(blk) <= 2 && has_single_goto_succ(blk) )
         {
-            small_blocks++;
-
-            // Check if successor is also small (chain)
-            if ( blk->nsucc() == 1 ) 
-            {
-                int succ = blk->succ(0);
-                mblock_t *succ_blk = mba->get_mblock(succ);
-                if ( succ_blk && count_insns(succ_blk) <= 2 ) 
-                {
-                    chain_length++;
-                    if ( chain_length > max_chain ) 
-                        max_chain = chain_length;
-                }
-                else
-                {
-                    chain_length = 0;
-                }
-            }
+            candidates[static_cast<size_t>(i)] = true;
+            ++small_blocks;
         }
     }
 
-    // Heuristic: if >30% of blocks are small with chains, likely split
-    float ratio = (float)small_blocks / mba->qty;
-    return ( ratio > 0.3f && max_chain >= 3) || max_chain >= 5;
+    int max_chain = 0;
+    for ( int start = 0; start < mba->qty; ++start )
+    {
+        if ( !candidates[static_cast<size_t>(start)] )
+            continue;
+
+        std::vector<bool> seen(static_cast<size_t>(mba->qty), false);
+        int current = start;
+        int chain_length = 0;
+        while ( current >= 0 && current < mba->qty
+             && candidates[static_cast<size_t>(current)]
+             && !seen[static_cast<size_t>(current)] )
+        {
+            seen[static_cast<size_t>(current)] = true;
+            ++chain_length;
+
+            mblock_t *blk = mba->get_mblock(current);
+            if ( !blk || blk->nsucc() != 1 )
+                break;
+            const int successor = blk->succ(0);
+            if ( successor < 0 || successor >= mba->qty )
+                break;
+
+            mblock_t *successor_block = mba->get_mblock(successor);
+            // Linear split chains have no joins. Requiring one predecessor
+            // avoids treating normal control-flow convergence as splitting.
+            if ( !successor_block || successor_block->npred() != 1 )
+                break;
+            current = successor;
+        }
+        max_chain = std::max(max_chain, chain_length);
+    }
+
+    const double ratio = static_cast<double>(small_blocks) /
+                         static_cast<double>(mba->qty);
+    return ratio > 0.30 && max_chain >= 4;
 }
 
 //--------------------------------------------------------------------------

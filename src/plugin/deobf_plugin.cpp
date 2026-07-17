@@ -1,5 +1,6 @@
 #include "../common/warn_off.h"
 #include <hexrays.hpp>
+#include <idacfg.hpp>
 #include "../common/warn_on.h"
 
 #include "component_registry.h"
@@ -55,7 +56,6 @@ struct chernobog_plugmod_t final : public plugmod_t
     bool first_hexrays_callback = true;
 
     // All address-keyed state belongs to this database instance.
-    std::set<ea_t> auto_deobfuscated;
     std::set<ea_t> ctree_const_folded;
     std::set<ea_t> ctree_switch_folded;
     std::set<ea_t> ctree_indirect_call_processed;
@@ -118,6 +118,64 @@ static bool is_reset_mode_enabled()
 }
 
 //--------------------------------------------------------------------------
+// Check whether all transformations are disabled. This retains the plugin's
+// Hex-Rays lifecycle and optional cache reset, which provides a like-for-like
+// control path and an emergency bypass for maturity-specific incompatibilities.
+//--------------------------------------------------------------------------
+static bool is_disabled_mode_enabled()
+{
+    qstring env;
+    return qgetenv("CHERNOBOG_DISABLE", &env)
+        && !env.empty() && env[0] != '0';
+}
+
+//--------------------------------------------------------------------------
+// Optionally raise Hex-Rays' function-size admission ceiling for the current
+// process. The stock value is 64 KiB. Keeping this environment-controlled
+// avoids modifying either the installation-wide or per-user hexrays.cfg.
+//--------------------------------------------------------------------------
+static bool configure_max_funcsize()
+{
+    qstring env;
+    if ( !qgetenv("CHERNOBOG_MAX_FUNCSIZE_KB", &env) || env.empty() )
+        return true;
+
+    // Decimal only, 1 KiB..1 GiB. Apart from rejecting ambiguous input, the
+    // upper bound keeps MAX_FUNCSIZE * 1024 within a signed 32-bit byte count.
+    uint64 value = 0;
+    for ( size_t i = 0; i < env.length(); ++i )
+    {
+        const char c = env[i];
+        if ( c < '0' || c > '9' )
+        {
+            msg("[chernobog] Invalid CHERNOBOG_MAX_FUNCSIZE_KB='%s' (decimal KiB required)\n",
+                env.c_str());
+            return false;
+        }
+        value = value * 10 + uint64(c - '0');
+        if ( value > 1024 * 1024 )
+        {
+            msg("[chernobog] Invalid CHERNOBOG_MAX_FUNCSIZE_KB='%s' (maximum 1048576 KiB)\n",
+                env.c_str());
+            return false;
+        }
+    }
+    if ( value == 0 )
+    {
+        msg("[chernobog] Invalid CHERNOBOG_MAX_FUNCSIZE_KB='0'\n");
+        return false;
+    }
+
+    qstring directive;
+    directive.sprnt("MAX_FUNCSIZE=%llu", static_cast<unsigned long long>(value));
+    process_config_directive(directive.c_str());
+    msg("[chernobog] Hex-Rays function-size ceiling set to %llu KiB for this process\n",
+        static_cast<unsigned long long>(value));
+    debug_log("[chernobog] Applied config directive: %s\n", directive.c_str());
+    return true;
+}
+
+//--------------------------------------------------------------------------
 // Check if verbose mode is enabled
 //--------------------------------------------------------------------------
 static void check_verbose_mode()
@@ -175,7 +233,6 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         if ( vu && vu->cfunc )
         {
             ea_t func_ea = vu->cfunc->entry_ea;
-            self->auto_deobfuscated.erase(func_ea);
             self->ctree_const_folded.erase(func_ea);
             self->ctree_switch_folded.erase(func_ea);
             self->ctree_indirect_call_processed.erase(func_ea);
@@ -183,24 +240,16 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             chernobog_clear_function_tracking(func_ea);
         }
     }
-    // Auto-deobfuscate at microcode stage for analysis
+    // The installed optinsn/optblock handlers own microcode deobfuscation.
+    // In particular, the optblock handler runs the whole-MBA pipeline at
+    // MMAT_LOCOPT, the first maturity at which its CFG transformations are
+    // valid. Running the same pipeline here at hxe_microcode used to execute
+    // every pass twice and could leave maturity-sensitive handlers operating
+    // on preoptimized microcode.
     else if ( event == hxe_microcode )
     {
         mbl_array_t *mba = va_arg(va, mbl_array_t *);
         debug_log("[chernobog] hxe_microcode: mba=%p, auto=%d\n", mba, is_auto_mode_enabled() ? 1 : 0);
-        if ( mba && is_auto_mode_enabled() )
-        {
-            ea_t func_ea = mba->entry_ea;
-            bool already_done = self->auto_deobfuscated.find(func_ea) != self->auto_deobfuscated.end();
-            debug_log("[chernobog] func_ea=0x%llx, already_done=%d\n", (unsigned long long)func_ea, already_done ? 1 : 0);
-            if ( !already_done )
-            {
-                self->auto_deobfuscated.insert(func_ea);
-                debug_log("[chernobog] Calling deobfuscate_mba...\n");
-                chernobog_t::deobfuscate_mba(mba);
-                debug_log("[chernobog] deobfuscate_mba returned\n");
-            }
-        }
     }
     // Apply ctree-level optimizations after decompilation
     else if ( event == hxe_maturity )
@@ -209,7 +258,8 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         ctree_maturity_t maturity = va_argi(va, ctree_maturity_t);
         // Run at CMAT_FINAL when the ctree is complete
         // Track by function to avoid infinite recursion if ctree modification triggers reprocessing
-        if ( cfunc && maturity == CMAT_FINAL && is_auto_mode_enabled() )
+        if ( cfunc && maturity == CMAT_FINAL && is_auto_mode_enabled()
+          && !is_disabled_mode_enabled() )
         {
             ea_t func_ea = cfunc->entry_ea;
             // Constant folding for XOR patterns
@@ -267,7 +317,6 @@ static bool is_hexrays_plugin(const plugin_t *entry)
 
 void chernobog_plugmod_t::clear_processing_state()
 {
-    auto_deobfuscated.clear();
     ctree_const_folded.clear();
     ctree_switch_folded.clear();
     ctree_indirect_call_processed.clear();
@@ -292,6 +341,9 @@ bool chernobog_plugmod_t::activate()
 
     debug_log("[chernobog] init_hexrays_plugin() succeeded\n");
 
+    if ( !configure_max_funcsize() )
+        return false;
+
     // A unique plugmod pointer distinguishes callbacks in concurrent IDBs.
     debug_log("[chernobog] Installing Hex-Rays callback...\n");
     if ( !install_hexrays_callback(hexrays_callback, this) )
@@ -305,6 +357,20 @@ bool chernobog_plugmod_t::activate()
 
     check_verbose_mode();
     const bool auto_mode = is_auto_mode_enabled();
+    const bool disabled = is_disabled_mode_enabled();
+
+    if ( disabled )
+    {
+        clear_processing_state();
+        if ( is_reset_mode_enabled() )
+        {
+            clear_cached_cfuncs();
+            msg("[chernobog] Cleared Hex-Rays decompiler cache (CHERNOBOG_RESET=1)\n");
+        }
+        debug_log("[chernobog] Transformations disabled by CHERNOBOG_DISABLE\n");
+        msg("[chernobog] Plugin ready in disabled control mode (CHERNOBOG_DISABLE=1)\n");
+        return true;
+    }
 
     debug_log("[chernobog] Components registered: %d, auto=%d\n",
         (int)component_registry_t::get_count(), auto_mode ? 1 : 0);

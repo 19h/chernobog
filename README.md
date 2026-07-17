@@ -216,6 +216,8 @@ To see what obfuscation types are present without making changes:
 | `CHERNOBOG_VERBOSE=1` | Enable verbose logging |
 | `CHERNOBOG_DEBUG=1` | Enable debug output to `/tmp/chernobog_debug.log` |
 | `CHERNOBOG_RESET=1` | Clear decompiler cache on startup |
+| `CHERNOBOG_DISABLE=1` | Disable transformations while retaining plugin lifecycle and optional cache reset |
+| `CHERNOBOG_MAX_FUNCSIZE_KB=<n>` | Set Hex-Rays' process-local function-size ceiling to decimal `n` KiB (1..1048576); leaves `hexrays.cfg` unchanged |
 | `CHERNOBOG_MBA_AFFINE=1` | Enable exact-Z3 affine MBA reconstruction (opt-in) |
 | `CHERNOBOG_MBA_DEBUG=1` | Log affine decisions to `/tmp/chernobog_mba_debug.log` |
 | `CHERNOBOG_VM=1` | Enable VM-family detection and rewriting (opt-in) |
@@ -223,6 +225,10 @@ To see what obfuscation types are present without making changes:
 | `CHERNOBOG_VM_CARRIER_POOL=...` | Comma-separated VM carrier constants, parsed with base autodetection |
 | `CHERNOBOG_VM_DEBUG=1` | Log VM decisions to `/tmp/chernobog_vm_debug.log` |
 | `CHERNOBOG_VM_DUMP_JSON=1` | Dump VM summaries to `/tmp/chernobog_vm_summary_<EA>.json` |
+
+Raising `CHERNOBOG_MAX_FUNCSIZE_KB` admits larger functions to Hex-Rays and can
+materially increase decompilation time and memory use. It does not override
+Hex-Rays' separate structural-complexity limit.
 
 ### Plugin Info
 
