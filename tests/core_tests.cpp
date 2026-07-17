@@ -153,6 +153,57 @@ void test_mba_identities()
     }
 }
 
+void test_branchless_select_identity()
+{
+    const auto select = [](uint64_t old_value, uint64_t candidate,
+                           bool condition, int size) {
+        const uint64_t width_mask = size == 8
+            ? std::numeric_limits<uint64_t>::max()
+            : (uint64_t{1} << (size * 8)) - 1;
+        const uint64_t mask = (uint64_t{0} - uint64_t{condition}) & width_mask;
+        return (old_value ^ ((old_value ^ candidate) & mask)) & width_mask;
+    };
+
+    // Exhaust the complete 8-bit domain for both predicate values.
+    for ( uint64_t old_value = 0; old_value <= 0xFF; ++old_value )
+    {
+        for ( uint64_t candidate = 0; candidate <= 0xFF; ++candidate )
+        {
+            check(select(old_value, candidate, false, 1) == old_value,
+                  "branchless select retains the old 8-bit value");
+            check(select(old_value, candidate, true, 1) == candidate,
+                  "branchless select takes the candidate 8-bit value");
+        }
+    }
+
+    constexpr uint64_t values[] = {
+        0,
+        1,
+        0x7FFFFFFFULL,
+        0x80000000ULL,
+        0x0123456789ABCDEFULL,
+        std::numeric_limits<uint64_t>::max(),
+    };
+    for ( int size : {2, 4, 8} )
+    {
+        const uint64_t width_mask = size == 8
+            ? std::numeric_limits<uint64_t>::max()
+            : (uint64_t{1} << (size * 8)) - 1;
+        for ( uint64_t old_value : values )
+        {
+            for ( uint64_t candidate : values )
+            {
+                check(select(old_value, candidate, false, size) ==
+                          (old_value & width_mask),
+                      "branchless select retains the old wide value");
+                check(select(old_value, candidate, true, size) ==
+                          (candidate & width_mask),
+                      "branchless select takes the candidate wide value");
+            }
+        }
+    }
+}
+
 void test_hikari_string_recovery()
 {
     using chernobog::string_recovery::recover_hikari_xor_ascii;
@@ -187,6 +238,7 @@ int main()
     test_bitvectors();
     test_simd_utilities();
     test_mba_identities();
+    test_branchless_select_identity();
     test_hikari_string_recovery();
     if ( failures != 0 )
         std::fprintf(stderr, "%d core test(s) failed\n", failures);

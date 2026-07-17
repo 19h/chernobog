@@ -56,6 +56,7 @@ enum obf_type_t : uint32_t {
     OBF_CONST_OBFUSC    = 1U << 17,  // Obfuscated constants (detectable via Z3)
     OBF_INDIRECT_CALL   = 1U << 18,  // Indirect call obfuscation (Hikari IndirectCall)
     OBF_VM_MBA          = 1U << 19,  // Opt-in VM-family MBA handlers
+    OBF_SELECT_CHAIN    = 1U << 20,  // Long compiler-lowered select/cmov chains
 };
 
 //--------------------------------------------------------------------------

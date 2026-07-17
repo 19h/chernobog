@@ -6,6 +6,7 @@
 #include "handlers/const_decrypt.h"
 #include "handlers/indirect_branch.h"
 #include "handlers/block_merge.h"
+#include "handlers/select_chain.h"
 #include "handlers/mba_simplify.h"
 #include "handlers/vm_mba.h"
 #include "handlers/identity_call.h"
@@ -159,7 +160,6 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
         optblock_debug("[optblock] Detected obfuscations: 0x%x\n", full_ctx.detected_obf);
         optblock_debug("[optblock] Full deobfuscation complete, changes: blocks=%d, branches=%d, indirect=%d\n",
                        full_ctx.blocks_merged, full_ctx.branches_simplified, full_ctx.indirect_resolved);
-
         // The complete pass already includes global-constant and deflattening
         // handlers. Report its mutations to Hex-Rays and do not run those
         // handlers a second time on the same microcode maturity.
@@ -454,9 +454,20 @@ static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx)
     {
         deobf::log("[chernobog] - VM-family MBA handler detected\n");
     }
+    if ( ctx->detected_obf & OBF_SELECT_CHAIN )
+    {
+        deobf::log("[chernobog] - Long select chain detected\n");
+    }
 
     // Apply deobfuscation passes in order
     int total_changes = 0;
+
+    // Collapse compiler-lowered select cascades before general CFG passes.
+    // This prevents thousands of two-way blocks from reaching ctree.
+    if ( ctx->detected_obf & OBF_SELECT_CHAIN )
+    {
+        total_changes += select_chain_handler_t::run(mba, ctx);
+    }
 
     if ( ctx->detected_obf & OBF_VM_MBA )
     {
@@ -643,6 +654,7 @@ void chernobog_t::analyze_function(ea_t ea)
     if ( obf & OBF_PTR_INDIRECT ) msg("  - Indirect pointer references\n");
     if ( obf & OBF_INDIRECT_CALL ) msg("  - Indirect call obfuscation (Hikari)\n");
     if ( obf & OBF_VM_MBA ) msg("  - VM-family MBA handler\n");
+    if ( obf & OBF_SELECT_CHAIN ) msg("  - Long select/cmov chain\n");
     if ( obf == OBF_NONE ) msg("  - No obfuscation detected\n");
 }
 
@@ -721,6 +733,9 @@ uint32_t chernobog_t::detect_obfuscations(mbl_array_t *mba)
 
     if ( vm_mba_handler_t::detect(mba) )
         detected |= OBF_VM_MBA;
+
+    if ( select_chain_handler_t::detect(mba) )
+        detected |= OBF_SELECT_CHAIN;
 
     return detected;
 }
