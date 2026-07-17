@@ -147,8 +147,11 @@ else()
     target_compile_options(chernobog PRIVATE
         -Wall -Wextra -Wpedantic -Wshadow
         -Wformat -Wparentheses -Wswitch
-        -Wunused-variable -Wunused-function -Wunused-private-field
+        -Wunused-variable -Wunused-function
         "SHELL:-Wno-unused-parameter -Wno-sign-compare")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        target_compile_options(chernobog PRIVATE -Wunused-private-field)
+    endif()
 endif()
 
 # Portable core regression tests do not require an IDA runtime. They exercise
