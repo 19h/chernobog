@@ -20,9 +20,6 @@ public:
     static int run(cfunc_t *cfunc, deobf_ctx_t *ctx);
 
 private:
-    // Check if expression is table[index] - offset pattern
-    static bool match_pattern(cexpr_t *expr, ea_t *out_table, int64_t *out_index, int64_t *out_offset);
-    
     // Read table entry and compute target
-    static ea_t compute_call_target(ea_t table_addr, int64_t index, int64_t offset);
+    static ea_t compute_call_target(ea_t table_addr, uint64_t index, uint64_t offset);
 };

@@ -20,22 +20,10 @@
 
 static void debug_log(const char *fmt, ...)
 {
-#ifndef _WIN32
-    char buf[4096];
     va_list args;
     va_start(args, fmt);
-    int len = qvsnprintf(buf, sizeof(buf), fmt, args);
+    deobf::debug_vlog("/tmp/chernobog_debug.log", fmt, args);
     va_end(args);
-
-    int fd = open("/tmp/chernobog_debug.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if ( fd >= 0 )
-    {
-        write(fd, buf, len);
-        close(fd);
-    }
-#else
-    (void)fmt; // Debug logging disabled on Windows
-#endif
 }
 
 #ifndef _WIN32
@@ -43,6 +31,9 @@ static void debug_log(const char *fmt, ...)
 __attribute__((constructor))
 static void dylib_loaded()
 {
+    if ( !deobf::debug_enabled() )
+        return;
+
     // Write directly to a marker file to prove we loaded
     int fd = open("/tmp/CHERNOBOG_LOADED", O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if ( fd >= 0 )
@@ -69,6 +60,16 @@ static std::set<ea_t> s_ctree_indirect_call_processed;
 
 // Track which functions we've already run ctree_string_decrypt on
 static std::set<ea_t> s_ctree_string_decrypt_processed;
+
+static void clear_idb_processing_state()
+{
+    s_auto_deobfuscated.clear();
+    s_ctree_const_folded.clear();
+    s_ctree_switch_folded.clear();
+    s_ctree_indirect_call_processed.clear();
+    s_ctree_string_decrypt_processed.clear();
+    chernobog_clear_all_tracking();
+}
 
 //--------------------------------------------------------------------------
 // Check if auto mode is enabled
@@ -175,6 +176,7 @@ static ssize_t idaapi hexrays_callback(void *, hexrays_event_t event, va_list va
             s_auto_deobfuscated.erase(func_ea);
             s_ctree_const_folded.erase(func_ea);
             s_ctree_switch_folded.erase(func_ea);
+            s_ctree_indirect_call_processed.erase(func_ea);
             s_ctree_string_decrypt_processed.erase(func_ea);
             chernobog_clear_function_tracking(func_ea);
         }
@@ -275,10 +277,7 @@ static bool try_init_hexrays()
     // This forces full redecompilation of all functions
     if ( is_reset_mode_enabled() )
     {
-        s_auto_deobfuscated.clear();
-        s_ctree_const_folded.clear();
-        s_ctree_switch_folded.clear();
-        chernobog_clear_all_tracking();
+        clear_idb_processing_state();
         clear_cached_cfuncs();
         msg("[chernobog] Cleared Hex-Rays decompiler cache (CHERNOBOG_RESET=1)\n");
     }
@@ -317,16 +316,40 @@ static bool try_init_hexrays()
 }
 
 //--------------------------------------------------------------------------
-// IDB event handler - to catch when hexrays becomes available
+// UI event handler - initialize exactly when the Hex-Rays plugin becomes
+// available. Retrying on every IDB event can execute millions of failed
+// initialization attempts during auto-analysis.
+//--------------------------------------------------------------------------
+static ssize_t idaapi ui_callback(void *, int event_id, va_list va)
+{
+    if ( s_hexrays_initialized )
+        return 0;
+
+    if ( event_id == ui_ready_to_run )
+    {
+        try_init_hexrays();
+        return 0;
+    }
+
+    if ( event_id == ui_plugin_loaded )
+    {
+        const plugin_info_t *plugin = va_arg(va, const plugin_info_t *);
+        if ( plugin && plugin->entry
+          && streq(plugin->entry->wanted_name, "Hex-Rays Decompiler") )
+        {
+            try_init_hexrays();
+        }
+    }
+    return 0;
+}
+
+//--------------------------------------------------------------------------
+// IDB event handler - invalidate address-keyed state between databases.
 //--------------------------------------------------------------------------
 static ssize_t idaapi idb_callback(void *, int event_id, va_list)
 {
-    (void)event_id;  // unused
-    // Try to init hexrays on various events
-    if ( !s_hexrays_initialized )
-    {
-        try_init_hexrays();
-    }
+    if ( event_id == idb_event::closebase )
+        clear_idb_processing_state();
     return 0;
 }
 
@@ -337,6 +360,11 @@ static plugmod_t * idaapi init(void)
 {
     debug_log("[chernobog] Plugin init() called\n");
 
+    // Keep this hook for the full plugin lifetime: it also invalidates all
+    // address-keyed state before another IDB can reuse the same addresses.
+    hook_to_notification_point(HT_IDB, idb_callback, nullptr);
+    hook_to_notification_point(HT_UI, ui_callback, nullptr);
+
     // Try immediate init (works if hexrays loaded first)
     if ( try_init_hexrays() )
     {
@@ -344,10 +372,9 @@ static plugmod_t * idaapi init(void)
         return PLUGIN_KEEP;
     }
 
-    // Hexrays not ready yet - hook IDB events to init later
-    debug_log("[chernobog] Hexrays not ready, hooking IDB events\n");
+    // Hexrays not ready yet; ui_plugin_loaded will retry once it is available.
+    debug_log("[chernobog] Hexrays not ready, waiting for ui_plugin_loaded\n");
     msg("[chernobog] Waiting for Hex-Rays decompiler...\n");
-    hook_to_notification_point(HT_IDB, idb_callback, nullptr);
 
     return PLUGIN_KEEP;
 }
@@ -356,17 +383,18 @@ static void idaapi term(void)
 {
     // Remove callbacks
     unhook_from_notification_point(HT_IDB, idb_callback, nullptr);
+    unhook_from_notification_point(HT_UI, ui_callback, nullptr);
 
     if ( s_hexrays_initialized )
     {
         remove_hexrays_callback(hexrays_callback, nullptr);
 
-        // Unregister all component actions
-        component_registry_t::unregister_all_actions();
-
         int terminated = component_registry_t::done_all();
         msg("[chernobog] Plugin terminated (%d components)\n", terminated);
+        s_hexrays_initialized = false;
     }
+
+    clear_idb_processing_state();
 }
 
 static bool idaapi run(size_t)

@@ -1,0 +1,194 @@
+#include "common/bitvector.h"
+#include "common/simd.h"
+#include "common/string_recovery.h"
+
+#include <array>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <limits>
+
+namespace {
+
+int failures = 0;
+
+void check(bool condition, const char *description)
+{
+    if ( condition )
+        return;
+    std::fprintf(stderr, "FAIL: %s\n", description);
+    ++failures;
+}
+
+void test_bitvectors()
+{
+    using namespace chernobog::bitvector;
+
+    check(mask(1) == 0xFFULL, "8-bit mask");
+    check(mask(3) == 0xFFFFFFULL, "24-bit mask");
+    check(mask(8) == std::numeric_limits<uint64_t>::max(), "64-bit mask");
+    check(truncate(0x1234, 1) == 0x34, "8-bit truncation");
+    check(logical_not(0) == 1 && logical_not(2) == 0, "logical NOT");
+    check(negate(0x80, 1) == 0x80, "8-bit minimum negation wraps");
+    check(negate(1, 8) == std::numeric_limits<uint64_t>::max(),
+          "64-bit negation");
+
+    check(sign_extend(0x7F, 1) == 127, "positive 8-bit sign extension");
+    check(sign_extend(0x80, 1) == -128, "negative 8-bit sign extension");
+    check(sign_extend(0x800000, 3) == -8388608, "negative 24-bit sign extension");
+    check(sign_extend(0xFFFFFFFFFFFFFFFFULL, 8) == -1,
+          "negative 64-bit sign extension");
+    check(sign_extend(0x8000000000000000ULL, 8) ==
+              std::numeric_limits<int64_t>::min(),
+          "64-bit minimum sign extension");
+
+    check(shift_left(1, 7, 1) == 0x80, "8-bit left shift");
+    check(shift_left(1, 8, 1) == 0, "oversized 8-bit left shift");
+    check(shift_right_logical(0x80, 7, 1) == 1, "8-bit logical right shift");
+    check(shift_right_arithmetic(0x80, 1, 1) == 0xC0,
+          "8-bit arithmetic right shift");
+    check(shift_right_arithmetic(0x80, 8, 1) == 0xFF,
+          "oversized negative arithmetic shift");
+    check(shift_right_arithmetic(0x7F, 8, 1) == 0,
+          "oversized positive arithmetic shift");
+
+    constexpr uint8_t bytes[] = {0x01, 0x23, 0x45, 0x67,
+                                 0x89, 0xAB, 0xCD, 0xEF};
+    check(decode_bytes(bytes, 8, true) == 0x0123456789ABCDEFULL,
+          "big-endian 64-bit decode");
+    check(decode_bytes(bytes, 8, false) == 0xEFCDAB8967452301ULL,
+          "little-endian 64-bit decode");
+    check(decode_bytes(bytes, 3, true) == 0x012345ULL,
+          "big-endian 24-bit decode");
+    check(decode_bytes(bytes, 3, false) == 0x452301ULL,
+          "little-endian 24-bit decode");
+    check(decode_bytes(nullptr, 4, false) == 0,
+          "null byte decode is rejected");
+}
+
+void test_simd_utilities()
+{
+    using namespace chernobog::simd;
+
+    check(rotl64(0x0123456789ABCDEFULL, 0) == 0x0123456789ABCDEFULL,
+          "zero rotation");
+    check(rotl64(1, 64) == 1, "full-width rotation");
+    check(next_pow2(0) == 1 && next_pow2(9) == 16, "next 64-bit power of two");
+    check(next_pow2(std::numeric_limits<uint64_t>::max()) == 0,
+          "64-bit power-of-two overflow");
+    check(next_pow2_32(std::numeric_limits<uint32_t>::max()) == 0,
+          "32-bit power-of-two overflow");
+
+    std::array<uint8_t, 192> source{};
+    std::array<uint8_t, 192> copy{};
+    for ( size_t i = 0; i < source.size(); ++i )
+        source[i] = static_cast<uint8_t>((i * 131U + 17U) & 0xFFU);
+
+    for ( size_t len = 0; len <= 128; ++len )
+    {
+        for ( size_t offset = 0; offset < 8; ++offset )
+        {
+            std::memcpy(copy.data() + offset, source.data() + 3, len);
+            const uint64_t expected = hash_bytes(source.data() + 3, len);
+            check(hash_bytes(copy.data() + offset, len) == expected,
+                  "hash is independent of input alignment");
+            check(mem_eq(source.data() + 3, copy.data() + offset, len),
+                  "unaligned equal-memory comparison");
+            if ( len > 0 )
+            {
+                copy[offset + len - 1] ^= 1;
+                check(!mem_eq(source.data() + 3, copy.data() + offset, len),
+                      "unaligned unequal-memory comparison");
+                copy[offset + len - 1] ^= 1;
+            }
+        }
+    }
+
+    PatternSignature a{};
+    PatternSignature b{};
+    a.opcode_bits = b.opcode_bits = 1;
+    a.structure_bits = b.structure_bits = 2;
+    a.depth = 3;
+    b.depth = 4;
+    check(!(a == b), "pattern signature compares metadata beyond first 16 bytes");
+}
+
+void test_mba_identities()
+{
+    constexpr uint32_t width_mask = 0xFFU;
+    const auto narrow = [](uint32_t value) { return value & 0xFFU; };
+    const auto bnot = [&](uint32_t value) { return narrow(~value); };
+    const auto neg = [&](uint32_t value) { return narrow(0U - value); };
+
+    for ( uint32_t x = 0; x <= width_mask; ++x )
+    {
+        for ( uint32_t y = 0; y <= width_mask; ++y )
+        {
+            check(narrow(bnot(narrow(bnot(x) + bnot(y))) + 1U) ==
+                      narrow(x + y + 2U),
+                  "Add_OllvmRule_2 identity");
+            check(narrow(bnot(bnot(x) | bnot(y)) +
+                         bnot(x | bnot(y)) + 1U) == narrow(y + 1U),
+                  "Add_OllvmRule_4 identity");
+            check(narrow(bnot(x) + bnot(y) + 2U) == neg(narrow(x + y)),
+                  "Add_FactorRule_1 identity");
+            check(narrow((x ^ bnot(y)) + 2U * (x | y)) ==
+                      narrow(x + y - 1U),
+                  "Add_FactorRule_2 identity");
+            check(neg(narrow(neg(x) - neg(y))) == narrow(x - y),
+                  "Add_NegRule_2 identity");
+            check(narrow((bnot(x) & y) + (x | y)) ==
+                      narrow(x + 2U * (bnot(x) & y)),
+                  "Add_ComplexRule_1 identity");
+            check(narrow((x ^ y) - 2U * (bnot(x) & y)) ==
+                      narrow(x - y),
+                  "Sub_HackersDelightRule_3 identity");
+            check(narrow(neg(narrow(2U * (bnot(x) & y))) + (x ^ y)) ==
+                      narrow(x - y),
+                  "Sub_HackersDelightRule_4 identity");
+            check(narrow(bnot(bnot(x) | bnot(y)) | bnot(x | y)) ==
+                      bnot(x ^ y),
+                  "Xor_MbaRule_3 XNOR identity");
+        }
+    }
+}
+
+void test_hikari_string_recovery()
+{
+    using chernobog::string_recovery::recover_hikari_xor_ascii;
+
+    const std::vector<uint8_t> separate_terminator = {
+        0x09, 0x3F, 0x39, 0x28, 0x3F, 0x2E, 0x00};
+    const std::vector<uint8_t> six_keys(6, 0x5A);
+    check(recover_hikari_xor_ascii(separate_terminator, six_keys) == "Secret",
+          "Hikari separate destination terminator");
+
+    const std::vector<uint8_t> encrypted_terminator = {
+        0x09, 0x3F, 0x39, 0x28, 0x3F, 0x2E, 0x5A};
+    const std::vector<uint8_t> seven_keys(7, 0x5A);
+    check(recover_hikari_xor_ascii(encrypted_terminator, seven_keys) == "Secret",
+          "Hikari XOR-encrypted terminator");
+
+    std::vector<uint8_t> corrupted = separate_terminator;
+    corrupted[2] = 0x5B; // Decrypts to byte 0x01.
+    check(recover_hikari_xor_ascii(corrupted, six_keys).empty(),
+          "Hikari non-printable plaintext rejection");
+
+    const std::vector<uint8_t> unterminated(
+        separate_terminator.begin(), separate_terminator.end() - 1);
+    check(recover_hikari_xor_ascii(unterminated, six_keys).empty(),
+          "Hikari unterminated plaintext rejection");
+}
+
+} // namespace
+
+int main()
+{
+    test_bitvectors();
+    test_simd_utilities();
+    test_mba_identities();
+    test_hikari_string_recovery();
+    if ( failures != 0 )
+        std::fprintf(stderr, "%d core test(s) failed\n", failures);
+    return failures == 0 ? 0 : 1;
+}

@@ -52,5 +52,5 @@ private:
                                     const encrypted_const_t &ec);
 
     // Read value from global variable
-    static uint64_t read_global_value(ea_t addr, int size);
+    static std::optional<uint64_t> read_global_value(ea_t addr, int size);
 };

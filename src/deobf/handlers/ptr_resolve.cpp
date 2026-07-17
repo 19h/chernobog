@@ -1,4 +1,6 @@
 #include "ptr_resolve.h"
+#include "../analysis/arch_utils.h"
+#include "../../common/ida_memory.h"
 
 //--------------------------------------------------------------------------
 // Detection
@@ -82,7 +84,8 @@ int ptr_resolve_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
     }
 
     deobf::log("[ptr_resolve] Resolved %d pointer references\n", total_changes);
-    return total_changes;
+    // Comments and names update the database, not the current microcode.
+    return 0;
 }
 
 //--------------------------------------------------------------------------
@@ -218,7 +221,7 @@ bool ptr_resolve_handler_t::resolve_ptr_target(ea_t ptr_addr, ptr_ref_t *out)
     }
 
     // Read the pointer value
-    ea_t target = get_qword(ptr_addr);
+    ea_t target = arch::read_ptr(ptr_addr);
     if ( target == 0 || target == BADADDR ) 
         return false;
 
@@ -308,19 +311,24 @@ bool ptr_resolve_handler_t::extract_objc_class_name(const char *symbol, qstring 
 //--------------------------------------------------------------------------
 // Check if address is a CFConstantString struct and extract its content
 //
-// CFConstantString layout (64-bit):
-//   offset 0:  void *isa          -> ___CFConstantStringClassReference
-//   offset 8:  uint64_t flags     -> typically 0x7C8 (ASCII) or 0x7D0 (UTF16)
-//   offset 16: const char *data   -> pointer to string bytes
-//   offset 24: uint64_t length    -> string length
+// CFConstantString target layout:
+//   offset 0 * ptrsize: void *isa
+//   offset 1 * ptrsize: flags plus ABI padding where applicable
+//   offset 2 * ptrsize: const char *data
+//   offset 3 * ptrsize: pointer-sized length
 //--------------------------------------------------------------------------
 bool ptr_resolve_handler_t::try_extract_cfstring(ea_t struct_addr, qstring *out_string)
 {
     if ( struct_addr == BADADDR || !out_string ) 
         return false;
 
+    const int pointer_bytes = arch::get_ptr_size();
+    if ( struct_addr > BADADDR - 1
+                     - static_cast<ea_t>(3 * pointer_bytes) )
+        return false;
+
     // Read the ISA pointer
-    ea_t isa_ptr = get_qword(struct_addr);
+    const ea_t isa_ptr = arch::read_ptr(struct_addr);
     if ( isa_ptr == 0 || isa_ptr == BADADDR ) 
         return false;
 
@@ -338,17 +346,20 @@ bool ptr_resolve_handler_t::try_extract_cfstring(ea_t struct_addr, qstring *out_
     deobf::log_verbose("[ptr_resolve] CFString struct at %a (isa=%s)\n",
                       struct_addr, isa_name.c_str());
 
-    // Read the string data pointer (offset 16)
-    ea_t data_ptr = get_qword(struct_addr + 16);
+    const ea_t data_ptr = arch::read_ptr(
+        struct_addr + static_cast<ea_t>(2 * pointer_bytes));
+    const auto length_value = chernobog::ida_memory::read_integer(
+        struct_addr + static_cast<ea_t>(3 * pointer_bytes), pointer_bytes);
+    if ( !length_value )
+        return false;
+    const uint64_t length = *length_value;
     deobf::log_verbose("[ptr_resolve]   data_ptr=%a, length=%llu\n",
-                      data_ptr, (unsigned long long)get_qword(struct_addr + 24));
+                      data_ptr, (unsigned long long)length);
     if ( data_ptr == 0 || data_ptr == BADADDR ) {
         deobf::log_verbose("[ptr_resolve] CFString at %a: invalid data_ptr\n", struct_addr);
         return false;
     }
 
-    // Read the length (offset 24)
-    uint64_t length = get_qword(struct_addr + 24);
     if ( length > 4096 ) {  // Sanity check - allow 0 for empty strings
         deobf::log_verbose("[ptr_resolve] CFString at %a: length too large (%llu)\n",
                           struct_addr, (unsigned long long)length);
@@ -365,10 +376,12 @@ bool ptr_resolve_handler_t::try_extract_cfstring(ea_t struct_addr, qstring *out_
     size_t str_len = get_max_strlit_length(data_ptr, STRTYPE_C);
     if ( str_len == 0 ) {
         // Fallback: try reading directly using the length from the struct
-        out_string->resize(length + 1);
-        if ( get_bytes(out_string->begin(), length, data_ptr) == length ) {
-            (*out_string)[length] = '\0';
-            out_string->resize(length);
+        const size_t length_bytes = static_cast<size_t>(length);
+        out_string->resize(length_bytes + 1);
+        if ( chernobog::ida_memory::read_exact(
+                out_string->begin(), length_bytes, data_ptr) ) {
+            (*out_string)[length_bytes] = '\0';
+            out_string->resize(length_bytes);
             return true;
         }
         deobf::log_verbose("[ptr_resolve] CFString at %a: get_max_strlit_length failed for %a\n",
@@ -442,15 +455,4 @@ void ptr_resolve_handler_t::annotate_ptr_ref(const ptr_ref_t &ref)
         // Try to set the name (may fail if name exists)
         set_name(ref.ptr_addr, new_name.c_str(), SN_NOWARN | SN_NOCHECK);
     }
-}
-
-//--------------------------------------------------------------------------
-// Replace indirect reference with direct reference
-//--------------------------------------------------------------------------
-int ptr_resolve_handler_t::replace_ptr_ref(mblock_t *blk, minsn_t *ins, const ptr_ref_t &ref)
-{
-    // For now, we only annotate. Replacing the operand directly could break
-    // code that actually needs the indirection (e.g., for relocation).
-    // The annotation provides the information without changing semantics.
-    return 0;
 }

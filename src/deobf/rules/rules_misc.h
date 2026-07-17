@@ -183,11 +183,6 @@ class Neg_Rule_1 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Neg_Rule_1"; }
 
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
-
     AstPtr get_pattern() const override
     {
         return neg(c_0());
@@ -213,11 +208,6 @@ class Mul_Rule_1 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Mul_Rule_1"; }
 
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
-
     AstPtr get_pattern() const override
     {
         return mul(x_0(), c_0());
@@ -239,11 +229,6 @@ class Mul_Rule_2 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Mul_Rule_2"; }
 
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
-
     AstPtr get_pattern() const override
     {
         return mul(x_0(), c_1());
@@ -264,11 +249,6 @@ public:
 class Mul_Rule_3 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Mul_Rule_3"; }
-
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
 
     AstPtr get_pattern() const override
     {
@@ -352,11 +332,6 @@ class Const_AddZero : public PatternMatchingRule {
 public:
     const char* name() const override { return "Const_AddZero"; }
 
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
-
     AstPtr get_pattern() const override
     {
         return add(x_0(), c_0());
@@ -377,11 +352,6 @@ public:
 class Const_ZeroAdd : public PatternMatchingRule {
 public:
     const char* name() const override { return "Const_ZeroAdd"; }
-
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
 
     AstPtr get_pattern() const override
     {
@@ -404,11 +374,6 @@ class Const_OrSelf : public PatternMatchingRule {
 public:
     const char* name() const override { return "Const_OrSelf"; }
 
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
-
     AstPtr get_pattern() const override
     {
         return bor(x_0(), x_0());
@@ -424,11 +389,6 @@ public:
 class Const_AndSelf : public PatternMatchingRule {
 public:
     const char* name() const override { return "Const_AndSelf"; }
-
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
 
     AstPtr get_pattern() const override
     {

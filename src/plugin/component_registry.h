@@ -24,7 +24,6 @@ public:
     static int init_all();
     static int done_all();
     static void attach_to_popup(TWidget *widget, TPopupMenu *popup, vdui_t *vu);
-    static void unregister_all_actions();
 };
 
 // Registration helper macro

@@ -1,5 +1,52 @@
 #include "objc_resolve.h"
 #include "../analysis/stack_tracker.h"
+#include "../analysis/arch_utils.h"
+
+namespace {
+
+std::string normalize_objc_symbol(const char *raw_name)
+{
+    std::string name = raw_name ? raw_name : "";
+    while ( !name.empty() && name.front() == '_' )
+        name.erase(name.begin());
+    if ( name.compare(0, 4, "imp_") == 0 )
+        name.erase(0, 4);
+    if ( name.compare(0, 2, "j_") == 0 )
+        name.erase(0, 2);
+    while ( !name.empty() && name.front() == '_' )
+        name.erase(name.begin());
+    return name;
+}
+
+int pointer_size()
+{
+    return arch::is_64bit() ? 8 : 4;
+}
+
+bool selector_at_address(ea_t address, qstring *out_selector)
+{
+    if ( address == BADADDR || !out_selector )
+        return false;
+
+    size_t length = get_max_strlit_length(address, STRTYPE_C);
+    if ( length > 0 && length < 256 )
+    {
+        out_selector->resize(length);
+        if ( get_strlit_contents(out_selector, address, length, STRTYPE_C) > 0 )
+            return true;
+    }
+
+    const ea_t pointee = arch::read_ptr(address);
+    if ( pointee == 0 || pointee == BADADDR )
+        return false;
+    length = get_max_strlit_length(pointee, STRTYPE_C);
+    if ( length == 0 || length >= 256 )
+        return false;
+    out_selector->resize(length);
+    return get_strlit_contents(out_selector, pointee, length, STRTYPE_C) > 0;
+}
+
+} // namespace
 
 //--------------------------------------------------------------------------
 // Check if function is objc_msgSend variant (by address)
@@ -25,17 +72,19 @@ bool objc_resolve_handler_t::is_objc_msgsend(const char *name)
     if ( !name ) 
         return false;
 
-    // Skip leading underscore if present
-    if ( name[0] == '_' ) 
-        name++;
-
-    // Check various objc_msgSend patterns
-    if ( strncmp(name, "objc_msgSend", 12) == 0 ) 
-        return true;
-    if ( strncmp(name, "objc_msgLookup", 14) == 0 ) 
-        return true;
-
-    return false;
+    const std::string symbol = normalize_objc_symbol(name);
+    return symbol == "objc_msgSend" || symbol == "objc_msgSendSuper" ||
+           symbol == "objc_msgSendSuper2" ||
+           symbol == "objc_msgSend_stret" ||
+           symbol == "objc_msgSend_fpret" ||
+           symbol == "objc_msgSend_fp2ret" ||
+           symbol == "objc_msgSendSuper_stret" ||
+           symbol == "objc_msgSendSuper2_stret" ||
+           symbol == "objc_msgSend_fixup" ||
+           symbol == "objc_msgLookup" ||
+           symbol == "objc_msgLookupSuper" ||
+           symbol.compare(0, sizeof("objc_msgSend$") - 1,
+                          "objc_msgSend$") == 0;
 }
 
 //--------------------------------------------------------------------------
@@ -55,33 +104,25 @@ objc_resolve_handler_t::classify_msgsend(const char *name) {
     if ( !name ) 
         return MSGSEND_UNKNOWN;
 
-    // Skip leading underscore
-    if ( name[0] == '_' ) 
-        name++;
-
-    if ( strcmp(name, "objc_msgSend") == 0 ) 
-        return MSGSEND_NORMAL;
-    if ( strcmp(name, "objc_msgSendSuper") == 0 ) 
-        return MSGSEND_SUPER;
-    if ( strcmp(name, "objc_msgSendSuper2") == 0 ) 
+    const std::string symbol = normalize_objc_symbol(name);
+    if ( symbol == "objc_msgSendSuper2_stret" )
+        return MSGSEND_SUPER2_STRET;
+    if ( symbol == "objc_msgSendSuper_stret" )
+        return MSGSEND_SUPER_STRET;
+    if ( symbol == "objc_msgSendSuper2" )
         return MSGSEND_SUPER2;
-    if ( strcmp(name, "objc_msgSend_stret") == 0 ) 
+    if ( symbol == "objc_msgSendSuper" || symbol == "objc_msgLookupSuper" )
+        return MSGSEND_SUPER;
+    if ( symbol == "objc_msgSend_stret" )
         return MSGSEND_STRET;
-    if ( strcmp(name, "objc_msgSend_fpret") == 0 ) 
+    if ( symbol == "objc_msgSend_fpret" )
         return MSGSEND_FPRET;
-    if ( strcmp(name, "objc_msgSend_fp2ret") == 0 ) 
+    if ( symbol == "objc_msgSend_fp2ret" )
         return MSGSEND_FP2RET;
-
-    // Check for prefixed versions
-    if ( strstr(name, "msgSendSuper2") ) 
-        return MSGSEND_SUPER2;
-    if ( strstr(name, "msgSendSuper") ) 
-        return MSGSEND_SUPER;
-    if ( strstr(name, "msgSend_stret") ) 
-        return MSGSEND_STRET;
-    if ( strstr(name, "msgSend_fpret") ) 
-        return MSGSEND_FPRET;
-    if ( strstr(name, "msgSend") ) 
+    if ( symbol == "objc_msgSend" || symbol == "objc_msgSend_fixup" ||
+         symbol == "objc_msgLookup" ||
+         symbol.compare(0, sizeof("objc_msgSend$") - 1,
+                        "objc_msgSend$") == 0 )
         return MSGSEND_NORMAL;
 
     return MSGSEND_UNKNOWN;
@@ -106,20 +147,23 @@ bool objc_resolve_handler_t::detect(mbl_array_t *mba)
             if ( ins->opcode != m_call && ins->opcode != m_icall ) 
                 continue;
 
+            const mop_t &target = ins->opcode == m_icall ? ins->r : ins->l;
+
             // Check direct call to objc_msgSend
-            if ( ins->l.t == mop_v && is_objc_msgsend(ins->l.g) ) {
+            if ( target.t == mop_v && is_objc_msgsend(target.g) ) {
                 msgsend_calls++;
             }
             // Check for address reference
-            else if ( ins->l.t == mop_a && ins->l.a && ins->l.a->t == mop_v ) {
-                if ( is_objc_msgsend(ins->l.a->g) ) {
+            else if ( target.t == mop_a && target.a && target.a->t == mop_v ) {
+                if ( is_objc_msgsend(target.a->g) ) {
                     msgsend_calls++;
                 }
             }
-            // Check indirect call (might be through stack)
-            else if ( ins->opcode == m_icall ) {
-                // We'll count these as potential candidates
-                // The actual resolution happens in run()
+            else if ( target.t == mop_S && target.s ) {
+                auto address = stack_tracker_t::trace_address(
+                    blk, ins, target.s->off, pointer_size());
+                if ( address && is_objc_msgsend(*address) )
+                    msgsend_calls++;
             }
         }
     }
@@ -146,20 +190,22 @@ void objc_resolve_handler_t::find_msgsend_calls(
                 continue;
 
             bool is_msgsend = false;
+            const mop_t &target = ins->opcode == m_icall ? ins->r : ins->l;
 
             // Direct call
-            if ( ins->l.t == mop_v && is_objc_msgsend(ins->l.g) ) {
+            if ( target.t == mop_v && is_objc_msgsend(target.g) ) {
                 is_msgsend = true;
             }
             // Address reference
-            else if ( ins->l.t == mop_a && ins->l.a && ins->l.a->t == mop_v ) {
-                if ( is_objc_msgsend(ins->l.a->g) ) {
+            else if ( target.t == mop_a && target.a && target.a->t == mop_v ) {
+                if ( is_objc_msgsend(target.a->g) ) {
                     is_msgsend = true;
                 }
             }
             // Indirect through stack - check if we can resolve it
-            else if ( ins->opcode == m_icall && ins->l.t == mop_S && ins->l.s ) {
-                auto addr = stack_tracker_t::read_address(ins->l.s->off);
+            else if ( target.t == mop_S && target.s ) {
+                auto addr = stack_tracker_t::trace_address(
+                    blk, ins, target.s->off, pointer_size());
                 if ( addr.has_value() && is_objc_msgsend(*addr) ) {
                     is_msgsend = true;
                 }
@@ -187,58 +233,12 @@ bool objc_resolve_handler_t::get_selector_string(
 
     // Direct global string reference
     if ( sel_op.t == mop_v ) {
-        size_t len = get_max_strlit_length(sel_op.g, STRTYPE_C);
-        if ( len > 0 && len < 256 ) {
-            out_selector->resize(len);
-            if ( get_strlit_contents(out_selector, sel_op.g, len, STRTYPE_C) > 0 ) {
-                return true;
-            }
-        }
-
-        // Might be a selector reference (__objc_selrefs)
-        // Try reading pointer and then string
-        ea_t sel_ptr = get_qword(sel_op.g);
-        if ( sel_ptr != 0 && sel_ptr != BADADDR ) {
-            len = get_max_strlit_length(sel_ptr, STRTYPE_C);
-            if ( len > 0 && len < 256 ) {
-                out_selector->resize(len);
-                if ( get_strlit_contents(out_selector, sel_ptr, len, STRTYPE_C) > 0 ) {
-                    return true;
-                }
-            }
-        }
+        return selector_at_address(sel_op.g, out_selector);
     }
 
     // Address expression
     if ( sel_op.t == mop_a && sel_op.a && sel_op.a->t == mop_v ) {
-        size_t len = get_max_strlit_length(sel_op.a->g, STRTYPE_C);
-        if ( len > 0 && len < 256 ) {
-            out_selector->resize(len);
-            if ( get_strlit_contents(out_selector, sel_op.a->g, len, STRTYPE_C) > 0 ) {
-                return true;
-            }
-        }
-    }
-
-    // Stack reference
-    if ( sel_op.t == mop_S && sel_op.s ) {
-        auto str = stack_tracker_t::read_string(sel_op.s->off);
-        if ( str.has_value() ) {
-            *out_selector = str->c_str();
-            return true;
-        }
-
-        // Try as address pointing to string
-        auto addr = stack_tracker_t::read_address(sel_op.s->off);
-        if ( addr.has_value() ) {
-            size_t len = get_max_strlit_length(*addr, STRTYPE_C);
-            if ( len > 0 && len < 256 ) {
-                out_selector->resize(len);
-                if ( get_strlit_contents(out_selector, *addr, len, STRTYPE_C) > 0 ) {
-                    return true;
-                }
-            }
-        }
+        return selector_at_address(sel_op.a->g, out_selector);
     }
 
     return false;
@@ -272,21 +272,13 @@ bool objc_resolve_handler_t::trace_selector(
     // Get selector argument (index 1)
     const mcallarg_t &sel_arg = ci->args[1];
 
+    if ( sel_arg.t == mop_S && sel_arg.s )
+    {
+        auto address = stack_tracker_t::trace_address(
+            blk, call_insn, sel_arg.s->off, pointer_size());
+        return address && selector_at_address(*address, out_selector);
+    }
     return get_selector_string(mba, sel_arg, out_selector);
-}
-
-//--------------------------------------------------------------------------
-// Get selector from sel_registerName call
-//--------------------------------------------------------------------------
-bool objc_resolve_handler_t::get_selector_from_registration(
-    mbl_array_t *mba,
-    const mop_t &op,
-    qstring *out)
-{
-    // This would trace back to find a sel_registerName("string") call
-    // and extract the string argument
-    // Complex implementation - would need dataflow analysis
-    return false;
 }
 
 //--------------------------------------------------------------------------
@@ -388,15 +380,19 @@ bool objc_resolve_handler_t::resolve_msgsend_call(
     out->is_super_call = false;
     out->is_stret = false;
 
-    // Get msgSend address
-    if ( call_insn->l.t == mop_v ) {
-        out->msgsend_addr = call_insn->l.g;
+    // m_call uses l; m_icall uses r as the offset half of its selector/offset
+    // pair.
+    const mop_t &target = call_insn->opcode == m_icall
+                        ? call_insn->r : call_insn->l;
+    if ( target.t == mop_v ) {
+        out->msgsend_addr = target.g;
     }
-    else if ( call_insn->l.t == mop_a && call_insn->l.a && call_insn->l.a->t == mop_v ) {
-        out->msgsend_addr = call_insn->l.a->g;
+    else if ( target.t == mop_a && target.a && target.a->t == mop_v ) {
+        out->msgsend_addr = target.a->g;
     }
-    else if ( call_insn->l.t == mop_S && call_insn->l.s ) {
-        auto addr = stack_tracker_t::read_address(call_insn->l.s->off);
+    else if ( target.t == mop_S && target.s ) {
+        auto addr = stack_tracker_t::trace_address(
+            blk, call_insn, target.s->off, pointer_size());
         if ( addr.has_value() ) {
             out->msgsend_addr = *addr;
         }
@@ -409,8 +405,13 @@ bool objc_resolve_handler_t::resolve_msgsend_call(
     msgsend_variant_t variant = classify_msgsend(out->msgsend_addr);
     get_name(&out->msgsend_variant, out->msgsend_addr);
 
-    out->is_super_call = (variant == MSGSEND_SUPER || variant == MSGSEND_SUPER2);
-    out->is_stret = (variant == MSGSEND_STRET);
+    out->is_super_call = variant == MSGSEND_SUPER ||
+                         variant == MSGSEND_SUPER2 ||
+                         variant == MSGSEND_SUPER_STRET ||
+                         variant == MSGSEND_SUPER2_STRET;
+    out->is_stret = variant == MSGSEND_STRET ||
+                    variant == MSGSEND_SUPER_STRET ||
+                    variant == MSGSEND_SUPER2_STRET;
 
     // Trace selector
     if ( !trace_selector(mba, blk, call_insn, &out->selector) ) {
@@ -506,5 +507,6 @@ int objc_resolve_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 
     deobf::log("[objc_resolve] Resolved %d ObjC method calls\n", changes);
 
-    return changes;
+    // ObjC signatures are annotations; the current microcode is unchanged.
+    return 0;
 }

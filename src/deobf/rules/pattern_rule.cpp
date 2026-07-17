@@ -5,38 +5,6 @@ namespace rules {
 
 using namespace ast;
 
-//--------------------------------------------------------------------------
-// PatternMatchingRule implementation
-//--------------------------------------------------------------------------
-std::vector<AstPtr> PatternMatchingRule::get_all_patterns()
-{
-    if ( patterns_initialized_ )
-    {
-        return all_patterns_;
-    }
-
-    AstPtr base_pattern = get_pattern();
-    if ( !base_pattern )
-    {
-        patterns_initialized_ = true;
-        return all_patterns_;
-    }
-
-    if ( fuzz_pattern() )
-    {
-        // Generate all fuzzed variants
-        all_patterns_ = PatternFuzzer::generate_variants(base_pattern);
-    }
-    else
-    {
-        // Just use the base pattern
-        all_patterns_.push_back(base_pattern);
-    }
-
-    patterns_initialized_ = true;
-    return all_patterns_;
-}
-
 minsn_t* PatternMatchingRule::apply_replacement(
     const std::map<std::string, mop_t>& bindings,
     mblock_t* blk,
@@ -74,7 +42,7 @@ minsn_t* PatternMatchingRule::build_replacement(
         // A replacement that is just a leaf means the result is a mov
         auto leaf = std::static_pointer_cast<AstLeaf>(replacement);
 
-        mop_t src_mop = ast_leaf_to_mop(leaf, bindings);
+        mop_t src_mop = ast_leaf_to_mop(leaf, bindings, size);
         if ( src_mop.t == mop_z )
         {
             return nullptr;
@@ -99,7 +67,7 @@ minsn_t* PatternMatchingRule::build_replacement(
         if ( node->left->is_leaf() )
         {
             left_mop = ast_leaf_to_mop(
-                std::static_pointer_cast<AstLeaf>(node->left), bindings);
+                std::static_pointer_cast<AstLeaf>(node->left), bindings, size);
         }
         else
         {
@@ -121,7 +89,7 @@ minsn_t* PatternMatchingRule::build_replacement(
         if ( node->right->is_leaf() )
         {
             right_mop = ast_leaf_to_mop(
-                std::static_pointer_cast<AstLeaf>(node->right), bindings);
+                std::static_pointer_cast<AstLeaf>(node->right), bindings, size);
         }
         else
         {

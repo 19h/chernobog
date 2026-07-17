@@ -1,10 +1,11 @@
 #include "opaque_eval.h"
 #include "z3_solver.h"
+#include "../../common/bitvector.h"
+#include "../../common/ida_memory.h"
 
 // Static members
-std::map<ea_t, uint64_t> opaque_eval_t::s_global_cache;
-static bool s_z3_enabled = true;
-static unsigned s_z3_timeout_ms = 1000;
+std::map<std::pair<ea_t, int>, uint64_t> opaque_eval_t::s_global_cache;
+static constexpr unsigned OPAQUE_Z3_TIMEOUT_MS = 1000;
 
 //--------------------------------------------------------------------------
 // Clear cache
@@ -17,13 +18,21 @@ void opaque_eval_t::clear_cache() {
 // Evaluate a condition to determine if it's always true/false
 //--------------------------------------------------------------------------
 bool opaque_eval_t::evaluate_condition(minsn_t *cond, bool *out_result) {
-    if (!cond || !out_result)
+    if (!cond || !out_result || cond->is_fpinsn())
         return false;
 
     eval_state_t state;
     state.depth = 0;
 
     // Handle conditional jumps
+    if (cond->opcode == m_jcnd) {
+        auto value = eval_mop(cond->l, state);
+        if (!value.has_value())
+            return false;
+        *out_result = *value != 0;
+        return true;
+    }
+
     if (cond->opcode == m_jnz || cond->opcode == m_jz ||
         cond->opcode == m_jg || cond->opcode == m_jge ||
         cond->opcode == m_jl || cond->opcode == m_jle ||
@@ -114,7 +123,7 @@ bool opaque_eval_t::evaluate_condition(minsn_t *cond, bool *out_result) {
 // Evaluate expression to constant
 //--------------------------------------------------------------------------
 std::optional<uint64_t> opaque_eval_t::evaluate_expr(minsn_t *expr) {
-    if (!expr)
+    if (!expr || expr->is_fpinsn())
         return std::nullopt;
 
     eval_state_t state;
@@ -132,33 +141,43 @@ std::optional<uint64_t> opaque_eval_t::evaluate_operand(const mop_t &op) {
 // Read global from binary
 //--------------------------------------------------------------------------
 std::optional<uint64_t> opaque_eval_t::read_global(ea_t addr, int size) {
+    const int bytes_to_read = size > 0 ? size : (inf_is_64bit() ? 8 : 4);
+    if (!chernobog::bitvector::valid_byte_width(bytes_to_read)) {
+        return std::nullopt;
+    }
+
+    // A value from writable storage is an initial database value, not an
+    // invariant. Folding it into an opaque-predicate proof could delete a
+    // branch whose value changes at runtime.
+    segment_t *segment = getseg(addr);
+    if (!segment || (segment->perm & SEGPERM_WRITE) != 0) {
+        return std::nullopt;
+    }
+
     // Check cache
-    auto it = s_global_cache.find(addr);
+    const auto cache_key = std::make_pair(addr, bytes_to_read);
+    auto it = s_global_cache.find(cache_key);
     if (it != s_global_cache.end()) {
-        return mask_by_size(it->second, size);
+        return it->second;
     }
 
     // Read from binary
-    uint64_t val = 0;
-    int bytes_to_read = (size > 0) ? size : (inf_is_64bit() ? 8 : 4);
-
-    if (bytes_to_read > 8)
-        bytes_to_read = 8;
-
-    if (get_bytes(&val, bytes_to_read, addr) != bytes_to_read) {
+    auto value = chernobog::ida_memory::read_integer(addr, bytes_to_read);
+    if (!value) {
         return std::nullopt;
     }
 
     // Cache and return
-    s_global_cache[addr] = val;
-    return mask_by_size(val, size);
+    uint64_t val = mask_by_size(*value, bytes_to_read);
+    s_global_cache[cache_key] = val;
+    return val;
 }
 
 //--------------------------------------------------------------------------
 // Core instruction evaluation
 //--------------------------------------------------------------------------
 std::optional<uint64_t> opaque_eval_t::eval_insn(minsn_t *ins, eval_state_t &state) {
-    if (!ins || state.depth > MAX_EVAL_DEPTH)
+    if (!ins || ins->is_fpinsn() || state.depth > MAX_EVAL_DEPTH)
         return std::nullopt;
 
     state.depth++;
@@ -172,9 +191,25 @@ std::optional<uint64_t> opaque_eval_t::eval_insn(minsn_t *ins, eval_state_t &sta
 
     switch (ins->opcode) {
         case m_mov:
-        case m_ldx:
             result = l_val;
             break;
+
+        case m_ldx: {
+            // Hex-Rays defines l as the segment selector and r as the memory
+            // offset. Never treat the selector as the loaded value.
+            ea_t address = BADADDR;
+            if (ins->r.t == mop_v) {
+                address = ins->r.g;
+            } else if (ins->r.t == mop_a && ins->r.a && ins->r.a->t == mop_v) {
+                address = ins->r.a->g;
+            } else if (ins->r.t == mop_n && ins->r.nnn) {
+                address = static_cast<ea_t>(ins->r.nnn->value);
+            }
+            if (address != BADADDR) {
+                result = read_global(address, size);
+            }
+            break;
+        }
 
         case m_add:
             if (l_val && r_val)
@@ -227,9 +262,13 @@ std::optional<uint64_t> opaque_eval_t::eval_insn(minsn_t *ins, eval_state_t &sta
             break;
 
         case m_bnot:
-        case m_lnot:
             if (l_val)
                 result = eval_not(*l_val, size);
+            break;
+
+        case m_lnot:
+            if (l_val)
+                result = chernobog::bitvector::logical_not(*l_val);
             break;
 
         case m_neg:
@@ -269,28 +308,32 @@ std::optional<uint64_t> opaque_eval_t::eval_insn(minsn_t *ins, eval_state_t &sta
 
         case m_setl:
             if (l_val && r_val) {
-                auto b = eval_setl(sign_extend(*l_val, size), sign_extend(*r_val, size));
+                auto b = eval_setl(sign_extend(*l_val, ins->l.size),
+                                   sign_extend(*r_val, ins->r.size));
                 if (b) result = *b ? 1 : 0;
             }
             break;
 
         case m_setle:
             if (l_val && r_val) {
-                auto b = eval_setle(sign_extend(*l_val, size), sign_extend(*r_val, size));
+                auto b = eval_setle(sign_extend(*l_val, ins->l.size),
+                                    sign_extend(*r_val, ins->r.size));
                 if (b) result = *b ? 1 : 0;
             }
             break;
 
         case m_setg:
             if (l_val && r_val) {
-                auto b = eval_setg(sign_extend(*l_val, size), sign_extend(*r_val, size));
+                auto b = eval_setg(sign_extend(*l_val, ins->l.size),
+                                   sign_extend(*r_val, ins->r.size));
                 if (b) result = *b ? 1 : 0;
             }
             break;
 
         case m_setge:
             if (l_val && r_val) {
-                auto b = eval_setge(sign_extend(*l_val, size), sign_extend(*r_val, size));
+                auto b = eval_setge(sign_extend(*l_val, ins->l.size),
+                                    sign_extend(*r_val, ins->r.size));
                 if (b) result = *b ? 1 : 0;
             }
             break;
@@ -408,6 +451,8 @@ std::optional<uint64_t> opaque_eval_t::eval_udiv(uint64_t a, uint64_t b, int siz
 
 std::optional<uint64_t> opaque_eval_t::eval_sdiv(int64_t a, int64_t b, int size) {
     if (b == 0) return std::nullopt;
+    if (a == chernobog::bitvector::signed_min(size) && b == -1)
+        return std::nullopt;
     return mask_by_size((uint64_t)(a / b), size);
 }
 
@@ -418,6 +463,8 @@ std::optional<uint64_t> opaque_eval_t::eval_umod(uint64_t a, uint64_t b, int siz
 
 std::optional<uint64_t> opaque_eval_t::eval_smod(int64_t a, int64_t b, int size) {
     if (b == 0) return std::nullopt;
+    if (a == chernobog::bitvector::signed_min(size) && b == -1)
+        return std::nullopt;
     return mask_by_size((uint64_t)(a % b), size);
 }
 
@@ -441,25 +488,23 @@ std::optional<uint64_t> opaque_eval_t::eval_not(uint64_t a, int size) {
 }
 
 std::optional<uint64_t> opaque_eval_t::eval_neg(uint64_t a, int size) {
-    return mask_by_size((uint64_t)(-(int64_t)a), size);
+    return chernobog::bitvector::negate(a, size);
 }
 
 //--------------------------------------------------------------------------
 // Shift operations
 //--------------------------------------------------------------------------
 std::optional<uint64_t> opaque_eval_t::eval_shl(uint64_t a, uint64_t b, int size) {
-    if (b >= 64) return 0;
-    return mask_by_size(a << b, size);
+    return chernobog::bitvector::shift_left(a, b, size);
 }
 
 std::optional<uint64_t> opaque_eval_t::eval_shr(uint64_t a, uint64_t b, int size) {
-    if (b >= 64) return 0;
-    return mask_by_size(a >> b, size);
+    return chernobog::bitvector::shift_right_logical(a, b, size);
 }
 
 std::optional<uint64_t> opaque_eval_t::eval_sar(int64_t a, uint64_t b, int size) {
-    if (b >= 64) return (a < 0) ? mask_by_size(-1, size) : 0;
-    return mask_by_size((uint64_t)(a >> b), size);
+    return chernobog::bitvector::shift_right_arithmetic(
+        static_cast<uint64_t>(a), b, size);
 }
 
 //--------------------------------------------------------------------------
@@ -509,80 +554,11 @@ std::optional<bool> opaque_eval_t::eval_setae(uint64_t a, uint64_t b) {
 // Helper functions
 //--------------------------------------------------------------------------
 uint64_t opaque_eval_t::mask_by_size(uint64_t val, int size) {
-    switch (size) {
-        case 1: return val & 0xFF;
-        case 2: return val & 0xFFFF;
-        case 4: return val & 0xFFFFFFFF;
-        case 8:
-        default: return val;
-    }
+    return chernobog::bitvector::truncate(val, size);
 }
 
 int64_t opaque_eval_t::sign_extend(uint64_t val, int size) {
-    switch (size) {
-        case 1: return (int64_t)(int8_t)(val & 0xFF);
-        case 2: return (int64_t)(int16_t)(val & 0xFFFF);
-        case 4: return (int64_t)(int32_t)(val & 0xFFFFFFFF);
-        case 8:
-        default: return (int64_t)val;
-    }
-}
-
-//--------------------------------------------------------------------------
-// Z3-enhanced API implementation
-//--------------------------------------------------------------------------
-
-void opaque_eval_t::set_z3_enabled(bool enabled) {
-    s_z3_enabled = enabled;
-}
-
-bool opaque_eval_t::is_z3_enabled() {
-    return s_z3_enabled;
-}
-
-void opaque_eval_t::set_z3_timeout(unsigned ms) {
-    s_z3_timeout_ms = ms;
-    if (s_z3_enabled) {
-        z3_solver::set_global_timeout(ms);
-    }
-}
-
-//--------------------------------------------------------------------------
-// Evaluate with detailed result information
-//--------------------------------------------------------------------------
-opaque_eval_t::eval_result_t opaque_eval_t::evaluate_detailed(minsn_t *expr) {
-    if (!expr)
-        return eval_result_t::unknown("null expression");
-
-    // First try fast constant propagation
-    eval_state_t state;
-    state.depth = 0;
-    auto simple_result = eval_insn(expr, state);
-
-    if (simple_result.has_value()) {
-        return eval_result_t::success(*simple_result);
-    }
-
-    // Fall back to Z3 if enabled
-    if (s_z3_enabled) {
-        try {
-            z3_solver::set_global_timeout(s_z3_timeout_ms);
-            auto z3_result = z3_solver::evaluate_to_constant(expr);
-
-            if (z3_result.is_constant) {
-                eval_result_t r;
-                r.status = EVAL_SUCCESS;
-                r.is_constant = true;
-                r.value = z3_result.value;
-                r.reason = "Z3 evaluation";
-                return r;
-            }
-        } catch (...) {
-            // Z3 exception - fall through to unknown
-        }
-    }
-
-    return eval_result_t::unknown("could not evaluate");
+    return chernobog::bitvector::sign_extend(val, size);
 }
 
 //--------------------------------------------------------------------------
@@ -590,6 +566,8 @@ opaque_eval_t::eval_result_t opaque_eval_t::evaluate_detailed(minsn_t *expr) {
 //--------------------------------------------------------------------------
 opaque_eval_t::opaque_result_t opaque_eval_t::check_opaque_predicate(minsn_t *cond) {
     if (!cond)
+        return OPAQUE_UNKNOWN;
+    if (cond->is_fpinsn())
         return OPAQUE_UNKNOWN;
 
     // First try simple evaluation
@@ -599,11 +577,8 @@ opaque_eval_t::opaque_result_t opaque_eval_t::check_opaque_predicate(minsn_t *co
     }
 
     // Use Z3 for complex predicates
-    if (!s_z3_enabled)
-        return OPAQUE_UNKNOWN;
-
     try {
-        z3_solver::set_global_timeout(s_z3_timeout_ms);
+        z3_solver::set_global_timeout(OPAQUE_Z3_TIMEOUT_MS);
         z3_solver::opaque_predicate_solver_t solver(z3_solver::get_global_context());
         auto z3_result = solver.analyze_condition(cond);
 
@@ -620,52 +595,4 @@ opaque_eval_t::opaque_result_t opaque_eval_t::check_opaque_predicate(minsn_t *co
     } catch (...) {
         return OPAQUE_UNKNOWN;
     }
-}
-
-//--------------------------------------------------------------------------
-// Prove two expressions are equivalent using Z3
-//--------------------------------------------------------------------------
-bool opaque_eval_t::prove_equivalent(minsn_t *a, minsn_t *b) {
-    if (!a || !b)
-        return false;
-
-    // Quick check: if both evaluate to same constant, they're equivalent
-    auto val_a = evaluate_expr(a);
-    auto val_b = evaluate_expr(b);
-
-    if (val_a.has_value() && val_b.has_value()) {
-        return *val_a == *val_b;
-    }
-
-    // Use Z3 for symbolic equivalence
-    if (!s_z3_enabled)
-        return false;
-
-    try {
-        z3_solver::set_global_timeout(s_z3_timeout_ms);
-        return z3_solver::instructions_equivalent(a, b);
-    } catch (...) {
-        return false;
-    }
-}
-
-//--------------------------------------------------------------------------
-// Simplify expression using Z3 and return simplified form if possible
-//--------------------------------------------------------------------------
-std::optional<uint64_t> opaque_eval_t::z3_simplify(minsn_t *expr) {
-    if (!expr || !s_z3_enabled)
-        return std::nullopt;
-
-    try {
-        z3_solver::set_global_timeout(s_z3_timeout_ms);
-        auto result = z3_solver::evaluate_to_constant(expr);
-
-        if (result.is_constant) {
-            return result.value;
-        }
-    } catch (...) {
-        // Z3 exception
-    }
-
-    return std::nullopt;
 }

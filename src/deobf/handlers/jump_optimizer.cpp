@@ -1,4 +1,33 @@
 #include "jump_optimizer.h"
+#include <optional>
+
+namespace {
+
+std::optional<int> find_not_taken_successor(const mblock_t* blk,
+                                            int taken_target)
+{
+    if ( !blk || taken_target < 0 )
+        return std::nullopt;
+
+    std::optional<int> candidate;
+    bool saw_taken = false;
+    for ( int successor : blk->succset ) {
+        if ( successor == taken_target ) {
+            saw_taken = true;
+            continue;
+        }
+        if ( candidate && *candidate != successor )
+            return std::nullopt;
+        candidate = successor;
+    }
+    if ( candidate )
+        return candidate;
+    if ( saw_taken && taken_target == blk->serial + 1 )
+        return taken_target;
+    return std::nullopt;
+}
+
+} // namespace
 
 namespace chernobog {
 
@@ -75,7 +104,7 @@ int jump_optimizer_handler_t::run(mbl_array_t* mba, deobf_ctx_t* ctx)
 //--------------------------------------------------------------------------
 
 int jump_optimizer_handler_t::simplify_jcc(mblock_t* blk, minsn_t* jcc, deobf_ctx_t* ctx) {
-    if ( !blk || !jcc || !is_mcode_jcond(jcc->opcode) ) 
+    if ( !blk || !jcc || !is_mcode_jcond(jcc->opcode) || jcc->is_fpinsn() )
         return 0;
 
     int result = rules::JumpRuleRegistry::instance().try_apply(blk, jcc);
@@ -92,6 +121,9 @@ int jump_optimizer_handler_t::simplify_jcc(mblock_t* blk, minsn_t* jcc, deobf_ct
 int jump_optimizer_handler_t::apply_optimization(mblock_t* blk, minsn_t* jcc, int result)
 {
     if ( result == 1 ) {
+        if ( jcc->d.t != mop_b )
+            return 0;
+
         // Jump is always taken - convert to unconditional goto
         ea_t orig_ea = jcc->ea;
 
@@ -100,11 +132,12 @@ int jump_optimizer_handler_t::apply_optimization(mblock_t* blk, minsn_t* jcc, in
 
         // Convert to unconditional goto
         jcc->opcode = m_goto;
-        jcc->l.erase();
+        jcc->l.make_blkref(target_block);
         jcc->r.erase();
-        jcc->d.t = mop_b;
-        jcc->d.b = target_block;
+        jcc->d.erase();
         jcc->ea = orig_ea;
+        blk->type = BLT_1WAY;
+        replace_successors(blk, target_block);
 
         jumps_simplified_++;
         jumps_converted_goto_++;
@@ -113,6 +146,12 @@ int jump_optimizer_handler_t::apply_optimization(mblock_t* blk, minsn_t* jcc, in
         return 1;
     }
     else if ( result == 0 ) {
+        if ( jcc->d.t != mop_b )
+            return 0;
+        const auto not_taken = find_not_taken_successor(blk, jcc->d.b);
+        if ( !not_taken || *not_taken < 0 || *not_taken >= blk->mba->qty )
+            return 0;
+
         // Jump is never taken - remove it (becomes fall-through)
         ea_t orig_ea = jcc->ea;
 
@@ -122,6 +161,8 @@ int jump_optimizer_handler_t::apply_optimization(mblock_t* blk, minsn_t* jcc, in
         jcc->r.erase();
         jcc->d.erase();
         jcc->ea = orig_ea;
+        blk->type = BLT_1WAY;
+        replace_successors(blk, *not_taken);
 
         jumps_simplified_++;
         jumps_removed_++;
@@ -131,6 +172,37 @@ int jump_optimizer_handler_t::apply_optimization(mblock_t* blk, minsn_t* jcc, in
     }
 
     return 0;
+}
+
+void jump_optimizer_handler_t::replace_successors(mblock_t* blk, int new_target)
+{
+    if ( !blk || !blk->mba )
+        return;
+
+    for ( int old_target : blk->succset ) {
+        if ( old_target < 0 || old_target >= blk->mba->qty || old_target == new_target )
+            continue;
+        mblock_t* old_dst = blk->mba->get_mblock(old_target);
+        if ( old_dst ) {
+            auto pred = std::find(old_dst->predset.begin(), old_dst->predset.end(), blk->serial);
+            if ( pred != old_dst->predset.end() )
+                old_dst->predset.erase(pred);
+            old_dst->mark_lists_dirty();
+        }
+    }
+
+    blk->succset.clear();
+    if ( new_target >= 0 && new_target < blk->mba->qty ) {
+        blk->succset.push_back(new_target);
+        mblock_t* new_dst = blk->mba->get_mblock(new_target);
+        if ( new_dst
+          && std::find(new_dst->predset.begin(), new_dst->predset.end(), blk->serial)
+             == new_dst->predset.end() ) {
+            new_dst->predset.push_back(blk->serial);
+            new_dst->mark_lists_dirty();
+        }
+    }
+    blk->mark_lists_dirty();
 }
 
 //--------------------------------------------------------------------------

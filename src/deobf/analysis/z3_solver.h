@@ -132,9 +132,6 @@ public:
     // Translate a microcode instruction to Z3 expression
     z3::expr translate_insn(const minsn_t* ins);
 
-    // Translate a comparison instruction to Z3 boolean expression
-    z3::expr translate_comparison(const minsn_t* ins);
-
     // Translate a conditional jump condition
     z3::expr translate_jcc_condition(const minsn_t* jcc);
 
@@ -145,12 +142,20 @@ public:
     // Create a constant bitvector
     z3::expr make_const(uint64_t value, int bits);
 
-    // Get or create a variable for the given operand
-    z3::expr get_or_create_var(const mop_t& op);
-
     // Set known value for a variable (from binary analysis)
     void set_known_value(const symbolic_var_t& var, uint64_t value);
     void set_known_value(const mop_t& op, uint64_t value);
+
+    // Bind a variable to its current symbolic expression. This lets the
+    // executor propagate values across instructions without treating each
+    // read as an unrelated input symbol.
+    void set_symbolic_value(const symbolic_var_t& var, const z3::expr& value);
+    void set_symbolic_value(const mop_t& op, const z3::expr& value);
+
+    // Forget current bindings while retaining fresh-name monotonicity.
+    void invalidate_all_values();
+    void invalidate_memory_values();
+    void invalidate_aliases(const symbolic_var_t& var);
 
     // Clear state (but keep context)
     void reset();
@@ -183,8 +188,7 @@ private:
 //--------------------------------------------------------------------------
 // Symbolic Executor
 //
-// Performs symbolic execution over microcode blocks to track state
-// variable values and build path constraints.
+// Performs symbolic execution over microcode blocks to track state values.
 //--------------------------------------------------------------------------
 class symbolic_executor_t {
 public:
@@ -200,27 +204,11 @@ public:
     std::optional<z3::expr> get_value(const mop_t& op);
     std::optional<z3::expr> get_value(const symbolic_var_t& var);
 
-    // Add a path constraint (branch condition that must be true)
-    void add_constraint(const z3::expr& constraint);
-
-    // Check if current path is feasible
-    sat_result_t check_path_feasibility();
-
     // Try to solve for a specific variable value
-    std::optional<uint64_t> solve_for_value(const mop_t& op);
     std::optional<uint64_t> solve_for_value(const z3::expr& expr);
-
-    // Get all possible values for a variable (bounded enumeration)
-    std::vector<uint64_t> enumerate_values(const mop_t& op, int max_count = 100);
-
-    // Clone current state for branching
-    std::unique_ptr<symbolic_executor_t> clone() const;
 
     // Reset to initial state
     void reset();
-
-    // Access translator for direct Z3 manipulation
-    mcode_translator_t& translator() { return m_translator; }
 
 private:
     // Handle assignment instructions
@@ -236,8 +224,6 @@ private:
     // Current symbolic state: variable -> expression (using shared_ptr)
     std::unordered_map<symbolic_var_t, std::shared_ptr<z3::expr>, symbolic_var_t::hash_t> m_state;
 
-    // Path constraints accumulated during execution
-    std::vector<std::shared_ptr<z3::expr>> m_constraints;
 };
 
 //--------------------------------------------------------------------------
@@ -286,9 +272,6 @@ public:
     };
     state_machine_t solve_state_machine(mbl_array_t* mba);
 
-    // Given initial state, determine which block will execute
-    std::optional<int> resolve_state_to_block(uint64_t state_value);
-
 private:
     // Find all Hikari-style state constants in a block
     std::set<uint64_t> find_state_constants(const mblock_t* blk);
@@ -303,8 +286,6 @@ private:
     // Cached dispatcher analysis results
     std::map<int, dispatcher_analysis_t> m_dispatcher_cache;
 
-    // Resolved state machine
-    std::optional<state_machine_t> m_machine;
 };
 
 //--------------------------------------------------------------------------
@@ -326,107 +307,7 @@ public:
     };
     predicate_result_t analyze_condition(const minsn_t* cond);
 
-    // More detailed analysis with proof
-    struct analysis_result_t {
-        predicate_result_t result;
-        std::string proof_hint;     // Human-readable explanation
-        std::shared_ptr<z3::expr> simplified;  // Simplified form of condition
-
-        analysis_result_t() : result(PRED_UNKNOWN) {}
-    };
-    analysis_result_t analyze_detailed(const minsn_t* cond);
-
-    // Check common opaque predicate patterns
-    bool is_xy_even_pattern(const minsn_t* ins);     // x * (x + 1) is always even
-    bool is_tautology_pattern(const minsn_t* ins);    // x < 10 || x >= 10
-    bool is_modular_pattern(const minsn_t* ins);      // (x^2 - 1) % 8 patterns
-
 private:
-    z3_context_t& m_ctx;
-    mcode_translator_t m_translator;
-};
-
-//--------------------------------------------------------------------------
-// Expression Simplifier
-//
-// Uses Z3 to simplify complex expressions to canonical form.
-//--------------------------------------------------------------------------
-class expression_simplifier_t {
-public:
-    explicit expression_simplifier_t(z3_context_t& ctx);
-
-    // Simplify an expression
-    z3::expr simplify(const z3::expr& expr);
-
-    // Evaluate to constant if possible
-    eval_result_t evaluate_constant(const minsn_t* ins);
-    eval_result_t evaluate_constant(const mop_t& op);
-
-    // Check if two expressions are equivalent
-    bool are_equivalent(const z3::expr& a, const z3::expr& b);
-    bool are_equivalent(const minsn_t* a, const minsn_t* b);
-
-private:
-    z3_context_t& m_ctx;
-    mcode_translator_t m_translator;
-};
-
-//--------------------------------------------------------------------------
-// Z3 Constant Optimizer
-//
-// Detects if complex expressions are actually obfuscated constants.
-// Uses quick evaluation with test values, then Z3 verification.
-//--------------------------------------------------------------------------
-class constant_optimizer_t {
-public:
-    explicit constant_optimizer_t(z3_context_t& ctx);
-
-    // Configuration
-    struct config_t {
-        int min_opcodes;         // Minimum operations in expression
-        int min_constants;       // Minimum constant leaves
-        unsigned timeout_ms;     // Z3 timeout
-
-        config_t() : min_opcodes(3), min_constants(3), timeout_ms(1000) {}
-    };
-
-    // Result of constant analysis
-    struct const_result_t {
-        bool is_constant;
-        uint64_t value;
-        int bit_width;
-        std::string method;      // How it was determined
-
-        const_result_t() : is_constant(false), value(0), bit_width(0) {}
-        const_result_t(uint64_t v, int w, const char* m)
-            : is_constant(true), value(v), bit_width(w), method(m) {}
-    };
-
-    // Analyze if instruction result is a constant
-    const_result_t analyze(const minsn_t* ins, const config_t& cfg = config_t());
-
-    // Analyze if operand is a constant
-    const_result_t analyze_operand(const mop_t& op, const config_t& cfg = config_t());
-
-    // Quick evaluation with test values (0 and -1)
-    // Returns constant if both test values give same result
-    std::optional<uint64_t> quick_eval(const z3::expr& expr, int bits);
-
-    // Verify with Z3 that expression is constant
-    bool z3_verify_constant(const z3::expr& expr, uint64_t expected, int bits);
-
-    // Count operations and constants in expression
-    struct complexity_t {
-        int op_count;
-        int const_count;
-        int var_count;
-    };
-    complexity_t analyze_complexity(const minsn_t* ins);
-    complexity_t analyze_complexity(const mop_t& op);
-
-private:
-    void count_complexity(const mop_t& op, complexity_t& out);
-
     z3_context_t& m_ctx;
     mcode_translator_t m_translator;
 };
@@ -443,7 +324,6 @@ public:
     // Check if setz/setnz result is constant
     std::optional<bool> simplify_setz(const minsn_t* ins);
     std::optional<bool> simplify_setnz(const minsn_t* ins);
-    std::optional<bool> simplify_lnot(const minsn_t* ins);
 
     // Check if comparison is always true/false
     std::optional<bool> check_comparison_constant(mcode_t cmp_op,
@@ -475,15 +355,5 @@ void set_global_timeout(unsigned ms);
 //--------------------------------------------------------------------------
 // Convenience functions
 //--------------------------------------------------------------------------
-
-// Quick check if condition is constant
-std::optional<bool> is_condition_constant(const minsn_t* cond);
-
-// Quick evaluate expression to constant
-eval_result_t evaluate_to_constant(const minsn_t* ins);
-eval_result_t evaluate_to_constant(const mop_t& op);
-
-// Check if two instructions produce same result
-bool instructions_equivalent(const minsn_t* a, const minsn_t* b);
 
 } // namespace z3_solver

@@ -46,31 +46,6 @@ bool stack_string_handler_t::detect(mbl_array_t *mba)
     return false;
 }
 
-bool stack_string_handler_t::detect_in_function(ea_t func_ea)
-{
-    func_t *func = get_func(func_ea);
-    if ( !func ) 
-        return false;
-
-    // Look for byte store patterns at assembly level
-    int consecutive = 0;
-    ea_t last_addr = BADADDR;
-
-    ea_t curr = func->start_ea;
-    while ( curr < func->end_ea ) {
-        insn_t insn;
-        if ( decode_insn(&insn, curr) == 0 ) 
-            break;
-
-        // Look for mov [rbp-X], imm8 or mov [rsp+X], imm8 patterns
-        // This is simplified - real implementation would check operand types
-
-        curr = insn.ea + insn.size;
-    }
-
-    return false;
-}
-
 //--------------------------------------------------------------------------
 // Main deobfuscation pass
 //--------------------------------------------------------------------------
@@ -107,19 +82,8 @@ int stack_string_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
     }
 
     deobf::log("[stack_string] Reconstructed %d stack strings\n", total_strings);
-    return total_strings;
-}
-
-//--------------------------------------------------------------------------
-// Process a single block
-//--------------------------------------------------------------------------
-int stack_string_handler_t::process_block(mblock_t *blk, deobf_ctx_t *ctx)
-{
-    if ( !blk || !ctx ) 
-        return 0;
-
-    auto strings = find_stack_strings(blk);
-    return (int)strings.size();
+    // Reconstruction currently produces database annotations only.
+    return 0;
 }
 
 //--------------------------------------------------------------------------
@@ -142,6 +106,21 @@ stack_string_handler_t::find_stack_strings(mblock_t *blk)
 
     if ( stores.size() < 3 ) 
         return result;
+
+    // Conflicting writes do not establish one unambiguous constructed value.
+    std::set<sval_t> seen_offsets;
+    std::set<sval_t> duplicate_offsets;
+    for ( const auto& store : stores )
+    {
+        if ( !seen_offsets.insert(store.offset).second )
+            duplicate_offsets.insert(store.offset);
+    }
+    stores.erase(
+        std::remove_if(stores.begin(), stores.end(),
+            [&duplicate_offsets](const byte_store_t& store) {
+                return duplicate_offsets.count(store.offset) != 0;
+            }),
+        stores.end());
 
     // Sort by stack offset
     std::sort(stores.begin(), stores.end(),
@@ -166,9 +145,6 @@ stack_string_handler_t::find_stack_strings(mblock_t *blk)
             // Continue sequence
             current_seq.push_back(store);
             expected_offset = store.offset + 1;
-        } else if ( store.offset == expected_offset - 1 ) {
-            // Same offset (duplicate store) - skip
-            continue;
         } else {
             // Sequence broken - check if we have a string
             if ( current_seq.size() >= 3 ) {
@@ -208,13 +184,13 @@ bool stack_string_handler_t::analyze_byte_sequence(
 
     std::string str;
     bool has_transform = false;
-    bool has_null_term = false;
+    bool terminated = false;
 
     for ( const auto &store : stores ) {
         uint8_t b = store.value;
 
         if ( b == 0 ) {
-            has_null_term = true;
+            terminated = true;
             break;  // Stop at null terminator
         }
 
@@ -232,11 +208,8 @@ bool stack_string_handler_t::analyze_byte_sequence(
     }
 
     // Require at least 3 printable characters
-    if ( str.length() < 3 ) 
+    if ( str.length() < 3 || !terminated )
         return false;
-
-    // If no null terminator found but string looks valid, still accept it
-    // (sometimes the null is stored separately or implicitly)
 
     out->start_addr = stores[0].insn_addr;
     out->stack_offset = stores[0].offset;
@@ -263,7 +236,7 @@ bool stack_string_handler_t::is_stack_byte_store(minsn_t *ins, byte_store_t *out
         return false;
 
     // Destination must be a stack variable
-    if ( ins->d.t != mop_S ) 
+    if ( ins->d.t != mop_S || !ins->d.s )
         return false;
 
     // Size must be 1 byte
@@ -274,19 +247,24 @@ bool stack_string_handler_t::is_stack_byte_store(minsn_t *ins, byte_store_t *out
     uint8_t value = 0;
     bool transformed = false;
 
-    if ( ins->l.t == mop_n ) {
+    if ( ins->l.t == mop_n && ins->l.nnn ) {
         // Immediate value
         value = (uint8_t)(ins->l.nnn->value & 0xFF);
     } else if ( ins->l.t == mop_d && ins->l.d ) {
         // Computed value - try to resolve
-        value = resolve_byte_value(ins->l.d);
-        transformed = (ins->l.d->opcode == m_bnot || ins->l.d->opcode == m_xor);
+        auto resolved = resolve_byte_value(ins->l.d);
+        if ( !resolved )
+            return false;
+        value = *resolved;
+        transformed = (ins->l.d->opcode == m_bnot
+                    || ins->l.d->opcode == m_lnot
+                    || ins->l.d->opcode == m_xor);
     } else {
         return false;
     }
 
     if ( out ) {
-        out->offset = ins->d.s ? ins->d.s->off : 0;
+        out->offset = ins->d.s->off;
         out->value = value;
         out->insn_addr = ins->ea;
         out->transformed = transformed;
@@ -298,45 +276,55 @@ bool stack_string_handler_t::is_stack_byte_store(minsn_t *ins, byte_store_t *out
 //--------------------------------------------------------------------------
 // Resolve transformed byte value (NOT, XOR)
 //--------------------------------------------------------------------------
-uint8_t stack_string_handler_t::resolve_byte_value(minsn_t *ins)
+std::optional<uint8_t> stack_string_handler_t::resolve_byte_value(
+    minsn_t *ins, int depth)
 {
-    if ( !ins ) 
-        return 0;
+    if ( !ins || depth > 16 )
+        return std::nullopt;
 
-    // Handle NOT (~)
-    if ( ins->opcode == m_bnot || ins->opcode == m_lnot ) {
-        if ( ins->l.t == mop_n ) {
+    if ( ins->opcode == m_bnot ) {
+        if ( ins->l.t == mop_n && ins->l.nnn ) {
             return (uint8_t)(~ins->l.nnn->value & 0xFF);
         }
-        // Could be NOT of another value - try to resolve recursively
         if ( ins->l.t == mop_d && ins->l.d ) {
-            return ~resolve_byte_value(ins->l.d);
+            auto value = resolve_byte_value(ins->l.d, depth + 1);
+            return value ? std::optional<uint8_t>(static_cast<uint8_t>(~*value))
+                         : std::nullopt;
         }
+        return std::nullopt;
+    }
+
+    if ( ins->opcode == m_lnot ) {
+        auto value = ins->l.t == mop_n && ins->l.nnn
+            ? std::optional<uint8_t>(static_cast<uint8_t>(ins->l.nnn->value))
+            : (ins->l.t == mop_d && ins->l.d
+               ? resolve_byte_value(ins->l.d, depth + 1) : std::nullopt);
+        return value ? std::optional<uint8_t>(*value == 0 ? 1 : 0)
+                     : std::nullopt;
     }
 
     // Handle XOR
     if ( ins->opcode == m_xor ) {
-        uint8_t left = 0, right = 0;
-
-        if ( ins->l.t == mop_n ) 
-            left = (uint8_t)(ins->l.nnn->value & 0xFF);
-        else if ( ins->l.t == mop_d && ins->l.d ) 
-            left = resolve_byte_value(ins->l.d);
-
-        if ( ins->r.t == mop_n ) 
-            right = (uint8_t)(ins->r.nnn->value & 0xFF);
-        else if ( ins->r.t == mop_d && ins->r.d ) 
-            right = resolve_byte_value(ins->r.d);
-
-        return left ^ right;
+        auto operand = [depth](const mop_t& op) -> std::optional<uint8_t> {
+            if ( op.t == mop_n && op.nnn )
+                return static_cast<uint8_t>(op.nnn->value);
+            if ( op.t == mop_d && op.d )
+                return stack_string_handler_t::resolve_byte_value(
+                    op.d, depth + 1);
+            return std::nullopt;
+        };
+        auto left = operand(ins->l);
+        auto right = operand(ins->r);
+        if ( !left || !right )
+            return std::nullopt;
+        return static_cast<uint8_t>(*left ^ *right);
     }
 
-    // Direct value
-    if ( ins->l.t == mop_n ) {
+    if ( ins->opcode == m_mov && ins->l.t == mop_n && ins->l.nnn ) {
         return (uint8_t)(ins->l.nnn->value & 0xFF);
     }
 
-    return 0;
+    return std::nullopt;
 }
 
 //--------------------------------------------------------------------------
@@ -390,24 +378,14 @@ void stack_string_handler_t::annotate_string(const stack_string_t &str, ea_t fun
             // Append to existing function comment
             qstring existing;
             if ( get_func_cmt(&existing, fn, false) > 0 ) {
-                existing += "\n";
-                existing += func_cmt;
-                set_func_cmt(fn, existing.c_str(), false);
+                if ( strstr(existing.c_str(), func_cmt.c_str()) == nullptr ) {
+                    existing += "\n";
+                    existing += func_cmt;
+                    set_func_cmt(fn, existing.c_str(), false);
+                }
             } else {
                 set_func_cmt(fn, func_cmt.c_str(), false);
             }
         }
     }
-}
-
-//--------------------------------------------------------------------------
-// Try to patch string usage
-//--------------------------------------------------------------------------
-int stack_string_handler_t::patch_string_usage(mbl_array_t *mba,
-    const stack_string_t &str, deobf_ctx_t *ctx)
-    {
-    // This is complex - would require creating a string in the data segment
-    // and replacing the stack construction with a reference to it
-    // For now, just annotate and let the analyst see the string
-    return 0;
 }

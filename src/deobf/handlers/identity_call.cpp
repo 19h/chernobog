@@ -21,13 +21,6 @@ bool identity_call_handler_t::detect(mbl_array_t *mba)
     if ( !mba ) 
         return false;
 
-    // Scan all blocks for calls to identity functions and for ijmp.
-    // If we find both (identity call somewhere + ijmp somewhere), we have the pattern.
-
-    bool found_identity_call = false;
-    bool found_ijmp = false;
-    ea_t identity_func_addr = BADADDR;
-
     // Helper lambda to extract call target from instruction
     auto get_call_target = [](minsn_t *ins) -> ea_t {
         ea_t target = BADADDR;
@@ -52,41 +45,27 @@ bool identity_call_handler_t::detect(mbl_array_t *mba)
         return target;
     };
 
-    // Scan all blocks
-    bool found_icall = false;
     for ( int i = 0; i < mba->qty; ++i ) {
         mblock_t *blk = mba->get_mblock(i);
         if ( !blk || !blk->head ) 
             continue;
 
+        ea_t preceding_identity = BADADDR;
         for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
-            // Check for ijmp (indirect jump)
-            if ( ins->opcode == m_ijmp ) {
-                found_ijmp = true;
-            }
-            // Check for icall (indirect call) - used in "call identity; return v()" pattern
-            if ( ins->opcode == m_icall ) {
-                found_icall = true;
+            if ( preceding_identity != BADADDR
+              && (ins->opcode == m_ijmp || ins->opcode == m_icall) ) {
+                deobf::log_verbose(
+                    "[identity_call] Detected adjacent identity/indirect pattern at %a\n",
+                    preceding_identity);
+                return true;
             }
 
             // Check for call to identity function
             ea_t target = get_call_target(ins);
-            if ( target != BADADDR ) {
-                if ( is_identity_function(target) ) {
-                    found_identity_call = true;
-                    identity_func_addr = target;
-                    deobf::log("[identity_call] detect: %a is identity function\n", target);
-                }
-            }
+            preceding_identity = target != BADADDR && is_identity_function(target)
+                ? target : BADADDR;
         }
     }
-
-    if ( found_identity_call && (found_ijmp || found_icall) ) {
-        deobf::log("[identity_call] Detected pattern: identity call to %a + %s\n",
-                  identity_func_addr, found_ijmp ? "ijmp" : "icall");
-        return true;
-    }
-
     return false;
 }
 
@@ -128,9 +107,8 @@ bool identity_call_handler_t::analyze_identity_func(ea_t ea)
 }
 
 //--------------------------------------------------------------------------
-// Phase 1: Main deobfuscation pass - analyze and store for annotation
-// NOTE: We do NOT patch bytes during decompilation - that causes INTERR.
-// Instead, we store analysis results and apply annotations in Phase 2.
+// Phase 1: analyze and retain provenance for diagnostics.  Detection is not a
+// microcode mutation and therefore must not be reported as one.
 //--------------------------------------------------------------------------
 int identity_call_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 {
@@ -156,7 +134,8 @@ int identity_call_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
             target_name.sprnt("sub_%a", ic.final_target);
         }
 
-        // Store for Phase 2 (annotations and potential microcode modification)
+        // Store the result so later maturity callbacks do not repeat the
+        // relatively expensive pointer-chain analysis.
         deferred_identity_call_t dc;
         dc.call_ea = ic.call_ea;
         dc.ijmp_ea = ic.ijmp_ea;
@@ -170,45 +149,6 @@ int identity_call_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
         deobf::log("[identity_call] Analyzed: call@%a -> %s (%a)\n",
                   ic.call_ea, target_name.c_str(), ic.final_target);
 
-        // Add annotation immediately (this is safe during decompilation)
-        qstring comment;
-        comment.sprnt("RESOLVED: -> %s (%a)", target_name.c_str(), ic.final_target);
-        set_cmt(ic.call_ea, comment.c_str(), false);
-
-        // Rename the global pointer to make decompiled code more readable
-        qstring ptr_name;
-        ptr_name.sprnt("ptr_%s", target_name.c_str());
-        set_name(ic.global_ptr, ptr_name.c_str(), SN_NOWARN | SN_NOCHECK);
-
-        // Set the function type for the resolved target if not already set
-        // This helps the decompiler understand the target's signature
-        // Check if a function exists at this address; if not, try to create one
-        func_t *target_func = get_func(ic.final_target);
-        if ( !target_func ) {
-            // No function at this address - try to create one
-            if ( add_func(ic.final_target) ) {
-                target_func = get_func(ic.final_target);
-                deobf::log_verbose("[identity_call] Created function at %a\n", ic.final_target);
-            }
-        }
-
-        if ( target_func ) {
-            tinfo_t current_type;
-            bool has_type = get_tinfo(&current_type, ic.final_target);
-            if ( !has_type || current_type.empty() ) {
-                // Set a default type: __int64 __fastcall()
-                // This indicates the function takes no arguments and returns int64
-                const char *type_str = "__int64 __fastcall f();";
-                tinfo_t func_type;
-                qstring parsed_name;
-                if ( parse_decl(&func_type, &parsed_name, nullptr, type_str, PT_SIL) ) {
-                    apply_tinfo(ic.final_target, func_type, TINFO_DEFINITE);
-                    deobf::log_verbose("[identity_call] Set type for %a\n", ic.final_target);
-                }
-            }
-        }
-
-        ctx->indirect_resolved++;
     }
 
     // Store for Phase 2
@@ -218,13 +158,13 @@ int identity_call_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 
     deobf::log("[identity_call] Analyzed %zu patterns\n", identity_calls.size());
 
-    return (int)identity_calls.size();
+    return 0;
 }
 
 //--------------------------------------------------------------------------
-// Phase 2: Apply deferred transformations at MMAT_LOCOPT
-// At this maturity, we attempt microcode-level modifications to replace
-// the identity call pattern with a direct call/jump.
+// Phase 2: consume deferred diagnostic results.  A correct structural rewrite
+// must preserve the identity call's side effects and the consumer's complete
+// call information; neither is established by the current pattern record.
 //--------------------------------------------------------------------------
 int identity_call_handler_t::apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx)
 {
@@ -240,99 +180,19 @@ int identity_call_handler_t::apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx)
     deobf::log("[identity_call] Phase 2: Processing %zu patterns at maturity %d\n",
               p->second.size(), mba->maturity);
 
-    int changes = 0;
-
-    // At MMAT_LOCOPT (maturity 3), we can try microcode modifications
-    // but we need to be very careful to maintain CFG consistency
+    // Redirecting the producer call and deleting the later icall/ijmp changes
+    // call order and loses the indirect call's arguments. A sound rewrite must
+    // instead replace the consumer and prove the producer side-effect-free.
     for ( const auto &dc : p->second ) {
-        // For now, just log the pattern - microcode modification is risky
-        // The annotations from Phase 1 already help the user understand the code
-        deobf::log("[identity_call] Pattern: %a -> %s (annotations applied)\n",
+        deobf::log("[identity_call] Pattern: %a -> %s (analysis only)\n",
                   dc.call_ea, dc.target_name.c_str());
-
-        // Try to find and modify the call instruction in microcode
-        // This is safer than patching x86 bytes during decompilation
-        for ( int i = 0; i < mba->qty; ++i ) {
-            mblock_t *blk = mba->get_mblock(i);
-            if ( !blk || !blk->head ) 
-                continue;
-
-            for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
-                // Look for the identity call by EA
-                if ( ins->ea != dc.call_ea ) 
-                    continue;
-
-                // Found the instruction at our target EA
-                // Check if it's a call or mov containing a call
-                minsn_t *call_ins = nullptr;
-
-                if ( ins->opcode == m_call ) {
-                    call_ins = ins;
-                } else if ( ins->opcode == m_mov && ins->l.t == mop_d && ins->l.d &&
-                          ins->l.d->opcode == m_call)
-                          {
-                    call_ins = ins->l.d;
-                }
-
-                if ( call_ins && call_ins->l.t == mop_v &&
-                    call_ins->l.g == dc.identity_func)
-                    {
-                    // Change the call target from identity_func to final_target
-                    deobf::log("[identity_call] Redirecting call: %a -> %a\n",
-                              call_ins->l.g, dc.final_target);
-
-                    call_ins->l.g = dc.final_target;
-
-                    // Update mcallinfo to reflect the new target
-                    if ( call_ins->d.t == mop_f && call_ins->d.f ) {
-                        mcallinfo_t *ci = call_ins->d.f;
-                        ci->args.clear();
-                        ci->solid_args = 0;
-                        ci->callee = dc.final_target;
-                    }
-
-                    changes++;
-
-                    // Now find the indirect branch (ijmp or icall) and handle it
-                    for ( int j = 0; j < mba->qty; ++j ) {
-                        mblock_t *blk2 = mba->get_mblock(j);
-                        if ( !blk2 ) 
-                            continue;
-
-                        for ( minsn_t *check_ins = blk2->head; check_ins; check_ins = check_ins->next ) {
-                            if ( check_ins->ea != dc.ijmp_ea ) 
-                                continue;
-
-                            if ( check_ins->opcode == m_ijmp ) {
-                                deobf::log("[identity_call] Found ijmp in block %d, converting to nop\n", j);
-                                check_ins->opcode = m_nop;
-                                check_ins->l.erase();
-                                check_ins->r.erase();
-                                check_ins->d.erase();
-                                changes++;
-                            } else if ( check_ins->opcode == m_icall ) {
-                                deobf::log("[identity_call] Found icall in block %d, converting to nop\n", j);
-                                // For icall pattern: the identity call result is called
-                                // Just nop it since we've already redirected the identity call
-                                check_ins->opcode = m_nop;
-                                check_ins->l.erase();
-                                check_ins->r.erase();
-                                check_ins->d.erase();
-                                changes++;
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
     }
 
     // Clear the deferred analysis after processing
     s_deferred_analysis.erase(p);
 
-    deobf::log("[identity_call] Phase 2 complete: %d modifications\n", changes);
-    return changes;
+    deobf::log("[identity_call] Phase 2 complete: analysis only\n");
+    return 0;
 }
 
 //--------------------------------------------------------------------------
@@ -352,6 +212,14 @@ void identity_call_handler_t::clear_deferred(ea_t func_ea)
     s_deferred_analysis.erase(func_ea);
 }
 
+void identity_call_handler_t::clear_caches()
+{
+    s_identity_funcs.clear();
+    s_non_identity_funcs.clear();
+    s_trampoline_cache.clear();
+    s_deferred_analysis.clear();
+}
+
 //--------------------------------------------------------------------------
 // Helper: Check if address is valid global pointer
 //--------------------------------------------------------------------------
@@ -364,10 +232,10 @@ static bool is_valid_global_ptr(ea_t addr, ea_t exclude_target)
     if ( !seg || (seg->perm & SEGPERM_EXEC) ) 
         return false;  // Skip code segments
     // Read the pointer and check it points to code
-    uint64_t val = 0;
-    if ( get_bytes(&val, 8, addr) != 8 ) 
+    const ea_t value = arch::read_ptr(addr);
+    if ( value == BADADDR )
         return false;
-    segment_t *target_seg = getseg((ea_t)val);
+    segment_t *target_seg = getseg(value);
     return target_seg && (target_seg->perm & SEGPERM_EXEC);
 }
 
@@ -529,18 +397,8 @@ identity_call_handler_t::find_identity_calls(mbl_array_t *mba, deobf_ctx_t *ctx)
             minsn_t *branch_ins = branch_pair.second;
 
             // Check if branch is related to call
-            bool is_match = false;
-            if ( branch_blk == call_blk ) {
-                for ( minsn_t *p = cinfo.container_ins->next; p; p = p->next ) {
-                    if ( p == branch_ins ) {
-                        is_match = true;
-                        break;
-                    }
-                }
-            } else {
-                // At early maturity, accept any indirect branch
-                is_match = true;
-            }
+            const bool is_match = branch_blk == call_blk
+                && cinfo.container_ins->next == branch_ins;
 
             if ( !is_match ) 
                 continue;
@@ -623,9 +481,13 @@ identity_call_handler_t::find_identity_calls(mbl_array_t *mba, deobf_ctx_t *ctx)
                 if ( table_base != BADADDR ) {
                     global_ptr = table_base;
 
-                    // Read both table entries and check if they resolve to same target
+                    // Read both table entries and admit the table only if both
+                    // runtime-selectable entries resolve to the same target.
                     ea_t target0 = resolve_global_pointer(table_base);
-                    ea_t target1 = resolve_global_pointer(table_base + 8);
+                    ea_t target1 = BADADDR;
+                    const ea_t stride = static_cast<ea_t>(arch::get_ptr_size());
+                    if ( table_base <= BADADDR - 1 - stride )
+                        target1 = resolve_global_pointer(table_base + stride);
 
                     deobf::log("[identity_call] Table at %a: [0]=%a, [1]=%a\n",
                               table_base, target0, target1);
@@ -637,42 +499,14 @@ identity_call_handler_t::find_identity_calls(mbl_array_t *mba, deobf_ctx_t *ctx)
                         deobf::log("[identity_call] Resolved: [0]=%a->%a, [1]=%a->%a\n",
                                   target0, final0, target1, final1);
 
-                        // Check if both targets are different and neither is self-reference
-                        func_t *curr_func = get_func(mba->entry_ea);
-                        bool t0_is_self = (final0 == mba->entry_ea) ||
-                            (curr_func && final0 >= curr_func->start_ea && final0 < curr_func->end_ea);
-                        bool t1_is_self = (final1 == mba->entry_ea) ||
-                            (curr_func && final1 >= curr_func->start_ea && final1 < curr_func->end_ea);
-
                         // If both resolve to the same target, we can simplify
-                        if ( final0 == final1 || final1 == BADADDR ) {
+                        if ( final0 != BADADDR && final0 == final1 ) {
                             resolved = target0;
                             final_target = final0;
                             deobf::log("[identity_call] Both table entries resolve to %a\n", final_target);
-                        } else if ( !t0_is_self && t1_is_self ) {
-                            // Entry 0 is valid, entry 1 is self-ref - use entry 0
-                            resolved = target0;
-                            final_target = final0;
-                            deobf::log("[identity_call] Using table[0]=%a (table[1] is self-ref)\n", final_target);
-                        } else if ( t0_is_self && !t1_is_self ) {
-                            // Entry 1 is valid, entry 0 is self-ref - use entry 1
-                            resolved = target1;
-                            final_target = final1;
-                            deobf::log("[identity_call] Using table[1]=%a (table[0] is self-ref)\n", final_target);
-                        } else if ( !t0_is_self && !t1_is_self ) {
-                            // Both are valid different targets - conditional, use first
-                            resolved = target0;
-                            final_target = final0;
-                            deobf::log("[identity_call] Conditional: targets differ, using %a\n", final_target);
                         } else {
-                            // Both are self-reference - this is a CFF dispatcher
-                            // The deflatten handler should handle this pattern
-                            deobf::log("[identity_call] CFF dispatcher detected: both table entries loop back to function\n");
-
-                            // Add annotation so user knows this is CFF
-                            qstring comment;
-                            comment.sprnt("CFF DISPATCHER: table@%a, targets loop back to function", table_base);
-                            set_cmt(cinfo.call_ea, comment.c_str(), false);
+                            deobf::log_verbose(
+                                "[identity_call] Table targets differ or are incomplete; leaving unresolved\n");
                         }
                     }
                 }
@@ -807,141 +641,6 @@ ea_t identity_call_handler_t::resolve_trampoline_chain(ea_t start_addr, int max_
 
 //--------------------------------------------------------------------------
 // Transform identity call by patching native instructions
-// This approach patches the actual binary instructions in IDA's database,
-// which is more reliable than microcode manipulation.
-//
-// Transform: call identity(ptr); jmp reg  ->  jmp target; nop...
-//--------------------------------------------------------------------------
-int identity_call_handler_t::transform_identity_call(mbl_array_t *mba,
-    const deferred_identity_call_t &dc, deobf_ctx_t *ctx)
-    {
-
-    (void)mba;
-    (void)ctx;
-
-    ea_t target = dc.final_target;
-    if ( target == BADADDR ) 
-        return 0;
-
-    // Decode the original instructions
-    insn_t call_insn, jmp_insn;
-    if ( decode_insn(&call_insn, dc.call_ea) == 0 ) 
-        return 0;
-    if ( decode_insn(&jmp_insn, dc.ijmp_ea) == 0 ) 
-        return 0;
-
-    // Verify we have the expected pattern (arch-independent)
-    if ( !arch::is_call_insn(call_insn.itype) ) {
-        deobf::log("[identity_call] Expected call at %a\n", dc.call_ea);
-        return 0;
-    }
-
-    // Check for indirect jump via register (arch-independent)
-    if ( !arch::is_indirect_jump_via_return_reg(jmp_insn) ) {
-        deobf::log("[identity_call] Expected indirect jump at %a, got type %d\n",
-                  dc.ijmp_ea, jmp_insn.itype);
-        return 0;
-    }
-
-    // Calculate instruction sizes
-    size_t call_size = call_insn.size;
-    size_t jmp_size = jmp_insn.size;
-    size_t total_size = (dc.ijmp_ea + jmp_size) - dc.call_ea;
-
-    deobf::log("[identity_call] Patching %zu bytes at %a: call(%zu) + jmp(%zu)\n",
-              total_size, dc.call_ea, call_size, jmp_size);
-
-    // Build the patch using arch-independent instruction building
-    uint8_t patch[32];
-    memset(patch, 0, sizeof(patch));
-
-    // Build direct jump instruction
-    size_t jmp_len = arch::build_direct_jump(patch, sizeof(patch), dc.call_ea, target);
-    if ( jmp_len == 0 ) {
-        deobf::log("[identity_call] Failed to build jump instruction (target may be out of range)\n");
-        // Fallback to annotations
-        qstring comment;
-        comment.sprnt("TRAMPOLINE -> %s (%a)", dc.target_name.c_str(), target);
-        set_cmt(dc.call_ea, comment.c_str(), false);
-        return 0;
-    }
-
-    // Fill rest with NOPs
-    size_t nop_size = arch::get_min_insn_size();
-    for ( size_t i = jmp_len; i + nop_size <= total_size && i < sizeof(patch); ) {
-        size_t written = arch::get_nop_bytes(patch + i, sizeof(patch) - i);
-        if ( written == 0) break;
-        i += written;
-    }
-
-    // Apply the patch
-    bool patched = true;
-    for ( size_t i = 0; i < total_size && i < sizeof(patch); ++i ) {
-        if ( !patch_byte(dc.call_ea + i, patch[i]) ) {
-            patched = false;
-            break;
-        }
-    }
-
-    if ( !patched ) {
-        deobf::log("[identity_call] Failed to patch bytes at %a\n", dc.call_ea);
-
-        // Fallback to annotations
-        qstring comment;
-        comment.sprnt("TRAMPOLINE -> %s (%a)", dc.target_name.c_str(), target);
-        set_cmt(dc.call_ea, comment.c_str(), false);
-
-        qstring ptr_name;
-        ptr_name.sprnt("ptr_%s", dc.target_name.c_str());
-        set_name(dc.global_ptr, ptr_name.c_str(), SN_NOWARN | SN_NOCHECK);
-
-        return 0;
-    }
-
-    // Force IDA to re-analyze the patched area
-    del_items(dc.call_ea, DELIT_EXPAND, total_size);
-    auto_make_code(dc.call_ea);
-    auto_wait();
-
-    // Add cross-reference to target
-    add_cref(dc.call_ea, target, fl_JN);
-
-    // Add comment
-    qstring comment;
-    comment.sprnt("Deobfuscated: jmp %s", dc.target_name.c_str());
-    set_cmt(dc.call_ea, comment.c_str(), false);
-
-    // Rename the global pointer
-    qstring ptr_name;
-    ptr_name.sprnt("ptr_%s", dc.target_name.c_str());
-    set_name(dc.global_ptr, ptr_name.c_str(), SN_NOWARN | SN_NOCHECK);
-
-    deobf::log("[identity_call] Patched to direct jmp to %s (%a)\n",
-              dc.target_name.c_str(), target);
-
-    return 1;
-}
-
-//--------------------------------------------------------------------------
-// Create a proper call instruction (helper for future use)
-//--------------------------------------------------------------------------
-minsn_t *identity_call_handler_t::create_call_insn(mbl_array_t *mba, ea_t target, ea_t source_ea)
-{
-    // Allocate a new instruction from the mba
-    minsn_t *call = new minsn_t(source_ea);
-    call->opcode = m_call;
-    call->l.t = mop_v;
-    call->l.g = target;
-    call->l.size = 0;
-
-    // For a proper call, we'd also set up:
-    // - call->d with mcallinfo (calling convention, arguments, return type)
-    // This is complex and depends on the target function's prototype
-
-    return call;
-}
-
-//--------------------------------------------------------------------------
 // Resolve an indexed table to get both entries and determine pattern type
 // This is the main utility function for other handlers (like deflatten)
 //--------------------------------------------------------------------------
@@ -958,9 +657,12 @@ identity_call_handler_t::resolve_indexed_table(ea_t table_base, ea_t func_ea)
     if ( table_base == BADADDR ) 
         return result;
 
-    // Read both table entries
+    // Read both target-width table entries.
     ea_t target0 = resolve_global_pointer(table_base);
-    ea_t target1 = resolve_global_pointer(table_base + 8);
+    ea_t target1 = BADADDR;
+    const ea_t stride = static_cast<ea_t>(arch::get_ptr_size());
+    if ( table_base <= BADADDR - 1 - stride )
+        target1 = resolve_global_pointer(table_base + stride);
 
     if ( target0 == BADADDR ) {
         deobf::log_verbose("[identity_call] resolve_indexed_table: no valid target at %a\n", table_base);
@@ -978,7 +680,7 @@ identity_call_handler_t::resolve_indexed_table(ea_t table_base, ea_t func_ea)
                       table_base, final0, final1);
 
     // Check if both entries resolve to the same target
-    if ( final0 == final1 || final1 == BADADDR ) {
+    if ( final0 != BADADDR && final0 == final1 ) {
         result.both_same = true;
     }
 

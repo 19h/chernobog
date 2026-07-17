@@ -26,19 +26,14 @@
 //   1. Identify byte-by-byte construction sequences
 //   2. Handle bitwise transformations (~, ^)
 //   3. Reconstruct the string
-//   4. Annotate in IDA and optionally patch to direct string reference
+//   4. Annotate in IDA
 //--------------------------------------------------------------------------
 class stack_string_handler_t {
 public:
     // Detection
     static bool detect(mbl_array_t *mba);
-    static bool detect_in_function(ea_t func_ea);
-
     // Main deobfuscation pass
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
-
-    // Instruction-level detection (called during microcode traversal)
-    static int process_block(mblock_t *blk, deobf_ctx_t *ctx);
 
 private:
     // Reconstructed string info
@@ -69,7 +64,8 @@ private:
     static bool is_stack_byte_store(minsn_t *ins, byte_store_t *out);
 
     // Handle transformed bytes (NOT, XOR)
-    static uint8_t resolve_byte_value(minsn_t *ins);
+    static std::optional<uint8_t> resolve_byte_value(minsn_t *ins,
+                                                     int depth = 0);
 
     // Check if byte is printable or control character
     static bool is_string_byte(uint8_t b);
@@ -77,7 +73,4 @@ private:
     // Annotate reconstructed string in IDA
     static void annotate_string(const stack_string_t &str, ea_t func_ea);
 
-    // Try to find the string usage and replace with direct reference
-    static int patch_string_usage(mbl_array_t *mba, const stack_string_t &str,
-                                  deobf_ctx_t *ctx);
 };

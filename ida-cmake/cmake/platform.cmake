@@ -108,10 +108,24 @@ endif()
 # Construct library directory (always EA64)
 set(IDA_EA_SIZE "64")
 # IDA 9.3 uses <arch>_<platform>_64; older SDKs include the compiler name.
-set(IDA_LIB_SUFFIX "${IDA_ARCH}_${IDA_PLATFORM_NAME}_64")
-set(IDA_LIB_DIR "${IDASDK}/lib/${IDA_LIB_SUFFIX}")
-if(NOT EXISTS "${IDA_LIB_DIR}")
-    set(IDA_LIB_SUFFIX "${IDA_ARCH}_${IDA_PLATFORM_NAME}_${IDA_COMPILER}_64")
+# Linux SDKs still ship GCC-named libraries even when building with clang.
+set(_ida_lib_suffix_candidates "${IDA_ARCH}_${IDA_PLATFORM_NAME}_64")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    list(APPEND _ida_lib_suffix_candidates "${IDA_ARCH}_${IDA_PLATFORM_NAME}_gcc_64")
+endif()
+list(APPEND _ida_lib_suffix_candidates "${IDA_ARCH}_${IDA_PLATFORM_NAME}_${IDA_COMPILER}_64")
+
+foreach(_ida_lib_suffix_candidate IN LISTS _ida_lib_suffix_candidates)
+    set(_ida_lib_dir_candidate "${IDASDK}/lib/${_ida_lib_suffix_candidate}")
+    if(EXISTS "${_ida_lib_dir_candidate}")
+        set(IDA_LIB_SUFFIX "${_ida_lib_suffix_candidate}")
+        set(IDA_LIB_DIR "${_ida_lib_dir_candidate}")
+        break()
+    endif()
+endforeach()
+
+if(NOT IDA_LIB_DIR)
+    list(GET _ida_lib_suffix_candidates -1 IDA_LIB_SUFFIX)
     set(IDA_LIB_DIR "${IDASDK}/lib/${IDA_LIB_SUFFIX}")
 endif()
 

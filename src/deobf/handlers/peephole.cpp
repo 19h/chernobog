@@ -1,4 +1,6 @@
 #include "peephole.h"
+#include "../../common/bitvector.h"
+#include "../../common/ida_memory.h"
 
 namespace chernobog {
 namespace peephole {
@@ -8,104 +10,6 @@ namespace peephole {
 //--------------------------------------------------------------------------
 std::vector<std::unique_ptr<PeepholeOptimizer>> peephole_handler_t::optimizers_;
 bool peephole_handler_t::initialized_ = false;
-
-//--------------------------------------------------------------------------
-// ConstantCallFoldOptimizer implementation
-//--------------------------------------------------------------------------
-
-bool ConstantCallFoldOptimizer::is_rotate_helper(ea_t func_ea, int* bits, bool* is_left)
-{
-    qstring func_name;
-    if ( !get_func_name(&func_name, func_ea) ) 
-        return false;
-
-    // Check for IDA's rotate helper functions
-    // __ROL1__, __ROL2__, __ROL4__, __ROL8__
-    // __ROR1__, __ROR2__, __ROR4__, __ROR8__
-    if ( func_name.find("__ROL") == 0 || func_name.find("__ROR") == 0 ) {
-        *is_left = (func_name[3] == 'L');
-
-        if ( func_name.find("1__") != qstring::npos ) {
-            *bits = 8;
-        } else if ( func_name.find("2__") != qstring::npos ) {
-            *bits = 16;
-        } else if ( func_name.find("4__") != qstring::npos ) {
-            *bits = 32;
-        } else if ( func_name.find("8__") != qstring::npos ) {
-            *bits = 64;
-        } else {
-            return false;
-        }
-        return true;
-    }
-
-    return false;
-}
-
-uint64_t ConstantCallFoldOptimizer::eval_rotate(uint64_t val, int shift, int bits, bool left) {
-    uint64_t mask = (bits == 64) ? ~0ULL : ((1ULL << bits) - 1);
-    val &= mask;
-    shift %= bits;
-
-    if ( shift == 0 ) 
-        return val;
-
-    if ( left ) {
-        return ((val << shift) | (val >> (bits - shift))) & mask;
-    } else {
-        return ((val >> shift) | (val << (bits - shift))) & mask;
-    }
-}
-
-int ConstantCallFoldOptimizer::optimize(mblock_t* blk, minsn_t* ins)
-{
-    if ( !ins || ins->opcode != m_call ) 
-        return 0;
-
-    // Get call target
-    if ( ins->l.t != mop_v && ins->l.t != mop_a ) 
-        return 0;
-
-    ea_t func_ea = (ins->l.t == mop_v) ? ins->l.g : ins->l.a->g;
-
-    int bits;
-    bool is_left;
-    if ( !is_rotate_helper(func_ea, &bits, &is_left) ) 
-        return 0;
-
-    // Check for call arguments
-    mcallinfo_t* ci = ins->d.f;
-    if ( !ci || ci->args.size() < 2 ) 
-        return 0;
-
-    // Check if both arguments are constants
-    mcallarg_t& arg0 = ci->args[0];
-    mcallarg_t& arg1 = ci->args[1];
-
-    if ( arg0.t != mop_n || arg1.t != mop_n ) 
-        return 0;
-
-    uint64_t val = arg0.nnn->value;
-    int shift = static_cast<int>(arg1.nnn->value);
-
-    // Rotate by 0 - just return the value
-    if ( shift == 0 ) {
-        ins->opcode = m_mov;
-        ins->l.make_number(val, ins->d.size);
-        ins->r.erase();
-        hit_count_++;
-        return 1;
-    }
-
-    // Compute result
-    uint64_t result = eval_rotate(val, shift, bits, is_left);
-
-    ins->opcode = m_mov;
-    ins->l.make_number(result, ins->d.size);
-    ins->r.erase();
-    hit_count_++;
-    return 1;
-}
 
 //--------------------------------------------------------------------------
 // ReadOnlyDataFoldOptimizer implementation
@@ -127,26 +31,14 @@ bool ReadOnlyDataFoldOptimizer::is_readonly_addr(ea_t addr)
 
 bool ReadOnlyDataFoldOptimizer::read_const_value(ea_t addr, int size, uint64_t* out)
 {
-    if ( !is_readonly_addr(addr) ) 
+    if ( !out || !is_readonly_addr(addr) || size <= 0 || size > 8 )
         return false;
 
-    // Read bytes from database
-    switch ( size ) {
-        case 1:
-            *out = get_byte(addr);
-            return true;
-        case 2:
-            *out = get_word(addr);
-            return true;
-        case 4:
-            *out = get_dword(addr);
-            return true;
-        case 8:
-            *out = get_qword(addr);
-            return true;
-        default:
-            return false;
-    }
+    auto value = chernobog::ida_memory::read_integer(addr, size);
+    if ( !value )
+        return false;
+    *out = *value;
+    return true;
 }
 
 int ReadOnlyDataFoldOptimizer::optimize(mblock_t* blk, minsn_t* ins)
@@ -156,16 +48,10 @@ int ReadOnlyDataFoldOptimizer::optimize(mblock_t* blk, minsn_t* ins)
 
     // Check for load from constant address
     // ldx ds.2, #addr.8, dest
-    if ( ins->l.t != mop_n && ins->r.t != mop_n ) 
+    if ( ins->r.t != mop_n || !ins->r.nnn )
         return 0;
 
-    ea_t addr = BADADDR;
-    if ( ins->r.t == mop_n ) {
-        addr = static_cast<ea_t>(ins->r.nnn->value);
-    } else if ( ins->l.t == mop_n ) {
-        // Segment operand - need to combine with offset
-        return 0;  // Complex case, skip for now
-    }
+    const ea_t addr = static_cast<ea_t>(ins->r.nnn->value);
 
     if ( addr == BADADDR ) 
         return 0;
@@ -187,20 +73,41 @@ int ReadOnlyDataFoldOptimizer::optimize(mblock_t* blk, minsn_t* ins)
 
 int LocalConstPropOptimizer::optimize(mblock_t* blk, minsn_t* ins)
 {
-    // Track stores to stack
-    if ( ins->opcode == m_stx && ins->d.t == mop_S ) {
-        if ( ins->l.t == mop_n ) {
-            stack_constants_[ins->d.s->off] = ins->l.nnn->value;
-        } else {
-            // Non-constant store invalidates the slot
-            stack_constants_.erase(ins->d.s->off);
+    // Track exact direct stores to stack. Any overlapping prior fact is stale,
+    // including a wider load fact at the same base offset.
+    if ( (ins->opcode == m_stx || ins->opcode == m_mov) &&
+         ins->d.t == mop_S && ins->d.s ) {
+        const sval_t offset = ins->d.s->off;
+        const int size = ins->l.size;
+        if ( !chernobog::bitvector::valid_byte_width(size) ) {
+            stack_constants_.clear();
+            return 0;
         }
+
+        const auto overlaps = [offset, size](const auto& entry) {
+            const sval_t previous_offset = entry.first.first;
+            const int previous_size = entry.first.second;
+            if ( !chernobog::bitvector::valid_byte_width(previous_size) )
+                return true;
+            if ( offset <= previous_offset )
+                return static_cast<uint64_t>(previous_offset) -
+                       static_cast<uint64_t>(offset) < static_cast<uint64_t>(size);
+            return static_cast<uint64_t>(offset) -
+                   static_cast<uint64_t>(previous_offset) <
+                   static_cast<uint64_t>(previous_size);
+        };
+        for ( auto it = stack_constants_.begin(); it != stack_constants_.end(); )
+            it = overlaps(*it) ? stack_constants_.erase(it) : std::next(it);
+
+        if ( ins->l.t == mop_n && ins->l.nnn )
+            stack_constants_[{offset, size}] =
+                chernobog::bitvector::truncate(ins->l.nnn->value, size);
         return 0;
     }
 
     // Propagate to loads from stack
-    if ( ins->opcode == m_ldx && ins->l.t == mop_S ) {
-        auto p = stack_constants_.find(ins->l.s->off);
+    if ( ins->opcode == m_ldx && ins->r.t == mop_S && ins->r.s ) {
+        auto p = stack_constants_.find({ins->r.s->off, ins->d.size});
         if ( p != stack_constants_.end() ) {
             ins->opcode = m_mov;
             ins->l.make_number(p->second, ins->d.size);
@@ -209,6 +116,10 @@ int LocalConstPropOptimizer::optimize(mblock_t* blk, minsn_t* ins)
             return 1;
         }
     }
+
+    // Unknown stores and calls may alias tracked stack locations.
+    if ( ins->opcode == m_stx || is_mcode_call(ins->opcode) )
+        stack_constants_.clear();
 
     return 0;
 }
@@ -226,10 +137,14 @@ int ShiftByZeroOptimizer::optimize(mblock_t* blk, minsn_t* ins) {
         return 0;
 
     // Check if shift amount is 0
-    if ( ins->r.t != mop_n ) 
+    if ( ins->r.t != mop_n || !ins->r.nnn )
         return 0;
 
     if ( ins->r.nnn->value != 0 ) 
+        return 0;
+
+    if ( !chernobog::bitvector::valid_byte_width(ins->l.size)
+      || ins->d.size != ins->l.size )
         return 0;
 
     // x << 0 = x, x >> 0 = x
@@ -259,9 +174,16 @@ int DoubleNegationOptimizer::optimize(mblock_t* blk, minsn_t* ins)
     if ( ins->l.d->opcode != ins->opcode ) 
         return 0;
 
+    if ( ins->l.size <= 0 || ins->l.size != ins->d.size ||
+         ins->l.d->l.size != ins->l.size )
+        return 0;
+
+    // Preserve the nested source before assigning over the owning mop_d.
+    mop_t replacement = ins->l.d->l;
+
     // ~~x = x or -(-x) = x
     ins->opcode = m_mov;
-    ins->l = ins->l.d->l;
+    ins->l = replacement;
     hit_count_++;
     return 1;
 }
@@ -292,12 +214,25 @@ int PowerOfTwoOptimizer::optimize(mblock_t* blk, minsn_t* ins)
 
     // x * (power of 2) -> x << shift
     if ( ins->opcode == m_mul ) {
-        if ( ins->r.t != mop_n ) 
+        if ( !chernobog::bitvector::valid_byte_width(ins->d.size)
+          || ins->l.size != ins->d.size || ins->r.size != ins->d.size )
+            return 0;
+
+        const bool constant_on_left = ins->l.t == mop_n && ins->l.nnn;
+        const mop_t& constant = constant_on_left ? ins->l : ins->r;
+        if ( constant.t != mop_n || !constant.nnn )
             return 0;
 
         int shift;
-        if ( !is_power_of_2(ins->r.nnn->value, &shift) ) 
+        const uint64_t value = chernobog::bitvector::truncate(
+            constant.nnn->value, constant.size);
+        if ( !is_power_of_2(value, &shift) )
             return 0;
+
+        if ( constant_on_left ) {
+            mop_t multiplicand = ins->r;
+            ins->l = multiplicand;
+        }
 
         if ( shift == 0 ) {
             // x * 1 = x
@@ -313,11 +248,16 @@ int PowerOfTwoOptimizer::optimize(mblock_t* blk, minsn_t* ins)
 
     // x / (power of 2) -> x >> shift (for unsigned)
     if ( ins->opcode == m_udiv ) {
-        if ( ins->r.t != mop_n ) 
+        if ( !chernobog::bitvector::valid_byte_width(ins->d.size)
+          || ins->l.size != ins->d.size || ins->r.size != ins->d.size )
+            return 0;
+        if ( ins->r.t != mop_n || !ins->r.nnn )
             return 0;
 
         int shift;
-        if ( !is_power_of_2(ins->r.nnn->value, &shift) ) 
+        const uint64_t divisor = chernobog::bitvector::truncate(
+            ins->r.nnn->value, ins->r.size);
+        if ( !is_power_of_2(divisor, &shift) )
             return 0;
 
         if ( shift == 0 ) {
@@ -351,14 +291,12 @@ int SelfCompareOptimizer::optimize(mblock_t* blk, minsn_t* ins)
         op != m_setbe && op != m_seta)
         return 0;
 
-    // Get comparison operands from inner instruction
-    if ( ins->l.t != mop_d || !ins->l.d ) 
+    if ( ins->is_fpinsn() )
         return 0;
 
-    minsn_t* cmp = ins->l.d;
-
     // Check if comparing something with itself
-    if ( !cmp->l.equal_mops(cmp->r, EQ_IGNSIZE) ) 
+    if ( ins->l.size <= 0 || ins->l.size != ins->r.size ||
+         !ins->l.equal_mops(ins->r, EQ_IGNSIZE) )
         return 0;
 
     // x == x -> 1
@@ -403,7 +341,9 @@ void peephole_handler_t::initialize()
         return;
 
     optimizers_.clear();
-    optimizers_.push_back(std::make_unique<ConstantCallFoldOptimizer>());
+    // Calls carry mcallinfo_t in D, not an ordinary result operand. Replacing
+    // a helper call with m_mov requires call-use rewriting and is therefore
+    // intentionally excluded from this instruction-local pass.
     optimizers_.push_back(std::make_unique<ReadOnlyDataFoldOptimizer>());
     optimizers_.push_back(std::make_unique<ShiftByZeroOptimizer>());
     optimizers_.push_back(std::make_unique<DoubleNegationOptimizer>());

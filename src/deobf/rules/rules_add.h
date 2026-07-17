@@ -127,7 +127,7 @@ public:
     }
 };
 
-// ~(~x + ~y) + 1 -> x + y (double negation)
+// ~(~x + ~y) + 1 -> x + y + 2
 class Add_OllvmRule_2 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Add_OllvmRule_2"; }
@@ -139,7 +139,7 @@ public:
 
     AstPtr get_replacement() const override
     {
-        return add(x_0(), x_1());
+        return add(add(x_0(), x_1()), c_2());
     }
 };
 
@@ -159,7 +159,7 @@ public:
     }
 };
 
-// ~(~x | ~y) + ~(x | ~y) + 1 -> x + y
+// ~(~x | ~y) + ~(x | ~y) + 1 -> y + 1
 class Add_OllvmRule_4 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Add_OllvmRule_4"; }
@@ -177,7 +177,7 @@ public:
 
     AstPtr get_replacement() const override
     {
-        return add(x_0(), x_1());
+        return add(x_1(), c_1());
     }
 };
 
@@ -241,7 +241,7 @@ public:
 // Factor Addition Rules (Algebraic factorization)
 //--------------------------------------------------------------------------
 
-// ~x + ~y + 2 -> ~(x + y)
+// ~x + ~y + 2 -> -(x + y)
 class Add_FactorRule_1 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Add_FactorRule_1"; }
@@ -253,11 +253,11 @@ public:
 
     AstPtr get_replacement() const override
     {
-        return bnot(add(x_0(), x_1()));
+        return neg(add(x_0(), x_1()));
     }
 };
 
-// (x ^ ~y) + 2*(x | y) -> x - y - 1
+// (x ^ ~y) + 2*(x | y) -> x + y - 1
 class Add_FactorRule_2 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Add_FactorRule_2"; }
@@ -269,7 +269,7 @@ public:
 
     AstPtr get_replacement() const override
     {
-        return sub(sub(x_0(), x_1()), c_1());
+        return sub(add(x_0(), x_1()), c_1());
     }
 };
 
@@ -329,7 +329,7 @@ public:
     }
 };
 
-// -(-x - -y) -> x + y
+// -(-x - -y) -> x - y
 class Add_NegRule_2 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Add_NegRule_2"; }
@@ -341,7 +341,7 @@ public:
 
     AstPtr get_replacement() const override
     {
-        return add(x_0(), x_1());
+        return sub(x_0(), x_1());
     }
 };
 
@@ -361,7 +361,7 @@ public:
     }
 };
 
-// (~x & y) + (x | y) -> y - (~x & ~y) [complex pattern]
+// (~x & y) + (x | y) -> x + 2*(~x & y)
 class Add_ComplexRule_1 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Add_ComplexRule_1"; }
@@ -373,7 +373,7 @@ public:
 
     AstPtr get_replacement() const override
     {
-        return add(x_0(), x_1());  // Actually simplifies differently but this works
+        return add(x_0(), mul(c_2(), band(bnot(x_0()), x_1())));
     }
 };
 

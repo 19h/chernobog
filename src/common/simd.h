@@ -85,6 +85,19 @@
 namespace chernobog {
 namespace simd {
 
+// Portable unaligned scalar load. Compilers lower this memcpy to an
+// unaligned load where the target supports it, without violating C++
+// alignment or strict-aliasing rules.
+template<typename T>
+SIMD_FORCE_INLINE T load_unaligned(const void* ptr)
+{
+    static_assert(std::is_trivially_copyable<T>::value,
+                  "unaligned loads require a trivially copyable type");
+    T value;
+    memcpy(&value, ptr, sizeof(value));
+    return value;
+}
+
 //--------------------------------------------------------------------------
 // Alignment utilities
 //--------------------------------------------------------------------------
@@ -141,12 +154,10 @@ SIMD_FORCE_INLINE bool mem_eq(const void* a, const void* b, size_t n)
     switch ( n ) {
         case 0: return true;
         case 1: return *pa == *pb;
-        case 2: return *reinterpret_cast<const uint16_t*>(pa) == 
-                       *reinterpret_cast<const uint16_t*>(pb);
-        case 4: return *reinterpret_cast<const uint32_t*>(pa) == 
-                       *reinterpret_cast<const uint32_t*>(pb);
-        case 8: return *reinterpret_cast<const uint64_t*>(pa) == 
-                       *reinterpret_cast<const uint64_t*>(pb);
+        case 2: return load_unaligned<uint16_t>(pa) == load_unaligned<uint16_t>(pb);
+        case 4: return load_unaligned<uint32_t>(pa) == load_unaligned<uint32_t>(pb);
+        case 8: return load_unaligned<uint64_t>(pa) == load_unaligned<uint64_t>(pb);
+        default: break;
     }
 
 #if defined(CHERNOBOG_AVX2)
@@ -185,8 +196,8 @@ SIMD_FORCE_INLINE bool mem_eq(const void* a, const void* b, size_t n)
 
     // Handle remaining bytes
     while ( n >= 8 ) {
-        if ( *reinterpret_cast<const uint64_t*>(pa) !=
-            *reinterpret_cast<const uint64_t*>(pb) ) return false;
+        if ( load_unaligned<uint64_t>(pa) != load_unaligned<uint64_t>(pb) )
+            return false;
         pa += 8; pb += 8; n -= 8;
     }
     while ( n > 0 ) {
@@ -214,7 +225,8 @@ constexpr uint64_t XXH_PRIME64_5 = 0x27D4EB2F165667C5ULL;
 // Rotate left (portable)
 SIMD_FORCE_INLINE uint64_t rotl64(uint64_t x, int r)
 {
-    return (x << r) | (x >> (64 - r));
+    const unsigned shift = static_cast<unsigned>(r) & 63U;
+    return shift == 0 ? x : (x << shift) | (x >> (64U - shift));
 }
 
 // Mix function for hash finalization
@@ -238,7 +250,7 @@ SIMD_FORCE_INLINE uint64_t hash_bytes(const void* data, size_t len)
     if ( SIMD_LIKELY(len < 32) ) {
         h = FNV_OFFSET_BASIS;
         while ( len >= 8 ) {
-            uint64_t k = *reinterpret_cast<const uint64_t*>(p);
+            uint64_t k = load_unaligned<uint64_t>(p);
             h ^= k;
             h *= FNV_PRIME;
             p += 8;
@@ -333,10 +345,10 @@ SIMD_FORCE_INLINE uint64_t hash_bytes(const void* data, size_t len)
     // Process remaining 32-byte chunks (scalar)
     h += len;
     while ( len >= 32 ) {
-        uint64_t k1 = *reinterpret_cast<const uint64_t*>(p);
-        uint64_t k2 = *reinterpret_cast<const uint64_t*>(p + 8);
-        uint64_t k3 = *reinterpret_cast<const uint64_t*>(p + 16);
-        uint64_t k4 = *reinterpret_cast<const uint64_t*>(p + 24);
+        uint64_t k1 = load_unaligned<uint64_t>(p);
+        uint64_t k2 = load_unaligned<uint64_t>(p + 8);
+        uint64_t k3 = load_unaligned<uint64_t>(p + 16);
+        uint64_t k4 = load_unaligned<uint64_t>(p + 24);
 
         h ^= rotl64(k1 * XXH_PRIME64_2, 31) * XXH_PRIME64_1;
         h = rotl64(h, 27) * XXH_PRIME64_1 + XXH_PRIME64_4;
@@ -353,7 +365,7 @@ SIMD_FORCE_INLINE uint64_t hash_bytes(const void* data, size_t len)
 
     // Process remaining 8-byte chunks
     while ( len >= 8 ) {
-        uint64_t k = *reinterpret_cast<const uint64_t*>(p);
+        uint64_t k = load_unaligned<uint64_t>(p);
         h ^= rotl64(k * XXH_PRIME64_2, 31) * XXH_PRIME64_1;
         h = rotl64(h, 27) * XXH_PRIME64_1 + XXH_PRIME64_4;
         p += 8;
@@ -362,7 +374,7 @@ SIMD_FORCE_INLINE uint64_t hash_bytes(const void* data, size_t len)
 
     // Process remaining 4-byte chunk
     if ( len >= 4 ) {
-        h ^= static_cast<uint64_t>(*reinterpret_cast<const uint32_t*>(p)) * XXH_PRIME64_1;
+        h ^= static_cast<uint64_t>(load_unaligned<uint32_t>(p)) * XXH_PRIME64_1;
         h = rotl64(h, 23) * XXH_PRIME64_2 + XXH_PRIME64_3;
         p += 4;
         len -= 4;
@@ -531,12 +543,14 @@ SIMD_FORCE_INLINE int log2_ceil(uint64_t x)
 SIMD_FORCE_INLINE uint64_t next_pow2(uint64_t x)
 {
     if ( x == 0 ) return 1;
+    if ( x > (uint64_t{1} << 63) ) return 0; // no representable power of two
     return 1ULL << log2_ceil(x);
 }
 
 SIMD_FORCE_INLINE uint32_t next_pow2_32(uint32_t x)
 {
     if ( x == 0 ) return 1;
+    if ( x > (uint32_t{1} << 31) ) return 0; // no representable power of two
     x--;
     x |= x >> 1;
     x |= x >> 2;
@@ -575,13 +589,20 @@ struct alignas(16) PatternSignature {
         __m128i a = _mm_load_si128(reinterpret_cast<const __m128i*>(this));
         __m128i b = _mm_load_si128(reinterpret_cast<const __m128i*>(&other));
         __m128i cmp = _mm_cmpeq_epi8(a, b);
-        return _mm_movemask_epi8(cmp) == 0xFFFF;
+        return _mm_movemask_epi8(cmp) == 0xFFFF &&
+               depth == other.depth &&
+               node_count == other.node_count &&
+               leaf_count == other.leaf_count;
 #elif defined(CHERNOBOG_NEON)
         uint8x16_t a = vld1q_u8(reinterpret_cast<const uint8_t*>(this));
         uint8x16_t b = vld1q_u8(reinterpret_cast<const uint8_t*>(&other));
         uint8x16_t cmp = vceqq_u8(a, b);
         uint64x2_t cmp64 = vreinterpretq_u64_u8(cmp);
-        return vgetq_lane_u64(cmp64, 0) == ~0ULL && vgetq_lane_u64(cmp64, 1) == ~0ULL;
+        return vgetq_lane_u64(cmp64, 0) == ~0ULL &&
+               vgetq_lane_u64(cmp64, 1) == ~0ULL &&
+               depth == other.depth &&
+               node_count == other.node_count &&
+               leaf_count == other.leaf_count;
 #else
         return opcode_bits == other.opcode_bits &&
                structure_bits == other.structure_bits &&

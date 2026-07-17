@@ -26,38 +26,6 @@
 class opaque_eval_t {
 public:
     //----------------------------------------------------------------------
-    // Result types for detailed analysis
-    //----------------------------------------------------------------------
-    enum eval_status_t {
-        EVAL_SUCCESS,           // Successfully evaluated
-        EVAL_UNKNOWN,           // Could not determine
-        EVAL_TIMEOUT,           // Z3 solver timed out
-        EVAL_COMPLEX,           // Too complex, gave up
-    };
-
-    struct eval_result_t {
-        eval_status_t status;
-        bool is_constant;       // True if expression is constant
-        uint64_t value;         // The constant value (if is_constant)
-        std::string reason;     // Human-readable explanation
-
-        eval_result_t() : status(EVAL_UNKNOWN), is_constant(false), value(0) {}
-        static eval_result_t success(uint64_t v) {
-            eval_result_t r;
-            r.status = EVAL_SUCCESS;
-            r.is_constant = true;
-            r.value = v;
-            return r;
-        }
-        static eval_result_t unknown(const std::string& reason = "") {
-            eval_result_t r;
-            r.status = EVAL_UNKNOWN;
-            r.reason = reason;
-            return r;
-        }
-    };
-
-    //----------------------------------------------------------------------
     // Primary API
     //----------------------------------------------------------------------
 
@@ -76,13 +44,6 @@ public:
     // Clear cache (call when analyzing new function)
     static void clear_cache();
 
-    //----------------------------------------------------------------------
-    // Z3-enhanced API
-    //----------------------------------------------------------------------
-
-    // Evaluate with detailed result information
-    static eval_result_t evaluate_detailed(minsn_t *expr);
-
     // Check if condition is an opaque predicate using Z3
     // Returns: ALWAYS_TRUE, ALWAYS_FALSE, or UNKNOWN
     enum opaque_result_t {
@@ -92,23 +53,6 @@ public:
         OPAQUE_UNKNOWN,         // Could not determine
     };
     static opaque_result_t check_opaque_predicate(minsn_t *cond);
-
-    // Prove two expressions are equivalent using Z3
-    static bool prove_equivalent(minsn_t *a, minsn_t *b);
-
-    // Simplify expression using Z3 and return simplified form if possible
-    static std::optional<uint64_t> z3_simplify(minsn_t *expr);
-
-    //----------------------------------------------------------------------
-    // Configuration
-    //----------------------------------------------------------------------
-
-    // Enable/disable Z3 backend (default: enabled)
-    static void set_z3_enabled(bool enabled);
-    static bool is_z3_enabled();
-
-    // Set Z3 timeout in milliseconds (default: 1000ms)
-    static void set_z3_timeout(unsigned ms);
 
 private:
     // Evaluation state - tracks values during evaluation
@@ -158,6 +102,8 @@ private:
     static int64_t sign_extend(uint64_t val, int size);
 
     // Global cache
-    static std::map<ea_t, uint64_t> s_global_cache;
+    // Width is part of the key: reading one byte must not poison a later
+    // eight-byte read at the same address.
+    static std::map<std::pair<ea_t, int>, uint64_t> s_global_cache;
     static constexpr int MAX_EVAL_DEPTH = 100;
 };

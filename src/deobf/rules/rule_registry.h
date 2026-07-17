@@ -92,8 +92,18 @@ public:
         return rules_.size();
     }
 
-    // Number of patterns (including fuzzed variants)
+    // Number of semantically verified patterns
     size_t pattern_count() const;
+
+    // Number of rules admitted/rejected by semantic verification.
+    size_t verified_rule_count() const
+    {
+        return verified_rule_count_;
+    }
+    size_t rejected_rule_count() const
+    {
+        return rejected_rule_count_;
+    }
 
     // Get rule hit statistics
     std::map<std::string, size_t> get_hit_statistics() const;
@@ -126,16 +136,21 @@ private:
 
     std::vector<std::unique_ptr<PatternMatchingRule>> rules_;
     PatternStorage storage_;
+    // Retain the exact AST roots used for semantic certification. Besides
+    // preserving an auditable snapshot, this prevents their IDA-owned mop_t
+    // members from being destroyed after the Hex-Rays runtime is unavailable.
+    std::vector<AstPtr> semantic_roots_;
     bool initialized_ = false;
     mutable std::mutex mutex_;
 
     // Statistics
     size_t total_matches_ = 0;
     size_t successful_matches_ = 0;
+    size_t verified_rule_count_ = 0;
+    size_t rejected_rule_count_ = 0;
 
     // Internal matching helper
-    bool try_match_pattern(AstPtr pattern, AstPtr candidate,
-                          std::map<std::string, mop_t>& bindings);
+    void rebuild_storage_locked();
 };
 
 //--------------------------------------------------------------------------

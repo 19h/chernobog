@@ -109,11 +109,12 @@ int mba_simplify_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx) {
 
     int total_changes = 0;
     int pass = 0;
+    int pass_changes = 0;
     const int MAX_PASSES = 10;
 
     // Multi-pass simplification (simplifications may enable more simplifications)
     do {
-        int pass_changes = 0;
+        pass_changes = 0;
         pass++;
 
         for ( int i = 0; i < mba->qty; ++i ) {
@@ -133,9 +134,7 @@ int mba_simplify_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx) {
             mba->verify(false);
         }
 
-    } while ( pass < MAX_PASSES && total_changes > 0 && pass == 1);
-    // Note: For now, only do one pass to avoid potential infinite loops
-    // TODO: Improve change detection to safely do multiple passes
+    } while ( pass < MAX_PASSES && pass_changes > 0 );
 
     if ( total_changes > 0 ) {
         ctx->expressions_simplified += total_changes;
@@ -173,7 +172,7 @@ int mba_simplify_handler_t::simplify_insn(mblock_t *blk, minsn_t *ins, deobf_ctx
 // Internal simplification
 //--------------------------------------------------------------------------
 int mba_simplify_handler_t::try_simplify_instruction(mblock_t *blk, minsn_t *ins) {
-    if ( !ins || !is_mba_opcode(ins->opcode) ) {
+    if ( !ins || ins->is_fpinsn() || !is_mba_opcode(ins->opcode) ) {
         return 0;
     }
 
@@ -229,6 +228,8 @@ int mba_simplify_handler_t::apply_match(mblock_t *blk, minsn_t *ins,
 
     delete replacement;
 
+    blk->mark_lists_dirty();
+
     total_simplified_++;
 
     return 1;
@@ -237,10 +238,6 @@ int mba_simplify_handler_t::apply_match(mblock_t *blk, minsn_t *ins,
 //--------------------------------------------------------------------------
 // Statistics
 //--------------------------------------------------------------------------
-size_t mba_simplify_handler_t::total_simplifications() {
-    return total_simplified_;
-}
-
 void mba_simplify_handler_t::reset_statistics() {
     total_simplified_ = 0;
     RuleRegistry::instance().clear_statistics();

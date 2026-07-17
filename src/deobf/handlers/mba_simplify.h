@@ -8,9 +8,9 @@
 // This handler replaces the old substitution_handler_t with the new
 // AST-based pattern matching system. It provides:
 //
-//   - 90+ MBA simplification rules (vs 12 in old handler)
-//   - Pattern fuzzing for robust matching
-//   - O(log n) hierarchical pattern lookup
+//   - 104 semantically certified MBA simplification rules
+//   - Lazy commutative matching with binding rollback
+//   - O(1) average root-opcode lookup
 //   - Statistics tracking per rule
 //
 // The handler integrates with IDA's microcode optimization through
@@ -51,7 +51,6 @@ public:
     // Statistics
     //----------------------------------------------------------------------
 
-    static size_t total_simplifications();
     static void reset_statistics();
     static void dump_statistics();
 

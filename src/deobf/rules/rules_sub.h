@@ -51,14 +51,14 @@ public:
     }
 };
 
-// (x ^ y) + 2*(x & ~y) -> x - y
+// (x ^ y) - 2*(~x & y) -> x - y
 class Sub_HackersDelightRule_3 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Sub_HackersDelightRule_3"; }
 
     AstPtr get_pattern() const override
     {
-        return add(bxor(x_0(), x_1()), mul(c_2(), band(x_0(), bnot(x_1()))));
+        return sub(bxor(x_0(), x_1()), mul(c_2(), band(bnot(x_0()), x_1())));
     }
 
     AstPtr get_replacement() const override
@@ -67,14 +67,15 @@ public:
     }
 };
 
-// 2*(x & ~y) + (x ^ y) -> x - y (commutative)
+// -(2*(~x & y)) + (x ^ y) -> x - y
 class Sub_HackersDelightRule_4 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Sub_HackersDelightRule_4"; }
 
     AstPtr get_pattern() const override
     {
-        return add(mul(c_2(), band(x_0(), bnot(x_1()))), bxor(x_0(), x_1()));
+        return add(neg(mul(c_2(), band(bnot(x_0()), x_1()))),
+                   bxor(x_0(), x_1()));
     }
 
     AstPtr get_replacement() const override
@@ -198,11 +199,6 @@ class Sub_Rule_1 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Sub_Rule_1"; }
 
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
-
     AstPtr get_pattern() const override
     {
         return sub(x_0(), c_0());
@@ -224,11 +220,6 @@ class Sub_Rule_2 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Sub_Rule_2"; }
 
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
-
     AstPtr get_pattern() const override
     {
         return sub(x_0(), x_0());
@@ -244,11 +235,6 @@ public:
 class Sub_Rule_3 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Sub_Rule_3"; }
-
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
 
     AstPtr get_pattern() const override
     {

@@ -1,4 +1,5 @@
 #include "rules_predicate.h"
+#include "../../common/bitvector.h"
 
 namespace chernobog {
 namespace rules {
@@ -17,10 +18,12 @@ size_t predicate_optimizer_handler_t::predicates_to_false_ = 0;
 
 bool PredicateRule::is_const(const mop_t& op, uint64_t* out)
 {
-    if ( op.t != mop_n )
+    if ( op.t != mop_n || op.nnn == nullptr )
         return false;
-    if ( out && op.nnn )
-        *out = op.nnn->value;
+    if ( out )
+        *out = chernobog::bitvector::valid_byte_width(op.size)
+            ? chernobog::bitvector::truncate(op.nnn->value, op.size)
+            : op.nnn->value;
     return true;
 }
 
@@ -38,8 +41,9 @@ bool PredicateRule::is_all_ones(const mop_t& op)
     if ( !is_const(op, &val) )
         return false;
 
-    // Check if all bits are set for the operand size
-    uint64_t mask = ( op.size >= 8 ) ? ~0ULL : ( ( 1ULL << ( op.size * 8 ) ) - 1 );
+    if ( !chernobog::bitvector::valid_byte_width(op.size) )
+        return false;
+    uint64_t mask = chernobog::bitvector::mask(op.size);
     return ( val & mask ) == mask;
 }
 
@@ -52,7 +56,7 @@ minsn_t* PredicateRule::get_nested(const mop_t& op)
 
 bool PredicateRule::operands_equal(const mop_t& a, const mop_t& b)
 {
-    return a.equal_mops(b, EQ_IGNSIZE);
+    return a.size > 0 && a.size == b.size && a.equal_mops(b, EQ_IGNSIZE);
 }
 
 bool PredicateRule::is_and_complement(const mop_t& op)
@@ -68,13 +72,13 @@ bool PredicateRule::is_and_complement(const mop_t& op)
     if ( bnot_l && bnot_l->opcode == m_bnot )
     {
         // ~a & b - check if a == b
-        if ( bnot_l->l.equal_mops(ins->r, EQ_IGNSIZE) )
+        if ( operands_equal(bnot_l->l, ins->r) )
             return true;
     }
     if ( bnot_r && bnot_r->opcode == m_bnot )
     {
         // a & ~b - check if a == b
-        if ( bnot_r->l.equal_mops(ins->l, EQ_IGNSIZE) )
+        if ( operands_equal(bnot_r->l, ins->l) )
             return true;
     }
 
@@ -93,12 +97,12 @@ bool PredicateRule::is_or_complement(const mop_t& op)
 
     if ( bnot_l && bnot_l->opcode == m_bnot )
     {
-        if ( bnot_l->l.equal_mops(ins->r, EQ_IGNSIZE) )
+        if ( operands_equal(bnot_l->l, ins->r) )
             return true;
     }
     if ( bnot_r && bnot_r->opcode == m_bnot )
     {
-        if ( bnot_r->l.equal_mops(ins->l, EQ_IGNSIZE) )
+        if ( operands_equal(bnot_r->l, ins->l) )
             return true;
     }
 
@@ -112,7 +116,7 @@ bool PredicateRule::is_xor_self(const mop_t& op)
         return false;
 
     // Check for x ^ x
-    return ins->l.equal_mops(ins->r, EQ_IGNSIZE);
+    return operands_equal(ins->l, ins->r);
 }
 
 //--------------------------------------------------------------------------
@@ -463,7 +467,8 @@ bool SetConstRule::matches(minsn_t* ins)
         return false;
 
     // Both operands must be constants
-    return is_const(ins->l, nullptr) && is_const(ins->r, nullptr);
+    return ins->l.size > 0 && ins->l.size == ins->r.size &&
+           is_const(ins->l, nullptr) && is_const(ins->r, nullptr);
 }
 
 int SetConstRule::apply(minsn_t* ins)
@@ -475,7 +480,9 @@ int SetConstRule::apply(minsn_t* ins)
 
     // Mask to operand size
     int size = ins->l.size > 0 ? ins->l.size : 4;
-    uint64_t mask = ( size >= 8 ) ? ~0ULL : ( ( 1ULL << ( size * 8 ) ) - 1 );
+    if ( !chernobog::bitvector::valid_byte_width(size) )
+        return -1;
+    uint64_t mask = chernobog::bitvector::mask(size);
     l &= mask;
     r &= mask;
 
@@ -492,48 +499,23 @@ int SetConstRule::apply(minsn_t* ins)
 
         // Signed comparisons
         case m_setl: {
-            int64_t sl = static_cast<int64_t>(l);
-            int64_t sr = static_cast<int64_t>(r);
-            if ( size < 8 )
-            {
-                // Sign extend
-                int shift = 64 - size * 8;
-                sl = (sl << shift) >> shift;
-                sr = (sr << shift) >> shift;
-            }
+            int64_t sl = chernobog::bitvector::sign_extend(l, size);
+            int64_t sr = chernobog::bitvector::sign_extend(r, size);
             return (sl < sr) ? 1 : 0;
         }
         case m_setge: {
-            int64_t sl = static_cast<int64_t>(l);
-            int64_t sr = static_cast<int64_t>(r);
-            if ( size < 8 )
-            {
-                int shift = 64 - size * 8;
-                sl = (sl << shift) >> shift;
-                sr = (sr << shift) >> shift;
-            }
+            int64_t sl = chernobog::bitvector::sign_extend(l, size);
+            int64_t sr = chernobog::bitvector::sign_extend(r, size);
             return (sl >= sr) ? 1 : 0;
         }
         case m_setg: {
-            int64_t sl = static_cast<int64_t>(l);
-            int64_t sr = static_cast<int64_t>(r);
-            if ( size < 8 )
-            {
-                int shift = 64 - size * 8;
-                sl = (sl << shift) >> shift;
-                sr = (sr << shift) >> shift;
-            }
+            int64_t sl = chernobog::bitvector::sign_extend(l, size);
+            int64_t sr = chernobog::bitvector::sign_extend(r, size);
             return (sl > sr) ? 1 : 0;
         }
         case m_setle: {
-            int64_t sl = static_cast<int64_t>(l);
-            int64_t sr = static_cast<int64_t>(r);
-            if ( size < 8 )
-            {
-                int shift = 64 - size * 8;
-                sl = (sl << shift) >> shift;
-                sr = (sr << shift) >> shift;
-            }
+            int64_t sl = chernobog::bitvector::sign_extend(l, size);
+            int64_t sr = chernobog::bitvector::sign_extend(r, size);
             return (sl <= sr) ? 1 : 0;
         }
 
@@ -551,48 +533,45 @@ bool SetRuleZ3::matches(minsn_t* ins)
     if ( !ins || !is_mcode_set(ins->opcode) )
         return false;
 
-    // Reset cache if different instruction
-    if ( cached_ins_ != ins )
+    // Instructions are mutated in place; pointer identity is not a semantic
+    // cache key across optimizer passes.
+    cached_ins_ = ins;
+    cached_result_ = -1;
+
+    try
     {
-        cached_ins_ = ins;
-        cached_result_ = -1;
+        z3_solver::predicate_simplifier_t simplifier(z3_solver::get_global_context());
 
-        try
+        // Use the appropriate simplifier based on opcode
+        switch ( ins->opcode )
         {
-            z3_solver::predicate_simplifier_t simplifier(z3_solver::get_global_context());
-
-            // Use the appropriate simplifier based on opcode
-            switch ( ins->opcode )
+            case m_setz:
             {
-                case m_setz:
-                {
-                    auto result = simplifier.simplify_setz(ins);
-                    if ( result.has_value() )
-                        cached_result_ = result.value() ? 1 : 0;
-                    break;
-                }
-                case m_setnz:
-                {
-                    auto result = simplifier.simplify_setnz(ins);
-                    if ( result.has_value() )
-                        cached_result_ = result.value() ? 1 : 0;
-                    break;
-                }
-                default:
-                {
-                    // For other set* opcodes, try general comparison analysis
-                    auto result = simplifier.check_comparison_constant(
-                        ins->opcode, ins->l, ins->r);
-                    if ( result.has_value() )
-                        cached_result_ = result.value() ? 1 : 0;
-                    break;
-                }
+                auto result = simplifier.simplify_setz(ins);
+                if ( result.has_value() )
+                    cached_result_ = result.value() ? 1 : 0;
+                break;
+            }
+            case m_setnz:
+            {
+                auto result = simplifier.simplify_setnz(ins);
+                if ( result.has_value() )
+                    cached_result_ = result.value() ? 1 : 0;
+                break;
+            }
+            default:
+            {
+                auto result = simplifier.check_comparison_constant(
+                    ins->opcode, ins->l, ins->r);
+                if ( result.has_value() )
+                    cached_result_ = result.value() ? 1 : 0;
+                break;
             }
         }
-        catch ( ... )
-        {
-            cached_result_ = -1;
-        }
+    }
+    catch ( ... )
+    {
+        cached_result_ = -1;
     }
 
     return cached_result_ != -1;
@@ -721,6 +700,11 @@ void PredicateRuleRegistry::initialize()
 
 int PredicateRuleRegistry::try_apply(minsn_t* ins)
 {
+    // Integer bit-vector identities do not apply to IEEE 754 comparisons:
+    // NaN makes self-equality and ordering non-reflexive.
+    if ( !ins || (is_mcode_set(ins->opcode) && ins->is_fpinsn()) )
+        return -1;
+
     if ( !initialized_ )
         initialize();
 

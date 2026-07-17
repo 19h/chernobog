@@ -25,6 +25,7 @@
 #include <optional>
 #include <memory>
 #include <algorithm>
+#include <cstdarg>
 
 // Forward declarations
 struct deobf_ctx_t;
@@ -35,35 +36,25 @@ class mblock_visitor_t;
 //--------------------------------------------------------------------------
 enum obf_type_t : uint32_t {
     OBF_NONE            = 0,
-    OBF_FLATTENED       = 1 << 0,   // Control flow flattening
-    OBF_BOGUS_CF        = 1 << 1,   // Bogus control flow
-    OBF_STRING_ENC      = 1 << 2,   // String encryption
-    OBF_CONST_ENC       = 1 << 3,   // Constant encryption
-    OBF_INDIRECT_BR     = 1 << 4,   // Indirect branches
-    OBF_SUBSTITUTION    = 1 << 5,   // Instruction substitution (legacy, now MBA)
-    OBF_SPLIT_BLOCKS    = 1 << 6,   // Split basic blocks
-    OBF_FUNC_WRAPPER    = 1 << 7,   // Hikari function wrappers
-    OBF_IDENTITY_CALL   = 1 << 8,   // Identity function indirect calls
-    OBF_STACK_STRING    = 1 << 9,   // Stack string construction
-    OBF_SAVEDREGS       = 1 << 10,  // Register demotion (savedregs patterns)
-    OBF_OBJC_OBFUSC     = 1 << 11,  // Obfuscated ObjC method calls
-    OBF_GLOBAL_CONST    = 1 << 12,  // Global constants that can be inlined
-    OBF_PTR_INDIRECT    = 1 << 13,  // Indirect pointer references (off_XXXX -> symbol)
-    OBF_MBA_COMPLEX     = 1 << 14,  // Complex MBA expressions (Mixed Boolean-Arithmetic)
-    OBF_CHAIN_OPS       = 1 << 15,  // Chained XOR/AND/OR/ADD operations
-    OBF_OPAQUE_JUMP     = 1 << 16,  // Opaque predicate jumps
-    OBF_CONST_OBFUSC    = 1 << 17,  // Obfuscated constants (detectable via Z3)
-    OBF_INDIRECT_CALL   = 1 << 18,  // Indirect call obfuscation (Hikari IndirectCall)
-};
-
-//--------------------------------------------------------------------------
-// Detected pattern info
-//--------------------------------------------------------------------------
-struct pattern_info_t {
-    obf_type_t type;
-    ea_t addr;
-    std::string description;
-    std::vector<ea_t> related_addrs;
+    OBF_FLATTENED       = 1U << 0,   // Control flow flattening
+    OBF_BOGUS_CF        = 1U << 1,   // Bogus control flow
+    OBF_STRING_ENC      = 1U << 2,   // String encryption
+    OBF_CONST_ENC       = 1U << 3,   // Constant encryption
+    OBF_INDIRECT_BR     = 1U << 4,   // Indirect branches
+    OBF_SUBSTITUTION    = 1U << 5,   // Instruction substitution (legacy, now MBA)
+    OBF_SPLIT_BLOCKS    = 1U << 6,   // Split basic blocks
+    OBF_FUNC_WRAPPER    = 1U << 7,   // Hikari function wrappers
+    OBF_IDENTITY_CALL   = 1U << 8,   // Identity function indirect calls
+    OBF_STACK_STRING    = 1U << 9,   // Stack string construction
+    OBF_SAVEDREGS       = 1U << 10,  // Register demotion (savedregs patterns)
+    OBF_OBJC_OBFUSC     = 1U << 11,  // Obfuscated ObjC method calls
+    OBF_GLOBAL_CONST    = 1U << 12,  // Global constants that can be inlined
+    OBF_PTR_INDIRECT    = 1U << 13,  // Indirect pointer references (off_XXXX -> symbol)
+    OBF_MBA_COMPLEX     = 1U << 14,  // Complex MBA expressions (Mixed Boolean-Arithmetic)
+    OBF_CHAIN_OPS       = 1U << 15,  // Chained XOR/AND/OR/ADD operations
+    OBF_OPAQUE_JUMP     = 1U << 16,  // Opaque predicate jumps
+    OBF_CONST_OBFUSC    = 1U << 17,  // Obfuscated constants (detectable via Z3)
+    OBF_INDIRECT_CALL   = 1U << 18,  // Indirect call obfuscation (Hikari IndirectCall)
 };
 
 //--------------------------------------------------------------------------
@@ -75,20 +66,6 @@ struct deobf_ctx_t {
     ea_t func_ea;               // Function entry address
 
     uint32_t detected_obf;      // Bitmap of detected obfuscations
-    std::vector<pattern_info_t> patterns;
-
-    // Flattening-specific
-    mop_t *switch_var;          // Switch variable for deflattening
-    int switch_block;           // Block containing the dispatcher switch
-    std::map<uint64_t, int> case_to_block;  // Case value -> real block mapping
-
-    // State transitions: {from_block, to_block, state_value}
-    struct transition_t {
-        int from_block;
-        int to_block;
-        uint64_t state_value;
-    };
-    std::vector<transition_t> transitions;
 
     // String encryption
     std::map<ea_t, std::string> decrypted_strings;
@@ -113,89 +90,13 @@ struct deobf_ctx_t {
 
     deobf_ctx_t()
         : mba(nullptr), cfunc(nullptr), func_ea(BADADDR),
-          detected_obf(OBF_NONE), switch_var(nullptr), switch_block(-1),
+          detected_obf(OBF_NONE),
           blocks_merged(0), branches_simplified(0), strings_decrypted(0),
           consts_decrypted(0), expressions_simplified(0), indirect_resolved(0),
           mba_simplified(0), chains_simplified(0), opaque_jumps_resolved(0),
           z3_consts_recovered(0), peephole_opts(0)
     {}
 };
-
-//--------------------------------------------------------------------------
-// Expression node for symbolic analysis
-//--------------------------------------------------------------------------
-struct sym_expr_t {
-    enum op_t {
-        OP_CONST,       // Constant value
-        OP_VAR,         // Variable/register
-        OP_ADD,         // Addition
-        OP_SUB,         // Subtraction
-        OP_MUL,         // Multiplication
-        OP_DIV,         // Division
-        OP_AND,         // Bitwise AND
-        OP_OR,          // Bitwise OR
-        OP_XOR,         // Bitwise XOR
-        OP_NOT,         // Bitwise NOT
-        OP_NEG,         // Negation
-        OP_SHL,         // Shift left
-        OP_SHR,         // Shift right
-        OP_SAR,         // Arithmetic shift right
-        OP_LOAD,        // Memory load
-        OP_UNKNOWN      // Unknown operation
-    };
-
-    op_t op;
-    uint64_t const_val;
-    int var_idx;
-    int bit_size;
-    std::shared_ptr<sym_expr_t> left;
-    std::shared_ptr<sym_expr_t> right;
-
-    sym_expr_t() : op(OP_UNKNOWN), const_val(0), var_idx(-1), bit_size(64) {}
-
-    static std::shared_ptr<sym_expr_t> make_const(uint64_t val, int bits = 64)
-    {
-        auto e = std::make_shared<sym_expr_t>();
-        e->op = OP_CONST;
-        e->const_val = val;
-        e->bit_size = bits;
-        return e;
-    }
-
-    static std::shared_ptr<sym_expr_t> make_var(int idx, int bits = 64)
-    {
-        auto e = std::make_shared<sym_expr_t>();
-        e->op = OP_VAR;
-        e->var_idx = idx;
-        e->bit_size = bits;
-        return e;
-    }
-
-    static std::shared_ptr<sym_expr_t> make_binop(op_t o,
-        std::shared_ptr<sym_expr_t> l, std::shared_ptr<sym_expr_t> r)
-    {
-        auto e = std::make_shared<sym_expr_t>();
-        e->op = o;
-        e->left = l;
-        e->right = r;
-        e->bit_size = l ? l->bit_size : 64;
-        return e;
-    }
-
-    static std::shared_ptr<sym_expr_t> make_unop(op_t o, std::shared_ptr<sym_expr_t> operand)
-    {
-        auto e = std::make_shared<sym_expr_t>();
-        e->op = o;
-        e->left = operand;
-        e->bit_size = operand ? operand->bit_size : 64;
-        return e;
-    }
-
-    bool is_const() const { return op == OP_CONST; }
-    bool is_var() const { return op == OP_VAR; }
-};
-
-using sym_expr_ptr = std::shared_ptr<sym_expr_t>;
 
 //--------------------------------------------------------------------------
 // Utility functions declarations
@@ -205,20 +106,9 @@ namespace deobf {
     void log(const char *fmt, ...);
     void log_verbose(const char *fmt, ...);
     void set_verbose(bool v);
+    bool debug_enabled();
+    void debug_vlog(const char *path, const char *fmt, va_list va);
 
     // Microcode helpers
-    minsn_t *find_insn_by_opcode(mblock_t *blk, mcode_t op);
     bool is_jcc(mcode_t op);
-    bool is_unconditional_jmp(mcode_t op);
-    const char *mcode_name(mcode_t op);
-
-    // Pattern matching
-    bool match_xor_pattern(minsn_t *insn, mop_t **out_left, mop_t **out_right);
-    bool match_load_xor_pattern(mblock_t *blk, ea_t *out_enc_addr, uint64_t *out_key);
-
-    // Expression analysis
-    sym_expr_ptr mop_to_sym(const mop_t &mop, deobf_ctx_t *ctx);
-    sym_expr_ptr simplify_expr(sym_expr_ptr expr);
-    std::optional<uint64_t> eval_const_expr(sym_expr_ptr expr);
-    bool exprs_equivalent(sym_expr_ptr a, sym_expr_ptr b);
 }

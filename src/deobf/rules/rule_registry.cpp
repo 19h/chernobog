@@ -1,4 +1,5 @@
 #include "rule_registry.h"
+#include "rule_verifier.h"
 #include "../analysis/ast_builder.h"
 
 namespace chernobog {
@@ -45,52 +46,53 @@ void RuleRegistry::initialize()
         return;
     }
 
-    // Build pattern storage from all rules
-    storage_ = PatternStorage(1);
+    rebuild_storage_locked();
 
-    for ( auto& p : rules_ )
-    {
-        if ( !p )
-            continue;
-
-        auto patterns = p->get_all_patterns();
-        for ( const auto& pattern : patterns )
-        {
-            if ( pattern )
-            {
-                storage_.add_pattern_for_rule(pattern, p.get());
-            }
-        }
-    }
-
-    initialized_ = true;
-
-    msg("[chernobog] MBA rule registry initialized: %zu rules, %zu patterns\n",
-        rules_.size(), pattern_count());
+#if !defined(CHERNOBOG_CATALOG_TEST)
+    msg("[chernobog] MBA rule registry initialized: %zu registered, "
+        "%zu verified, %zu rejected, %zu patterns\n",
+        rules_.size(), verified_rule_count_, rejected_rule_count_, pattern_count());
+#endif
 }
 
 void RuleRegistry::reinitialize()
 {
     std::lock_guard<std::mutex> lock(mutex_);
 
+    rebuild_storage_locked();
+}
+
+void RuleRegistry::rebuild_storage_locked()
+{
     initialized_ = false;
     storage_ = PatternStorage(1);
+    semantic_roots_.clear();
+    verified_rule_count_ = 0;
+    rejected_rule_count_ = 0;
 
-    // Rebuild
-    for ( auto& p : rules_ )
+    RuleVerifier verifier;
+    for ( auto& rule : rules_ )
     {
-        if ( !p )
+        if ( !rule )
             continue;
 
-        auto patterns = p->get_all_patterns();
-
-        for ( const auto& pattern : patterns )
+        AstPtr pattern = rule->get_pattern();
+        AstPtr replacement = rule->get_replacement();
+        semantic_roots_.push_back(replacement);
+        RuleVerificationResult verification = verifier.verify(pattern, replacement);
+        if ( !verification.verified() )
         {
-            if ( pattern )
-            {
-                storage_.add_pattern_for_rule(pattern, p.get());
-            }
+            ++rejected_rule_count_;
+#if !defined(CHERNOBOG_CATALOG_TEST)
+            msg("[chernobog] rejected MBA rule '%s': %s at %u bits (%s)\n",
+                rule->name(), rule_verification_status_name(verification.status),
+                verification.bit_width, verification.detail.c_str());
+#endif
+            continue;
         }
+
+        ++verified_rule_count_;
+        storage_.add_pattern_for_rule(pattern, rule.get());
     }
 
     initialized_ = true;
@@ -103,6 +105,9 @@ void RuleRegistry::clear()
     // Clear pattern storage first (it has shared_ptrs to patterns)
     storage_ = PatternStorage(1);
 
+    // Destroy retained certification trees while IDA/Hex-Rays is still live.
+    semantic_roots_.clear();
+
     // Clear rules (this destroys the rule objects)
     rules_.clear();
 
@@ -110,6 +115,8 @@ void RuleRegistry::clear()
     initialized_ = false;
     total_matches_ = 0;
     successful_matches_ = 0;
+    verified_rule_count_ = 0;
+    rejected_rule_count_ = 0;
 }
 
 //--------------------------------------------------------------------------
@@ -176,7 +183,10 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t* ins)
             rp.rule->increment_hit_count();
 
             // Debug: log successful match
-            msg("[chernobog] MBA rule '%s' matched\n", rp.rule->name());
+#if !defined(CHERNOBOG_CATALOG_TEST)
+            deobf::log_verbose("[chernobog] MBA rule '%s' matched\n",
+                               rp.rule->name());
+#endif
 
             MatchResult result;
             result.rule = rp.rule;
@@ -291,6 +301,8 @@ void RuleRegistry::dump() const
 {
     msg("[chernobog] MBA Rule Registry:\n");
     msg("  Rules: %zu\n", rules_.size());
+    msg("  Verified rules: %zu\n", verified_rule_count_);
+    msg("  Rejected rules: %zu\n", rejected_rule_count_);
     msg("  Patterns: %zu\n", pattern_count());
     msg("  Total matches attempted: %zu\n", total_matches_);
     msg("  Successful matches: %zu\n", successful_matches_);

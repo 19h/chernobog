@@ -65,6 +65,4 @@ private:
     // Annotate the resolved reference
     static void annotate_ptr_ref(const ptr_ref_t &ref);
 
-    // Replace indirect reference with direct reference (where possible)
-    static int replace_ptr_ref(mblock_t *blk, minsn_t *ins, const ptr_ref_t &ref);
 };

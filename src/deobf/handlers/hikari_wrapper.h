@@ -30,40 +30,37 @@ class hikari_wrapper_handler_t {
 public:
     // Detection
     static bool detect(mbl_array_t *mba);
-    static bool detect_in_binary();
 
     // Main deobfuscation pass
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
 
-    // Analyze and rename all wrappers in the binary
-    static int resolve_all_wrappers();
+    // Clear address-keyed analysis between databases.
+    static void clear_cache();
 
 private:
     // Wrapper function info
     struct wrapper_info_t {
-        ea_t func_ea;               // Wrapper function address
+        ea_t func_ea = BADADDR;     // Wrapper function address
         qstring original_name;       // Original name (e.g., HikariFunctionWrapper_390)
         qstring resolved_name;       // Resolved name (e.g., NSDictionary_dictionaryWithContentsOfFile)
         qstring target_class;        // For Obj-C: class name
         qstring target_selector;     // For Obj-C: selector
-        ea_t target_func;           // For direct calls: target function
-        bool is_objc;               // True if Obj-C message send
+        ea_t target_func = BADADDR; // For direct calls: target function
+        bool is_objc = false;       // True if Obj-C message send
     };
 
     // Call site info
     struct call_site_t {
-        int block_idx;
-        minsn_t *call_insn;
-        ea_t wrapper_func;
+        int block_idx = -1;
+        minsn_t *call_insn = nullptr;
+        wrapper_info_t wrapper;
         qstring class_arg;          // Class argument if determinable
         qstring selector_arg;       // Selector argument if determinable
     };
 
-    // Find all wrapper functions
-    static std::vector<wrapper_info_t> find_wrappers();
-
     // Analyze a single wrapper function
     static bool analyze_wrapper(ea_t func_ea, wrapper_info_t *out);
+    static bool get_wrapper_info(ea_t func_ea, wrapper_info_t *out);
 
     // Check if function is a wrapper (by name pattern)
     static bool is_wrapper_by_name(ea_t func_ea);
@@ -72,20 +69,13 @@ private:
     static bool is_wrapper_by_pattern(ea_t func_ea);
 
     // Find call sites to wrappers in the current function
-    static std::vector<call_site_t> find_wrapper_calls(mbl_array_t *mba,
-                                                        const std::vector<wrapper_info_t> &wrappers);
+    static std::vector<call_site_t> find_wrapper_calls(mbl_array_t *mba);
 
     // Try to resolve class/selector arguments at a call site
-    static bool resolve_call_args(mbl_array_t *mba, call_site_t *call);
-
-    // Rename a wrapper function
-    static bool rename_wrapper(const wrapper_info_t &info);
+    static bool resolve_call_args(call_site_t *call);
 
     // Annotate a call site
-    static void annotate_call_site(const call_site_t &call, const wrapper_info_t &wrapper);
-
-    // Generate a meaningful name from class + selector
-    static qstring generate_name(const qstring &cls, const qstring &sel);
+    static void annotate_call_site(const call_site_t &call);
 
     // Check for objc_msgSend pattern
     static bool has_objc_msgsend(ea_t func_ea);
@@ -95,4 +85,5 @@ private:
 
     // Cache of analyzed wrappers
     static std::map<ea_t, wrapper_info_t> s_wrapper_cache;
+    static std::set<ea_t> s_non_wrapper_cache;
 };

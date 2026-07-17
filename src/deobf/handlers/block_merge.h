@@ -29,19 +29,6 @@ public:
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
 
 private:
-    // Find mergeable block chains
-    struct chain_t {
-        std::vector<int> blocks;  // Block indices in order
-    };
-
-    static std::vector<chain_t> find_mergeable_chains(mbl_array_t *mba);
-
-    // Check if two blocks can be merged
-    static bool can_merge(mblock_t *first, mblock_t *second, mbl_array_t *mba);
-
-    // Merge a chain of blocks
-    static int merge_chain(mbl_array_t *mba, const chain_t &chain, deobf_ctx_t *ctx);
-
     // Helper: count instructions in a block
     static int count_insns(mblock_t *blk);
 

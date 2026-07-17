@@ -1,7 +1,7 @@
 #include "ast.h"
 #include "../../common/simd.h"
+#include "../../common/bitvector.h"
 #include <sstream>
-#include <algorithm>
 
 namespace chernobog {
 namespace ast {
@@ -28,24 +28,7 @@ bool is_mba_opcode(mcode_t op) {
 // Size utilities
 //--------------------------------------------------------------------------
 uint64_t size_mask(int size) {
-    switch (size) {
-        case 1: return 0xFFULL;
-        case 2: return 0xFFFFULL;
-        case 4: return 0xFFFFFFFFULL;
-        case 8: return 0xFFFFFFFFFFFFFFFFULL;
-        default: return 0xFFFFFFFFFFFFFFFFULL;
-    }
-}
-
-uint64_t twos_complement_sub_value(int size) {
-    // Returns 2^n for subtraction patterns
-    switch (size) {
-        case 1: return 0x100ULL;
-        case 2: return 0x10000ULL;
-        case 4: return 0x100000000ULL;
-        case 8: return 0ULL;  // Wraps around
-        default: return 0ULL;
-    }
+    return chernobog::bitvector::mask(size);
 }
 
 //--------------------------------------------------------------------------
@@ -93,12 +76,12 @@ const char* opcode_name(mcode_t op) {
 }
 
 //--------------------------------------------------------------------------
-// Mop comparison ignoring size - OPTIMIZED
+// Strict mop comparison - optimized for common leaf kinds
 // Uses equal_insns() for mop_d instead of expensive dstr() string comparison
 //--------------------------------------------------------------------------
-bool mops_equal_ignore_size(const mop_t& a, const mop_t& b) {
+bool mops_equal_strict(const mop_t& a, const mop_t& b) {
     // Fast path: type must match
-    if (SIMD_UNLIKELY(a.t != b.t))
+    if (SIMD_UNLIKELY(a.t != b.t || a.size != b.size))
         return false;
 
     switch (a.t) {
@@ -119,14 +102,14 @@ bool mops_equal_ignore_size(const mop_t& a, const mop_t& b) {
             // OPTIMIZED: Use equal_insns() instead of expensive dstr() string comparison
             // dstr() creates a string allocation on every call - extremely slow
             if (SIMD_UNLIKELY(!a.d || !b.d)) return a.d == b.d;
-            return a.d->equal_insns(*b.d, EQ_IGNSIZE);
+            return a.d->equal_insns(*b.d, 0);
         case mop_b:  // Block reference
             return a.b == b.b;
         case mop_f:  // Function call
             return false;  // Too complex to compare
         case mop_a:  // Address
             if (SIMD_UNLIKELY(!a.a || !b.a)) return a.a == b.a;
-            return mops_equal_ignore_size(*a.a, *b.a);
+            return mops_equal_strict(*a.a, *b.a);
         case mop_h:  // Helper function
             if (SIMD_UNLIKELY(!a.helper || !b.helper)) return a.helper == b.helper;
             return strcmp(a.helper, b.helper) == 0;
@@ -144,40 +127,10 @@ bool mops_equal_ignore_size(const mop_t& a, const mop_t& b) {
 // AstBase implementation
 //--------------------------------------------------------------------------
 AstBase::AstBase(const AstBase& other)
-    : ast_index(other.ast_index)
-    , dest_size(other.dest_size)
+    : dest_size(other.dest_size)
     , ea(other.ea)
     , mop(other.mop)
-    , frozen(false)  // Copies are always mutable
 {
-}
-
-void AstBase::freeze() {
-    frozen = true;
-
-    // CRITICAL: Clear mop fields to prevent crashes during static destruction.
-    // When the AstCache destructor runs during program exit, IDA's internal
-    // structures are already freed. The mop_t objects contain pointers to
-    // these structures, so we must clear them before caching.
-    mop.erase();
-
-    // Recursively freeze children if this is a node
-    if (auto node = dynamic_cast<AstNode*>(this)) {
-        node->dst_mop.erase();
-        if (node->left) {
-            node->left->freeze();
-        }
-        if (node->right) {
-            node->right->freeze();
-        }
-    }
-}
-
-AstPtr AstBase::ensure_mutable() {
-    if (!frozen) {
-        return shared_from_this();
-    }
-    return clone();
 }
 
 //--------------------------------------------------------------------------
@@ -203,249 +156,6 @@ AstPtr AstNode::clone() const {
     return std::make_shared<AstNode>(*this);
 }
 
-std::vector<std::string> AstNode::get_depth_signature(int depth) const {
-    if (depth <= 0) {
-        return {};
-    }
-
-    if (depth == 1) {
-        // Return just the opcode at depth 1
-        return {std::to_string(static_cast<int>(opcode))};
-    }
-
-    // Get signatures from children at depth-1
-    std::vector<std::string> result;
-
-    if (left) {
-        auto left_sig = left->get_depth_signature(depth - 1);
-        result.insert(result.end(), left_sig.begin(), left_sig.end());
-    } else {
-        result.push_back("N");  // No node
-    }
-
-    if (right) {
-        auto right_sig = right->get_depth_signature(depth - 1);
-        result.insert(result.end(), right_sig.begin(), right_sig.end());
-    } else {
-        result.push_back("N");  // No node (unary op or missing)
-    }
-
-    return result;
-}
-
-bool AstNode::equals(const AstBase& other) const {
-    if (!other.is_node())
-        return false;
-
-    const AstNode& o = static_cast<const AstNode&>(other);
-    if (opcode != o.opcode)
-        return false;
-
-    // Compare children
-    if ((left == nullptr) != (o.left == nullptr))
-        return false;
-    if (left && !left->equals(*o.left))
-        return false;
-
-    if ((right == nullptr) != (o.right == nullptr))
-        return false;
-    if (right && !right->equals(*o.right))
-        return false;
-
-    return true;
-}
-
-std::string AstNode::to_string() const {
-    std::ostringstream ss;
-    ss << opcode_name(opcode) << "(";
-    if (left) {
-        ss << left->to_string();
-    }
-    if (right) {
-        ss << ", " << right->to_string();
-    }
-    ss << ")";
-    return ss.str();
-}
-
-void AstNode::reset_mops() {
-    mop = mop_t();
-    dst_mop = mop_t();
-    if (left) {
-        if (auto node = std::dynamic_pointer_cast<AstNode>(left)) {
-            node->reset_mops();
-        } else if (auto leaf = std::dynamic_pointer_cast<AstLeaf>(left)) {
-            leaf->mop = mop_t();
-        }
-    }
-    if (right) {
-        if (auto node = std::dynamic_pointer_cast<AstNode>(right)) {
-            node->reset_mops();
-        } else if (auto leaf = std::dynamic_pointer_cast<AstLeaf>(right)) {
-            leaf->mop = mop_t();
-        }
-    }
-}
-
-bool AstNode::check_pattern_and_copy_mops(AstPtr candidate) {
-    // Reset mops before matching
-    reset_mops();
-
-    // Try to match structure and copy mops
-    if (!copy_mops_from_ast(candidate)) {
-        return false;
-    }
-
-    // Verify implicit equalities (same variable name = same value)
-    return check_implicit_equalities();
-}
-
-bool AstNode::copy_mops_from_ast(AstPtr other) {
-    if (!other || !other->is_node())
-        return false;
-
-    auto other_node = std::static_pointer_cast<AstNode>(other);
-
-    // Opcode must match exactly
-    if (opcode != other_node->opcode)
-        return false;
-
-    // Copy mops from this level
-    mop = other_node->mop;
-    dst_mop = other_node->dst_mop;
-    dest_size = other_node->dest_size;
-    ea = other_node->ea;
-
-    // Recurse on left child
-    if (left) {
-        if (!other_node->left)
-            return false;
-
-        if (left->is_node()) {
-            auto left_node = std::static_pointer_cast<AstNode>(left);
-            if (!left_node->copy_mops_from_ast(other_node->left))
-                return false;
-        } else {
-            // Leaf node - copy mop directly
-            auto left_leaf = std::static_pointer_cast<AstLeaf>(left);
-            if (!other_node->left->is_leaf())
-                return false;
-
-            // If pattern leaf is a constant, verify the candidate's value matches
-            if (left_leaf->is_constant()) {
-                auto const_leaf = std::static_pointer_cast<AstConstant>(left);
-                // Candidate must be a number constant with matching value
-                if (other_node->left->mop.t != mop_n || !other_node->left->mop.nnn)
-                    return false;
-                uint64_t expected = const_leaf->value;
-                uint64_t actual = other_node->left->mop.nnn->value;
-                uint64_t mask = size_mask(other_node->left->mop.size);
-                if ((expected & mask) != (actual & mask))
-                    return false;
-            }
-
-            left_leaf->mop = other_node->left->mop;
-            left_leaf->dest_size = other_node->left->dest_size;
-            left_leaf->ea = other_node->left->ea;
-        }
-    }
-
-    // Recurse on right child
-    if (right) {
-        if (!other_node->right)
-            return false;
-
-        if (right->is_node()) {
-            auto right_node = std::static_pointer_cast<AstNode>(right);
-            if (!right_node->copy_mops_from_ast(other_node->right))
-                return false;
-        } else {
-            auto right_leaf = std::static_pointer_cast<AstLeaf>(right);
-            if (!other_node->right->is_leaf())
-                return false;
-
-            // If pattern leaf is a constant, verify the candidate's value matches
-            if (right_leaf->is_constant()) {
-                auto const_leaf = std::static_pointer_cast<AstConstant>(right);
-                // Candidate must be a number constant with matching value
-                if (other_node->right->mop.t != mop_n || !other_node->right->mop.nnn)
-                    return false;
-                uint64_t expected = const_leaf->value;
-                uint64_t actual = other_node->right->mop.nnn->value;
-                uint64_t mask = size_mask(other_node->right->mop.size);
-                if ((expected & mask) != (actual & mask))
-                    return false;
-            }
-
-            right_leaf->mop = other_node->right->mop;
-            right_leaf->dest_size = other_node->right->dest_size;
-            right_leaf->ea = other_node->right->ea;
-        }
-    } else if (other_node->right) {
-        // Pattern has no right child but candidate does
-        return false;
-    }
-
-    return true;
-}
-
-bool AstNode::check_implicit_equalities() const {
-    // Get all leaves and check that same-named variables have equal mops
-    auto leaves = get_leaf_list();
-    std::map<std::string, mop_t> seen;
-
-    for (const auto& leaf : leaves) {
-        if (leaf->name.empty())
-            continue;
-
-        auto it = seen.find(leaf->name);
-        if (it != seen.end()) {
-            // Same variable name seen before - check equality
-            if (!mops_equal_ignore_size(it->second, leaf->mop)) {
-                return false;
-            }
-        } else {
-            seen[leaf->name] = leaf->mop;
-        }
-    }
-
-    return true;
-}
-
-void AstNode::collect_leaves(std::vector<AstLeafPtr>& out) const {
-    if (left) {
-        if (left->is_leaf()) {
-            out.push_back(std::static_pointer_cast<AstLeaf>(left));
-        } else if (left->is_node()) {
-            std::static_pointer_cast<AstNode>(left)->collect_leaves(out);
-        }
-    }
-    if (right) {
-        if (right->is_leaf()) {
-            out.push_back(std::static_pointer_cast<AstLeaf>(right));
-        } else if (right->is_node()) {
-            std::static_pointer_cast<AstNode>(right)->collect_leaves(out);
-        }
-    }
-}
-
-std::vector<AstLeafPtr> AstNode::get_leaf_list() const {
-    std::vector<AstLeafPtr> result;
-    collect_leaves(result);
-    return result;
-}
-
-std::map<std::string, AstLeafPtr> AstNode::get_leafs_by_name() const {
-    std::map<std::string, AstLeafPtr> result;
-    auto leaves = get_leaf_list();
-    for (const auto& leaf : leaves) {
-        if (!leaf->name.empty()) {
-            result[leaf->name] = leaf;
-        }
-    }
-    return result;
-}
-
 //--------------------------------------------------------------------------
 // AstLeaf implementation
 //--------------------------------------------------------------------------
@@ -469,23 +179,6 @@ AstLeaf::AstLeaf(const AstLeaf& other)
 
 AstPtr AstLeaf::clone() const {
     return std::make_shared<AstLeaf>(*this);
-}
-
-std::vector<std::string> AstLeaf::get_depth_signature(int depth) const {
-    (void)depth;  // Unused - leaves always return "L"
-    return {"L"};
-}
-
-bool AstLeaf::equals(const AstBase& other) const {
-    if (!other.is_leaf() || other.is_constant())
-        return false;
-
-    const AstLeaf& o = static_cast<const AstLeaf&>(other);
-    return name == o.name;
-}
-
-std::string AstLeaf::to_string() const {
-    return name;
 }
 
 std::string AstLeaf::name_from_mop(const mop_t& m) {
@@ -550,35 +243,6 @@ AstPtr AstConstant::clone() const {
     return std::make_shared<AstConstant>(*this);
 }
 
-std::vector<std::string> AstConstant::get_depth_signature(int depth) const {
-    (void)depth;  // Unused - constants always return "C"
-    return {"C"};
-}
-
-bool AstConstant::equals(const AstBase& other) const {
-    if (!other.is_constant())
-        return false;
-
-    const AstConstant& o = static_cast<const AstConstant&>(other);
-
-    // Named constants match by name
-    if (!const_name.empty() && !o.const_name.empty()) {
-        return const_name == o.const_name;
-    }
-
-    // Value constants match by value
-    return value == o.value;
-}
-
-std::string AstConstant::to_string() const {
-    if (!const_name.empty()) {
-        return const_name;
-    }
-    std::ostringstream ss;
-    ss << "0x" << std::hex << value;
-    return ss.str();
-}
-
 //--------------------------------------------------------------------------
 // Non-mutating pattern match implementation - OPTIMIZED
 // Matches pattern against candidate without modifying either AST
@@ -604,9 +268,12 @@ static bool match_pattern_internal(const AstBase* pattern, const AstBase* candid
             
             // Named constants (like c_minus_1) - just capture binding
             if (!pat_const->const_name.empty()) {
-                bindings.add(pat_const->const_name.c_str(), candidate->mop, 
-                            candidate->dest_size, candidate->ea);
-                return true;
+                const mop_t* existing = bindings.find(pat_const->const_name);
+                if (existing) {
+                    return mops_equal_strict(*existing, candidate->mop);
+                }
+                return bindings.add(pat_const->const_name.c_str(), candidate->mop,
+                                    candidate->dest_size, candidate->ea);
             }
             
             // Value constants must match
@@ -623,13 +290,12 @@ static bool match_pattern_internal(const AstBase* pattern, const AstBase* candid
         const mop_t* existing = bindings.find(pat_leaf->name);
         if (existing) {
             // Same variable must have same value (implicit equality)
-            return mops_equal_ignore_size(*existing, candidate->mop);
+            return mops_equal_strict(*existing, candidate->mop);
         }
         
         // New binding
-        bindings.add(pat_leaf->name.c_str(), candidate->mop, 
-                    candidate->dest_size, candidate->ea);
-        return true;
+        return bindings.add(pat_leaf->name.c_str(), candidate->mop,
+                            candidate->dest_size, candidate->ea);
     }
     
     // Pattern is a node - candidate must also be a node
@@ -645,26 +311,46 @@ static bool match_pattern_internal(const AstBase* pattern, const AstBase* candid
         return false;
     }
     
-    // Match left operand
-    if (pat_node->left) {
-        if (!cand_node->left) return false;
-        if (!match_pattern_internal(pat_node->left.get(), cand_node->left.get(), bindings)) {
-            return false;
-        }
-    }
-    
-    // Match right operand
-    if (pat_node->right) {
-        if (!cand_node->right) return false;
-        if (!match_pattern_internal(pat_node->right.get(), cand_node->right.get(), bindings)) {
-            return false;
-        }
-    } else if (cand_node->right) {
-        // Pattern has no right but candidate does
+    // Operand arity must match exactly. Keep a binding-count checkpoint so a
+    // failed branch cannot leak captures into the commuted alternative.
+    if (static_cast<bool>(pat_node->left) != static_cast<bool>(cand_node->left) ||
+        static_cast<bool>(pat_node->right) != static_cast<bool>(cand_node->right)) {
         return false;
     }
-    
-    return true;
+
+    const size_t saved_count = bindings.count;
+    const auto match_operands = [&](const AstBase* candidate_left,
+                                    const AstBase* candidate_right) {
+        if (pat_node->left &&
+            !match_pattern_internal(pat_node->left.get(), candidate_left, bindings)) {
+            return false;
+        }
+        if (pat_node->right &&
+            !match_pattern_internal(pat_node->right.get(), candidate_right, bindings)) {
+            return false;
+        }
+        return true;
+    };
+
+    if (match_operands(cand_node->left.get(), cand_node->right.get())) {
+        return true;
+    }
+    bindings.count = saved_count;
+
+    // These microcode operations are commutative over fixed-width bit-vectors.
+    // Try the swapped form lazily instead of pre-generating factorially many
+    // pattern variants at registry initialization.
+    const bool commutative = pat_node->right &&
+        (pat_node->opcode == m_add || pat_node->opcode == m_mul ||
+         pat_node->opcode == m_and || pat_node->opcode == m_or ||
+         pat_node->opcode == m_xor);
+    if (commutative &&
+        match_operands(cand_node->right.get(), cand_node->left.get())) {
+        return true;
+    }
+
+    bindings.count = saved_count;
+    return false;
 }
 
 bool match_pattern(const AstBase* pattern, const AstBase* candidate, 

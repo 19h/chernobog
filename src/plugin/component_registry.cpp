@@ -68,8 +68,3 @@ void component_registry_t::attach_to_popup(TWidget *widget, TPopupMenu *popup, v
         }
     }
 }
-
-void component_registry_t::unregister_all_actions()
-{
-    // Components manage their own action registration/unregistration in init/done
-}

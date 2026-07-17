@@ -136,7 +136,7 @@ public:
     }
 };
 
-// ~(~x | ~y) | ~(x | y) -> x ^ y (De Morgan variant)
+// ~(~x | ~y) | ~(x | y) -> ~(x ^ y) (XNOR)
 class Xor_MbaRule_3 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Xor_MbaRule_3"; }
@@ -148,7 +148,7 @@ public:
 
     AstPtr get_replacement() const override
     {
-        return bxor(x_0(), x_1());
+        return bnot(bxor(x_0(), x_1()));
     }
 };
 
@@ -331,11 +331,6 @@ class Xor_Rule_2 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Xor_Rule_2"; }
 
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
-
     AstPtr get_pattern() const override
     {
         return bxor(x_0(), c_0());
@@ -356,11 +351,6 @@ public:
 class Xor_Rule_3 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Xor_Rule_3"; }
-
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
 
     AstPtr get_pattern() const override
     {

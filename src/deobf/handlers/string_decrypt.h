@@ -11,16 +11,14 @@
 //   - Atomic status flag to prevent re-decryption
 //
 // Detection:
-//   - Global variables named "EncryptedString", "DecryptSpace"
-//   - XOR loops in function prologue
-//   - Atomic load/store of status flag
+//   - A function data-reference to a global whose normalized name begins with
+//     "EncryptedString"
 //
 // Reversal:
 //   1. Find encrypted string globals
-//   2. Extract XOR keys from decryption code
-//   3. Decrypt strings
-//   4. Patch references to point to decrypted data
-//   5. Optionally remove decryption code
+//   2. Extract a conflict-free contiguous prefix of per-byte XOR keys
+//   3. Decrypt printable text with an explicit source terminator
+//   4. Annotate the encrypted object and its corresponding decrypt space
 //--------------------------------------------------------------------------
 class string_decrypt_handler_t {
 public:
@@ -33,12 +31,10 @@ public:
 private:
     // Find encrypted strings in the binary
     struct encrypted_string_t {
-        ea_t encrypted_addr;     // EncryptedString global
-        ea_t decrypt_space_addr; // DecryptSpace global
+        ea_t encrypted_addr = BADADDR;     // EncryptedString global
+        ea_t decrypt_space_addr = BADADDR; // DecryptSpace global
         std::vector<uint8_t> encrypted_data;
         std::vector<uint8_t> xor_keys;
-        int element_size;        // 1, 2, 4, or 8 bytes
-        std::string decrypted;
     };
 
     static std::vector<encrypted_string_t> find_encrypted_strings(ea_t func_ea);
@@ -49,13 +45,6 @@ private:
     // Decrypt a string
     static std::string decrypt_string(const encrypted_string_t &str);
 
-    // Patch references in microcode
-    static int patch_string_references(mbl_array_t *mba, const encrypted_string_t &str,
-                                      const std::string &decrypted, deobf_ctx_t *ctx);
-
     // Add decrypted string as IDA comment/name
     static void annotate_string(const encrypted_string_t &str, const std::string &decrypted);
-
-    // Find decryption block (StringDecryptionBB pattern)
-    static int find_decryption_block(mbl_array_t *mba);
 };

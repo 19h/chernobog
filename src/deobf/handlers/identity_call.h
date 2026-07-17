@@ -26,17 +26,18 @@
 //   - Calls to identity functions with global pointer arguments
 //   - Followed by indirect jump (m_ijmp) or indirect call (m_icall)
 //
-// Reversal (Two-Phase Approach):
-//   Phase 1 (Maturity 0 - hxe_microcode):
+// Analysis (two maturity phases):
+//   Phase 1:
 //     - Identify identity functions
 //     - Find call patterns with ijmp/icall
 //     - Resolve pointer chains to final targets
 //     - Store analysis results for later
 //
-//   Phase 2 (MMAT_LOCOPT - optblock handler):
-//     - Apply deferred transformations
-//     - Convert indirect jumps to direct calls
-//     - Proper microcode instruction building
+//   Phase 2:
+//     - Consume the deferred diagnostic record
+//
+// A structural rewrite is intentionally not performed until complete
+// producer-side-effect and consumer-call-information proofs are available.
 //--------------------------------------------------------------------------
 
 // Forward declaration
@@ -47,10 +48,10 @@ public:
     // Detection
     static bool detect(mbl_array_t *mba);
 
-    // Main deobfuscation pass (Phase 1 - analysis at maturity 0)
+    // Main analysis pass. Returns zero because it does not mutate microcode.
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
 
-    // Phase 2 - apply deferred transformations (called from optblock at MMAT_LOCOPT)
+    // Consume deferred analysis (called from optblock at MMAT_LOCOPT).
     static int apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx);
 
     // Check if we have pending analysis for a function
@@ -58,6 +59,9 @@ public:
 
     // Clear deferred analysis for a function
     static void clear_deferred(ea_t func_ea);
+
+    // Clear database-dependent identity/trampoline classification caches.
+    static void clear_caches();
 
     // Check if a function is an identity function
     static bool is_identity_function(ea_t func_ea);
@@ -107,12 +111,6 @@ private:
 
     // Check if a code location is a trampoline (loads ptr, calls identity, jumps)
     static bool is_trampoline_code(ea_t addr, ea_t *next_ptr_out = nullptr);
-
-    // Transform identity call at MMAT_LOCOPT (proper microcode building)
-    static int transform_identity_call(mbl_array_t *mba, const deferred_identity_call_t &dc, deobf_ctx_t *ctx);
-
-    // Create a proper call instruction
-    static minsn_t *create_call_insn(mbl_array_t *mba, ea_t target, ea_t source_ea);
 
     // Cache of known identity functions
     static std::set<ea_t> s_identity_funcs;

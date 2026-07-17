@@ -167,12 +167,6 @@ private:
         const z3_solver::symbolic_var_t &state_var,
         int max_jump_table_state = -1);
 
-    // Handle conditional transitions within case blocks
-    static std::vector<cfg_edge_t> analyze_conditional_transitions(
-        mbl_array_t *mba,
-        int block_idx,
-        const z3_solver::symbolic_var_t &state_var);
-
     //----------------------------------------------------------------------
     // CFG Reconstruction
     //----------------------------------------------------------------------
@@ -183,39 +177,8 @@ private:
                                    const dispatcher_info_t &disp,
                                    deobf_ctx_t *ctx);
 
-    // Remove dispatcher blocks that are now unreachable
-    static int cleanup_dispatcher(mbl_array_t *mba,
-                                   const dispatcher_info_t &disp,
-                                   deobf_ctx_t *ctx);
-
-    // Remove state variable assignments (they're no longer needed)
-    // max_jump_table_state: if > 0, treat small indices as valid state values
-    static int remove_state_assignments(mbl_array_t *mba,
-                                         const z3_solver::symbolic_var_t &state_var,
-                                         deobf_ctx_t *ctx,
-                                         int max_jump_table_state = -1);
-
-    //----------------------------------------------------------------------
-    // Legacy compatibility (delegates to Z3 solver)
-    //----------------------------------------------------------------------
-
-    // Find dispatcher block
-    static int find_dispatcher(mbl_array_t *mba, deobf_ctx_t *ctx);
-
-    // Find state variable
-    static bool find_state_variable(mbl_array_t *mba, int dispatcher_blk, deobf_ctx_t *ctx);
-
-    // Build state map
-    static bool build_state_map(mbl_array_t *mba, deobf_ctx_t *ctx);
-
     // Find all state constants in a block
     static std::set<uint64_t> find_state_constants(const mblock_t *blk);
-
-    // Check if block terminates the dispatcher (exit or return)
-    static bool is_exit_block(const mblock_t *blk);
-
-    // Get all successor blocks (including fall-through)
-    static std::vector<int> get_successors(const mblock_t *blk);
 
     // Verify CFG modification is safe
     static bool verify_cfg_safety(mbl_array_t *mba,

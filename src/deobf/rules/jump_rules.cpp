@@ -1,4 +1,5 @@
 #include "jump_rules.h"
+#include "../../common/bitvector.h"
 
 namespace chernobog {
 namespace rules {
@@ -9,10 +10,12 @@ namespace rules {
 
 bool JumpOptimizationRule::is_const(const mop_t& op, uint64_t* out)
 {
-    if ( op.t != mop_n )
+    if ( op.t != mop_n || op.nnn == nullptr )
         return false;
     if ( out )
-        *out = op.nnn->value;
+        *out = chernobog::bitvector::valid_byte_width(op.size)
+            ? chernobog::bitvector::truncate(op.nnn->value, op.size)
+            : op.nnn->value;
     return true;
 }
 
@@ -30,7 +33,9 @@ bool JumpOptimizationRule::is_all_ones(const mop_t& op)
     if ( !is_const(op, &val) )
         return false;
 
-    uint64_t mask = ( op.size >= 8 ) ? ~0ULL : ( ( 1ULL << ( op.size * 8 ) ) - 1 );
+    if ( !chernobog::bitvector::valid_byte_width(op.size) )
+        return false;
+    uint64_t mask = chernobog::bitvector::mask(op.size);
     return ( val & mask ) == mask;
 }
 
@@ -39,6 +44,13 @@ minsn_t* JumpOptimizationRule::get_nested(const mop_t& op)
     if ( op.t != mop_d )
         return nullptr;
     return op.d;
+}
+
+bool JumpOptimizationRule::operands_equal(const mop_t& left,
+                                          const mop_t& right)
+{
+    return left.size > 0 && left.size == right.size &&
+           left.equal_mops(right, EQ_IGNSIZE);
 }
 
 //--------------------------------------------------------------------------
@@ -64,13 +76,15 @@ bool JnzRule1::matches(mblock_t* blk, minsn_t* jcc)
     if ( is_const(and_ins->r, &const_val) && const_val == 1 )
     {
         minsn_t* bnot_ins = get_nested(and_ins->l);
-        if ( bnot_ins && bnot_ins->opcode == m_bnot )
+        if ( bnot_ins && bnot_ins->opcode == m_bnot
+          && operands_equal(bnot_ins->l, jcc->r) )
             return true;
     }
     if ( is_const(and_ins->l, &const_val) && const_val == 1 )
     {
         minsn_t* bnot_ins = get_nested(and_ins->r);
-        if ( bnot_ins && bnot_ins->opcode == m_bnot )
+        if ( bnot_ins && bnot_ins->opcode == m_bnot
+          && operands_equal(bnot_ins->l, jcc->r) )
             return true;
     }
 
@@ -126,7 +140,7 @@ int JnzRule2::apply(mblock_t* blk, minsn_t* jcc)
 
 bool JzRule1::matches(mblock_t* blk, minsn_t* jcc)
 {
-    if ( !jcc || jcc->opcode != m_jz )
+    if ( !jcc || jcc->opcode != m_jz || !is_zero(jcc->r) )
         return false;
 
     minsn_t* and_ins = get_nested(jcc->l);
@@ -140,13 +154,13 @@ bool JzRule1::matches(mblock_t* blk, minsn_t* jcc)
     if ( bnot_l && bnot_l->opcode == m_bnot )
     {
         // ~a & b - check if a == b
-        if ( bnot_l->l.equal_mops(and_ins->r, EQ_IGNSIZE) )
+        if ( operands_equal(bnot_l->l, and_ins->r) )
             return true;
     }
     if ( bnot_r && bnot_r->opcode == m_bnot )
     {
         // a & ~b - check if a == b
-        if ( bnot_r->l.equal_mops(and_ins->l, EQ_IGNSIZE) )
+        if ( operands_equal(bnot_r->l, and_ins->l) )
             return true;
     }
 
@@ -165,7 +179,7 @@ int JzRule1::apply(mblock_t* blk, minsn_t* jcc)
 
 bool JnzRule3::matches(mblock_t* blk, minsn_t* jcc)
 {
-    if ( !jcc || jcc->opcode != m_jnz )
+    if ( !jcc || jcc->opcode != m_jnz || !is_zero(jcc->r) )
         return false;
 
     minsn_t* or_ins = get_nested(jcc->l);
@@ -178,12 +192,12 @@ bool JnzRule3::matches(mblock_t* blk, minsn_t* jcc)
 
     if ( bnot_l && bnot_l->opcode == m_bnot )
     {
-        if ( bnot_l->l.equal_mops(or_ins->r, EQ_IGNSIZE) )
+        if ( operands_equal(bnot_l->l, or_ins->r) )
             return true;
     }
     if ( bnot_r && bnot_r->opcode == m_bnot )
     {
-        if ( bnot_r->l.equal_mops(or_ins->l, EQ_IGNSIZE) )
+        if ( operands_equal(bnot_r->l, or_ins->l) )
             return true;
     }
 
@@ -202,7 +216,7 @@ int JnzRule3::apply(mblock_t* blk, minsn_t* jcc)
 
 bool JzRule2::matches(mblock_t* blk, minsn_t* jcc)
 {
-    if ( !jcc || jcc->opcode != m_jz )
+    if ( !jcc || jcc->opcode != m_jz || !is_zero(jcc->r) )
         return false;
 
     minsn_t* xor_ins = get_nested(jcc->l);
@@ -210,7 +224,7 @@ bool JzRule2::matches(mblock_t* blk, minsn_t* jcc)
         return false;
 
     // Check for x ^ x
-    return xor_ins->l.equal_mops(xor_ins->r, EQ_IGNSIZE);
+    return operands_equal(xor_ins->l, xor_ins->r);
 }
 
 int JzRule2::apply(mblock_t* blk, minsn_t* jcc)
@@ -225,7 +239,7 @@ int JzRule2::apply(mblock_t* blk, minsn_t* jcc)
 
 bool JnzRule4::matches(mblock_t* blk, minsn_t* jcc)
 {
-    if ( !jcc || jcc->opcode != m_jnz )
+    if ( !jcc || jcc->opcode != m_jnz || !is_zero(jcc->r) )
         return false;
 
     minsn_t* xor_ins = get_nested(jcc->l);
@@ -233,7 +247,7 @@ bool JnzRule4::matches(mblock_t* blk, minsn_t* jcc)
         return false;
 
     // Check for x ^ x
-    return xor_ins->l.equal_mops(xor_ins->r, EQ_IGNSIZE);
+    return operands_equal(xor_ins->l, xor_ins->r);
 }
 
 int JnzRule4::apply(mblock_t* blk, minsn_t* jcc)
@@ -252,7 +266,7 @@ bool JbRule1::matches(mblock_t* blk, minsn_t* jcc)
         return false;
 
     // Check if comparing same operand
-    return jcc->l.equal_mops(jcc->r, EQ_IGNSIZE);
+    return operands_equal(jcc->l, jcc->r);
 }
 
 int JbRule1::apply(mblock_t* blk, minsn_t* jcc)
@@ -271,7 +285,7 @@ bool JaeRule1::matches(mblock_t* blk, minsn_t* jcc)
         return false;
 
     // Check if comparing same operand
-    return jcc->l.equal_mops(jcc->r, EQ_IGNSIZE);
+    return operands_equal(jcc->l, jcc->r);
 }
 
 int JaeRule1::apply(mblock_t* blk, minsn_t* jcc)
@@ -323,21 +337,19 @@ bool JmpRuleZ3::matches(mblock_t* blk, minsn_t* jcc)
     if ( !jcc || !is_mcode_jcond(jcc->opcode) )
         return false;
 
-    // Reset cache if different instruction
-    if ( cached_jcc_ != jcc )
-    {
-        cached_jcc_ = jcc;
-        cached_result_ = -1;
+    // Microinstructions are mutated in place between optimizer passes, so a
+    // pointer-only cache key can return a proof for obsolete operands.
+    cached_jcc_ = jcc;
+    cached_result_ = -1;
 
-        try
-        {
-            z3_solver::predicate_simplifier_t simplifier(z3_solver::get_global_context());
-            cached_result_ = simplifier.simplify_jcc(jcc);
-        }
-        catch ( ... )
-        {
-            cached_result_ = -1;
-        }
+    try
+    {
+        z3_solver::predicate_simplifier_t simplifier(z3_solver::get_global_context());
+        cached_result_ = simplifier.simplify_jcc(jcc);
+    }
+    catch ( ... )
+    {
+        cached_result_ = -1;
     }
 
     return cached_result_ != -1;
@@ -414,10 +426,7 @@ void JumpRuleRegistry::dump_statistics()
 
 void JumpRuleRegistry::reset_statistics()
 {
-    for ( auto& p : rules_ )
-    {
-        // Reset hit count (need to add reset method to base class)
-    }
+    // Individual rules currently expose hit counts but no reset operation.
 }
 
 } // namespace rules

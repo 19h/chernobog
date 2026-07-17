@@ -50,13 +50,6 @@ private:
     static bool check_math_identity(minsn_t *insn, bool *result);  // x*(x+1) % 2 == 0
     static bool check_global_var_pattern(minsn_t *insn, bool *result);
 
-    // Find unreachable blocks
-    static std::set<int> find_dead_blocks(mbl_array_t *mba, const std::vector<opaque_info_t> &opaques);
-
-    // Remove dead code
+    // Remove dead branch edges
     static int remove_dead_branches(mbl_array_t *mba, const std::vector<opaque_info_t> &opaques);
-    static int remove_dead_blocks(mbl_array_t *mba, const std::set<int> &dead_blocks);
-
-    // Simplify junk instructions in remaining blocks
-    static int simplify_junk_instructions(mbl_array_t *mba, deobf_ctx_t *ctx);
 };

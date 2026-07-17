@@ -39,7 +39,7 @@ bool is_mba_opcode(mcode_t op);
 //--------------------------------------------------------------------------
 // AstBase - Abstract base class for all AST nodes
 //--------------------------------------------------------------------------
-class AstBase : public std::enable_shared_from_this<AstBase> {
+class AstBase {
 public:
     // Virtual destructor that safely clears mop_t before destruction.
     // This is critical because mop_t's destructor may call IDA functions
@@ -56,30 +56,10 @@ public:
     // Deep copy
     virtual AstPtr clone() const = 0;
 
-    // Signature generation for pattern matching
-    // Returns vector like ["10"] (opcode), ["L"] (leaf), ["C"] (constant), ["N"] (none)
-    virtual std::vector<std::string> get_depth_signature(int depth) const = 0;
-
-    // Equality check (structural)
-    virtual bool equals(const AstBase& other) const = 0;
-
-    // Debug string representation
-    virtual std::string to_string() const = 0;
-
     // Metadata from microcode
-    int ast_index = -1;         // Unique index in builder context
     int dest_size = 0;          // Size in bytes (1,2,4,8)
     ea_t ea = BADADDR;          // Address in binary
     mop_t mop;                  // Original microcode operand
-
-    // Immutability for cached templates
-    bool frozen = false;
-
-    void freeze();
-    bool is_frozen() const { return frozen; }
-
-    // Get mutable copy if frozen
-    AstPtr ensure_mutable();
 
 protected:
     AstBase() = default;
@@ -108,47 +88,8 @@ public:
     // Type checking
     bool is_node() const override { return true; }
     bool is_leaf() const override { return false; }
-    bool is_unary() const { return right == nullptr; }
-    bool is_binary() const { return right != nullptr; }
-
     // Deep copy
     AstPtr clone() const override;
-
-    // Signature generation
-    std::vector<std::string> get_depth_signature(int depth) const override;
-
-    // Equality
-    bool equals(const AstBase& other) const override;
-
-    // Debug
-    std::string to_string() const override;
-
-    //----------------------------------------------------------------------
-    // Pattern matching operations
-    //----------------------------------------------------------------------
-
-    // Match this pattern against a candidate AST and copy operand references
-    // Returns true if structure matches
-    bool check_pattern_and_copy_mops(AstPtr candidate);
-
-    // Get all leaf nodes in this subtree
-    std::vector<AstLeafPtr> get_leaf_list() const;
-
-    // Get leaves indexed by their variable names
-    std::map<std::string, AstLeafPtr> get_leafs_by_name() const;
-
-    // Reset all mop references (before pattern matching)
-    void reset_mops();
-
-private:
-    // Internal pattern matching helper
-    bool copy_mops_from_ast(AstPtr other);
-
-    // Verify that same-named variables have equal mops
-    bool check_implicit_equalities() const;
-
-    // Collect leaves recursively
-    void collect_leaves(std::vector<AstLeafPtr>& out) const;
 };
 
 //--------------------------------------------------------------------------
@@ -169,15 +110,6 @@ public:
 
     // Deep copy
     AstPtr clone() const override;
-
-    // Signature - returns ["L"] for variable leaf
-    std::vector<std::string> get_depth_signature(int depth) const override;
-
-    // Equality
-    bool equals(const AstBase& other) const override;
-
-    // Debug
-    std::string to_string() const override;
 
     // Generate a name from microcode operand
     static std::string name_from_mop(const mop_t& m);
@@ -202,14 +134,6 @@ public:
     // Deep copy
     AstPtr clone() const override;
 
-    // Signature - returns ["C"] for constant
-    std::vector<std::string> get_depth_signature(int depth) const override;
-
-    // Equality
-    bool equals(const AstBase& other) const override;
-
-    // Debug
-    std::string to_string() const override;
 };
 
 //--------------------------------------------------------------------------
@@ -232,7 +156,16 @@ struct MatchBindings {
     
     bool add(const char* name, const mop_t& mop, int size, ea_t ea) {
         if (count >= MAX_BINDINGS) return false;
-        bindings[count++] = {name, mop, size, ea};
+        Binding& binding = bindings[count];
+        binding.name = name;
+        if ( mop.t != mop_z ) {
+            binding.mop = mop;
+        } else if ( binding.mop.t != mop_z ) {
+            binding.mop.erase();
+        }
+        binding.dest_size = size;
+        binding.ea = ea;
+        ++count;
         return true;
     }
     
@@ -290,13 +223,11 @@ inline AstPtr make_unary(mcode_t op, AstPtr operand) {
 const char* opcode_name(mcode_t op);
 
 // Check if two mops are equal (ignoring size differences)
-bool mops_equal_ignore_size(const mop_t& a, const mop_t& b);
+bool mops_equal_strict(const mop_t& a, const mop_t& b);
 
 // Size mask for given byte size
 uint64_t size_mask(int size);
 
 // Two's complement table for subtraction patterns
-uint64_t twos_complement_sub_value(int size);
-
 } // namespace ast
 } // namespace chernobog

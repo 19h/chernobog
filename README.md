@@ -38,8 +38,8 @@ Chernobog automatically detects and reverses the following Hikari obfuscation te
 - **Stack String Construction** - Reconstructs strings built character-by-character on the stack
 - **Global Constant Inlining** - Replaces loads from read-only globals with immediate values
 
-### Code Transformation (90+ MBA Rules)
-Mixed Boolean-Arithmetic (MBA) simplification using pattern matching with automatic fuzzing for commutative variants:
+### Code Transformation (104 MBA Rules)
+Mixed Boolean-Arithmetic (MBA) simplification using Z3-certified rules and lazy commutative matching:
 
 **Addition patterns:**
 - `x - (~y + 1)` → `x + y` (two's complement)
@@ -69,7 +69,7 @@ Mixed Boolean-Arithmetic (MBA) simplification using pattern matching with automa
 - `~(~x & ~y)` → `x | y` (De Morgan)
 - `x | (x & y)` → `x` (absorption)
 
-**And many more...** (~90+ rules derived from Hacker's Delight, OLLVM patterns, and algebraic factorizations)
+**And many more...** (104 registered rules derived from Hacker's Delight, OLLVM patterns, and algebraic factorizations)
 
 ### Opaque Predicate Elimination
 - **Jump Optimization** - Z3-based analysis for complex conditional simplification
@@ -142,6 +142,26 @@ make build-windows-clang
 This preset expects LLVM tools (`clang-cl`, `lld-link`, `llvm-lib`, and
 `llvm-rc`) to be available in `PATH`.
 
+### Build Every Platform From One Command
+
+On macOS, `make all-platforms` now builds:
+
+- an arm64 macOS plugin at `out/artifacts/chernobog_macos-arm64.dylib`
+- an x86_64 macOS plugin at `out/artifacts/chernobog_macos-x86_64.dylib`
+- a Linux x86_64 plugin at `out/artifacts/chernobog_linux-x86_64.so`
+- a Windows x86_64 plugin at `out/artifacts/chernobog_windows-x86_64-clang.dll`
+
+```bash
+export IDASDK=/path/to/idasdk
+export XWIN_ROOT=/path/to/xwin
+make all-platforms
+```
+
+Notes:
+
+- Linux builds run in Docker on non-Linux hosts and require `docker`.
+- Windows builds still use the local `clang-cl` + `xwin` flow above.
+
 ## Installation
 
 ```bash
@@ -188,79 +208,6 @@ To see what obfuscation types are present without making changes:
 
 Press `Ctrl+Shift+H` to display plugin information and supported obfuscation types.
 
-## Architecture
-
-```
-src/
-├── plugin/
-│   ├── deobf_plugin.cpp          # IDA plugin entry point & hexrays callbacks
-│   └── component_registry.cpp    # Modular component registration system
-│
-├── deobf/
-│   ├── deobf_main.cpp            # Main deobfuscation orchestration
-│   ├── deobf_types.h             # Common types and enums
-│   ├── deobf_utils.cpp           # Utility functions
-│   │
-│   ├── analysis/                 # Core analysis infrastructure
-│   │   ├── z3_solver.cpp         # Z3 symbolic execution engine
-│   │   ├── ast.cpp               # AST tree representation for patterns
-│   │   ├── ast_builder.cpp       # AST construction helpers
-│   │   ├── pattern_match.cpp     # Pattern detection utilities
-│   │   ├── pattern_storage.cpp   # O(log n) pattern lookup
-│   │   ├── pattern_fuzzer.cpp    # Commutative/associative variants
-│   │   ├── chain_simplify.cpp    # XOR/AND/OR/ADD chain simplification
-│   │   ├── expr_simplify.cpp     # Expression simplification
-│   │   ├── cfg_analysis.cpp      # Control flow graph analysis
-│   │   ├── opaque_eval.cpp       # Opaque predicate evaluation
-│   │   ├── stack_tracker.cpp     # Virtual stack analysis
-│   │   └── arch_utils.cpp        # Architecture-specific utilities
-│   │
-│   ├── rules/                    # MBA simplification rules
-│   │   ├── pattern_rule.cpp      # Rule base class & macros
-│   │   ├── rule_registry.cpp     # Central rule management
-│   │   ├── rules_add.cpp         # 17 addition rules
-│   │   ├── rules_sub.cpp         # 11 subtraction rules
-│   │   ├── rules_xor.cpp         # 19 XOR rules
-│   │   ├── rules_and.cpp         # 16 AND rules
-│   │   ├── rules_or.cpp          # 15 OR rules
-│   │   ├── rules_misc.cpp        # 20 misc rules (NEG, BNOT, MUL, etc.)
-│   │   ├── rules_predicate.cpp   # ~30 predicate optimization rules
-│   │   └── jump_rules.cpp        # ~10 jump optimization rules
-│   │
-│   └── handlers/                 # Deobfuscation handlers
-│       ├── deflatten.cpp         # Z3-based control flow deflattening
-│       ├── unflattener_base.cpp  # Unflattener framework (7 strategies)
-│       ├── bogus_cf.cpp          # Bogus control flow removal
-│       ├── mba_simplify.cpp      # MBA pattern matching integration
-│       ├── peephole.cpp          # Peephole optimizers (7 optimizers)
-│       ├── jump_optimizer.cpp    # Jump condition simplification
-│       ├── string_decrypt.cpp    # String decryption (microcode)
-│       ├── const_decrypt.cpp     # Constant decryption
-│       ├── stack_string.cpp      # Stack string reconstruction
-│       ├── global_const.cpp      # Global constant inlining
-│       ├── indirect_branch.cpp   # Indirect branch resolution
-│       ├── indirect_call.cpp     # Indirect call resolution (microcode)
-│       ├── block_merge.cpp       # Basic block merging
-│       ├── identity_call.cpp     # Identity function resolution
-│       ├── hikari_wrapper.cpp    # Wrapper function resolution
-│       ├── savedregs.cpp         # Register demotion reversal
-│       ├── ptr_resolve.cpp       # Pointer reference resolution
-│       ├── objc_resolve.cpp      # ObjC call resolution
-│       ├── ctree_const_fold.cpp  # Ctree constant folding
-│       ├── ctree_switch_fold.cpp # Ctree switch reconstruction
-│       ├── ctree_indirect_call.cpp # Ctree indirect call resolution
-│       └── ctree_string_decrypt.cpp # Ctree string decryption
-│
-├── common/
-│   ├── warn_off.h                # Disable IDA SDK warnings
-│   └── warn_on.h                 # Re-enable warnings
-│
-└── tests/
-    ├── run_tests.sh              # Comprehensive test suite
-    ├── test_components.sh        # Component-level tests
-    └── test_individual_functions.sh  # Function-specific tests
-```
-
 ## How It Works
 
 Chernobog operates as a Hex-Rays optimizer callback, integrating directly into IDA's microcode optimization pipeline. The system uses a sophisticated multi-phase approach:
@@ -272,7 +219,7 @@ Chernobog operates as a Hex-Rays optimizer callback, integrating directly into I
 
 ### Phase 2: Transformation (MMAT_LOCOPT)
 - **CFG Reconstruction**: Applies control flow changes when the graph is stable
-- **MBA Simplification**: Pattern-based simplification with O(log n) lookup and automatic fuzzing
+- **MBA Simplification**: Z3-certified simplification with average O(1) root-opcode lookup and lazy commutative matching
 - **Peephole Optimization**: Local optimizations (constant folding, dead code elimination)
 
 ### Phase 3: Ctree Cleanup (CMAT_FINAL)
@@ -302,32 +249,35 @@ The pattern matcher automatically generates equivalent variants:
 
 ## Testing
 
-The test suite validates all components:
+The executable regression suite is integrated with CTest:
 
 ```bash
-# Run full test suite
-./tests/run_tests.sh
+# Native Release build and all tests
+cmake --preset native-release
+cmake --build --preset native-release
+ctest --test-dir build --output-on-failure
 
-# Verbose output
-./tests/run_tests.sh --verbose
+# Explicit macOS architecture builds
+cmake --preset macos-arm64-release
+cmake --build --preset macos-arm64-release
+ctest --test-dir out/build/macos-arm64-release --output-on-failure
 
-# Quick tests only
-./tests/run_tests.sh --quick
-
-# Test specific component
-./tests/run_tests.sh --component mba
-./tests/run_tests.sh --component unflattener
-./tests/run_tests.sh --component predicate
+cmake --preset macos-x86_64-release
+cmake --build --preset macos-x86_64-release
+ctest --test-dir out/build/macos-x86_64-release --output-on-failure
 ```
 
 Test coverage includes:
-- AST system and pattern matching
-- All 90+ MBA simplification rules
-- Predicate rules and jump optimization
-- Chain simplifier
-- 7 peephole optimizers
-- 7 unflattener strategies
-- Full decompilation integration
+- exact-width bit-vector and target-endian decoding semantics
+- alignment-independent SIMD hashing and comparison
+- unique-model Z3 solving, including ambiguous/unsatisfiable/64-bit cases
+- all 104 registered MBA rules, Z3-verified at 8, 16, 32, and 64 bits
+- commutative AST matching and binding rollback for five microcode operators
+- Hikari XOR-string recovery with both terminator forms and corruption rejection
+
+The CTest targets are SDK-linked but do not constitute a live-IDB decompiler
+integration test. Runtime validation requires an IDA/Hex-Rays build compatible
+with the SDK used to compile the plugin and a representative binary corpus.
 
 ## Limitations
 

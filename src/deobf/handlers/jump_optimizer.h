@@ -34,6 +34,7 @@ private:
     // Apply optimization based on rule result
     // result: 1 = always taken, 0 = never taken
     static int apply_optimization(mblock_t* blk, minsn_t* jcc, int result);
+    static void replace_successors(mblock_t* blk, int new_target);
 
     static size_t jumps_simplified_;
     static size_t jumps_converted_goto_;

@@ -239,11 +239,6 @@ class Or_Rule_1 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Or_Rule_1"; }
 
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
-
     AstPtr get_pattern() const override
     {
         return bor(x_0(), x_0());
@@ -259,11 +254,6 @@ public:
 class Or_Rule_2 : public PatternMatchingRule {
 public:
     const char* name() const override { return "Or_Rule_2"; }
-
-    bool fuzz_pattern() const override
-    {
-        return false;
-    }
 
     AstPtr get_pattern() const override
     {

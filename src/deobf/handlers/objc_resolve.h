@@ -6,24 +6,14 @@
 //
 // Handles obfuscated Objective-C method calls:
 //   - Indirect objc_msgSend calls through stack/registers
-//   - Encrypted or split selector strings
-//   - Wrapped objc_msgSend calls (through wrapper functions)
-//   - sel_registerName / sel_getUid patterns
-//   - NSSelectorFromString patterns
+//   - Direct and pointer-indirected static selector strings
+//   - Direct Objective-C class references
 //
 // Example patterns:
 //   1. Direct obfuscation:
 //      *(&savedregs - 132) = &objc_msgSend;
 //      *(&savedregs - 133) = "doSomething:";
 //      (*(&savedregs - 132))(obj, *(&savedregs - 133), arg);
-//
-//   2. Dynamic selector lookup:
-//      sel = sel_registerName("methodName");
-//      objc_msgSend(obj, sel, args);
-//
-//   3. Wrapper function:
-//      HikariFunctionWrapper_1234(obj, selector, args);
-//      // where wrapper just calls objc_msgSend
 //
 // Resolution approach:
 //   1. Identify objc_msgSend call sites (direct and indirect)
@@ -67,6 +57,8 @@ private:
         MSGSEND_SUPER,          // objc_msgSendSuper
         MSGSEND_SUPER2,         // objc_msgSendSuper2
         MSGSEND_STRET,          // objc_msgSend_stret
+        MSGSEND_SUPER_STRET,    // objc_msgSendSuper_stret
+        MSGSEND_SUPER2_STRET,   // objc_msgSendSuper2_stret
         MSGSEND_FPRET,          // objc_msgSend_fpret
         MSGSEND_FP2RET,         // objc_msgSend_fp2ret
     };
@@ -88,16 +80,6 @@ private:
     static bool trace_selector(mbl_array_t *mba, mblock_t *blk,
                               minsn_t *call_insn,
                               qstring *out_selector);
-
-    // Get selector from sel_registerName / sel_getUid call
-    static bool get_selector_from_registration(mbl_array_t *mba,
-                                              const mop_t &op,
-                                              qstring *out);
-
-    // Get selector from NSSelectorFromString call
-    static bool get_selector_from_nsselector(mbl_array_t *mba,
-                                            const mop_t &op,
-                                            qstring *out);
 
     // Trace receiver to find class
     static bool trace_receiver_class(mbl_array_t *mba, mblock_t *blk,

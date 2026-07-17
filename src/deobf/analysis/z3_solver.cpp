@@ -1,5 +1,7 @@
 #include "z3_solver.h"
 #include "opaque_eval.h"
+#include "../../common/bitvector.h"
+#include "../../common/z3_utils.h"
 
 namespace z3_solver {
 
@@ -44,11 +46,9 @@ void z3_context_t::reset() {
 }
 
 void z3_context_t::set_timeout(unsigned ms) {
-    if (ms > 0) {
-        z3::params p(m_ctx);
-        p.set(":timeout", ms);
-        m_solver.set(p);
-    }
+    z3::params p(m_ctx);
+    p.set("timeout", ms);
+    m_solver.set(p);
 }
 
 //--------------------------------------------------------------------------
@@ -95,10 +95,13 @@ z3::expr mcode_translator_t::make_const(uint64_t value, int bits) {
 }
 
 z3::expr mcode_translator_t::make_symbolic(const symbolic_var_t& var) {
+    const int bits = var.size() > 0 && var.size() <= 128
+                   ? var.size() * 8 : 32;
+
     // Check if we have a known value for this variable
     auto it = m_known_values.find(var);
     if (it != m_known_values.end()) {
-        return make_const(it->second, var.size() * 8);
+        return make_const(it->second, bits);
     }
 
     // Check cache
@@ -108,9 +111,6 @@ z3::expr mcode_translator_t::make_symbolic(const symbolic_var_t& var) {
     }
 
     // Create fresh symbolic variable
-    int bits = var.size() * 8;
-    if (bits <= 0) bits = 32;  // Default to 32-bit
-
     std::string name;
     switch (var.kind()) {
         case symbolic_var_t::VAR_REGISTER:
@@ -139,19 +139,103 @@ z3::expr mcode_translator_t::make_symbolic(const mop_t& op) {
     return make_symbolic(mop_to_var(op));
 }
 
-z3::expr mcode_translator_t::get_or_create_var(const mop_t& op) {
-    symbolic_var_t var = mop_to_var(op);
-    return make_symbolic(var);
-}
-
 void mcode_translator_t::set_known_value(const symbolic_var_t& var, uint64_t value) {
     m_known_values[var] = value;
     // Update cache to constant
-    m_var_cache[var] = std::make_shared<z3::expr>(make_const(value, var.size() * 8));
+    const int bits = var.size() > 0 && var.size() <= 128
+                   ? var.size() * 8 : 32;
+    m_var_cache[var] = std::make_shared<z3::expr>(make_const(value, bits));
 }
 
 void mcode_translator_t::set_known_value(const mop_t& op, uint64_t value) {
     set_known_value(mop_to_var(op), value);
+}
+
+void mcode_translator_t::set_symbolic_value(const symbolic_var_t& var,
+                                             const z3::expr& value) {
+    m_known_values.erase(var);
+    const int bits = var.size() > 0 ? var.size() * 8
+                                    : value.get_sort().bv_size();
+    m_var_cache[var] = std::make_shared<z3::expr>(resize(value, bits));
+}
+
+void mcode_translator_t::set_symbolic_value(const mop_t& op,
+                                             const z3::expr& value) {
+    set_symbolic_value(mop_to_var(op), value);
+}
+
+void mcode_translator_t::invalidate_all_values() {
+    m_var_cache.clear();
+    m_known_values.clear();
+}
+
+void mcode_translator_t::invalidate_memory_values() {
+    const auto is_memory = [](const symbolic_var_t& var) {
+        return var.kind() == symbolic_var_t::VAR_STACK ||
+               var.kind() == symbolic_var_t::VAR_GLOBAL ||
+               var.kind() == symbolic_var_t::VAR_MEMORY;
+    };
+
+    for ( auto p = m_var_cache.begin(); p != m_var_cache.end(); ) {
+        p = is_memory(p->first) ? m_var_cache.erase(p) : std::next(p);
+    }
+    for ( auto p = m_known_values.begin(); p != m_known_values.end(); ) {
+        p = is_memory(p->first) ? m_known_values.erase(p) : std::next(p);
+    }
+}
+
+namespace {
+
+bool variables_may_alias(const symbolic_var_t& left,
+                         const symbolic_var_t& right)
+{
+    const auto is_memory = [](symbolic_var_t::var_kind_t kind) {
+        return kind == symbolic_var_t::VAR_STACK ||
+               kind == symbolic_var_t::VAR_GLOBAL ||
+               kind == symbolic_var_t::VAR_MEMORY;
+    };
+
+    if ( is_memory(left.kind()) && is_memory(right.kind()) )
+        return true;
+    if ( left.kind() != right.kind() )
+        return false;
+
+    if ( left.kind() == symbolic_var_t::VAR_REGISTER ) {
+        if ( left.size() <= 0 || right.size() <= 0 )
+            return left.id() == right.id();
+        const uint64_t left_size = static_cast<uint64_t>(left.size());
+        const uint64_t right_size = static_cast<uint64_t>(right.size());
+        if ( left.id() > UINT64_MAX - left_size ||
+             right.id() > UINT64_MAX - right_size )
+            return left.id() == right.id();
+        return left.id() < right.id() + right_size &&
+               right.id() < left.id() + left_size;
+    }
+
+    // Local IDs name the same lvar independent of the access width. Temporary
+    // IDs are unique within one translator epoch.
+    return left.id() == right.id();
+}
+
+} // namespace
+
+void mcode_translator_t::invalidate_aliases(const symbolic_var_t& var) {
+    const bool memory = var.kind() == symbolic_var_t::VAR_STACK ||
+                        var.kind() == symbolic_var_t::VAR_GLOBAL ||
+                        var.kind() == symbolic_var_t::VAR_MEMORY;
+    if ( memory ) {
+        invalidate_memory_values();
+        return;
+    }
+
+    for ( auto p = m_var_cache.begin(); p != m_var_cache.end(); ) {
+        p = variables_may_alias(p->first, var) ? m_var_cache.erase(p)
+                                                : std::next(p);
+    }
+    for ( auto p = m_known_values.begin(); p != m_known_values.end(); ) {
+        p = variables_may_alias(p->first, var) ? m_known_values.erase(p)
+                                                : std::next(p);
+    }
 }
 
 z3::expr mcode_translator_t::zero_extend(const z3::expr& e, int to_bits) {
@@ -192,7 +276,9 @@ z3::expr mcode_translator_t::translate_operand(const mop_t& op, int default_size
     switch (op.t) {
         case mop_n:
             // Immediate constant
-            return make_const(op.nnn->value, bits);
+            if ( op.nnn )
+                return make_const(op.nnn->value, bits);
+            break;
 
         case mop_r:
         case mop_S:
@@ -235,27 +321,45 @@ z3::expr mcode_translator_t::translate_insn(const minsn_t* ins) {
         return m_ctx.ctx().bv_val(0, 32);
     }
 
-    int bits = ins->d.size > 0 ? ins->d.size * 8 : 32;
+    const int result_bits = ins->d.size > 0 ? ins->d.size * 8 : 32;
+
+    // This translator models integer bit-vectors only. A fresh value preserves
+    // soundness for floating-point instructions (notably NaN-sensitive setX)
+    // without claiming IEEE 754 equivalences that were never encoded.
+    if (ins->is_fpinsn()) {
+        return m_ctx.ctx().bv_const(
+            ("fp_" + std::to_string(m_fresh_counter++)).c_str(), result_bits);
+    }
 
     // Translate operands
-    z3::expr l = translate_operand(ins->l, bits / 8);
-    z3::expr r = translate_operand(ins->r, bits / 8);
+    z3::expr l = translate_operand(ins->l, result_bits / 8);
+    z3::expr r = translate_operand(ins->r, result_bits / 8);
 
     // Ensure operands have matching bit widths for binary operations
     if (l.get_sort().bv_size() != r.get_sort().bv_size()) {
         int max_bits = std::max((int)l.get_sort().bv_size(), (int)r.get_sort().bv_size());
-        l = resize(l, max_bits);
-        r = resize(r, max_bits);
-        bits = max_bits;
+        const bool signed_operands =
+            ins->opcode == m_setl || ins->opcode == m_setle ||
+            ins->opcode == m_setg || ins->opcode == m_setge ||
+            ins->opcode == m_sdiv || ins->opcode == m_smod ||
+            ins->opcode == m_sar;
+        l = resize(l, max_bits, signed_operands);
+        r = resize(r, max_bits, signed_operands);
     }
 
-    z3::expr result = m_ctx.ctx().bv_val(0, bits);
+    z3::expr result = m_ctx.ctx().bv_val(0, result_bits);
 
     switch (ins->opcode) {
         // Data movement
         case m_mov:
-        case m_ldx:
             result = l;
+            break;
+
+        case m_ldx:
+            // A load is not equal to its segment selector. Without a memory
+            // model, a fresh value is the conservative representation.
+            result = m_ctx.ctx().bv_const(
+                ("load_" + std::to_string(m_fresh_counter++)).c_str(), result_bits);
             break;
 
         // Arithmetic
@@ -272,20 +376,52 @@ z3::expr mcode_translator_t::translate_insn(const minsn_t* ins) {
             break;
 
         case m_udiv:
-            result = z3::udiv(l, r);
-            break;
-
         case m_sdiv:
-            result = l / r;  // Z3's default division is signed
-            break;
-
         case m_umod:
-            result = z3::urem(l, r);
-            break;
+        case m_smod: {
+            // SMT-LIB makes division by zero total, but executable division
+            // can trap. Only model division/modulo when the divisor is an
+            // exact nonzero value. Signed MIN / -1 can overflow as well.
+            const int operand_bytes =
+                static_cast<int>(r.get_sort().bv_size() / 8U);
+            const int divisor_bytes =
+                chernobog::bitvector::valid_byte_width(ins->r.size)
+                ? ins->r.size : operand_bytes;
+            const std::optional<uint64_t> divisor_value =
+                opaque_eval_t::evaluate_operand(ins->r);
+            const uint64_t divisor = divisor_value
+                ? chernobog::bitvector::truncate(*divisor_value, divisor_bytes)
+                : 0;
 
-        case m_smod:
-            result = z3::srem(l, r);
+            bool safe = divisor_value.has_value() && divisor != 0;
+            if ( safe && (ins->opcode == m_sdiv || ins->opcode == m_smod) &&
+                 chernobog::bitvector::sign_extend(divisor, divisor_bytes) == -1 ) {
+                const std::optional<uint64_t> dividend_value =
+                    opaque_eval_t::evaluate_operand(ins->l);
+                const int dividend_bytes =
+                    chernobog::bitvector::valid_byte_width(ins->l.size)
+                    ? ins->l.size : operand_bytes;
+                safe = dividend_value.has_value() &&
+                    chernobog::bitvector::sign_extend(
+                        *dividend_value, dividend_bytes) !=
+                    chernobog::bitvector::signed_min(operand_bytes);
+            }
+
+            if ( !safe ) {
+                result = m_ctx.ctx().bv_const(
+                    ("div_" + std::to_string(m_fresh_counter++)).c_str(),
+                    result_bits);
+            } else if ( ins->opcode == m_udiv ) {
+                result = z3::udiv(l, r);
+            } else if ( ins->opcode == m_sdiv ) {
+                result = l / r;
+            } else if ( ins->opcode == m_umod ) {
+                result = z3::urem(l, r);
+            } else {
+                result = z3::srem(l, r);
+            }
             break;
+        }
 
         // Bitwise
         case m_and:
@@ -305,7 +441,8 @@ z3::expr mcode_translator_t::translate_insn(const minsn_t* ins) {
             break;
 
         case m_lnot:
-            result = z3::ite(l == 0, m_ctx.ctx().bv_val(1, bits), m_ctx.ctx().bv_val(0, bits));
+            result = z3::ite(l == 0, m_ctx.ctx().bv_val(1, result_bits),
+                            m_ctx.ctx().bv_val(0, result_bits));
             break;
 
         case m_neg:
@@ -327,59 +464,69 @@ z3::expr mcode_translator_t::translate_insn(const minsn_t* ins) {
 
         // Comparisons (return 1 or 0)
         case m_setz:
-            result = z3::ite(l == r, m_ctx.ctx().bv_val(1, bits), m_ctx.ctx().bv_val(0, bits));
+            result = z3::ite(l == r, m_ctx.ctx().bv_val(1, result_bits),
+                            m_ctx.ctx().bv_val(0, result_bits));
             break;
 
         case m_setnz:
-            result = z3::ite(l != r, m_ctx.ctx().bv_val(1, bits), m_ctx.ctx().bv_val(0, bits));
+            result = z3::ite(l != r, m_ctx.ctx().bv_val(1, result_bits),
+                            m_ctx.ctx().bv_val(0, result_bits));
             break;
 
         case m_setl:
-            result = z3::ite(l < r, m_ctx.ctx().bv_val(1, bits), m_ctx.ctx().bv_val(0, bits));
+            result = z3::ite(l < r, m_ctx.ctx().bv_val(1, result_bits),
+                            m_ctx.ctx().bv_val(0, result_bits));
             break;
 
         case m_setle:
-            result = z3::ite(l <= r, m_ctx.ctx().bv_val(1, bits), m_ctx.ctx().bv_val(0, bits));
+            result = z3::ite(l <= r, m_ctx.ctx().bv_val(1, result_bits),
+                            m_ctx.ctx().bv_val(0, result_bits));
             break;
 
         case m_setg:
-            result = z3::ite(l > r, m_ctx.ctx().bv_val(1, bits), m_ctx.ctx().bv_val(0, bits));
+            result = z3::ite(l > r, m_ctx.ctx().bv_val(1, result_bits),
+                            m_ctx.ctx().bv_val(0, result_bits));
             break;
 
         case m_setge:
-            result = z3::ite(l >= r, m_ctx.ctx().bv_val(1, bits), m_ctx.ctx().bv_val(0, bits));
+            result = z3::ite(l >= r, m_ctx.ctx().bv_val(1, result_bits),
+                            m_ctx.ctx().bv_val(0, result_bits));
             break;
 
         case m_setb:
-            result = z3::ite(z3::ult(l, r), m_ctx.ctx().bv_val(1, bits), m_ctx.ctx().bv_val(0, bits));
+            result = z3::ite(z3::ult(l, r), m_ctx.ctx().bv_val(1, result_bits),
+                            m_ctx.ctx().bv_val(0, result_bits));
             break;
 
         case m_setbe:
-            result = z3::ite(z3::ule(l, r), m_ctx.ctx().bv_val(1, bits), m_ctx.ctx().bv_val(0, bits));
+            result = z3::ite(z3::ule(l, r), m_ctx.ctx().bv_val(1, result_bits),
+                            m_ctx.ctx().bv_val(0, result_bits));
             break;
 
         case m_seta:
-            result = z3::ite(z3::ugt(l, r), m_ctx.ctx().bv_val(1, bits), m_ctx.ctx().bv_val(0, bits));
+            result = z3::ite(z3::ugt(l, r), m_ctx.ctx().bv_val(1, result_bits),
+                            m_ctx.ctx().bv_val(0, result_bits));
             break;
 
         case m_setae:
-            result = z3::ite(z3::uge(l, r), m_ctx.ctx().bv_val(1, bits), m_ctx.ctx().bv_val(0, bits));
+            result = z3::ite(z3::uge(l, r), m_ctx.ctx().bv_val(1, result_bits),
+                            m_ctx.ctx().bv_val(0, result_bits));
             break;
 
         // Sign extension
         case m_xds:
-            result = sign_extend(l, bits);
+            result = sign_extend(l, result_bits);
             break;
 
         // Zero extension
         case m_xdu:
-            result = zero_extend(l, bits);
+            result = zero_extend(l, result_bits);
             break;
 
         // Low/high byte operations
         case m_low:
-            if (l.get_sort().bv_size() >= bits) {
-                result = extract(l, bits - 1, 0);
+            if (l.get_sort().bv_size() >= result_bits) {
+                result = extract(l, result_bits - 1, 0);
             } else {
                 result = l;
             }
@@ -388,10 +535,10 @@ z3::expr mcode_translator_t::translate_insn(const minsn_t* ins) {
         case m_high:
             {
                 int src_bits = l.get_sort().bv_size();
-                if (src_bits > bits) {
-                    result = extract(l, src_bits - 1, src_bits - bits);
+                if (src_bits > result_bits) {
+                    result = extract(l, src_bits - 1, src_bits - result_bits);
                 } else {
-                    result = make_const(0, bits);
+                    result = make_const(0, result_bits);
                 }
             }
             break;
@@ -399,56 +546,12 @@ z3::expr mcode_translator_t::translate_insn(const minsn_t* ins) {
         default:
             // Unknown operation - return fresh variable
             deobf::log_verbose("[z3] Unknown opcode %d in translate_insn\n", ins->opcode);
-            result = m_ctx.ctx().bv_const(("insn_" + std::to_string(m_fresh_counter++)).c_str(), bits);
+            result = m_ctx.ctx().bv_const(
+                ("insn_" + std::to_string(m_fresh_counter++)).c_str(), result_bits);
             break;
     }
 
-    return resize(result, bits);
-}
-
-z3::expr mcode_translator_t::translate_comparison(const minsn_t* ins) {
-    if (!ins) {
-        return m_ctx.ctx().bool_val(false);
-    }
-
-    z3::expr l = translate_operand(ins->l);
-    z3::expr r = translate_operand(ins->r);
-
-    // Ensure matching bit widths
-    if (l.get_sort().bv_size() != r.get_sort().bv_size()) {
-        int max_bits = std::max((int)l.get_sort().bv_size(), (int)r.get_sort().bv_size());
-        l = resize(l, max_bits);
-        r = resize(r, max_bits);
-    }
-
-    switch (ins->opcode) {
-        case m_setz:
-            return l == r;
-        case m_setnz:
-            return l != r;
-        case m_setl:
-            return l < r;
-        case m_setle:
-            return l <= r;
-        case m_setg:
-            return l > r;
-        case m_setge:
-            return l >= r;
-        case m_setb:
-            return z3::ult(l, r);
-        case m_setbe:
-            return z3::ule(l, r);
-        case m_seta:
-            return z3::ugt(l, r);
-        case m_setae:
-            return z3::uge(l, r);
-        default:
-            break;
-    }
-
-    // For non-comparison instructions, check if result is non-zero
-    z3::expr result = translate_insn(ins);
-    return result != 0;
+    return resize(result, result_bits);
 }
 
 z3::expr mcode_translator_t::translate_jcc_condition(const minsn_t* jcc) {
@@ -456,38 +559,46 @@ z3::expr mcode_translator_t::translate_jcc_condition(const minsn_t* jcc) {
         return m_ctx.ctx().bool_val(false);
     }
 
-    // For conditional jumps, the condition is typically in the left operand
-    z3::expr cond = translate_operand(jcc->l);
-
-    // Handle nested comparison instruction
-    if (jcc->l.t == mop_d && jcc->l.d) {
-        cond = translate_comparison(jcc->l.d);
-
-        // The jcc type modifies the interpretation
-        switch (jcc->opcode) {
-            case m_jz:
-                return !cond;
-            case m_jnz:
-                return cond;
-            default:
-                break;
-        }
+    if (jcc->is_fpinsn()) {
+        return m_ctx.ctx().bool_const(
+            ("fpjcc_" + std::to_string(m_fresh_counter++)).c_str());
     }
 
-    // For direct conditions (cond != 0)
-    if (cond.is_bv()) {
-        switch (jcc->opcode) {
-            case m_jz:
-                return cond == 0;
-            case m_jnz:
-                return cond != 0;
-            default:
-                break;
-        }
-        return cond != 0;
+    z3::expr l = translate_operand(jcc->l);
+    if (jcc->opcode == m_jcnd) {
+        return l != 0;
     }
 
-    return cond;
+    // Hex-Rays jX instructions compare L and R directly. A nested setX in L
+    // remains an ordinary bit-vector operand; interpreting it separately and
+    // then negating for jz loses the value of R.
+    z3::expr r = translate_operand(jcc->r);
+    if (l.get_sort().bv_size() != r.get_sort().bv_size()) {
+        const int bits = std::max(static_cast<int>(l.get_sort().bv_size()),
+                                  static_cast<int>(r.get_sort().bv_size()));
+        const bool signed_compare = jcc->opcode == m_jl || jcc->opcode == m_jle ||
+                                    jcc->opcode == m_jg || jcc->opcode == m_jge;
+        l = resize(l, bits, signed_compare);
+        r = resize(r, bits, signed_compare);
+    }
+
+    switch (jcc->opcode) {
+        case m_jnz: return l != r;
+        case m_jz:  return l == r;
+        case m_jae: return z3::uge(l, r);
+        case m_jb:  return z3::ult(l, r);
+        case m_ja:  return z3::ugt(l, r);
+        case m_jbe: return z3::ule(l, r);
+        case m_jg:  return l > r;
+        case m_jge: return l >= r;
+        case m_jl:  return l < r;
+        case m_jle: return l <= r;
+        default:
+            // A non-jcc/unsupported condition is unknown, never false by
+            // construction. Callers may attempt tautology proofs on it.
+            return m_ctx.ctx().bool_const(
+                ("jcc_" + std::to_string(m_fresh_counter++)).c_str());
+    }
 }
 
 //--------------------------------------------------------------------------
@@ -499,24 +610,27 @@ symbolic_executor_t::symbolic_executor_t(z3_context_t& ctx)
 
 void symbolic_executor_t::reset() {
     m_state.clear();
-    m_constraints.clear();
     m_translator.reset();
-}
-
-std::unique_ptr<symbolic_executor_t> symbolic_executor_t::clone() const {
-    auto copy = std::make_unique<symbolic_executor_t>(m_ctx);
-    copy->m_state = m_state;
-    copy->m_constraints = m_constraints;
-    return copy;
 }
 
 void symbolic_executor_t::execute_insn(const minsn_t* ins) {
     if (!ins) return;
 
+    // Calls may clobber registers and any memory reachable through arguments.
+    // Without a complete mcallinfo alias/spoil model, retain no prior binding.
+    if (is_mcode_call(ins->opcode)) {
+        m_state.clear();
+        m_translator.invalidate_all_values();
+        return;
+    }
+
     switch (ins->opcode) {
         case m_mov:
-        case m_ldx:
             handle_assignment(ins);
+            break;
+
+        case m_ldx:
+            handle_load(ins);
             break;
 
         case m_stx:
@@ -551,7 +665,13 @@ void symbolic_executor_t::handle_assignment(const minsn_t* ins) {
             ins->d.l ? ins->d.l->idx : 0,
             ins->d.size
         );
+        for ( auto p = m_state.begin(); p != m_state.end(); ) {
+            p = variables_may_alias(p->first, dst_var) ? m_state.erase(p)
+                                                        : std::next(p);
+        }
+        m_translator.invalidate_aliases(dst_var);
         m_state[dst_var] = std::make_shared<z3::expr>(value);
+        m_translator.set_symbolic_value(dst_var, value);
     }
 }
 
@@ -565,14 +685,29 @@ void symbolic_executor_t::handle_store(const minsn_t* ins) {
     // For symbolic execution, we track this in our state
     if (!ins) return;
 
-    if (ins->d.t == mop_S || ins->d.t == mop_v) {
-        z3::expr value = m_translator.translate_operand(ins->l);
+    std::optional<z3::expr> stored_value;
+    if (ins->d.t == mop_S || ins->d.t == mop_v)
+        stored_value = m_translator.translate_operand(ins->l);
+
+    // A store can overlap a previously tracked location. Invalidate memory
+    // first, then install an exact direct stack/global destination if present.
+    for ( auto p = m_state.begin(); p != m_state.end(); ) {
+        const auto kind = p->first.kind();
+        const bool memory = kind == symbolic_var_t::VAR_STACK ||
+                            kind == symbolic_var_t::VAR_GLOBAL ||
+                            kind == symbolic_var_t::VAR_MEMORY;
+        p = memory ? m_state.erase(p) : std::next(p);
+    }
+    m_translator.invalidate_memory_values();
+
+    if (stored_value.has_value()) {
         symbolic_var_t dst_var = symbolic_var_t(
             ins->d.t == mop_S ? symbolic_var_t::VAR_STACK : symbolic_var_t::VAR_GLOBAL,
             ins->d.t == mop_S && ins->d.s ? ins->d.s->off : ins->d.g,
             ins->d.size
         );
-        m_state[dst_var] = std::make_shared<z3::expr>(value);
+        m_state[dst_var] = std::make_shared<z3::expr>(*stored_value);
+        m_translator.set_symbolic_value(dst_var, *stored_value);
     }
 }
 
@@ -593,6 +728,10 @@ std::optional<z3::expr> symbolic_executor_t::get_value(const symbolic_var_t& var
 }
 
 std::optional<z3::expr> symbolic_executor_t::get_value(const mop_t& op) {
+    if ( (op.t == mop_S && !op.s) || (op.t == mop_l && !op.l) ||
+         (op.t != mop_r && op.t != mop_S && op.t != mop_v && op.t != mop_l) )
+        return std::nullopt;
+
     symbolic_var_t var(
         op.t == mop_r ? symbolic_var_t::VAR_REGISTER :
         op.t == mop_S ? symbolic_var_t::VAR_STACK :
@@ -607,77 +746,9 @@ std::optional<z3::expr> symbolic_executor_t::get_value(const mop_t& op) {
     return get_value(var);
 }
 
-void symbolic_executor_t::add_constraint(const z3::expr& constraint) {
-    m_constraints.push_back(std::make_shared<z3::expr>(constraint));
-}
-
-sat_result_t symbolic_executor_t::check_path_feasibility() {
-    m_ctx.solver().reset();
-
-    for (const auto& c : m_constraints) {
-        if (c) m_ctx.solver().add(*c);
-    }
-
-    switch (m_ctx.solver().check()) {
-        case z3::sat:
-            return sat_result_t::SAT;
-        case z3::unsat:
-            return sat_result_t::UNSAT;
-        default:
-            return sat_result_t::UNKNOWN;
-    }
-}
-
 std::optional<uint64_t> symbolic_executor_t::solve_for_value(const z3::expr& expr) {
     m_ctx.solver().reset();
-
-    for (const auto& c : m_constraints) {
-        if (c) m_ctx.solver().add(*c);
-    }
-
-    if (m_ctx.solver().check() == z3::sat) {
-        z3::model m = m_ctx.solver().get_model();
-        z3::expr val = m.eval(expr, true);
-        if (val.is_numeral()) {
-            return val.get_numeral_uint64();
-        }
-    }
-    return std::nullopt;
-}
-
-std::optional<uint64_t> symbolic_executor_t::solve_for_value(const mop_t& op) {
-    z3::expr e = m_translator.translate_operand(op);
-    return solve_for_value(e);
-}
-
-std::vector<uint64_t> symbolic_executor_t::enumerate_values(const mop_t& op, int max_count) {
-    std::vector<uint64_t> values;
-    z3::expr e = m_translator.translate_operand(op);
-
-    m_ctx.solver().reset();
-    for (const auto& c : m_constraints) {
-        if (c) m_ctx.solver().add(*c);
-    }
-
-    while ((int)values.size() < max_count) {
-        if (m_ctx.solver().check() != z3::sat) {
-            break;
-        }
-
-        z3::model m = m_ctx.solver().get_model();
-        z3::expr val = m.eval(e, true);
-        if (!val.is_numeral()) {
-            break;
-        }
-
-        uint64_t v = val.get_numeral_uint64();
-        values.push_back(v);
-
-        // Exclude this value for next iteration
-        m_ctx.solver().add(e != m_ctx.ctx().bv_val(v, e.get_sort().bv_size()));
-    }
-
-    return values;
+    return chernobog::z3_utils::solve_unique_bv(m_ctx.solver(), expr);
 }
 
 //--------------------------------------------------------------------------
@@ -843,23 +914,14 @@ static bool extract_state_comparison(mbl_array_t* mba, int block_idx,
                             // mop_v: d.g is the target address, need to find which block it's in
                             ea_t target_addr = jcc->d.g;
 
-                            // Search for the block containing this address
+                            // A block reference transfers to the block start.
+                            // Mapping an interior instruction to the containing
+                            // block would silently change the branch target.
                             for (int bi = 0; bi < mba->qty; bi++) {
                                 mblock_t* tblk = mba->get_mblock(bi);
-                                if (tblk && tblk->start <= target_addr && target_addr < tblk->end) {
+                                if (tblk && tblk->start == target_addr) {
                                     target_block = bi;
                                     break;
-                                }
-                            }
-
-                            if (target_block < 0) {
-                                // Fallback: find block whose start matches the address
-                                for (int bi = 0; bi < mba->qty; bi++) {
-                                    mblock_t* tblk = mba->get_mblock(bi);
-                                    if (tblk && tblk->start == target_addr) {
-                                        target_block = bi;
-                                        break;
-                                    }
                                 }
                             }
 
@@ -1108,15 +1170,13 @@ state_machine_solver_t::determine_written_state(mbl_array_t* mba, int block_idx,
         }
     }
 
-    // Fallback: scan for direct constant assignments to state var
-    for (const minsn_t* ins = blk->head; ins; ins = ins->next) {
-        if (ins->opcode != m_mov)
-            continue;
+    // Fallback: inspect the last relevant write only. Returning an earlier
+    // constant after a later unknown write would manufacture a transition.
+    for (const minsn_t* ins = blk->tail; ins; ins = ins->prev) {
+        if ( is_mcode_call(ins->opcode) )
+            return std::nullopt;
 
-        if (ins->l.t != mop_n || !is_hikari_state_const(ins->l.nnn->value))
-            continue;
-
-        // Check if destination matches state variable
+        // Check whether the explicit destination matches the state variable.
         bool matches = false;
         if (ins->d.t == mop_S && state_var.kind() == symbolic_var_t::VAR_STACK) {
             if (ins->d.s && ins->d.s->off == (sval_t)state_var.id())
@@ -1130,8 +1190,19 @@ state_machine_solver_t::determine_written_state(mbl_array_t* mba, int block_idx,
         }
 
         if (matches) {
-            return ins->l.nnn->value;
+            if ((ins->opcode == m_mov || ins->opcode == m_stx) &&
+                ins->l.t == mop_n && ins->l.nnn &&
+                is_hikari_state_const(ins->l.nnn->value)) {
+                return ins->l.nnn->value;
+            }
+            return std::nullopt;
         }
+
+        // An intervening store may alias a stack/global state variable.
+        if ( ins->opcode == m_stx &&
+             (state_var.kind() == symbolic_var_t::VAR_STACK ||
+              state_var.kind() == symbolic_var_t::VAR_GLOBAL) )
+            return std::nullopt;
     }
 
     return std::nullopt;
@@ -1296,21 +1367,7 @@ state_machine_solver_t::solve_state_machine(mbl_array_t* mba) {
               machine.dispatchers.size(), machine.transitions.size(),
               machine.solved ? "SOLVED" : "UNSOLVED");
 
-    m_machine = machine;
     return machine;
-}
-
-std::optional<int> state_machine_solver_t::resolve_state_to_block(uint64_t state_value) {
-    if (!m_machine.has_value() || !m_machine->solved)
-        return std::nullopt;
-
-    for (const auto& disp : m_machine->dispatchers) {
-        auto it = disp.state_to_block.find(state_value);
-        if (it != disp.state_to_block.end()) {
-            return it->second;
-        }
-    }
-    return std::nullopt;
 }
 
 //--------------------------------------------------------------------------
@@ -1358,379 +1415,6 @@ opaque_predicate_solver_t::analyze_condition(const minsn_t* cond) {
     }
 }
 
-opaque_predicate_solver_t::analysis_result_t
-opaque_predicate_solver_t::analyze_detailed(const minsn_t* cond) {
-    analysis_result_t result;
-    result.result = analyze_condition(cond);
-
-    try {
-        z3::expr condition = m_translator.translate_jcc_condition(cond);
-        result.simplified = std::make_shared<z3::expr>(condition.simplify());
-
-        switch (result.result) {
-            case PRED_ALWAYS_TRUE:
-                result.proof_hint = "Condition is a tautology";
-                break;
-            case PRED_ALWAYS_FALSE:
-                result.proof_hint = "Condition is a contradiction";
-                break;
-            case PRED_DEPENDS_ON_INPUT:
-                result.proof_hint = "Condition depends on symbolic values";
-                break;
-            default:
-                result.proof_hint = "Analysis inconclusive";
-                break;
-        }
-    } catch (z3::exception&) {
-        result.proof_hint = "Z3 exception during analysis";
-    }
-
-    return result;
-}
-
-bool opaque_predicate_solver_t::is_xy_even_pattern(const minsn_t* ins) {
-    // Pattern: x * (x + 1) % 2 == 0 is always true
-    if (!ins)
-        return false;
-
-    try {
-        z3::expr e = m_translator.translate_insn(ins);
-
-        // Create symbolic x
-        z3::expr x = m_ctx.ctx().bv_const("x", 32);
-
-        // x * (x + 1) % 2
-        z3::expr pattern = z3::urem(x * (x + 1), 2);
-
-        // Check if result == 0 for all x
-        m_ctx.solver().reset();
-        m_ctx.solver().add(pattern != 0);
-
-        return m_ctx.solver().check() == z3::unsat;
-    } catch (z3::exception&) {
-        return false;
-    }
-}
-
-bool opaque_predicate_solver_t::is_tautology_pattern(const minsn_t* ins) {
-    // Pattern: x < C || x >= C (or similar) is always true
-    if (!ins || ins->opcode != m_or)
-        return false;
-
-    try {
-        z3::expr condition = m_translator.translate_insn(ins);
-
-        // Check if condition is always non-zero
-        m_ctx.solver().reset();
-        m_ctx.solver().add(condition == 0);
-
-        return m_ctx.solver().check() == z3::unsat;
-    } catch (z3::exception&) {
-        return false;
-    }
-}
-
-bool opaque_predicate_solver_t::is_modular_pattern(const minsn_t* ins) {
-    // Various modular arithmetic patterns that are constant
-    // E.g., (x^2 - 1) % 8 when x is odd gives 0
-
-    if (!ins)
-        return false;
-
-    // Check if expression contains modulo operation
-    if (ins->opcode != m_umod && ins->opcode != m_smod)
-        return false;
-
-    try {
-        z3::expr e = m_translator.translate_insn(ins);
-        z3::expr simplified = e.simplify();
-
-        // If simplified to a constant, it's a modular pattern
-        if (simplified.is_numeral()) {
-            return true;
-        }
-    } catch (z3::exception&) {
-    }
-
-    return false;
-}
-
-//--------------------------------------------------------------------------
-// expression_simplifier_t implementation
-//--------------------------------------------------------------------------
-expression_simplifier_t::expression_simplifier_t(z3_context_t& ctx)
-    : m_ctx(ctx), m_translator(ctx) {
-}
-
-z3::expr expression_simplifier_t::simplify(const z3::expr& expr) {
-    return expr.simplify();
-}
-
-eval_result_t expression_simplifier_t::evaluate_constant(const minsn_t* ins) {
-    if (!ins)
-        return eval_result_t::unknown();
-
-    // First try simple evaluation
-    auto simple_result = opaque_eval_t::evaluate_expr(const_cast<minsn_t*>(ins));
-    if (simple_result.has_value()) {
-        return eval_result_t::constant(*simple_result, ins->d.size * 8);
-    }
-
-    // Use Z3 for complex expressions
-    try {
-        z3::expr e = m_translator.translate_insn(ins);
-        z3::expr simplified = e.simplify();
-
-        if (simplified.is_numeral()) {
-            uint64_t val = simplified.get_numeral_uint64();
-            return eval_result_t::constant(val, simplified.get_sort().bv_size());
-        }
-    } catch (z3::exception&) {
-    }
-
-    return eval_result_t::unknown();
-}
-
-eval_result_t expression_simplifier_t::evaluate_constant(const mop_t& op) {
-    // Handle immediate constants directly
-    if (op.t == mop_n) {
-        return eval_result_t::constant(op.nnn->value, op.size * 8);
-    }
-
-    // Handle global variables by reading from binary
-    if (op.t == mop_v) {
-        auto val = opaque_eval_t::read_global(op.g, op.size);
-        if (val.has_value()) {
-            return eval_result_t::constant(*val, op.size * 8);
-        }
-    }
-
-    // Handle sub-instructions
-    if (op.t == mop_d && op.d) {
-        return evaluate_constant(op.d);
-    }
-
-    return eval_result_t::unknown();
-}
-
-bool expression_simplifier_t::are_equivalent(const z3::expr& a, const z3::expr& b) {
-    try {
-        m_ctx.solver().reset();
-        m_ctx.solver().add(a != b);
-        return m_ctx.solver().check() == z3::unsat;
-    } catch (z3::exception&) {
-        return false;
-    }
-}
-
-bool expression_simplifier_t::are_equivalent(const minsn_t* a, const minsn_t* b) {
-    if (!a || !b)
-        return false;
-
-    try {
-        z3::expr ea = m_translator.translate_insn(a);
-        z3::expr eb = m_translator.translate_insn(b);
-        return are_equivalent(ea, eb);
-    } catch (z3::exception&) {
-        return false;
-    }
-}
-
-//--------------------------------------------------------------------------
-// Convenience functions
-//--------------------------------------------------------------------------
-std::optional<bool> is_condition_constant(const minsn_t* cond) {
-    opaque_predicate_solver_t solver(get_global_context());
-    auto result = solver.analyze_condition(cond);
-
-    switch (result) {
-        case opaque_predicate_solver_t::PRED_ALWAYS_TRUE:
-            return true;
-        case opaque_predicate_solver_t::PRED_ALWAYS_FALSE:
-            return false;
-        default:
-            return std::nullopt;
-    }
-}
-
-eval_result_t evaluate_to_constant(const minsn_t* ins) {
-    expression_simplifier_t simplifier(get_global_context());
-    return simplifier.evaluate_constant(ins);
-}
-
-eval_result_t evaluate_to_constant(const mop_t& op) {
-    expression_simplifier_t simplifier(get_global_context());
-    return simplifier.evaluate_constant(op);
-}
-
-bool instructions_equivalent(const minsn_t* a, const minsn_t* b) {
-    expression_simplifier_t simplifier(get_global_context());
-    return simplifier.are_equivalent(a, b);
-}
-
-//--------------------------------------------------------------------------
-// constant_optimizer_t implementation
-//--------------------------------------------------------------------------
-constant_optimizer_t::constant_optimizer_t(z3_context_t& ctx)
-    : m_ctx(ctx), m_translator(ctx) {
-}
-
-void constant_optimizer_t::count_complexity(const mop_t& op, complexity_t& out) {
-    if (op.t == mop_n) {
-        out.const_count++;
-        return;
-    }
-
-    if (op.t == mop_r || op.t == mop_S || op.t == mop_v || op.t == mop_l) {
-        out.var_count++;
-        return;
-    }
-
-    if (op.t == mop_d && op.d) {
-        out.op_count++;
-        count_complexity(op.d->l, out);
-        if (op.d->r.t != mop_z) {
-            count_complexity(op.d->r, out);
-        }
-    }
-}
-
-constant_optimizer_t::complexity_t
-constant_optimizer_t::analyze_complexity(const minsn_t* ins) {
-    complexity_t result = {0, 0, 0};
-    if (!ins) return result;
-
-    result.op_count = 1;
-    count_complexity(ins->l, result);
-    if (ins->r.t != mop_z) {
-        count_complexity(ins->r, result);
-    }
-    return result;
-}
-
-constant_optimizer_t::complexity_t
-constant_optimizer_t::analyze_complexity(const mop_t& op) {
-    complexity_t result = {0, 0, 0};
-    count_complexity(op, result);
-    return result;
-}
-
-std::optional<uint64_t> constant_optimizer_t::quick_eval(const z3::expr& expr, int bits) {
-    try {
-        // Collect all variables in the expression
-        std::set<std::string> var_names;
-        // Z3 doesn't have a direct way to get free variables, so we use evaluation
-
-        z3::context& ctx = m_ctx.ctx();
-
-        // Test with x = 0 for all variables
-        z3::model model1(ctx);
-
-        // Create a solver to get a model with 0s
-        z3::solver solver1(ctx);
-        // Build constraints: all free vars = 0
-
-        // Simplified: just evaluate directly with simplify
-        z3::expr e0 = expr.simplify();
-
-        // If it simplifies to a constant, return it
-        if (e0.is_numeral()) {
-            return e0.get_numeral_uint64();
-        }
-
-        // Otherwise, can't quick-evaluate
-        return std::nullopt;
-
-    } catch (z3::exception&) {
-        return std::nullopt;
-    }
-}
-
-bool constant_optimizer_t::z3_verify_constant(const z3::expr& expr, uint64_t expected, int bits) {
-    try {
-        z3::context& ctx = m_ctx.ctx();
-        z3::solver& solver = m_ctx.solver();
-
-        solver.reset();
-
-        // Check if expr can ever NOT equal expected
-        z3::expr expected_val = ctx.bv_val(expected, bits);
-        solver.add(expr != expected_val);
-
-        // If unsatisfiable, expr is always equal to expected
-        return solver.check() == z3::unsat;
-
-    } catch (z3::exception&) {
-        return false;
-    }
-}
-
-constant_optimizer_t::const_result_t
-constant_optimizer_t::analyze(const minsn_t* ins, const config_t& cfg) {
-    const_result_t result;
-    if (!ins) return result;
-
-    // Check complexity threshold
-    auto complexity = analyze_complexity(ins);
-    if (complexity.op_count < cfg.min_opcodes) {
-        return result;  // Not complex enough to be obfuscated
-    }
-
-    int bits = ins->d.size * 8;
-    if (bits == 0) bits = 64;
-
-    try {
-        m_ctx.set_timeout(cfg.timeout_ms);
-        z3::expr e = m_translator.translate_insn(ins);
-
-        // Quick eval first
-        auto quick_result = quick_eval(e, bits);
-        if (quick_result.has_value()) {
-            result.is_constant = true;
-            result.value = *quick_result;
-            result.bit_width = bits;
-            result.method = "quick_eval";
-            return result;
-        }
-
-        // Try Z3 simplification
-        z3::expr simplified = e.simplify();
-        if (simplified.is_numeral()) {
-            result.is_constant = true;
-            result.value = simplified.get_numeral_uint64();
-            result.bit_width = bits;
-            result.method = "z3_simplify";
-            return result;
-        }
-
-    } catch (z3::exception& e) {
-        deobf::log_verbose("[z3] Exception in constant analysis: %s\n", e.msg());
-    }
-
-    return result;
-}
-
-constant_optimizer_t::const_result_t
-constant_optimizer_t::analyze_operand(const mop_t& op, const config_t& cfg) {
-    const_result_t result;
-
-    // Direct constant
-    if (op.t == mop_n) {
-        result.is_constant = true;
-        result.value = op.nnn->value;
-        result.bit_width = op.size * 8;
-        result.method = "direct";
-        return result;
-    }
-
-    // Sub-instruction
-    if (op.t == mop_d && op.d) {
-        return analyze(op.d, cfg);
-    }
-
-    return result;
-}
-
 //--------------------------------------------------------------------------
 // predicate_simplifier_t implementation
 //--------------------------------------------------------------------------
@@ -1757,23 +1441,6 @@ std::optional<bool> predicate_simplifier_t::simplify_setz(const minsn_t* ins) {
 
 std::optional<bool> predicate_simplifier_t::simplify_setnz(const minsn_t* ins) {
     if (!ins || ins->opcode != m_setnz)
-        return std::nullopt;
-
-    try {
-        z3::expr e = m_translator.translate_insn(ins);
-        z3::expr simplified = e.simplify();
-
-        if (simplified.is_numeral()) {
-            return simplified.get_numeral_uint64() != 0;
-        }
-    } catch (z3::exception&) {
-    }
-
-    return std::nullopt;
-}
-
-std::optional<bool> predicate_simplifier_t::simplify_lnot(const minsn_t* ins) {
-    if (!ins || ins->opcode != m_lnot)
         return std::nullopt;
 
     try {

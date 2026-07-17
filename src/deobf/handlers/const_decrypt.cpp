@@ -1,4 +1,5 @@
 #include "const_decrypt.h"
+#include "../../common/ida_memory.h"
 
 //--------------------------------------------------------------------------
 // Detection
@@ -125,12 +126,12 @@ bool const_decrypt_handler_t::is_const_encryption_pattern(minsn_t *ins, encrypte
     int size = 0;
 
     // Check both operand orderings
-    if ( ins->l.t == mop_v && ins->r.t == mop_n ) {
+    if ( ins->l.t == mop_v && ins->r.t == mop_n && ins->r.nnn ) {
         // Left is global, right is immediate
         gv_addr = ins->l.g;
         key = ins->r.nnn->value;
         size = ins->l.size;
-    } else if ( ins->r.t == mop_v && ins->l.t == mop_n ) {
+    } else if ( ins->r.t == mop_v && ins->l.t == mop_n && ins->l.nnn ) {
         // Right is global, left is immediate
         gv_addr = ins->r.g;
         key = ins->l.nnn->value;
@@ -143,16 +144,16 @@ bool const_decrypt_handler_t::is_const_encryption_pattern(minsn_t *ins, encrypte
 
         if ( ins->l.t == mop_d && ins->l.d && ins->l.d->opcode == m_ldx ) {
             minsn_t *load = ins->l.d;
-            if ( load->l.t == mop_v ) {
-                gv_mop = &load->l;
-                if ( ins->r.t == mop_n ) 
+            if ( load->r.t == mop_v ) {
+                gv_mop = &load->r;
+                if ( ins->r.t == mop_n && ins->r.nnn )
                     key_mop = &ins->r;
             }
         } else if ( ins->r.t == mop_d && ins->r.d && ins->r.d->opcode == m_ldx ) {
             minsn_t *load = ins->r.d;
-            if ( load->l.t == mop_v ) {
-                gv_mop = &load->l;
-                if ( ins->l.t == mop_n ) 
+            if ( load->r.t == mop_v ) {
+                gv_mop = &load->r;
+                if ( ins->l.t == mop_n && ins->l.nnn )
                     key_mop = &ins->l;
             }
         }
@@ -160,23 +161,34 @@ bool const_decrypt_handler_t::is_const_encryption_pattern(minsn_t *ins, encrypte
         if ( gv_mop && key_mop ) {
             gv_addr = gv_mop->g;
             key = key_mop->nnn->value;
-            size = gv_mop->size;
+            minsn_t *load = ins->l.t == mop_d ? ins->l.d : ins->r.d;
+            size = load->d.size;
         }
     }
 
     if ( gv_addr == BADADDR || size <= 0 || size > 8 ) 
         return false;
 
-    // Verify it's a data location (not code)
+    // The database value is invariant only in non-writable storage.
+    segment_t *segment = getseg(gv_addr);
+    if ( !segment || (segment->perm & SEGPERM_WRITE) != 0 )
+        return false;
+
     flags64_t flags = get_flags(gv_addr);
-    if ( is_code(flags) ) 
+    if ( is_code(flags) || !is_loaded(gv_addr) )
         return false;
 
     // Read the encrypted value
-    uint64_t encrypted = read_global_value(gv_addr, size);
+    auto encrypted_value = read_global_value(gv_addr, size);
+    if ( !encrypted_value.has_value() )
+        return false;
+    uint64_t encrypted = *encrypted_value;
 
     // Compute decrypted value
-    uint64_t decrypted = encrypted ^ key;
+    const uint64_t mask = size == 8 ? UINT64_MAX
+        : (uint64_t{1} << static_cast<unsigned>(size * 8)) - 1;
+    key &= mask;
+    uint64_t decrypted = (encrypted ^ key) & mask;
 
     if ( out ) {
         out->xor_insn = ins;
@@ -205,6 +217,8 @@ int const_decrypt_handler_t::replace_with_constant(mblock_t *blk, minsn_t *ins,
     ins->opcode = m_mov;
     ins->l.make_number(ec.decrypted_val, ec.size);
     ins->r.erase();
+    if ( blk )
+        blk->mark_lists_dirty();
 
     return 1;
 }
@@ -212,27 +226,7 @@ int const_decrypt_handler_t::replace_with_constant(mblock_t *blk, minsn_t *ins,
 //--------------------------------------------------------------------------
 // Read value from global
 //--------------------------------------------------------------------------
-uint64_t const_decrypt_handler_t::read_global_value(ea_t addr, int size)
+std::optional<uint64_t> const_decrypt_handler_t::read_global_value(ea_t addr, int size)
 {
-    uint64_t val = 0;
-
-    switch ( size ) {
-        case 1:
-            val = get_byte(addr);
-            break;
-        case 2:
-            val = get_word(addr);
-            break;
-        case 4:
-            val = get_dword(addr);
-            break;
-        case 8:
-            val = get_qword(addr);
-            break;
-        default:
-            get_bytes(&val, size, addr);
-            break;
-    }
-
-    return val;
+    return chernobog::ida_memory::read_integer(addr, size);
 }

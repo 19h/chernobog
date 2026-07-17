@@ -1,9 +1,5 @@
 #include "deobf_main.h"
-#include "analysis/pattern_match.h"
-#include "analysis/expr_simplify.h"
-#include "analysis/cfg_analysis.h"
 #include "analysis/opaque_eval.h"
-#include "analysis/stack_tracker.h"
 #include "handlers/deflatten.h"
 #include "handlers/bogus_cf.h"
 #include "handlers/string_decrypt.h"
@@ -20,49 +16,44 @@
 #include "handlers/ptr_resolve.h"
 #include "handlers/indirect_call.h"
 #include "handlers/ctree_string_decrypt.h"
-#include "analysis/ast_builder.h"
 #include "rules/rule_registry.h"
 
 bool chernobog_t::s_active = false;
 deobf_ctx_t chernobog_t::s_ctx;
 
 // Forward declaration
-static void run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx);
+static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx);
 
 static chernobog_t *g_deobf = nullptr;
 static chernobog_optblock_t *g_optblock = nullptr;
 
-// Track functions we've already processed to avoid duplicate analysis
-static std::set<ea_t> s_processed_functions;
+static void register_deobf_actions();
+static void unregister_deobf_actions();
 
 // Track optblock processed combinations (cleared on refresh)
-static std::set<uint64_t> s_optblock_processed;
+static std::set<std::pair<ea_t, int>> s_optblock_processed;
 
 // Clear tracking for a function to allow re-deobfuscation
 void chernobog_clear_function_tracking(ea_t func_ea)
 {
-    s_processed_functions.erase(func_ea);
-
     // Clear all maturity combinations for this function from optblock tracking
     for ( int m = 0; m < 16; ++m )
-    {
-        uint64_t key = ((uint64_t)func_ea << 4) | m;
-        s_optblock_processed.erase(key);
-    }
+        s_optblock_processed.erase({func_ea, m});
 
     // Clear deferred analysis for all handlers
     deflatten_handler_t::clear_deferred(func_ea);
-    identity_call_handler_t::clear_deferred(func_ea);
+    identity_call_handler_t::clear_caches();
 }
 
 // Clear ALL tracking caches (called on database load if CHERNOBOG_RESET=1)
 void chernobog_clear_all_tracking()
 {
-    s_processed_functions.clear();
     s_optblock_processed.clear();
     deflatten_handler_t::s_deferred_analysis.clear();
-    identity_call_handler_t::s_deferred_analysis.clear();
-    msg("[chernobog] Cleared all deobfuscation caches\n");
+    identity_call_handler_t::clear_caches();
+    hikari_wrapper_handler_t::clear_cache();
+    opaque_eval_t::clear_cache();
+    deobf::log_verbose("[chernobog] Cleared all deobfuscation caches\n");
 }
 
 //--------------------------------------------------------------------------
@@ -72,22 +63,10 @@ void chernobog_clear_all_tracking()
 
 static void optblock_debug(const char *fmt, ...)
 {
-#ifndef _WIN32
-    char buf[4096];
     va_list args;
     va_start(args, fmt);
-    int len = qvsnprintf(buf, sizeof(buf), fmt, args);
+    deobf::debug_vlog("/tmp/optblock_debug.log", fmt, args);
     va_end(args);
-
-    int fd = open("/tmp/optblock_debug.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if ( fd >= 0 )
-    {
-        write(fd, buf, len);
-        close(fd);
-    }
-#else
-    (void)fmt;
-#endif
 }
 
 //--------------------------------------------------------------------------
@@ -128,20 +107,24 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
     ea_t func_ea = mba->entry_ea;
     // maturity already declared above
 
+    if ( maturity != MMAT_LOCOPT && maturity != MMAT_CALLS &&
+         maturity != MMAT_GLBOPT1 )
+        return 0;
+
     // Track which function+maturity combinations we've processed to avoid duplicate work
-    // Key: (func_ea << 4) | maturity (assuming maturity < 16)
-    // Uses global set that can be cleared to allow re-deobfuscation
-    uint64_t key = ((uint64_t)func_ea << 4) | (maturity & 0xF);
+    const auto key = std::make_pair(func_ea, maturity);
 
     if ( s_optblock_processed.count(key) )
     {
-        optblock_debug("[optblock] Already processed key=%llx\n", (unsigned long long)key);
+        optblock_debug("[optblock] Already processed %llx/%d\n",
+                       (unsigned long long)func_ea, maturity);
         return 0;
     }
     s_optblock_processed.insert(key);
 
     optblock_debug("[optblock] NEW processing: maturity=%d, func=%llx\n", maturity, (unsigned long long)func_ea);
-    msg("[optblock] Processing %a at maturity %d (blk %d)\n", func_ea, maturity, blk->serial);
+    deobf::log_verbose("[optblock] Processing %a at maturity %d (blk %d)\n",
+                       func_ea, maturity, blk->serial);
 
     // Run full deobfuscation at maturity 3 (MMAT_LOCOPT) - first opportunity for CFG mods
     if ( maturity == MMAT_LOCOPT )
@@ -151,13 +134,15 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
         full_ctx.mba = mba;
         full_ctx.func_ea = func_ea;
 
-        // First detect what obfuscations are present
-        full_ctx.detected_obf = chernobog_t::detect_obfuscations(mba);
+        const int full_changes = run_deobfuscation_passes(mba, &full_ctx);
         optblock_debug("[optblock] Detected obfuscations: 0x%x\n", full_ctx.detected_obf);
-
-        run_deobfuscation_passes(mba, &full_ctx);
         optblock_debug("[optblock] Full deobfuscation complete, changes: blocks=%d, branches=%d, indirect=%d\n",
                        full_ctx.blocks_merged, full_ctx.branches_simplified, full_ctx.indirect_resolved);
+
+        // The complete pass already includes global-constant and deflattening
+        // handlers. Report its mutations to Hex-Rays and do not run those
+        // handlers a second time on the same microcode maturity.
+        return full_changes;
     }
 
     // Two-phase deflattening approach:
@@ -172,13 +157,6 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
     // At maturity 3, the state machine patterns are still visible (switch/case
     // with state constants), but the CFG has explicit gotos that can be modified.
 
-    // Process at multiple maturity levels
-    // MMAT_LOCOPT (3): CFG modifications (but calls are "unknown" - no mcallinfo)
-    // MMAT_CALLS (4): Call info is available - can modify indirect calls
-    // MMAT_GLBOPT1 (5): Global constant inlining (addresses resolved)
-    if ( maturity != MMAT_LOCOPT && maturity != MMAT_CALLS && maturity != MMAT_GLBOPT1 )
-        return 0;
-
     // At MMAT_CALLS, specifically try to resolve indirect calls
     // This is when mcallinfo is available, making it safe to modify calls
     if ( maturity == MMAT_CALLS )
@@ -186,14 +164,16 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
         if ( indirect_call_handler_t::detect(mba) )
         {
             optblock_debug("[optblock] Running indirect call handler at MMAT_CALLS\n");
-            msg("[optblock] Running indirect call deobfuscation at maturity %d (MMAT_CALLS)\n", maturity);
+            deobf::log_verbose("[optblock] Running indirect call deobfuscation "
+                               "at maturity %d (MMAT_CALLS)\n", maturity);
             deobf_ctx_t icall_ctx;
             icall_ctx.mba = mba;
             icall_ctx.func_ea = func_ea;
             int changes = indirect_call_handler_t::run(mba, &icall_ctx);
             if ( changes > 0 )
             {
-                msg("[optblock] Resolved %d indirect calls at MMAT_CALLS\n", icall_ctx.indirect_resolved);
+                deobf::log_verbose("[optblock] Resolved %d indirect calls at MMAT_CALLS\n",
+                                   icall_ctx.indirect_resolved);
                 return 1;  // Signal that we made changes
             }
         }
@@ -209,11 +189,13 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
     // Try global constant inlining - works better at later maturity when addresses resolved
     if ( maturity >= MMAT_LOCOPT && global_const_handler_t::detect(mba) )
     {
-        msg("[optblock] Detected global constants at maturity %d\n", maturity);
+        deobf::log_verbose("[optblock] Detected global constants at maturity %d\n",
+                           maturity);
         int changes = global_const_handler_t::run(mba, &ctx);
         if ( changes > 0 )
         {
-            msg("[optblock] Global const handler applied %d changes\n", changes);
+            deobf::log_verbose("[optblock] Global const handler applied %d changes\n",
+                               changes);
             total_changes += changes;
         }
     }
@@ -221,11 +203,13 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
     // Check for pending identity call analysis from maturity 0
     if ( identity_call_handler_t::has_pending_analysis(func_ea) )
     {
-        msg("[optblock] Applying deferred identity call transformations for %a\n", func_ea);
+        deobf::log_verbose("[optblock] Applying deferred identity call transformations for %a\n",
+                           func_ea);
         int changes = identity_call_handler_t::apply_deferred(mba, &ctx);
         if ( changes > 0 )
         {
-            msg("[optblock] Identity call handler applied %d changes\n", changes);
+            deobf::log_verbose("[optblock] Identity call handler applied %d changes\n",
+                               changes);
             total_changes += changes;
         }
     }
@@ -234,16 +218,19 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
     // The maturity 0 analysis uses block ADDRESSES which are stable across maturities
     if ( deflatten_handler_t::has_pending_analysis(func_ea) )
     {
-        msg("[optblock] Applying deferred analysis from maturity 0 for %a\n", func_ea);
+        deobf::log_verbose("[optblock] Applying deferred analysis from maturity 0 for %a\n",
+                           func_ea);
         int changes = deflatten_handler_t::apply_deferred(mba, &ctx);
         if ( changes > 0 )
         {
-            msg("[optblock] Deflattening applied %d changes from deferred analysis\n", changes);
+            deobf::log_verbose("[optblock] Deflattening applied %d changes from deferred analysis\n",
+                               changes);
             total_changes += changes;
         }
         else
         {
-            msg("[optblock] Deferred analysis made no changes, trying fresh analysis\n");
+            deobf::log_verbose("[optblock] Deferred analysis made no changes, "
+                               "trying fresh analysis\n");
             // Fall through to fresh analysis
         }
         // apply_deferred clears the deferred analysis, so we won't try again
@@ -254,21 +241,22 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
     // No deferred analysis or it didn't help - try fresh analysis at maturity 3
     if ( !deflatten_handler_t::detect(mba, &ctx) )
     {
-        msg("[optblock] No flattening detected at %a\n", func_ea);
+        deobf::log_verbose("[optblock] No flattening detected at %a\n", func_ea);
         return 0;
     }
 
-    msg("[optblock] Detected flattening at %a, running fresh analysis...\n", func_ea);
+    deobf::log_verbose("[optblock] Detected flattening at %a, running fresh analysis...\n",
+                       func_ea);
 
     // Run the full deflattening pass
     int changes = deflatten_handler_t::run(mba, &ctx);
     if ( changes > 0 )
     {
-        msg("[optblock] Deflattening applied %d changes\n", changes);
+        deobf::log_verbose("[optblock] Deflattening applied %d changes\n", changes);
     }
     else
     {
-        msg("[optblock] Deflattening found patterns but made no changes\n");
+        deobf::log_verbose("[optblock] Deflattening found patterns but made no changes\n");
     }
 
     return changes;
@@ -358,10 +346,14 @@ void chernobog_t::deobfuscate_function(cfunc_t *cfunc)
 //--------------------------------------------------------------------------
 // Core deobfuscation passes (shared by all entry points)
 //--------------------------------------------------------------------------
-static void run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx)
+static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx)
 {
     if ( !mba || !ctx )
-        return;
+        return 0;
+
+    // Database bytes can be patched by string/constant handlers. Restrict
+    // global-value memoization to one coherent pass.
+    opaque_eval_t::clear_cache();
 
     // Detect what obfuscations are present
     ctx->detected_obf = chernobog_t::detect_obfuscations(mba);
@@ -412,9 +404,6 @@ static void run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx)
     {
         deobf::log("[chernobog] - Indirect call obfuscation detected\n");
     }
-
-    // Initialize stack tracker for virtual stack analysis
-    stack_tracker_t::analyze_function(mba);
 
     // Apply deobfuscation passes in order
     int total_changes = 0;
@@ -527,6 +516,7 @@ static void run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx)
     deobf::log("[chernobog]   Constants decrypted: %d\n", ctx->consts_decrypted);
     deobf::log("[chernobog]   Expressions simplified: %d\n", ctx->expressions_simplified);
     deobf::log("[chernobog]   Indirect calls resolved: %d\n", ctx->indirect_resolved);
+    return total_changes;
 }
 
 //--------------------------------------------------------------------------
@@ -619,6 +609,11 @@ uint32_t chernobog_t::detect_obfuscations(mbl_array_t *mba)
     // Check for bogus control flow
     if ( has_bogus_cf(mba, &ctx) )
         detected |= OBF_BOGUS_CF;
+
+    // Restrict string-encryption detection to named encrypted objects that
+    // are data-referenced by this function.
+    if ( has_encrypted_strings(mba->entry_ea) )
+        detected |= OBF_STRING_ENC;
 
     // Check for encrypted constants (XOR patterns)
     if ( has_encrypted_consts(mba) )
@@ -761,6 +756,8 @@ void deobf_init()
     g_optblock = new chernobog_optblock_t();
     install_optblock_handler(g_optblock);
 
+    register_deobf_actions();
+
     chernobog_t::s_active = true;
     msg("[chernobog] Deobfuscator initialized (optinsn + optblock handlers, s_active=true)\n");
 }
@@ -768,6 +765,7 @@ void deobf_init()
 void deobf_done()
 {
     chernobog_t::s_active = false;
+    unregister_deobf_actions();
 
     // Remove instruction-level optimizer
     if ( g_deobf )
@@ -787,11 +785,9 @@ void deobf_done()
 
     // Clear any pending analysis
     deflatten_handler_t::s_deferred_analysis.clear();
-    s_processed_functions.clear();
+    identity_call_handler_t::clear_caches();
+    s_optblock_processed.clear();
 
-    // Clear AST caches (the RuleRegistry singleton intentionally leaks
-    // on exit to avoid crashes during static destruction)
-    chernobog::ast::clear_ast_caches();
     // NOTE: Do NOT call RuleRegistry::instance().clear() here!
     // The RuleRegistry singleton intentionally leaks to avoid crashes from
     // mop_t destructors calling IDA functions that are unavailable at shutdown.
@@ -869,24 +865,30 @@ void deobf_attach_popup(TWidget *widget, TPopupMenu *popup, vdui_t *vu)
     }
 }
 
-// Register actions on init
-static struct action_registrar_t
+static bool s_actions_registered = false;
+
+static void register_deobf_actions()
 {
-    action_registrar_t()
+    if ( s_actions_registered )
+        return;
+    bool registered_any = false;
+    for ( const auto &act : actions )
     {
-        for ( const auto &act : actions )
-        {
-            register_action(act);
-        }
+        registered_any |= register_action(act);
     }
-    ~action_registrar_t()
+    s_actions_registered = registered_any;
+}
+
+static void unregister_deobf_actions()
+{
+    if ( !s_actions_registered )
+        return;
+    for ( const auto &act : actions )
     {
-        for ( const auto &act : actions )
-        {
-            unregister_action(act.name);
-        }
+        unregister_action(act.name);
     }
-} g_action_registrar;
+    s_actions_registered = false;
+}
 
 // Register component
 REGISTER_COMPONENT(

@@ -1,4 +1,5 @@
 #include "global_const.h"
+#include "../../common/ida_memory.h"
 
 //--------------------------------------------------------------------------
 // Detection
@@ -115,13 +116,11 @@ bool global_const_handler_t::is_global_const_load(minsn_t *ins, global_const_t *
 
     ea_t gv_addr = BADADDR;
     int size = 0;
-    mop_t *gv_mop = nullptr;
 
     // Check for direct global reference in left operand
-    if ( ins->l.t == mop_v ) {
+    if ( ins->opcode == m_mov && ins->l.t == mop_v ) {
         gv_addr = ins->l.g;
         size = ins->l.size;
-        gv_mop = &ins->l;
     }
     // Check for load from global (ldx pattern)
     else if ( ins->opcode == m_ldx ) {
@@ -129,23 +128,20 @@ bool global_const_handler_t::is_global_const_load(minsn_t *ins, global_const_t *
         if ( ins->r.t == mop_v ) {
             gv_addr = ins->r.g;
             size = ins->d.size;
-            gv_mop = &ins->r;
         }
         // Also check for address-of global: ldx dst, seg, &global
         // At early maturity, globals may be wrapped in mop_a
         else if ( ins->r.t == mop_a && ins->r.a && ins->r.a->t == mop_v ) {
             gv_addr = ins->r.a->g;
             size = ins->d.size;
-            gv_mop = ins->r.a;
         }
         // Check for immediate address (mop_n) which might be a global
-        else if ( ins->r.t == mop_n ) {
+        else if ( ins->r.t == mop_n && ins->r.nnn ) {
             ea_t addr = (ea_t)ins->r.nnn->value;
             // Verify it's a valid data address
             if ( getseg(addr) != nullptr ) {
                 gv_addr = addr;
                 size = ins->d.size;
-                gv_mop = &ins->r;
             }
         }
         // Check for computed address (mop_d) - result of add/sub with constants
@@ -155,25 +151,27 @@ bool global_const_handler_t::is_global_const_load(minsn_t *ins, global_const_t *
             // Check for add with constant offset: add result, base, offset
             if ( addr_ins->opcode == m_add ) {
                 ea_t base_addr = BADADDR;
-                int64_t offset = 0;
+                uint64_t offset = 0;
 
                 // Check if left is global/number and right is number
                 if ( addr_ins->l.t == mop_v ) {
                     base_addr = addr_ins->l.g;
-                } else if ( addr_ins->l.t == mop_n ) {
+                } else if ( addr_ins->l.t == mop_n && addr_ins->l.nnn ) {
                     base_addr = (ea_t)addr_ins->l.nnn->value;
                 } else if ( addr_ins->l.t == mop_a && addr_ins->l.a && addr_ins->l.a->t == mop_v ) {
                     base_addr = addr_ins->l.a->g;
                 }
 
-                if ( addr_ins->r.t == mop_n ) {
+                if ( addr_ins->r.t == mop_n && addr_ins->r.nnn ) {
                     offset = addr_ins->r.nnn->value;
+                } else {
+                    base_addr = BADADDR;
                 }
 
-                if ( base_addr != BADADDR && getseg(base_addr) != nullptr ) {
-                    gv_addr = base_addr + offset;
+                if ( base_addr != BADADDR && getseg(base_addr) != nullptr
+                  && offset <= uint64_t(BADADDR - base_addr - 1) ) {
+                    gv_addr = base_addr + static_cast<ea_t>(offset);
                     size = ins->d.size;
-                    gv_mop = &ins->r;
                 }
             }
         }
@@ -192,17 +190,18 @@ bool global_const_handler_t::is_global_const_load(minsn_t *ins, global_const_t *
         return false;
 
     // Read the value
-    uint64_t value = read_global_value(gv_addr, size);
+    const std::optional<uint64_t> value = read_global_value(gv_addr, size);
+    if ( !value )
+        return false;
 
     // Skip if value looks like a pointer (we don't want to inline pointers)
-    if ( looks_like_pointer(value, size) ) 
+    if ( looks_like_pointer(*value, size) )
         return false;
 
     if ( out ) {
         out->insn = ins;
-        out->gv_mop = gv_mop;
         out->gv_addr = gv_addr;
-        out->value = value;
+        out->value = *value;
         out->size = size;
     }
 
@@ -218,42 +217,11 @@ bool global_const_handler_t::is_const_data(ea_t addr)
     if ( !seg ) 
         return false;
 
-    // Check segment name for common const data patterns
-    qstring seg_name;
-    get_segm_name(&seg_name, seg);
-
-    // Common read-only section names
-    if ( seg_name == "__const" ||
-        seg_name == ".rodata" ||
-        seg_name == ".rdata" ||
-        seg_name == "__DATA_CONST" ||
-        seg_name == "__cstring" ||
-        seg_name == "__cfstring")
-        {
-        return true;
-    }
-
-    // Also accept __data and .data for now - constants can be there too
-    // But be more conservative
-    if ( seg_name == "__data" || seg_name == ".data" ) {
-        // Check if the value has xrefs that suggest it's not modified
-        xrefblk_t xb;
-        bool has_write_xref = false;
-        for ( bool ok = xb.first_to(addr, XREF_ALL); ok; ok = xb.next_to() ) {
-            if ( xb.type == dr_W ) {
-                has_write_xref = true;
-                break;
-            }
-        }
-        return !has_write_xref;
-    }
-
-    // Check segment permissions if available
-    if ( (seg->perm & SEGPERM_WRITE) == 0 ) {
-        return true;
-    }
-
-    return false;
+    // Names and the absence of static write xrefs do not prove immutability:
+    // another function, the loader, or an indirect store can still mutate a
+    // writable segment.  Only inline bytes whose segment permissions are
+    // read-only in the loaded database.
+    return (seg->perm & SEGPERM_WRITE) == 0;
 }
 
 //--------------------------------------------------------------------------
@@ -289,29 +257,9 @@ bool global_const_handler_t::looks_like_pointer(uint64_t val, int size)
 //--------------------------------------------------------------------------
 // Read value from global
 //--------------------------------------------------------------------------
-uint64_t global_const_handler_t::read_global_value(ea_t addr, int size)
+std::optional<uint64_t> global_const_handler_t::read_global_value(ea_t addr, int size)
 {
-    uint64_t val = 0;
-
-    switch ( size ) {
-        case 1:
-            val = get_byte(addr);
-            break;
-        case 2:
-            val = get_word(addr);
-            break;
-        case 4:
-            val = get_dword(addr);
-            break;
-        case 8:
-            val = get_qword(addr);
-            break;
-        default:
-            get_bytes(&val, size, addr);
-            break;
-    }
-
-    return val;
+    return chernobog::ida_memory::read_integer(addr, size);
 }
 
 //--------------------------------------------------------------------------
@@ -330,6 +278,8 @@ int global_const_handler_t::replace_with_constant(mblock_t *blk, minsn_t *ins,
     ins->opcode = m_mov;
     ins->l.make_number(gc.value, gc.size);
     ins->r.erase();
+    if ( blk )
+        blk->mark_lists_dirty();
 
     return 1;
 }

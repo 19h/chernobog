@@ -1,37 +1,163 @@
 #include "string_decrypt.h"
-#include "../analysis/pattern_match.h"
+#include "../../common/ida_memory.h"
+#include "../../common/string_recovery.h"
+
+#include <cstring>
+
+namespace {
+
+constexpr size_t MAX_ENCRYPTED_STRING_BYTES = 1024;
+
+bool is_hikari_encrypted_name(const qstring& raw_name)
+{
+    const char *name = raw_name.c_str();
+    while ( *name == '_' )
+        ++name;
+
+    constexpr char prefix[] = "EncryptedString";
+    constexpr size_t prefix_length = sizeof(prefix) - 1;
+    return std::strncmp(name, prefix, prefix_length) == 0
+        && (name[prefix_length] == '\0' || name[prefix_length] == '_');
+}
+
+std::set<ea_t> collect_referenced_encrypted_objects(ea_t func_ea)
+{
+    std::set<ea_t> result;
+    func_t *function = get_func(func_ea);
+    if ( !function )
+        return result;
+
+    func_item_iterator_t iterator(function);
+    for ( bool ok = iterator.first(); ok; ok = iterator.next_code() )
+    {
+        const ea_t from = iterator.current();
+        if ( !is_code(get_flags(from)) )
+            continue;
+
+        for ( ea_t to = get_first_dref_from(from);
+              to != BADADDR;
+              to = get_next_dref_from(from, to) )
+        {
+            const ea_t object = get_item_head(to);
+            qstring name;
+            if ( get_name(&name, object) > 0
+              && is_hikari_encrypted_name(name) )
+            {
+                result.insert(object);
+            }
+        }
+    }
+    return result;
+}
+
+bool add_address_offset(ea_t base, uint64_t offset, ea_t *result)
+{
+    if ( !result || base == BADADDR || offset > uint64_t(BADADDR - base - 1) )
+        return false;
+    *result = base + static_cast<ea_t>(offset);
+    return true;
+}
+
+bool static_memory_address(const mop_t& operand, ea_t *address)
+{
+    if ( !address )
+        return false;
+
+    if ( operand.t == mop_v )
+    {
+        *address = operand.g;
+        return *address != BADADDR;
+    }
+    if ( operand.t == mop_a && operand.a && operand.a->t == mop_v )
+    {
+        *address = operand.a->g;
+        return *address != BADADDR;
+    }
+    if ( operand.t == mop_n && operand.nnn )
+    {
+        *address = static_cast<ea_t>(operand.nnn->value);
+        return *address != BADADDR;
+    }
+    if ( operand.t != mop_d || !operand.d )
+        return false;
+
+    const minsn_t *instruction = operand.d;
+    if ( instruction->opcode != m_add && instruction->opcode != m_sub )
+        return false;
+
+    ea_t base = BADADDR;
+    uint64_t offset = 0;
+    if ( !static_memory_address(instruction->l, &base)
+      || instruction->r.t != mop_n || !instruction->r.nnn )
+    {
+        return false;
+    }
+    offset = instruction->r.nnn->value;
+
+    if ( instruction->opcode == m_add )
+        return add_address_offset(base, offset, address);
+    if ( offset > base )
+        return false;
+    *address = base - static_cast<ea_t>(offset);
+    return true;
+}
+
+bool loaded_global_byte(const mop_t& operand,
+                        const minsn_t *before,
+                        ea_t *address)
+{
+    if ( operand.t == mop_v && operand.size == 1 )
+    {
+        *address = operand.g;
+        return *address != BADADDR;
+    }
+
+    if ( operand.t == mop_d && operand.d )
+    {
+        const minsn_t *nested = operand.d;
+        if ( nested->opcode == m_ldx && nested->d.size == 1 )
+            return static_memory_address(nested->r, address);
+        if ( nested->opcode == m_mov )
+            return loaded_global_byte(nested->l, nested, address);
+        return false;
+    }
+
+    // At MMAT_LOCOPT, a load and its consuming XOR may still be separate.
+    // Resolve only the nearest exact-width definition in the same block.
+    if ( operand.t == mop_r && before )
+    {
+        for ( const minsn_t *definition = before->prev;
+              definition;
+              definition = definition->prev )
+        {
+            if ( definition->d.t != mop_r || definition->d.r != operand.r )
+                continue;
+            if ( definition->d.size != operand.size )
+                return false;
+            if ( definition->opcode == m_ldx && definition->d.size == 1 )
+                return static_memory_address(definition->r, address);
+            if ( definition->opcode == m_mov )
+                return loaded_global_byte(definition->l, definition, address);
+            return false;
+        }
+    }
+    return false;
+}
+
+bool address_in_object(ea_t address, ea_t object, size_t object_size)
+{
+    return address >= object
+        && static_cast<uint64_t>(address - object) < object_size;
+}
+
+} // namespace
 
 //--------------------------------------------------------------------------
 // Detection
 //--------------------------------------------------------------------------
 bool string_decrypt_handler_t::detect(ea_t func_ea)
 {
-    // Look for Hikari string encryption markers in the binary
-
-    // Check for EncryptedString/DecryptSpace globals
-    segment_t *seg = get_first_seg();
-    while ( seg ) {
-        if ( seg->type == SEG_DATA ) {
-            ea_t ea = seg->start_ea;
-            while ( ea < seg->end_ea ) {
-                qstring name;
-                if ( get_name(&name, ea) > 0 ) {
-                    if ( name.find("EncryptedString") != qstring::npos ||
-                        name.find("DecryptSpace") != qstring::npos ||
-                        name.find("StringEncryptionEncStatus") != qstring::npos)
-                        {
-                        return true;
-                    }
-                }
-                ea = next_head(ea, seg->end_ea);
-                if ( ea == BADADDR ) 
-                    break;
-            }
-        }
-        seg = get_next_seg(seg->start_ea);
-    }
-
-    return false;
+    return !collect_referenced_encrypted_objects(func_ea).empty();
 }
 
 //--------------------------------------------------------------------------
@@ -73,9 +199,6 @@ int string_decrypt_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
         // Annotate in IDA
         annotate_string(str, decrypted);
 
-        // Patch references in microcode
-        total_changes += patch_string_references(mba, str, decrypted, ctx);
-
         ctx->strings_decrypted++;
     }
 
@@ -89,54 +212,53 @@ int string_decrypt_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 std::vector<string_decrypt_handler_t::encrypted_string_t>
 string_decrypt_handler_t::find_encrypted_strings(ea_t func_ea)
 {
-
     std::vector<encrypted_string_t> result;
+    for ( ea_t ea : collect_referenced_encrypted_objects(func_ea) )
+    {
+        segment_t *segment = getseg(ea);
+        if ( !segment || ea >= segment->end_ea )
+            continue;
 
-    // Scan data segments for EncryptedString patterns
-    segment_t *seg = get_first_seg();
-    while ( seg ) {
-        if ( seg->type == SEG_DATA ) {
-            ea_t ea = seg->start_ea;
-            while ( ea < seg->end_ea ) {
-                qstring name;
-                if ( get_name(&name, ea) > 0 ) {
-                    if ( name.find("EncryptedString") != qstring::npos ) {
-                        encrypted_string_t str;
-                        str.encrypted_addr = ea;
-                        str.element_size = 1;  // Default to byte
-
-                        // Try to find the size from the type
-                        tinfo_t ti;
-                        if ( get_tinfo(&ti, ea) ) {
-                            str.element_size = ti.get_size();
-                            if ( str.element_size == 0 || str.element_size > 8 ) 
-                                str.element_size = 1;
-                        }
-
-                        // Read encrypted data (up to 1KB)
-                        size_t max_size = 1024;
-                        str.encrypted_data.resize(max_size);
-                        ssize_t read = get_bytes(str.encrypted_data.data(), max_size, ea);
-                        if ( read > 0 ) {
-                            str.encrypted_data.resize(read);
-
-                            // Look for corresponding DecryptSpace
-                            qstring decrypt_name = name;
-                            decrypt_name.replace("EncryptedString", "DecryptSpace");
-                            str.decrypt_space_addr = get_name_ea(BADADDR, decrypt_name.c_str());
-
-                            result.push_back(str);
-                        }
-                    }
-                }
-                ea = next_head(ea, seg->end_ea);
-                if ( ea == BADADDR ) 
-                    break;
+        size_t object_size = static_cast<size_t>(get_item_size(ea));
+        tinfo_t type;
+        if ( get_tinfo(&type, ea) )
+        {
+            array_type_data_t array;
+            if ( type.get_array_details(&array) )
+            {
+                const size_t element_size = array.elem_type.get_size();
+                if ( element_size != 1 )
+                    continue;
             }
+            const size_t type_size = type.get_size();
+            if ( type_size != BADSIZE && type_size > object_size )
+                object_size = type_size;
         }
-        seg = get_next_seg(seg->start_ea);
-    }
 
+        const size_t segment_remaining =
+            static_cast<size_t>(segment->end_ea - ea);
+        object_size = std::min(object_size, segment_remaining);
+        object_size = std::min(object_size, MAX_ENCRYPTED_STRING_BYTES);
+        if ( object_size == 0 )
+            continue;
+
+        encrypted_string_t string;
+        string.encrypted_addr = ea;
+        string.encrypted_data.resize(object_size);
+        if ( !chernobog::ida_memory::read_exact(
+                string.encrypted_data.data(), object_size, ea) )
+            continue;
+
+        qstring encrypted_name;
+        if ( get_name(&encrypted_name, ea) > 0 )
+        {
+            qstring decrypt_name = encrypted_name;
+            decrypt_name.replace("EncryptedString", "DecryptSpace");
+            string.decrypt_space_addr =
+                get_name_ea(BADADDR, decrypt_name.c_str());
+        }
+        result.push_back(std::move(string));
+    }
     return result;
 }
 
@@ -162,69 +284,53 @@ bool string_decrypt_handler_t::extract_xor_keys(mbl_array_t *mba, encrypted_stri
             if ( ins->opcode != m_xor ) 
                 continue;
 
-            // Check if one operand is from encrypted address
-            // and other is a constant (the key)
-
             ea_t ref_addr = BADADDR;
             uint64_t key_val = 0;
-            bool found = false;
-
-            // Check left operand for global reference
-            if ( ins->l.t == mop_v ) {
-                // Direct global variable access
-                ea_t gv_addr = ins->l.g;
-                if ( gv_addr >= str->encrypted_addr &&
-                    gv_addr < str->encrypted_addr + str->encrypted_data.size())
-                    {
-                    ref_addr = gv_addr;
-                    if ( ins->r.t == mop_n ) {
-                        key_val = ins->r.nnn->value;
-                        found = true;
-                    }
-                }
+            bool found = ins->r.t == mop_n && ins->r.nnn
+                && loaded_global_byte(ins->l, ins, &ref_addr);
+            if ( found )
+                key_val = ins->r.nnn->value;
+            else
+            {
+                found = ins->l.t == mop_n && ins->l.nnn
+                    && loaded_global_byte(ins->r, ins, &ref_addr);
+                if ( found )
+                    key_val = ins->l.nnn->value;
             }
 
-            // Check right operand similarly
-            if ( !found && ins->r.t == mop_v ) {
-                ea_t gv_addr = ins->r.g;
-                if ( gv_addr >= str->encrypted_addr &&
-                    gv_addr < str->encrypted_addr + str->encrypted_data.size())
-                    {
-                    ref_addr = gv_addr;
-                    if ( ins->l.t == mop_n ) {
-                        key_val = ins->l.nnn->value;
-                        found = true;
-                    }
+            if ( found && address_in_object(ref_addr, str->encrypted_addr,
+                                            str->encrypted_data.size()) )
+            {
+                if ( key_val > UINT8_MAX )
+                    return false;
+                const size_t offset = static_cast<size_t>(
+                    ref_addr - str->encrypted_addr);
+                const uint8_t key_byte = static_cast<uint8_t>(key_val);
+                const auto existing = key_map.find(offset);
+                if ( existing != key_map.end() )
+                {
+                    if ( existing->second != key_byte )
+                        return false;
                 }
-            }
-
-            if ( found && ref_addr != BADADDR ) {
-                size_t offset = ref_addr - str->encrypted_addr;
-                key_map[offset] = (uint8_t)key_val;
+                else
+                {
+                    key_map.emplace(offset, key_byte);
+                }
             }
         }
     }
 
-    // If we found keys, populate the keys vector
-    if ( !key_map.empty() ) {
-        size_t max_offset = 0;
-        for ( const auto &p : key_map ) {
-            if ( p.first > max_offset ) 
-                max_offset = p.first;
-        }
-
-        str->xor_keys.resize(max_offset + 1, 0);
-        for ( const auto &p : key_map ) {
-            str->xor_keys[p.first] = p.second;
-        }
-
-        return true;
+    // A sparse key vector would silently decrypt missing positions with zero.
+    // Admit only a contiguous prefix beginning at byte zero.
+    str->xor_keys.clear();
+    for ( size_t offset = 0; offset < str->encrypted_data.size(); ++offset )
+    {
+        const auto key = key_map.find(offset);
+        if ( key == key_map.end() )
+            break;
+        str->xor_keys.push_back(key->second);
     }
-
-    // Fallback: try to find keys in a different way
-    // Look for immediate values used in XOR operations near string references
-
-    return false;
+    return !str->xor_keys.empty();
 }
 
 //--------------------------------------------------------------------------
@@ -232,72 +338,8 @@ bool string_decrypt_handler_t::extract_xor_keys(mbl_array_t *mba, encrypted_stri
 //--------------------------------------------------------------------------
 std::string string_decrypt_handler_t::decrypt_string(const encrypted_string_t &str)
 {
-    if ( str.encrypted_data.empty() ) 
-        return "";
-
-    std::string result;
-
-    // XOR each element with its key
-    size_t len = std::min(str.encrypted_data.size(), str.xor_keys.size());
-
-    for ( size_t i = 0; i < len; ++i ) {
-        uint8_t decrypted = str.encrypted_data[i] ^ str.xor_keys[i];
-
-        // Stop at null terminator
-        if ( decrypted == 0 ) 
-            break;
-
-        // Check for printable ASCII
-        if ( decrypted >= 32 && decrypted < 127 ) {
-            result += (char)decrypted;
-        } else if ( decrypted == '\n' || decrypted == '\t' || decrypted == '\r' ) {
-            result += (char)decrypted;
-        } else {
-            // Non-printable - might be end of string or corruption
-            break;
-        }
-    }
-
-    return result;
-}
-
-//--------------------------------------------------------------------------
-// Patch string references in microcode
-//--------------------------------------------------------------------------
-int string_decrypt_handler_t::patch_string_references(mbl_array_t *mba,
-    const encrypted_string_t &str, const std::string &decrypted, deobf_ctx_t *ctx)
-    {
-
-    int changes = 0;
-
-    // Find references to encrypted/decrypt_space addresses
-    // Replace with the decrypted string representation
-
-    for ( int i = 0; i < mba->qty; ++i ) {
-        mblock_t *blk = mba->get_mblock(i);
-        if ( !blk ) 
-            continue;
-
-        for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
-            // Check if instruction references the encrypted string
-            bool refs_encrypted = false;
-
-            if ( ins->l.t == mop_v && ins->l.g == str.encrypted_addr ) 
-                refs_encrypted = true;
-            if ( ins->r.t == mop_v && ins->r.g == str.encrypted_addr ) 
-                refs_encrypted = true;
-            if ( ins->d.t == mop_v && ins->d.g == str.encrypted_addr ) 
-                refs_encrypted = true;
-
-            if ( refs_encrypted ) {
-                // Add comment with decrypted string
-                // (Actual value replacement is complex in microcode)
-                changes++;
-            }
-        }
-    }
-
-    return changes;
+    return chernobog::string_recovery::recover_hikari_xor_ascii(
+        str.encrypted_data, str.xor_keys);
 }
 
 //--------------------------------------------------------------------------
@@ -316,47 +358,4 @@ void string_decrypt_handler_t::annotate_string(const encrypted_string_t &str,
     if ( str.decrypt_space_addr != BADADDR ) {
         set_cmt(str.decrypt_space_addr, comment.c_str(), true);
     }
-}
-
-//--------------------------------------------------------------------------
-// Find decryption block
-//--------------------------------------------------------------------------
-int string_decrypt_handler_t::find_decryption_block(mbl_array_t *mba)
-{
-    if ( !mba ) 
-        return -1;
-
-    // Look for block with multiple XOR instructions and atomic load
-    // This is typically the "StringDecryptionBB"
-
-    int best_block = -1;
-    int best_score = 0;
-
-    for ( int i = 0; i < mba->qty; ++i ) {
-        mblock_t *blk = mba->get_mblock(i);
-        if ( !blk ) 
-            continue;
-
-        int xor_count = 0;
-        bool has_atomic = false;
-
-        for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
-            if ( ins->opcode == m_xor ) 
-                xor_count++;
-
-            // Check for atomic operations (indicated by memory ordering)
-            // This is simplified - actual check would need more detail
-        }
-
-        int score = xor_count * 2;
-        if ( has_atomic ) 
-            score += 10;
-
-        if ( score > best_score ) {
-            best_score = score;
-            best_block = i;
-        }
-    }
-
-    return (best_score >= 6) ? best_block : -1;  // Need at least 3 XORs
 }

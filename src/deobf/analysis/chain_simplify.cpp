@@ -1,4 +1,5 @@
 #include "chain_simplify.h"
+#include "../../common/bitvector.h"
 
 namespace chernobog {
 namespace chain {
@@ -39,7 +40,7 @@ SIMD_FORCE_INLINE bool ChainSimplifier::operands_equal(const mop_t& a, const mop
         case mop_d:  // Result of another instruction
             // Compare instruction content (most expensive case)
             if (SIMD_UNLIKELY(!a.d || !b.d)) return a.d == b.d;
-            return a.d->equal_insns(*b.d, EQ_IGNSIZE);
+            return a.d->equal_insns(*b.d, 0);
 
         default:
             return false;
@@ -69,10 +70,12 @@ bool ChainSimplifier::is_neg_of(const mop_t& a, const mop_t& b) {
 }
 
 bool ChainSimplifier::get_const_value(const mop_t& mop, uint64_t* out) {
-    if (mop.t != mop_n)
+    if (mop.t != mop_n || mop.nnn == nullptr || out == nullptr)
         return false;
 
-    *out = mop.nnn->value;
+    *out = chernobog::bitvector::valid_byte_width(mop.size)
+        ? chernobog::bitvector::truncate(mop.nnn->value, mop.size)
+        : mop.nnn->value;
     return true;
 }
 
@@ -85,9 +88,8 @@ uint64_t ChainSimplifier::get_identity_element(mcode_t op, int size) {
 
         case m_and:
             // All ones for the size
-            if (size >= 8)
-                return ~0ULL;
-            return (1ULL << (size * 8)) - 1;
+            return chernobog::bitvector::valid_byte_width(size)
+                ? chernobog::bitvector::mask(size) : 0;
 
         default:
             return 0;
@@ -102,10 +104,9 @@ bool ChainSimplifier::has_absorbing_element(mcode_t op, uint64_t* out, int size)
 
         case m_or:
             // All ones for the size
-            if (size >= 8)
-                *out = ~0ULL;
-            else
-                *out = (1ULL << (size * 8)) - 1;
+            if (!chernobog::bitvector::valid_byte_width(size))
+                return false;
+            *out = chernobog::bitvector::mask(size);
             return true;
 
         default:
@@ -129,27 +130,24 @@ void ChainSimplifier::flatten_operand(const mop_t& mop, mcode_t target_op,
     }
 
     // Check for nested same opcode
-    if (mop.t == mop_d && mop.d && mop.d->opcode == target_op) {
+    if (mop.t == mop_d && mop.d && mop.d->opcode == target_op &&
+        mop.size == size && mop.d->d.size == size) {
         flatten_chain(mop.d, target_op, operands, constants, size);
         return;
     }
 
     // Handle special cases for XOR with negation
-    if (target_op == m_xor && mop.t == mop_d && mop.d) {
+    if (target_op == m_xor && mop.t == mop_d && mop.d &&
+        mop.size == size && mop.d->d.size == size) {
         if (mop.d->opcode == m_bnot) {
+            if (mop.d->l.size != size) {
+                operands.push_back(chain_operand_t(mop, false));
+                return;
+            }
             // ~x in XOR chain: treat as x ^ (-1)
             operands.push_back(chain_operand_t(mop.d->l, true));
             uint64_t all_ones = get_identity_element(m_and, size);
             constants.push_back(all_ones);
-            return;
-        }
-    }
-
-    // Handle special cases for ADD with negation
-    if (target_op == m_add && mop.t == mop_d && mop.d) {
-        if (mop.d->opcode == m_neg) {
-            // -x in ADD chain
-            operands.push_back(chain_operand_t(mop.d->l, true));
             return;
         }
     }
@@ -181,15 +179,12 @@ bool ChainSimplifier::remove_identity_pairs(std::vector<chain_operand_t>& operan
     
     bool removed = false;
     
-    // Use bit flags instead of vector<bool> for small sizes
-    // This avoids heap allocation for typical chain sizes
-    uint64_t removed_flags = 0;
-    static_assert(TYPICAL_CHAIN_SIZE <= 64, "Flags must fit in uint64_t");
+    std::vector<uint8_t> removed_flags(n, 0);
     
     const chain_operand_t* ops = operands.data();
 
-    for (size_t i = 0; i < n && i < 64; i++) {
-        if (removed_flags & (1ULL << i))
+    for (size_t i = 0; i < n; i++) {
+        if (removed_flags[i])
             continue;
 
         // Prefetch next operand for the inner loop
@@ -197,8 +192,8 @@ bool ChainSimplifier::remove_identity_pairs(std::vector<chain_operand_t>& operan
             SIMD_PREFETCH_READ(&ops[i + 2].mop);
         }
 
-        for (size_t j = i + 1; j < n && j < 64; j++) {
-            if (removed_flags & (1ULL << j))
+        for (size_t j = i + 1; j < n; j++) {
+            if (removed_flags[j])
                 continue;
 
             // Prefetch ahead in inner loop
@@ -227,7 +222,7 @@ bool ChainSimplifier::remove_identity_pairs(std::vector<chain_operand_t>& operan
                     }
                     // x & x = x
                     if (operands_equal(ops[i].mop, ops[j].mop)) {
-                        removed_flags |= (1ULL << j);
+                        removed_flags[j] = 1;
                         removed = true;
                     }
                     break;
@@ -242,7 +237,7 @@ bool ChainSimplifier::remove_identity_pairs(std::vector<chain_operand_t>& operan
                     }
                     // x | x = x
                     if (operands_equal(ops[i].mop, ops[j].mop)) {
-                        removed_flags |= (1ULL << j);
+                        removed_flags[j] = 1;
                         removed = true;
                     }
                     break;
@@ -264,7 +259,8 @@ bool ChainSimplifier::remove_identity_pairs(std::vector<chain_operand_t>& operan
             }
 
             if (is_pair) {
-                removed_flags |= (1ULL << i) | (1ULL << j);
+                removed_flags[i] = 1;
+                removed_flags[j] = 1;
                 removed = true;
                 break;
             }
@@ -272,10 +268,10 @@ bool ChainSimplifier::remove_identity_pairs(std::vector<chain_operand_t>& operan
     }
 
     // In-place compaction instead of creating new vector
-    if (removed && removed_flags != 0) {
+    if (removed) {
         size_t write_idx = 0;
-        for (size_t i = 0; i < n && i < 64; i++) {
-            if (!(removed_flags & (1ULL << i))) {
+        for (size_t i = 0; i < n; i++) {
+            if (!removed_flags[i]) {
                 if (write_idx != i) {
                     operands[write_idx] = std::move(operands[i]);
                 }
@@ -469,9 +465,10 @@ chain_result_t ChainSimplifier::analyze_add_chain(mblock_t* blk, minsn_t* ins) {
     }
 
     // Mask to size
-    if (size < 8) {
-        const_result &= (1ULL << (size * 8)) - 1;
-    }
+    if (chernobog::bitvector::valid_byte_width(size))
+        const_result = chernobog::bitvector::truncate(const_result, size);
+    else
+        return result;
 
     // Remove identity pairs (x + (-x) = 0)
     bool changed = true;

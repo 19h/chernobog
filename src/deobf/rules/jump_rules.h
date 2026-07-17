@@ -58,6 +58,10 @@ protected:
 
     // Helper: get nested instruction if operand is mop_d
     static minsn_t* get_nested(const mop_t& op);
+
+    // Equality at the same bit width. Ignoring width is unsound for partial
+    // register operands and complement identities.
+    static bool operands_equal(const mop_t& left, const mop_t& right);
 };
 
 //--------------------------------------------------------------------------
@@ -83,7 +87,7 @@ public:
 };
 
 //--------------------------------------------------------------------------
-// Rule: jz x & ~x -> always taken (result is always 0)
+// Rule: jz (x & ~x), 0 -> always taken (result is always 0)
 //--------------------------------------------------------------------------
 class JzRule1 : public JumpOptimizationRule {
 public:
@@ -93,7 +97,7 @@ public:
 };
 
 //--------------------------------------------------------------------------
-// Rule: jnz x | ~x -> always taken (result is always -1, never 0)
+// Rule: jnz (x | ~x), 0 -> always taken (result is always -1, never 0)
 //--------------------------------------------------------------------------
 class JnzRule3 : public JumpOptimizationRule {
 public:
@@ -103,7 +107,7 @@ public:
 };
 
 //--------------------------------------------------------------------------
-// Rule: jz x ^ x -> always taken (result is always 0)
+// Rule: jz (x ^ x), 0 -> always taken (result is always 0)
 //--------------------------------------------------------------------------
 class JzRule2 : public JumpOptimizationRule {
 public:
@@ -113,7 +117,7 @@ public:
 };
 
 //--------------------------------------------------------------------------
-// Rule: jnz x ^ x -> never taken (result is always 0)
+// Rule: jnz (x ^ x), 0 -> never taken (result is always 0)
 //--------------------------------------------------------------------------
 class JnzRule4 : public JumpOptimizationRule {
 public:

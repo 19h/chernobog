@@ -10,10 +10,8 @@
 // instructions. Each optimizer handles a specific pattern.
 //
 // Optimizers included:
-//   - ConstantCallFold: Fold helper calls with constant args (rotate, etc.)
 //   - ReadOnlyDataFold: Fold loads from read-only memory
 //   - LocalConstProp: Propagate constants through local variables
-//   - DeadCodeElim: Remove dead stores and unused computations
 //
 // Ported from d810-ng's peephole optimization passes
 //--------------------------------------------------------------------------
@@ -44,23 +42,6 @@ protected:
 };
 
 //--------------------------------------------------------------------------
-// Fold helper function calls with constant arguments
-// e.g., __ROL4__(x, 0) -> x, __ROR4__(const, n) -> result
-//--------------------------------------------------------------------------
-class ConstantCallFoldOptimizer : public PeepholeOptimizer {
-public:
-    const char* name() const override { return "ConstantCallFold"; }
-    int optimize(mblock_t* blk, minsn_t* ins) override;
-
-private:
-    // Check if function is a rotate helper
-    static bool is_rotate_helper(ea_t func_ea, int* bits, bool* is_left);
-
-    // Evaluate rotate with constants
-    static uint64_t eval_rotate(uint64_t val, int shift, int bits, bool left);
-};
-
-//--------------------------------------------------------------------------
 // Fold loads from read-only memory (constants, vtables, etc.)
 //--------------------------------------------------------------------------
 class ReadOnlyDataFoldOptimizer : public PeepholeOptimizer {
@@ -86,7 +67,7 @@ public:
 
 private:
     // Track constant values stored to stack
-    std::map<sval_t, uint64_t> stack_constants_;
+    std::map<std::pair<sval_t, int>, uint64_t> stack_constants_;
 };
 
 //--------------------------------------------------------------------------

@@ -1,8 +1,6 @@
 #pragma once
 #include "../analysis/ast.h"
 #include "../analysis/ast_builder.h"
-#include "../analysis/pattern_fuzzer.h"
-#include <vector>
 #include <string>
 #include <map>
 
@@ -14,8 +12,7 @@
 //   - get_replacement(): The simplified replacement pattern
 //   - check_candidate() (optional): Extra validation after structural match
 //
-// The fuzzing system automatically generates all equivalent variants
-// of the pattern (commutative reordering, add/sub equivalence, etc.)
+// Commutative operand ordering is handled lazily by the active matcher.
 //
 // Example rule:
 //   Pattern: x - (~y + 1)  ->  Replacement: x + y
@@ -56,13 +53,6 @@ public:
     // Optional overrides
     //----------------------------------------------------------------------
 
-    // Whether to generate fuzzed variants (default: false for fast init)
-    // TODO: Re-enable after optimizing fuzzer performance
-    virtual bool fuzz_pattern() const
-    {
-        return false;
-    }
-
     // Extra validation after structural match
     // candidate: the matched AST with mops filled in from instruction
     // Return false to reject the match
@@ -76,19 +66,6 @@ public:
     virtual bool check_constants(const std::map<std::string, mop_t>& bindings)
     {
         return true;
-    }
-
-    //----------------------------------------------------------------------
-    // Pattern and variant management (called by registry)
-    //----------------------------------------------------------------------
-
-    // Get all patterns including fuzzed variants
-    std::vector<AstPtr> get_all_patterns();
-
-    // Check if patterns have been generated
-    bool patterns_initialized() const
-    {
-        return patterns_initialized_;
     }
 
     //----------------------------------------------------------------------
@@ -119,8 +96,6 @@ protected:
     PatternMatchingRule() = default;
 
 private:
-    std::vector<AstPtr> all_patterns_;
-    bool patterns_initialized_ = false;
     size_t hit_count_ = 0;
 
     // Generate replacement instruction from pattern

@@ -1,8 +1,112 @@
 #include "bogus_cf.h"
 #include "../analysis/pattern_match.h"
-#include "../analysis/cfg_analysis.h"
 #include "../analysis/opaque_eval.h"
 #include <functional>
+#include <optional>
+
+namespace {
+
+bool is_constant_tree(const mop_t &op)
+{
+    if ( op.t == mop_n || op.t == mop_z )
+        return true;
+    return op.t == mop_d && op.d != nullptr
+        && is_constant_tree(op.d->l)
+        && is_constant_tree(op.d->r);
+}
+
+bool is_add_one_of(const mop_t &candidate, const mop_t &value)
+{
+    if ( candidate.t != mop_d || candidate.d == nullptr
+      || candidate.d->opcode != m_add )
+        return false;
+
+    const minsn_t *add = candidate.d;
+    const auto equal_width_value = [&value](const mop_t& operand) {
+        return operand.size > 0 && operand.size == value.size &&
+               operand.equal_mops(value, EQ_IGNSIZE);
+    };
+    return (equal_width_value(add->l)
+         && add->r.t == mop_n && add->r.nnn && add->r.nnn->value == 1)
+        || (equal_width_value(add->r)
+         && add->l.t == mop_n && add->l.nnn && add->l.nnn->value == 1);
+}
+
+bool is_even_consecutive_product(const mop_t &candidate)
+{
+    if ( candidate.t != mop_d || candidate.d == nullptr )
+        return false;
+
+    const minsn_t *mod = candidate.d;
+    if ( (mod->opcode != m_smod && mod->opcode != m_umod)
+      || mod->r.t != mop_n || !mod->r.nnn || mod->r.nnn->value != 2
+      || mod->l.t != mop_d || mod->l.d == nullptr
+      || mod->l.d->opcode != m_mul )
+        return false;
+
+    const minsn_t *mul = mod->l.d;
+    return is_add_one_of(mul->l, mul->r) || is_add_one_of(mul->r, mul->l);
+}
+
+void replace_successors(mblock_t *blk, int new_target)
+{
+    if ( blk == nullptr || blk->mba == nullptr )
+        return;
+
+    for ( int old_target : blk->succset ) {
+        if ( old_target < 0 || old_target >= blk->mba->qty || old_target == new_target )
+            continue;
+        mblock_t *old_dst = blk->mba->get_mblock(old_target);
+        if ( old_dst != nullptr ) {
+            auto pred = std::find(old_dst->predset.begin(), old_dst->predset.end(), blk->serial);
+            if ( pred != old_dst->predset.end() )
+                old_dst->predset.erase(pred);
+            old_dst->mark_lists_dirty();
+        }
+    }
+
+    blk->succset.clear();
+    if ( new_target >= 0 && new_target < blk->mba->qty ) {
+        blk->succset.push_back(new_target);
+        mblock_t *new_dst = blk->mba->get_mblock(new_target);
+        if ( new_dst != nullptr
+          && std::find(new_dst->predset.begin(), new_dst->predset.end(), blk->serial)
+             == new_dst->predset.end() ) {
+            new_dst->predset.push_back(blk->serial);
+            new_dst->mark_lists_dirty();
+        }
+    }
+    blk->mark_lists_dirty();
+}
+
+std::optional<int> find_not_taken_successor(const mblock_t *blk,
+                                            int taken_target)
+{
+    if ( !blk || taken_target < 0 )
+        return std::nullopt;
+
+    std::optional<int> candidate;
+    bool saw_taken = false;
+    for ( int successor : blk->succset ) {
+        if ( successor == taken_target ) {
+            saw_taken = true;
+            continue;
+        }
+        if ( candidate && *candidate != successor )
+            return std::nullopt;
+        candidate = successor;
+    }
+
+    if ( candidate )
+        return candidate;
+    // Both conditional edges may coalesce into the immediately following
+    // block, leaving one unique successor in the set.
+    if ( saw_taken && taken_target == blk->serial + 1 )
+        return taken_target;
+    return std::nullopt;
+}
+
+} // namespace
 
 //--------------------------------------------------------------------------
 // Detection
@@ -51,17 +155,6 @@ int bogus_cf_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
     // Remove dead branches (replace conditional with unconditional)
     total_changes += remove_dead_branches(mba, opaques);
 
-    // Find newly unreachable blocks
-    auto dead_blocks = find_dead_blocks(mba, opaques);
-    deobf::log("[bogus_cf] Found %zu dead blocks\n", dead_blocks.size());
-
-    // Note: Actually removing blocks from mba is complex and may require
-    // rebuilding the microcode. For now, we just mark them and let
-    // IDA's optimizer handle cleanup.
-
-    // Simplify any remaining junk instructions
-    total_changes += simplify_junk_instructions(mba, ctx);
-
     deobf::log("[bogus_cf] Bogus CF removal complete, %d changes\n", total_changes);
     return total_changes;
 }
@@ -87,56 +180,24 @@ std::vector<bogus_cf_handler_t::opaque_info_t> bogus_cf_handler_t::find_opaque_p
         bool is_true;
         if ( is_opaque_predicate(tail, &is_true) ) 
         {
+            // Only block-target jumps can be rewritten as CFG edges here.
+            if ( tail->d.t != mop_b )
+                continue;
+
             opaque_info_t info;
             info.block_idx = i;
             info.cond_insn = tail;
             info.always_true = is_true;
 
-            // Determine live/dead targets
-            // For jnz (jump if not zero): if always_true, taken branch is live
-            // The fall-through is the block after this one (blk->serial + 1)
-            // The taken branch is in tail->d
+            const int taken_target = tail->d.b;
+            const auto fallthrough = find_not_taken_successor(blk, taken_target);
+            if ( taken_target < 0 || taken_target >= mba->qty || !fallthrough )
+                continue;
 
-            if ( tail->d.t == mop_b ) 
-            {
-                int taken_target = tail->d.b;
-                int fallthrough = i + 1;  // Simplified - actual fall-through may differ
-
-                if ( is_true ) 
-                {
-                    // Condition is always true
-                    // For jnz/jne: taken branch is live
-                    // For jz/je: fall-through is live
-                    if ( tail->opcode == m_jnz ||
-                        tail->opcode == m_ja || tail->opcode == m_jae ||
-                        tail->opcode == m_jg || tail->opcode == m_jge)
-                    {
-                        info.live_target = taken_target;
-                        info.dead_target = fallthrough;
-                    }
-                    else
-                    {
-                        info.live_target = fallthrough;
-                        info.dead_target = taken_target;
-                    }
-                }
-                else
-                {
-                    // Condition is always false
-                    if ( tail->opcode == m_jnz ||
-                        tail->opcode == m_ja || tail->opcode == m_jae ||
-                        tail->opcode == m_jg || tail->opcode == m_jge)
-                    {
-                        info.live_target = fallthrough;
-                        info.dead_target = taken_target;
-                    }
-                    else
-                    {
-                        info.live_target = taken_target;
-                        info.dead_target = fallthrough;
-                    }
-                }
-            }
+            // is_true means that the jX relation itself is true, i.e. the
+            // conditional branch is taken, for every conditional opcode.
+            info.live_target = is_true ? taken_target : *fallthrough;
+            info.dead_target = is_true ? *fallthrough : taken_target;
 
             result.push_back(info);
             deobf::log_verbose("[bogus_cf] Opaque predicate in block %d: always %s\n",
@@ -152,7 +213,7 @@ std::vector<bogus_cf_handler_t::opaque_info_t> bogus_cf_handler_t::find_opaque_p
 //--------------------------------------------------------------------------
 bool bogus_cf_handler_t::is_opaque_predicate(minsn_t *cond, bool *is_true)
 {
-    if ( !cond ) 
+    if ( !cond || !is_true || !is_mcode_jcond(cond->opcode) || cond->is_fpinsn() )
         return false;
 
     // Try different opaque patterns (fast path first)
@@ -189,48 +250,12 @@ bool bogus_cf_handler_t::is_opaque_predicate(minsn_t *cond, bool *is_true)
 //--------------------------------------------------------------------------
 bool bogus_cf_handler_t::check_const_comparison(minsn_t *insn, bool *result)
 {
-    if ( !insn ) 
+    if ( !insn || !result || !is_mcode_jcond(insn->opcode) )
         return false;
-
-    // The condition is in the operand (for jcc instructions)
-    // It may be a nested setXX instruction
-
-    minsn_t *cmp = nullptr;
-
-    if ( insn->l.t == mop_d && insn->l.d ) {
-        cmp = insn->l.d;
-    } else if ( insn->l.t == mop_n ) {
-        // Direct constant condition
-        *result = (insn->l.nnn->value != 0);
-        return true;
-    }
-
-    if ( !cmp ) 
+    if ( !is_constant_tree(insn->l)
+      || (insn->opcode != m_jcnd && !is_constant_tree(insn->r)) )
         return false;
-
-    // Check for setXX with two constant operands
-    if ( cmp->opcode >= m_setz && cmp->opcode <= m_setle ) {
-        if ( cmp->l.t == mop_n && cmp->r.t == mop_n ) {
-            int64_t l = cmp->l.nnn->value;
-            int64_t r = cmp->r.nnn->value;
-
-            switch ( cmp->opcode ) {
-                case m_setz:  *result = (l == r); return true;
-                case m_setnz: *result = (l != r); return true;
-                case m_setae: *result = ((uint64_t)l >= (uint64_t)r); return true;
-                case m_setb:  *result = ((uint64_t)l < (uint64_t)r); return true;
-                case m_seta:  *result = ((uint64_t)l > (uint64_t)r); return true;
-                case m_setbe: *result = ((uint64_t)l <= (uint64_t)r); return true;
-                case m_setg:  *result = (l > r); return true;
-                case m_setge: *result = (l >= r); return true;
-                case m_setl:  *result = (l < r); return true;
-                case m_setle: *result = (l <= r); return true;
-                default: break;
-            }
-        }
-    }
-
-    return false;
+    return opaque_eval_t::evaluate_condition(insn, result);
 }
 
 //--------------------------------------------------------------------------
@@ -239,50 +264,27 @@ bool bogus_cf_handler_t::check_const_comparison(minsn_t *insn, bool *result)
 //--------------------------------------------------------------------------
 bool bogus_cf_handler_t::check_math_identity(minsn_t *insn, bool *result)
 {
-    if ( !insn ) 
+    if ( !insn || !result || (insn->opcode != m_jz && insn->opcode != m_jnz)
+      || insn->r.t != mop_n || !insn->r.nnn )
         return false;
 
-    // Look for: setz(smod(mul(...), 2), 0)
-    // Or similar patterns
+    // Direct form: jz/jnz ((x * (x + 1)) % 2), C.
+    if ( is_even_consecutive_product(insn->l) ) {
+        const bool equal = insn->r.nnn->value == 0;
+        *result = insn->opcode == m_jz ? equal : !equal;
+        return true;
+    }
 
-    minsn_t *cmp = nullptr;
-    if ( insn->l.t == mop_d ) 
-        cmp = insn->l.d;
-    else
+    // Nested form: jz/jnz setz(((x * (x + 1)) % 2), 0), C.
+    if ( insn->l.t != mop_d || insn->l.d == nullptr
+      || insn->l.d->opcode != m_setz
+      || insn->l.d->r.t != mop_n || !insn->l.d->r.nnn
+      || insn->l.d->r.nnn->value != 0
+      || !is_even_consecutive_product(insn->l.d->l) )
         return false;
 
-    if ( !cmp || cmp->opcode != m_setz ) 
-        return false;
-
-    // Right operand should be 0
-    if ( cmp->r.t != mop_n || cmp->r.nnn->value != 0 ) 
-        return false;
-
-    // Left operand should be mod by 2
-    if ( cmp->l.t != mop_d ) 
-        return false;
-
-    minsn_t *mod = cmp->l.d;
-    if ( !mod || (mod->opcode != m_smod && mod->opcode != m_umod) ) 
-        return false;
-
-    // Modulus should be 2
-    if ( mod->r.t != mop_n || mod->r.nnn->value != 2 ) 
-        return false;
-
-    // The dividend should be a multiplication
-    if ( mod->l.t != mop_d ) 
-        return false;
-
-    minsn_t *mul = mod->l.d;
-    if ( !mul || mul->opcode != m_mul ) 
-        return false;
-
-    // One factor should be (x + 1) where x is the other factor
-    // This is complex to verify precisely, but the pattern is distinctive
-
-    // For now, assume any mul -> mod 2 -> cmp 0 is this pattern
-    *result = true;  // x * (x+1) % 2 is always 0
+    const bool equal = insn->r.nnn->value == 1;
+    *result = insn->opcode == m_jz ? equal : !equal;
     return true;
 }
 
@@ -326,129 +328,9 @@ bool bogus_cf_handler_t::check_global_var_pattern(minsn_t *insn, bool *result)
         return true;
     }
 
-    // If direct evaluation fails, try evaluating sub-expressions
-    // to see if we can determine the outcome
-
-    // Handle nested condition in jcc
-    minsn_t *cond = nullptr;
-    if ( insn->l.t == mop_d && insn->l.d ) {
-        cond = insn->l.d;
-    }
-
-    if ( cond ) {
-        // Try to evaluate the comparison operands
-        auto left_val = opaque_eval_t::evaluate_operand(cond->l);
-        auto right_val = opaque_eval_t::evaluate_operand(cond->r);
-
-        if ( left_val.has_value() && right_val.has_value() ) {
-            uint64_t l = *left_val;
-            uint64_t r = *right_val;
-            int64_t sl = (int64_t)l;
-            int64_t sr = (int64_t)r;
-
-            bool cond_result = false;
-            bool found = true;
-
-            switch ( cond->opcode ) {
-                case m_setz:  cond_result = (l == r); break;
-                case m_setnz: cond_result = (l != r); break;
-                case m_setl:  cond_result = (sl < sr); break;
-                case m_setle: cond_result = (sl <= sr); break;
-                case m_setg:  cond_result = (sl > sr); break;
-                case m_setge: cond_result = (sl >= sr); break;
-                case m_setb:  cond_result = (l < r); break;
-                case m_setbe: cond_result = (l <= r); break;
-                case m_seta:  cond_result = (l > r); break;
-                case m_setae: cond_result = (l >= r); break;
-                default: found = false;
-            }
-
-            if ( found ) {
-                // Adjust for the outer jump instruction
-                if ( insn->opcode == m_jnz ) {
-                    *result = cond_result;
-                } else if ( insn->opcode == m_jz ) {
-                    *result = !cond_result;
-                } else {
-                    *result = cond_result;
-                }
-                deobf::log_verbose("[bogus_cf] Computed global expression: %llx vs %llx -> %s\n",
-                                  (unsigned long long)l, (unsigned long long)r,
-                                  *result ? "true" : "false");
-                return true;
-            }
-        }
-    }
-
+    // No partial-expression fallback: a branch may be removed only when the
+    // complete jX relation, including both operands, is constant.
     return false;
-}
-
-//--------------------------------------------------------------------------
-// Find dead blocks
-//--------------------------------------------------------------------------
-std::set<int> bogus_cf_handler_t::find_dead_blocks(mbl_array_t *mba,
-    const std::vector<opaque_info_t> &opaques)
-    {
-
-    std::set<int> dead;
-
-    // Start with dead targets from opaque predicates
-    for ( const auto &op : opaques ) {
-        if ( op.dead_target >= 0 && op.dead_target < mba->qty ) {
-            dead.insert(op.dead_target);
-        }
-    }
-
-    // Expand: any block only reachable from dead blocks is also dead
-    bool changed = true;
-    while ( changed ) {
-        changed = false;
-
-        for ( int i = 0; i < mba->qty; ++i ) {
-            if ( i == 0 ) // Entry block is never dead
-                continue;
-            if ( dead.count(i) ) 
-                continue;
-
-            mblock_t *blk = mba->get_mblock(i);
-            if ( !blk ) 
-                continue;
-
-            // Check if all predecessors are dead
-            bool all_preds_dead = true;
-            bool has_preds = false;
-
-            for ( int j = 0; j < mba->qty; ++j ) {
-                if ( j == i ) 
-                    continue;
-
-                mblock_t *pred = mba->get_mblock(j);
-                if ( !pred ) 
-                    continue;
-
-                // Check if j is a predecessor of i
-                for ( int k = 0; k < pred->nsucc(); ++k ) {
-                    if ( pred->succ(k) == i ) {
-                        has_preds = true;
-                        if ( !dead.count(j) ) {
-                            all_preds_dead = false;
-                            break;
-                        }
-                    }
-                }
-
-                if ( !all_preds_dead ) 
-                    break;
-            }
-
-            if ( has_preds && all_preds_dead ) {
-                dead.insert(i);
-                changed = true;
-            }
-        }
-    }
-
-    return dead;
 }
 
 //--------------------------------------------------------------------------
@@ -467,86 +349,19 @@ int bogus_cf_handler_t::remove_dead_branches(mbl_array_t *mba,
 
         minsn_t *tail = blk->tail;
 
-        // Replace conditional jump with unconditional to live target
-        // This requires creating a new goto instruction
-
-        // For simplicity, just modify the condition to be a constant
-        // so that the optimizer will eliminate the dead branch
-
-        if ( tail->l.t == mop_d && tail->l.d ) {
-            // Replace nested condition with constant
-            minsn_t *cond = tail->l.d;
-
-            // Change to: set result = always_true ? 1 : 0
-            cond->opcode = m_mov;
-            cond->l.make_number(op.always_true ? 1 : 0, cond->l.size);
-            cond->r.erase();
-
-            changes++;
-            deobf::log_verbose("[bogus_cf] Simplified opaque predicate in block %d\n",
-                              op.block_idx);
-        }
-    }
-
-    return changes;
-}
-
-//--------------------------------------------------------------------------
-// Remove dead blocks (mark as unreachable)
-//--------------------------------------------------------------------------
-int bogus_cf_handler_t::remove_dead_blocks(mbl_array_t *mba, const std::set<int> &dead_blocks)
-{
-    int changes = 0;
-
-    // Removing blocks from mba is complex
-    // For now, just clear their contents to make them no-ops
-
-    for ( int idx : dead_blocks ) {
-        mblock_t *blk = mba->get_mblock(idx);
-        if ( !blk ) 
+        if ( op.live_target < 0 || op.live_target >= mba->qty )
             continue;
 
-        // Clear all instructions except the terminator
-        // Replace terminator with goto to itself (infinite loop = unreachable)
+        tail->opcode = m_goto;
+        tail->l.make_blkref(op.live_target);
+        tail->r.erase();
+        tail->d.erase();
+        blk->type = BLT_1WAY;
+        replace_successors(blk, op.live_target);
 
-        // This is a simplified approach - proper removal would need mba manipulation
-        deobf::log_verbose("[bogus_cf] Marked block %d as dead\n", idx);
         changes++;
-    }
-
-    return changes;
-}
-
-//--------------------------------------------------------------------------
-// Simplify junk instructions
-//--------------------------------------------------------------------------
-int bogus_cf_handler_t::simplify_junk_instructions(mbl_array_t *mba, deobf_ctx_t *ctx) {
-    int changes = 0;
-
-    // Hikari adds random arithmetic that doesn't affect results
-    // Look for patterns like: x = x + r; x = x - r (where r is random constant)
-
-    for ( int i = 0; i < mba->qty; ++i ) {
-        mblock_t *blk = mba->get_mblock(i);
-        if ( !blk ) 
-            continue;
-
-        // Track variable values to detect no-op patterns
-        // This is simplified - full implementation would need dataflow analysis
-
-        for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
-            // Check for x = x op const patterns that could be canceled
-            // by subsequent x = x reverse_op const
-
-            // For now, just count potential junk instructions
-            if ( ins->opcode == m_add || ins->opcode == m_sub ||
-                ins->opcode == m_xor || ins->opcode == m_or || ins->opcode == m_and)
-                {
-
-                // If result is not used later, it might be junk
-                // This requires use-def analysis
-            }
-        }
+        deobf::log_verbose("[bogus_cf] Replaced opaque branch in block %d with goto blk%d\n",
+                          op.block_idx, op.live_target);
     }
 
     return changes;

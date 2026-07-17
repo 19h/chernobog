@@ -1,8 +1,51 @@
 #include "hikari_wrapper.h"
-#include "../analysis/pattern_match.h"
+
+namespace {
+
+std::string normalize_import_name(const qstring &raw_name)
+{
+    std::string name = raw_name.c_str();
+    while ( !name.empty() && name.front() == '_' )
+        name.erase(name.begin());
+    if ( name.compare(0, 4, "imp_") == 0 )
+        name.erase(0, 4);
+    if ( name.compare(0, 2, "j_") == 0 )
+        name.erase(0, 2);
+    while ( !name.empty() && name.front() == '_' )
+        name.erase(name.begin());
+    return name;
+}
+
+bool is_objc_dispatch_name(const qstring &raw_name)
+{
+    const std::string name = normalize_import_name(raw_name);
+    static const std::set<std::string> dispatchers = {
+        "objc_msgSend", "objc_msgSendSuper", "objc_msgSendSuper2",
+        "objc_msgSend_stret", "objc_msgSend_fpret", "objc_msgSend_fp2ret",
+        "objc_msgSendSuper_stret", "objc_msgSendSuper2_stret",
+        "objc_msgSend_fixup"
+    };
+    return dispatchers.count(name) != 0 ||
+           name.compare(0, sizeof("objc_msgSend$") - 1, "objc_msgSend$") == 0;
+}
+
+bool is_dynamic_loader_name(const qstring &raw_name)
+{
+    const std::string name = normalize_import_name(raw_name);
+    return name == "dlsym" || name == "dlopen";
+}
+
+} // namespace
 
 // Static member
 std::map<ea_t, hikari_wrapper_handler_t::wrapper_info_t> hikari_wrapper_handler_t::s_wrapper_cache;
+std::set<ea_t> hikari_wrapper_handler_t::s_non_wrapper_cache;
+
+void hikari_wrapper_handler_t::clear_cache()
+{
+    s_wrapper_cache.clear();
+    s_non_wrapper_cache.clear();
+}
 
 //--------------------------------------------------------------------------
 // Detection
@@ -24,26 +67,14 @@ bool hikari_wrapper_handler_t::detect(mbl_array_t *mba)
                 if ( ins->l.t == mop_v ) 
                     target = ins->l.g;
 
-                if ( target != BADADDR && is_wrapper_by_name(target) ) {
+                wrapper_info_t wrapper;
+                if ( target != BADADDR && get_wrapper_info(target, &wrapper) ) {
                     return true;
                 }
             }
         }
     }
 
-    return false;
-}
-
-bool hikari_wrapper_handler_t::detect_in_binary()
-{
-    // Scan for functions with wrapper-like names
-    size_t count = get_func_qty();
-    for ( size_t i = 0; i < count; ++i ) {
-        func_t *func = getn_func(i);
-        if ( func && is_wrapper_by_name(func->start_ea) ) {
-            return true;
-        }
-    }
     return false;
 }
 
@@ -57,94 +88,26 @@ int hikari_wrapper_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 
     deobf::log("[hikari_wrapper] Starting wrapper resolution\n");
 
-    // Find all wrappers in the binary (cached)
-    auto wrappers = find_wrappers();
-    deobf::log("[hikari_wrapper] Found %zu wrapper functions\n", wrappers.size());
-
     // Find calls to wrappers in this function
-    auto calls = find_wrapper_calls(mba, wrappers);
+    auto calls = find_wrapper_calls(mba);
     deobf::log("[hikari_wrapper] Found %zu wrapper calls in function\n", calls.size());
 
     int changes = 0;
 
     for ( auto &call : calls ) {
         // Try to resolve the arguments
-        resolve_call_args(mba, &call);
+        resolve_call_args(&call);
+        annotate_call_site(call);
+        changes++;
 
-        // Find the wrapper info
-        for ( const auto &wrapper : wrappers ) {
-            if ( wrapper.func_ea == call.wrapper_func ) {
-                // Annotate the call site
-                annotate_call_site(call, wrapper);
-                changes++;
-
-                deobf::log_verbose("[hikari_wrapper] Resolved call to %s -> %s\n",
-                                  wrapper.original_name.c_str(),
-                                  wrapper.resolved_name.c_str());
-                break;
-            }
-        }
+        deobf::log_verbose("[hikari_wrapper] Resolved call to %s -> %s\n",
+                          call.wrapper.original_name.c_str(),
+                          call.wrapper.resolved_name.c_str());
     }
 
     deobf::log("[hikari_wrapper] Resolved %d wrapper calls\n", changes);
-    return changes;
-}
-
-//--------------------------------------------------------------------------
-// Resolve all wrappers in the binary
-//--------------------------------------------------------------------------
-int hikari_wrapper_handler_t::resolve_all_wrappers()
-{
-    auto wrappers = find_wrappers();
-
-    int renamed = 0;
-    for ( const auto &wrapper : wrappers ) {
-        if ( !wrapper.resolved_name.empty() &&
-            wrapper.resolved_name != wrapper.original_name)
-            {
-            if ( rename_wrapper(wrapper) ) {
-                renamed++;
-            }
-        }
-    }
-
-    msg("[hikari_wrapper] Renamed %d wrapper functions\n", renamed);
-    return renamed;
-}
-
-//--------------------------------------------------------------------------
-// Find all wrapper functions
-//--------------------------------------------------------------------------
-std::vector<hikari_wrapper_handler_t::wrapper_info_t>
-hikari_wrapper_handler_t::find_wrappers()
-{
-
-    std::vector<wrapper_info_t> result;
-
-    size_t count = get_func_qty();
-    for ( size_t i = 0; i < count; ++i ) {
-        func_t *func = getn_func(i);
-        if ( !func ) 
-            continue;
-
-        // Check cache first
-        auto p = s_wrapper_cache.find(func->start_ea);
-        if ( p != s_wrapper_cache.end() ) {
-            result.push_back(p->second);
-            continue;
-        }
-
-        // Check if this is a wrapper
-        if ( is_wrapper_by_name(func->start_ea) || is_wrapper_by_pattern(func->start_ea) ) {
-            wrapper_info_t info;
-            if ( analyze_wrapper(func->start_ea, &info) ) {
-                s_wrapper_cache[func->start_ea] = info;
-                result.push_back(info);
-            }
-        }
-    }
-
-    return result;
+    // This pass currently annotates call sites only.
+    return 0;
 }
 
 //--------------------------------------------------------------------------
@@ -152,6 +115,8 @@ hikari_wrapper_handler_t::find_wrappers()
 //--------------------------------------------------------------------------
 bool hikari_wrapper_handler_t::analyze_wrapper(ea_t func_ea, wrapper_info_t *out)
 {
+    if ( !out )
+        return false;
     func_t *func = get_func(func_ea);
     if ( !func ) 
         return false;
@@ -182,8 +147,37 @@ bool hikari_wrapper_handler_t::analyze_wrapper(ea_t func_ea, wrapper_info_t *out
         return true;
     }
 
-    // Generic wrapper - just mark it
-    out->resolved_name = out->original_name;
+    // A wrapper-like name alone does not resolve any semantics and produces a
+    // tautological annotation. Admit only wrappers with a proven runtime API.
+    return false;
+}
+
+bool hikari_wrapper_handler_t::get_wrapper_info(ea_t func_ea,
+                                                wrapper_info_t *out)
+{
+    if ( func_ea == BADADDR || !out )
+        return false;
+
+    const auto cached = s_wrapper_cache.find(func_ea);
+    if ( cached != s_wrapper_cache.end() ) {
+        *out = cached->second;
+        return true;
+    }
+    if ( s_non_wrapper_cache.count(func_ea) != 0 )
+        return false;
+
+    if ( !is_wrapper_by_name(func_ea) && !is_wrapper_by_pattern(func_ea) ) {
+        s_non_wrapper_cache.insert(func_ea);
+        return false;
+    }
+
+    wrapper_info_t wrapper;
+    if ( !analyze_wrapper(func_ea, &wrapper) ) {
+        s_non_wrapper_cache.insert(func_ea);
+        return false;
+    }
+    s_wrapper_cache.emplace(func_ea, wrapper);
+    *out = wrapper;
     return true;
 }
 
@@ -226,51 +220,22 @@ bool hikari_wrapper_handler_t::is_wrapper_by_pattern(ea_t func_ea)
     if ( func->end_ea - func->start_ea > 128 ) 
         return false;
 
-    // Check for typical wrapper patterns:
-    // 1. Few instructions
-    // 2. Contains call to objc_msgSend/dlsym
-    // 3. Forwards arguments
-
-    int insn_count = 0;
-    bool has_call = false;
-    bool has_jmp = false;
-
-    ea_t curr = func->start_ea;
-    while ( curr < func->end_ea && insn_count < 20 ) {
-        insn_t insn;
-        if ( decode_insn(&insn, curr) == 0 ) 
-            break;
-
-        insn_count++;
-
-        if ( is_call_insn(insn) ) 
-            has_call = true;
-
-        // Check for tail call (jmp to function)
-        // This is arch-specific, simplified here
-
-        curr = insn.ea + insn.size;
-    }
-
-    // Very short function with a call - likely a wrapper
-    return (insn_count <= 10 && has_call);
+    // An unnamed short function is considered only when its direct callee is
+    // a wrapper-specific runtime API. Merely containing a call is ubiquitous
+    // and does not establish wrapper semantics.
+    return has_objc_msgsend(func_ea) || has_dlsym_call(func_ea);
 }
 
 //--------------------------------------------------------------------------
 // Find wrapper calls in function
 //--------------------------------------------------------------------------
 std::vector<hikari_wrapper_handler_t::call_site_t>
-hikari_wrapper_handler_t::find_wrapper_calls(mbl_array_t *mba,
-    const std::vector<wrapper_info_t> &wrappers)
+hikari_wrapper_handler_t::find_wrapper_calls(mbl_array_t *mba)
     {
 
     std::vector<call_site_t> result;
-
-    // Build a set of wrapper addresses for fast lookup
-    std::set<ea_t> wrapper_addrs;
-    for ( const auto &w : wrappers ) {
-        wrapper_addrs.insert(w.func_ea);
-    }
+    if ( !mba )
+        return result;
 
     for ( int i = 0; i < mba->qty; ++i ) {
         mblock_t *blk = mba->get_mblock(i);
@@ -283,11 +248,12 @@ hikari_wrapper_handler_t::find_wrapper_calls(mbl_array_t *mba,
                 if ( ins->l.t == mop_v ) 
                     target = ins->l.g;
 
-                if ( target != BADADDR && wrapper_addrs.count(target) ) {
+                wrapper_info_t wrapper;
+                if ( target != BADADDR && get_wrapper_info(target, &wrapper) ) {
                     call_site_t call;
                     call.block_idx = i;
                     call.call_insn = ins;
-                    call.wrapper_func = target;
+                    call.wrapper = wrapper;
                     result.push_back(call);
                 }
             }
@@ -300,94 +266,58 @@ hikari_wrapper_handler_t::find_wrapper_calls(mbl_array_t *mba,
 //--------------------------------------------------------------------------
 // Try to resolve call arguments
 //--------------------------------------------------------------------------
-bool hikari_wrapper_handler_t::resolve_call_args(mbl_array_t *mba, call_site_t *call)
+bool hikari_wrapper_handler_t::resolve_call_args(call_site_t *call)
 {
-    if ( !mba || !call || !call->call_insn ) 
+    if ( !call || !call->call_insn
+      || call->call_insn->d.t != mop_f || !call->call_insn->d.f )
         return false;
 
-    // Try to find the class and selector arguments
-    // This requires analyzing the instructions before the call
+    // Only inspect operands that Hex-Rays identified as arguments of this
+    // call. Backward scans can capture unrelated constants on another path.
+    const mcallinfo_t *call_info = call->call_insn->d.f;
+    for ( const mcallarg_t& argument : call_info->args ) {
+        const mop_t *value = &argument;
+        if ( value->t == mop_a && value->a )
+            value = value->a;
 
-    mblock_t *blk = mba->get_mblock(call->block_idx);
-    if ( !blk ) 
-        return false;
+        ea_t address = BADADDR;
+        if ( value->t == mop_v )
+            address = value->g;
+        else if ( value->t == mop_n && value->nnn ) {
+            const ea_t candidate = static_cast<ea_t>(value->nnn->value);
+            if ( getseg(candidate) )
+                address = candidate;
+        }
+        if ( address == BADADDR )
+            continue;
 
-    // Search backwards for argument setup
-    // For Obj-C: first arg is class (or self), second is selector
-
-    for ( minsn_t *ins = call->call_insn->prev; ins; ins = ins->prev ) {
-        // Look for loads of class references
-        if ( ins->opcode == m_mov || ins->opcode == m_ldx ) {
-            if ( ins->l.t == mop_v ) {
-                // Global reference - might be a class
-                ea_t ref = ins->l.g;
-                qstring name;
-                if ( get_name(&name, ref) > 0 ) {
-                    if ( name.find("OBJC_CLASS_") != qstring::npos ) {
-                        call->class_arg = name;
-                        call->class_arg.replace("OBJC_CLASS___", "");
-                        call->class_arg.replace("OBJC_CLASS_$_", "");
-                    }
-                }
-            }
+        qstring name;
+        if ( call->class_arg.empty() && get_name(&name, address) > 0
+          && name.find("OBJC_CLASS_") != qstring::npos )
+        {
+            call->class_arg = name;
+            call->class_arg.replace("OBJC_CLASS___", "");
+            call->class_arg.replace("OBJC_CLASS_$_", "");
         }
 
-        // Look for string references (selectors)
-        if ( ins->l.t == mop_v ) {
-            ea_t str_addr = ins->l.g;
-            qstring str_content;
-            // Try to read the string
-            size_t len = get_max_strlit_length(str_addr, STRTYPE_C);
-            if ( len > 0 && len < 256 ) {
-                str_content.resize(len);
-                if ( get_strlit_contents(&str_content, str_addr, len, STRTYPE_C) > 0 ) {
-                    // Check if it looks like a selector
-                    if ( str_content.find(':') != qstring::npos ||
-                        str_content.length() > 3)
-                        {
-                        call->selector_arg = str_content;
-                    }
-                }
+        const size_t length = get_max_strlit_length(address, STRTYPE_C);
+        if ( call->selector_arg.empty() && length > 0 && length < 256 ) {
+            qstring content;
+            if ( get_strlit_contents(&content, address, length, STRTYPE_C) > 0
+              && (content.find(':') != qstring::npos || content.length() > 3) )
+            {
+                call->selector_arg = content;
             }
         }
-
-        // Stop if we've gone too far back
-        if ( ins == blk->head ) 
-            break;
     }
 
     return !call->class_arg.empty() || !call->selector_arg.empty();
 }
 
 //--------------------------------------------------------------------------
-// Rename wrapper function
-//--------------------------------------------------------------------------
-bool hikari_wrapper_handler_t::rename_wrapper(const wrapper_info_t &info)
-{
-    if ( info.resolved_name.empty() || info.resolved_name == info.original_name ) 
-        return false;
-
-    // Check if name already exists
-    if ( get_name_ea(BADADDR, info.resolved_name.c_str()) != BADADDR ) {
-        // Name exists - append a number
-        qstring unique_name;
-        for ( int i = 1; i < 100; ++i ) {
-            unique_name.sprnt("%s_%d", info.resolved_name.c_str(), i);
-            if ( get_name_ea(BADADDR, unique_name.c_str()) == BADADDR ) {
-                return set_name(info.func_ea, unique_name.c_str(), SN_NOWARN | SN_NOCHECK);
-            }
-        }
-        return false;
-    }
-
-    return set_name(info.func_ea, info.resolved_name.c_str(), SN_NOWARN | SN_NOCHECK);
-}
-
-//--------------------------------------------------------------------------
 // Annotate call site
 //--------------------------------------------------------------------------
-void hikari_wrapper_handler_t::annotate_call_site(const call_site_t &call,
-    const wrapper_info_t &wrapper)
+void hikari_wrapper_handler_t::annotate_call_site(const call_site_t &call)
     {
 
     if ( !call.call_insn ) 
@@ -395,55 +325,20 @@ void hikari_wrapper_handler_t::annotate_call_site(const call_site_t &call,
 
     qstring comment;
 
-    if ( wrapper.is_objc && !call.class_arg.empty() ) {
+    if ( call.wrapper.is_objc && !call.class_arg.empty() ) {
         if ( !call.selector_arg.empty() ) {
             comment.sprnt("ObjC: [%s %s]",
                          call.class_arg.c_str(), call.selector_arg.c_str());
         } else {
             comment.sprnt("ObjC: %s method call", call.class_arg.c_str());
         }
-    } else if ( !wrapper.resolved_name.empty() ) {
-        comment.sprnt("Wrapper -> %s", wrapper.resolved_name.c_str());
+    } else if ( !call.wrapper.resolved_name.empty() ) {
+        comment.sprnt("Wrapper -> %s", call.wrapper.resolved_name.c_str());
     }
 
     if ( !comment.empty() ) {
         set_cmt(call.call_insn->ea, comment.c_str(), false);
     }
-}
-
-//--------------------------------------------------------------------------
-// Generate meaningful name
-//--------------------------------------------------------------------------
-qstring hikari_wrapper_handler_t::generate_name(const qstring &cls, const qstring &sel)
-{
-    qstring name;
-
-    if ( !cls.empty() && !sel.empty() ) {
-        name = cls;
-        name += "_";
-
-        // Clean up selector: remove colons, make CamelCase
-        for ( size_t i = 0; i < sel.length(); ++i ) {
-            char c = sel[i];
-            if ( c == ':' ) {
-                // Skip colon, capitalize next char
-                if ( i + 1 < sel.length() ) {
-                    name += (char)toupper(sel[i + 1]);
-                    i++;
-                }
-            } else {
-                name += c;
-            }
-        }
-    } else if ( !cls.empty() ) {
-        name = cls;
-        name += "_method";
-    } else if ( !sel.empty() ) {
-        name = "unknown_";
-        name += sel;
-    }
-
-    return name;
 }
 
 //--------------------------------------------------------------------------
@@ -467,9 +362,7 @@ bool hikari_wrapper_handler_t::has_objc_msgsend(ea_t func_ea)
             if ( target != BADADDR ) {
                 qstring name;
                 if ( get_func_name(&name, target) > 0 ) {
-                    if ( name.find("objc_msgSend") != qstring::npos ||
-                        name.find("_objc_msgSend") != qstring::npos)
-                        {
+                    if ( is_objc_dispatch_name(name) ) {
                         return true;
                     }
                 }
@@ -502,9 +395,7 @@ bool hikari_wrapper_handler_t::has_dlsym_call(ea_t func_ea)
             if ( target != BADADDR ) {
                 qstring name;
                 if ( get_func_name(&name, target) > 0 ) {
-                    if ( name.find("dlsym") != qstring::npos ||
-                        name.find("dlopen") != qstring::npos)
-                        {
+                    if ( is_dynamic_loader_name(name) ) {
                         return true;
                     }
                 }

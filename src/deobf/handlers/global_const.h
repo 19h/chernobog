@@ -29,7 +29,6 @@ public:
 private:
     struct global_const_t {
         minsn_t *insn;          // The load instruction
-        mop_t *gv_mop;          // The global variable operand
         ea_t gv_addr;           // Global variable address
         uint64_t value;         // Constant value
         int size;               // Size in bytes
@@ -48,7 +47,7 @@ private:
     static bool looks_like_pointer(uint64_t val, int size);
 
     // Read value from global
-    static uint64_t read_global_value(ea_t addr, int size);
+    static std::optional<uint64_t> read_global_value(ea_t addr, int size);
 
     // Replace load with constant
     static int replace_with_constant(mblock_t *blk, minsn_t *ins,

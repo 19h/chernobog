@@ -2,7 +2,6 @@
 #include "ast.h"
 #include "../../common/simd.h"
 #include <unordered_map>
-#include <mutex>
 
 //--------------------------------------------------------------------------
 // AST Builder - Converts IDA microcode to AST representation
@@ -10,8 +9,6 @@
 // Features:
 //   - Recursive conversion of mop_t and minsn_t to AST
 //   - Deduplication context to prevent exponential explosion
-//   - Global LRU cache for converted ASTs
-//   - Thread-safe cache access
 //   - OPTIMIZED: Hash-based key comparison, no string allocations
 //
 // Ported from d810-ng's tracker.py with C++ optimizations
@@ -78,9 +75,6 @@ public:
         mop_to_ast_.reserve(64);
     }
 
-    // Get or create AST for mop, with deduplication
-    AstPtr get_or_create(const mop_t& mop);
-
     // Check if mop is already in context
     SIMD_FORCE_INLINE bool has(const MopKey& key) const {
         return mop_to_ast_.find(key) != mop_to_ast_.end();
@@ -94,59 +88,11 @@ public:
 
     // Add new AST to context
     SIMD_FORCE_INLINE void add(const MopKey& key, AstPtr ast) {
-        ast->ast_index = next_index_++;
         mop_to_ast_.emplace(key, std::move(ast));
-    }
-
-    // Clear the context
-    void clear() {
-        mop_to_ast_.clear();
-        next_index_ = 0;
     }
 
 private:
     std::unordered_map<MopKey, AstPtr, MopKey::Hash> mop_to_ast_;
-    int next_index_ = 0;
-};
-
-//--------------------------------------------------------------------------
-// Global AST cache with LRU eviction
-// OPTIMIZED: Uses unordered_map with pre-computed hash for O(1) lookup
-//--------------------------------------------------------------------------
-class AstCache {
-public:
-    static constexpr size_t MAX_CACHE_SIZE = 20480;
-    static constexpr size_t EVICTION_BATCH = MAX_CACHE_SIZE / 10;
-
-    static AstCache& instance();
-
-    // Get cached AST (returns nullptr if not cached)
-    AstPtr get(const MopKey& key);
-
-    // Add AST to cache (freezes the AST)
-    void put(const MopKey& key, AstPtr ast);
-
-    // Clear cache
-    void clear();
-
-    // Get cache statistics
-    size_t size() const { return cache_.size(); }
-    size_t hits() const { return hit_count_; }
-    size_t misses() const { return miss_count_; }
-
-private:
-    AstCache() {
-        // Reserve capacity to minimize rehashing
-        cache_.reserve(MAX_CACHE_SIZE);
-    }
-
-    std::mutex mutex_;
-    std::unordered_map<MopKey, AstPtr, MopKey::Hash> cache_;
-    size_t hit_count_ = 0;
-    size_t miss_count_ = 0;
-
-    // Simple eviction: remove entries when full
-    void evict_if_needed();
 };
 
 //--------------------------------------------------------------------------
@@ -156,16 +102,6 @@ private:
 // Convert microcode instruction to AST
 // Returns nullptr if instruction cannot be converted (non-MBA opcode)
 AstPtr minsn_to_ast(const minsn_t* ins);
-
-// Convert microcode operand to AST
-// Uses global cache for performance
-AstPtr mop_to_ast(const mop_t& mop);
-
-// Convert with explicit context (for recursive building)
-AstPtr mop_to_ast_with_context(const mop_t& mop, AstBuilderContext& ctx);
-
-// Convert instruction with explicit context
-AstPtr minsn_to_ast_with_context(const minsn_t* ins, AstBuilderContext& ctx);
 
 //--------------------------------------------------------------------------
 // Reverse conversion - AST back to microcode
@@ -180,23 +116,8 @@ minsn_t* ast_to_minsn(AstPtr ast,
 
 // Create mop_t from AST leaf
 mop_t ast_leaf_to_mop(AstLeafPtr leaf,
-                      const std::map<std::string, mop_t>& bindings);
-
-//--------------------------------------------------------------------------
-// Cache management
-//--------------------------------------------------------------------------
-
-// Clear all AST caches (call on function change)
-void clear_ast_caches();
-
-// Get cache statistics
-struct AstCacheStats {
-    size_t cache_size;
-    size_t hit_count;
-    size_t miss_count;
-    double hit_rate;
-};
-AstCacheStats get_ast_cache_stats();
+                      const std::map<std::string, mop_t>& bindings,
+                      int constant_size = 0);
 
 } // namespace ast
 } // namespace chernobog
