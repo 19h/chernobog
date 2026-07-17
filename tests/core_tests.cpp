@@ -229,6 +229,60 @@ void test_hikari_string_recovery()
         separate_terminator.begin(), separate_terminator.end() - 1);
     check(recover_hikari_xor_ascii(unterminated, six_keys).empty(),
           "Hikari unterminated plaintext rejection");
+
+    using chernobog::string_recovery::recover_static_text;
+    const std::vector<uint8_t> ascii = {'N', 'h', 0};
+    const auto recovered_ascii = recover_static_text(ascii, 1, false, false);
+    check(recovered_ascii && recovered_ascii->utf8 == "Nh"
+          && recovered_ascii->characters == 2
+          && recovered_ascii->explicitly_terminated,
+          "terminated static UTF-8 recovery");
+    const std::vector<uint8_t> one_character = {'-', 0};
+    const auto recovered_one = recover_static_text(
+        one_character, 1, false, false);
+    check(recovered_one && recovered_one->utf8 == "-"
+          && recovered_one->explicitly_terminated,
+          "single-character explicitly terminated static UTF-8 recovery");
+
+    const std::vector<uint8_t> length_delimited = {'A', 'E', 'S', '-', '2', '5', '6'};
+    const auto recovered_length = recover_static_text(
+        length_delimited, 1, false, true);
+    check(recovered_length && recovered_length->utf8 == "AES-256"
+          && !recovered_length->explicitly_terminated,
+          "length-delimited static UTF-8 recovery");
+    check(!recover_static_text(length_delimited, 1, false, false),
+          "unterminated static text requires explicit admission");
+
+    const std::vector<uint8_t> utf16le = {
+        0xA9, 0x03, 0x3D, 0xD8, 0x80, 0xDE, 0x00, 0x00}; // Omega + U+1F680
+    const auto recovered_utf16 = recover_static_text(utf16le, 2, false, false);
+    check(recovered_utf16 && recovered_utf16->utf8 == "\xCE\xA9\xF0\x9F\x9A\x80"
+          && recovered_utf16->characters == 2,
+          "strict UTF-16LE recovery with surrogate pair");
+    const std::vector<uint8_t> utf16be = {
+        0x03, 0xA9, 0xD8, 0x3D, 0xDE, 0x80, 0x00, 0x00};
+    const auto recovered_utf16be = recover_static_text(
+        utf16be, 2, true, false);
+    check(recovered_utf16be
+          && recovered_utf16be->utf8 == "\xCE\xA9\xF0\x9F\x9A\x80",
+          "strict UTF-16BE recovery with surrogate pair");
+    const std::vector<uint8_t> utf32le = {
+        0x80, 0xF6, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
+    const auto recovered_utf32 = recover_static_text(
+        utf32le, 4, false, false);
+    check(recovered_utf32 && recovered_utf32->utf8 == "\xF0\x9F\x9A\x80",
+          "strict UTF-32LE recovery");
+
+    const std::vector<uint8_t> invalid_utf8 = {0xC0, 0xAF, 0};
+    check(!recover_static_text(invalid_utf8, 1, false, false),
+          "overlong UTF-8 rejection");
+    const std::vector<uint8_t> embedded_control = {'A', 0x01, 'B', 0};
+    check(!recover_static_text(embedded_control, 1, false, false),
+          "static text control-code rejection");
+    const std::vector<uint8_t> unpaired_surrogate = {
+        0x00, 0xD8, 0x41, 0x00, 0x00, 0x00};
+    check(!recover_static_text(unpaired_surrogate, 2, false, false),
+          "unpaired UTF-16 surrogate rejection");
 }
 
 } // namespace

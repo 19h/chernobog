@@ -678,9 +678,7 @@ uint32_t chernobog_t::detect_obfuscations(mbl_array_t *mba)
     if ( has_bogus_cf(mba, &ctx) )
         detected |= OBF_BOGUS_CF;
 
-    // Restrict string-encryption detection to named encrypted objects that
-    // are data-referenced by this function.
-    if ( has_encrypted_strings(mba->entry_ea) )
+    if ( has_encrypted_strings(mba) )
         detected |= OBF_STRING_ENC;
 
     // Check for encrypted constants (XOR patterns)
@@ -750,9 +748,9 @@ bool chernobog_t::has_bogus_cf(mbl_array_t *mba, deobf_ctx_t *ctx)
     return bogus_cf_handler_t::detect(mba, ctx);
 }
 
-bool chernobog_t::has_encrypted_strings(ea_t func_ea)
+bool chernobog_t::has_encrypted_strings(mbl_array_t *mba)
 {
-    return string_decrypt_handler_t::detect(func_ea);
+    return string_decrypt_handler_t::detect(mba);
 }
 
 bool chernobog_t::has_encrypted_consts(mbl_array_t *mba)

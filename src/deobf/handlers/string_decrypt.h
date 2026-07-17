@@ -11,19 +11,23 @@
 //   - Atomic status flag to prevent re-decryption
 //
 // Detection:
-//   - A function data-reference to a global whose normalized name begins with
-//     "EncryptedString"
+//   - Exact contiguous static global-to-global XOR/NOT initializer runs that
+//     decode as valid UTF-8/UTF-16/UTF-32 text
+//   - A function data-reference to a legacy Hikari "EncryptedString" object
 //
 // Reversal:
-//   1. Find encrypted string globals
-//   2. Extract a conflict-free contiguous prefix of per-byte XOR keys
-//   3. Decrypt printable text with an explicit source terminator
-//   4. Annotate the encrypted object and its corresponding decrypt space
+//   1. Evaluate exact-width global XOR/NOT/identity writes, including a
+//      same-block register-mediated final store
+//   2. Require contiguous disjoint ranges, sufficient transformed writes,
+//      and strict text/terminator validation
+//   3. Patch only the runtime destination and replace accepted stores with
+//      plaintext immediates so Hex-Rays can collapse the initializer
+//   4. Retain the named-object Hikari key-vector path as a legacy fallback
 //--------------------------------------------------------------------------
 class string_decrypt_handler_t {
 public:
     // Detection
-    static bool detect(ea_t func_ea);
+    static bool detect(mbl_array_t *mba);
 
     // Main deobfuscation pass
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);

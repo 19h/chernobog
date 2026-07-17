@@ -23,7 +23,7 @@ public:
     static uint32_t detect_obfuscations(mbl_array_t *mba);
     static bool is_flattened(mbl_array_t *mba, deobf_ctx_t *ctx);
     static bool has_bogus_cf(mbl_array_t *mba, deobf_ctx_t *ctx);
-    static bool has_encrypted_strings(ea_t func_ea);
+    static bool has_encrypted_strings(mbl_array_t *mba);
     static bool has_encrypted_consts(mbl_array_t *mba);
     static bool has_indirect_branches(mbl_array_t *mba);
 
