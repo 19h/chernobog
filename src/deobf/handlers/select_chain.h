@@ -8,8 +8,9 @@
 // LLVM lowers cascaded integer select operations to repeated conditional-move
 // diamonds on x86.  Very long cascades can exceed Hex-Rays' ctree structural
 // limits even though their data flow is linear.  This handler recognizes only
-// long, exact diamonds and replaces each conditional register assignment with
-// an equivalent fixed-width branchless expression before ctree construction.
+// dense sets of exact diamonds with atomic predicates and replaces each
+// conditional register assignment with an equivalent fixed-width branchless
+// expression before ctree construction.
 //--------------------------------------------------------------------------
 class select_chain_handler_t
 {

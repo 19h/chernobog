@@ -3,8 +3,11 @@
 namespace
 {
 
-constexpr size_t kMinimumChainLength = 8;
-constexpr size_t kMinimumFunctionDiamonds = 64;
+// This pass exists to keep extreme compiler-lowered select cascades below
+// Hex-Rays' structural limits.  A four-digit floor excludes ordinary and
+// MBA-heavy CFGs while retaining the observed 1,920- and 3,133-diamond
+// cascades.  Smaller groups are left to Hex-Rays' native optimizer.
+constexpr size_t kMinimumFunctionDiamonds = 1024;
 
 struct select_diamond_t
 {
@@ -28,6 +31,11 @@ bool is_boolean_condition(const mop_t &condition)
     return condition.t == mop_d && condition.d
         && (condition.d->opcode == m_lnot
          || is_mcode_set(condition.d->opcode));
+}
+
+bool is_atomic_compare_operand(const mop_t &operand)
+{
+    return operand.t == mop_r || operand.t == mop_n;
 }
 
 bool is_supported_assignment(const minsn_t *ins)
@@ -76,6 +84,14 @@ bool match_diamond(mbl_array_t *mba, int parent_idx, select_diamond_t *out)
     // 0 or 1. Accept only microcode operands whose opcode/register class
     // guarantees that range.
     if ( jcc->opcode == m_jcnd && !is_boolean_condition(jcc->l) )
+        return false;
+    // Copying a nested MBA predicate into every replacement can cause
+    // exponential expression growth in later Hex-Rays optimization.  The
+    // select/cmov cascades targeted here compare registers and constants;
+    // reject computed operands rather than duplicating their expression DAGs.
+    if ( jcc->opcode != m_jcnd
+      && (!is_atomic_compare_operand(jcc->l)
+       || !is_atomic_compare_operand(jcc->r)) )
         return false;
 
     const int jump_target = jcc->d.b;
@@ -127,7 +143,7 @@ bool match_diamond(mbl_array_t *mba, int parent_idx, select_diamond_t *out)
     return false;
 }
 
-std::vector<std::vector<int>> find_long_chains(mbl_array_t *mba)
+std::vector<std::vector<int>> find_dense_diamonds(mbl_array_t *mba)
 {
     std::vector<std::vector<int>> result;
     if ( !mba || mba->qty <= 0 )
@@ -145,34 +161,7 @@ std::vector<std::vector<int>> find_long_chains(mbl_array_t *mba)
             all_diamonds.push_back(i);
     }
     if ( all_diamonds.size() >= kMinimumFunctionDiamonds )
-    {
         result.push_back(std::move(all_diamonds));
-        return result;
-    }
-
-    std::vector<bool> visited(static_cast<size_t>(mba->qty), false);
-    for ( int start = 0; start < mba->qty; ++start )
-    {
-        if ( visited[static_cast<size_t>(start)] )
-            continue;
-
-        std::vector<int> chain;
-        int current = start;
-        while ( current >= 0 && current < mba->qty
-             && !visited[static_cast<size_t>(current)] )
-        {
-            select_diamond_t diamond;
-            if ( !match_diamond(mba, current, &diamond) )
-                break;
-
-            visited[static_cast<size_t>(current)] = true;
-            chain.push_back(current);
-            current = diamond.join;
-        }
-
-        if ( chain.size() >= kMinimumChainLength )
-            result.push_back(std::move(chain));
-    }
     return result;
 }
 
@@ -310,7 +299,7 @@ bool collapse_diamond(mbl_array_t *mba, const select_diamond_t &diamond)
 //--------------------------------------------------------------------------
 bool select_chain_handler_t::detect(mbl_array_t *mba)
 {
-    return !find_long_chains(mba).empty();
+    return !find_dense_diamonds(mba).empty();
 }
 
 //--------------------------------------------------------------------------
@@ -321,7 +310,7 @@ int select_chain_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
     if ( !mba || !ctx || mba->has_bad_sp() || mba->bad_call_sp_detected() )
         return 0;
 
-    const std::vector<std::vector<int>> chains = find_long_chains(mba);
+    const std::vector<std::vector<int>> chains = find_dense_diamonds(mba);
     if ( chains.empty() )
         return 0;
 
