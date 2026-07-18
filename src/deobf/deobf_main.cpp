@@ -74,6 +74,7 @@ void chernobog_clear_all_tracking()
     hikari_wrapper_handler_t::clear_cache();
     opaque_eval_t::clear_cache();
     vm_mba_handler_t::clear();
+    global_const_handler_t::clear_cache();
     deobf::log_verbose("[chernobog] Cleared all deobfuscation caches\n");
 }
 
@@ -503,6 +504,7 @@ static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx)
     {
         total_changes += global_const_handler_t::run(mba, ctx);
     }
+    total_changes += global_const_handler_t::remove_write_only_stores(mba);
 
     // 3.6. Resolve indirect pointer references
     if ( ctx->detected_obf & OBF_PTR_INDIRECT )
@@ -871,6 +873,7 @@ void deobf_done()
     identity_call_handler_t::clear_caches();
     vm_mba_handler_t::dump_statistics();
     vm_mba_handler_t::clear();
+    global_const_handler_t::clear_cache();
     state->optblock_processed.clear();
 
     // NOTE: Do NOT call RuleRegistry::instance().clear() here!

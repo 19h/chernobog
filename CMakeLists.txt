@@ -127,6 +127,7 @@ ida_add_plugin(chernobog
     src/deobf/handlers/identity_call.cpp
     src/deobf/handlers/stack_string.cpp
     src/deobf/handlers/hikari_wrapper.cpp
+    src/deobf/handlers/hikari_cfg.cpp
     src/deobf/handlers/savedregs.cpp
     src/deobf/handlers/objc_resolve.cpp
     src/deobf/handlers/global_const.cpp

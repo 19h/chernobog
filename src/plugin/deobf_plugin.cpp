@@ -11,6 +11,7 @@
 #include "../deobf/handlers/ctree_switch_fold.h"
 #include "../deobf/handlers/ctree_indirect_call.h"
 #include "../deobf/handlers/ctree_string_decrypt.h"
+#include "../deobf/handlers/hikari_cfg.h"
 
 #include <set>
 #include <cstdio>
@@ -54,6 +55,9 @@ struct chernobog_plugmod_t final : public plugmod_t
     bool ui_hooked = false;
     bool idb_hooked = false;
     bool first_hexrays_callback = true;
+    bool hikari_cfg_attempted = false;
+    qtimer_t activation_timer = nullptr;
+    int activation_attempts = 0;
 
     // All address-keyed state belongs to this database instance.
     std::set<ea_t> ctree_const_folded;
@@ -65,8 +69,12 @@ struct chernobog_plugmod_t final : public plugmod_t
     virtual ~chernobog_plugmod_t();
 
     bool activate();
+    void schedule_activation_retry();
+    void cancel_activation_retry();
+    static int idaapi activation_retry_callback(void *ud);
     void deactivate();
     void clear_processing_state();
+    bool recover_hikari_cfg_if_ready(bool force = false);
     virtual bool idaapi run(size_t arg) override;
 };
 
@@ -212,6 +220,13 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         msg("[chernobog] Hexrays callback registered and active\n");
     }
 
+    // Batch/IDALib sessions can finish autoanalysis without emitting a final
+    // IDB notification after the plugin activates. The flowchart event is the
+    // earliest decompiler point guaranteed to occur after the caller's
+    // auto_wait(). Request one complete restart if tier 2 changed native CFG.
+    if ( event == hxe_flowchart && self->recover_hikari_cfg_if_ready(true) )
+        return MERR_REDO;
+
     if ( event == hxe_populating_popup )
     {
         TWidget *widget = va_arg(va, TWidget *);
@@ -250,6 +265,30 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     {
         mbl_array_t *mba = va_arg(va, mbl_array_t *);
         debug_log("[chernobog] hxe_microcode: mba=%p, auto=%d\n", mba, is_auto_mode_enabled() ? 1 : 0);
+    }
+    // Global optimization exposes exact register-defined tail targets that do
+    // not exist at LOCOPT. Hex-Rays requires MERR_LOOP after any mutation at
+    // this event so its global optimizer can rebuild coherent chains.
+    else if ( event == hxe_glbopt )
+    {
+        mbl_array_t *mba = va_arg(va, mbl_array_t *);
+        if ( mba && is_auto_mode_enabled() && !is_disabled_mode_enabled()
+          && chernobog_t::has_indirect_branches(mba) )
+        {
+            deobf_ctx_t branch_ctx;
+            branch_ctx.mba = mba;
+            branch_ctx.func_ea = mba->entry_ea;
+            const int changes = chernobog_t::resolve_indirect_branches(
+                mba, &branch_ctx);
+            if ( changes > 0 )
+            {
+                debug_log(
+                    "[chernobog] hxe_glbopt resolved %d indirect branches at %llx\n",
+                    changes,
+                    static_cast<unsigned long long>(mba->entry_ea));
+                return MERR_LOOP;
+            }
+        }
     }
     // Apply ctree-level optimizations after decompilation
     else if ( event == hxe_maturity )
@@ -321,7 +360,38 @@ void chernobog_plugmod_t::clear_processing_state()
     ctree_switch_folded.clear();
     ctree_indirect_call_processed.clear();
     ctree_string_decrypt_processed.clear();
+    hikari_cfg_attempted = false;
     chernobog_clear_all_tracking();
+}
+
+bool chernobog_plugmod_t::recover_hikari_cfg_if_ready(bool force)
+{
+    debug_log(
+        "[chernobog] CFG readiness: attempted=%d mode=%d auto_ok=%d force=%d\n",
+        hikari_cfg_attempted ? 1 : 0, hikari_cfg_handler_t::mode(),
+        auto_is_ok() ? 1 : 0, force ? 1 : 0);
+    if ( hikari_cfg_attempted || hikari_cfg_handler_t::mode() == 0
+      || (!force && !auto_is_ok()) )
+    {
+        return false;
+    }
+
+    // Mark before scheduling any analysis from reversible patches so the
+    // ensuing auto_empty notification cannot recursively rerun the pass.
+    hikari_cfg_attempted = true;
+    const hikari_cfg_stats_t stats = hikari_cfg_handler_t::run();
+    debug_log(
+        "[chernobog] CFG stats: slots=%d indirect=%d recovered=%d patched=%d "
+        "reachable=%d\n",
+        stats.root_state_slots, stats.terminal_indirect_branches,
+        stats.recovered_dispatchers, stats.patched_dispatchers,
+        stats.reachable_functions);
+    msg(
+        "[chernobog] Hikari CFG recovery: %d/%d dispatchers, %d compact "
+        "patches, %d reachable functions\n",
+        stats.recovered_dispatchers, stats.terminal_indirect_branches,
+        stats.patched_dispatchers, stats.reachable_functions);
+    return stats.patched_dispatchers > 0;
 }
 
 bool chernobog_plugmod_t::activate()
@@ -399,6 +469,8 @@ bool chernobog_plugmod_t::activate()
         msg("[chernobog] Cleared Hex-Rays decompiler cache (CHERNOBOG_RESET=1)\n");
     }
 
+    recover_hikari_cfg_if_ready();
+
     msg("[chernobog] Plugin ready (%d components initialized)\n", initialized);
     if ( auto_mode )
         msg("[chernobog] *** AUTO MODE ACTIVE - will deobfuscate on decompilation ***\n");
@@ -406,6 +478,58 @@ bool chernobog_plugmod_t::activate()
     msg("[chernobog] Use Ctrl+Shift+D to deobfuscate current function\n");
     msg("[chernobog] Use Ctrl+Shift+A to analyze obfuscation types\n");
     return true;
+}
+
+void chernobog_plugmod_t::schedule_activation_retry()
+{
+    if ( hexrays_initialized || activation_timer != nullptr )
+        return;
+
+    activation_attempts = 0;
+    activation_timer = register_timer(
+        100, activation_retry_callback, this);
+    if ( activation_timer == nullptr )
+    {
+        // Timers are GUI-only. IDALib and idat retain event-driven retries at
+        // database completion and at the first explicit plugin invocation.
+        debug_log("[chernobog] Deferred activation timer unavailable\n");
+    }
+}
+
+void chernobog_plugmod_t::cancel_activation_retry()
+{
+    if ( activation_timer != nullptr )
+    {
+        unregister_timer(activation_timer);
+        activation_timer = nullptr;
+    }
+    activation_attempts = 0;
+}
+
+int idaapi chernobog_plugmod_t::activation_retry_callback(void *ud)
+{
+    chernobog_plugmod_t *self = static_cast<chernobog_plugmod_t *>(ud);
+    if ( self == nullptr )
+        return -1;
+
+    ++self->activation_attempts;
+    if ( self->activate() )
+    {
+        self->activation_timer = nullptr;
+        self->activation_attempts = 0;
+        return -1;
+    }
+
+    // Bound autonomous retries to 15 s. UI/plugin/database notifications can
+    // still start a new bounded window after a material loader-state change.
+    if ( self->activation_attempts >= 60 )
+    {
+        self->activation_timer = nullptr;
+        msg("[chernobog] Hex-Rays activation retry window expired; "
+            "manual plugin invocation will retry\n");
+        return -1;
+    }
+    return 250;
 }
 
 void chernobog_plugmod_t::deactivate()
@@ -451,15 +575,16 @@ static ssize_t idaapi ui_callback(void *ud, int event_id, va_list va)
 
     if ( event_id == ui_ready_to_run || event_id == ui_database_inited )
     {
-        self->activate();
+        if ( !self->activate() )
+            self->schedule_activation_retry();
     }
     else if ( event_id == ui_plugin_loaded )
     {
         // Retrying once per plugin load is bounded and also supports renamed
         // or cloud decompiler variants without relying on display strings.
         (void)va_arg(va, const plugin_info_t *);
-        if ( !self->hexrays_initialized )
-            self->activate();
+        if ( !self->hexrays_initialized && !self->activate() )
+            self->schedule_activation_retry();
     }
     else if ( event_id == ui_destroying_plugmod )
     {
@@ -474,8 +599,17 @@ static ssize_t idaapi ui_callback(void *ud, int event_id, va_list va)
 static ssize_t idaapi idb_callback(void *ud, int event_id, va_list)
 {
     chernobog_plugmod_t *self = static_cast<chernobog_plugmod_t *>(ud);
-    if ( self != nullptr && event_id == idb_event::closebase )
-        self->clear_processing_state();
+    if ( self != nullptr )
+    {
+        if ( event_id == idb_event::closebase )
+            self->clear_processing_state();
+        else if ( event_id == idb_event::auto_empty_finally )
+        {
+            if ( !self->hexrays_initialized && !self->activate() )
+                self->schedule_activation_retry();
+            self->recover_hikari_cfg_if_ready();
+        }
+    }
     return 0;
 }
 
@@ -496,11 +630,13 @@ chernobog_plugmod_t::chernobog_plugmod_t()
     {
         debug_log("[chernobog] Hex-Rays not ready; activation deferred\n");
         msg("[chernobog] Waiting for Hex-Rays decompiler...\n");
+        schedule_activation_retry();
     }
 }
 
 chernobog_plugmod_t::~chernobog_plugmod_t()
 {
+    cancel_activation_retry();
     if ( idb_hooked )
         unhook_from_notification_point(HT_IDB, idb_callback, this);
     if ( ui_hooked )
@@ -514,6 +650,8 @@ chernobog_plugmod_t::~chernobog_plugmod_t()
 bool idaapi chernobog_plugmod_t::run(size_t)
 {
     const bool ready = activate();
+    if ( !ready )
+        schedule_activation_retry();
 
     // Plugin can be invoked manually - show info
     msg("\n=== Chernobog - Hikari Deobfuscator ===\n");

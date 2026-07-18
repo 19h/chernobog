@@ -1,3 +1,4 @@
+#include "common/arm64_branch.h"
 #include "common/bitvector.h"
 #include "common/simd.h"
 #include "common/string_recovery.h"
@@ -64,6 +65,39 @@ void test_bitvectors()
           "little-endian 24-bit decode");
     check(decode_bytes(nullptr, 4, false) == 0,
           "null byte decode is rejected");
+}
+
+void test_arm64_direct_branch_encoding()
+{
+    using chernobog::arm64_branch::encode_b;
+    using chernobog::arm64_branch::encode_b_cond;
+
+    check(encode_b(0x100003034ULL, 0x100012DC8ULL) == 0x14003F65U,
+          "ARM64 forward direct branch encoding");
+    check(encode_b(0x1000ULL, 0x0ULL) == 0x17FFFC00U,
+          "ARM64 backward direct branch encoding");
+    check(encode_b(0, (uint64_t{1} << 27) - 4).has_value(),
+          "ARM64 maximum forward branch displacement");
+    check(!encode_b(0, uint64_t{1} << 27),
+          "ARM64 out-of-range forward branch rejection");
+    check(encode_b(uint64_t{1} << 27, 0).has_value(),
+          "ARM64 maximum backward branch displacement");
+    check(!encode_b((uint64_t{1} << 27) + 4, 0),
+          "ARM64 out-of-range backward branch rejection");
+    check(!encode_b(0x1000, 0x1002),
+          "ARM64 unaligned branch target rejection");
+
+    check(encode_b_cond(0x100012DD4ULL, 0x100012DDCULL, 0xAU)
+              == 0x5400004AU,
+          "ARM64 conditional branch encoding");
+    check(encode_b_cond(uint64_t{1} << 20, 0, 0) == 0x54800000U,
+          "ARM64 maximum backward conditional displacement");
+    check(!encode_b_cond((uint64_t{1} << 20) + 4, 0, 0),
+          "ARM64 out-of-range backward conditional rejection");
+    check(!encode_b_cond(0, uint64_t{1} << 20, 0),
+          "ARM64 out-of-range forward conditional rejection");
+    check(!encode_b_cond(0x1000, 0x1000, 0xEU),
+          "ARM64 reserved conditional predicate rejection");
 }
 
 void test_simd_utilities()
@@ -290,6 +324,7 @@ void test_hikari_string_recovery()
 int main()
 {
     test_bitvectors();
+    test_arm64_direct_branch_encoding();
     test_simd_utilities();
     test_mba_identities();
     test_branchless_select_identity();

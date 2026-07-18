@@ -6,9 +6,10 @@
 //
 // An m_ijmp stores its selector in r and its offset expression in d.  This
 // handler rewrites the branch only when that actual offset expression is an
-// exact constant and names the start of an existing microblock.  In
+// exact constant and names the start of an existing microblock, or when late
+// same-block pointer arithmetic yields an exact external function entry. In
 // particular, it does not infer a jump table from unrelated loads, symbols,
-// constants, or arithmetic elsewhere in the function.
+// constants, or arithmetic across blocks.
 //--------------------------------------------------------------------------
 class indirect_branch_handler_t {
 public:

@@ -187,6 +187,11 @@ Or manually copy the built plugin:
 - Linux: `build/chernobog64.so` → `~/.idapro/plugins/`
 - Windows: `build/chernobog64.dll` → `%APPDATA%\Hex-Rays\IDA Pro\plugins\`
 
+Plugin discovery order is not treated as decompiler availability. If Chernobog
+loads before the Hex-Rays dispatcher is ready, it logs a waiting message and
+retries from loader/database notifications plus a bounded deferred GUI timer.
+Manual invocation also retries activation.
+
 ## Usage
 
 ### Quick Start
@@ -218,6 +223,12 @@ To see what obfuscation types are present without making changes:
 | `CHERNOBOG_RESET=1` | Clear decompiler cache on startup |
 | `CHERNOBOG_DISABLE=1` | Disable transformations while retaining plugin lifecycle and optional cache reset |
 | `CHERNOBOG_MAX_FUNCSIZE_KB=<n>` | Set Hex-Rays' process-local function-size ceiling to decimal `n` KiB (1..1048576); leaves `hexrays.cfg` unchanged |
+| `CHERNOBOG_WRITABLE_CONST=1` | Inline loaded 1/2/4/8-byte writable scalars with classified direct reads, no direct writes, no address escape, and no loader fixup on the scalar |
+| `CHERNOBOG_WRITABLE_CONST=2` | Additionally admit address-taken scalars and relocation-backed code-pointer slots in writable data; requires ruling out indirect mutation |
+| `CHERNOBOG_PATCH_BRANCHES=1` | Reversibly patch a proven ARM64 indirect tail `BR` to an equivalent in-range direct `B`; re-decompile once after discovery |
+| `CHERNOBOG_DEAD_GLOBAL_STORES=1` | Remove direct stores to auto-named writable scalars with write xrefs but no direct reads, fixups, data references, or user/export names |
+| `CHERNOBOG_HIKARI_CFG=1` | Recover exact two-target ARM64 Hikari dispatch edges across IDA function boundaries and add IDB xrefs/comments |
+| `CHERNOBOG_HIKARI_CFG=2` | Additionally rewrite side-effect-free dispatch tails to reversible direct conditional branches |
 | `CHERNOBOG_MBA_AFFINE=1` | Enable exact-Z3 affine MBA reconstruction (opt-in) |
 | `CHERNOBOG_MBA_DEBUG=1` | Log affine decisions to `/tmp/chernobog_mba_debug.log` |
 | `CHERNOBOG_VM=1` | Enable VM-family detection and rewriting (opt-in) |
@@ -229,6 +240,41 @@ To see what obfuscation types are present without making changes:
 Raising `CHERNOBOG_MAX_FUNCSIZE_KB` admits larger functions to Hex-Rays and can
 materially increase decompilation time and memory use. It does not override
 Hex-Rays' separate structural-complexity limit.
+
+`CHERNOBOG_WRITABLE_CONST=1` models the load-time value of writable scalar
+seeds. It is intended for static initializer and Hikari constant-pool analysis.
+Indirect stores or external runtime mutation are not provably excluded by IDA's
+direct xrefs; use the mode only when those mutation paths have been ruled out
+for the analyzed corpus. Tier 1 rejects address-taken scalars. Tier 2 accepts
+loader-fixup references to those scalars and therefore depends on the stronger
+assumption that no escaped pointer is used to mutate them before a folded load.
+Tier 2 also permits exact indirect-tail resolution through pointer-width loader
+fixups in writable data when the resolved target is an executable function
+entry; this additionally assumes the pointer slot itself is not mutated first.
+
+`CHERNOBOG_PATCH_BRANCHES=1` is independent and remains disabled by default.
+It activates only after exact target evaluation, requires the native instruction
+to be an ARM64 register `BR`, requires a 4-byte-aligned external function entry
+within the signed 26-bit `B` range, and uses IDA's reversible patch API (the
+input file is unchanged). The first decompilation discovers and patches the
+tail; re-decompile the function to let Hex-Rays regenerate microcode from the
+direct branch.
+
+`CHERNOBOG_DEAD_GLOBAL_STORES=1` is a closed-world analysis mode. Its static
+gate rejects direct reads, loader/data references, fixups, user-named objects,
+unaligned or non-scalar destinations, and non-writable or executable segments.
+IDA xrefs cannot prove the absence of an indirect read or an external observer;
+the mode therefore requires that those paths be ruled out for the corpus.
+
+`CHERNOBOG_HIKARI_CFG` recognizes the ARM64 Hikari pattern that initializes
+two-entry relocation tables in one root block, indexes them with `CSET`, and
+adds a shared signed 32-bit bias before `BR`. Recovery requires two loader
+fixups, a unique pair of executable function-entry targets, and an XOR key
+observed in the same register in the corpus. Tier 1 leaves instructions intact.
+Tier 2 rewrites only compact spans containing whitelisted loads/addressing and
+arithmetic, with no external incoming edge or observable store/call; the
+predicate-result store is retained. IDA retains the original bytes for revert,
+and the input file is never modified.
 
 ### Plugin Info
 
