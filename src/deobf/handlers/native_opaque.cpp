@@ -677,12 +677,12 @@ native_opaque_stats_t native_opaque_handler_t::run()
           function_index < function_count;
           ++function_index )
     {
-        const func_t *function = getn_func(function_index);
+        func_t *function = getn_func(function_index);
         if ( function == nullptr || (function->flags & FUNC_TAIL) != 0 )
             continue;
         ++stats.functions_scanned;
-        qflow_chart_ea_t flowchart(
-            "", function->start_ea, BADADDR, BADADDR, FC_NOEXT);
+        qflow_chart_t flowchart(
+            "", function, BADADDR, BADADDR, FC_NOEXT);
         for ( const qbasic_block_t &block : flowchart.blocks )
         {
             ++stats.blocks_scanned;
