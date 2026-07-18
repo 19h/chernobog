@@ -71,6 +71,7 @@ struct deobf_ctx_t {
 
     // String encryption
     std::map<ea_t, std::string> decrypted_strings;
+    std::set<ea_t> ambiguous_decrypted_strings;
 
     // Constant encryption
     std::map<ea_t, uint64_t> decrypted_consts;

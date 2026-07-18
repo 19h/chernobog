@@ -1,6 +1,219 @@
 #include "ctree_const_fold.h"
 #include "../../common/ida_memory.h"
 
+#include <vector>
+
+namespace {
+
+struct lvar_usage_t
+{
+    int reads = 0;
+    int writes = 0;
+    bool address_taken = false;
+};
+
+struct lvar_usage_visitor_t final : public ctree_visitor_t
+{
+    std::vector<lvar_usage_t> usage;
+
+    explicit lvar_usage_visitor_t(size_t count)
+        : ctree_visitor_t(CV_PARENTS), usage(count)
+    {
+    }
+
+    int idaapi visit_expr(cexpr_t *expression) override
+    {
+        if ( expression == nullptr || expression->op != cot_var
+          || expression->v.idx >= usage.size() )
+        {
+            return 0;
+        }
+
+        lvar_usage_t &entry = usage[expression->v.idx];
+        cexpr_t *parent = parent_expr();
+        if ( parent != nullptr && parent->op == cot_asg
+          && parent->x == expression )
+        {
+            ++entry.writes;
+        }
+        else
+        {
+            ++entry.reads;
+        }
+        if ( parent != nullptr && parent->op == cot_ref )
+            entry.address_taken = true;
+        return 0;
+    }
+};
+
+bool is_discardable_rhs(const cexpr_t *expression)
+{
+    if ( expression == nullptr || expression->type.is_volatile()
+      || expression->has_side_effects() )
+    {
+        return false;
+    }
+
+    switch ( expression->op )
+    {
+        case cot_num:
+        case cot_fnum:
+        case cot_str:
+        case cot_obj:
+        case cot_var:
+        case cot_helper:
+            return true;
+
+        case cot_cast:
+        case cot_ref:
+        case cot_neg:
+        case cot_bnot:
+        case cot_lnot:
+            return is_discardable_rhs(expression->x);
+
+        case cot_add:
+        case cot_sub:
+        case cot_mul:
+        case cot_fadd:
+        case cot_fsub:
+        case cot_fmul:
+        case cot_bor:
+        case cot_xor:
+        case cot_band:
+        case cot_shl:
+        case cot_sshr:
+        case cot_ushr:
+        case cot_eq:
+        case cot_ne:
+        case cot_sge:
+        case cot_uge:
+        case cot_sle:
+        case cot_ule:
+        case cot_sgt:
+        case cot_ugt:
+        case cot_slt:
+        case cot_ult:
+        case cot_land:
+        case cot_lor:
+            return is_discardable_rhs(expression->x)
+                && is_discardable_rhs(expression->y);
+
+        default:
+            // Calls, pointer/member loads, comma/ternary expressions,
+            // assignments, increments, and potentially trapping div/mod
+            // expressions are deliberately retained.
+            return false;
+    }
+}
+
+struct dead_assignment_visitor_t final : public ctree_visitor_t
+{
+    cfunc_t *function;
+    const std::vector<lvar_usage_t> &usage;
+    std::vector<int> removed_by_variable;
+    int changes = 0;
+
+    dead_assignment_visitor_t(cfunc_t *function,
+        const std::vector<lvar_usage_t> &usage)
+        : ctree_visitor_t(CV_PARENTS), function(function), usage(usage),
+          removed_by_variable(usage.size(), 0)
+    {
+    }
+
+    int idaapi visit_insn(cinsn_t *instruction) override
+    {
+        if ( instruction == nullptr || instruction->op != cit_expr
+          || instruction->label_num != -1
+          || instruction->cexpr == nullptr
+          || instruction->cexpr->op != cot_asg
+          || instruction->cexpr->x == nullptr
+          || instruction->cexpr->x->op != cot_var
+          || instruction->cexpr->y == nullptr )
+        {
+            return 0;
+        }
+
+        const int index = instruction->cexpr->x->v.idx;
+        lvars_t *variables = function->get_lvars();
+        if ( index < 0 || variables == nullptr
+          || static_cast<size_t>(index) >= variables->size()
+          || static_cast<size_t>(index) >= usage.size() )
+        {
+            return 0;
+        }
+
+        const lvar_usage_t &entry = usage[index];
+        const lvar_t &variable = (*variables)[index];
+        if ( entry.reads != 0 || entry.address_taken
+          || variable.is_arg_var() || variable.is_result_var()
+          || variable.is_fake_var() || variable.is_used_byref()
+          || variable.is_overlapped_var() || variable.is_mapdst_var()
+          || variable.is_shared() || variable.is_noprop()
+          || variable.in_asm() || variable.has_user_info()
+          || !variable.tif.is_scalar() || variable.tif.is_volatile()
+          || !is_discardable_rhs(instruction->cexpr->y) )
+        {
+            return 0;
+        }
+
+        instruction->cleanup();
+        ++removed_by_variable[index];
+        ++changes;
+        return 0;
+    }
+};
+
+struct empty_statement_visitor_t final : public ctree_visitor_t
+{
+    empty_statement_visitor_t() : ctree_visitor_t(CV_POST) {}
+
+    int idaapi leave_insn(cinsn_t *instruction) override
+    {
+        if ( instruction == nullptr || instruction->op != cit_block
+          || instruction->cblock == nullptr )
+        {
+            return 0;
+        }
+        for ( auto iterator = instruction->cblock->begin();
+              iterator != instruction->cblock->end(); )
+        {
+            if ( iterator->op == cit_empty && iterator->label_num == -1 )
+                iterator = instruction->cblock->erase(iterator);
+            else
+                ++iterator;
+        }
+        return 0;
+    }
+};
+
+int remove_write_only_local_assignments(cfunc_t *function)
+{
+    lvars_t *variables = function != nullptr ? function->get_lvars() : nullptr;
+    if ( function == nullptr || variables == nullptr || variables->empty() )
+        return 0;
+
+    lvar_usage_visitor_t usage(variables->size());
+    usage.apply_to(&function->body, nullptr);
+
+    dead_assignment_visitor_t remover(function, usage.usage);
+    remover.apply_to(&function->body, nullptr);
+
+    empty_statement_visitor_t empty_remover;
+    empty_remover.apply_to(&function->body, nullptr);
+
+    for ( size_t index = 0; index < variables->size(); ++index )
+    {
+        if ( usage.usage[index].reads == 0
+          && remover.removed_by_variable[index] == usage.usage[index].writes )
+        {
+            (*variables)[index].clear_used();
+        }
+    }
+    return remover.changes;
+}
+
+} // namespace
+
 //--------------------------------------------------------------------------
 // Ctree visitor that folds XOR with global constants
 //--------------------------------------------------------------------------
@@ -99,10 +312,16 @@ int ctree_const_fold_handler_t::run(cfunc_t *cfunc)
     const_fold_visitor_t visitor(cfunc);
     visitor.apply_to(&cfunc->body, nullptr);
 
-    if ( visitor.changes > 0 ) {
-        deobf::log("[ctree_const_fold] Folded %d constants\n", visitor.changes);
+    const int dead_assignments = remove_write_only_local_assignments(cfunc);
+    const int total_changes = visitor.changes + dead_assignments;
+
+    if ( total_changes > 0 ) {
+        deobf::log(
+            "[ctree_const_fold] Folded %d constants and removed %d "
+            "write-only local assignments\n",
+            visitor.changes, dead_assignments);
         cfunc->verify(ALLOW_UNUSED_LABELS, false);
     }
 
-    return visitor.changes;
+    return total_changes;
 }

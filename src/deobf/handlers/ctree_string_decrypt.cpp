@@ -1,4 +1,5 @@
 #include "ctree_string_decrypt.h"
+#include "global_const.h"
 #include "../analysis/pattern_match.h"
 #include "../analysis/arch_utils.h"
 #include "../../common/bitvector.h"
@@ -534,10 +535,10 @@ static cexpr_t *strip_cast_ref(cexpr_t *e)
 
 static bool read_value_at_address(ea_t addr, size_t size, uint64_t *out)
 {
-    if ( !out || addr == BADADDR || !is_loaded(addr) ) 
+    if ( !out || addr == BADADDR || size == 0 || size > 8 )
         return false;
 
-    const auto value = chernobog::ida_memory::read_integer(
+    const auto value = global_const_handler_t::read_admitted_scalar(
         addr, static_cast<int>(size));
     if ( !value )
         return false;
@@ -636,6 +637,30 @@ static bool eval_expr_u64(cexpr_t *e, const std::map<int, uint64_t> &locals,
                 return false;
             return read_value_at_address(e->obj_ea, (size_t)read_size, out);
         }
+        case cot_idx: {
+            if ( !e->x || !e->y || e->y->op != cot_num )
+                return false;
+            ea_t base = BADADDR;
+            if ( !resolve_const_address(e->x, &base) )
+                return false;
+            const size_t raw_type_size = e->type.get_size();
+            const int element_size = raw_type_size <= 8
+                ? static_cast<int>(raw_type_size) : 0;
+            const int read_size = size_hint ? size_hint : element_size;
+            if ( !chernobog::bitvector::valid_byte_width(read_size)
+              || element_size <= 0 )
+                return false;
+            const uint64_t index = e->y->numval();
+            if ( index > uint64_t(BADADDR) / static_cast<uint64_t>(element_size) )
+                return false;
+            const uint64_t displacement =
+                index * static_cast<uint64_t>(element_size);
+            if ( base == BADADDR || displacement > uint64_t(BADADDR - base - 1) )
+                return false;
+            return read_value_at_address(
+                base + static_cast<ea_t>(displacement),
+                static_cast<size_t>(read_size), out);
+        }
         case cot_ptr: {
             ea_t addr = BADADDR;
             if ( !resolve_const_address(e->x, &addr) ) 
@@ -714,11 +739,17 @@ static bool eval_expr_u64(cexpr_t *e, const std::map<int, uint64_t> &locals,
 //--------------------------------------------------------------------------
 struct char_assign_visitor_t : public ctree_visitor_t {
     cfunc_t *cfunc;
-    
-    // Map: variable -> (offset -> (value, ea))
-    std::map<int, std::map<int, std::pair<uint8_t, ea_t>>> var_assignments;
-    std::map<ea_t, std::map<int, std::pair<uint8_t, ea_t>>> global_assignments;
-    std::map<int, uint64_t> local_values;
+
+    using context_t = const citem_t *;
+    using byte_assignments_t =
+        std::map<int, std::pair<uint8_t, ea_t>>;
+
+    // Target -> exact ctree block -> byte offset -> (value, instruction EA).
+    // This admits linear assignments inside one conditional arm without ever
+    // merging mutually exclusive branches.
+    std::map<int, std::map<context_t, byte_assignments_t>> var_assignments;
+    std::map<ea_t, std::map<context_t, byte_assignments_t>> global_assignments;
+    std::map<context_t, std::map<int, uint64_t>> local_values;
     
     char_assign_visitor_t(cfunc_t *cf) : ctree_visitor_t(CV_PARENTS), cfunc(cf) {}
     
@@ -732,12 +763,11 @@ struct char_assign_visitor_t : public ctree_visitor_t {
         if ( !lhs || !rhs ) 
             return 0;
 
-        // A single preorder value map is sound only for statements that are
-        // unconditionally executed in ctree order. Do not merge assignments
-        // from branches, loops, short-circuit expressions, or exception paths.
-        if ( !is_unconditional_context() )
+        const context_t context = linear_context();
+        if ( context == nullptr )
             return 0;
-        
+
+        std::map<int, uint64_t> &context_values = local_values[context];
         if ( lhs->op == cot_var ) {
             uint64_t val = 0;
             const size_t raw_size_hint = lhs->type.get_size();
@@ -745,14 +775,14 @@ struct char_assign_visitor_t : public ctree_visitor_t {
                 ? static_cast<int>(raw_size_hint) : 0;
             if ( size_hint <= 0 || size_hint > 8 ) 
                 size_hint = 0;
-            if ( eval_expr_u64(rhs, local_values, &val, size_hint) ) {
-                local_values[lhs->v.idx] = val;
+            if ( eval_expr_u64(rhs, context_values, &val, size_hint) ) {
+                context_values[lhs->v.idx] = val;
             } else {
-                local_values.erase(lhs->v.idx);
+                context_values.erase(lhs->v.idx);
             }
         }
 
-        if ( try_handle_vector_assign(lhs, rhs, e->ea) ) 
+        if ( try_handle_vector_assign(lhs, rhs, e->ea, context) )
             return 0;
 
         // Ordinary character reconstruction is byte-oriented. Recording the
@@ -762,14 +792,14 @@ struct char_assign_visitor_t : public ctree_visitor_t {
             return 0;
 
         uint8_t value = 0;
-        if ( !extract_byte_value(rhs, &value) ) 
+        if ( !extract_byte_value(rhs, context_values, &value) )
             return 0;
 
         assign_target_t target;
         if ( !resolve_assignment_target(lhs, &target) ) 
             return 0;
 
-        record_assignment(target, target.base_index, value, e->ea);
+        record_assignment(target, target.base_index, value, e->ea, context);
         return 0;
     }
     
@@ -783,45 +813,58 @@ struct char_assign_visitor_t : public ctree_visitor_t {
         lvars_t *lvars = cfunc->get_lvars();
         for ( auto &kv : var_assignments ) {
             int var_idx = kv.first;
-            auto &offsets = kv.second;
-            
-            if ( offsets.size() < 3 ) 
-                continue;
-                
-            ctree_string_decrypt_handler_t::char_string_t str;
-            
-            if ( lvars && var_idx < lvars->size() ) {
-                str.var_name = (*lvars)[var_idx].name;
-            } else {
-                str.var_name.sprnt("var_%d", var_idx);
+            std::vector<ctree_string_decrypt_handler_t::char_string_t>
+                candidates;
+            for ( auto &context_entry : kv.second )
+            {
+                auto &offsets = context_entry.second;
+                if ( offsets.size() < 3 )
+                    continue;
+                ctree_string_decrypt_handler_t::char_string_t candidate;
+                if ( lvars && var_idx >= 0
+                  && static_cast<size_t>(var_idx) < lvars->size() )
+                    candidate.var_name = (*lvars)[var_idx].name;
+                else
+                    candidate.var_name.sprnt("var_%d", var_idx);
+                if ( try_reconstruct(offsets, &candidate) )
+                    candidates.push_back(std::move(candidate));
             }
-            
-            if ( try_reconstruct(offsets, &str) ) {
+            if ( unique_reconstruction(candidates) )
+            {
                 ctree_str_debug("[char_assign] Variable %s: \"%s\"\n",
-                               str.var_name.c_str(), str.reconstructed.c_str());
-                result.push_back(str);
+                    candidates.front().var_name.c_str(),
+                    candidates.front().reconstructed.c_str());
+                result.push_back(std::move(candidates.front()));
             }
         }
         
         // Process global assignments
         for ( auto &kv : global_assignments ) {
             ea_t addr = kv.first;
-            auto &offsets = kv.second;
-            
-            if ( offsets.size() < 3 ) 
-                continue;
-                
-            ctree_string_decrypt_handler_t::char_string_t str;
-            str.var_addr = addr;
-            get_name(&str.var_name, addr);
-            if ( str.var_name.empty() ) {
-                str.var_name.sprnt("global_%llX", (unsigned long long)addr);
+            std::vector<ctree_string_decrypt_handler_t::char_string_t>
+                candidates;
+            for ( auto &context_entry : kv.second )
+            {
+                auto &offsets = context_entry.second;
+                if ( offsets.size() < 3 )
+                    continue;
+                ctree_string_decrypt_handler_t::char_string_t candidate;
+                candidate.var_addr = addr;
+                get_name(&candidate.var_name, addr);
+                if ( candidate.var_name.empty() )
+                {
+                    candidate.var_name.sprnt(
+                        "global_%llX", (unsigned long long)addr);
+                }
+                if ( try_reconstruct(offsets, &candidate) )
+                    candidates.push_back(std::move(candidate));
             }
-            
-            if ( try_reconstruct(offsets, &str) ) {
+            if ( unique_reconstruction(candidates) )
+            {
                 ctree_str_debug("[char_assign] Global %s: \"%s\"\n",
-                               str.var_name.c_str(), str.reconstructed.c_str());
-                result.push_back(str);
+                    candidates.front().var_name.c_str(),
+                    candidates.front().reconstructed.c_str());
+                result.push_back(std::move(candidates.front()));
             }
         }
         
@@ -836,24 +879,29 @@ private:
         int base_index = 0;
     };
 
-    bool is_unconditional_context() const
+    context_t linear_context() const
     {
+        context_t context = nullptr;
         for ( const citem_t *parent : parents ) {
             if ( !parent )
                 continue;
             if ( parent->is_expr() ) {
                 if ( parent->op == cot_tern || parent->op == cot_land ||
                      parent->op == cot_lor )
-                    return false;
+                    return nullptr;
                 continue;
             }
 
-            if ( parent->op == cit_if || parent->op == cit_for ||
-                 parent->op == cit_while || parent->op == cit_do ||
+            if ( parent->op == cit_block && context == nullptr )
+                context = parent;
+            else if ( parent->op == cit_if && context == nullptr )
+                return nullptr; // Unbraced arm has no unique linear context.
+            else if ( parent->op == cit_for || parent->op == cit_while
+                 || parent->op == cit_do ||
                  parent->op == cit_switch || parent->op == cit_try )
-                return false;
+                return nullptr;
         }
-        return true;
+        return context;
     }
 
     bool get_call_name(qstring *out, cexpr_t *callee)
@@ -951,42 +999,48 @@ private:
         return false;
     }
 
-    void record_assignment(const assign_target_t &target, int idx, uint8_t value, ea_t ea)
+    void record_assignment(const assign_target_t &target, int idx,
+                           uint8_t value, ea_t ea, context_t context)
     {
         if ( idx < 0 || idx > 4096 )
             return;
 
         if ( target.is_global ) {
-            auto &slots = global_assignments[target.addr];
+            auto &slots = global_assignments[target.addr][context];
             slots[idx] = std::make_pair(value, ea);
         } else {
-            auto &slots = var_assignments[target.var_idx];
+            auto &slots = var_assignments[target.var_idx][context];
             slots[idx] = std::make_pair(value, ea);
         }
     }
 
-    bool extract_byte_value(cexpr_t *e, uint8_t *out)
+    bool extract_byte_value(cexpr_t *e,
+                            const std::map<int, uint64_t> &values,
+                            uint8_t *out)
     {
         if ( !e || !out ) 
             return false;
 
         uint64_t val = 0;
-        if ( !eval_expr_u64(e, local_values, &val, 1) ) 
+        if ( !eval_expr_u64(e, values, &val, 1) )
             return false;
 
         *out = (uint8_t)(val & 0xFF);
         return true;
     }
 
-    bool extract_qword_value(cexpr_t *e, uint64_t *out)
+    bool extract_qword_value(cexpr_t *e,
+                             const std::map<int, uint64_t> &values,
+                             uint64_t *out)
     {
         if ( !e || !out ) 
             return false;
 
-        return eval_expr_u64(e, local_values, out, 8);
+        return eval_expr_u64(e, values, out, 8);
     }
 
-    bool try_handle_vector_assign(cexpr_t *lhs, cexpr_t *rhs, ea_t ea)
+    bool try_handle_vector_assign(cexpr_t *lhs, cexpr_t *rhs, ea_t ea,
+                                  context_t context)
     {
         if ( !lhs || !rhs ) 
             return false;
@@ -1018,9 +1072,11 @@ private:
 
         uint64_t left = 0;
         uint64_t right = 0;
-        if ( !extract_qword_value(&(*call_expr->a)[0], &left) ) 
+        const auto values = local_values.find(context);
+        if ( values == local_values.end()
+          || !extract_qword_value(&(*call_expr->a)[0], values->second, &left) )
             return false;
-        if ( !extract_qword_value(&(*call_expr->a)[1], &right) ) 
+        if ( !extract_qword_value(&(*call_expr->a)[1], values->second, &right) )
             return false;
 
         assign_target_t target;
@@ -1030,10 +1086,25 @@ private:
         uint64_t result = left ^ right;
         for ( int i = 0; i < 8; ++i ) {
             uint8_t b = (uint8_t)((result >> (i * 8)) & 0xFF);
-            record_assignment(target, target.base_index + i, b, ea);
+            record_assignment(
+                target, target.base_index + i, b, ea, context);
         }
 
         return true;
+    }
+
+    static bool unique_reconstruction(
+        const std::vector<ctree_string_decrypt_handler_t::char_string_t>
+            &candidates)
+    {
+        if ( candidates.empty() )
+            return false;
+        return std::all_of(
+            std::next(candidates.begin()), candidates.end(),
+            [&](const auto &candidate) {
+                return candidate.reconstructed
+                    == candidates.front().reconstructed;
+            });
     }
     
     bool try_reconstruct(const std::map<int, std::pair<uint8_t, ea_t>> &offsets,
@@ -1114,6 +1185,30 @@ bool ctree_string_decrypt_handler_t::detect(cfunc_t *cfunc)
 //--------------------------------------------------------------------------
 // Main entry point
 //--------------------------------------------------------------------------
+static void record_plaintext_fact(
+    deobf_ctx_t *ctx, ea_t address, const char *plaintext, const char *source)
+{
+    if ( ctx == nullptr || address == BADADDR || plaintext == nullptr
+      || plaintext[0] == '\0'
+      || ctx->ambiguous_decrypted_strings.count(address) != 0 )
+    {
+        return;
+    }
+    const auto inserted = ctx->decrypted_strings.emplace(address, plaintext);
+    if ( !inserted.second && inserted.first->second != plaintext )
+    {
+        ctree_str_debug(
+            "[mapping] Conflict at 0x%llx: \"%s\" versus \"%s\" (%s); rejected\n",
+            (unsigned long long)address, inserted.first->second.c_str(),
+            plaintext, source);
+        ctx->decrypted_strings.erase(inserted.first);
+        ctx->ambiguous_decrypted_strings.insert(address);
+        return;
+    }
+    ctree_str_debug("[mapping] %s fact: 0x%llx -> \"%s\"\n",
+                    source, (unsigned long long)address, plaintext);
+}
+
 int ctree_string_decrypt_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx)
 {
     if ( !cfunc || !ctx ) 
@@ -1129,7 +1224,8 @@ int ctree_string_decrypt_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx)
     for ( const auto &reveal : call_visitor.reveals ) {
         // Store in context
         if ( reveal.dest_addr != BADADDR ) {
-            ctx->decrypted_strings[reveal.dest_addr] = reveal.plaintext.c_str();
+            record_plaintext_fact(
+                ctx, reveal.dest_addr, reveal.plaintext.c_str(), "strcpy/memcpy");
         }
         
         // Annotate
@@ -1140,10 +1236,12 @@ int ctree_string_decrypt_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx)
         // Store decrypted result in context if available
         if ( !crypto.decrypted.empty() ) {
             if ( crypto.input_addr != BADADDR ) {
-                ctx->decrypted_strings[crypto.input_addr] = crypto.decrypted.c_str();
+                record_plaintext_fact(
+                    ctx, crypto.input_addr, crypto.decrypted.c_str(), "crypto input");
             }
             if ( crypto.output_addr != BADADDR ) {
-                ctx->decrypted_strings[crypto.output_addr] = crypto.decrypted.c_str();
+                record_plaintext_fact(
+                    ctx, crypto.output_addr, crypto.decrypted.c_str(), "crypto output");
             }
             ctx->strings_decrypted++;
         }
@@ -1159,7 +1257,8 @@ int ctree_string_decrypt_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx)
     for ( const auto &str : char_strings ) {
         // Store in context
         if ( str.var_addr != BADADDR ) {
-            ctx->decrypted_strings[str.var_addr] = str.reconstructed.c_str();
+            record_plaintext_fact(
+                ctx, str.var_addr, str.reconstructed.c_str(), "bytewise");
         }
         
         // Annotate
@@ -1172,36 +1271,14 @@ int ctree_string_decrypt_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx)
     // Phase 2: Find encrypted strings in ctree and replace with decrypted values
     // Build a map of destination addresses -> plaintexts from ALL sources
     std::map<ea_t, qstring> addr_to_plaintext;
-    
-    // Add strcpy/memcpy reveals
-    for ( const auto &reveal : call_visitor.reveals ) {
-        if ( reveal.dest_addr != BADADDR && !reveal.plaintext.empty() ) {
-            addr_to_plaintext[reveal.dest_addr] = reveal.plaintext;
-            ctree_str_debug("[mapping] strcpy/memcpy: 0x%llx -> \"%s\"\n",
-                           (unsigned long long)reveal.dest_addr, reveal.plaintext.c_str());
-        }
-    }
-    
-    // Add character-by-character reconstructed strings
-    for ( const auto &str : char_strings ) {
-        if ( str.var_addr != BADADDR && !str.reconstructed.empty() ) {
-            addr_to_plaintext[str.var_addr] = str.reconstructed;
-            ctree_str_debug("[mapping] char-by-char: 0x%llx -> \"%s\"\n",
-                           (unsigned long long)str.var_addr, str.reconstructed.c_str());
-        }
-    }
-    
-    // Add crypto call results
-    for ( const auto &crypto : call_visitor.crypto_calls ) {
-        if ( !crypto.decrypted.empty() ) {
-            if ( crypto.input_addr != BADADDR ) {
-                addr_to_plaintext[crypto.input_addr] = crypto.decrypted;
-                ctree_str_debug("[mapping] crypto input: 0x%llx -> \"%s\"\n",
-                               (unsigned long long)crypto.input_addr, crypto.decrypted.c_str());
-            }
-            if ( crypto.output_addr != BADADDR ) {
-                addr_to_plaintext[crypto.output_addr] = crypto.decrypted;
-            }
+
+    // Admit only exact, non-conflicting address-to-plaintext facts collected
+    // from the bounded producer analyses above.
+    for ( const auto &entry : ctx->decrypted_strings ) {
+        if ( entry.first != BADADDR && !entry.second.empty() ) {
+            addr_to_plaintext.emplace(entry.first, entry.second.c_str());
+            ctree_str_debug("[mapping] admitted fact: 0x%llx -> \"%s\"\n",
+                           (unsigned long long)entry.first, entry.second.c_str());
         }
     }
     
@@ -1225,6 +1302,7 @@ int ctree_string_decrypt_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx)
 struct encrypted_string_replacer_t : public ctree_visitor_t {
     cfunc_t *cfunc;
     const std::map<ea_t, qstring> &known_plaintexts;
+    std::map<ea_t, qstring> recovered_comments;
     int replacements = 0;
     
     encrypted_string_replacer_t(cfunc_t *cf, const std::map<ea_t, qstring> &plaintexts)
@@ -1258,6 +1336,34 @@ struct encrypted_string_replacer_t : public ctree_visitor_t {
         
         // Consider encrypted if >30% non-printable and at least 4 chars
         return total >= 4 && non_printable > 0 && (non_printable * 100 / total) > 30;
+    }
+
+    // A validated CFString structure carries its exact byte length. If its
+    // backing bytes are already printable in the IDB, they are direct
+    // plaintext evidence and do not require a surviving producer call.
+    static bool read_materialized_string(
+        ea_t addr, uint64_t length, qstring *out)
+    {
+        if ( out == nullptr || addr == BADADDR || length == 0 || length >= 4096
+          || length > static_cast<uint64_t>(SIZE_MAX)
+          || addr > BADADDR - static_cast<ea_t>(length) )
+        {
+            return false;
+        }
+        std::vector<uint8_t> bytes(static_cast<size_t>(length));
+        if ( !chernobog::ida_memory::read_exact(bytes.data(), bytes.size(), addr) )
+            return false;
+        for ( uint8_t byte : bytes )
+        {
+            if ( byte == 0 || ((byte < 0x20 || byte > 0x7E)
+              && byte != '\n' && byte != '\r' && byte != '\t') )
+            {
+                return false;
+            }
+        }
+        out->clear();
+        out->append(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+        return true;
     }
     
     // Helper to get op name for debugging
@@ -1579,23 +1685,25 @@ struct encrypted_string_replacer_t : public ctree_visitor_t {
                 }
             }
             
-            // Check if string at this address is encrypted
-            if ( !is_encrypted_string(actual_str_addr) ) {
-                ctree_str_debug("[replace] String at 0x%llx not encrypted, skipping\n",
-                               (unsigned long long)actual_str_addr);
-                return 0;
-            }
-                
-            ctree_str_debug("[replace] Found encrypted cot_obj at 0x%llx\n", 
-                           (unsigned long long)actual_str_addr);
-            
             // Only an independently recovered plaintext associated with this
             // exact address is sufficient provenance for an annotation.
             auto p = known_plaintexts.find(actual_str_addr);
             if ( p != known_plaintexts.end() ) {
                 decrypted = p->second;
                 found = true;
-                ctree_str_debug("[replace] Direct address match! Using plaintext: \"%s\"\n", decrypted.c_str());
+                ctree_str_debug(
+                    "[replace] Direct address match%s! Using plaintext: \"%s\"\n",
+                    is_encrypted_string(actual_str_addr)
+                        ? " (encrypted bytes)" : " (materialized bytes)",
+                    decrypted.c_str());
+            }
+            else if ( read_materialized_string(
+                          actual_str_addr, len_field, &decrypted) )
+            {
+                found = true;
+                ctree_str_debug(
+                    "[replace] Exact materialized CFSTR bytes: \"%s\"\n",
+                    decrypted.c_str());
             }
             else {
                 return 0;
@@ -1614,8 +1722,13 @@ struct encrypted_string_replacer_t : public ctree_visitor_t {
         
         ctree_str_debug("[replace] Added comment at 0x%llx for \"%s\"\n",
                        (unsigned long long)target_expr->ea, decrypted.c_str());
-        
-        replacements++;
+
+        // A disassembly comment added during CMAT_FINAL is not guaranteed to
+        // appear in the already-built pseudocode. Retain one exact-address
+        // ctree comment for the final rendering as well; install it after the
+        // visitor completes so traversing the current tree is side-effect
+        // free.
+        recovered_comments.emplace(target_expr->ea, decrypted);
         return 0;
     }
 };
@@ -1626,6 +1739,32 @@ int ctree_string_decrypt_handler_t::replace_encrypted_strings(
 {
     encrypted_string_replacer_t replacer(cfunc, known_plaintexts);
     replacer.apply_to(&cfunc->body, nullptr);
+    bool comments_changed = false;
+    for ( const auto &entry : replacer.recovered_comments )
+    {
+        static constexpr char DECRYPTED_PREFIX[] =
+            "DEOBF: Decrypted CFSTR = ";
+        treeloc_t location{entry.first, ITP_SEMI};
+        const char *existing = cfunc->get_user_cmt(
+            location, RETRIEVE_ALWAYS);
+        if ( existing != nullptr && existing[0] != '\0'
+          && qstrncmp(existing, DECRYPTED_PREFIX,
+                      sizeof(DECRYPTED_PREFIX) - 1) != 0 )
+        {
+            continue; // Preserve unrelated analyst comments verbatim.
+        }
+        qstring comment;
+        comment.sprnt("DEOBF: Decrypted CFSTR = \"%s\"",
+                      entry.second.c_str());
+        if ( existing == nullptr || comment != existing )
+        {
+            cfunc->set_user_cmt(location, comment.c_str());
+            comments_changed = true;
+        }
+        ++replacer.replacements;
+    }
+    if ( comments_changed )
+        cfunc->save_user_cmts();
     return replacer.replacements;
 }
 

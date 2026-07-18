@@ -11,8 +11,13 @@
 namespace {
 
 using writable_key_t = std::tuple<ssize_t, ea_t, int>;
+using writable_object_key_t = std::tuple<ssize_t, ea_t, ea_t>;
 std::map<writable_key_t, bool> s_writable_classification;
+std::map<writable_object_key_t, bool> s_writable_object_classification;
 std::map<writable_key_t, bool> s_write_only_classification;
+
+constexpr asize_t MAX_WRITABLE_OBJECT_SIZE = 4096;
+constexpr asize_t MAX_WRITABLE_ANCHOR_DISTANCE = 64;
 
 void global_const_debug(const char *format, ...)
 {
@@ -502,10 +507,92 @@ bool global_const_handler_t::is_write_free_writable_data(ea_t addr, int size)
     if ( segment && (segment->perm & SEGPERM_WRITE) != 0
       && !is_code(get_flags(addr)) && is_loaded(addr) )
     {
-        bool has_fixup = false;
-        for ( int offset = 0; offset < size; ++offset )
+        ea_t object_start = addr;
+        ea_t object_end = addr + static_cast<ea_t>(size);
+        const ea_t item_start = get_item_head(addr);
+        const ea_t item_end = get_item_end(addr);
+        if ( item_start != BADADDR && item_end > item_start
+          && is_data(get_flags(item_start))
+          && item_end - item_start <= MAX_WRITABLE_OBJECT_SIZE
+          && addr >= item_start
+          && static_cast<ea_t>(size) <= item_end - addr )
         {
-            if ( exists_fixup(addr + static_cast<ea_t>(offset)) )
+            object_start = item_start;
+            object_end = item_end;
+        }
+
+        // Some Mach-O byte arrays are represented by IDA as a named first
+        // byte followed by undefined interior bytes. An offset LDRB then has
+        // no exact xref at the interior EA. In tier 2, admit a bounded prefix
+        // model anchored at the nearest preceding referenced byte. A symbol
+        // or fixup without reference evidence terminates the search, and the
+        // normal complete-range scan below still rejects a write at any
+        // referenced byte between the anchor and the scalar.
+        if ( mode >= 2 && size == 1 && object_start == addr
+          && object_end == addr + 1 )
+        {
+            xrefblk_t exact_xref;
+            if ( !exact_xref.first_to(addr, XREF_DATA) )
+            {
+                for ( asize_t distance = 1;
+                      distance <= MAX_WRITABLE_ANCHOR_DISTANCE
+                   && static_cast<ea_t>(distance) <= addr - segment->start_ea;
+                      ++distance )
+                {
+                    const ea_t candidate = addr - static_cast<ea_t>(distance);
+                    const flags64_t flags = get_flags(candidate);
+                    if ( !is_loaded(candidate) || is_code(flags)
+                      || exists_fixup(candidate) )
+                    {
+                        break;
+                    }
+
+                    xrefblk_t anchor_xref;
+                    if ( anchor_xref.first_to(candidate, XREF_DATA) )
+                    {
+                        object_start = candidate;
+                        object_end = addr + 1;
+                        break;
+                    }
+                    if ( has_any_name(flags) )
+                        break;
+                }
+            }
+        }
+
+        // Interior array elements depend on base-object xrefs rather than an
+        // exact xref at every byte. Keep that stronger model in tier 2 and
+        // classify the complete bounded data item so a write to any element
+        // rejects every load-time fold from the object.
+        const bool object_model = object_start != addr
+                               || object_end != addr + static_cast<ea_t>(size);
+        if ( object_model && mode < 2 )
+        {
+            s_writable_classification.emplace(key, false);
+            return false;
+        }
+
+        // A byte array can contribute one scalar load per element. Cache the
+        // whole-item proof separately so classifying N interior elements is
+        // O(item_size + xrefs), rather than O(N * item_size).
+        const writable_object_key_t object_key(
+            get_dbctx_id(), object_start, object_end);
+        if ( object_model )
+        {
+            const auto object_cached =
+                s_writable_object_classification.find(object_key);
+            if ( object_cached != s_writable_object_classification.end() )
+            {
+                admitted = object_cached->second;
+                s_writable_classification.emplace(key, admitted);
+                return admitted;
+            }
+        }
+
+        bool has_fixup = false;
+        for ( ea_t cursor = object_start; cursor < object_end; ++cursor )
+        {
+            if ( exists_fixup(cursor) )
             {
                 has_fixup = true;
                 break;
@@ -517,53 +604,91 @@ bool global_const_handler_t::is_write_free_writable_data(ea_t addr, int size)
             bool saw_read = false;
             bool saw_write = false;
             bool unclassified_reference = false;
-            bool address_taken = false;
-            xrefblk_t xref;
-            for ( bool ok = xref.first_to(addr, XREF_DATA);
-                  ok;
-                  ok = xref.next_to() )
+            bool address_taken = object_model;
+            for ( ea_t target = object_start;
+                  target < object_end && !unclassified_reference && !saw_write;
+                  ++target )
             {
-                bool reads = false;
-                bool writes = false;
-                if ( is_code(get_flags(xref.from)) )
+                xrefblk_t xref;
+                for ( bool ok = xref.first_to(target, XREF_DATA);
+                      ok;
+                      ok = xref.next_to() )
                 {
-                    if ( !xref_instruction_access(xref.from, &reads, &writes) )
+                    bool reads = false;
+                    bool writes = false;
+                    if ( is_code(get_flags(xref.from)) )
                     {
-                        unclassified_reference = true;
-                        break;
+                        // IDA emits dr_O for address construction (for
+                        // example, ADRP) and dr_R/dr_W for the actual load or
+                        // store.  Treating every CF_USE address operand as a
+                        // read would accidentally admit an escaped scalar in
+                        // tier 1.
+                        if ( xref.type == dr_O )
+                        {
+                            address_taken = true;
+                            continue;
+                        }
+                        if ( xref.type != dr_R && xref.type != dr_W )
+                        {
+                            unclassified_reference = true;
+                            break;
+                        }
+                        if ( !xref_instruction_access(
+                                xref.from, &reads, &writes) )
+                        {
+                            unclassified_reference = true;
+                            break;
+                        }
+                        if ( (xref.type == dr_R && !reads)
+                          || (xref.type == dr_W && !writes) )
+                        {
+                            unclassified_reference = true;
+                            break;
+                        }
+                        saw_read |= xref.type == dr_R;
+                        saw_write |= xref.type == dr_W;
+                        if ( saw_write )
+                            break;
+                        continue;
                     }
-                    saw_read |= reads;
-                    saw_write |= writes;
-                    if ( saw_write )
-                        break;
-                    continue;
-                }
 
-                // A loader fixup that targets the scalar proves only that its
-                // address was materialized in data.  Tier 1 rejects this
-                // escape. Tier 2 admits it under the documented corpus-level
-                // assumption that no indirect mutation reaches the scalar.
-                fixup_data_t fixup;
-                if ( get_fixup(&fixup, xref.from) && !fixup.is_unused() )
-                {
-                    address_taken = true;
-                    continue;
-                }
+                    // A non-code reference materializes the scalar/object's
+                    // address in data. Some loaders retain a fixup here and
+                    // others expose only the resolved data xref. Tier 1
+                    // rejects either escape. Tier 2 admits either encoding
+                    // under its explicit no-indirect-mutation assumption.
+                    fixup_data_t fixup;
+                    if ( mode >= 2
+                      || (get_fixup(&fixup, xref.from) && !fixup.is_unused()) )
+                    {
+                        address_taken = true;
+                        continue;
+                    }
 
-                unclassified_reference = true;
-                break;
+                    unclassified_reference = true;
+                    break;
+                }
             }
             if ( address_taken && mode < 2 )
                 unclassified_reference = true;
-            admitted = saw_read && !saw_write && !unclassified_reference;
+            // The scalar classifier is called only from a decoded load. For
+            // an interior object element, IDA commonly records only the base
+            // address construction and no dr_R at the element EA; that caller
+            // load supplies the missing read evidence in tier 2.
+            const bool caller_proves_object_read = mode >= 2 && object_model;
+            admitted = (saw_read || caller_proves_object_read)
+                    && !saw_write && !unclassified_reference;
             if ( admitted && address_taken )
             {
                 deobf::log_verbose(
-                    "[global_const] Tier-2 admitted address-taken scalar at %a "
-                    "(%d bytes)\n",
-                    addr, size);
+                    "[global_const] Tier-2 admitted address-taken writable "
+                    "object %a..%a for scalar %a (%d bytes)\n",
+                    object_start, object_end, addr, size);
             }
         }
+
+        if ( object_model )
+            s_writable_object_classification.emplace(object_key, admitted);
     }
 
     s_writable_classification.emplace(key, admitted);
@@ -675,7 +800,32 @@ bool global_const_handler_t::is_direct_write_only_data(ea_t addr, int size)
 void global_const_handler_t::clear_cache()
 {
     s_writable_classification.clear();
+    s_writable_object_classification.clear();
     s_write_only_classification.clear();
+}
+
+//--------------------------------------------------------------------------
+// Share the exact scalar-admission proof with native pre-lift analysis.
+//--------------------------------------------------------------------------
+std::optional<uint64_t> global_const_handler_t::read_admitted_scalar(
+    ea_t addr, int size)
+{
+    if ( addr == BADADDR || !chernobog::bitvector::valid_byte_width(size)
+      || is_code(get_flags(addr)) )
+    {
+        return std::nullopt;
+    }
+    bool has_fixup = false;
+    for ( int offset = 0; offset < size && !has_fixup; ++offset )
+        has_fixup = exists_fixup(addr + static_cast<ea_t>(offset));
+    if ( has_fixup
+      || (!is_const_data(addr) && !is_write_free_writable_data(addr, size)) )
+    {
+        return std::nullopt;
+    }
+    const std::optional<uint64_t> value = read_global_value(addr, size);
+    return value && !looks_like_pointer(*value, size)
+        ? value : std::nullopt;
 }
 
 //--------------------------------------------------------------------------

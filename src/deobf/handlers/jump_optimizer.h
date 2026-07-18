@@ -23,6 +23,11 @@ public:
     // Run jump optimization pass
     static int run(mbl_array_t* mba, deobf_ctx_t* ctx);
 
+    // Late, bounded propagation for branch-only stack constants. This is
+    // called from hxe_glbopt, where the final stack-form predicates exist.
+    static int run_local_constant_branches(mbl_array_t* mba,
+                                           deobf_ctx_t* ctx);
+
     // Instruction-level optimization
     static int simplify_jcc(mblock_t* blk, minsn_t* jcc, deobf_ctx_t* ctx);
 

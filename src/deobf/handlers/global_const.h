@@ -33,6 +33,12 @@ public:
     // level folding removed every load before whole-MBA detection.
     static int remove_write_only_stores(mbl_array_t *mba);
 
+    // Read a scalar only when the same read-only or explicitly admitted
+    // writable-data proof used by microcode constant folding succeeds. This
+    // is shared with pre-Hex-Rays native predicate analysis so both layers
+    // have identical memory assumptions.
+    static std::optional<uint64_t> read_admitted_scalar(ea_t addr, int size);
+
 private:
     struct global_const_t {
         minsn_t *insn;          // The load instruction

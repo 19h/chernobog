@@ -224,7 +224,8 @@ To see what obfuscation types are present without making changes:
 | `CHERNOBOG_DISABLE=1` | Disable transformations while retaining plugin lifecycle and optional cache reset |
 | `CHERNOBOG_MAX_FUNCSIZE_KB=<n>` | Set Hex-Rays' process-local function-size ceiling to decimal `n` KiB (1..1048576); leaves `hexrays.cfg` unchanged |
 | `CHERNOBOG_WRITABLE_CONST=1` | Inline loaded 1/2/4/8-byte writable scalars with classified direct reads, no direct writes, no address escape, and no loader fixup on the scalar |
-| `CHERNOBOG_WRITABLE_CONST=2` | Additionally admit address-taken scalars and relocation-backed code-pointer slots in writable data; requires ruling out indirect mutation |
+| `CHERNOBOG_WRITABLE_CONST=2` | Additionally admit address-taken scalars/objects (including resolved data-pointer xrefs without retained fixups) and relocation-backed code-pointer slots in writable data; requires ruling out indirect mutation |
+| `CHERNOBOG_NATIVE_OPAQUE=1` | Before Hex-Rays lifting, reversibly rewrite proven constant ARM64 `B.cond`/`CBZ`/`CBNZ` terminators to `B` or `NOP`; writable seeds additionally require `CHERNOBOG_WRITABLE_CONST=1` or `2` |
 | `CHERNOBOG_PATCH_BRANCHES=1` | Reversibly patch a proven ARM64 indirect tail `BR` to an equivalent in-range direct `B`; re-decompile once after discovery |
 | `CHERNOBOG_DEAD_GLOBAL_STORES=1` | Remove direct stores to auto-named writable scalars with write xrefs but no direct reads, fixups, data references, or user/export names |
 | `CHERNOBOG_HIKARI_CFG=1` | Recover exact two-target ARM64 Hikari dispatch edges across IDA function boundaries and add IDB xrefs/comments |
@@ -251,6 +252,21 @@ assumption that no escaped pointer is used to mutate them before a folded load.
 Tier 2 also permits exact indirect-tail resolution through pointer-width loader
 fixups in writable data when the resolved target is an executable function
 entry; this additionally assumes the pointer slot itself is not mutated first.
+
+`CHERNOBOG_NATIVE_OPAQUE=1` runs once per database after autoanalysis and before
+Hex-Rays constructs the function CFG. It interprets only straight-line facts
+inside each IDA native basic block: integer constants, exact read-only or
+explicitly admitted scalar loads, non-escaping `X29`-relative stack slots,
+AArch64 `NZCV`, and the terminal `B.cond`/`CBZ`/`CBNZ`. Calls invalidate
+register, flag, and stack facts. Unknown instructions, operand extensions,
+shift forms, aliases, widths, stores, or branch predicates fail closed. A
+proven taken edge becomes an in-range direct `B`; a proven fallthrough becomes
+`NOP`. Both use IDA's patch database, retain original bytes for revert, update
+code references, and annotate the proof site; the input binary is unchanged.
+The scan is `O(I + X)` time and `O(R + S)` transient state per block, where
+`I` is decoded instructions, `X` is scalar-classification references, `R` is
+tracked registers, and `S` is tracked stack slots. Writable-mode assumptions
+remain exactly those described above; mode 0 admits only read-only storage.
 
 `CHERNOBOG_PATCH_BRANCHES=1` is independent and remains disabled by default.
 It activates only after exact target evaluation, requires the native instruction
@@ -296,7 +312,12 @@ Chernobog operates as a Hex-Rays optimizer callback, integrating directly into I
 
 ### Phase 3: Ctree Cleanup (CMAT_FINAL)
 - **High-Level Optimization**: Additional cleanup at the decompiler AST level
-- **String Annotation**: Decrypted strings annotated in the output
+- **String Annotation**: Exact-address ciphertext/plaintext pairs are emitted
+  as persistent pseudocode comments. Bytewise initializers are grouped only
+  within the same linear ctree block; conflicting branch-local reconstructions
+  are rejected, as are conflicting plaintext producers for one exact address.
+  Indexed source bytes are evaluated only when the global-constant admission
+  proof establishes the requested element width.
 - **Switch Reconstruction**: Flattened control flow converted back to switch statements
 
 ### Key Technical Features

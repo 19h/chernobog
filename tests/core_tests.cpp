@@ -1,4 +1,5 @@
 #include "common/arm64_branch.h"
+#include "common/arm64_predicate.h"
 #include "common/bitvector.h"
 #include "common/simd.h"
 #include "common/string_recovery.h"
@@ -98,6 +99,69 @@ void test_arm64_direct_branch_encoding()
           "ARM64 out-of-range forward conditional rejection");
     check(!encode_b_cond(0x1000, 0x1000, 0xEU),
           "ARM64 reserved conditional predicate rejection");
+}
+
+void test_arm64_predicates()
+{
+    using namespace chernobog::arm64_predicate;
+
+    for ( unsigned encoded = 0; encoded < 16; ++encoded )
+    {
+        const nzcv_t flags{
+            (encoded & 8U) != 0,
+            (encoded & 4U) != 0,
+            (encoded & 2U) != 0,
+            (encoded & 1U) != 0,
+        };
+        for ( uint8_t condition = 0; condition <= 0xC; condition += 2 )
+        {
+            const auto positive = evaluate(condition, flags);
+            const auto inverse = evaluate(condition + 1, flags);
+            check(positive.has_value() && inverse.has_value()
+                  && *positive != *inverse,
+                  "ARM64 paired predicates are exact inverses");
+        }
+    }
+
+    const nzcv_t zero = sub_flags(0x12345678U, 0x12345678U, 4);
+    check(!zero.negative && zero.zero && zero.carry && !zero.overflow,
+          "ARM64 equal subtraction flags");
+    check(evaluate(0x0, zero) == true && evaluate(0x1, zero) == false,
+          "ARM64 EQ/NE predicates");
+    check(evaluate(0x2, zero) == true && evaluate(0x3, zero) == false,
+          "ARM64 CS/CC predicates");
+    check(evaluate(0x8, zero) == false && evaluate(0x9, zero) == true,
+          "ARM64 HI/LS predicates");
+
+    const nzcv_t signed_overflow = add_flags(0x7FFFFFFFU, 1, 4);
+    check(signed_overflow.negative && !signed_overflow.zero
+          && !signed_overflow.carry && signed_overflow.overflow,
+          "ARM64 signed addition overflow flags");
+    check(evaluate(0xA, signed_overflow) == true,
+          "ARM64 GE uses N equals V");
+    check(evaluate(0xC, signed_overflow) == true,
+          "ARM64 GT uses nonzero and N equals V");
+
+    const nzcv_t unsigned_wrap = add_flags(0xFFFFFFFFU, 1, 4);
+    check(!unsigned_wrap.negative && unsigned_wrap.zero
+          && unsigned_wrap.carry && !unsigned_wrap.overflow,
+          "ARM64 unsigned addition carry flags");
+    const nzcv_t borrow = sub_flags(0, 1, 8);
+    check(borrow.negative && !borrow.zero && !borrow.carry
+          && !borrow.overflow,
+          "ARM64 subtraction borrow flags");
+    const nzcv_t signed_sub_overflow = sub_flags(0x8000000000000000ULL, 1, 8);
+    check(!signed_sub_overflow.negative && !signed_sub_overflow.zero
+          && signed_sub_overflow.carry && signed_sub_overflow.overflow,
+          "ARM64 64-bit signed subtraction overflow flags");
+    const nzcv_t signed_add_overflow =
+        add_flags(0x7FFFFFFFFFFFFFFFULL, 1, 8);
+    check(signed_add_overflow.negative && !signed_add_overflow.zero
+          && !signed_add_overflow.carry && signed_add_overflow.overflow,
+          "ARM64 64-bit signed addition overflow flags");
+    check(!evaluate(0xEU, zero).has_value()
+          && !evaluate(0xFU, zero).has_value(),
+          "ARM64 AL/NV predicate rejection");
 }
 
 void test_simd_utilities()
@@ -325,6 +389,7 @@ int main()
 {
     test_bitvectors();
     test_arm64_direct_branch_encoding();
+    test_arm64_predicates();
     test_simd_utilities();
     test_mba_identities();
     test_branchless_select_identity();

@@ -12,6 +12,8 @@
 #include "../deobf/handlers/ctree_indirect_call.h"
 #include "../deobf/handlers/ctree_string_decrypt.h"
 #include "../deobf/handlers/hikari_cfg.h"
+#include "../deobf/handlers/jump_optimizer.h"
+#include "../deobf/handlers/native_opaque.h"
 
 #include <set>
 #include <cstdio>
@@ -56,6 +58,7 @@ struct chernobog_plugmod_t final : public plugmod_t
     bool idb_hooked = false;
     bool first_hexrays_callback = true;
     bool hikari_cfg_attempted = false;
+    bool native_opaque_attempted = false;
     qtimer_t activation_timer = nullptr;
     int activation_attempts = 0;
 
@@ -75,6 +78,7 @@ struct chernobog_plugmod_t final : public plugmod_t
     void deactivate();
     void clear_processing_state();
     bool recover_hikari_cfg_if_ready(bool force = false);
+    bool recover_native_opaque_if_ready(bool force = false);
     virtual bool idaapi run(size_t arg) override;
 };
 
@@ -224,8 +228,13 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     // IDB notification after the plugin activates. The flowchart event is the
     // earliest decompiler point guaranteed to occur after the caller's
     // auto_wait(). Request one complete restart if tier 2 changed native CFG.
-    if ( event == hxe_flowchart && self->recover_hikari_cfg_if_ready(true) )
-        return MERR_REDO;
+    if ( event == hxe_flowchart )
+    {
+        const bool hikari_changed = self->recover_hikari_cfg_if_ready(true);
+        const bool native_changed = self->recover_native_opaque_if_ready(true);
+        if ( hikari_changed || native_changed )
+            return MERR_REDO;
+    }
 
     if ( event == hxe_populating_popup )
     {
@@ -272,18 +281,23 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     else if ( event == hxe_glbopt )
     {
         mbl_array_t *mba = va_arg(va, mbl_array_t *);
-        if ( mba && is_auto_mode_enabled() && !is_disabled_mode_enabled()
-          && chernobog_t::has_indirect_branches(mba) )
+        if ( mba && is_auto_mode_enabled() && !is_disabled_mode_enabled() )
         {
             deobf_ctx_t branch_ctx;
             branch_ctx.mba = mba;
             branch_ctx.func_ea = mba->entry_ea;
-            const int changes = chernobog_t::resolve_indirect_branches(
-                mba, &branch_ctx);
+            int changes = 0;
+            if ( chernobog_t::has_indirect_branches(mba) )
+            {
+                changes += chernobog_t::resolve_indirect_branches(
+                    mba, &branch_ctx);
+            }
+            changes += chernobog::jump_optimizer_handler_t::
+                run_local_constant_branches(mba, &branch_ctx);
             if ( changes > 0 )
             {
                 debug_log(
-                    "[chernobog] hxe_glbopt resolved %d indirect branches at %llx\n",
+                    "[chernobog] hxe_glbopt applied %d branch rewrites at %llx\n",
                     changes,
                     static_cast<unsigned long long>(mba->entry_ea));
                 return MERR_LOOP;
@@ -361,6 +375,7 @@ void chernobog_plugmod_t::clear_processing_state()
     ctree_indirect_call_processed.clear();
     ctree_string_decrypt_processed.clear();
     hikari_cfg_attempted = false;
+    native_opaque_attempted = false;
     chernobog_clear_all_tracking();
 }
 
@@ -392,6 +407,35 @@ bool chernobog_plugmod_t::recover_hikari_cfg_if_ready(bool force)
         stats.recovered_dispatchers, stats.terminal_indirect_branches,
         stats.patched_dispatchers, stats.reachable_functions);
     return stats.patched_dispatchers > 0;
+}
+
+bool chernobog_plugmod_t::recover_native_opaque_if_ready(bool force)
+{
+    debug_log(
+        "[chernobog] Native predicate readiness: attempted=%d mode=%d "
+        "auto_ok=%d force=%d\n",
+        native_opaque_attempted ? 1 : 0, native_opaque_handler_t::mode(),
+        auto_is_ok() ? 1 : 0, force ? 1 : 0);
+    if ( native_opaque_attempted || native_opaque_handler_t::mode() == 0
+      || is_disabled_mode_enabled() || (!force && !auto_is_ok()) )
+    {
+        return false;
+    }
+
+    native_opaque_attempted = true;
+    const native_opaque_stats_t stats = native_opaque_handler_t::run();
+    debug_log(
+        "[chernobog] Native predicate stats: functions=%d blocks=%d "
+        "conditional=%d proved=%d patched=%d\n",
+        stats.functions_scanned, stats.blocks_scanned,
+        stats.conditional_branches, stats.predicates_proved,
+        stats.branches_patched);
+    msg(
+        "[chernobog] Native opaque predicates: %d/%d proved, %d reversible "
+        "patches\n",
+        stats.predicates_proved, stats.conditional_branches,
+        stats.branches_patched);
+    return stats.branches_patched > 0;
 }
 
 bool chernobog_plugmod_t::activate()
@@ -470,6 +514,7 @@ bool chernobog_plugmod_t::activate()
     }
 
     recover_hikari_cfg_if_ready();
+    recover_native_opaque_if_ready();
 
     msg("[chernobog] Plugin ready (%d components initialized)\n", initialized);
     if ( auto_mode )
@@ -608,6 +653,7 @@ static ssize_t idaapi idb_callback(void *ud, int event_id, va_list)
             if ( !self->hexrays_initialized && !self->activate() )
                 self->schedule_activation_retry();
             self->recover_hikari_cfg_if_ready();
+            self->recover_native_opaque_if_ready();
         }
     }
     return 0;
