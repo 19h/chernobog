@@ -109,6 +109,56 @@ ContextRangeIdentity capture_context_identity(
 
 } // namespace
 
+IdentityComparison hybrid_compare_identity_bytes(
+    const std::vector<uint8_t> &expected_bytes,
+    const std::vector<uint8_t> &expected_mask,
+    const std::vector<uint8_t> &actual_bytes,
+    const std::vector<uint8_t> &actual_mask)
+{
+  IdentityComparison result;
+  if ( expected_bytes.size() != actual_bytes.size() )
+  {
+    result.mismatch = IdentityMismatchKind::BYTE_VECTOR_SIZE;
+    result.expected_size = expected_bytes.size();
+    result.actual_size = actual_bytes.size();
+    return result;
+  }
+
+  const size_t required_mask_size = (expected_bytes.size() + 7) / 8;
+  if ( expected_mask.size() < required_mask_size
+    || actual_mask.size() < required_mask_size )
+  {
+    result.mismatch = IdentityMismatchKind::MASK_VECTOR_SIZE;
+    result.expected_size = expected_mask.size();
+    result.actual_size = actual_mask.size();
+    return result;
+  }
+
+  for ( size_t offset = 0; offset < expected_bytes.size(); ++offset )
+  {
+    const uint8_t bit = uint8_t(1u << (offset & 7));
+    const bool expected_loaded = (expected_mask[offset / 8] & bit) != 0;
+    const bool actual_loaded = (actual_mask[offset / 8] & bit) != 0;
+    if ( expected_loaded != actual_loaded )
+    {
+      result.mismatch = IdentityMismatchKind::LOADED_STATE;
+      result.offset = offset;
+      result.expected_byte = expected_loaded ? 1 : 0;
+      result.actual_byte = actual_loaded ? 1 : 0;
+      return result;
+    }
+    if ( expected_loaded && expected_bytes[offset] != actual_bytes[offset] )
+    {
+      result.mismatch = IdentityMismatchKind::BYTE_VALUE;
+      result.offset = offset;
+      result.expected_byte = expected_bytes[offset];
+      result.actual_byte = actual_bytes[offset];
+      return result;
+    }
+  }
+  return result;
+}
+
 bool TargetEvidence::matches(uint64_t function_start,
                              uint64_t function_hash) const
 {

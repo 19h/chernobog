@@ -104,6 +104,40 @@ void test_config_bounds()
   set_environment("CHERNOBOG_RAX_MAX_IMAGE_BYTES", nullptr);
 }
 
+void test_identity_comparison()
+{
+  const std::vector<uint8_t> expected{ 0xAA, 0xBB, 0xCC };
+  const std::vector<uint8_t> fully_loaded{ 0x07 };
+
+  // IDA does not assign semantics to the five padding bits above a 3-byte
+  // request. A live mask that leaves those bits set must still compare equal.
+  check(hybrid_compare_identity_bytes(
+            expected, fully_loaded, expected, std::vector<uint8_t>{ 0xFF })
+            .matches(),
+        "identity comparison must ignore mask padding bits");
+
+  std::vector<uint8_t> unloaded_payload = expected;
+  unloaded_payload[1] = 0x11;
+  check(hybrid_compare_identity_bytes(
+            expected, std::vector<uint8_t>{ 0x05 }, unloaded_payload,
+            std::vector<uint8_t>{ 0xFD }).matches(),
+        "identity comparison must ignore payload at uninitialized addresses");
+
+  const IdentityComparison loaded_state = hybrid_compare_identity_bytes(
+      expected, std::vector<uint8_t>{ 0x05 }, expected, fully_loaded);
+  check(loaded_state.mismatch == IdentityMismatchKind::LOADED_STATE
+        && loaded_state.offset == 1,
+        "identity comparison must detect initialized-state changes");
+
+  std::vector<uint8_t> changed = expected;
+  changed[2] ^= 0x01;
+  const IdentityComparison byte_value = hybrid_compare_identity_bytes(
+      expected, fully_loaded, changed, fully_loaded);
+  check(byte_value.mismatch == IdentityMismatchKind::BYTE_VALUE
+        && byte_value.offset == 2,
+        "identity comparison must detect loaded-byte changes");
+}
+
 void test_decoder_and_smir(const RaxApi *api, const ProgramImage &image)
 {
   const SegImage &segment = image.segs.front();
@@ -298,6 +332,7 @@ void test_worker_and_evidence(const RaxApi *api, ProgramImage image)
 int main()
 {
   test_config_bounds();
+  test_identity_comparison();
   const RaxApi *api = rax_load();
   check(api != nullptr, rax_unavailable_reason());
   if ( api != nullptr )

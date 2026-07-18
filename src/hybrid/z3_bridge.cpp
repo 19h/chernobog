@@ -11,8 +11,10 @@
 
 #include <algorithm>
 #include <deque>
+#include <iomanip>
 #include <map>
 #include <mutex>
+#include <sstream>
 
 namespace chernobog::hybrid {
 namespace {
@@ -51,34 +53,102 @@ HybridEntryMode current_entry_mode(HybridArch architecture, ea_t address)
   return state == 0 ? HybridEntryMode::ARM : HybridEntryMode::THUMB;
 }
 
+void set_reason(std::string *reason, const std::string &value)
+{
+  if ( reason != nullptr )
+    *reason = value;
+}
+
+std::string address_string(uint64_t address)
+{
+  std::ostringstream out;
+  out << "0x" << std::uppercase << std::hex << address;
+  return out.str();
+}
+
 template <typename Identity>
-bool byte_identity_matches(const Identity &expected)
+bool byte_identity_matches(const Identity &expected, const char *kind,
+                           size_t index, std::string *reason)
 {
   if ( expected.bytes.empty() )
+  {
+    set_reason(reason, std::string(kind) + " identity "
+        + std::to_string(index) + " is empty");
     return false;
+  }
   std::vector<uint8_t> bytes(expected.bytes.size(), 0);
   std::vector<uint8_t> mask((expected.bytes.size() + 7) / 8, 0);
   if ( get_bytes(bytes.data(), ssize_t(bytes.size()), ea_t(expected.start),
                  GMB_READALL, mask.data()) < 0 )
+  {
+    set_reason(reason, std::string("get_bytes failed for ") + kind + " "
+        + std::to_string(index) + " at " + address_string(expected.start));
     return false;
-  return bytes == expected.bytes && mask == expected.loaded_mask;
+  }
+
+  const IdentityComparison comparison = hybrid_compare_identity_bytes(
+      expected.bytes, expected.loaded_mask, bytes, mask);
+  if ( comparison.matches() )
+    return true;
+
+  std::ostringstream out;
+  out << kind << " " << index << " at "
+      << address_string(expected.start + comparison.offset) << ": ";
+  switch ( comparison.mismatch )
+  {
+    case IdentityMismatchKind::BYTE_VECTOR_SIZE:
+      out << "byte-vector size changed (expected=" << comparison.expected_size
+          << ", actual=" << comparison.actual_size << ")";
+      break;
+    case IdentityMismatchKind::MASK_VECTOR_SIZE:
+      out << "loaded-mask size invalid (expected=" << comparison.expected_size
+          << ", actual=" << comparison.actual_size << ")";
+      break;
+    case IdentityMismatchKind::LOADED_STATE:
+      out << "loaded state changed (expected=" << unsigned(comparison.expected_byte)
+          << ", actual=" << unsigned(comparison.actual_byte) << ")";
+      break;
+    case IdentityMismatchKind::BYTE_VALUE:
+      out << "byte changed (expected=0x" << std::hex << std::uppercase
+          << unsigned(comparison.expected_byte) << ", actual=0x"
+          << unsigned(comparison.actual_byte) << ")";
+      break;
+    case IdentityMismatchKind::NONE:
+      break;
+  }
+  set_reason(reason, out.str());
+  return false;
 }
 
-bool current_identity_matches(const TargetEvidence &evidence)
+bool current_identity_matches(const TargetEvidence &evidence,
+                              std::string *reason = nullptr)
 {
   func_t *function = get_func(ea_t(evidence.scope.function_start));
   if ( function == nullptr || uint64_t(function->start_ea) != evidence.scope.function_start )
+  {
+    set_reason(reason, "selected function no longer exists at "
+        + address_string(evidence.scope.function_start));
     return false;
+  }
   if ( current_entry_mode(evidence.architecture, function->start_ea)
     != evidence.entry_mode )
+  {
+    set_reason(reason, "entry execution mode changed at "
+        + address_string(evidence.scope.function_start));
     return false;
+  }
 
   std::vector<range_t> chunks;
   func_tail_iterator_t iterator(function);
   for ( bool ok = iterator.main(); ok; ok = iterator.next() )
     chunks.push_back(iterator.chunk());
   if ( chunks.size() != evidence.function_identity.size() )
+  {
+    set_reason(reason, "function chunk count changed (expected="
+        + std::to_string(evidence.function_identity.size()) + ", actual="
+        + std::to_string(chunks.size()) + ")");
     return false;
+  }
 
   for ( size_t index = 0; index < chunks.size(); ++index )
   {
@@ -87,12 +157,17 @@ bool current_identity_matches(const TargetEvidence &evidence)
     if ( current.end_ea <= current.start_ea
       || uint64_t(current.start_ea) != expected.start
       || uint64_t(current.end_ea - current.start_ea) != expected.bytes.size() )
+    {
+      set_reason(reason, "function chunk topology changed at index "
+          + std::to_string(index));
       return false;
-    if ( !byte_identity_matches(expected) )
+    }
+    if ( !byte_identity_matches(expected, "function chunk", index, reason) )
       return false;
   }
-  for ( const ContextRangeIdentity &expected : evidence.context_identity )
-    if ( !byte_identity_matches(expected) )
+  for ( size_t index = 0; index < evidence.context_identity.size(); ++index )
+    if ( !byte_identity_matches(evidence.context_identity[index],
+                                "consumed context", index, reason) )
       return false;
   return true;
 }
@@ -150,9 +225,20 @@ std::string native_register_name(HybridArch architecture, int reg)
 bool hybrid_publish_evidence(
     int64_t database_id, std::shared_ptr<const TargetEvidence> evidence)
 {
-  const bool valid = !evidence
-                  || (database_id == int64_t(get_dbctx_id())
-                   && current_identity_matches(*evidence));
+  bool valid = true;
+  std::string rejection_reason;
+  if ( evidence && database_id != int64_t(get_dbctx_id()) )
+  {
+    valid = false;
+    rejection_reason = "database context changed";
+  }
+  else if ( evidence )
+  {
+    valid = current_identity_matches(*evidence, &rejection_reason);
+  }
+  if ( evidence && !valid )
+    msg("[chernobog][rax] Evidence freshness rejection: %s\n",
+        rejection_reason.c_str());
   Registry &state = registry();
   std::lock_guard<std::mutex> lock(state.mutex);
   if ( evidence && valid )

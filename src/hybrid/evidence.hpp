@@ -140,6 +140,36 @@ struct EvidenceSummary
   size_t context_incomplete_runs = 0;
 };
 
+enum class IdentityMismatchKind : uint8_t
+{
+  NONE = 0,
+  BYTE_VECTOR_SIZE,
+  MASK_VECTOR_SIZE,
+  LOADED_STATE,
+  BYTE_VALUE,
+};
+
+struct IdentityComparison
+{
+  IdentityMismatchKind mismatch = IdentityMismatchKind::NONE;
+  size_t offset = 0;
+  size_t expected_size = 0;
+  size_t actual_size = 0;
+  uint8_t expected_byte = 0;
+  uint8_t actual_byte = 0;
+
+  bool matches() const { return mismatch == IdentityMismatchKind::NONE; }
+};
+
+// Compare only address-bearing bits and only byte values that both identities
+// mark loaded. Padding bits in the final mask byte and payload at uninitialized
+// addresses have no database semantics and must not invalidate evidence.
+IdentityComparison hybrid_compare_identity_bytes(
+    const std::vector<uint8_t> &expected_bytes,
+    const std::vector<uint8_t> &expected_mask,
+    const std::vector<uint8_t> &actual_bytes,
+    const std::vector<uint8_t> &actual_mask);
+
 struct FunctionChunkIdentity
 {
   uint64_t start = 0;
