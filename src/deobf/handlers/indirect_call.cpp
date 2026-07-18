@@ -1,5 +1,6 @@
 #include "indirect_call.h"
 #include "../analysis/opaque_eval.h"
+#include "../../hybrid/z3_bridge.hpp"
 
 //--------------------------------------------------------------------------
 // File-based debug logging
@@ -292,6 +293,17 @@ bool indirect_call_handler_t::analyze_indirect_call(mblock_t *blk, minsn_t *call
         : opaque_eval_t::evaluate_operand(*target_op);
     if ( !target ) {
         icall_debug("[indirect_call]   Call target expression is not constant\n");
+        const auto candidates =
+            chernobog::hybrid::hybrid_current_indirect_target_candidates(
+                uint64_t(blk->mba->entry_ea), uint64_t(call_insn->ea));
+        for ( const auto &candidate : candidates ) {
+            deobf::log_verbose(
+                "[indirect_call][rax] Observed candidate %a at %a "
+                "(%zu observations, %zu runs); retained indirect because "
+                "concrete coverage is non-exhaustive\n",
+                ea_t(candidate.target), call_insn->ea,
+                candidate.observations, candidate.runs.size());
+        }
         return false;
     }
 

@@ -112,6 +112,7 @@ Applied after microcode optimization for additional cleanup:
 - IDA Pro 9.0+ with Hex-Rays decompiler
 - CMake 3.27+
 - Ninja build system
+- Rust stable toolchain with Cargo
 - IDA SDK (set `IDASDK` environment variable)
 - Git
 
@@ -120,6 +121,9 @@ Applied after microcode optimization for additional cleanup:
 ```bash
 # Set your IDA SDK path
 export IDASDK=/path/to/idasdk
+
+# Materialize pinned source dependencies
+git submodule update --init --recursive
 
 # Build the plugin
 make build
@@ -130,8 +134,13 @@ cmake .. -G Ninja
 ninja
 ```
 
-The build always fetches and statically links Z3 from source, so the first
-configure/build takes longer and does not require a separate Z3 installation.
+The build fetches and statically links Z3. rax is pinned as the `vendor/rax`
+git submodule and is also linked statically; initialize it with
+`git submodule update --init --recursive` after cloning. Neither a separate Z3
+installation nor a rax shared library is required. Cargo must have the Rust
+target matching the CMake target (for example, `rustup target add
+aarch64-apple-darwin`). Configuration fails if the submodule is missing or is
+checked out at a revision other than the repository pin.
 
 ### Windows Cross-Compile With Clang
 
@@ -212,6 +221,17 @@ To see what obfuscation types are present without making changes:
 1. Right-click and select **"Analyze obfuscation (Chernobog)"**
    - Or press `Ctrl+Shift+A`
 2. Check the IDA output window for the analysis results
+
+### Explore the Current Function With rax
+
+Open the function in pseudocode and press `Ctrl+Shift+E`, or select **Explore
+current function with rax** from the pseudocode popup. Chernobog snapshots and
+explores only the displayed function plus its mapped memory context; it does
+not enumerate or emulate every function. Use **Show current-function rax
+evidence** for decoder/SMIR, concrete path, branch, indirect-target, memory, and
+Z3 cross-check evidence, or **Cancel current-function rax exploration** to stop
+queued runs. The complete capability boundaries and configuration are in
+[`RAX_HYBRID.md`](RAX_HYBRID.md).
 
 ### Environment Variables
 

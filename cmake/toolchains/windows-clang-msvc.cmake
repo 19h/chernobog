@@ -4,6 +4,16 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING
     "MSVC runtime library" FORCE)
 
+# FindThreads performs POSIX library link probes before recognizing Windows.
+# Static-library try-compiles cannot validate those links and can therefore
+# report a host `-lpthreads` dependency while cross-compiling.  Preseed the
+# POSIX probes as unavailable; the module will select native Win32 threads,
+# which require no extra link library for C++ std::thread.
+set(CMAKE_HAVE_LIBC_PTHREAD FALSE CACHE INTERNAL "No POSIX pthreads on MSVC" FORCE)
+set(CMAKE_HAVE_PTHREADS_CREATE FALSE CACHE INTERNAL "No host libpthreads" FORCE)
+set(CMAKE_HAVE_PTHREAD_CREATE FALSE CACHE INTERNAL "No host libpthread" FORCE)
+set(THREADS_HAVE_PTHREAD_ARG FALSE CACHE INTERNAL "MSVC has no -pthread" FORCE)
+
 set(CHERNOBOG_WINDOWS_TRIPLE "x86_64-pc-windows-msvc" CACHE STRING "LLVM target triple for Windows builds")
 
 if(DEFINED ENV{XWIN_ROOT} AND NOT "$ENV{XWIN_ROOT}" STREQUAL "")

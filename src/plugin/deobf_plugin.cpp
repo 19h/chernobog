@@ -14,9 +14,11 @@
 #include "../deobf/handlers/hikari_cfg.h"
 #include "../deobf/handlers/jump_optimizer.h"
 #include "../deobf/handlers/native_opaque.h"
+#include "../hybrid/session.hpp"
 
 #include <set>
 #include <cstdio>
+#include <memory>
 
 // Debug file logging for batch mode where msg() might not be visible
 // Using raw syscalls to bypass IDA's file wrappers
@@ -61,6 +63,7 @@ struct chernobog_plugmod_t final : public plugmod_t
     bool native_opaque_attempted = false;
     qtimer_t activation_timer = nullptr;
     int activation_attempts = 0;
+    std::unique_ptr<chernobog::hybrid::Session> hybrid_session;
 
     // All address-keyed state belongs to this database instance.
     std::set<ea_t> ctree_const_folded;
@@ -262,6 +265,8 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             self->ctree_indirect_call_processed.erase(func_ea);
             self->ctree_string_decrypt_processed.erase(func_ea);
             chernobog_clear_function_tracking(func_ea);
+            if ( self->hybrid_session )
+                self->hybrid_session->invalidate_function(uint64_t(func_ea));
         }
     }
     // The installed optinsn/optblock handlers own microcode deobfuscation.
@@ -377,6 +382,8 @@ void chernobog_plugmod_t::clear_processing_state()
     hikari_cfg_attempted = false;
     native_opaque_attempted = false;
     chernobog_clear_all_tracking();
+    if ( hybrid_session )
+        hybrid_session->clear();
 }
 
 bool chernobog_plugmod_t::recover_hikari_cfg_if_ready(bool force)
@@ -664,6 +671,9 @@ chernobog_plugmod_t::chernobog_plugmod_t()
     debug_log("[chernobog] Per-IDB plugmod created, dbctx=%lld\n",
         static_cast<long long>(get_dbctx_id()));
 
+    hybrid_session.reset(new chernobog::hybrid::Session(
+        static_cast<int64_t>(get_dbctx_id())));
+
     idb_hooked = hook_to_notification_point(HT_IDB, idb_callback, this);
     ui_hooked = hook_to_notification_point(HT_UI, ui_callback, this);
     if ( !idb_hooked || !ui_hooked )
@@ -690,6 +700,7 @@ chernobog_plugmod_t::~chernobog_plugmod_t()
 
     deactivate();
     clear_processing_state();
+    hybrid_session.reset();
     debug_log("[chernobog] Per-IDB plugmod destroyed\n");
 }
 
@@ -725,6 +736,9 @@ bool idaapi chernobog_plugmod_t::run(size_t)
     msg("To analyze without modifying:\n");
     msg("  Right-click and select 'Analyze obfuscation (Chernobog)'\n");
     msg("  Or press Ctrl+Shift+A\n\n");
+    msg("To explore only the displayed function with rax:\n");
+    msg("  Right-click and select 'Explore current function with rax'\n");
+    msg("  Or press Ctrl+Shift+E\n\n");
     msg("Auto-deobfuscation mode:\n");
     msg("  Set CHERNOBOG_AUTO=1 environment variable before starting IDA\n");
     msg("  to automatically deobfuscate functions when they are decompiled.\n\n");

@@ -5,6 +5,7 @@
 #include "../../common/arm64_branch.h"
 #include "../../common/bitvector.h"
 #include "../../common/ida_memory.h"
+#include "../../hybrid/z3_bridge.hpp"
 #include "../../common/warn_off.h"
 #include <fixup.hpp>
 #include "../../common/warn_on.h"
@@ -270,7 +271,21 @@ int resolve_ijmp(
             : opaque_eval_t::evaluate_operand(ijmp->d);
     }
     if ( !value )
+    {
+        const auto candidates =
+            chernobog::hybrid::hybrid_current_indirect_target_candidates(
+                uint64_t(mba->entry_ea), uint64_t(ijmp->ea));
+        for ( const auto &candidate : candidates )
+        {
+            deobf::log_verbose(
+                "[indirect_branch][rax] Observed candidate %a at %a "
+                "(%zu observations, %zu runs); retained indirect because "
+                "concrete coverage is non-exhaustive\n",
+                ea_t(candidate.target), ijmp->ea, candidate.observations,
+                candidate.runs.size());
+        }
         return 0;
+    }
 
     const ea_t target_ea = static_cast<ea_t>(*value);
     const auto target = block_starts.find(target_ea);

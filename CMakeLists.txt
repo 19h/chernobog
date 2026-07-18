@@ -18,6 +18,13 @@ endif()
 
 project(chernobog LANGUAGES C CXX)
 
+if(MSVC AND (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY
+             OR CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL ""))
+    set(CMAKE_MSVC_RUNTIME_LIBRARY
+        "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING
+        "MSVC runtime library" FORCE)
+endif()
+
 include(FetchContent)
 
 # Find IDA SDK
@@ -72,6 +79,193 @@ set(CHERNOBOG_Z3_INCLUDE_DIRS
     "${z3_SOURCE_DIR}/src/api"
     "${z3_SOURCE_DIR}/src/api/c++"
 )
+
+# ============================================================================
+# rax exploratory emulator (pinned Rust staticlib, no runtime DLL/dylib/so)
+# ============================================================================
+
+if(WIN32)
+    # std::thread is provided by the MSVC runtime.  CMake's cross-compiling
+    # Threads probe can otherwise accept a host libpthreads and leak
+    # "-lpthreads" into an lld-link command.
+    set(_chernobog_thread_libraries "")
+else()
+    find_package(Threads REQUIRED)
+    set(_chernobog_thread_libraries Threads::Threads)
+endif()
+
+# The gitlink and this configure-time check jointly pin the embedded source.
+# A missing or differently checked-out submodule fails configuration instead
+# of fetching or borrowing a checkout from another repository.
+set(CHERNOBOG_RAX_GIT_REVISION
+    "e5821bfca883b1489324fe92e40f0cbe7baeb2a6")
+set(_chernobog_rax_root "${CMAKE_CURRENT_SOURCE_DIR}/vendor/rax")
+if(NOT EXISTS "${_chernobog_rax_root}/capi/include/rax.h" OR
+   NOT EXISTS "${_chernobog_rax_root}/capi/Cargo.toml")
+    message(FATAL_ERROR
+        "The pinned rax submodule is not initialized. Run: "
+        "git submodule update --init --recursive vendor/rax")
+endif()
+
+find_package(Git REQUIRED)
+execute_process(
+    COMMAND "${GIT_EXECUTABLE}" -C "${_chernobog_rax_root}" rev-parse HEAD
+    RESULT_VARIABLE _chernobog_rax_git_result
+    OUTPUT_VARIABLE _chernobog_rax_git_head
+    ERROR_QUIET
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT _chernobog_rax_git_result EQUAL 0)
+    message(FATAL_ERROR
+        "Unable to determine the vendor/rax submodule revision")
+endif()
+if(NOT _chernobog_rax_git_head STREQUAL CHERNOBOG_RAX_GIT_REVISION)
+    message(FATAL_ERROR
+        "vendor/rax is at ${_chernobog_rax_git_head}; expected pinned revision "
+        "${CHERNOBOG_RAX_GIT_REVISION}. Run: git submodule update --init "
+        "vendor/rax")
+endif()
+set(_chernobog_rax_source_provenance
+    "submodule:vendor/rax@${_chernobog_rax_git_head}")
+
+if(EXISTS "${_chernobog_rax_root}/capi/include/rax.h")
+    set(_chernobog_rax_capi "${_chernobog_rax_root}/capi")
+elseif(EXISTS "${_chernobog_rax_root}/include/rax.h")
+    set(_chernobog_rax_capi "${_chernobog_rax_root}")
+    get_filename_component(_chernobog_rax_root
+        "${_chernobog_rax_capi}/.." ABSOLUTE)
+else()
+    message(FATAL_ERROR
+        "rax.h was not found under '${_chernobog_rax_root}/capi/include' "
+        "or '${_chernobog_rax_root}/include'")
+endif()
+if(NOT EXISTS "${_chernobog_rax_capi}/Cargo.toml")
+    message(FATAL_ERROR "rax C API Cargo.toml is missing: ${_chernobog_rax_capi}")
+endif()
+
+find_program(CHERNOBOG_CARGO_EXECUTABLE cargo REQUIRED)
+
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _chernobog_target_processor)
+if(APPLE)
+    set(_chernobog_apple_arches ${CMAKE_OSX_ARCHITECTURES})
+    list(LENGTH _chernobog_apple_arches _chernobog_apple_arch_count)
+    if(_chernobog_apple_arch_count GREATER 1)
+        message(FATAL_ERROR
+            "Embedded rax requires one architecture per build; configure "
+            "separate arm64 and x86_64 build directories")
+    endif()
+    if(_chernobog_apple_arch_count EQUAL 1)
+        list(GET _chernobog_apple_arches 0 _chernobog_target_processor)
+    endif()
+    if(_chernobog_target_processor MATCHES "^(arm64|aarch64)$")
+        set(CHERNOBOG_RAX_RUST_TARGET "aarch64-apple-darwin")
+    elseif(_chernobog_target_processor MATCHES "^(x86_64|amd64)$")
+        set(CHERNOBOG_RAX_RUST_TARGET "x86_64-apple-darwin")
+    else()
+        message(FATAL_ERROR "Unsupported macOS rax target: ${_chernobog_target_processor}")
+    endif()
+elseif(WIN32)
+    if(NOT _chernobog_target_processor MATCHES "^(x86_64|amd64)$")
+        message(FATAL_ERROR "Only x86_64 Windows is supported by this build matrix")
+    endif()
+    set(CHERNOBOG_RAX_RUST_TARGET "x86_64-pc-windows-msvc")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(_chernobog_target_processor MATCHES "^(x86_64|amd64)$")
+        set(CHERNOBOG_RAX_RUST_TARGET "x86_64-unknown-linux-gnu")
+    elseif(_chernobog_target_processor MATCHES "^(arm64|aarch64)$")
+        set(CHERNOBOG_RAX_RUST_TARGET "aarch64-unknown-linux-gnu")
+    else()
+        message(FATAL_ERROR "Unsupported Linux rax target: ${_chernobog_target_processor}")
+    endif()
+else()
+    message(FATAL_ERROR "Unsupported rax target system: ${CMAKE_SYSTEM_NAME}")
+endif()
+
+set(_chernobog_rax_target_dir "${CMAKE_CURRENT_BINARY_DIR}/rax-capi/cargo")
+if(WIN32)
+    set(_chernobog_rax_archive
+        "${_chernobog_rax_target_dir}/${CHERNOBOG_RAX_RUST_TARGET}/release/rax.lib")
+else()
+    set(_chernobog_rax_archive
+        "${_chernobog_rax_target_dir}/${CHERNOBOG_RAX_RUST_TARGET}/release/librax.a")
+endif()
+
+set(_chernobog_rax_environment
+    "CARGO_TARGET_DIR=${_chernobog_rax_target_dir}")
+if(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET)
+    list(APPEND _chernobog_rax_environment
+        "MACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+endif()
+if(WIN32)
+    # Chernobog and bundled Z3 use the static MSVC runtime. Keep Rust and C
+    # dependencies compiled by Cargo (notably zstd) on the same CRT for both
+    # native and cross builds.
+    set(_chernobog_rax_cflags "/MT")
+    set(_chernobog_rax_rustflags "-Ctarget-feature=+crt-static")
+    if(CMAKE_CROSSCOMPILING)
+        string(TOUPPER "${CHERNOBOG_RAX_RUST_TARGET}" _chernobog_rust_env_target)
+        string(REPLACE "-" "_" _chernobog_rust_env_target
+            "${_chernobog_rust_env_target}")
+        if(CMAKE_LINKER)
+            list(APPEND _chernobog_rax_environment
+                "CARGO_TARGET_${_chernobog_rust_env_target}_LINKER=${CMAKE_LINKER}")
+        endif()
+        list(APPEND _chernobog_rax_environment
+            "CC_x86_64_pc_windows_msvc=${CMAKE_C_COMPILER}"
+            "CXX_x86_64_pc_windows_msvc=${CMAKE_CXX_COMPILER}"
+            "AR_x86_64_pc_windows_msvc=${CMAKE_AR}")
+        if(XWIN_ROOT)
+            string(APPEND _chernobog_rax_cflags
+                " /imsvc${XWIN_ROOT}/crt/include /imsvc${XWIN_ROOT}/sdk/include/ucrt /imsvc${XWIN_ROOT}/sdk/include/shared /imsvc${XWIN_ROOT}/sdk/include/um")
+            string(APPEND _chernobog_rax_rustflags
+                " -Lnative=${XWIN_ROOT}/crt/lib/x86_64 -Lnative=${XWIN_ROOT}/sdk/lib/ucrt/x86_64 -Lnative=${XWIN_ROOT}/sdk/lib/um/x86_64")
+        endif()
+    endif()
+    list(APPEND _chernobog_rax_environment
+        "CFLAGS_x86_64_pc_windows_msvc=${_chernobog_rax_cflags}"
+        "CXXFLAGS_x86_64_pc_windows_msvc=${_chernobog_rax_cflags}"
+        "RUSTFLAGS=${_chernobog_rax_rustflags}")
+endif()
+
+add_custom_target(chernobog_rax_cargo
+    COMMAND ${CMAKE_COMMAND} -E env ${_chernobog_rax_environment}
+            ${CHERNOBOG_CARGO_EXECUTABLE} build --locked --release
+            --package rax-capi
+            --manifest-path "${_chernobog_rax_capi}/Cargo.toml"
+            --target "${CHERNOBOG_RAX_RUST_TARGET}"
+    BYPRODUCTS "${_chernobog_rax_archive}"
+    WORKING_DIRECTORY "${_chernobog_rax_root}"
+    COMMENT "Building embedded rax (${CHERNOBOG_RAX_RUST_TARGET})"
+    VERBATIM)
+
+set(_chernobog_rax_system_libraries "")
+if(APPLE)
+    find_library(_chernobog_corefoundation CoreFoundation REQUIRED)
+    find_library(_chernobog_security Security REQUIRED)
+    find_library(_chernobog_systemconfiguration SystemConfiguration REQUIRED)
+    find_library(_chernobog_iconv iconv REQUIRED)
+    find_library(_chernobog_objc objc REQUIRED)
+    set(_chernobog_rax_system_libraries
+        "${_chernobog_corefoundation}" "${_chernobog_security}"
+        "${_chernobog_systemconfiguration}" "${_chernobog_iconv}"
+        "${_chernobog_objc}" ${_chernobog_thread_libraries})
+elseif(WIN32)
+    set(_chernobog_rax_system_libraries ws2_32 userenv ntdll bcrypt)
+else()
+    set(_chernobog_rax_system_libraries
+        ${_chernobog_thread_libraries} ${CMAKE_DL_LIBS} m rt util)
+endif()
+
+add_library(chernobog_rax_static STATIC IMPORTED GLOBAL)
+set_target_properties(chernobog_rax_static PROPERTIES
+    IMPORTED_LOCATION "${_chernobog_rax_archive}"
+    INTERFACE_INCLUDE_DIRECTORIES "${_chernobog_rax_capi}/include"
+    INTERFACE_LINK_LIBRARIES "${_chernobog_rax_system_libraries}")
+add_dependencies(chernobog_rax_static chernobog_rax_cargo)
+add_library(chernobog::rax ALIAS chernobog_rax_static)
+
+message(STATUS
+    "Embedded rax: provenance=${_chernobog_rax_source_provenance}, "
+    "target=${CHERNOBOG_RAX_RUST_TARGET}, source=${_chernobog_rax_root}")
 
 include(${CMAKE_CURRENT_LIST_DIR}/ida-cmake/bootstrap.cmake)
 find_package(idasdk REQUIRED)
@@ -137,10 +331,41 @@ ida_add_plugin(chernobog
     src/deobf/handlers/ctree_switch_fold.cpp
     src/deobf/handlers/ctree_indirect_call.cpp
     src/deobf/handlers/ctree_string_decrypt.cpp
+
+    # Current-function rax hybrid analysis (never a database sweep)
+    src/hybrid/rax_loader.cpp
+    src/hybrid/hybrid_config.cpp
+    src/hybrid/program_model.cpp
+    src/hybrid/program_model_core.cpp
+    src/hybrid/abi_policy.cpp
+    src/hybrid/emu_driver.cpp
+    src/hybrid/emulation_workers.cpp
+    src/hybrid/emulation_rax_executor.cpp
+    src/hybrid/entry_state.cpp
+    src/hybrid/call_summary.cpp
+    src/hybrid/decoder_core.cpp
+    src/hybrid/smir_analysis.cpp
+    src/hybrid/static_analysis.cpp
+    src/hybrid/evidence.cpp
+    src/hybrid/z3_bridge.cpp
+    src/hybrid/session.cpp
 )
 
-target_include_directories(chernobog SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
-target_link_libraries(chernobog PRIVATE libz3)
+target_include_directories(chernobog SYSTEM PRIVATE
+    ${CHERNOBOG_Z3_INCLUDE_DIRS}
+    "${_chernobog_rax_capi}/include")
+target_link_libraries(chernobog PRIVATE
+    libz3 chernobog::rax ${_chernobog_thread_libraries})
+
+# Keep the embedded C ABI private. This prevents symbol interposition if viy
+# and Chernobog, each with a potentially different pinned rax, are loaded into
+# the same IDA process.
+if(APPLE)
+    target_link_options(chernobog PRIVATE
+        "LINKER:-load_hidden,$<TARGET_FILE:chernobog_rax_static>")
+elseif(UNIX)
+    target_link_options(chernobog PRIVATE "LINKER:--exclude-libs,librax.a")
+endif()
 
 # Keep diagnostics enabled for project sources. The IDA SDK is a system include,
 # so these flags do not turn third-party header diagnostics into project noise.
@@ -162,6 +387,32 @@ endif()
 # the AST matcher.
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(chernobog_hybrid_tests
+        tests/hybrid_tests.cpp
+        src/hybrid/rax_loader.cpp
+        src/hybrid/hybrid_config.cpp
+        src/hybrid/program_model_core.cpp
+        src/hybrid/abi_policy.cpp
+        src/hybrid/decoder_core.cpp
+        src/hybrid/smir_analysis.cpp
+        src/hybrid/emu_driver.cpp
+        src/hybrid/emulation_workers.cpp
+        src/hybrid/emulation_rax_executor.cpp
+        src/hybrid/evidence.cpp)
+    target_include_directories(chernobog_hybrid_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${_chernobog_rax_capi}/include")
+    target_link_libraries(chernobog_hybrid_tests PRIVATE
+        chernobog::rax ${_chernobog_thread_libraries})
+    target_compile_features(chernobog_hybrid_tests PRIVATE cxx_std_17)
+    if(MSVC)
+        target_compile_options(chernobog_hybrid_tests PRIVATE /W4)
+    else()
+        target_compile_options(chernobog_hybrid_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+    endif()
+    add_test(NAME chernobog.rax_hybrid COMMAND chernobog_hybrid_tests)
+
     add_executable(chernobog_core_tests tests/core_tests.cpp)
     target_include_directories(chernobog_core_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src")

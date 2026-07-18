@@ -2,10 +2,50 @@
 #include "z3_solver.h"
 #include "../../common/bitvector.h"
 #include "../../common/ida_memory.h"
+#include "../../hybrid/z3_bridge.hpp"
+#include <funcs.hpp>
 
 // Static members
 std::map<std::pair<ea_t, int>, uint64_t> opaque_eval_t::s_global_cache;
 static constexpr unsigned OPAQUE_Z3_TIMEOUT_MS = 1000;
+
+namespace {
+
+bool rax_vetoes_universal_branch_claim(const minsn_t *condition,
+                                       bool expected_taken)
+{
+    if ( condition == nullptr || condition->ea == BADADDR )
+        return false;
+    const func_t *function = get_func(condition->ea);
+    if ( function == nullptr )
+        return false;
+    const chernobog::hybrid::HybridBranchCheck check =
+        chernobog::hybrid::hybrid_check_current_branch_claim(
+            uint64_t(function->start_ea), uint64_t(condition->ea),
+            expected_taken);
+    if ( check.veto() ) {
+        deobf::log(
+            "[z3][rax] Concrete counterexample vetoed universal predicate "
+            "claim at %a (expected=%s matching=%zu opposing=%zu "
+            "context-complete-opposing=%zu generation=%llu)\n",
+            condition->ea, expected_taken ? "taken" : "fallthrough",
+            check.claim.matching, check.claim.opposing,
+            check.claim.opposing_context_complete,
+            static_cast<unsigned long long>(check.generation));
+        return true;
+    }
+    if ( check.snapshot_current &&
+         check.claim.verdict ==
+             chernobog::hybrid::BranchClaimVerdict::CORROBORATED ) {
+        deobf::log_verbose(
+            "[z3][rax] Concrete runs corroborate (but do not prove) the "
+            "predicate claim at %a (%zu observations)\n",
+            condition->ea, check.claim.matching);
+    }
+    return false;
+}
+
+} // namespace
 
 //--------------------------------------------------------------------------
 // Clear cache
@@ -573,6 +613,8 @@ opaque_eval_t::opaque_result_t opaque_eval_t::check_opaque_predicate(minsn_t *co
     // First try simple evaluation
     bool result;
     if (evaluate_condition(cond, &result)) {
+        if (rax_vetoes_universal_branch_claim(cond, result))
+            return OPAQUE_NOT_OPAQUE;
         return result ? OPAQUE_ALWAYS_TRUE : OPAQUE_ALWAYS_FALSE;
     }
 
@@ -582,10 +624,32 @@ opaque_eval_t::opaque_result_t opaque_eval_t::check_opaque_predicate(minsn_t *co
         z3_solver::opaque_predicate_solver_t solver(z3_solver::get_global_context());
         auto z3_result = solver.analyze_condition(cond);
 
+        if ( cond->ea != BADADDR ) {
+            const func_t *function = get_func(cond->ea);
+            if ( function != nullptr ) {
+                const auto concrete_inputs =
+                    chernobog::hybrid::hybrid_collect_current_z3_inputs(
+                        uint64_t(function->start_ea), uint64_t(cond->ea));
+                size_t constraints = 0;
+                for ( const auto &input : concrete_inputs )
+                    constraints += input.registers.size();
+                if ( !concrete_inputs.empty() ) {
+                    deobf::log_verbose(
+                        "[z3][rax] Collected %zu predicate states / %zu "
+                        "micro-register inputs at %a for model consumers\n",
+                        concrete_inputs.size(), constraints, cond->ea);
+                }
+            }
+        }
+
         switch (z3_result) {
             case z3_solver::opaque_predicate_solver_t::PRED_ALWAYS_TRUE:
+                if (rax_vetoes_universal_branch_claim(cond, true))
+                    return OPAQUE_NOT_OPAQUE;
                 return OPAQUE_ALWAYS_TRUE;
             case z3_solver::opaque_predicate_solver_t::PRED_ALWAYS_FALSE:
+                if (rax_vetoes_universal_branch_claim(cond, false))
+                    return OPAQUE_NOT_OPAQUE;
                 return OPAQUE_ALWAYS_FALSE;
             case z3_solver::opaque_predicate_solver_t::PRED_DEPENDS_ON_INPUT:
                 return OPAQUE_NOT_OPAQUE;

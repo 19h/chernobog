@@ -26,15 +26,18 @@ jobs:
           - os: macos-latest
             name: macos-x86_64
             cmake_arch: x86_64
+            rust_target: x86_64-apple-darwin
             ida_branch: ""
             ida_suffix: ""
           - os: macos-latest
             name: macos-arm64
             cmake_arch: arm64
+            rust_target: aarch64-apple-darwin
             ida_branch: ""
             ida_suffix: ""
           - os: ubuntu-latest
             name: linux-x86_64
+            rust_target: x86_64-unknown-linux-gnu
             ida_branch: ""
             ida_suffix: ""
 
@@ -46,6 +49,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Install Rust target
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add "${{ matrix.rust_target }}"
+          cargo --version
 
       - name: Checkout IDA SDK (stable)
         if: matrix.ida_branch == ''
@@ -193,6 +203,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Install Rust target
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add x86_64-pc-windows-msvc
+          cargo --version
 
       - name: Checkout IDA SDK (stable)
         uses: actions/checkout@v4
