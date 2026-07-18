@@ -14,6 +14,8 @@
 #include <segregs.hpp>
 #include <funcs.hpp>
 #include <kernwin.hpp>
+#include <name.hpp>
+#include <typeinf.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -229,6 +231,9 @@ ProgramSnapshotStats hybrid_snapshot_function(
     si.end     = (uint64_t)s->end_ea;
     si.perm    = (uint32_t)s->perm;
     si.bitness = (uint8_t)s->bitness;
+    si.kind    = s->type == SEG_XTRN
+               ? HybridSegmentKind::EXTERNAL
+               : HybridSegmentKind::NORMAL;
 
     const size_t len = (size_t)(s->end_ea - s->start_ea);
     si.bytes.assign(len, 0);
@@ -287,6 +292,20 @@ ProgramSnapshotStats hybrid_snapshot_function(
     func.start = (uint64_t)pfn->start_ea;
     func.end   = (uint64_t)pfn->end_ea; // compatibility: primary chunk end
     func.entry_mode = entry_mode_at(img.arch, pfn->start_ea);
+    qstring function_name;
+    if ( get_func_name(&function_name, pfn->start_ea) > 0 )
+      func.profile = hybrid_function_profile_from_name(function_name.c_str());
+    if ( func.profile.flavor == HybridFunctionFlavor::NATIVE )
+    {
+      tinfo_t type;
+      func_type_data_t details;
+      if ( get_tinfo(&type, pfn->start_ea)
+        && type.get_func_details(&details, GTD_CALC_ARGLOCS) )
+      {
+        func.profile.explicit_arguments = details.size();
+        func.profile.explicit_arguments_known = true;
+      }
+    }
 
     func_tail_iterator_t chunks(pfn);
     for ( bool ok = chunks.main(); ok; ok = chunks.next() )

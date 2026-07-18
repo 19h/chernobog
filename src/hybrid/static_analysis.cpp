@@ -54,7 +54,7 @@ DecoderInstruction project_ida(ea_t address, const insn_t &instruction)
   const bool call = is_call_insn(instruction);
   const bool ret = is_ret_insn(instruction);
   const uint32_t features = instruction.get_canon_feature(PH);
-  const bool control = call || ret
+  const bool control = call || ret || (direct && !nonflow_targets.empty())
                     || (features & (CF_CALL | CF_JUMP | CF_STOP)) != 0;
 
   if ( call )
@@ -141,72 +141,114 @@ StaticAnalysisResult hybrid_analyze_current_function(
         result.stats.truncated = true;
         break;
       }
-      if ( remaining == 0 )
-      {
-        result.stats.truncated = true;
-        break;
-      }
-      --remaining;
       const flags64_t flags = get_flags(address);
       if ( is_code(flags) && is_head(flags) )
       {
         insn_t instruction;
         if ( decode_insn(&instruction, address) > 0 )
         {
-          StaticInstructionEvidence item;
-          item.address = uint64_t(address);
-          item.ida = project_ida(address, instruction);
           ++result.stats.instruction_heads;
-
-          const DecoderArmState state = arm_state_at(
-              architecture, t_register, address);
-          const size_t offered = hybrid_decoder_window_size(
-              uint64_t(address), chunk.end, kMaximumInstructionBytes);
-          uint8_t bytes[kMaximumInstructionBytes] = {};
-          const size_t copied = copy_instruction_window(
-              image, uint64_t(address), offered, bytes);
-          if ( copied != 0
-            && hybrid_decoder_mode(architecture, state, item.mode) )
+          const DecoderInstruction ida_projection = project_ida(address, instruction);
+          size_t component_offset = 0;
+          size_t component_index = 0;
+          bool macro_counted = false;
+          while ( component_offset < instruction.size )
           {
-            if ( config.want_static )
+            if ( remaining == 0 )
             {
+              result.stats.truncated = true;
+              break;
+            }
+            --remaining;
+            const uint64_t component_address = uint64_t(address) + component_offset;
+            StaticInstructionEvidence item;
+            item.address = component_address;
+            item.ida_head = uint64_t(address);
+            item.ida_projection_present = component_index == 0;
+            if ( item.ida_projection_present )
+              item.ida = ida_projection;
+
+            const DecoderArmState state = arm_state_at(
+                architecture, t_register, ea_t(component_address));
+            const size_t offered = hybrid_decoder_window_size(
+                component_address, chunk.end, kMaximumInstructionBytes);
+            uint8_t bytes[kMaximumInstructionBytes] = {};
+            const size_t copied = copy_instruction_window(
+                image, component_address, offered, bytes);
+            if ( copied != 0
+              && hybrid_decoder_mode(architecture, state, item.mode) )
+            {
+              // Decode is required for canonical traversal even when only SMIR
+              // output was requested.
               item.rax = hybrid_decode_one(
-                  api->decode, architecture.rax_arch, item.mode,
-                  uint64_t(address), bytes, copied);
+                    api->decode, architecture.rax_arch, item.mode,
+                    component_address, bytes, copied);
               if ( item.rax.status == DecoderDecodeStatus::Valid )
               {
                 ++result.stats.rax_decoded;
-                item.comparison = hybrid_compare_decoders(
-                    item.ida, item.rax.instruction);
-                if ( item.comparison.size_disagreement )
-                  ++result.stats.size_disagreements;
-                if ( item.comparison.flow_disagreement )
-                  ++result.stats.flow_disagreements;
-                if ( item.comparison.target_disagreement )
-                  ++result.stats.target_disagreements;
-                if ( item.comparison.fallthrough_disagreement )
-                  ++result.stats.fallthrough_disagreements;
+                const bool arm64_macro = image.arch == HybridArch::ARM64
+                    && instruction.size > item.rax.instruction.size
+                    && item.rax.instruction.size == 4
+                    && instruction.size % 4 == 0;
+                item.ida_macro_component = arm64_macro;
+                if ( arm64_macro )
+                {
+                  if ( !macro_counted )
+                  {
+                    ++result.stats.ida_macro_heads;
+                    macro_counted = true;
+                  }
+                  ++result.stats.ida_macro_components;
+                }
+                else if ( config.want_static && item.ida_projection_present )
+                {
+                  item.comparison = hybrid_compare_decoders(
+                      item.ida, item.rax.instruction);
+                  ++result.stats.decoder_comparisons;
+                  const bool mismatch = item.comparison.size_disagreement
+                                     || item.comparison.flow_disagreement
+                                     || item.comparison.target_disagreement
+                                     || item.comparison.fallthrough_disagreement;
+                  if ( mismatch )
+                    ++result.stats.mismatched_instructions;
+                  if ( item.comparison.size_disagreement )
+                    ++result.stats.size_disagreements;
+                  if ( item.comparison.flow_disagreement )
+                    ++result.stats.flow_disagreements;
+                  if ( item.comparison.target_disagreement )
+                    ++result.stats.target_disagreements;
+                  if ( item.comparison.fallthrough_disagreement )
+                    ++result.stats.fallthrough_disagreements;
+                }
               }
               else
               {
                 ++result.stats.rax_decode_failures;
               }
-            }
-            if ( config.want_smir )
-            {
-              item.smir = hybrid_analyze_instruction_effects(
-                  api, image, uint64_t(address), item.mode, offered);
-              if ( item.smir.valid() )
+              if ( config.want_smir )
               {
-                ++result.stats.smir_analyzed;
-                if ( (item.smir.summary.flags & RAX_ANALYSIS_COMPLETE) != 0 )
-                  ++result.stats.smir_complete;
-                if ( (item.smir.summary.flags & RAX_ANALYSIS_PARTIAL) != 0 )
-                  ++result.stats.smir_partial;
+                item.smir = hybrid_analyze_instruction_effects(
+                    api, image, component_address, item.mode, offered);
+                if ( item.smir.valid() )
+                {
+                  ++result.stats.smir_analyzed;
+                  if ( (item.smir.summary.flags & RAX_ANALYSIS_COMPLETE) != 0 )
+                    ++result.stats.smir_complete;
+                  if ( (item.smir.summary.flags & RAX_ANALYSIS_PARTIAL) != 0 )
+                    ++result.stats.smir_partial;
+                }
               }
             }
+            const size_t step = item.rax.status == DecoderDecodeStatus::Valid
+                              ? size_t(item.rax.instruction.size)
+                              : size_t(instruction.size) - component_offset;
+            ++result.stats.canonical_instructions;
+            result.instructions.push_back(std::move(item));
+            if ( step == 0 || step > size_t(instruction.size) - component_offset )
+              break;
+            component_offset += step;
+            ++component_index;
           }
-          result.instructions.push_back(std::move(item));
         }
       }
 

@@ -41,6 +41,45 @@ bool checked_add(uint64_t left, uint64_t right, uint64_t *out)
   return true;
 }
 
+bool exit_value_is_attempted_steps(int reason)
+{
+  switch ( reason )
+  {
+    case RAX_STOP_COUNT:
+    case RAX_STOP_UNTIL:
+    case RAX_STOP_TIMEOUT:
+    case RAX_STOP_STOPPED:
+    case RAX_STOP_HLT:
+    case RAX_STOP_EXCEPTION:
+    case RAX_STOP_SHUTDOWN:
+    case RAX_STOP_DEBUG:
+    case RAX_STOP_ERROR:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool input_overrides_argument(const EmuInput *input, size_t index,
+                              const std::vector<int> &argument_registers)
+{
+  if ( input == nullptr )
+    return false;
+  const size_t offset = input->positional_argument_offset;
+  if ( index >= offset && index - offset < input->args.size() )
+    return true;
+  if ( std::any_of(input->arg_overrides.begin(), input->arg_overrides.end(),
+                   [&](const EmuInput::ArgOverride &override_value)
+                   { return override_value.index == index; }) )
+    return true;
+  if ( index >= argument_registers.size() )
+    return false;
+  return std::any_of(
+      input->register_overrides.begin(), input->register_overrides.end(),
+      [&](const EmuInput::RegisterOverride &override_value)
+      { return override_value.reg == argument_registers[index]; });
+}
+
 bool contains_range(uint64_t lo, uint64_t hi, uint64_t address, uint64_t size)
 {
   uint64_t end = 0;
@@ -101,6 +140,12 @@ struct HookCtx
   bool       execution_truncated = false;
   bool       dependency_truncated = false;
   bool       terminated_process = false;
+  bool       escaped_image = false;
+  uint64_t   escape_source = 0;
+  bool       unmodeled_external = false;
+  uint64_t   external_target = 0;
+  std::string external_name;
+  bool       environment_model_failure = false;
   bool       summary_resume = false;
   uint32_t   summarized_calls = 0;
   bool       has_prev = false;
@@ -372,6 +417,8 @@ bool apply_summary(HookCtx *c, rax_engine *engine, const EmuCallSummary &summary
   std::vector<uint8_t> bytes;
   switch ( summary.kind )
   {
+    case EmuSummaryKind::UNMODELED:
+      return false;
     case EmuSummaryKind::TERMINATE:
       c->terminated_process = true;
       ++c->summarized_calls;
@@ -535,6 +582,66 @@ bool apply_summary(HookCtx *c, rax_engine *engine, const EmuCallSummary &summary
         return false;
       result = 0;
       break;
+    case EmuSummaryKind::RETURN_ARG0:
+      if ( !args(1) )
+        return false;
+      result = a0;
+      break;
+    case EmuSummaryKind::RETURN_ZERO:
+      result = 0;
+      break;
+    case EmuSummaryKind::STORE_POINTER_ARG1:
+    {
+      if ( !args(2) )
+        return false;
+      const size_t width = c->is64 ? 8 : 4;
+      uint8_t stored[8] = {};
+      for ( size_t index = 0; index < width; ++index )
+      {
+        const size_t shift = c->big_endian ? width - 1 - index : index;
+        stored[index] = uint8_t(a1 >> (shift * 8));
+      }
+      if ( !summary_access_allowed(c, engine, a0, width, HybridSegPerm::WRITE)
+        || c->api->mem_write(engine, a0, stored, width) != RAX_OK )
+        return false;
+      record_summary_access(c, RAX_MEM_WRITE, a0, a1, uint32_t(width));
+      result = 0;
+      break;
+    }
+    case EmuSummaryKind::ALLOCATE_OBJECT:
+    {
+      constexpr uint64_t object_size = 256;
+      const uint64_t aligned = (object_size + 15) & ~15ull;
+      if ( c->heap_cursor <= c->heap_hi && aligned <= c->heap_hi - c->heap_cursor )
+      {
+        result = c->heap_cursor;
+        bytes.assign(size_t(object_size), 0);
+        if ( c->api->mem_write(engine, result, bytes.data(), bytes.size()) != RAX_OK )
+          return false;
+        record_summary_access(c, RAX_MEM_WRITE, result, 0, uint32_t(object_size));
+        c->heap_cursor += aligned;
+      }
+      break;
+    }
+    case EmuSummaryKind::RANDOM_U32:
+    case EmuSummaryKind::RANDOM_UNIFORM:
+    {
+      if ( summary.kind == EmuSummaryKind::RANDOM_UNIFORM && !args(1) )
+        return false;
+      uint64_t mixed = c->seed ^ summary.address
+                     ^ (uint64_t(c->summarized_calls + 1) * UINT64_C(0x9E3779B97F4A7C15));
+      mixed ^= mixed >> 30;
+      mixed *= UINT64_C(0xBF58476D1CE4E5B9);
+      mixed ^= mixed >> 27;
+      mixed *= UINT64_C(0x94D049BB133111EB);
+      mixed ^= mixed >> 31;
+      const uint32_t random = uint32_t(mixed);
+      const uint32_t bound = uint32_t(a0);
+      result = summary.kind == EmuSummaryKind::RANDOM_UNIFORM
+             ? uint64_t(bound < 2 ? 0 : random % bound)
+             : uint64_t(random);
+      break;
+    }
   }
   if ( !summary_return(c, engine, result) )
     return false;
@@ -623,15 +730,32 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
     c->api->emu_stop(engine);
     return;
   }
+  const uint32_t current_decode_mode = decode_mode_at_hook(c, engine);
+  uint32_t decoded_current_size = 0;
+  decode_at(c, addr, current_decode_mode, &decoded_current_size, nullptr);
+  const uint32_t effective_size = size != 0 ? size : decoded_current_size;
+  const SegImage *current_segment = c->image != nullptr
+                                  ? c->image->segment_at(addr) : nullptr;
+  if ( current_segment == nullptr )
+  {
+    // This driver emulates an application function, not an operating system.
+    // Reaching an exception vector, unmapped callee, or fabricated executable
+    // address is a first-fault boundary; never let full-system exception
+    // delivery consume the remaining instruction budget.
+    c->escaped_image = true;
+    c->escape_source = c->has_prev ? c->prev_pc : addr;
+    c->api->emu_stop(engine);
+    return;
+  }
   if ( c->strict_permissions
-    && !image_access_allowed(c, addr, size == 0 ? 1 : size, HybridSegPerm::EXEC) )
+    && !image_access_allowed(c, addr, effective_size == 0 ? 1 : effective_size,
+                             HybridSegPerm::EXEC) )
   {
     c->permission_violation = true;
     c->api->emu_stop(engine);
     return;
   }
   const uint64_t event_sequence = c->sequence++;
-  const uint32_t current_decode_mode = decode_mode_at_hook(c, engine);
   bool summary_transfer = false;
   if ( c->has_prev )
   {
@@ -675,10 +799,45 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
       }
     }
   }
+  c->summary_source = c->has_prev ? c->prev_pc : addr;
+  const EmuCallSummary *summary = summary_transfer ? find_summary(c, addr) : nullptr;
+  if ( summary != nullptr && summary->kind != EmuSummaryKind::UNMODELED )
+  {
+    if ( !apply_summary(c, engine, *summary) )
+    {
+      c->environment_model_failure = true;
+      c->external_target = addr;
+      c->external_name = summary->name;
+      c->api->emu_stop(engine);
+    }
+    c->prev_pc = addr;
+    c->prev_size = effective_size;
+    c->prev_decode_mode = current_decode_mode;
+    c->has_prev = true;
+    c->last_pc = addr;
+    return;
+  }
+  if ( current_segment->kind == HybridSegmentKind::EXTERNAL )
+  {
+    if ( summary == nullptr || summary->kind == EmuSummaryKind::UNMODELED )
+    {
+      c->unmodeled_external = true;
+      c->external_target = addr;
+      if ( summary != nullptr )
+        c->external_name = summary->name;
+      c->api->emu_stop(engine);
+    }
+    c->prev_pc = addr;
+    c->prev_size = effective_size;
+    c->prev_decode_mode = current_decode_mode;
+    c->has_prev = true;
+    c->last_pc = addr;
+    return;
+  }
   if ( addr >= c->lo && addr < c->hi )
   {
     if ( c->out->execution.size() < c->execution_cap )
-      c->out->execution.push_back(ExecPoint{ addr, size, event_sequence,
+      c->out->execution.push_back(ExecPoint{ addr, effective_size, event_sequence,
                                              c->run_id, c->seed });
     else
       c->execution_truncated = true;
@@ -708,12 +867,8 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
   }
   if ( c->record_pcs && hook_in_function(c, addr) && c->out->exec_pcs.size() < c->edge_cap )
     c->out->exec_pcs.insert(addr);
-  c->summary_source = c->has_prev ? c->prev_pc : addr;
-  if ( summary_transfer )
-    if ( const EmuCallSummary *summary = find_summary(c, addr); summary != nullptr )
-      apply_summary(c, engine, *summary);
   c->prev_pc = addr;
-  c->prev_size = size;
+  c->prev_size = effective_size;
   c->prev_decode_mode = current_decode_mode;
   c->has_prev = true;
   c->last_pc = addr;
@@ -836,6 +991,41 @@ bool arch_params(HybridArch a, bool big_endian, HybridEntryMode entry_mode,
 }
 
 } // namespace
+
+const char *hybrid_rax_stop_reason_name(int reason)
+{
+  switch ( reason )
+  {
+    case RAX_STOP_NONE: return "none";
+    case RAX_STOP_COUNT: return "instruction-budget";
+    case RAX_STOP_UNTIL: return "return-sentinel";
+    case RAX_STOP_TIMEOUT: return "timeout";
+    case RAX_STOP_STOPPED: return "host-stop";
+    case RAX_STOP_HLT: return "halt";
+    case RAX_STOP_IO_IN: return "io-read";
+    case RAX_STOP_IO_OUT: return "io-write";
+    case RAX_STOP_MMIO_READ: return "mmio-read";
+    case RAX_STOP_MMIO_WRITE: return "mmio-write";
+    case RAX_STOP_EXCEPTION: return "exception";
+    case RAX_STOP_INTERRUPT: return "interrupt";
+    case RAX_STOP_SHUTDOWN: return "shutdown";
+    case RAX_STOP_DEBUG: return "debug";
+    case RAX_STOP_ERROR: return "engine-error";
+    default: return "unknown";
+  }
+}
+
+const char *hybrid_emu_outcome_name(const EmuOutcome &outcome)
+{
+  if ( outcome.returned ) return "returned";
+  if ( outcome.cancelled ) return "cancelled";
+  if ( outcome.unmodeled_external ) return "unmodeled-external";
+  if ( outcome.environment_model_failure ) return "environment-model-failure";
+  if ( outcome.escaped_image ) return "escaped-image-or-exception";
+  if ( outcome.permission_violation ) return "permission-violation";
+  if ( outcome.terminated_process ) return "modeled-process-termination";
+  return hybrid_rax_stop_reason_name(outcome.stop_reason);
+}
 
 void EmuEvents::merge_from(const EmuEvents &other)
 {
@@ -994,7 +1184,13 @@ EmuDriver::EmuDriver(const RaxApi *api, const ProgramImage &img, bool strict_per
   std::sort(summaries_.begin(), summaries_.end(), [](const EmuCallSummary &a,
                                                      const EmuCallSummary &b)
   {
-    return std::tie(a.address, a.kind) < std::tie(b.address, b.kind);
+    if ( a.address != b.address )
+      return a.address < b.address;
+    const bool a_modeled = a.kind != EmuSummaryKind::UNMODELED;
+    const bool b_modeled = b.kind != EmuSummaryKind::UNMODELED;
+    if ( a_modeled != b_modeled )
+      return a_modeled; // retain an available model for duplicate target xrefs
+    return std::tie(a.kind, a.name) < std::tie(b.kind, b.name);
   });
   summaries_.erase(std::unique(summaries_.begin(), summaries_.end(),
     [](const EmuCallSummary &a, const EmuCallSummary &b)
@@ -1106,7 +1302,7 @@ EmuDriver::EmuDriver(const RaxApi *api, const ProgramImage &img, bool strict_per
     return;
   }
 
-  // Probe whether the backend records per-access memory (x86-64 today). If not,
+  // Probe whether the backend records per-access memory. If not,
   // drefs are simply skipped; crefs still work wherever code hooks fire.
   uint32_t probe_id = 0;
   if ( api_->hook_add_mem(engine_, RAX_HOOK_MEM_READ, 1, 0, mem_tr, nullptr, &probe_id) == RAX_OK )
@@ -1264,16 +1460,50 @@ void EmuDriver::save_baseline()
   baseline_ok_ = true;
 }
 
-bool EmuDriver::seed_arg_regs(uint64_t seed)
+bool EmuDriver::seed_arg_regs(uint64_t seed, const FuncRange *function)
 {
-  // A deterministic corpus mixes scalar boundaries with addresses that are
-  // actually mapped. This explores pointer guards without turning every
-  // non-zero input into an immediate fault.
-  const std::vector<HybridSeedValue> corpus = hybrid_seed_argument_corpus(
-      seed, arg_regs_.size(), img_.lo, stack_base_, stack_size_);
-  for ( size_t index = 0; index < arg_regs_.size(); ++index )
+  for ( int reg : arg_regs_ )
+    if ( api_->reg_write_u64(engine_, reg, 0) != RAX_OK )
+      return false;
+
+  const HybridFunctionProfile *profile = function != nullptr
+                                       ? &function->profile : nullptr;
+  const size_t implicit = profile != nullptr ? profile->implicit_arguments() : 0;
+  const size_t available = implicit < arg_regs_.size()
+                         ? arg_regs_.size() - implicit : 0;
+  const size_t explicit_count = profile != nullptr
+                             && profile->explicit_arguments_known
+      ? std::min(profile->explicit_arguments, available) : available;
+  const std::vector<HybridSeedValue> corpus = seed == 0
+      ? std::vector<HybridSeedValue>{}
+      : hybrid_seed_argument_corpus(
+            seed, explicit_count, img_.lo, stack_base_, stack_size_);
+  for ( size_t index = 0; index < corpus.size(); ++index )
   {
-    if ( api_->reg_write_u64(engine_, arg_regs_[index], corpus[index].value) != RAX_OK )
+    if ( api_->reg_write_u64(engine_, arg_regs_[implicit + index],
+                             corpus[index].value) != RAX_OK )
+      return false;
+  }
+
+  if ( profile != nullptr && implicit == 2 && arg_regs_.size() >= 2 )
+  {
+    // Objective-C methods receive valid mapped placeholders for the hidden
+    // receiver/class and selector arguments. They are deliberately isolated
+    // from the summary allocator's cursor and are overridden by any proven
+    // call-site or solver input applied below.
+    uint64_t self = 0, selector = 0;
+    if ( !checked_add(stack_base_, 0x10000, &self)
+      || !checked_add(self, 0x200, &selector) )
+      return false;
+    const std::vector<uint8_t> object(256, 0);
+    if ( api_->mem_write(engine_, self, object.data(), object.size()) != RAX_OK )
+      return false;
+    std::string selector_text = profile->objc_selector;
+    selector_text.push_back('\0');
+    if ( api_->mem_write(engine_, selector, selector_text.data(),
+                         selector_text.size()) != RAX_OK
+      || api_->reg_write_u64(engine_, arg_regs_[0], self) != RAX_OK
+      || api_->reg_write_u64(engine_, arg_regs_[1], selector) != RAX_OK )
       return false;
   }
   return true;
@@ -1415,19 +1645,18 @@ bool EmuDriver::emulate_from(uint64_t entry, uint64_t func_end, const HybridConf
       return false;
   }
 
+  if ( !seed_arg_regs(effective_seed, function) )
+    return false;
+
   if ( input != nullptr )
   {
-    if ( effective_seed != 0 )
-      if ( !seed_arg_regs(effective_seed) )
-        return false;
     if ( !apply_input(*input, sp) )
       return false;
   }
-  else if ( effective_seed != 0 )
-  {
-    if ( !seed_arg_regs(effective_seed) )
-      return false; // deterministic varied entry state
-  }
+  const bool synthetic_entry_context = function != nullptr
+      && function->profile.implicit_arguments() == 2
+      && !(input_overrides_argument(input, 0, arg_regs_)
+        && input_overrides_argument(input, 1, arg_regs_));
 
   HookCtx ctx;
   ctx.out = &out;
@@ -1443,7 +1672,7 @@ bool EmuDriver::emulate_from(uint64_t entry, uint64_t func_end, const HybridConf
   ctx.stack_lo = stack_base_;
   ctx.stack_hi = stack_base_ + stack_size_;
   ctx.heap_lo = stack_base_ + 0x10000;
-  ctx.heap_cursor = ctx.heap_lo;
+  ctx.heap_cursor = ctx.heap_lo + 0x1000; // reserve Objective-C entry artifacts
   ctx.heap_hi = stack_base_ + stack_size_ / 2;
   ctx.sp_reg = sp_reg_;
   ctx.lr_reg = lr_reg_;
@@ -1492,6 +1721,8 @@ bool EmuDriver::emulate_from(uint64_t entry, uint64_t func_end, const HybridConf
   bool inv_ok = api_->hook_add_invalid(engine_, inv_tr, &ctx, &inv_id) == RAX_OK;
 
   const uint64_t icount_start = api_->emu_icount(engine_);
+  uint64_t attempted_steps = 0;
+  bool attempted_steps_valid = code_ok;
   if ( code_ok )
   {
     const uint64_t timeout_total = cfg.timeout_ms > std::numeric_limits<uint64_t>::max() / 1000
@@ -1511,6 +1742,23 @@ bool EmuDriver::emulate_from(uint64_t entry, uint64_t func_end, const HybridConf
       ctx.summary_resume = false;
       const int status = api_->emu_start(engine_, begin, sentinel_,
                                          timeout_total - elapsed, cfg.max_insns - used);
+      rax_exit slice_exit;
+      std::memset(&slice_exit, 0, sizeof(slice_exit));
+      if ( api_->emu_last_exit(engine_, &slice_exit) == RAX_OK )
+      {
+        if ( exit_value_is_attempted_steps(slice_exit.reason) )
+        {
+          const uint64_t remaining = std::numeric_limits<uint64_t>::max()
+                                   - attempted_steps;
+          attempted_steps += std::min<uint64_t>(remaining, slice_exit.value);
+        }
+        else
+        {
+          attempted_steps_valid = false;
+        }
+      }
+      else
+        attempted_steps_valid = false;
       if ( status != RAX_OK || !ctx.summary_resume )
         break;
       if ( pc_reg_ < 0 || api_->reg_read_u64(engine_, pc_reg_, &begin) != RAX_OK )
@@ -1522,6 +1770,8 @@ bool EmuDriver::emulate_from(uint64_t entry, uint64_t func_end, const HybridConf
   if ( code_ok && outcome != nullptr )
   {
     outcome->instruction_count = api_->emu_icount(engine_) - icount_start;
+    outcome->attempted_steps = attempted_steps;
+    outcome->attempted_steps_valid = attempted_steps_valid;
     rax_exit ex;
     std::memset(&ex, 0, sizeof(ex));
     if ( api_->emu_last_exit(engine_, &ex) == RAX_OK )
@@ -1534,9 +1784,25 @@ bool EmuDriver::emulate_from(uint64_t entry, uint64_t func_end, const HybridConf
     outcome->terminated_process = ctx.terminated_process;
     outcome->permission_violation = ctx.permission_violation;
     outcome->cancelled = ctx.cancellation_requested;
+    outcome->escaped_image = ctx.escaped_image;
+    outcome->escape_source = ctx.escape_source;
+    outcome->unmodeled_external = ctx.unmodeled_external;
+    outcome->external_target = ctx.external_target;
+    outcome->external_name = ctx.external_name;
+    outcome->environment_model_failure = ctx.environment_model_failure;
+    outcome->external_model_used = ctx.summarized_calls != 0;
+    outcome->synthetic_entry_context = synthetic_entry_context;
+    outcome->memory_observation_requested = ctx.record_memory;
+    outcome->memory_observation_available = ctx.record_memory && mem_ok;
     outcome->consumed_context_complete = ctx.record_memory && mem_ok
                                        && !ctx.execution_truncated
-                                       && !ctx.dependency_truncated;
+                                       && !ctx.dependency_truncated
+                                       && !ctx.permission_violation
+                                       && !ctx.escaped_image
+                                       && !ctx.unmodeled_external
+                                       && !ctx.environment_model_failure
+                                       && ctx.summarized_calls == 0
+                                       && !synthetic_entry_context;
     outcome->summarized_calls = ctx.summarized_calls;
     if ( outcome->returned && sp_reg_ >= 0 )
     {

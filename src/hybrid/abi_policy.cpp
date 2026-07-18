@@ -177,10 +177,12 @@ HybridAbiInputPlan hybrid_plan_abi_input(const HybridAbiLayout &layout,
   }
 
   size_t positional = 0;
+  size_t abi_position = input.positional_argument_offset;
   for ( ; positional < input.args.size()
-       && positional < layout.argument_registers.size(); ++positional )
+       && abi_position < layout.argument_registers.size();
+       ++positional, ++abi_position )
     result.registers.push_back(
-        { layout.argument_registers[positional], input.args[positional] });
+        { layout.argument_registers[abi_position], input.args[positional] });
 
   for ( const EmuInput::ArgOverride &argument : input.arg_overrides )
     if ( argument.index < layout.argument_registers.size() )

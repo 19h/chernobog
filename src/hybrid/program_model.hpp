@@ -56,6 +56,12 @@ enum class HybridSegPerm : uint32_t
   READ  = 4u,
 };
 
+enum class HybridSegmentKind : uint8_t
+{
+  NORMAL = 0,
+  EXTERNAL,
+};
+
 // One mapped segment's bytes plus an initialized-byte bitmap (1 bit per byte;
 // bit set => the byte was loaded, i.e. not .bss). Uninitialized bytes are left
 // out of the emulator image and read back as engine zero-fill.
@@ -65,12 +71,38 @@ struct SegImage
   uint64_t end   = 0;
   uint32_t perm  = 0;   // SEGPERM_* bits (1=exec,2=write,4=read)
   uint8_t  bitness = 0; // 0=16,1=32,2=64
+  HybridSegmentKind kind = HybridSegmentKind::NORMAL;
   std::vector<uint8_t> bytes; // size == end-start
   std::vector<uint8_t> mask;  // size == (end-start+7)/8, 1 bit per byte
 
   bool contains(uint64_t ea) const;
   bool byte_loaded(uint64_t ea) const;
   bool has_perm(HybridSegPerm required) const;
+};
+
+enum class HybridFunctionFlavor : uint8_t
+{
+  NATIVE = 0,
+  OBJC_INSTANCE,
+  OBJC_CLASS,
+};
+
+struct HybridFunctionProfile
+{
+  HybridFunctionFlavor flavor = HybridFunctionFlavor::NATIVE;
+  std::string name;
+  std::string objc_selector;
+  size_t explicit_arguments = 0;
+  bool explicit_arguments_known = false;
+
+  size_t implicit_arguments() const
+  {
+    return flavor == HybridFunctionFlavor::NATIVE ? 0 : 2;
+  }
+  size_t total_arguments() const
+  {
+    return implicit_arguments() + explicit_arguments;
+  }
 };
 
 // A half-open function chunk [start,end). The first chunk in FuncRange::chunks
@@ -86,7 +118,7 @@ struct FuncChunk
 
 // Version of hybrid_function_byte_hash(). Persisted consumers should store this
 // beside a hash so a future algorithm change cannot be mistaken for new bytes.
-constexpr uint32_t CHERNOBOG_RAX_FUNCTION_HASH_VERSION = 2;
+constexpr uint32_t CHERNOBOG_RAX_FUNCTION_HASH_VERSION = 3;
 
 // A function entry plus every chunk that IDA assigns to it. `start` and `end`
 // deliberately retain their old meanings (entry and end of the PRIMARY chunk)
@@ -98,6 +130,7 @@ struct FuncRange
   uint64_t end   = 0;
   std::vector<FuncChunk> chunks;
   HybridEntryMode entry_mode = HybridEntryMode::DEFAULT;
+  HybridFunctionProfile profile;
 
   // Deterministic hash of entry execution mode, chunk topology,
   // initialized-byte state, and bytes.
@@ -157,6 +190,11 @@ struct ProgramImage
 // not change the hash).
 uint64_t hybrid_function_byte_hash(const ProgramImage &img, const FuncRange &func);
 uint64_t hybrid_program_content_hash(const ProgramImage &img);
+
+// Parse IDA's canonical Objective-C function spelling (`-[Class selector:]`
+// or `+[Class selector:]`). Native names remain NATIVE with unknown arity;
+// the IDA-side snapshot supplements their arity from type information.
+HybridFunctionProfile hybrid_function_profile_from_name(const std::string &name);
 
 // Detect the target architecture/endianness from the open database. Returns
 // false (out set to UNSUPPORTED) for anything hybrid cannot identify safely.

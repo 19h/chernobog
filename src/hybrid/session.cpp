@@ -116,6 +116,9 @@ struct Session::Impl
   uint64_t pending_ticket = 0;
   uint32_t next_run_id = 0;
   bool pending = false;
+  bool summary_reported = false;
+  uint64_t reported_generation = 0;
+  size_t reported_run_count = 0;
 
   static int idaapi timer_callback(void *user)
   {
@@ -179,7 +182,7 @@ struct Session::Impl
     }
   }
 
-  void report(bool verbose) const
+  void report(bool verbose)
   {
     if ( !evidence )
     {
@@ -187,46 +190,113 @@ struct Session::Impl
       return;
     }
     const EvidenceSummary &summary = evidence->summary;
-    msg("[chernobog][rax] function=%a focus=%a generation=%llu "
-        "status=%s runs=%zu coverage=%zu/%zu branches=%zu "
-        "predicate_inputs=%zu indirect=%zu\n",
-        ea_t(evidence->scope.function_start), ea_t(evidence->scope.focus_address),
-        static_cast<unsigned long long>(evidence->scope.generation),
-        job_status_name(accumulated.status), summary.completed_runs,
-        summary.executed_instruction_addresses, summary.static_instructions,
-        summary.conditional_observations, summary.predicate_state_inputs,
-        summary.indirect_targets);
-    msg("[chernobog][rax] static: smir_effects=%zu decoder_disagreements=%zu; "
-        "memory: reads=%zu writes=%zu pointer_values=%zu code_pointers=%zu "
-        "final_ranges=%zu smc=%zu; context=%zu ranges/%llu bytes; "
-        "permission_stops=%zu context_incomplete_runs=%zu; inputs=%zu\n",
-        summary.smir_effects, summary.decoder_disagreements,
-        summary.image_reads, summary.image_writes,
-        summary.pointer_value_reads, summary.executable_pointer_reads,
-        summary.final_write_ranges, summary.self_modifying_ranges,
-        summary.context_identity_ranges,
-        static_cast<unsigned long long>(summary.context_identity_bytes),
-        summary.permission_violating_runs,
-        summary.context_incomplete_runs,
-        evidence->inputs.size());
-    if ( !evidence->diagnostic.empty() )
-      msg("[chernobog][rax] diagnostic: %s\n", evidence->diagnostic.c_str());
+    const bool already_reported = summary_reported
+        && reported_generation == evidence->scope.generation
+        && reported_run_count == evidence->runs.size();
+    if ( !verbose || !already_reported )
+    {
+      const size_t coverage_hundredths = summary.static_instructions == 0
+          ? 0 : (summary.executed_instruction_addresses * size_t(10000))
+              / summary.static_instructions;
+      msg("[chernobog][rax] function=%a focus=%a generation=%llu "
+          "job=%s runs_ran=%zu/%zu inputs=%zu\n",
+          ea_t(evidence->scope.function_start), ea_t(evidence->scope.focus_address),
+          static_cast<unsigned long long>(evidence->scope.generation),
+          job_status_name(accumulated.status), summary.completed_runs,
+          evidence->runs.size(), evidence->inputs.size());
+      msg("[chernobog][rax] outcomes: returned=%zu terminal=%zu "
+          "budget=%zu timeout=%zu escaped=%zu unmodeled_external=%zu "
+          "model_failure=%zu permission=%zu external_model_runs=%zu "
+          "synthetic_entry_runs=%zu attempted_unknown=%zu summarized_calls=%zu\n",
+          summary.returned_runs, summary.definitive_terminal_runs,
+          summary.instruction_budget_runs, summary.timeout_runs,
+          summary.escaped_image_runs, summary.unmodeled_external_runs,
+          summary.environment_model_failure_runs,
+          summary.permission_violating_runs, summary.external_model_runs,
+          summary.synthetic_entry_context_runs,
+          summary.attempted_steps_unknown_runs, summary.summarized_calls);
+      msg("[chernobog][rax] coverage: physical=%zu/%zu (%zu.%02zu%%) "
+          "unmatched_executed=%zu; branches=%zu sites/%zu observations "
+          "predicate_inputs=%zu; indirect=%zu sites/%zu unique targets/%zu observations\n",
+          summary.executed_instruction_addresses, summary.static_instructions,
+          coverage_hundredths / 100, coverage_hundredths % 100,
+          summary.executed_addresses_without_static_record,
+          summary.conditional_sites, summary.conditional_observations,
+          summary.predicate_state_inputs, summary.indirect_sites,
+          summary.unique_indirect_targets, summary.indirect_targets);
+      msg("[chernobog][rax] static: IDA_heads=%zu physical=%zu "
+          "macro_heads=%zu macro_components=%zu smir_effects=%zu; "
+          "decoder=%zu compared/%zu mismatched/%zu flags "
+          "(size=%zu flow=%zu target=%zu fallthrough=%zu)\n",
+          summary.ida_instruction_heads, summary.static_instructions,
+          summary.ida_macro_heads, summary.ida_macro_components,
+          summary.smir_effects, summary.decoder_comparisons,
+          summary.decoder_disagreements, summary.decoder_disagreement_flags,
+          summary.decoder_size_disagreements,
+          summary.decoder_flow_disagreements,
+          summary.decoder_target_disagreements,
+          summary.decoder_fallthrough_disagreements);
+      msg("[chernobog][rax] memory: observation_available=%zu/%zu "
+          "requested=%zu reads=%zu writes=%zu pointer_values=%zu "
+          "code_pointers=%zu final_ranges=%zu smc=%zu; "
+          "context=%zu ranges/%llu bytes complete=%zu incomplete=%zu\n",
+          summary.memory_observation_available_runs, summary.completed_runs,
+          summary.memory_observation_requested_runs,
+          summary.image_reads, summary.image_writes,
+          summary.pointer_value_reads, summary.executable_pointer_reads,
+          summary.final_write_ranges, summary.self_modifying_ranges,
+          summary.context_identity_ranges,
+          static_cast<unsigned long long>(summary.context_identity_bytes),
+          summary.completed_runs - std::min(summary.completed_runs,
+                                            summary.context_incomplete_runs),
+          summary.context_incomplete_runs);
+      if ( !evidence->diagnostic.empty() )
+        msg("[chernobog][rax] diagnostic: %s\n", evidence->diagnostic.c_str());
+      summary_reported = true;
+      reported_generation = evidence->scope.generation;
+      reported_run_count = evidence->runs.size();
+    }
     if ( !verbose )
       return;
 
     size_t shown = 0;
     for ( const RunObservation &run : evidence->runs )
     {
-      msg("[chernobog][rax] run=%u seed=0x%llX ran=%s returned=%s "
-          "stop=%d pc=%a insns=%llu context=%s sp_delta=%lld%s\n",
+      msg("[chernobog][rax] run=%u seed=0x%llX ran=%s outcome=%s "
+          "rax_stop=%s(%d) stop_pc=%a stop_metadata=%s "
+          "retired=%llu attempted=%llu%s summaries=%u external_model=%s "
+          "entry_context=%s memory=%s context=%s "
+          "sp_delta=%lld%s\n",
           run.provenance.run_id,
           static_cast<unsigned long long>(run.provenance.seed),
-          run.ran ? "yes" : "no", run.outcome.returned ? "yes" : "no",
+          run.ran ? "yes" : "no", hybrid_emu_outcome_name(run.outcome),
+          hybrid_rax_stop_reason_name(run.outcome.stop_reason),
           run.outcome.stop_reason, ea_t(run.outcome.stop_pc),
+          run.outcome.stop_valid ? "available" : "unavailable",
           static_cast<unsigned long long>(run.outcome.instruction_count),
+          static_cast<unsigned long long>(run.outcome.attempted_steps),
+          run.outcome.attempted_steps_valid ? "" : " (partial/unknown)",
+          run.outcome.summarized_calls,
+          run.outcome.external_model_used ? "used" : "none",
+          run.outcome.synthetic_entry_context ? "synthetic" : "observed/native",
+          run.outcome.memory_observation_available ? "available"
+            : run.outcome.memory_observation_requested ? "unavailable" : "disabled",
           run.outcome.consumed_context_complete ? "complete" : "incomplete",
           static_cast<long long>(run.outcome.sp_delta),
           run.outcome.sp_valid ? "" : " (unknown)");
+      if ( run.outcome.unmodeled_external
+        || run.outcome.environment_model_failure )
+      {
+        msg("[chernobog][rax] run=%u external target=%a name=%s model=%s\n",
+            run.provenance.run_id, ea_t(run.outcome.external_target),
+            run.outcome.external_name.empty()
+              ? "<unknown>" : run.outcome.external_name.c_str(),
+            run.outcome.environment_model_failure ? "failed" : "unmodeled");
+      }
+      if ( run.outcome.escaped_image )
+        msg("[chernobog][rax] run=%u escaped snapshotted image from=%a to=%a\n",
+            run.provenance.run_id, ea_t(run.outcome.escape_source),
+            ea_t(run.outcome.stop_pc));
       if ( ++shown == 20 )
         break;
     }
@@ -331,6 +401,8 @@ struct Session::Impl
       run.record_pcs = true;
       run.input.seed = model_seed(model);
       run.input.run_id = next_run_id++;
+      run.input.positional_argument_offset =
+          uint32_t(function.profile.implicit_arguments());
       run.input.args = model.arguments;
       run.seed = run.input.seed;
       run.run_id = run.input.run_id;
@@ -505,6 +577,9 @@ bool Session::explore(vdui_t *view)
   impl_->worker.reset(new EmulationWorkerPool(
       1, hybrid_make_rax_worker_factory(std::move(options)), 1));
   impl_->accumulated = EmulationJobResult{};
+  impl_->summary_reported = false;
+  impl_->reported_generation = 0;
+  impl_->reported_run_count = 0;
   if ( !impl_->submit_job(std::move(job)) )
   {
     msg("[chernobog][rax] Could not submit current-function job\n");
@@ -584,6 +659,9 @@ void Session::clear()
   impl_->accumulated = EmulationJobResult{};
   impl_->evidence.reset();
   impl_->next_run_id = 0;
+  impl_->summary_reported = false;
+  impl_->reported_generation = 0;
+  impl_->reported_run_count = 0;
   hybrid_clear_evidence(database_id_);
 }
 

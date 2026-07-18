@@ -24,6 +24,10 @@ struct EmuInput
   };
   uint64_t seed = 0;
   uint32_t run_id = 0;
+  // Physical ABI position at which `args[0]` is placed.  Zero preserves the
+  // historical whole-ABI convention. Objective-C solver replays use two so
+  // source-level explicit parameters do not overwrite `self` and `_cmd`.
+  uint32_t positional_argument_offset = 0;
   std::vector<uint64_t> args;
   std::vector<ArgOverride> arg_overrides;
   std::vector<RegisterOverride> register_overrides;

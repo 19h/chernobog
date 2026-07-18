@@ -4,7 +4,9 @@
 #include <ida.hpp>
 #include <bytes.hpp>
 #include <funcs.hpp>
+#include <name.hpp>
 #include <segregs.hpp>
+#include <typeinf.hpp>
 #include "../common/warn_off.h"
 #include <hexrays.hpp>
 #include "../common/warn_on.h"
@@ -134,6 +136,33 @@ bool current_identity_matches(const TargetEvidence &evidence,
     != evidence.entry_mode )
   {
     set_reason(reason, "entry execution mode changed at "
+        + address_string(evidence.scope.function_start));
+    return false;
+  }
+  qstring current_name;
+  HybridFunctionProfile current_profile;
+  if ( get_func_name(&current_name, function->start_ea) > 0 )
+    current_profile = hybrid_function_profile_from_name(current_name.c_str());
+  if ( current_profile.flavor == HybridFunctionFlavor::NATIVE )
+  {
+    tinfo_t type;
+    func_type_data_t details;
+    if ( get_tinfo(&type, function->start_ea)
+      && type.get_func_details(&details, GTD_CALC_ARGLOCS) )
+    {
+      current_profile.explicit_arguments = details.size();
+      current_profile.explicit_arguments_known = true;
+    }
+  }
+  const HybridFunctionProfile &expected_profile = evidence.function_profile;
+  if ( current_profile.flavor != expected_profile.flavor
+    || current_profile.name != expected_profile.name
+    || current_profile.objc_selector != expected_profile.objc_selector
+    || current_profile.explicit_arguments != expected_profile.explicit_arguments
+    || current_profile.explicit_arguments_known
+       != expected_profile.explicit_arguments_known )
+  {
+    set_reason(reason, "function name/type-derived entry profile changed at "
         + address_string(evidence.scope.function_start));
     return false;
   }

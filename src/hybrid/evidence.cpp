@@ -31,7 +31,8 @@ bool conditional_projection(const StaticInstructionEvidence &item,
                             uint64_t *target, uint64_t *fallthrough)
 {
   const DecoderInstruction *projection = nullptr;
-  if ( item.ida.valid && item.ida.flow == RAX_FLOW_COND_BRANCH
+  if ( !item.ida_macro_component
+    && item.ida.valid && item.ida.flow == RAX_FLOW_COND_BRANCH
     && item.ida.has_target && item.ida.has_fallthrough )
   {
     projection = &item.ida;
@@ -55,7 +56,7 @@ bool static_indirect_at(const StaticAnalysisResult &analysis, uint64_t address)
   const StaticInstructionEvidence *item = analysis.find(address);
   if ( item == nullptr )
     return false;
-  return item->ida.indirect
+  return (!item->ida_macro_component && item->ida.indirect)
       || (item->rax.status == DecoderDecodeStatus::Valid
        && item->rax.instruction.indirect);
 }
@@ -219,6 +220,7 @@ TargetEvidence hybrid_build_target_evidence(
   result.scope.proof = ProofCharacter::CROSS_CHECK;
   result.architecture = image.arch;
   result.entry_mode = function.entry_mode;
+  result.function_profile = function.profile;
   for ( const FuncChunk &chunk : function.chunks )
   {
     if ( chunk.end <= chunk.start )
@@ -245,12 +247,25 @@ TargetEvidence hybrid_build_target_evidence(
   result.events = emulation.merged;
   result.diagnostic = emulation.diagnostic;
 
-  result.summary.static_instructions = static_analysis.instructions.size();
+  result.summary.ida_instruction_heads = static_analysis.stats.instruction_heads;
+  result.summary.static_instructions = static_analysis.stats.canonical_instructions != 0
+      ? static_analysis.stats.canonical_instructions
+      : static_analysis.instructions.size();
+  result.summary.ida_macro_heads = static_analysis.stats.ida_macro_heads;
+  result.summary.ida_macro_components = static_analysis.stats.ida_macro_components;
   result.summary.decoder_disagreements =
+      static_analysis.stats.mismatched_instructions;
+  result.summary.decoder_disagreement_flags =
       static_analysis.stats.size_disagreements
     + static_analysis.stats.flow_disagreements
     + static_analysis.stats.target_disagreements
     + static_analysis.stats.fallthrough_disagreements;
+  result.summary.decoder_comparisons = static_analysis.stats.decoder_comparisons;
+  result.summary.decoder_size_disagreements = static_analysis.stats.size_disagreements;
+  result.summary.decoder_flow_disagreements = static_analysis.stats.flow_disagreements;
+  result.summary.decoder_target_disagreements = static_analysis.stats.target_disagreements;
+  result.summary.decoder_fallthrough_disagreements =
+      static_analysis.stats.fallthrough_disagreements;
   for ( const StaticInstructionEvidence &instruction : static_analysis.instructions )
     result.summary.smir_effects += instruction.smir.effects.size();
 
@@ -265,8 +280,33 @@ TargetEvidence hybrid_build_target_evidence(
     result.runs.push_back(std::move(observation));
     if ( run.ran )
       ++result.summary.completed_runs;
+    if ( run.ran && run.outcome.returned )
+      ++result.summary.returned_runs;
+    if ( run.ran && run.outcome.definitive_terminal() )
+      ++result.summary.definitive_terminal_runs;
+    if ( run.ran && run.outcome.stop_reason == RAX_STOP_COUNT )
+      ++result.summary.instruction_budget_runs;
+    if ( run.ran && run.outcome.stop_reason == RAX_STOP_TIMEOUT )
+      ++result.summary.timeout_runs;
+    if ( run.ran && run.outcome.escaped_image )
+      ++result.summary.escaped_image_runs;
+    if ( run.ran && run.outcome.unmodeled_external )
+      ++result.summary.unmodeled_external_runs;
+    if ( run.ran && run.outcome.environment_model_failure )
+      ++result.summary.environment_model_failure_runs;
+    if ( run.ran && run.outcome.external_model_used )
+      ++result.summary.external_model_runs;
+    if ( run.ran && run.outcome.synthetic_entry_context )
+      ++result.summary.synthetic_entry_context_runs;
+    if ( run.ran && !run.outcome.attempted_steps_valid )
+      ++result.summary.attempted_steps_unknown_runs;
+    result.summary.summarized_calls += run.outcome.summarized_calls;
     if ( run.outcome.permission_violation )
       ++result.summary.permission_violating_runs;
+    if ( run.ran && run.outcome.memory_observation_requested )
+      ++result.summary.memory_observation_requested_runs;
+    if ( run.ran && run.outcome.memory_observation_available )
+      ++result.summary.memory_observation_available_runs;
     if ( run.ran && !run.outcome.consumed_context_complete )
       ++result.summary.context_incomplete_runs;
   }
@@ -314,11 +354,23 @@ TargetEvidence hybrid_build_target_evidence(
   }
   result.summary.context_identity_ranges = result.context_identity.size();
 
+  std::unordered_set<uint64_t> canonical_static;
+  canonical_static.reserve(static_analysis.instructions.size());
+  for ( const StaticInstructionEvidence &instruction : static_analysis.instructions )
+    canonical_static.insert(instruction.address);
   std::unordered_set<uint64_t> executed;
+  std::unordered_set<uint64_t> executed_without_static;
   for ( const ExecPoint &point : result.events.execution )
     if ( function.contains(point.pc) )
-      executed.insert(point.pc);
+    {
+      if ( canonical_static.count(point.pc) != 0 )
+        executed.insert(point.pc);
+      else
+        executed_without_static.insert(point.pc);
+    }
   result.summary.executed_instruction_addresses = executed.size();
+  result.summary.executed_addresses_without_static_record =
+      executed_without_static.size();
   for ( const StatePoint &state : result.events.states )
     if ( state.kind == StatePoint::Kind::PredicateInput )
       ++result.summary.predicate_state_inputs;
@@ -381,6 +433,12 @@ TargetEvidence hybrid_build_target_evidence(
                     right.observed_successor);
   });
   result.summary.conditional_observations = result.branches.size();
+  {
+    std::set<uint64_t> sites;
+    for ( const BranchObservation &branch : result.branches )
+      sites.insert(branch.instruction);
+    result.summary.conditional_sites = sites.size();
+  }
 
   for ( const ExecEdge &edge : result.events.edges )
   {
@@ -403,6 +461,17 @@ TargetEvidence hybrid_build_target_evidence(
                     right.provenance.seed);
   });
   result.summary.indirect_targets = result.indirect_targets.size();
+  {
+    std::set<uint64_t> sites;
+    std::set<std::pair<uint64_t, uint64_t>> targets;
+    for ( const IndirectTargetObservation &target : result.indirect_targets )
+    {
+      sites.insert(target.instruction);
+      targets.insert({ target.instruction, target.target });
+    }
+    result.summary.indirect_sites = sites.size();
+    result.summary.unique_indirect_targets = targets.size();
+  }
 
   for ( const DataAcc &access : result.events.data )
   {

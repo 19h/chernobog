@@ -120,13 +120,31 @@ struct BranchClaimCheck
 
 struct EvidenceSummary
 {
+  size_t ida_instruction_heads = 0;
   size_t static_instructions = 0;
+  size_t ida_macro_heads = 0;
+  size_t ida_macro_components = 0;
   size_t smir_effects = 0;
   size_t completed_runs = 0;
+  size_t returned_runs = 0;
+  size_t definitive_terminal_runs = 0;
+  size_t instruction_budget_runs = 0;
+  size_t timeout_runs = 0;
+  size_t escaped_image_runs = 0;
+  size_t unmodeled_external_runs = 0;
+  size_t environment_model_failure_runs = 0;
+  size_t external_model_runs = 0;
+  size_t synthetic_entry_context_runs = 0;
+  size_t attempted_steps_unknown_runs = 0;
+  size_t summarized_calls = 0;
   size_t executed_instruction_addresses = 0;
+  size_t executed_addresses_without_static_record = 0;
   size_t conditional_observations = 0;
+  size_t conditional_sites = 0;
   size_t predicate_state_inputs = 0;
   size_t indirect_targets = 0;
+  size_t indirect_sites = 0;
+  size_t unique_indirect_targets = 0;
   size_t image_reads = 0;
   size_t image_writes = 0;
   size_t final_write_ranges = 0;
@@ -134,9 +152,17 @@ struct EvidenceSummary
   size_t executable_pointer_reads = 0;
   size_t self_modifying_ranges = 0;
   size_t decoder_disagreements = 0;
+  size_t decoder_disagreement_flags = 0;
+  size_t decoder_comparisons = 0;
+  size_t decoder_size_disagreements = 0;
+  size_t decoder_flow_disagreements = 0;
+  size_t decoder_target_disagreements = 0;
+  size_t decoder_fallthrough_disagreements = 0;
   size_t context_identity_ranges = 0;
   uint64_t context_identity_bytes = 0;
   size_t permission_violating_runs = 0;
+  size_t memory_observation_requested_runs = 0;
+  size_t memory_observation_available_runs = 0;
   size_t context_incomplete_runs = 0;
 };
 
@@ -192,6 +218,7 @@ struct TargetEvidence
   EvidenceProvenance scope;
   HybridArch architecture = HybridArch::UNSUPPORTED;
   HybridEntryMode entry_mode = HybridEntryMode::DEFAULT;
+  HybridFunctionProfile function_profile;
   std::vector<FunctionChunkIdentity> function_identity;
   std::vector<ContextRangeIdentity> context_identity;
   StaticAnalysisResult static_analysis;

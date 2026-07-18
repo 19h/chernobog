@@ -17,7 +17,10 @@ namespace chernobog::hybrid {
 struct StaticInstructionEvidence
 {
   uint64_t address = 0;
+  uint64_t ida_head = 0;
   uint32_t mode = 0;
+  bool ida_projection_present = false;
+  bool ida_macro_component = false;
   DecoderInstruction ida;
   DecoderDecodeResult rax;
   DecoderComparison comparison;
@@ -27,6 +30,9 @@ struct StaticInstructionEvidence
 struct StaticAnalysisStats
 {
   size_t instruction_heads = 0;
+  size_t canonical_instructions = 0;
+  size_t ida_macro_heads = 0;
+  size_t ida_macro_components = 0;
   size_t rax_decoded = 0;
   size_t rax_decode_failures = 0;
   size_t smir_analyzed = 0;
@@ -36,6 +42,8 @@ struct StaticAnalysisStats
   size_t flow_disagreements = 0;
   size_t target_disagreements = 0;
   size_t fallthrough_disagreements = 0;
+  size_t decoder_comparisons = 0;
+  size_t mismatched_instructions = 0;
   bool truncated = false;
 };
 

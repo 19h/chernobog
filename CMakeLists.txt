@@ -343,6 +343,7 @@ ida_add_plugin(chernobog
     src/hybrid/emulation_rax_executor.cpp
     src/hybrid/entry_state.cpp
     src/hybrid/call_summary.cpp
+    src/hybrid/call_summary_policy.cpp
     src/hybrid/decoder_core.cpp
     src/hybrid/smir_analysis.cpp
     src/hybrid/static_analysis.cpp
@@ -393,6 +394,7 @@ if(BUILD_TESTING)
         src/hybrid/hybrid_config.cpp
         src/hybrid/program_model_core.cpp
         src/hybrid/abi_policy.cpp
+        src/hybrid/call_summary_policy.cpp
         src/hybrid/decoder_core.cpp
         src/hybrid/smir_analysis.cpp
         src/hybrid/emu_driver.cpp

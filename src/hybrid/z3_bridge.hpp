@@ -77,9 +77,11 @@ std::vector<HybridObservedTargetCandidate>
 hybrid_current_indirect_target_candidates(
     uint64_t function_start, uint64_t instruction);
 
-// Generic hand-off for Z3 consumers that can express a model in ABI argument
-// order. The current-function session drains only requests matching its exact
-// database/function; no background/global model sweep is possible.
+// Generic hand-off for Z3 consumers that can express a model in source-level
+// explicit-argument order. For Objective-C methods the session preserves the
+// hidden ABI `self`/`_cmd` pair and begins these values at the third argument
+// register. The current-function session drains only requests matching its
+// exact database/function; no background/global model sweep is possible.
 struct Z3ModelReplayRequest
 {
   uint64_t function_start = 0;

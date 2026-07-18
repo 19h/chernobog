@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -63,7 +64,8 @@ enum class DataScope : uint8_t
 
 enum class EmuSummaryKind : uint8_t
 {
-  MEMCPY = 1,
+  UNMODELED = 0,
+  MEMCPY,
   MEMMOVE,
   MEMSET,
   STRCPY,
@@ -74,12 +76,19 @@ enum class EmuSummaryKind : uint8_t
   CALLOCATE,
   DEALLOCATE,
   TERMINATE,
+  RETURN_ARG0,
+  RETURN_ZERO,
+  STORE_POINTER_ARG1,
+  ALLOCATE_OBJECT,
+  RANDOM_U32,
+  RANDOM_UNIFORM,
 };
 
 struct EmuCallSummary
 {
   uint64_t address = 0;
-  EmuSummaryKind kind = EmuSummaryKind::MEMCPY;
+  EmuSummaryKind kind = EmuSummaryKind::UNMODELED;
+  std::string name;
 };
 
 // A data memory access observed during emulation, attributed to the executing
@@ -175,12 +184,27 @@ struct EmuOutcome
   uint64_t stop_pc = 0;        // PC at stop
   bool     stop_valid = false;  // last-exit metadata was available
   uint64_t instruction_count = 0;
+  uint64_t attempted_steps = 0;
+  bool     attempted_steps_valid = false;
   bool     returned = false;   // reached the sentinel return address (function returned)
   bool     sp_valid = false;   // sp_delta is meaningful (returned + SP readable)
   int64_t  sp_delta = 0;       // final SP - entry SP (net stack change on return)
   bool     terminated_process = false; // modeled exit/abort/termination routine
   bool     permission_violation = false; // strict segment policy stopped the run
   bool     cancelled = false; // cooperative worker-generation cancellation
+  bool     escaped_image = false; // execution reached code outside the snapshotted image
+  uint64_t escape_source = 0;
+  bool     unmodeled_external = false;
+  uint64_t external_target = 0;
+  std::string external_name;
+  bool     environment_model_failure = false;
+  bool     external_model_used = false;
+  bool     synthetic_entry_context = false;
+  // `requested` records configuration intent; `available` records whether a
+  // backend hook was successfully installed for this run.  A zero memory-event
+  // count is interpretable only when available is true.
+  bool     memory_observation_requested = false;
+  bool     memory_observation_available = false;
   // True only when code and image-data dependencies were observed without a
   // backend-capability gap or trace truncation. Universal-claim vetoes require
   // this; ordinary exploratory observations do not.
@@ -193,6 +217,9 @@ struct EmuOutcome
   }
   bool conclusive() const { return returned || definitive_terminal(); }
 };
+
+const char *hybrid_rax_stop_reason_name(int reason);
+const char *hybrid_emu_outcome_name(const EmuOutcome &outcome);
 
 class EmuDriver
 {
@@ -231,7 +258,7 @@ private:
   bool load_image_bytes();
   void save_baseline();
   bool restore_state();
-  bool seed_arg_regs(uint64_t seed); // deterministic fallback variation
+  bool seed_arg_regs(uint64_t seed, const FuncRange *function);
   bool apply_input(const EmuInput &input, uint64_t sp);
   void capture_final_writes(EmuEvents &out, const HybridConfig &cfg,
                             uint32_t run_id, uint64_t seed, size_t data_begin);

@@ -131,6 +131,13 @@ void hash_u64(uint64_t &hash, uint64_t value)
     hash_byte(hash, static_cast<uint8_t>(value >> shift));
 }
 
+void hash_string(uint64_t &hash, const std::string &value)
+{
+  hash_u64(hash, uint64_t(value.size()));
+  for ( char byte : value )
+    hash_byte(hash, static_cast<uint8_t>(static_cast<unsigned char>(byte)));
+}
+
 void hash_chunk_bytes(uint64_t &hash, const ProgramImage &img,
                       const FuncRange &func, const FuncChunk &chunk)
 {
@@ -186,6 +193,11 @@ uint64_t hybrid_function_byte_hash(const ProgramImage &img, const FuncRange &fun
   uint64_t hash = kFnvOffset;
   hash_u64(hash, CHERNOBOG_RAX_FUNCTION_HASH_VERSION);
   hash_byte(hash, static_cast<uint8_t>(func.entry_mode));
+  hash_byte(hash, static_cast<uint8_t>(func.profile.flavor));
+  hash_byte(hash, func.profile.explicit_arguments_known ? 1 : 0);
+  hash_u64(hash, uint64_t(func.profile.explicit_arguments));
+  hash_string(hash, func.profile.name);
+  hash_string(hash, func.profile.objc_selector);
   const size_t nchunks = func.chunks.empty() ? 1 : func.chunks.size();
   hash_u64(hash, static_cast<uint64_t>(nchunks));
   if ( func.chunks.empty() )
@@ -212,6 +224,7 @@ uint64_t hybrid_program_content_hash(const ProgramImage &img)
     hash_u64(hash, segment.end > segment.start ? segment.end - segment.start : 0);
     hash_u64(hash, segment.perm);
     hash_byte(hash, segment.bitness);
+    hash_byte(hash, static_cast<uint8_t>(segment.kind));
     hash_u64(hash, uint64_t(segment.bytes.size()));
     hash_u64(hash, uint64_t(segment.mask.size()));
     for ( uint8_t byte : segment.mask )
@@ -220,6 +233,28 @@ uint64_t hybrid_program_content_hash(const ProgramImage &img)
       hash_byte(hash, byte);
   }
   return hash;
+}
+
+HybridFunctionProfile hybrid_function_profile_from_name(const std::string &name)
+{
+  HybridFunctionProfile profile;
+  profile.name = name;
+  if ( name.size() < 5 || (name[0] != '-' && name[0] != '+')
+    || name[1] != '[' || name.back() != ']' )
+    return profile;
+
+  const size_t separator = name.find(' ', 2);
+  if ( separator == std::string::npos || separator + 1 >= name.size() - 1 )
+    return profile;
+  profile.flavor = name[0] == '-'
+                 ? HybridFunctionFlavor::OBJC_INSTANCE
+                 : HybridFunctionFlavor::OBJC_CLASS;
+  profile.objc_selector = name.substr(separator + 1,
+                                      name.size() - separator - 2);
+  profile.explicit_arguments = size_t(std::count(
+      profile.objc_selector.begin(), profile.objc_selector.end(), ':'));
+  profile.explicit_arguments_known = true;
+  return profile;
 }
 
 } // namespace chernobog::hybrid
