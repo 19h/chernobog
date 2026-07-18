@@ -19,7 +19,8 @@ public:
   Session(const Session &) = delete;
   Session &operator=(const Session &) = delete;
 
-  bool explore(vdui_t *view);
+  bool explore(vdui_t *view, uint64_t fallback_address = UINT64_MAX);
+  bool explore_batch_target();
   void show_last(vdui_t *view) const;
   void cancel();
   void clear();

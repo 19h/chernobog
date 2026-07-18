@@ -295,6 +295,9 @@ void test_arm64_external_boundaries(const RaxApi *api)
         "objc_retain summary must execute exactly once");
   check(modeled.returned,
         "objc_retain summary must resume at LR and reach the return sentinel");
+  check(modeled.attempted_steps_valid
+        && modeled.instruction_count == modeled.attempted_steps,
+        "ARM64 retired count must remain monotonic across summary resumptions");
   check(!modeled.unmodeled_external && !modeled.environment_model_failure,
         "objc_retain summary must not be classified as an environment failure");
   check(modeled.external_model_used && !modeled.consumed_context_complete,

@@ -17,8 +17,10 @@
 #include <funcs.hpp>
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cctype>
+#include <cstdlib>
 #include <iterator>
 #include <map>
 #include <mutex>
@@ -68,6 +70,44 @@ const char *job_status_name(EmulationJobStatus status)
     case EmulationJobStatus::FAILED: return "failed";
     default: return "unknown";
   }
+}
+
+const char *function_flavor_name(HybridFunctionFlavor flavor)
+{
+  switch ( flavor )
+  {
+    case HybridFunctionFlavor::NATIVE: return "native";
+    case HybridFunctionFlavor::OBJC_INSTANCE: return "objc-instance";
+    case HybridFunctionFlavor::OBJC_CLASS: return "objc-class";
+    default: return "unknown";
+  }
+}
+
+ea_t action_target_address(const action_ctx_base_t *context)
+{
+  // In text mode an explicit batch address is authoritative. The screen EA
+  // can retain an unrelated loader/autoanalysis location, so consulting it
+  // first would silently analyze a different function than the caller named.
+  if ( batch )
+  {
+    qstring raw;
+    if ( !qgetenv("CHERNOBOG_RAX_BATCH_EA", &raw) || raw.empty() )
+      return BADADDR;
+    errno = 0;
+    char *end = nullptr;
+    // The MSVC UCRT maps the C name to global `_strtoui64`; qualifying it
+    // with `std::` after IDA/Windows headers is therefore not portable.
+    const unsigned long long parsed = ::strtoull(raw.c_str(), &end, 0);
+    if ( errno != 0 || end == raw.c_str() || *end != '\0' )
+      return BADADDR;
+    return ea_t(parsed);
+  }
+  if ( context != nullptr && context->cur_ea != BADADDR )
+    return context->cur_ea;
+  const ea_t screen = get_screen_ea();
+  if ( screen != BADADDR )
+    return screen;
+  return BADADDR;
 }
 
 std::string printable_preview(const std::vector<uint8_t> &bytes)
@@ -204,6 +244,15 @@ struct Session::Impl
           static_cast<unsigned long long>(evidence->scope.generation),
           job_status_name(accumulated.status), summary.completed_runs,
           evidence->runs.size(), evidence->inputs.size());
+      const HybridFunctionProfile &profile = evidence->function_profile;
+      msg("[chernobog][rax] entry: flavor=%s name=%s selector=%s "
+          "explicit_args=%zu (%s) hidden_args=%zu\n",
+          function_flavor_name(profile.flavor),
+          profile.name.empty() ? "<unnamed>" : profile.name.c_str(),
+          profile.objc_selector.empty() ? "<none>" : profile.objc_selector.c_str(),
+          profile.explicit_arguments,
+          profile.explicit_arguments_known ? "known" : "unknown",
+          profile.implicit_arguments());
       msg("[chernobog][rax] outcomes: returned=%zu terminal=%zu "
           "budget=%zu timeout=%zu escaped=%zu unmodeled_external=%zu "
           "model_failure=%zu permission=%zu external_model_runs=%zu "
@@ -284,6 +333,50 @@ struct Session::Impl
           run.outcome.consumed_context_complete ? "complete" : "incomplete",
           static_cast<long long>(run.outcome.sp_delta),
           run.outcome.sp_valid ? "" : " (unknown)");
+      const auto input = std::find_if(
+          evidence->inputs.begin(), evidence->inputs.end(),
+          [&](const ConcreteInput &candidate)
+          { return candidate.input.run_id == run.provenance.run_id; });
+      if ( input != evidence->inputs.end() )
+      {
+        msg("[chernobog][rax] run=%u input=%s positional_args=%zu "
+            "offset=%u abi_overrides=%zu register_overrides=%zu "
+            "stack_args=%zu\n",
+            run.provenance.run_id,
+            input->label.empty() ? "<unlabeled>" : input->label.c_str(),
+            input->input.args.size(), input->input.positional_argument_offset,
+            input->input.arg_overrides.size(),
+            input->input.register_overrides.size(),
+            input->input.stack_args.size());
+        if ( !input->input.args.empty() )
+        {
+          msg("[chernobog][rax] run=%u source-args", run.provenance.run_id);
+          const size_t limit = std::min<size_t>(input->input.args.size(), 8);
+          for ( size_t index = 0; index < limit; ++index )
+            msg(" [%zu]=0x%llX", index,
+                static_cast<unsigned long long>(input->input.args[index]));
+          if ( limit != input->input.args.size() )
+            msg(" ... (%zu total)", input->input.args.size());
+          msg("\n");
+        }
+        if ( !input->input.arg_overrides.empty() )
+        {
+          msg("[chernobog][rax] run=%u physical-abi-overrides",
+              run.provenance.run_id);
+          const size_t limit = std::min<size_t>(
+              input->input.arg_overrides.size(), 8);
+          for ( size_t index = 0; index < limit; ++index )
+          {
+            const EmuInput::ArgOverride &argument =
+                input->input.arg_overrides[index];
+            msg(" [%u]=0x%llX", argument.index,
+                static_cast<unsigned long long>(argument.value));
+          }
+          if ( limit != input->input.arg_overrides.size() )
+            msg(" ... (%zu total)", input->input.arg_overrides.size());
+          msg("\n");
+        }
+      }
       if ( run.outcome.unmodeled_external
         || run.outcome.environment_model_failure )
       {
@@ -465,10 +558,38 @@ bool Session::enabled() const
   return impl_->config.enabled;
 }
 
-bool Session::explore(vdui_t *view)
+bool Session::explore_batch_target()
 {
-  if ( view == nullptr || !view->cfunc )
-    return false;
+  const ea_t address = action_target_address(nullptr);
+  return batch && address != BADADDR
+      && explore(nullptr, uint64_t(address));
+}
+
+bool Session::explore(vdui_t *view, uint64_t fallback_address)
+{
+  uint64_t function_start = 0;
+  uint64_t focus = 0;
+  if ( view != nullptr && view->cfunc )
+  {
+    function_start = uint64_t(view->cfunc->entry_ea);
+    focus = function_start;
+    if ( view->get_current_item(USE_KEYBOARD) )
+    {
+      const ea_t item_address = view->item.get_ea();
+      if ( item_address != BADADDR )
+        focus = uint64_t(item_address);
+    }
+  }
+  else
+  {
+    if ( fallback_address == UINT64_MAX )
+      return false;
+    func_t *selected = get_func(ea_t(fallback_address));
+    if ( selected == nullptr )
+      return false;
+    function_start = uint64_t(selected->start_ea);
+    focus = fallback_address;
+  }
   clear();
   impl_->config = hybrid_load_config();
   if ( !impl_->config.enabled )
@@ -483,14 +604,6 @@ bool Session::explore(vdui_t *view)
     return false;
   }
 
-  const uint64_t function_start = uint64_t(view->cfunc->entry_ea);
-  uint64_t focus = function_start;
-  if ( view->get_current_item(USE_KEYBOARD) )
-  {
-    const ea_t item_address = view->item.get_ea();
-    if ( item_address != BADADDR )
-      focus = uint64_t(item_address);
-  }
   func_t *current = get_func(ea_t(focus));
   if ( current == nullptr || uint64_t(current->start_ea) != function_start )
     focus = function_start;
@@ -594,10 +707,11 @@ bool Session::explore(vdui_t *view)
       deterministic_runs, entry.inputs.size(),
       static_cast<unsigned long long>(impl_->pending_ticket));
 
-  if ( !impl_->start_timer() )
+  if ( batch || !impl_->start_timer() )
   {
-    // Headless IDA has no UI timer. The job remains bounded by the sum of its
-    // per-run caps; wait here so explicit invocation still produces evidence.
+    // Batch/headless IDA has no reliable UI event loop for poll timers. The job
+    // remains bounded by the sum of its per-run caps; wait here so explicit
+    // invocation deterministically produces evidence before the script exits.
     const uint64_t count = uint64_t(deterministic_runs + entry.inputs.size());
     const uint64_t raw_wait = count * (impl_->config.timeout_ms + 100) + 5000;
     const uint64_t wait_ms = std::min<uint64_t>(raw_wait, 120000);
@@ -690,16 +804,22 @@ struct hybrid_action_handler_t : public action_handler_t
 
   int idaapi activate(action_activation_ctx_t *context) override
   {
-    if ( context == nullptr || context->widget == nullptr )
+    if ( context == nullptr )
       return 0;
-    vdui_t *view = get_widget_vdui(context->widget);
+    vdui_t *view = context->widget != nullptr
+                 ? get_widget_vdui(context->widget) : nullptr;
     chernobog::hybrid::Session *session =
         chernobog::hybrid::hybrid_current_session();
     if ( session == nullptr )
       return 0;
+    const ea_t context_address =
+        chernobog::hybrid::action_target_address(context);
     switch ( kind )
     {
-      case Kind::Explore: return session->explore(view) ? 1 : 0;
+      case Kind::Explore:
+        return session->explore(
+            view, context_address == BADADDR
+                ? UINT64_MAX : uint64_t(context_address)) ? 1 : 0;
       case Kind::Show: session->show_last(view); return 1;
       case Kind::Cancel: session->cancel(); return 1;
     }
@@ -708,10 +828,19 @@ struct hybrid_action_handler_t : public action_handler_t
 
   action_state_t idaapi update(action_update_ctx_t *context) override
   {
-    if ( context == nullptr || context->widget == nullptr || get_hexdsp() == nullptr )
+    if ( context == nullptr || get_hexdsp() == nullptr
+      || chernobog::hybrid::hybrid_current_session() == nullptr )
+      return AST_DISABLE_FOR_WIDGET;
+    if ( batch )
+    {
+      const ea_t context_address =
+          chernobog::hybrid::action_target_address(context);
+      return context_address != BADADDR && get_func(context_address) != nullptr
+           ? AST_ENABLE_ALWAYS : AST_DISABLE_ALWAYS;
+    }
+    if ( context->widget == nullptr )
       return AST_DISABLE_FOR_WIDGET;
     return get_widget_vdui(context->widget) != nullptr
-        && chernobog::hybrid::hybrid_current_session() != nullptr
          ? AST_ENABLE_FOR_WIDGET : AST_DISABLE_FOR_WIDGET;
   }
 };

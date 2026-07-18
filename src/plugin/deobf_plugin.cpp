@@ -97,13 +97,16 @@ static bool is_auto_mode_enabled()
         cached = 0;
         // Try qgetenv first
         qstring env_val;
-        if ( qgetenv("CHERNOBOG_AUTO", &env_val) && !env_val.empty() && env_val[0] == '1' )
+        const bool environment_override = qgetenv("CHERNOBOG_AUTO", &env_val);
+        if ( environment_override && !env_val.empty() && env_val[0] == '1' )
         {
             cached = 1;
             debug_log("[chernobog] AUTO mode detected via env var\n");
         }
-        // Also check for ~/.chernobog_auto file as fallback
-        if ( cached == 0 )
+        // An explicit environment value, including 0, takes precedence over
+        // the per-user marker. Consult the marker only when the variable is
+        // absent.
+        if ( cached == 0 && !environment_override )
         {
             qstring home;
             if ( qgetenv("HOME", &home) )
@@ -704,11 +707,26 @@ chernobog_plugmod_t::~chernobog_plugmod_t()
     debug_log("[chernobog] Per-IDB plugmod destroyed\n");
 }
 
-bool idaapi chernobog_plugmod_t::run(size_t)
+bool idaapi chernobog_plugmod_t::run(size_t argument)
 {
     const bool ready = activate();
     if ( !ready )
         schedule_activation_retry();
+
+    // IDA's text frontend does not register UI actions. A batch script can
+    // invoke the same bounded session through ida_loader.run_plugin() after
+    // setting CHERNOBOG_RAX_BATCH_EA. 0x524158 is ASCII "RAX".
+    if ( argument == 0x524158 )
+    {
+        const bool explored = ready && hybrid_session != nullptr
+            && hybrid_session->explore_batch_target();
+        if ( explored )
+            hybrid_session->show_last(nullptr);
+        else
+            msg("[chernobog][rax] Batch exploration failed: set "
+                "CHERNOBOG_RAX_BATCH_EA to an address in a function\n");
+        return explored;
+    }
 
     // Plugin can be invoked manually - show info
     msg("\n=== Chernobog - Hikari Deobfuscator ===\n");

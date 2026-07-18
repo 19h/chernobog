@@ -98,7 +98,7 @@ endif()
 # A missing or differently checked-out submodule fails configuration instead
 # of fetching or borrowing a checkout from another repository.
 set(CHERNOBOG_RAX_GIT_REVISION
-    "e5821bfca883b1489324fe92e40f0cbe7baeb2a6")
+    "36144a829ccb1f78f6f91ce836d9ab0ad7d4aba5")
 set(_chernobog_rax_root "${CMAKE_CURRENT_SOURCE_DIR}/vendor/rax")
 if(NOT EXISTS "${_chernobog_rax_root}/capi/include/rax.h" OR
    NOT EXISTS "${_chernobog_rax_root}/capi/Cargo.toml")
@@ -123,6 +123,22 @@ if(NOT _chernobog_rax_git_head STREQUAL CHERNOBOG_RAX_GIT_REVISION)
         "vendor/rax is at ${_chernobog_rax_git_head}; expected pinned revision "
         "${CHERNOBOG_RAX_GIT_REVISION}. Run: git submodule update --init "
         "vendor/rax")
+endif()
+execute_process(
+    COMMAND "${GIT_EXECUTABLE}" -C "${_chernobog_rax_root}"
+            status --porcelain --untracked-files=all
+    RESULT_VARIABLE _chernobog_rax_status_result
+    OUTPUT_VARIABLE _chernobog_rax_status
+    ERROR_QUIET
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT _chernobog_rax_status_result EQUAL 0)
+    message(FATAL_ERROR "Unable to inspect the vendor/rax worktree")
+endif()
+if(NOT _chernobog_rax_status STREQUAL "")
+    message(FATAL_ERROR
+        "vendor/rax contains uncommitted or untracked files; embedded-source "
+        "provenance would not match ${CHERNOBOG_RAX_GIT_REVISION}:\n"
+        "${_chernobog_rax_status}")
 endif()
 set(_chernobog_rax_source_provenance
     "submodule:vendor/rax@${_chernobog_rax_git_head}")

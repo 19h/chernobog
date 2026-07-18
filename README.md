@@ -140,7 +140,8 @@ git submodule and is also linked statically; initialize it with
 installation nor a rax shared library is required. Cargo must have the Rust
 target matching the CMake target (for example, `rustup target add
 aarch64-apple-darwin`). Configuration fails if the submodule is missing or is
-checked out at a revision other than the repository pin.
+checked out at a revision other than the repository pin, or if its worktree is
+dirty.
 
 ### Windows Cross-Compile With Clang
 
@@ -229,8 +230,11 @@ current function with rax** from the pseudocode popup. Chernobog snapshots and
 explores only the displayed function plus its mapped memory context; it does
 not enumerate or emulate every function. Use **Show current-function rax
 evidence** for decoder/SMIR, concrete path, branch, indirect-target, memory, and
-Z3 cross-check evidence, or **Cancel current-function rax exploration** to stop
-queued runs. The complete capability boundaries and configuration are in
+Z3 cross-check evidence. Application-mode execution models bounded imports,
+stops before unknown external code, and treats synthetic Objective-C entry
+state or host summaries as exploratory rather than proof-complete. Use
+**Cancel current-function rax exploration** to stop queued runs. The complete
+report semantics, capability boundaries, and configuration are in
 [`RAX_HYBRID.md`](RAX_HYBRID.md).
 
 ### Environment Variables
