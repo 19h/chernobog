@@ -186,4 +186,38 @@ EvidenceApplyConfig load_evidence_apply_config()
   return config;
 }
 
+EarlyHexRaysConfig load_early_hexrays_config()
+{
+  EarlyHexRaysConfig config;
+  config.enabled = env_bool("CHERNOBOG_IDA_EARLY_HEXRAYS", config.enabled)
+                && env_bool("CHERNOBOG_IDA_ANALYSIS", true)
+                && !transformations_disabled();
+  config.call_pop_flowchart = env_bool(
+      "CHERNOBOG_IDA_CALL_POP_FLOWCHART", config.call_pop_flowchart);
+  config.call_pop_codegen = env_bool(
+      "CHERNOBOG_IDA_CALL_POP_CODEGEN", config.call_pop_codegen);
+  config.generated_gotos = env_bool(
+      "CHERNOBOG_IDA_GENERATED_GOTOS", config.generated_gotos);
+  config.constant_folding = env_bool(
+      "CHERNOBOG_IDA_EARLY_CONSTANTS", config.constant_folding);
+  config.force_char_strings = env_bool(
+      "CHERNOBOG_IDA_FORCE_CHAR_STRINGS", config.force_char_strings);
+  config.gadget_scan_depth = env_int(
+      "CHERNOBOG_IDA_GADGET_SCAN_DEPTH", config.gadget_scan_depth);
+  config.maximum_blocks = env_size(
+      "CHERNOBOG_IDA_EARLY_MAX_BLOCKS", config.maximum_blocks);
+  config.maximum_instructions = env_size(
+      "CHERNOBOG_IDA_EARLY_MAX_INSNS", config.maximum_instructions);
+
+  if ( config.gadget_scan_depth < 1 ) config.gadget_scan_depth = 1;
+  if ( config.gadget_scan_depth > 64 ) config.gadget_scan_depth = 64;
+  if ( config.maximum_blocks < 1 ) config.maximum_blocks = 1;
+  if ( config.maximum_blocks > 1000000 )
+    config.maximum_blocks = 1000000;
+  if ( config.maximum_instructions < 1 ) config.maximum_instructions = 1;
+  if ( config.maximum_instructions > 100000000 )
+    config.maximum_instructions = 100000000;
+  return config;
+}
+
 } // namespace chernobog::ida_analysis

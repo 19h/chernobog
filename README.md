@@ -293,7 +293,16 @@ and configuration are in [`RAX_HYBRID.md`](RAX_HYBRID.md).
 | `CHERNOBOG_DEBUG=1` | Enable debug output to `/tmp/chernobog_debug.log` |
 | `CHERNOBOG_RESET=1` | Clear decompiler cache on startup |
 | `CHERNOBOG_DISABLE=1` | Disable transformations while retaining plugin lifecycle and optional cache reset |
-| `CHERNOBOG_IDA_ANALYSIS=0` | Disable native IDA analysis enrichment and rax evidence materialization |
+| `CHERNOBOG_IDA_ANALYSIS=0` | Disable native IDA analysis enrichment, early Hex-Rays enrichment, and rax evidence materialization |
+| `CHERNOBOG_IDA_EARLY_HEXRAYS=0` | Disable all flowchart/codegen/generated/preoptimized analysis-quality passes while retaining later Chernobog deobfuscation |
+| `CHERNOBOG_IDA_CALL_POP_FLOWCHART=0` | Disable call/pop CFG repair at `hxe_flowchart` |
+| `CHERNOBOG_IDA_CALL_POP_CODEGEN=0` | Disable return-to-direct-jump repair in the pre-MBA microcode filter |
+| `CHERNOBOG_IDA_GENERATED_GOTOS=0` | Disable the generated-MBA return/indirect-jump fallback |
+| `CHERNOBOG_IDA_EARLY_CONSTANTS=0` | Disable constant folding at `hxe_preoptimized` |
+| `CHERNOBOG_IDA_FORCE_CHAR_STRINGS=0` | Disable character numforms for reconstructed string stores at `hxe_preoptimized` |
+| `CHERNOBOG_IDA_GADGET_SCAN_DEPTH=<n>` | Bound call/pop gadget scans (default 8; range 1..64 instructions) |
+| `CHERNOBOG_IDA_EARLY_MAX_BLOCKS=<n>` | Bound each early Hex-Rays pass (default 100000; range 1..1000000 blocks) |
+| `CHERNOBOG_IDA_EARLY_MAX_INSNS=<n>` | Bound each early Hex-Rays pass (default 1000000; range 1..100000000 microinstructions/native heads) |
 | `CHERNOBOG_IDA_POST_SCAN_HEADS=<n>` | Bound the one-shot native orphan-call scan to `n` heads in executable segments (default 1000000; hard range 1..100000000) |
 | `CHERNOBOG_IDA_POST_SCAN_FUNCTIONS=<n>` | Bound the one-shot wrapper scan to `n` IDA functions (default 100000; hard range 1..10000000) |
 | `CHERNOBOG_RAX_APPLY_ANALYSIS=0` | Retain current-function rax reporting/display evidence but suppress all IDB materialization from it |
@@ -382,7 +391,53 @@ Press `Ctrl+Shift+H` to display plugin information and supported obfuscation typ
 
 ## How It Works
 
-Chernobog operates as a Hex-Rays optimizer callback, integrating directly into IDA's microcode optimization pipeline. The system uses a sophisticated multi-phase approach:
+Chernobog combines IDA processor/IDB listeners with Hex-Rays ingress,
+optimizer, and ctree callbacks. The system uses a multi-phase approach:
+
+### Phase 0: Native analysis and decompiler ingress
+
+Default-on, bounded analysis-quality passes run at the same stages as the
+corresponding generic deobfuscator mechanisms:
+
+- `ev_ana_insn`/`ev_emu_insn`: repair native instructions, xrefs, junk gaps,
+  call/pop and push/return control flow, opaque branches, and statically
+  resolved indirect targets while IDA autoanalysis is constructing the IDB.
+- `auto_empty_finally`: promote direct orphan callees and mark small wrapper
+  functions as outlined.
+- `hxe_flowchart` and the microcode filter: repair call/pop successors and
+  translate resolved gadget returns before microcode generation.
+- `hxe_microcode`: provide a generated-MBA fallback for unresolved
+  return/indirect-jump terminators.
+- `hxe_preoptimized`: fold bounded static constants and attach character
+  numforms before later optimizer passes consume the MBA.
+
+These static passes do not run rax or emulate the program. The separate rax
+path remains an explicit, bounded exploration of the focused function as
+described above. The early stages are also distinct from Chernobog's existing
+LOCOPT and final-ctree algorithms; similarity of an output rewrite does not
+make the analysis stages equivalent.
+
+For a native flowchart with `B` blocks, `E` edges, `I` instructions, and `K`
+marked call/pop sites, repair costs
+`O(I + B log B + K log B + E)` time and `O(B)` transient state. For an MBA
+with `R` candidate return terminators, generated-goto repair costs
+`O(B log B + R log B + E)` time and `O(B)` state. For an MBA whose blocks
+contain `I_b` microinstructions, constant resolution has the
+conservative worst-case bound `O(Σ_b I_b²)` because definitions are searched
+backward within a block; character collection adds `O(I + C log C)` time and
+`O(S + C)` state, where `S` is the number of admitted stack/frame slots and
+`C` the number of candidate character bytes. Native post-analysis scans are
+`O(H + F)`, where `H` is the bounded executable-head count and `F` the bounded
+function count; later autoanalysis completions examine only the retained direct
+call-target set in `O(T)` time, bounded by the same configured head cap.
+
+Early stack/frame folding admits only slots initialized by a constant store in
+the entry block, with no preceding entry-block load and no later unresolved or
+different store. Static memory folding requires loaded 1/2/4/8-byte storage and
+rejects every observed direct `dr_W` reference. IDA's direct-xref model cannot
+exclude an indirect or external mutation; disable
+`CHERNOBOG_IDA_EARLY_CONSTANTS` when that closed-world assumption is invalid
+for the analyzed input.
 
 ### Phase 1: Analysis and Transformation (MMAT_LOCOPT)
 Both analysis and application run at `MMAT_LOCOPT` — the earliest maturity at
@@ -461,6 +516,12 @@ Test coverage includes:
 - commutative AST matching and binding rollback for five microcode operators
 - Hikari XOR-string recovery with both terminator forms and corruption rejection
 - rax hybrid-engine regression: ARM64 memory mapping and accounting, external/application boundaries, Objective-C entry ABI, decoder/SMIR analysis, in-flight cancellation, and worker/evidence generation
+
+Disposable live-IDB scripts under `tests/ida_early_*_smoke.py` cover x86
+call/pop CFG recovery at native, flowchart, and codegen stages plus ARM64
+preoptimized constant/character reconstruction. The parameterized
+`tests/ida_native_negative_smoke.py` covers ordinary calls, multi-caller
+prologues, orphan callee promotion, and indirect SEH dispatchers.
 
 The CTest targets are SDK-linked but do not constitute a live-IDB decompiler
 integration test. Runtime validation requires an IDA/Hex-Rays build compatible

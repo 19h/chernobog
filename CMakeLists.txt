@@ -294,6 +294,7 @@ ida_add_plugin(chernobog
     src/plugin/component_registry.cpp
     src/ida_analysis/analysis_config.cpp
     src/ida_analysis/native_engine.cpp
+    src/ida_analysis/early_hexrays.cpp
     src/ida_analysis/evidence_apply.cpp
     src/deobf/deobf_main.cpp
     src/deobf/deobf_utils.cpp

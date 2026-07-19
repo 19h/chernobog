@@ -58,7 +58,28 @@ struct EvidenceApplyConfig
   size_t minimum_noret_runs = 3;
 };
 
+/*
+ * Hex-Rays analysis passes that must run before Chernobog's MMAT_LOCOPT
+ * deobfuscation pipeline.  These are deliberately separate from
+ * NativeAnalysisConfig: they exist only while the decompiler dispatcher is
+ * available and operate on an individual function's in-flight flowchart/MBA.
+ */
+struct EarlyHexRaysConfig
+{
+  bool enabled = true;
+  bool call_pop_flowchart = true;
+  bool call_pop_codegen = true;
+  bool generated_gotos = true;
+  bool constant_folding = true;
+  bool force_char_strings = true;
+
+  int gadget_scan_depth = 8;
+  size_t maximum_blocks = 100000;
+  size_t maximum_instructions = 1000000;
+};
+
 NativeAnalysisConfig load_native_analysis_config();
 EvidenceApplyConfig load_evidence_apply_config();
+EarlyHexRaysConfig load_early_hexrays_config();
 
 } // namespace chernobog::ida_analysis

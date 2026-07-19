@@ -16,6 +16,7 @@
 #include "../deobf/handlers/native_opaque.h"
 #include "../hybrid/session.hpp"
 #include "../hybrid/z3_bridge.hpp"
+#include "../ida_analysis/early_hexrays.hpp"
 #include "../ida_analysis/native_engine.hpp"
 
 #include <map>
@@ -68,6 +69,8 @@ struct chernobog_plugmod_t final : public plugmod_t
     int activation_attempts = 0;
     std::unique_ptr<chernobog::ida_analysis::NativeAnalysisEngine>
         ida_analysis;
+    std::unique_ptr<chernobog::ida_analysis::EarlyHexRaysAnalysis>
+        early_hexrays;
     std::unique_ptr<chernobog::hybrid::Session> hybrid_session;
 
     // All address-keyed state belongs to this database instance.
@@ -287,22 +290,33 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     if ( is_flowchart_event )
     {
         ea_t function_ea = BADADDR;
+        bitset_t *reachable = nullptr;
+        const qflow_chart_t *legacy_flowchart = nullptr;
+#if IDA_SDK_VERSION >= 940
+        const qflow_chart_ea_t *ea_flowchart = nullptr;
+#endif
 #if IDA_SDK_VERSION >= 940
         if ( event == hxe_flowchart_ea )
         {
-            const qflow_chart_ea_t *fc = va_arg(va, const qflow_chart_ea_t *);
+            ea_flowchart = va_arg(va, const qflow_chart_ea_t *);
             mba_t *mba = va_arg(va, mba_t *);
-            function_ea = fc != nullptr ? fc->func_ea : BADADDR;
+            reachable = va_arg(va, bitset_t *);
+            function_ea = ea_flowchart != nullptr
+                        ? ea_flowchart->func_ea : BADADDR;
             if ( function_ea == BADADDR && mba != nullptr )
                 function_ea = mba->entry_ea;
         }
         else
 #endif
         {
-            const qflow_chart_t *fc = va_arg(va, const qflow_chart_t *);
+            legacy_flowchart = va_arg(va, const qflow_chart_t *);
             mba_t *mba = va_arg(va, mba_t *);
-            if ( fc != nullptr && fc->pfn != nullptr )
-                function_ea = fc->pfn->start_ea;
+            reachable = va_arg(va, bitset_t *);
+            if ( legacy_flowchart != nullptr
+              && legacy_flowchart->pfn != nullptr )
+            {
+                function_ea = legacy_flowchart->pfn->start_ea;
+            }
             else if ( mba != nullptr )
                 function_ea = mba->entry_ea;
         }
@@ -342,6 +356,35 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
                 return MERR_REDO;
             }
         }
+
+        // The generic deobf call/pop repair belongs to this event: Hex-Rays
+        // has built a native flowchart, but has not generated microcode yet.
+        // It is intentionally independent of CHERNOBOG_AUTO and distinct from
+        // the later MMAT_LOCOPT deobfuscation pipeline.
+        if ( self->early_hexrays != nullptr )
+        {
+            int changes = 0;
+#if IDA_SDK_VERSION >= 940
+            if ( ea_flowchart != nullptr )
+            {
+                changes = self->early_hexrays->on_flowchart(
+                    ea_flowchart, reachable);
+            }
+            else
+#endif
+            if ( legacy_flowchart != nullptr )
+            {
+                changes = self->early_hexrays->on_flowchart(
+                    legacy_flowchart, reachable);
+            }
+            if ( changes > 0 )
+            {
+                debug_log(
+                    "[chernobog] hxe_flowchart added %d early CFG edges at %llx\n",
+                    changes,
+                    static_cast<unsigned long long>(function_ea));
+            }
+        }
     }
 
     if ( event == hxe_populating_popup )
@@ -373,16 +416,50 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             self->ctree_string_decrypt_processed.erase(func_ea);
         }
     }
-    // The installed optinsn/optblock handlers own microcode deobfuscation.
-    // In particular, the optblock handler runs the whole-MBA pipeline at
-    // MMAT_LOCOPT, the first maturity at which its CFG transformations are
-    // valid. Running the same pipeline here at hxe_microcode used to execute
-    // every pass twice and could leave maturity-sensitive handlers operating
-    // on preoptimized microcode.
+    // This event is reserved for generated-microcode repair. The installed
+    // optinsn/optblock handlers still own the later deobfuscation pipeline;
+    // running that whole pipeline here would duplicate work at an invalid
+    // maturity.
     else if ( event == hxe_microcode )
     {
-        mbl_array_t *mba = va_arg(va, mbl_array_t *);
+        mba_t *mba = va_arg(va, mba_t *);
+        const int changes = self->early_hexrays != nullptr
+                          ? self->early_hexrays->on_microcode(mba) : 0;
         debug_log("[chernobog] hxe_microcode: mba=%p, auto=%d\n", mba, is_auto_mode_enabled() ? 1 : 0);
+        if ( changes > 0 )
+        {
+            debug_log(
+                "[chernobog] hxe_microcode converted %d resolved returns\n",
+                changes);
+        }
+        if ( self->early_hexrays != nullptr )
+        {
+            const auto &stats = self->early_hexrays->stats();
+            debug_log(
+                "[chernobog] early Hex-Rays totals: flow_edges=%zu "
+                "codegen_returns=%zu generated_gotos=%zu folds=%zu "
+                "char_operands=%zu bounded_skips=%zu\n",
+                stats.flowchart_edges, stats.codegen_returns,
+                stats.generated_gotos, stats.folded_instructions,
+                stats.character_operands, stats.bounded_skips);
+        }
+    }
+    // Constant propagation and character-store numforms need the raw,
+    // preoptimized MBA. LOCOPT is too late to be stage-equivalent because
+    // these rewrites are intended to improve the optimizer's input.
+    else if ( event == hxe_preoptimized )
+    {
+        mba_t *mba = va_arg(va, mba_t *);
+        const int changes = self->early_hexrays != nullptr
+                          ? self->early_hexrays->on_preoptimized(mba) : 0;
+        if ( changes > 0 )
+        {
+            debug_log(
+                "[chernobog] hxe_preoptimized applied %d early rewrites at %llx\n",
+                changes,
+                static_cast<unsigned long long>(
+                    mba != nullptr ? mba->entry_ea : BADADDR));
+        }
     }
     // Global optimization exposes exact register-defined tail targets that do
     // not exist at LOCOPT. Hex-Rays requires MERR_LOOP after any mutation at
@@ -514,6 +591,8 @@ void chernobog_plugmod_t::clear_processing_state()
     chernobog_clear_all_tracking();
     if ( hybrid_session )
         hybrid_session->clear();
+    if ( early_hexrays )
+        early_hexrays->reset();
 }
 
 bool chernobog_plugmod_t::recover_hikari_cfg_if_ready(bool force)
@@ -606,6 +685,13 @@ bool chernobog_plugmod_t::activate()
     hexrays_initialized = true;
     debug_log("[chernobog] Hex-Rays callback installed\n");
 
+    early_hexrays.reset(
+        new chernobog::ida_analysis::EarlyHexRaysAnalysis());
+    if ( !early_hexrays->install() )
+    {
+        msg("[chernobog] Early Hex-Rays call/pop codegen filter was not installed; callback-stage analysis remains active\n");
+    }
+
     check_verbose_mode();
     const bool auto_mode = is_auto_mode_enabled();
     const bool disabled = is_disabled_mode_enabled();
@@ -636,6 +722,7 @@ bool chernobog_plugmod_t::activate()
     if ( component_registry_t::get_count() != 0 && !components_initialized )
     {
         msg("[chernobog] No components initialized; activation failed\n");
+        early_hexrays.reset();
         remove_hexrays_callback(hexrays_callback, this);
         hexrays_initialized = false;
         return false;
@@ -718,7 +805,8 @@ int idaapi chernobog_plugmod_t::activation_retry_callback(void *ud)
 
 void chernobog_plugmod_t::deactivate()
 {
-    if ( !hexrays_initialized && !components_initialized )
+    if ( !hexrays_initialized && !components_initialized
+      && early_hexrays == nullptr )
         return;
 
     // ui_destroying_plugmod invokes this while the decompiler dispatcher is
@@ -727,6 +815,11 @@ void chernobog_plugmod_t::deactivate()
     if ( get_hexdsp() == nullptr )
     {
         debug_log("[chernobog] Hex-Rays disappeared before teardown\n");
+        if ( early_hexrays != nullptr )
+        {
+            early_hexrays->uninstall(false);
+            early_hexrays.reset();
+        }
         hexrays_initialized = false;
         components_initialized = false;
         return;
@@ -737,6 +830,12 @@ void chernobog_plugmod_t::deactivate()
         const int removed = remove_hexrays_callback(hexrays_callback, this);
         debug_log("[chernobog] Removed %d Hex-Rays callbacks\n", removed);
         hexrays_initialized = false;
+    }
+
+    if ( early_hexrays != nullptr )
+    {
+        early_hexrays->uninstall(true);
+        early_hexrays.reset();
     }
 
     int terminated = 0;

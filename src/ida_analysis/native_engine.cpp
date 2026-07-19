@@ -115,27 +115,48 @@ bool target_is_executable(ea_t target)
       && !is_tail(get_flags(target));
 }
 
-bool cref_exists(ea_t from, ea_t to)
+bool target_is_mapped_executable(ea_t target)
 {
+  const segment_t *segment = getseg(target);
+  return target != BADADDR && is_mapped(target) && segment != nullptr
+      && (segment->perm == 0 || (segment->perm & SEGPERM_EXEC) != 0);
+}
+
+bool add_user_cref(
+    ea_t from,
+    ea_t to,
+    cref_t type,
+    bool persistent = true,
+    bool require_code_target = true)
+{
+  if ( from == BADADDR
+    || (require_code_target
+      ? !target_is_executable(to) : !target_is_mapped_executable(to))
+    || !is_code(get_flags(from)) || !is_head(get_flags(from)) )
+  {
+    return false;
+  }
   xrefblk_t xref;
   for ( bool ok = xref.first_from(from, XREF_CODE);
         ok; ok = xref.next_from() )
   {
-    if ( xref.to == to )
-      return true;
+    if ( xref.to != to )
+      continue;
+    if ( (int(xref.type) & XREF_MASK) == int(type) )
+      return false;
+    // Preserve a user-selected edge type. IDA-generated call edges are safe
+    // to replace after the get-PC gadget has been proven.
+    if ( xref.user )
+      return false;
+    del_cref(from, to, false);
+    break;
   }
-  return false;
-}
-
-bool add_user_cref(ea_t from, ea_t to, cref_t type)
-{
-  if ( from == BADADDR || !target_is_executable(to)
-    || !is_code(get_flags(from)) || !is_head(get_flags(from))
-    || cref_exists(from, to) )
-  {
-    return false;
-  }
-  return add_cref(from, to, cref_t(int(type) | XREF_USER));
+  // A call/pop classification must replace IDA's initial fl_CN edge with
+  // fl_JN. fl_F cannot carry XREF_USER and is handled as ordinary flow.
+  const cref_t stored_type = type == fl_F || !persistent
+                           ? type
+                           : cref_t(int(type) | XREF_USER);
+  return add_cref(from, to, stored_type);
 }
 
 bool flow_xref_exists(ea_t address, bool outgoing, ea_t excluded = BADADDR,
@@ -147,7 +168,8 @@ bool flow_xref_exists(ea_t address, bool outgoing, ea_t excluded = BADADDR,
   while ( ok )
   {
     if ( xref.from != excluded
-      && (required_type == cref_t(-1) || xref.type == required_type) )
+      && (required_type == cref_t(-1)
+       || (int(xref.type) & XREF_MASK) == int(required_type)) )
     {
       return true;
     }
@@ -170,10 +192,22 @@ bool append_analysis_comment(ea_t address, const char *text)
   return set_cmt(address, current.c_str(), true);
 }
 
-bool has_inbound_reference(ea_t address)
+bool has_inbound_reference(
+    ea_t address,
+    ea_t allowed_source = BADADDR)
 {
   xrefblk_t xref;
-  return xref.first_to(address, XREF_ALL);
+  for ( bool ok = xref.first_to(address, XREF_ALL);
+        ok; ok = xref.next_to() )
+  {
+    // A proven always-transfer instruction can leave an IDA-generated
+    // fallthrough into the skipped bytes from an earlier analysis wave. That
+    // edge is precisely the stale state being repaired. User-selected edges
+    // and every reference from another source remain a hard barrier.
+    if ( xref.from != allowed_source || xref.user )
+      return true;
+  }
+  return false;
 }
 
 bool has_protected_metadata(ea_t address, flags64_t flags)
@@ -197,7 +231,11 @@ bool has_protected_metadata(ea_t address, flags64_t flags)
   return false;
 }
 
-bool safe_gap_candidate(ea_t start, ea_t end, uint64_t maximum_gap)
+bool safe_gap_candidate(
+    ea_t start,
+    ea_t end,
+    uint64_t maximum_gap,
+    ea_t allowed_source)
 {
   if ( start >= end || uint64_t(end - start) > maximum_gap )
     return false;
@@ -207,7 +245,7 @@ bool safe_gap_candidate(ea_t start, ea_t end, uint64_t maximum_gap)
     const flags64_t flags = get_flags(address);
     if ( !is_mapped(address) || !is_loaded(address)
       || has_protected_metadata(address, flags)
-      || has_inbound_reference(address) )
+      || has_inbound_reference(address, allowed_source) )
     {
       return false;
     }
@@ -222,10 +260,17 @@ bool safe_gap_candidate(ea_t start, ea_t end, uint64_t maximum_gap)
   return true;
 }
 
-size_t retype_gap_as_bytes(ea_t start, ea_t end, uint64_t maximum_gap,
-                           bool revisiting)
+size_t retype_gap_as_bytes(
+    ea_t start,
+    ea_t end,
+    uint64_t maximum_gap,
+    ea_t allowed_source)
 {
-  if ( revisiting || !safe_gap_candidate(start, end, maximum_gap) )
+  // The operation is idempotent: existing one-byte data items are retained.
+  // Re-run the safety proof even on a revisited instruction because a plugin
+  // loaded during an active autoanalysis wave can first observe the source
+  // after IDA has already decoded the skipped byte as overlapping code.
+  if ( !safe_gap_candidate(start, end, maximum_gap, allowed_source) )
     return 0;
   size_t changed = 0;
   for ( ea_t address = start; address < end; ++address )
@@ -355,7 +400,10 @@ bool analyze_get_pc_gadget(ea_t address, int depth, GadgetInfo &result)
       break;
     if ( (features & CF_STOP) != 0 )
     {
-      result.has_jump = true;
+      // A direct jmp legitimately terminates a discard-return gadget body.
+      // Match the generic deobfuscator: stop the scan, but reject only a
+      // non-jmp terminal/control-transfer shape.
+      result.has_jump = instruction.itype != NN_jmp;
       break;
     }
     if ( instruction.itype == NN_push && instruction.Op1.type == o_reg
@@ -708,11 +756,11 @@ ea_t bounded_function_end(ea_t start, int maximum_instructions)
       return BADADDR;
     if ( is_ret_insn(instruction) )
       return address + instruction.size;
-    if ( (instruction.get_canon_feature(PH) & CF_STOP) != 0
-      && !is_call_insn(instruction) )
-    {
-      return BADADDR;
-    }
+    // This is deliberately a linear item-boundary scan, matching IDA's
+    // orphan-callee recovery heuristic. A legitimate function may contain
+    // direct jumps before its natural return; CF_STOP is therefore not a
+    // rejection criterion here. Existing function entries still terminate
+    // the scan above, and the configured instruction bound prevents runaway.
     address += instruction.size;
   }
   return BADADDR;
@@ -731,6 +779,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
   rangeset_t emulated;
   rangeset_t prefix_seen;
   std::set<std::pair<int, ea_t>> findings_seen;
+  std::set<ea_t> observed_direct_call_targets;
   std::vector<std::pair<ea_t, ea_t>> pending_cfg_edges;
   size_t reported_orphan_functions = 0;
   size_t reported_outlined_wrappers = 0;
@@ -764,6 +813,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     emulated.clear();
     prefix_seen.clear();
     findings_seen.clear();
+    observed_direct_call_targets.clear();
     pending_cfg_edges.clear();
     statistics = NativeAnalysisStats{};
     post_metadata_scanned = false;
@@ -774,6 +824,22 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
   bool mark_once(int category, ea_t address)
   {
     return findings_seen.insert({ category, address }).second;
+  }
+
+  void remember_direct_call_target(ea_t target, ea_t fallthrough)
+  {
+    if ( target == BADADDR || target == fallthrough
+      || observed_direct_call_targets.count(target) != 0 )
+    {
+      return;
+    }
+    if ( observed_direct_call_targets.size()
+         >= config.maximum_post_scan_heads )
+    {
+      statistics.post_scan_truncated = true;
+      return;
+    }
+    observed_direct_call_targets.insert(target);
   }
 
   ssize_t handle_analysis(insn_t &instruction)
@@ -832,10 +898,35 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
       return false;
     }
 
-    add_user_cref(instruction.ea, target, fl_JN);
+    // Persist the semantic reclassification across subsequent autoanalysis
+    // waves. In this combined plugin, later function-tail recovery can cause
+    // the processor to revisit the call after AFL_NOTPROC was set; an
+    // IDA-owned fl_JN can then be discarded before the next chained gadget is
+    // reached. A user cref is still add-only with respect to pre-existing user
+    // choices because add_user_cref() refuses to replace a conflicting one.
+    const bool marker_added = add_user_cref(
+        instruction.ea, target, fl_JN, true, false);
+    if ( !marker_added
+      && !flow_xref_exists(instruction.ea, true, BADADDR, fl_JN) )
+    {
+      return false;
+    }
     set_notproc(target);
+    // Every accepted get-PC form is an intra-function transfer. In
+    // particular, add-sp/discard gadgets continue in the target body and have
+    // no later return edge that could otherwise pull that range into the
+    // caller. Admit the proven gadget target before queuing it so nested
+    // get-PC chains are traversed rather than truncated at an auto-created
+    // tail boundary.
+    func_t *call_owner = get_func(instruction.ea);
+    if ( call_owner != nullptr && !func_contains(call_owner, target) )
+      append_func_tail(call_owner, target, BADADDR);
+    auto_make_code(target);
+    plan_ea(target);
     statistics.gaps_retyped += retype_gap_as_bytes(
-        call_end, target, config.maximum_gap, revisiting);
+        call_end, target, config.maximum_gap, instruction.ea);
+    if ( is_unknown(get_flags(target)) )
+      create_insn(target);
     add_user_stkpnt(target, -inf_get_effective_addrsize());
 
     if ( gadget.discards_return )
@@ -855,10 +946,27 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
           create_insn(resumed);
         }
         func_t *owner = get_func(instruction.ea);
-        if ( owner != nullptr && get_func(resumed) == nullptr )
+        // The effective return can already belong to a small auto-created
+        // function or range while still being outside the caller.  The
+        // generic deobfuscator tests containment in the caller, not merely
+        // whether some function owns the address; that distinction is what
+        // lets chained gadgets become one traversable CFG.
+        if ( owner != nullptr && !func_contains(owner, resumed) )
           append_func_tail(owner, resumed, BADADDR);
         if ( gadget.return_ea != BADADDR )
         {
+          // Queue the newly-proven continuation immediately. IDA may remove
+          // this fallthrough while its first autoanalysis wave is still
+          // classifying the return, so retain the deferred copy below too.
+          // The deferred HS_FUNC_DONE-equivalent repair is authoritative.
+          if ( is_code(get_flags(gadget.return_ea))
+            && get_item_end(gadget.return_ea) == resumed )
+          {
+            add_user_cref(gadget.return_ea, resumed, fl_F);
+            auto_make_code(resumed);
+            plan_ea(gadget.return_ea);
+            plan_ea(resumed);
+          }
           const auto edge = std::make_pair(gadget.return_ea, resumed);
           if ( std::find(pending_cfg_edges.begin(), pending_cfg_edges.end(), edge)
             == pending_cfg_edges.end() )
@@ -934,7 +1042,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     if ( target == BADADDR )
       return false;
     if ( decision == BranchDecision::Taken )
-      add_user_cref(instruction.ea, target, fl_JN);
+      add_user_cref(instruction.ea, target, fl_JN, true, false);
     else
       add_user_cref(instruction.ea, instruction.ea + instruction.size, fl_F);
     append_analysis_comment(
@@ -964,11 +1072,25 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     if ( !opposite )
       return false;
 
-    add_user_cref(instruction.ea, target, fl_JN);
-    add_user_cref(instruction.ea, instruction.ea + instruction.size, fl_F);
-    add_user_cref(next.ea, target, fl_JN);
     statistics.gaps_retyped += retype_gap_as_bytes(
-        next.ea + next.size, target, config.maximum_gap, revisiting);
+        next.ea + next.size, target, config.maximum_gap, next.ea);
+    if ( is_unknown(get_flags(target)) )
+      create_insn(target);
+    add_user_cref(instruction.ea, target, fl_JN, true, false);
+    add_user_cref(instruction.ea, instruction.ea + instruction.size, fl_F);
+    add_user_cref(next.ea, target, fl_JN, false, false);
+    // Reinstall the first predicate's adjacent fallthrough after the processor
+    // has finalized its own branch xrefs. fl_F cannot be made user-persistent,
+    // and the paired-branch reclassification can otherwise leave the second
+    // predicate as an orphan block.
+    const auto fallthrough_edge = std::make_pair(
+        instruction.ea, instruction.ea + instruction.size);
+    if ( std::find(
+            pending_cfg_edges.begin(), pending_cfg_edges.end(),
+            fallthrough_edge) == pending_cfg_edges.end() )
+    {
+      pending_cfg_edges.push_back(fallthrough_edge);
+    }
     append_analysis_comment(instruction.ea,
                             "adjacent opposite predicates cover both outcomes");
     if ( mark_once(4, instruction.ea) )
@@ -1042,9 +1164,11 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     const ea_t fallthrough = instruction.ea + instruction.size;
     if ( decision == BranchDecision::Taken )
     {
-      add_user_cref(instruction.ea, target, fl_JN);
+      add_user_cref(instruction.ea, target, fl_JN, true, false);
       statistics.gaps_retyped += retype_gap_as_bytes(
-          fallthrough, target, config.maximum_gap, revisiting);
+          fallthrough, target, config.maximum_gap, instruction.ea);
+      if ( is_unknown(get_flags(target)) )
+        create_insn(target);
     }
     else
     {
@@ -1117,7 +1241,9 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     if ( target == BADADDR || target <= fallthrough )
       return false;
     const size_t changed = retype_gap_as_bytes(
-        fallthrough, target, config.maximum_gap, revisiting);
+        fallthrough, target, config.maximum_gap, instruction.ea);
+    if ( changed > 0 && is_unknown(get_flags(target)) )
+      create_insn(target);
     statistics.gaps_retyped += changed;
     return changed != 0;
   }
@@ -1128,7 +1254,15 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     if ( !revisiting )
       emulated.add(instruction.ea, instruction.ea + instruction.size);
     ssize_t handled = 0;
-    handled |= handle_call_pop(instruction, revisiting) ? 1 : 0;
+    const bool call_pop = handle_call_pop(instruction, revisiting);
+    handled |= call_pop ? 1 : 0;
+    if ( !call_pop && config.orphan_functions && is_call_insn(instruction)
+      && direct_transfer(instruction) )
+    {
+      const ea_t target = branch_target(instruction);
+      remember_direct_call_target(
+          target, instruction.ea + instruction.size);
+    }
     handled |= handle_push_return(instruction) ? 1 : 0;
     handled |= handle_zero_register(instruction) ? 1 : 0;
     handled |= handle_opposite_pair(instruction, revisiting) ? 1 : 0;
@@ -1160,87 +1294,124 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         && get_item_end(edge.first) == edge.second )
       {
         add_user_cref(edge.first, edge.second, fl_F);
+        // The edge is installed from auto_empty_finally, after the original
+        // traversal stopped at the return. Explicitly queue its continuation
+        // so chained call/pop gadgets are discovered in the next bounded
+        // autoanalysis wave instead of remaining unreachable until a manual
+        // reanalysis.
+        if ( is_unknown(get_flags(edge.second)) )
+          create_insn(edge.second);
+        auto_make_code(edge.second);
+        plan_ea(edge.first);
+        plan_ea(edge.second);
       }
     }
     pending_cfg_edges.clear();
   }
 
-  void recover_orphan_functions()
+  size_t recover_orphan_functions(bool discover_database_targets)
   {
     if ( !config.orphan_functions )
-      return;
-    std::set<ea_t> candidates;
+      return 0;
     size_t scanned_heads = 0;
     bool limit_hit = false;
-    const int segment_count = get_segm_qty();
-    for ( int segment_index = 0;
-          segment_index < segment_count && !limit_hit;
-          ++segment_index )
+    if ( discover_database_targets )
     {
-      const segment_t *segment = getnseg(segment_index);
-      if ( segment == nullptr || (segment->perm & SEGPERM_EXEC) == 0 )
-        continue;
-      ea_t address = segment->start_ea;
-      while ( address != BADADDR && address < segment->end_ea )
+      const int segment_count = get_segm_qty();
+      for ( int segment_index = 0;
+            segment_index < segment_count && !limit_hit;
+            ++segment_index )
       {
-        if ( scanned_heads >= config.maximum_post_scan_heads )
+        const segment_t *segment = getnseg(segment_index);
+        if ( segment == nullptr || (segment->perm & SEGPERM_EXEC) == 0 )
+          continue;
+        ea_t address = segment->start_ea;
+        while ( address != BADADDR && address < segment->end_ea )
         {
-          limit_hit = true;
-          break;
-        }
-        ++scanned_heads;
-        if ( is_code(get_flags(address)) && is_head(get_flags(address)) )
-        {
-          insn_t instruction;
-          if ( decode_insn(&instruction, address) > 0
-            && is_call_insn(instruction) && direct_transfer(instruction) )
+          if ( scanned_heads >= config.maximum_post_scan_heads )
           {
-            const ea_t target = branch_target(instruction);
-            func_t *owner = target != BADADDR ? get_func(target) : nullptr;
-            if ( target_is_executable(target)
-              && (owner == nullptr || owner->start_ea != target) )
+            limit_hit = true;
+            break;
+          }
+          ++scanned_heads;
+          if ( is_code(get_flags(address)) && is_head(get_flags(address)) )
+          {
+            insn_t instruction;
+            if ( decode_insn(&instruction, address) > 0
+              && is_call_insn(instruction) && direct_transfer(instruction) )
             {
-              // Never split an existing function. Interior-call evidence is
-              // retained by its cref/comment but not promoted automatically.
-              if ( owner == nullptr )
-                candidates.insert(target);
+              const ea_t target = branch_target(instruction);
+              remember_direct_call_target(
+                  target, instruction.ea + instruction.size);
             }
           }
+          const ea_t next = next_head(address, segment->end_ea);
+          if ( next == BADADDR || next <= address )
+            break;
+          address = next;
         }
-        const ea_t next = next_head(address, segment->end_ea);
-        if ( next == BADADDR || next <= address )
-          break;
-        address = next;
       }
+      statistics.post_scan_heads += scanned_heads;
+      statistics.post_scan_truncated |= limit_hit;
     }
-    statistics.post_scan_heads += scanned_heads;
-    statistics.post_scan_truncated |= limit_hit;
 
     size_t promoted = 0;
-    for ( ea_t target : candidates )
+    for ( auto iterator = observed_direct_call_targets.begin();
+          iterator != observed_direct_call_targets.end(); )
     {
-      if ( get_func(target) != nullptr || !target_is_executable(target) )
+      const ea_t target = *iterator;
+      func_t *owner = get_func(target);
+      if ( owner != nullptr )
+      {
+        // A proper entry is resolved and can leave the candidate set. Retain
+        // interior targets so a later IDA function-boundary correction can
+        // make them eligible without another whole-database scan; do not split
+        // the current owner automatically.
+        if ( owner->start_ea == target )
+          iterator = observed_direct_call_targets.erase(iterator);
+        else
+          ++iterator;
         continue;
+      }
+      if ( !target_is_executable(target) )
+      {
+        ++iterator;
+        continue;
+      }
       if ( is_unknown(get_flags(target)) )
       {
         insn_t decoded;
         if ( decode_insn(&decoded, target) <= 0 || create_insn(target) <= 0 )
+        {
+          ++iterator;
           continue;
+        }
       }
+      bool created = false;
       if ( add_func(target) )
       {
-        ++promoted;
+        created = true;
+      }
+      else
+      {
+        const ea_t end = bounded_function_end(
+            target, config.orphan_scan_instructions);
+        if ( end != BADADDR && get_func(target) == nullptr
+          && add_func(target, end) )
+        {
+          created = true;
+        }
+      }
+      if ( !created )
+      {
+        ++iterator;
         continue;
       }
-      const ea_t end = bounded_function_end(
-          target, config.orphan_scan_instructions);
-      if ( end != BADADDR && get_func(target) == nullptr
-        && add_func(target, end) )
-      {
-        ++promoted;
-      }
+      ++promoted;
+      iterator = observed_direct_call_targets.erase(iterator);
     }
     statistics.orphan_functions += promoted;
+    return promoted;
   }
 
   void outline_wrapper_functions()
@@ -1279,13 +1450,23 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
       return;
     post_analysis_running = true;
     fix_pending_cfg_edges();
+    const bool initial_metadata_scan = !post_metadata_scanned;
+    size_t promoted = 0;
     if ( !post_metadata_scanned )
     {
       // This is a bounded IDA decoder/xref metadata pass, not emulation.
-      // Run it once between per-database resets; later autoanalysis events
-      // only commit deferred native fallthrough edges.
+      // Discover the baseline direct-call set once between per-database
+      // resets. ev_emu_insn adds later call targets incrementally, so future
+      // autoanalysis completions need not rescan the whole database.
       post_metadata_scanned = true;
-      recover_orphan_functions();
+      promoted = recover_orphan_functions(true);
+    }
+    else if ( !observed_direct_call_targets.empty() )
+    {
+      promoted = recover_orphan_functions(false);
+    }
+    if ( initial_metadata_scan || promoted > 0 )
+    {
       outline_wrapper_functions();
       if ( statistics.post_scan_truncated )
       {
