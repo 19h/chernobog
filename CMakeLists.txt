@@ -27,8 +27,9 @@ endif()
 
 include(FetchContent)
 
-# Find IDA SDK
-SET(IDASDK_VER "94" CACHE STRING "94")
+# Find IDA SDK. This project targets one public ABI; an existing build cache
+# must not silently retain the former 9.2/9.3 selector.
+set(IDASDK_VER "94" CACHE STRING "Required IDA SDK major/minor" FORCE)
 SET(IDASDK $ENV{IDASDK})
 MESSAGE("${PROJECT_NAME}")
 MESSAGE("Using IDA SDK dir: ${IDASDK}")
@@ -285,6 +286,29 @@ message(STATUS
 
 include(${CMAKE_CURRENT_LIST_DIR}/ida-cmake/bootstrap.cmake)
 find_package(idasdk REQUIRED)
+
+# Match idax's fail-fast SDK check. CI pins the corresponding release-patch
+# commit; caller-owned IDASDK overrides must still resolve to the 9.4 ABI.
+set(CHERNOBOG_REQUIRED_IDA_SDK_VERSION 940)
+if(NOT DEFINED IDASDK OR NOT EXISTS "${IDASDK}/include/pro.h")
+    message(FATAL_ERROR
+        "Could not resolve the IDA SDK include directory after bootstrap: "
+        "IDASDK='${IDASDK}'.")
+endif()
+file(STRINGS "${IDASDK}/include/pro.h" CHERNOBOG_IDA_SDK_VERSION_LINE
+    REGEX "^#[ \t]*define[ \t]+IDA_SDK_VERSION[ \t]+[0-9]+"
+    LIMIT_COUNT 1)
+if(NOT CHERNOBOG_IDA_SDK_VERSION_LINE MATCHES
+        "IDA_SDK_VERSION[ \t]+([0-9]+)")
+    message(FATAL_ERROR "Could not read IDA_SDK_VERSION from ${IDASDK}.")
+endif()
+set(CHERNOBOG_IDA_SDK_VERSION "${CMAKE_MATCH_1}")
+if(NOT CHERNOBOG_IDA_SDK_VERSION STREQUAL
+        "${CHERNOBOG_REQUIRED_IDA_SDK_VERSION}")
+    message(FATAL_ERROR
+        "chernobog requires IDA SDK 9.4 (IDA_SDK_VERSION=940); "
+        "resolved IDA_SDK_VERSION=${CHERNOBOG_IDA_SDK_VERSION}.")
+endif()
 
 # Set plugin variables before including addons.cmake
 ida_add_plugin(chernobog

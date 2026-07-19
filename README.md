@@ -24,6 +24,8 @@ Chernobog automatically detects and reverses the following Hikari obfuscation te
   - Mixed switch and cascading-conditional dispatchers
   - State-variable aliasing and conditional (data-dependent) transitions
   - Index-based jump-table flattening
+  - Encoded recurrent switch dispatchers, using bounded CFG recurrence,
+    distributed-backedge, selector-transform, and target-diversity evidence
   - Hikari magic-constant dispatch detection
 - **Bogus Control Flow (BCF)** - Identifies and removes opaque predicates, dead branches, and unreachable code blocks, including arithmetic identity predicates such as `x*(x+1) % 2 == 0` (always true)
 - **Basic Block Splitting** - Merges artificially split basic blocks back together
@@ -531,6 +533,8 @@ with the SDK used to compile the plugin and a representative binary corpus.
 
 - Requires functions to be decompilable by Hex-Rays
 - Custom or heavily modified Hikari variants may not be fully supported
+- Encoded recurrent switch dispatchers are currently classified for analysis;
+  their edges are not rewritten until an exact encoded-state mapping is proved
 - Some obfuscation patterns may require manual cleanup after automated processing
 - Anti-analysis tricks (anti-debug, VM detection) are not handled
 - Z3 analysis is bounded by fixed internal timeouts (about 5 s per solve, shorter for opaque-predicate and rule-verification checks); extremely complex state machines may not solve within them

@@ -4,6 +4,7 @@
 #include "common/hexrays_compat.h"
 #include "common/simd.h"
 #include "common/string_recovery.h"
+#include "deobf/analysis/switch_dispatch_classifier.hpp"
 
 #include <array>
 #include <cstdint>
@@ -92,6 +93,95 @@ void test_hexrays_merror_layout_compatibility()
           && !uses_timeout_merror_layout("9.4.0.260717-extra")
           && !uses_timeout_merror_layout("9.4.0.99999999999999999999"),
           "malformed Hex-Rays versions fail closed");
+}
+
+void test_switch_dispatch_classifier()
+{
+    using pattern_match::assess_switch_dispatch;
+    using pattern_match::switch_dispatch_features_t;
+
+    // Measured from main at 0x82AF0 in
+    // obfuscator_sample.uu.unpacked.elf (SHA-256
+    // 0504e7c58519da9bc2f45f84e4a264c5a3ba03ae4683e372570ba15999d0b17d).
+    switch_dispatch_features_t measured_sample;
+    measured_sample.case_count = 249;
+    measured_sample.unique_target_count = 250; // includes the default edge
+    measured_sample.returning_target_count = 249;
+    measured_sample.direct_return_target_count = 148;
+    measured_sample.return_frontier_count = 188;
+    measured_sample.dispatcher_predecessor_count = 190;
+    measured_sample.dispatcher_chain_blocks = 2;
+    measured_sample.selector_instruction_count = 8;
+    measured_sample.selector_transform_count = 9;
+    measured_sample.max_return_distance = 16;
+    measured_sample.has_indirect_jump = true;
+    measured_sample.cfg_complete = true;
+    const auto sample = assess_switch_dispatch(measured_sample);
+    check(sample.accepted && sample.score == 100
+          && sample.recurrence_percent >= 99,
+          "measured recurrent switch dispatcher is accepted");
+
+    switch_dispatch_features_t large_parser_switch;
+    large_parser_switch.case_count = 256;
+    large_parser_switch.unique_target_count = 240;
+    large_parser_switch.returning_target_count = 0;
+    large_parser_switch.return_frontier_count = 0;
+    large_parser_switch.dispatcher_predecessor_count = 1;
+    large_parser_switch.dispatcher_chain_blocks = 1;
+    large_parser_switch.selector_instruction_count = 2;
+    large_parser_switch.has_indirect_jump = true;
+    large_parser_switch.cfg_complete = true;
+    check(!assess_switch_dispatch(large_parser_switch).accepted,
+          "large acyclic application switch is rejected");
+
+    // Event-loop switches can have complete recurrence but converge through a
+    // single legitimate loop latch. That topology is not CFF evidence.
+    switch_dispatch_features_t ordinary_loop_switch;
+    ordinary_loop_switch.case_count = 32;
+    ordinary_loop_switch.unique_target_count = 30;
+    ordinary_loop_switch.returning_target_count = 30;
+    ordinary_loop_switch.direct_return_target_count = 0;
+    ordinary_loop_switch.return_frontier_count = 1;
+    ordinary_loop_switch.dispatcher_predecessor_count = 2;
+    ordinary_loop_switch.dispatcher_chain_blocks = 2;
+    ordinary_loop_switch.selector_instruction_count = 6;
+    ordinary_loop_switch.has_indirect_jump = true;
+    ordinary_loop_switch.cfg_complete = true;
+    check(!assess_switch_dispatch(ordinary_loop_switch).accepted,
+          "ordinary loop switch with one common latch is rejected");
+
+    switch_dispatch_features_t compact_flattening;
+    compact_flattening.case_count = 8;
+    compact_flattening.unique_target_count = 8;
+    compact_flattening.returning_target_count = 7;
+    compact_flattening.direct_return_target_count = 4;
+    compact_flattening.return_frontier_count = 5;
+    compact_flattening.dispatcher_predecessor_count = 5;
+    compact_flattening.dispatcher_chain_blocks = 2;
+    compact_flattening.selector_instruction_count = 5;
+    compact_flattening.selector_transform_count = 3;
+    compact_flattening.max_return_distance = 4;
+    compact_flattening.has_indirect_jump = true;
+    compact_flattening.cfg_complete = true;
+    check(assess_switch_dispatch(compact_flattening).accepted,
+          "compact distributed switch flattening is accepted");
+
+    switch_dispatch_features_t direct_index_flattening = compact_flattening;
+    direct_index_flattening.selector_transform_count = 0;
+    direct_index_flattening.state_assignment_count = 6;
+    check(assess_switch_dispatch(direct_index_flattening).accepted,
+          "direct-index flattening is admitted by repeated state writes");
+
+    switch_dispatch_features_t distributed_event_loop = compact_flattening;
+    distributed_event_loop.selector_instruction_count = 6;
+    distributed_event_loop.selector_transform_count = 2;
+    distributed_event_loop.state_assignment_count = 0;
+    check(!assess_switch_dispatch(distributed_event_loop).accepted,
+          "ordinary distributed event-loop switch is rejected");
+
+    compact_flattening.cfg_complete = false;
+    check(!assess_switch_dispatch(compact_flattening).accepted,
+          "incomplete switch CFG fails closed");
 }
 
 void test_arm64_direct_branch_encoding()
@@ -415,6 +505,7 @@ int main()
 {
     test_bitvectors();
     test_hexrays_merror_layout_compatibility();
+    test_switch_dispatch_classifier();
     test_arm64_direct_branch_encoding();
     test_arm64_predicates();
     test_simd_utilities();

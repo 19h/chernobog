@@ -8,6 +8,7 @@
 
 // Include component headers to trigger registration
 #include "../deobf/deobf_main.h"
+#include "../deobf/analysis/pattern_match.h"
 #include "../deobf/handlers/ctree_const_fold.h"
 #include "../deobf/handlers/ctree_switch_fold.h"
 #include "../deobf/handlers/ctree_indirect_call.h"
@@ -1026,6 +1027,61 @@ bool idaapi chernobog_plugmod_t::run(size_t argument)
             msg("[chernobog][rax] Batch exploration failed: set "
                 "CHERNOBOG_RAX_BATCH_EA to an address in a function\n");
         return explored;
+    }
+
+    // Headless, analysis-only CFF probe. This deliberately generates only
+    // LOCOPT microcode and invokes the detector without enabling mutation
+    // components, so regression tests can distinguish detector behavior from
+    // full ctree construction cost. 0x434646 is ASCII "CFF".
+    if ( argument == 0x434646 )
+    {
+        qstring raw;
+        ea_t requested = BADADDR;
+        if ( !qgetenv("CHERNOBOG_CFF_BATCH_EA", &raw) || raw.empty()
+          || !str2ea(&requested, raw.c_str(), BADADDR) )
+        {
+            msg("[chernobog][cff-batch] Set CHERNOBOG_CFF_BATCH_EA to an "
+                "address in a function\n");
+            return false;
+        }
+        const ea_t function_ea = get_func_start(requested);
+        if ( function_ea == BADADDR )
+        {
+            msg("[chernobog][cff-batch] No function contains %a\n", requested);
+            return false;
+        }
+
+        hexrays_failure_t failure;
+        std::unique_ptr<mba_t> mba(gen_microcode(
+            decomp_ranges_t(function_ea),
+            &failure,
+            nullptr,
+            DECOMP_NO_CACHE,
+            MMAT_LOCOPT));
+        if ( !mba )
+        {
+            msg("[chernobog][cff-batch] Microcode generation failed at %a: "
+                "%s\n", function_ea, failure.desc().c_str());
+            return false;
+        }
+
+        pattern_match::flatten_info_t info;
+        const bool detected = pattern_match::detect_flatten_pattern(
+            mba.get(), &info);
+        msg("[chernobog][cff-batch] function=%a detected=%d kind=%d "
+            "switch=%d dispatcher=%d cases=%zu returning=%zu direct=%zu "
+            "frontier=%zu score=%u\n",
+            function_ea,
+            detected ? 1 : 0,
+            static_cast<int>(info.kind),
+            info.switch_block,
+            info.dispatcher_block,
+            info.case_count,
+            info.returning_target_count,
+            info.direct_return_target_count,
+            info.return_frontier_count,
+            info.confidence_score);
+        return detected;
     }
 
     // Plugin can be invoked manually - show info

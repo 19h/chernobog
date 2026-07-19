@@ -2248,6 +2248,26 @@ int deflatten_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
     if ( !mba || !ctx ) 
         return 0;
 
+    // Encoded recurrent-switch dispatchers are now detected structurally, but
+    // the legacy state solver assumes a directly traceable table index or
+    // comparison constant. Do not spend its 10 s Z3 budget on an incompatible
+    // model, and never rewrite edges from an unproved state mapping.
+    pattern_match::flatten_info_t detected_pattern;
+    if ( pattern_match::detect_flatten_pattern(mba, &detected_pattern)
+      && detected_pattern.kind
+           == pattern_match::flatten_pattern_kind_t::recurrent_switch )
+    {
+        deobf::log(
+            "[deflatten] Recurrent switch dispatcher retained for analysis: "
+            "switch=%d dispatcher=%d cases=%zu score=%u; encoded state "
+            "transitions are not rewrite-safe yet\n",
+            detected_pattern.switch_block,
+            detected_pattern.dispatcher_block,
+            detected_pattern.case_count,
+            detected_pattern.confidence_score);
+        return 0;
+    }
+
     int maturity = mba->maturity;
     ea_t func_ea = mba->entry_ea;
 
