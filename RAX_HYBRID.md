@@ -53,9 +53,10 @@ summaries. It never calls the IDA SDK.
    completeness/partial status, and encoded control targets remain available
    as typed evidence.
 7. **Function behavior and ABI recovery**: return/termination/fault/timeout/
-   budget/environment-boundary outcome, retired and attempted instruction
-   counts, modeled call count, and stack-pointer delta per input. Objective-C
-   method profiles model `self` and `_cmd` separately from explicit parameters.
+   budget/environment/function-boundary outcome, retired and attempted
+   instruction counts, backend status/diagnostic for engine errors, modeled
+   call count, and stack-pointer delta per input. Objective-C method profiles
+   model `self` and `_cmd` separately from explicit parameters.
 8. **Environment modeling and gap discovery**: bounded summaries for known
    memory/string, allocation, deallocation, termination, Objective-C ARC, and
    random-number functions. A named but unmodeled external target is reported
@@ -74,9 +75,10 @@ summaries. It never calls the IDA SDK.
 11. **Indirect-control recovery**: unresolved indirect-call/jump handlers can
     inspect observed targets. They log candidates but retain the indirect
     operation because finite concrete coverage cannot prove target uniqueness.
-12. **Permission, fault, and image-boundary diagnosis**: strict IDA segment
-    permissions are enforced, execution outside the snapshotted image is
-    stopped at the first source/target boundary, and rax stop metadata remains
+12. **Permission, fault, and execution-boundary diagnosis**: strict IDA segment
+    permissions are enforced. Unmodeled in-image calls/tail transfers stop
+    before the first target instruction, and execution outside the snapshotted
+    image stops at the first source/target boundary. rax stop metadata remains
     distinct from Chernobog's application-level outcome.
 13. **Provenance and invalidation**: every observation carries database,
     function byte hash, complete image hash, function generation, focus EA,

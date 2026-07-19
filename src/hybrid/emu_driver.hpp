@@ -147,8 +147,8 @@ struct MemoryBytes
 
 // Immutable-image bytes consumed as data by a run. This is deliberately
 // separate from DataAcc: the latter remains current-function evidence, whereas
-// dependency capture must also include reads performed by reached callees so a
-// later branch counterexample cannot survive a relevant database patch.
+// dependency capture must also include image reads performed by bounded call
+// summaries so a later branch counterexample cannot survive a relevant patch.
 struct ConsumedImageRange
 {
   uint64_t addr = 0;
@@ -181,8 +181,10 @@ struct EmuEvents
 struct EmuOutcome
 {
   int      stop_reason = 0;    // RAX_STOP_* from rax_emu_last_exit
+  int      stop_status = 0;    // rax_status when stop_reason == RAX_STOP_ERROR
   uint64_t stop_pc = 0;        // PC at stop
   bool     stop_valid = false;  // last-exit metadata was available
+  std::string engine_error;     // backend diagnostic for RAX_STOP_ERROR
   uint64_t instruction_count = 0;
   uint64_t attempted_steps = 0;
   bool     attempted_steps_valid = false;
@@ -194,6 +196,12 @@ struct EmuOutcome
   bool     cancelled = false; // cooperative worker-generation cancellation
   bool     escaped_image = false; // execution reached code outside the snapshotted image
   uint64_t escape_source = 0;
+  // First transfer from the selected function into an unmodeled in-image
+  // callee/tail target. The target instruction is not executed.
+  bool     function_boundary = false;
+  uint64_t function_boundary_source = 0;
+  uint64_t function_boundary_target = 0;
+  ExecEdge::Kind function_boundary_kind = ExecEdge::Kind::Unknown;
   bool     unmodeled_external = false;
   uint64_t external_target = 0;
   std::string external_name;
@@ -219,6 +227,7 @@ struct EmuOutcome
 };
 
 const char *hybrid_rax_stop_reason_name(int reason);
+const char *hybrid_rax_status_name(int status);
 const char *hybrid_emu_outcome_name(const EmuOutcome &outcome);
 
 class EmuDriver
@@ -240,11 +249,11 @@ public:
   // emulate_from() is a no-op.
   bool can_discover() const { return ok() && stepping_ && baseline_ok_; }
 
-  // Emulate one function (its entry .. func_end) under the caps in `cfg`,
-  // appending discovered edges/data to `out`. Only edges/accesses whose source
-  // instruction lies within [entry, func_end) are recorded, so callee bodies
-  // executed under this function's fabricated state do not contribute noise —
-  // each function is mined from its own entry. Bounded by instruction count and
+  // Emulate one function (all of its FuncRange chunks) under the caps in `cfg`,
+  // appending discovered edges/data to `out`. Known calls may be handled by a
+  // bounded summary. An unmodeled transfer outside the function is recorded at
+  // its source/target boundary and stopped before the target instruction; no
+  // callee body is recursively executed. Bounded by instruction count and
   // wall-clock timeout; faults are contained. Returns true if emulation ran.
   bool emulate_from(uint64_t entry, uint64_t func_end, const HybridConfig &cfg, EmuEvents &out,
                     EmuOutcome *outcome = nullptr, bool record_pcs = false, uint64_t seed = 0,

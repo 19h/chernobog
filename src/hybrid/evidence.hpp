@@ -131,6 +131,7 @@ struct EvidenceSummary
   size_t instruction_budget_runs = 0;
   size_t timeout_runs = 0;
   size_t escaped_image_runs = 0;
+  size_t function_boundary_runs = 0;
   size_t unmodeled_external_runs = 0;
   size_t environment_model_failure_runs = 0;
   size_t external_model_runs = 0;

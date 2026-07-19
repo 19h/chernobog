@@ -342,6 +342,8 @@ void test_arm64_application_boundary(const RaxApi *api)
         "ARM64 exception handling must stop before the instruction budget");
   check(outcome.escaped_image || outcome.stop_reason == RAX_STOP_EXCEPTION,
         "ARM64 first fault must be classified as image escape or backend exception");
+  check(!outcome.consumed_context_complete,
+        "application exception/image escape must never be proof-complete");
   if ( outcome.escaped_image )
   {
     check(outcome.escape_source == image.lo,
@@ -349,6 +351,47 @@ void test_arm64_application_boundary(const RaxApi *api)
     check(outcome.stop_pc == 0x200,
           "AArch64 synchronous exception vector must be reported as 0x200");
   }
+}
+
+void test_arm64_function_boundary(const RaxApi *api)
+{
+  // bl 0x1010; mov x0,#7; ret; nop; callee: b callee
+  ProgramImage image = arm64_image({
+      0x04, 0x00, 0x00, 0x94,
+      0xE0, 0x00, 0x80, 0xD2,
+      0xC0, 0x03, 0x5F, 0xD6,
+      0x1F, 0x20, 0x03, 0xD5,
+      0x00, 0x00, 0x00, 0x14 });
+  image.entries.front().end = 0x100C;
+  image.entries.front().chunks = { FuncChunk{ 0x1000, 0x100C } };
+  image.entries.front().byte_hash =
+      hybrid_function_byte_hash(image, image.entries.front());
+  image.content_hash = hybrid_program_content_hash(image);
+
+  EmuEvents events;
+  EmuOutcome outcome;
+  check(run_direct(api, image, {}, &events, &outcome),
+        "ARM64 unmodeled internal call must produce a bounded run outcome");
+  check(outcome.function_boundary
+        && outcome.function_boundary_kind == ExecEdge::Kind::Call
+        && outcome.function_boundary_source == 0x1000
+        && outcome.function_boundary_target == 0x1010
+        && !outcome.returned,
+        "internal call must stop at the selected-function source/target boundary");
+  check(outcome.stop_reason == RAX_STOP_STOPPED
+        && outcome.instruction_count < short_run_config().max_insns
+        && !outcome.consumed_context_complete,
+        "function boundary must stop before recursive callee execution");
+  check(events.execution.size() == 1 && events.execution.front().pc == 0x1000,
+        "callee entry must not enter selected-function execution evidence");
+  check(std::none_of(events.execution.begin(), events.execution.end(),
+                     [](const ExecPoint &point) { return point.pc == 0x1010; }),
+        "unmodeled callee body must never execute");
+  check(events.edges.size() == 1
+        && events.edges.front().from == 0x1000
+        && events.edges.front().to == 0x1010
+        && events.edges.front().kind == ExecEdge::Kind::Call,
+        "the boundary call target must remain available as positive edge evidence");
 }
 
 std::map<uint64_t, uint64_t> stack_store_values(const EmuEvents &events)
@@ -778,6 +821,7 @@ int main()
     test_arm64_memory_and_accounting(api);
     test_arm64_external_boundaries(api);
     test_arm64_application_boundary(api);
+    test_arm64_function_boundary(api);
     test_objc_entry_abi(api);
   }
   if ( failures != 0 )

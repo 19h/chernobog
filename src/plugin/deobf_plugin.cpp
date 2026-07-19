@@ -99,6 +99,10 @@ struct chernobog_plugmod_t final : public plugmod_t
     bool first_hexrays_callback = true;
     bool hikari_cfg_attempted = false;
     bool native_opaque_attempted = false;
+    // A flowchart callback does not identify its caller. Arm automatic rax
+    // only for the synchronous duration of an explicit GUI pseudocode action;
+    // get_screen_ea() alone is ambient UI state and must not authorize work.
+    ea_t user_decompile_target = BADADDR;
     qtimer_t activation_timer = nullptr;
     int activation_attempts = 0;
     std::unique_ptr<chernobog::ida_analysis::NativeAnalysisEngine>
@@ -198,34 +202,44 @@ static bool is_disabled_mode_enabled()
 // current-function prerequisite into a database sweep. Batch callers must name
 // the authoritative target explicitly, as the existing rax batch action does.
 //--------------------------------------------------------------------------
-static bool is_focused_function(ea_t function_ea)
+static bool explicit_rax_target_matches(ea_t function_ea)
 {
-    if ( function_ea == BADADDR )
+    qstring raw;
+    ea_t requested = BADADDR;
+    if ( !qgetenv("CHERNOBOG_RAX_BATCH_EA", &raw) || raw.empty()
+      || !str2ea(&requested, raw.c_str(), BADADDR) )
+    {
+        return false;
+    }
+    const func_t *function = get_func(requested);
+    return function != nullptr && function->start_ea == function_ea;
+}
+
+static bool is_user_pseudocode_action(const char *name)
+{
+    return name != nullptr
+        && (streq(name, "hx:GenPseudo")
+         || streq(name, "hx:JumpPseudo")
+         || streq(name, "hx:JumpNewPseudo"));
+}
+
+//--------------------------------------------------------------------------
+// Admit automatic rax work only while an explicit user pseudocode action owns
+// this function. Hex-Rays flowchart events have no caller metadata, and the
+// GUI screen address may remain on a function while unrelated plugins or
+// background/decompile-all clients request its decompilation. IDALIB and text
+// mode have no GUI action boundary and therefore require an explicit address.
+//--------------------------------------------------------------------------
+static bool is_focused_function(
+    const chernobog_plugmod_t *self, ea_t function_ea)
+{
+    if ( self == nullptr || function_ea == BADADDR )
         return false;
 
-    if ( batch )
-    {
-        qstring raw;
-        ea_t requested = BADADDR;
-        if ( !qgetenv("CHERNOBOG_RAX_BATCH_EA", &raw) || raw.empty()
-          || !str2ea(&requested, raw.c_str(), BADADDR) )
-        {
-            return false;
-        }
-        const func_t *function = get_func(requested);
-        return function != nullptr && function->start_ea == function_ea;
-    }
+    if ( batch || is_ida_library() )
+        return explicit_rax_target_matches(function_ea);
 
-    TWidget *widget = get_current_widget();
-    vdui_t *view = widget != nullptr ? get_widget_vdui(widget) : nullptr;
-    if ( view != nullptr && view->cfunc != nullptr
-      && view->cfunc->entry_ea == function_ea )
-    {
-        return true;
-    }
-
-    const func_t *function = get_func(get_screen_ea());
-    return function != nullptr && function->start_ea == function_ea;
+    return self->user_decompile_target == function_ea;
 }
 
 //--------------------------------------------------------------------------
@@ -365,7 +379,8 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             return MERR_REDO;
         }
 
-        if ( function_ea != BADADDR && is_focused_function(function_ea)
+        if ( function_ea != BADADDR
+          && is_focused_function(self, function_ea)
           && !is_disabled_mode_enabled()
           && chernobog_function_requires_deobfuscation(function_ea) )
         {
@@ -616,6 +631,7 @@ static bool is_hexrays_plugin(const plugin_t *entry)
 
 void chernobog_plugmod_t::clear_processing_state()
 {
+    user_decompile_target = BADADDR;
     ctree_const_folded.clear();
     ctree_switch_folded.clear();
     ctree_indirect_call_processed.clear();
@@ -890,7 +906,22 @@ static ssize_t idaapi ui_callback(void *ud, int event_id, va_list va)
     if ( self == nullptr )
         return 0;
 
-    if ( event_id == ui_ready_to_run || event_id == ui_database_inited )
+    if ( event_id == ui_preprocess_action )
+    {
+        const char *name = va_arg(va, const char *);
+        self->user_decompile_target = BADADDR;
+        if ( is_user_pseudocode_action(name) )
+        {
+            const func_t *function = get_func(get_screen_ea());
+            if ( function != nullptr )
+                self->user_decompile_target = function->start_ea;
+        }
+    }
+    else if ( event_id == ui_postprocess_action )
+    {
+        self->user_decompile_target = BADADDR;
+    }
+    else if ( event_id == ui_ready_to_run || event_id == ui_database_inited )
     {
         if ( !self->activate() )
             self->schedule_activation_retry();

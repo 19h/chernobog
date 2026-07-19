@@ -386,6 +386,8 @@ TargetEvidence hybrid_build_target_evidence(
       ++result.summary.timeout_runs;
     if ( run.ran && run.outcome.escaped_image )
       ++result.summary.escaped_image_runs;
+    if ( run.ran && run.outcome.function_boundary )
+      ++result.summary.function_boundary_runs;
     if ( run.ran && run.outcome.unmodeled_external )
       ++result.summary.unmodeled_external_runs;
     if ( run.ran && run.outcome.environment_model_failure )
@@ -408,9 +410,9 @@ TargetEvidence hybrid_build_target_evidence(
   }
 
   // Preserve exact context actually consumed by the concrete traces. Code-hook
-  // sizes cover instruction fetches (including callees); image reads cover
-  // global tables, strings, and summary-modeled memory. Repeated loop accesses
-  // collapse into segment-local intervals before bytes are copied.
+  // sizes cover only the selected function; image reads cover global tables,
+  // strings, and summary-modeled memory. Repeated loop accesses collapse into
+  // segment-local intervals before bytes are copied.
   std::vector<DependencyRange> dependencies;
   dependencies.reserve(result.events.execution.size() + result.events.data.size());
   for ( const ExecPoint &point : result.events.execution )

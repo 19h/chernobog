@@ -3,12 +3,12 @@
  *
  * Strategy: mirror the analyzed image into guest memory once, then emulate each
  * function from its entry with a plausible stack whose top holds a sentinel
- * return address. A whole-range code hook records every executed PC (so any
- * taken branch whose target is not the static fall-through becomes a candidate
- * edge — this is how indirect calls/jumps and jump-table targets surface). A
- * memory hook records data reads/writes (computed data references). An invalid
- * hook absorbs faults so a bad path stops cleanly instead of crashing or
- * hanging; an instruction-count and wall-clock cap bound every run.
+ * return address. A whole-range code hook records selected-function PCs and
+ * transfer targets (so indirect calls/jumps and jump-table targets surface),
+ * while stopping before an unmodeled out-of-function target executes. A memory
+ * hook records data reads/writes (computed data references). An invalid hook
+ * absorbs faults so a bad path stops cleanly instead of crashing or hanging;
+ * an instruction-count and wall-clock cap bound every run.
  *
  * Per-run isolation uses rax context snapshots: the clean image+stack+registers
  * are captured once, and restored before each run so one function's stores can't
@@ -54,6 +54,25 @@ bool exit_value_is_attempted_steps(int reason)
     case RAX_STOP_SHUTDOWN:
     case RAX_STOP_DEBUG:
     case RAX_STOP_ERROR:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool stop_preserves_observed_context(int reason)
+{
+  switch ( reason )
+  {
+    // These stops do not imply an unobserved architectural/environment action.
+    // Count/timeout observations remain bounded prefixes whose consumed bytes
+    // can still be complete for a concrete counterexample.
+    case RAX_STOP_COUNT:
+    case RAX_STOP_UNTIL:
+    case RAX_STOP_TIMEOUT:
+    case RAX_STOP_STOPPED:
+    case RAX_STOP_HLT:
+    case RAX_STOP_SHUTDOWN:
       return true;
     default:
       return false;
@@ -142,6 +161,10 @@ struct HookCtx
   bool       terminated_process = false;
   bool       escaped_image = false;
   uint64_t   escape_source = 0;
+  bool       function_boundary = false;
+  uint64_t   function_boundary_source = 0;
+  uint64_t   function_boundary_target = 0;
+  ExecEdge::Kind function_boundary_kind = ExecEdge::Kind::Unknown;
   bool       unmodeled_external = false;
   uint64_t   external_target = 0;
   std::string external_name;
@@ -757,11 +780,11 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
   }
   const uint64_t event_sequence = c->sequence++;
   bool summary_transfer = false;
+  ExecEdge::Kind transfer_kind = ExecEdge::Kind::Unknown;
   if ( c->has_prev )
   {
     uint32_t decoded_size = 0;
-    ExecEdge::Kind edge_kind = ExecEdge::Kind::Unknown;
-    decode_at(c, c->prev_pc, c->prev_decode_mode, &decoded_size, &edge_kind);
+    decode_at(c, c->prev_pc, c->prev_decode_mode, &decoded_size, &transfer_kind);
     const uint64_t instruction_size = c->prev_size != 0 ? c->prev_size : decoded_size;
     uint64_t fallthrough = 0;
     const bool fallthrough_valid = instruction_size != 0
@@ -770,14 +793,13 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
                     && hook_in_function(c, c->prev_pc)
                     && addr >= c->lo && addr < c->hi;
     // Record a taken branch only when its SOURCE is inside the function being
-    // emulated (prev_pc in [flo,fhi)) and its TARGET is inside the image. This
-    // keeps callee bodies (executed under this function's fabricated state) from
-    // contributing edges — each function is mined from its own entry.
+    // emulated and its TARGET is inside the image. An out-of-function target is
+    // retained as boundary evidence below, then stopped before it executes.
     if ( summary_transfer
       && c->out->edges.size() < c->edge_cap )
     {
       c->out->edges.push_back(ExecEdge{ c->prev_pc, addr, c->run_id,
-                                        c->seed, edge_kind, event_sequence });
+                                        c->seed, transfer_kind, event_sequence });
       if ( c->api != nullptr && c->capture_regs != nullptr
         && c->out->states.size() < c->state_cap )
       {
@@ -800,7 +822,9 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
     }
   }
   c->summary_source = c->has_prev ? c->prev_pc : addr;
-  const EmuCallSummary *summary = summary_transfer ? find_summary(c, addr) : nullptr;
+  const EmuCallSummary *summary = summary_transfer
+                               && transfer_kind == ExecEdge::Kind::Call
+                               ? find_summary(c, addr) : nullptr;
   if ( summary != nullptr && summary->kind != EmuSummaryKind::UNMODELED )
   {
     if ( !apply_summary(c, engine, *summary) )
@@ -832,6 +856,18 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
     c->prev_decode_mode = current_decode_mode;
     c->has_prev = true;
     c->last_pc = addr;
+    return;
+  }
+  if ( !hook_in_function(c, addr) )
+  {
+    // The selected FuncRange is the execution boundary. Preserve the observed
+    // transfer itself (recorded above), but never execute an unmodeled callee,
+    // tail target, or fallthrough beyond IDA's current function topology.
+    c->function_boundary = true;
+    c->function_boundary_source = c->has_prev ? c->prev_pc : addr;
+    c->function_boundary_target = addr;
+    c->function_boundary_kind = transfer_kind;
+    c->api->emu_stop(engine);
     return;
   }
   if ( addr >= c->lo && addr < c->hi )
@@ -1015,12 +1051,39 @@ const char *hybrid_rax_stop_reason_name(int reason)
   }
 }
 
+const char *hybrid_rax_status_name(int status)
+{
+  switch ( status )
+  {
+    case RAX_OK: return "success";
+    case RAX_ERR_NOMEM: return "out-of-memory";
+    case RAX_ERR_ARG: return "invalid-argument";
+    case RAX_ERR_HANDLE: return "invalid-handle";
+    case RAX_ERR_ARCH: return "unsupported-architecture";
+    case RAX_ERR_BACKEND: return "backend-unavailable";
+    case RAX_ERR_MODE: return "invalid-mode";
+    case RAX_ERR_MAP: return "unmapped-access";
+    case RAX_ERR_PERM: return "permission-error";
+    case RAX_ERR_BOUNDS: return "bounds-error";
+    case RAX_ERR_REG: return "register-error";
+    case RAX_ERR_STATE: return "invalid-state";
+    case RAX_ERR_FAULT: return "guest-fault";
+    case RAX_ERR_IO: return "host-io-error";
+    case RAX_ERR_FORMAT: return "format-error";
+    case RAX_ERR_HOOK: return "hook-error";
+    case RAX_ERR_UNSUPPORTED: return "unsupported-operation";
+    case RAX_ERR_INTERNAL: return "internal-error";
+    default: return "unknown";
+  }
+}
+
 const char *hybrid_emu_outcome_name(const EmuOutcome &outcome)
 {
   if ( outcome.returned ) return "returned";
   if ( outcome.cancelled ) return "cancelled";
   if ( outcome.unmodeled_external ) return "unmodeled-external";
   if ( outcome.environment_model_failure ) return "environment-model-failure";
+  if ( outcome.function_boundary ) return "function-boundary";
   if ( outcome.escaped_image ) return "escaped-image-or-exception";
   if ( outcome.permission_violation ) return "permission-violation";
   if ( outcome.terminated_process ) return "modeled-process-termination";
@@ -1778,14 +1841,31 @@ bool EmuDriver::emulate_from(uint64_t entry, uint64_t func_end, const HybridConf
     {
       outcome->stop_valid = true;
       outcome->stop_reason = ex.reason;
+      outcome->stop_status = ex.status;
       outcome->stop_pc = ex.address;
       outcome->returned = ex.reason == RAX_STOP_UNTIL; // reached the sentinel
+      if ( ex.reason == RAX_STOP_ERROR && api_->engine_errmsg != nullptr )
+      {
+        char detail[512] = {};
+        if ( api_->engine_errmsg(engine_, detail, sizeof(detail)) > 0 )
+        {
+          outcome->engine_error = detail;
+          std::replace(outcome->engine_error.begin(), outcome->engine_error.end(),
+                       '\n', ' ');
+          std::replace(outcome->engine_error.begin(), outcome->engine_error.end(),
+                       '\r', ' ');
+        }
+      }
     }
     outcome->terminated_process = ctx.terminated_process;
     outcome->permission_violation = ctx.permission_violation;
     outcome->cancelled = ctx.cancellation_requested;
     outcome->escaped_image = ctx.escaped_image;
     outcome->escape_source = ctx.escape_source;
+    outcome->function_boundary = ctx.function_boundary;
+    outcome->function_boundary_source = ctx.function_boundary_source;
+    outcome->function_boundary_target = ctx.function_boundary_target;
+    outcome->function_boundary_kind = ctx.function_boundary_kind;
     outcome->unmodeled_external = ctx.unmodeled_external;
     outcome->external_target = ctx.external_target;
     outcome->external_name = ctx.external_name;
@@ -1795,10 +1875,15 @@ bool EmuDriver::emulate_from(uint64_t entry, uint64_t func_end, const HybridConf
     outcome->memory_observation_requested = ctx.record_memory;
     outcome->memory_observation_available = ctx.record_memory && mem_ok;
     outcome->consumed_context_complete = ctx.record_memory && mem_ok
+                                       && outcome->stop_valid
+                                       && stop_preserves_observed_context(
+                                              outcome->stop_reason)
                                        && !ctx.execution_truncated
                                        && !ctx.dependency_truncated
                                        && !ctx.permission_violation
+                                       && !ctx.cancellation_requested
                                        && !ctx.escaped_image
+                                       && !ctx.function_boundary
                                        && !ctx.unmodeled_external
                                        && !ctx.environment_model_failure
                                        && ctx.summarized_calls == 0

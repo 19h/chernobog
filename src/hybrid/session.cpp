@@ -73,6 +73,17 @@ const char *job_status_name(EmulationJobStatus status)
   }
 }
 
+const char *edge_kind_name(ExecEdge::Kind kind)
+{
+  switch ( kind )
+  {
+    case ExecEdge::Kind::Call: return "call";
+    case ExecEdge::Kind::Jump: return "jump";
+    case ExecEdge::Kind::Return: return "return";
+    default: return "unknown";
+  }
+}
+
 const char *function_flavor_name(HybridFunctionFlavor flavor)
 {
   switch ( flavor )
@@ -262,12 +273,14 @@ struct Session::Impl
           profile.explicit_arguments_known ? "known" : "unknown",
           profile.implicit_arguments());
       msg("[chernobog][rax] outcomes: returned=%zu terminal=%zu "
-          "budget=%zu timeout=%zu escaped=%zu unmodeled_external=%zu "
+          "budget=%zu timeout=%zu escaped=%zu function_boundary=%zu "
+          "unmodeled_external=%zu "
           "model_failure=%zu permission=%zu external_model_runs=%zu "
           "synthetic_entry_runs=%zu attempted_unknown=%zu summarized_calls=%zu\n",
           summary.returned_runs, summary.definitive_terminal_runs,
           summary.instruction_budget_runs, summary.timeout_runs,
-          summary.escaped_image_runs, summary.unmodeled_external_runs,
+          summary.escaped_image_runs, summary.function_boundary_runs,
+          summary.unmodeled_external_runs,
           summary.environment_model_failure_runs,
           summary.permission_violating_runs, summary.external_model_runs,
           summary.synthetic_entry_context_runs,
@@ -341,6 +354,24 @@ struct Session::Impl
           run.outcome.consumed_context_complete ? "complete" : "incomplete",
           static_cast<long long>(run.outcome.sp_delta),
           run.outcome.sp_valid ? "" : " (unknown)");
+      if ( run.outcome.function_boundary )
+      {
+        msg("[chernobog][rax] run=%u function-boundary kind=%s source=%a target=%a "
+            "(target instruction not executed)\n",
+            run.provenance.run_id,
+            edge_kind_name(run.outcome.function_boundary_kind),
+            ea_t(run.outcome.function_boundary_source),
+            ea_t(run.outcome.function_boundary_target));
+      }
+      if ( run.outcome.stop_reason == RAX_STOP_ERROR )
+      {
+        msg("[chernobog][rax] run=%u engine-status=%s(%d)%s%s\n",
+            run.provenance.run_id,
+            hybrid_rax_status_name(run.outcome.stop_status),
+            run.outcome.stop_status,
+            run.outcome.engine_error.empty() ? "" : " detail=",
+            run.outcome.engine_error.c_str());
+      }
       const auto input = std::find_if(
           evidence->inputs.begin(), evidence->inputs.end(),
           [&](const ConcreteInput &candidate)
@@ -476,20 +507,20 @@ struct Session::Impl
     return true;
   }
 
-  void submit_model_replays()
+  bool submit_model_replays()
   {
-    if ( pending || !worker || !image || !evidence )
-      return;
-    if ( !hybrid_current_evidence_is_fresh(function.start) )
-    {
-      hybrid_take_z3_model_replays(owner->database_id(), function.start);
-      msg("[chernobog][rax] Discarded queued Z3 model replay: function or consumed context bytes changed\n");
-      return;
-    }
+    if ( pending || !worker || !image )
+      return false;
     std::vector<Z3ModelReplayRequest> requests = hybrid_take_z3_model_replays(
         owner->database_id(), function.start);
     if ( requests.empty() )
-      return;
+      return false;
+    if ( !evidence || !hybrid_current_evidence_is_fresh(function.start) )
+    {
+      msg("[chernobog][rax] Discarded %zu queued Z3 model replay(s): "
+          "function or consumed context bytes changed\n", requests.size());
+      return false;
+    }
 
     EmulationJob job;
     job.function = function;
@@ -522,7 +553,11 @@ struct Session::Impl
                     std::make_move_iterator(added.end()));
       msg("[chernobog][rax] Submitted %zu Z3 model replay(s) for %a\n",
           requests.size(), ea_t(function.start));
+      return true;
     }
+    msg("[chernobog][rax] Could not submit %zu queued Z3 model replay(s) for %a\n",
+        requests.size(), ea_t(function.start));
+    return false;
   }
 
   int poll()
@@ -538,9 +573,16 @@ struct Session::Impl
         report(false);
       }
     }
-    if ( !pending )
-      submit_model_replays();
-    return pending ? config.poll_ms : 250;
+    if ( pending )
+      return config.poll_ms;
+    if ( submit_model_replays() )
+      return config.poll_ms;
+
+    // Replay requests are produced synchronously by the decompilation that
+    // armed this timer. No pending job and no queued request means the polling
+    // lease is over. A later fresh-evidence decompilation rearms one poll.
+    timer = nullptr;
+    return -1;
   }
 
   bool wait_for_pending(const char *purpose)
@@ -553,10 +595,10 @@ struct Session::Impl
 
     const auto finish_wait = [&](bool value)
     {
-      // GUI sessions keep a low-frequency poll alive after the prerequisite
-      // so later Z3 model-replay requests are still consumed. Headless IDA has
-      // no reliable timer loop and never registers one.
-      if ( !batch )
+      // A GUI session gets one bounded poll lease after the prerequisite so
+      // replay requests produced later in this decompilation can be consumed.
+      // IDALIB/text mode has no reliable UI event loop.
+      if ( !batch && !is_ida_library() )
         start_timer();
       return value;
     };
@@ -796,6 +838,11 @@ EnsureExploredResult Session::ensure_explored(
           ea_t(function_start));
       return EnsureExploredResult::FAILED;
     }
+    // Z3 replay requests are queued later in this same synchronous Hex-Rays
+    // pipeline. Consume them once the GUI event loop resumes, without keeping
+    // a permanent idle timer alive between decompilations.
+    if ( !batch && !is_ida_library() )
+      impl_->start_timer();
     return success;
   };
 
