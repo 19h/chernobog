@@ -1,6 +1,7 @@
 #include "common/arm64_branch.h"
 #include "common/arm64_predicate.h"
 #include "common/bitvector.h"
+#include "common/hexrays_compat.h"
 #include "common/simd.h"
 #include "common/string_recovery.h"
 
@@ -66,6 +67,31 @@ void test_bitvectors()
           "little-endian 24-bit decode");
     check(decode_bytes(nullptr, 4, false) == 0,
           "null byte decode is rejected");
+}
+
+void test_hexrays_merror_layout_compatibility()
+{
+    using chernobog::hexrays_compat::decompiler_version_t;
+    using chernobog::hexrays_compat::parse_decompiler_version;
+    using chernobog::hexrays_compat::uses_timeout_merror_layout;
+
+    decompiler_version_t parsed;
+    check(parse_decompiler_version("9.4.0.260717", &parsed)
+          && parsed.major == 9 && parsed.minor == 4
+          && parsed.revision == 0 && parsed.build_date == 260717,
+          "Hex-Rays four-component version parsing");
+    check(!uses_timeout_merror_layout("9.4.0.260629"),
+          "pre-timeout Hex-Rays merror layout");
+    check(uses_timeout_merror_layout("9.4.0.260630")
+          && uses_timeout_merror_layout("9.4.0.260717")
+          && uses_timeout_merror_layout("9.5.0.260701")
+          && uses_timeout_merror_layout("10.0.0.270101"),
+          "timeout-era Hex-Rays merror layout");
+    check(!uses_timeout_merror_layout(nullptr)
+          && !uses_timeout_merror_layout("9.4.0")
+          && !uses_timeout_merror_layout("9.4.0.260717-extra")
+          && !uses_timeout_merror_layout("9.4.0.99999999999999999999"),
+          "malformed Hex-Rays versions fail closed");
 }
 
 void test_arm64_direct_branch_encoding()
@@ -388,6 +414,7 @@ void test_hikari_string_recovery()
 int main()
 {
     test_bitvectors();
+    test_hexrays_merror_layout_compatibility();
     test_arm64_direct_branch_encoding();
     test_arm64_predicates();
     test_simd_utilities();

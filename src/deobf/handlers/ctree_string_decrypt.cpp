@@ -1384,7 +1384,7 @@ struct encrypted_string_replacer_t : public ctree_visitor_t {
     encrypted_string_replacer_t(
         cfunc_t *cf, const std::map<ea_t, qstring> &plaintexts,
         bool persist)
-        : ctree_visitor_t(CV_FAST), cfunc(cf),
+        : ctree_visitor_t(CV_PARENTS), cfunc(cf),
           known_plaintexts(plaintexts), persist_annotations(persist) {}
     
     // Check if data at address looks encrypted (has non-printable chars)
@@ -1521,6 +1521,42 @@ struct encrypted_string_replacer_t : public ctree_visitor_t {
             default: return "unknown";
         }
     }
+
+    static cexpr_t *strip_expression_casts(cexpr_t *expression)
+    {
+        while ( expression != nullptr && expression->op == cot_cast )
+            expression = expression->x;
+        return expression;
+    }
+
+    // IDA renders a CFString reference as either &cfstr_object or
+    // &cfstr_object.isa. In both forms the complete cot_ref is the rvalue
+    // passed to the call. Replacing only the cot_obj below cot_memref would
+    // turn the member-access base into a string literal, violating the
+    // parent's lvalue requirement (INTERR 50708).
+    static cexpr_t *referenced_cfstring_object(cexpr_t *expression)
+    {
+        if ( expression == nullptr || expression->op != cot_ref )
+            return nullptr;
+        cexpr_t *referent = strip_expression_casts(expression->x);
+        if ( referent == nullptr )
+            return nullptr;
+        if ( referent->op == cot_obj )
+            return referent;
+        if ( referent->op != cot_memref || referent->m != 0 )
+            return nullptr;
+        cexpr_t *object = strip_expression_casts(referent->x);
+        return object != nullptr && object->op == cot_obj ? object : nullptr;
+    }
+
+    bool replacement_requires_lvalue(cexpr_t *current,
+                                     cexpr_t *target)
+    {
+        if ( current == nullptr || target == nullptr )
+            return true;
+        cexpr_t *parent = target == current ? parent_expr() : current;
+        return parent != nullptr && parent->requires_lvalue(target);
+    }
     
     int idaapi visit_expr(cexpr_t *e) override {
         // Debug: log all cot_obj and cot_ref nodes to understand what we're seeing
@@ -1612,12 +1648,12 @@ struct encrypted_string_replacer_t : public ctree_visitor_t {
                 }
             }
         }
-        // CFSTR() shows up as cot_ref -> cot_obj (taking address of CFString structure)
-        // This is the main pattern for CFSTR() in pseudocode
-        else if ( e->op == cot_ref && e->x && e->x->op == cot_obj ) {
-            str_addr = e->x->obj_ea;
+        // CFSTR() shows up as an address of either the CFString object or its
+        // zero-offset isa member. Replace the complete address expression.
+        else if ( cexpr_t *object = referenced_cfstring_object(e) ) {
+            str_addr = object->obj_ea;
             target_expr = e;  // The whole cot_ref expression
-            ctree_str_debug("[replace] Found cot_ref->cot_obj (CFSTR pattern) at 0x%llx\n",
+            ctree_str_debug("[replace] Found complete CFSTR reference at 0x%llx\n",
                            (unsigned long long)str_addr);
         }
         // Direct cot_obj reference
@@ -1791,6 +1827,16 @@ struct encrypted_string_replacer_t : public ctree_visitor_t {
         
         if ( !found ) 
             return 0;
+
+        if ( replacement_requires_lvalue(e, target_expr) ) {
+            cexpr_t *parent = target_expr == e ? parent_expr() : e;
+            ctree_str_debug(
+                "[replace] Skipping lvalue-required %s child of %s at 0x%llx\n",
+                get_op_name(target_expr->op),
+                parent != nullptr ? get_op_name(parent->op) : "unknown",
+                (unsigned long long)target_expr->ea);
+            return 0;
+        }
             
         const ea_t target_ea = target_expr->ea;
 

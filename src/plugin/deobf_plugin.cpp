@@ -4,6 +4,7 @@
 #include "../common/warn_on.h"
 
 #include "component_registry.h"
+#include "../common/hexrays_compat.h"
 
 // Include component headers to trigger registration
 #include "../deobf/deobf_main.h"
@@ -34,6 +35,39 @@ static void debug_log(const char *fmt, ...)
     va_start(args, fmt);
     deobf::debug_vlog("/tmp/chernobog_debug.log", fmt, args);
     va_end(args);
+}
+
+// MERR_LOOP is an internal callback control value and therefore must match the
+// loaded decompiler, not merely the header used to compile this plugin. The
+// 2026-06-30 timeout addition inserted MERR_TIMEOUT at -36 and shifted
+// MERR_LOOP to -37. Some public 9.4 SDK headers still define the old layout.
+static merror_t compatible_merr_loop()
+{
+    static const merror_t runtime_value = []() -> merror_t
+    {
+        // A header containing the timeout addition already has the correct
+        // runtime value. Unknown layouts are likewise safer when left intact.
+        if constexpr ( static_cast<int>(MERR_MAX_ERR) != 35
+                    || static_cast<int>(MERR_LOOP) != -36 )
+        {
+            return MERR_LOOP;
+        }
+
+        const char *runtime_version = get_hexrays_version();
+        if ( chernobog::hexrays_compat::uses_timeout_merror_layout(
+                 runtime_version) )
+        {
+            constexpr int timeout_layout_merr_loop = -37;
+            debug_log(
+                "[chernobog] Hex-Rays %s uses shifted merror layout; "
+                "MERR_LOOP=%d\n",
+                runtime_version,
+                timeout_layout_merr_loop);
+            return static_cast<merror_t>(timeout_layout_merr_loop);
+        }
+        return MERR_LOOP;
+    }();
+    return runtime_value;
 }
 
 #ifndef _WIN32
@@ -488,7 +522,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
                     "[chernobog] hxe_glbopt applied %d branch rewrites at %llx\n",
                     changes,
                     static_cast<unsigned long long>(mba->entry_ea));
-                return MERR_LOOP;
+                return compatible_merr_loop();
             }
         }
     }
