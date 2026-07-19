@@ -98,7 +98,7 @@ endif()
 # A missing or differently checked-out submodule fails configuration instead
 # of fetching or borrowing a checkout from another repository.
 set(CHERNOBOG_RAX_GIT_REVISION
-    "36144a829ccb1f78f6f91ce836d9ab0ad7d4aba5")
+    "776cec9d64e6bbeea43f77edd3f0e402f3b60cad")
 set(_chernobog_rax_root "${CMAKE_CURRENT_SOURCE_DIR}/vendor/rax")
 if(NOT EXISTS "${_chernobog_rax_root}/capi/include/rax.h" OR
    NOT EXISTS "${_chernobog_rax_root}/capi/Cargo.toml")

@@ -1,3 +1,3 @@
 [submodule "vendor/rax"]
 	path = vendor/rax
-	url = https://github.com/19h/rax.git
+	url = https://github.com/HexRaysSA/rax.git

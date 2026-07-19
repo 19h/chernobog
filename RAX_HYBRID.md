@@ -212,7 +212,7 @@ All values are read when an exploration starts.
 ## Build and ABI
 
 The rax source is the `vendor/rax` git submodule, pinned to commit
-`36144a829ccb1f78f6f91ce836d9ab0ad7d4aba5`. Configuration fails when the
+`776cec9d64e6bbeea43f77edd3f0e402f3b60cad`. Configuration fails when the
 submodule is absent, checked out at another revision, or contains uncommitted/
 untracked files; it never fetches rax or borrows a checkout from another
 repository. Cargo is invoked with
