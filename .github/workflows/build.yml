@@ -10,8 +10,8 @@ on:
 
 env:
   IDA_SDK_REPO: HexRaysSA/ida-sdk
-  # Pin CI to a reproducible 9.3 SDK tag instead of tracking ida-sdk/main.
-  IDA_SDK_STABLE_REF: v9.3.0-sdk.2
+  # Match idax's reproducible IDA 9.4.0 release-patch SDK pin.
+  IDA_SDK_STABLE_REF: 6929db6868a524496eb66e76e4ec6c9d720a0594
   XWIN_VERSION: 0.8.0
 
 jobs:

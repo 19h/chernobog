@@ -7,7 +7,7 @@
 namespace chernobog::ida_analysis {
 
 // IDA 9.4 added inf_get_effective_addrsize(). Keep the same 2/4/8-byte
-// semantics when compiling against the stable 9.3 SDK used by CI.
+// semantics for downstream builds that still compile against IDA SDK 9.3.
 inline int effective_address_size_compat()
 {
   return int(inf_get_app_bitness() / 8);
