@@ -208,6 +208,7 @@ All values are read when an exploration starts.
 | `CHERNOBOG_RAX_IMPORT_SUMMARIES` | `1` | Known external-call models |
 | `CHERNOBOG_RAX_STRICT_PERMS` | `1` | Honor IDA segment permissions |
 | `CHERNOBOG_RAX_MAX_RUNTIME_BYTES` | `1048576` | Final dirty bytes per run, maximum 64 MiB |
+| `CHERNOBOG_RAX_BATCH_EA` | unset | Batch/text-mode only: address inside the target function (base autodetection, `0x` accepted); invalid or unset aborts with `BADADDR` |
 
 ## Build and ABI
 

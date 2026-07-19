@@ -19,21 +19,21 @@ The obfuscation dissolves. The algorithm emerges.
 Chernobog automatically detects and reverses the following Hikari obfuscation techniques:
 
 ### Control Flow Obfuscation
-- **Control Flow Flattening (CFF)** - Restores the original control flow graph using Z3 symbolic execution to solve state machines. Includes 7 specialized unflatteners:
-  - `HikariUnflattener` - Hikari-style state machine patterns
-  - `OLLVMUnflattener` - O-LLVM switch-based flattening
-  - `FakeJumpUnflattener` - Opaque predicate branches (always-taken/never-taken)
-  - `BadWhileLoopUnflattener` - Fake `while(1)` loops with guaranteed breaks
-  - `JumpTableUnflattener` - Index-based jump table flattening
-  - `SwitchCaseUnflattener` - Obfuscated switch statements
-  - `GenericUnflattener` - Heuristic-based fallback for unknown patterns
-- **Bogus Control Flow (BCF)** - Identifies and removes opaque predicates, dead branches, and unreachable code blocks
+- **Control Flow Flattening (CFF)** - Restores the original control flow graph using Z3 symbolic execution to solve dispatcher state machines. A single two-phase handler (keyed on state values and block start addresses, not block indices) covers:
+  - Single-level and hierarchical/nested dispatchers
+  - Mixed switch and cascading-conditional dispatchers
+  - State-variable aliasing and conditional (data-dependent) transitions
+  - Index-based jump-table flattening
+  - Hikari magic-constant dispatch detection
+- **Bogus Control Flow (BCF)** - Identifies and removes opaque predicates, dead branches, and unreachable code blocks, including arithmetic identity predicates such as `x*(x+1) % 2 == 0` (always true)
 - **Basic Block Splitting** - Merges artificially split basic blocks back together
 - **Indirect Branches** - Resolves computed branch targets with support for multiple encodings (direct, offset, XOR, combined)
 - **Indirect Calls** - Resolves Hikari's `call(table[index] - offset)` pattern to direct calls
+- **Select-Chain Collapse** - Collapses long cascades of conditional-move (select) diamonds from LLVM select lowering into equivalent branchless expressions, keeping very long chains within Hex-Rays' structural limits
+- **Cross-Function Dispatch (opt-in, `CHERNOBOG_HIKARI_CFG`)** - Recovers Hikari's two-target ARM64 dispatch encoding across IDA function boundaries (relocation table + `CSET` index + signed bias, with an observed XOR key), adds exact IDB edges/comments, and can optionally rewrite side-effect-free dispatch tails to direct conditional branches
 
 ### Data Obfuscation
-- **String Encryption** - Decrypts XOR-encrypted strings and annotates them in the disassembly
+- **String Encryption** - Decrypts XOR- and bitwise-NOT-encrypted strings and annotates them in the disassembly
 - **Constant Encryption** - Resolves encrypted constants (XOR patterns with global variables)
 - **Stack String Construction** - Reconstructs strings built character-by-character on the stack
 - **Global Constant Inlining** - Replaces loads from read-only globals with immediate values
@@ -46,7 +46,7 @@ Mixed Boolean-Arithmetic (MBA) simplification using Z3-certified rules and lazy 
 - `(x | y) + (x & y)` → `x + y`
 - `(x ^ y) + 2*(x & y)` → `x + y`
 - `2*(x | y) - (x ^ y)` → `x + y`
-- `~(~x + ~y) + 1` → `x + y`
+- `~(~x + ~y) + 1` → `x + y + 2`
 
 **Subtraction patterns:**
 - `x + ~y + 1` → `x - y`
@@ -78,8 +78,9 @@ Additional carry-disjoint rules include `x + (y & ~x)` → `x | y`,
 ### VM-Family MBA Recovery
 
 With `CHERNOBOG_VM=1`, functions named `prog_bb_<digits>` are admitted only
-after structural checks for instruction-pointer advancement, bytecode reads,
-and accumulator writes or threaded successors. The handler recovers SSE/scalar
+after structural checks for instruction-pointer advancement and bytecode reads,
+plus at least one of: an accumulator write, a threaded successor, or repeated
+instruction-pointer advancement. The handler recovers SSE/scalar
 accumulator packing, removes masked carrier constants, simplifies local MBA
 identities, and persists handler summaries. Its optional Z3 residual pass is
 enabled separately with `CHERNOBOG_VM_Z3=1`.
@@ -89,32 +90,37 @@ enabled separately with `CHERNOBOG_VM_Z3=1`.
 - **Predicate Rules** - Pattern-based simplification for self-comparisons, tautologies, and identity patterns:
   - `setz x, x` → `1`, `setnz x, x` → `0`
   - `jb x, x` → never taken, `jae x, x` → always taken
-  - `x*(x+1) % 2 == 0` → always true
+- **Native Opaque Branches (opt-in, `CHERNOBOG_NATIVE_OPAQUE`)** - Before Hex-Rays lifts the function, proves and reversibly patches constant ARM64 `B.cond`/`CBZ`/`CBNZ` terminators to a direct `B` or `NOP` (original bytes retained for revert; input binary unchanged)
 
 ### Function Call Obfuscation
-- **Identity Function Calls** - Removes identity function wrappers used to hide call targets
-- **Hikari Function Wrappers** - Unwraps indirect function calls through Hikari-generated wrapper functions
-- **Register Demotion (savedregs)** - Reverses patterns where registers are demoted to stack variables
+- **Identity Function Calls** - Detects and resolves identity-function call chains to their final targets (analysis/annotation only; no structural rewrite is applied)
+- **Hikari Function Wrappers** - Identifies `HikariFunctionWrapper_*` functions, renames them to reflect the real target (e.g. `ObjC_Wrapper_`/`DynAPI_`), and annotates call sites with the resolved API
+- **Saved-Register Slot Resolution (savedregs)** - Resolves indirect call targets and string arguments read from saved-register stack slots using conservative reaching-definition tracing; results are IDB annotations (microcode is not mutated)
 
 ### Platform-Specific
-- **Obfuscated Objective-C Method Calls** - Resolves obfuscated `objc_msgSend` calls on macOS/iOS binaries
+- **Obfuscated Objective-C Method Calls** - Identifies direct and indirect `objc_msgSend` call sites on macOS/iOS binaries, traces selector strings and receivers, and annotates call sites with the resolved method signature
 - **Pointer Reference Resolution** - Handles ObjC class references through indirection tables
 
 ### Ctree-Level Optimizations
 Applied after microcode optimization for additional cleanup:
-- **Constant Folding** - Simplifies constant expressions in the decompiler output
-- **Switch Folding** - Reconstructs switch statements from flattened control flow
-- **Indirect Call Resolution** - Resolves remaining indirect calls in the Ctree
+- **Constant Folding** - Folds XOR expressions involving read-only globals to constants by reading the actual bytes from the binary (Hikari constant/string decryption at the Ctree level)
+- **Switch Folding** - Collapses switches whose controlling expression is provably constant (e.g. `HIDWORD(x)` or `x >> N` state variables), removing the unreachable cases
+- **Indirect Call Resolution** - Resolves Hikari's `(table[index] - offset)(args)` indirect calls to direct calls in the Ctree
 - **String Decryption** - Decrypts strings visible only at Ctree maturity
 
 ## Requirements
 
-- IDA Pro 9.0+ with Hex-Rays decompiler
+- IDA Pro 9.3+ with Hex-Rays decompiler (the plugin is developed against the 9.3/9.4 SDK; the built binary requires the IDA version matching the SDK used to build it)
 - CMake 3.27+
 - Ninja build system
 - Rust stable toolchain with Cargo
 - IDA SDK (set `IDASDK` environment variable)
 - Git
+
+Optional, per target:
+
+- Docker — only for Linux builds from a non-Linux host
+- LLVM (`clang-cl`, `lld-link`, `llvm-lib`, `llvm-rc`) plus an xwin sysroot (`XWIN_ROOT`) — only for Windows cross-builds
 
 ## Building
 
@@ -192,10 +198,12 @@ Notes:
 make install
 ```
 
-Or manually copy the built plugin:
-- macOS: `build/chernobog64.dylib` → `~/.idapro/plugins/`
-- Linux: `build/chernobog64.so` → `~/.idapro/plugins/`
-- Windows: `build/chernobog64.dll` → `%APPDATA%\Hex-Rays\IDA Pro\plugins\`
+Or manually copy the built plugin. The ida-cmake build writes the plugin into
+the IDA SDK's plugin directory (`$IDASDK/bin/plugins`, or `$IDASDK/src/bin/plugins`
+for the GitHub SDK layout) as `chernobog.dylib`/`.so`/`.dll` (no `64` suffix):
+- macOS: `$IDASDK/bin/plugins/chernobog.dylib` → `~/.idapro/plugins/`
+- Linux: `$IDASDK/bin/plugins/chernobog.so` → `~/.idapro/plugins/`
+- Windows: `$IDASDK\bin\plugins\chernobog.dll` → `%APPDATA%\Hex-Rays\IDA Pro\plugins\`
 
 Plugin discovery order is not treated as decompiler availability. If Chernobog
 loads before the Hex-Rays dispatcher is ready, it logs a waiting message and
@@ -214,7 +222,10 @@ Manual invocation also retries activation.
 
 ### Automatic Mode
 
-Set the environment variable `CHERNOBOG_AUTO=1` to automatically deobfuscate functions when they are decompiled.
+Set the environment variable `CHERNOBOG_AUTO=1` to automatically deobfuscate
+functions when they are decompiled. When the variable is unset, auto mode can
+also be enabled by creating an empty `~/.chernobog_auto` marker file; an explicit
+`CHERNOBOG_AUTO` value (including `0`) overrides the marker.
 
 ### Analyze Without Modifying
 
@@ -233,9 +244,11 @@ evidence** for decoder/SMIR, concrete path, branch, indirect-target, memory, and
 Z3 cross-check evidence. Application-mode execution models bounded imports,
 stops before unknown external code, and treats synthetic Objective-C entry
 state or host summaries as exploratory rather than proof-complete. Use
-**Cancel current-function rax exploration** to stop queued runs. The complete
-report semantics, capability boundaries, and configuration are in
-[`RAX_HYBRID.md`](RAX_HYBRID.md).
+**Cancel current-function rax exploration** to stop queued runs. In IDA's
+text/batch mode, set `CHERNOBOG_RAX_BATCH_EA` to an address inside the target
+function and invoke the plugin with argument `0x524158` (ASCII `RAX`) to run the
+exploration synchronously. The complete report semantics, capability boundaries,
+and configuration are in [`RAX_HYBRID.md`](RAX_HYBRID.md).
 
 ### Environment Variables
 
@@ -258,9 +271,13 @@ report semantics, capability boundaries, and configuration are in
 | `CHERNOBOG_MBA_DEBUG=1` | Log affine decisions to `/tmp/chernobog_mba_debug.log` |
 | `CHERNOBOG_VM=1` | Enable VM-family detection and rewriting (opt-in) |
 | `CHERNOBOG_VM_Z3=1` | Enable additional exact-Z3 VM residual simplification |
-| `CHERNOBOG_VM_CARRIER_POOL=...` | Comma-separated VM carrier constants, parsed with base autodetection |
+| `CHERNOBOG_VM_CARRIER_POOL=...` | Comma-, semicolon-, or whitespace-separated VM carrier constants, parsed with base autodetection |
 | `CHERNOBOG_VM_DEBUG=1` | Log VM decisions to `/tmp/chernobog_vm_debug.log` |
 | `CHERNOBOG_VM_DUMP_JSON=1` | Dump VM summaries to `/tmp/chernobog_vm_summary_<EA>.json` |
+
+File-based debug and dump output (`CHERNOBOG_DEBUG`, `CHERNOBOG_MBA_DEBUG`,
+`CHERNOBOG_VM_DEBUG`, `CHERNOBOG_VM_DUMP_JSON`) is available on macOS and Linux
+only; it is compiled out and has no effect in Windows builds.
 
 Raising `CHERNOBOG_MAX_FUNCSIZE_KB` admits larger functions to Hex-Rays and can
 materially increase decompilation time and memory use. It does not override
@@ -324,15 +341,20 @@ Press `Ctrl+Shift+H` to display plugin information and supported obfuscation typ
 
 Chernobog operates as a Hex-Rays optimizer callback, integrating directly into IDA's microcode optimization pipeline. The system uses a sophisticated multi-phase approach:
 
-### Phase 1: Analysis (MMAT_PREOPTIMIZED)
+### Phase 1: Analysis and Transformation (MMAT_LOCOPT)
+Both analysis and application run at `MMAT_LOCOPT` — the earliest maturity at
+which Hex-Rays invokes the block optimizer, and the first point at which the CFG
+can be modified safely:
 - **Pattern Detection**: Identifies obfuscation patterns (flattening, MBA, encrypted strings, etc.)
-- **Z3 Symbolic Execution**: Analyzes state machines and solves for control flow transitions
-- **State Storage**: Results stored using addresses (not block indices) for stability across maturity levels
-
-### Phase 2: Transformation (MMAT_LOCOPT)
-- **CFG Reconstruction**: Applies control flow changes when the graph is stable
+- **Z3 Symbolic Execution**: Analyzes dispatcher state machines and solves for control flow transitions
+- **CFG Reconstruction**: Applies control flow changes, storing transitions by state values and block start addresses (not block indices) for stability across maturity levels
 - **MBA Simplification**: Z3-certified simplification with average O(1) root-opcode lookup and lazy commutative matching
 - **Peephole Optimization**: Local optimizations (constant folding, dead code elimination)
+
+### Phase 2: Late Passes (MMAT_CALLS, MMAT_GLBOPT2, hxe_glbopt)
+- **Indirect Call Resolution**: Runs once call arguments are materialized (`MMAT_CALLS`)
+- **Late VM/MBA Recovery**: VM-family and residual MBA passes run at `MMAT_GLBOPT2`
+- **ARM64 Branch Rewrites**: Reversible native branch and opaque-predicate patching is applied at `hxe_glbopt`
 
 ### Phase 3: Ctree Cleanup (CMAT_FINAL)
 - **High-Level Optimization**: Additional cleanup at the decompiler AST level
@@ -342,7 +364,10 @@ Chernobog operates as a Hex-Rays optimizer callback, integrating directly into I
   are rejected, as are conflicting plaintext producers for one exact address.
   Indexed source bytes are evaluated only when the global-constant admission
   proof establishes the requested element width.
-- **Switch Reconstruction**: Flattened control flow converted back to switch statements
+- **Switch Folding**: Collapses switches whose controlling expression is provably constant, removing the unreachable cases
+
+The Ctree cleanup hook runs automatically only in auto mode; the manual
+**Deobfuscate (Chernobog)** action applies its Ctree passes through its own path.
 
 ### Key Technical Features
 
@@ -358,11 +383,12 @@ Many handlers use a two-phase analyze/apply approach to ensure stability:
 1. Analysis phase captures transitions using state values and addresses
 2. Application phase verifies and applies changes when CFG is stable
 
-#### Pattern Fuzzing
-The pattern matcher automatically generates equivalent variants:
-- Commutative: `x + y == y + x`
-- Add/Sub equivalence: `x + neg(y) == x - y`
-- Configurable depth and variant limits
+#### Lazy Commutative Matching
+Rather than pre-generating factorially many pattern variants, the matcher tries
+the swapped operand order at match time for the five commutative microcode
+operators (`m_add`, `m_mul`, `m_and`, `m_or`, `m_xor`) with binding rollback.
+Add/subtract equivalences such as `x + (-y) == x - y` are separate registered
+rules rather than generated variants.
 
 ## Testing
 
@@ -388,9 +414,10 @@ Test coverage includes:
 - exact-width bit-vector and target-endian decoding semantics
 - alignment-independent SIMD hashing and comparison
 - unique-model Z3 solving, including ambiguous/unsatisfiable/64-bit cases
-- all 104 registered MBA rules, Z3-verified at 8, 16, 32, and 64 bits
+- all 108 registered MBA rules, Z3-verified at 8, 16, 32, and 64 bits
 - commutative AST matching and binding rollback for five microcode operators
 - Hikari XOR-string recovery with both terminator forms and corruption rejection
+- rax hybrid-engine regression: ARM64 memory mapping and accounting, external/application boundaries, Objective-C entry ABI, decoder/SMIR analysis, in-flight cancellation, and worker/evidence generation
 
 The CTest targets are SDK-linked but do not constitute a live-IDB decompiler
 integration test. Runtime validation requires an IDA/Hex-Rays build compatible
@@ -402,7 +429,7 @@ with the SDK used to compile the plugin and a representative binary corpus.
 - Custom or heavily modified Hikari variants may not be fully supported
 - Some obfuscation patterns may require manual cleanup after automated processing
 - Anti-analysis tricks (anti-debug, VM detection) are not handled
-- Z3 analysis has configurable timeouts; extremely complex state machines may not solve
+- Z3 analysis is bounded by fixed internal timeouts (about 5 s per solve, shorter for opaque-predicate and rule-verification checks); extremely complex state machines may not solve within them
 
 ## Contributing
 
@@ -412,7 +439,7 @@ Contributions are welcome! Areas that could use improvement:
 - Performance optimizations for large functions
 - Support for other LLVM-based obfuscators (additional OLLVM variants, etc.)
 - Additional MBA simplification rules
-- New unflattener strategies for novel patterns
+- New dispatcher/flattening patterns for the deflatten handler
 
 When adding new MBA rules, use the `DEFINE_MBA_RULE` macro:
 ```cpp
