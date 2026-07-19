@@ -650,7 +650,7 @@ static switch_dispatch_evidence_t analyze_switch_dispatch(
     features.selector_instruction_count = instruction_count(dispatcher_block);
     features.selector_transform_count = selector_transform_count(
         dispatcher_block);
-    if ( features.selector_transform_count < 2 ) {
+    if ( features.selector_transform_count < 3 ) {
         const int capped_cases = static_cast<int>(std::min<std::size_t>(
             features.case_count,
             static_cast<std::size_t>(std::numeric_limits<int>::max() - 10)));
