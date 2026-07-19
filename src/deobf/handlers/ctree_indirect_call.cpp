@@ -274,7 +274,8 @@ int ctree_indirect_call_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx)
         qstring comment;
         comment.sprnt("DEOBF: Resolved indirect call -> %s (0x%llX)", 
                       target_name.c_str(), (unsigned long long)target);
-        set_cmt(call_expr->ea, comment.c_str(), false);
+        deobf::set_cmt_if_changed(
+            call_expr->ea, comment.c_str(), false);
         
         changes++;
         if ( ctx ) 

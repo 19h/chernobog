@@ -100,6 +100,7 @@ private:
     
     // Replace all encrypted strings in ctree using known plaintexts
     static int replace_encrypted_strings(cfunc_t *cfunc,
-                                        const std::map<ea_t, qstring> &known_plaintexts);
+                                        const std::map<ea_t, qstring> &known_plaintexts,
+                                        bool persist_annotations);
     
 };

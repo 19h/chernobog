@@ -111,6 +111,8 @@ namespace deobf {
     void set_verbose(bool v);
     bool debug_enabled();
     void debug_vlog(const char *path, const char *fmt, va_list va);
+    bool set_cmt_if_changed(ea_t address, const char *comment,
+                            bool repeatable);
 
     // Microcode helpers
     bool is_jcc(mcode_t op);

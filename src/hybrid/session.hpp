@@ -39,6 +39,9 @@ public:
   void cancel();
   void clear();
   void invalidate_function(uint64_t function_start);
+  // Consume the one-shot signal that fresh evidence changed IDA analysis.
+  // Hex-Rays flowchart callbacks use it to request a coherent rebuild.
+  bool take_analysis_changes();
 
   int64_t database_id() const { return database_id_; }
   bool enabled() const;

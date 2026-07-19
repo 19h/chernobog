@@ -101,6 +101,31 @@ enabled separately with `CHERNOBOG_VM_Z3=1`.
 - **Obfuscated Objective-C Method Calls** - Identifies direct and indirect `objc_msgSend` call sites on macOS/iOS binaries, traces selector strings and receivers, and annotates call sites with the resolved method signature
 - **Pointer Reference Resolution** - Handles ObjC class references through indirection tables
 
+### IDA Analysis Enrichment
+
+Chernobog improves the native IDB before Hex-Rays lifting. The default-on,
+per-database engine integrates selected viy and Hex-Rays generic-deobfuscator
+analysis techniques without importing either plugin wholesale:
+
+- correct x86 redundant-prefix decoding; recover call/pop and constant
+  push/return control flow
+- annotate architectural-zero, adjacent-opposite, entry-flag, and locally
+  proven x86 flag predicates
+- add exact indirect targets resolved by IDA's register tracker and conservatively
+  retype bounded jump-over-garbage gaps
+- after autoanalysis, perform one bounded IDA decoder/xref pass for direct-call
+  orphan functions and wrapper outlining
+- project fresh current-function rax evidence into guarded code/data references,
+  undefined data types/strings, pointer offsets, function candidates, i386 purge
+  metadata, and analysis comments
+
+The post-autoanalysis pass is native metadata analysis, not execution. rax is
+never run as a database sweep: it snapshots and explores only the focused
+function, uses one worker, and does not recursively emulate callees. Dynamic
+IDB mutations require at least two distinct runs by default; setting
+`FUNC_NORET`, incomplete switch metadata, and observed-only opaque-predicate
+comments remain separate opt-ins.
+
 ### Ctree-Level Optimizations
 Applied after microcode optimization for additional cleanup:
 - **Constant Folding** - Folds XOR expressions involving read-only globals to constants by reading the actual bytes from the binary (Hikari constant/string decryption at the Ctree level)
@@ -268,6 +293,15 @@ and configuration are in [`RAX_HYBRID.md`](RAX_HYBRID.md).
 | `CHERNOBOG_DEBUG=1` | Enable debug output to `/tmp/chernobog_debug.log` |
 | `CHERNOBOG_RESET=1` | Clear decompiler cache on startup |
 | `CHERNOBOG_DISABLE=1` | Disable transformations while retaining plugin lifecycle and optional cache reset |
+| `CHERNOBOG_IDA_ANALYSIS=0` | Disable native IDA analysis enrichment and rax evidence materialization |
+| `CHERNOBOG_IDA_POST_SCAN_HEADS=<n>` | Bound the one-shot native orphan-call scan to `n` heads in executable segments (default 1000000; hard range 1..100000000) |
+| `CHERNOBOG_IDA_POST_SCAN_FUNCTIONS=<n>` | Bound the one-shot wrapper scan to `n` IDA functions (default 100000; hard range 1..10000000) |
+| `CHERNOBOG_RAX_APPLY_ANALYSIS=0` | Retain current-function rax reporting/display evidence but suppress all IDB materialization from it |
+| `CHERNOBOG_RAX_MIN_DYNAMIC_RUNS=<n>` | Minimum distinct current-function runs for dynamic xrefs/types (default 2; range 1..32) |
+| `CHERNOBOG_RAX_MIN_NORET_RUNS=<n>` | Minimum conclusive non-returning runs for a no-return comment (default 3; range 2..64) |
+| `CHERNOBOG_RAX_SET_NORET=1` | Opt in to setting `FUNC_NORET`; comments alone remain default |
+| `CHERNOBOG_RAX_SWITCH=1` | Opt in to incomplete observed-target custom-switch metadata |
+| `CHERNOBOG_RAX_OPAQUE=1` | Opt in to observed-only opaque-predicate comments |
 | `CHERNOBOG_MAX_FUNCSIZE_KB=<n>` | Set Hex-Rays' process-local function-size ceiling to decimal `n` KiB (1..1048576); leaves `hexrays.cfg` unchanged |
 | `CHERNOBOG_WRITABLE_CONST=1` | Inline loaded 1/2/4/8-byte writable scalars with classified direct reads, no direct writes, no address escape, and no loader fixup on the scalar |
 | `CHERNOBOG_WRITABLE_CONST=2` | Additionally admit address-taken scalars/objects (including resolved data-pointer xrefs without retained fixups) and relocation-backed code-pointer slots in writable data; requires ruling out indirect mutation |

@@ -9,6 +9,7 @@
 #include "rax_loader.hpp"
 #include "static_analysis.hpp"
 #include "z3_bridge.hpp"
+#include "../ida_analysis/evidence_apply.hpp"
 #include "../plugin/component_registry.h"
 
 #include <pro.h>
@@ -157,6 +158,7 @@ struct Session::Impl
   uint32_t next_run_id = 0;
   bool pending = false;
   bool summary_reported = false;
+  bool analysis_changed = false;
   uint64_t reported_generation = 0;
   size_t reported_run_count = 0;
 
@@ -214,6 +216,12 @@ struct Session::Impl
     if ( hybrid_publish_evidence(owner->database_id(), candidate) )
     {
       evidence = std::move(candidate);
+      // Completion polling and bounded synchronous waits both execute on
+      // IDA's main thread. Project only fresh evidence after publication, so
+      // every IDB mutation retains the exact function/context identity check.
+      const chernobog::ida_analysis::EvidenceApplyStats applied =
+          chernobog::ida_analysis::apply_evidence_to_ida(*evidence);
+      analysis_changed = analysis_changed || applied.total() != 0;
     }
     else
     {
@@ -749,6 +757,7 @@ bool Session::explore(vdui_t *view, uint64_t fallback_address)
       1, hybrid_make_rax_worker_factory(std::move(options)), 1));
   impl_->accumulated = EmulationJobResult{};
   impl_->summary_reported = false;
+  impl_->analysis_changed = false;
   impl_->reported_generation = 0;
   impl_->reported_run_count = 0;
   if ( !impl_->submit_job(std::move(job)) )
@@ -779,11 +788,22 @@ bool Session::explore(vdui_t *view, uint64_t fallback_address)
 EnsureExploredResult Session::ensure_explored(
     uint64_t function_start, uint64_t focus_address)
 {
+  const auto begin_projection = [&](EnsureExploredResult success)
+  {
+    if ( !hybrid_begin_deobfuscation_projection(function_start) )
+    {
+      msg("[chernobog][rax] Fresh evidence changed before the deobfuscation projection could begin at %a\n",
+          ea_t(function_start));
+      return EnsureExploredResult::FAILED;
+    }
+    return success;
+  };
+
   impl_->config = hybrid_load_config();
   if ( !impl_->config.enabled )
     return EnsureExploredResult::DISABLED;
   if ( hybrid_current_evidence_is_fresh(function_start) )
-    return EnsureExploredResult::ALREADY_FRESH;
+    return begin_projection(EnsureExploredResult::ALREADY_FRESH);
   if ( rax_load() == nullptr )
   {
     msg("[chernobog][rax] Pre-deobfuscation exploration unavailable: %s\n",
@@ -803,12 +823,13 @@ EnsureExploredResult Session::ensure_explored(
   }
   if ( !impl_->pending )
     return hybrid_current_evidence_is_fresh(function_start)
-         ? EnsureExploredResult::EXPLORED : EnsureExploredResult::FAILED;
+         ? begin_projection(EnsureExploredResult::EXPLORED)
+         : EnsureExploredResult::FAILED;
 
   WaitBox wait;
-  return impl_->wait_for_pending("Pre-deobfuscation")
-       ? EnsureExploredResult::EXPLORED
-       : user_cancelled() ? EnsureExploredResult::CANCELLED
+  if ( impl_->wait_for_pending("Pre-deobfuscation") )
+    return begin_projection(EnsureExploredResult::EXPLORED);
+  return user_cancelled() ? EnsureExploredResult::CANCELLED
                           : EnsureExploredResult::FAILED;
 }
 
@@ -852,6 +873,7 @@ void Session::clear()
   impl_->evidence.reset();
   impl_->next_run_id = 0;
   impl_->summary_reported = false;
+  impl_->analysis_changed = false;
   impl_->reported_generation = 0;
   impl_->reported_run_count = 0;
   hybrid_clear_evidence(database_id_);
@@ -861,6 +883,13 @@ void Session::invalidate_function(uint64_t function_start)
 {
   if ( impl_->function.start == function_start )
     clear();
+}
+
+bool Session::take_analysis_changes()
+{
+  const bool changed = impl_->analysis_changed;
+  impl_->analysis_changed = false;
+  return changed;
 }
 
 Session *hybrid_current_session()

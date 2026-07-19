@@ -34,16 +34,30 @@ void hybrid_clear_evidence(int64_t database_id);
 // only; false also covers missing evidence and a database-context mismatch.
 bool hybrid_current_evidence_is_fresh(uint64_t function_start);
 
+// Start a display-only projection immediately before Chernobog mutates the
+// explored function, seal intermediate trusted mutations, then finish it at
+// CMAT_FINAL. The source evidence remains stale for proof consumers; only
+// cross-run runtime literals may survive through this explicitly bounded
+// transformation window. All operations are main-thread only. A failed seal
+// invalidates the window; changed function bytes also require exact patch-site
+// authorization. Finish prevents any later resealing.
+bool hybrid_begin_deobfuscation_projection(uint64_t function_start);
+void hybrid_abandon_deobfuscation_projection(uint64_t function_start);
+bool hybrid_authorize_deobfuscation_patch(
+    uint64_t function_start, uint64_t address, size_t size);
+bool hybrid_seal_deobfuscation_projection(uint64_t function_start);
+bool hybrid_finish_deobfuscation_projection(uint64_t function_start);
+
 // Consensus runtime plaintext for proof-adjacent consumers. This requires the
 // complete function-plus-consumed-context identity to remain current.
 std::vector<RuntimeStringCandidate> hybrid_current_runtime_strings(
     uint64_t function_start);
 
 // Display-only projection for the ctree produced from the explored function.
-// Existing deobfuscation handlers may have patched data after exploration, so
-// this checks the exact function identity but intentionally does not promote
-// the strings to fresh branch/Z3 evidence. The values remain concrete
-// cross-run witnesses and may only be used for literals or annotations.
+// It accepts either the original exact function identity or the post-pass
+// identity sealed by the begin/seal window above. It intentionally does not
+// promote stale source evidence to branch/Z3 proof. The values remain concrete
+// cross-run witnesses and may only be used as transient literals.
 std::vector<RuntimeStringCandidate>
 hybrid_current_runtime_strings_for_decompilation(uint64_t function_start);
 

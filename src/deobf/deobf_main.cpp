@@ -20,6 +20,7 @@
 #include "handlers/ctree_string_decrypt.h"
 #include "rules/rule_registry.h"
 #include "../hybrid/session.hpp"
+#include "../hybrid/z3_bridge.hpp"
 
 // Forward declaration
 static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx);
@@ -89,6 +90,8 @@ void chernobog_mark_function_deobfuscated(ea_t func_ea)
     deobf_module_state_t *state = get_deobf_state();
     if ( state != nullptr )
         state->optblock_processed.insert({func_ea, MMAT_LOCOPT});
+    chernobog::hybrid::hybrid_seal_deobfuscation_projection(
+        uint64_t(func_ea));
 }
 
 // Clear ALL tracking caches (called on database load if CHERNOBOG_RESET=1)
@@ -186,6 +189,11 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
         full_ctx.func_ea = func_ea;
 
         const int full_changes = run_deobfuscation_passes(mba, &full_ctx);
+        // The prerequisite captured the pre-pass identity. Preserve only the
+        // display-only runtime plaintext projection across the exact bytes
+        // written by this trusted pass; proof consumers remain fail-closed.
+        chernobog::hybrid::hybrid_seal_deobfuscation_projection(
+            uint64_t(func_ea));
         optblock_debug("[optblock] Detected obfuscations: 0x%x\n", full_ctx.detected_obf);
         optblock_debug("[optblock] Full deobfuscation complete, changes: blocks=%d, branches=%d, indirect=%d\n",
                        full_ctx.blocks_merged, full_ctx.branches_simplified, full_ctx.indirect_resolved);
@@ -621,6 +629,12 @@ static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx)
     // 8. Ctree-level string analysis (runs on cfunc if available)
     if ( ctx->cfunc )
     {
+        // Manual deobfuscation operates on the cfunc that entered this pass.
+        // Seal after all MBA/byte handlers, before its ctree phase, so runtime
+        // literals are available in this first pass as well as in the refresh
+        // requested by the action handler.
+        chernobog::hybrid::hybrid_seal_deobfuscation_projection(
+            uint64_t(ctx->func_ea));
         int str_changes = ctree_string_decrypt_handler_t::run(ctx->cfunc, ctx);
         if ( str_changes > 0 )
         {

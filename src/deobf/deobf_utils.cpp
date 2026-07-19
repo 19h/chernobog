@@ -79,6 +79,19 @@ void log_verbose(const char *fmt, ...)
     va_end(va);
 }
 
+bool set_cmt_if_changed(ea_t address, const char *comment, bool repeatable)
+{
+    if ( address == BADADDR || comment == nullptr )
+        return false;
+    qstring existing;
+    if ( get_cmt(&existing, address, repeatable) >= 0
+      && existing == comment )
+    {
+        return false;
+    }
+    return set_cmt(address, comment, repeatable);
+}
+
 bool is_jcc(mcode_t op)
 {
     return op >= m_jcnd && op <= m_jle;

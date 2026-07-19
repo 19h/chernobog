@@ -83,22 +83,33 @@ summaries. It never calls the IDA SDK.
     worker ticket, run ID, and seed. Before publication, display, Z3, or handler
     consumption, every function chunk plus the exact code/data ranges consumed
     by the trace are byte- and initialized-mask-compared with the live IDB;
-    stale evidence fails closed. Display-only runtime literals retain the exact
-    function-generation check but do not claim proof freshness after an
-    existing deobfuscation handler patches consumed data bytes. They are never
-    exposed to branch/Z3 proof consumers through that relaxed path. AArch32
-    entry ARM/Thumb state is also compared.
+    stale evidence fails closed. Immediately before a Chernobog-owned
+    deobfuscation pass, an exact-fresh prerequisite can open a display-only
+    projection; the pass then seals that projection to the exact resulting
+    function bytes and closes the sealing lease at `CMAT_FINAL`. This permits
+    cross-run runtime literals to survive only Chernobog's bounded mutation
+    window while the original evidence remains stale for branch/Z3 proof
+    consumers. Every changed function byte must also belong to an explicitly
+    registered Chernobog patch site and equal its registered result. Later or
+    unregistered function-byte edits, topology changes, and entry-profile
+    changes fail the sealed identity check. Consumed data-byte
+    changes are also never promoted to proof freshness. AArch32 entry
+    ARM/Thumb state is compared.
 14. **Reproducibility and regression evidence**: seeds, source-level input
     order, run identifiers, unique sites, observation multiplicities, decoder
     mismatch categories, and exact consumed ranges are retained so two runs or
     two decoder versions can be compared without conflating sites with events.
 
-No rax evidence path patches database bytes, adds xrefs, creates functions,
-changes types, or rewrites microcode. Consensus runtime strings can rewrite
-only the newly built, current-function ctree into display literals and
-associated comments; rax final-memory bytes are not copied into the IDB.
-Existing Chernobog transformations can independently patch database bytes and
-retain their own proof obligations.
+No rax evidence path patches database bytes or rewrites microcode. After fresh
+evidence publication, a guarded main-thread consumer may add exact decoder
+crefs; corroborated dynamic crefs/drefs; metadata on undefined data; function,
+i386 purge, and analysis-comment hints. Dynamic actions require at least two
+distinct runs by default, and incomplete switch/opaque metadata plus
+`FUNC_NORET` remain opt-in. Consensus runtime strings rewrite only the newly
+built current-function ctree into transient display literals. They become an
+IDB string only when the identical NUL-terminated bytes are already loaded and
+undefined; rax final-memory bytes are never copied into the IDB. Existing
+Chernobog transformations retain their independent proof obligations.
 
 ## Application-mode execution model
 
@@ -235,6 +246,12 @@ All values are read when an exploration starts.
 | `CHERNOBOG_RAX_STRICT_PERMS` | `1` | Honor IDA segment permissions |
 | `CHERNOBOG_RAX_MAX_RUNTIME_BYTES` | `1048576` | Final dirty bytes per run, maximum 64 MiB |
 | `CHERNOBOG_RAX_BATCH_EA` | unset | Batch/text-mode only: address inside the target function (base autodetection, `0x` accepted); invalid or unset aborts with `BADADDR` |
+| `CHERNOBOG_RAX_APPLY_ANALYSIS` | `1` | Guarded current-function evidence-to-IDB consumer; `0` retains reporting/display only |
+| `CHERNOBOG_RAX_MIN_DYNAMIC_RUNS` | `2` | Corroboration floor for dynamic xrefs/data metadata, range 1–32 |
+| `CHERNOBOG_RAX_MIN_NORET_RUNS` | `3` | Conclusive non-returning-run floor for comments, range 2–64 |
+| `CHERNOBOG_RAX_SET_NORET` | `0` | Opt in to setting `FUNC_NORET` and reanalysis |
+| `CHERNOBOG_RAX_SWITCH` | `0` | Opt in to incomplete observed-target custom-switch metadata |
+| `CHERNOBOG_RAX_OPAQUE` | `0` | Opt in to observed-only opaque-predicate comments |
 
 ## Build and ABI
 

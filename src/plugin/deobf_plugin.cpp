@@ -16,6 +16,7 @@
 #include "../deobf/handlers/native_opaque.h"
 #include "../hybrid/session.hpp"
 #include "../hybrid/z3_bridge.hpp"
+#include "../ida_analysis/native_engine.hpp"
 
 #include <map>
 #include <set>
@@ -65,6 +66,8 @@ struct chernobog_plugmod_t final : public plugmod_t
     bool native_opaque_attempted = false;
     qtimer_t activation_timer = nullptr;
     int activation_attempts = 0;
+    std::unique_ptr<chernobog::ida_analysis::NativeAnalysisEngine>
+        ida_analysis;
     std::unique_ptr<chernobog::hybrid::Session> hybrid_session;
 
     // All address-keyed state belongs to this database instance.
@@ -307,7 +310,12 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         const bool hikari_changed = self->recover_hikari_cfg_if_ready(true);
         const bool native_changed = self->recover_native_opaque_if_ready(true);
         if ( hikari_changed || native_changed )
+        {
+            if ( function_ea != BADADDR )
+                chernobog::hybrid::hybrid_abandon_deobfuscation_projection(
+                    uint64_t(function_ea));
             return MERR_REDO;
+        }
 
         if ( function_ea != BADADDR && is_focused_function(function_ea)
           && !is_disabled_mode_enabled()
@@ -322,6 +330,16 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             {
                 msg("[chernobog][rax] Pre-deobfuscation exploration for %a did not produce fresh evidence; continuing without rax evidence\n",
                     function_ea);
+            }
+            if ( self->hybrid_session != nullptr
+              && self->hybrid_session->take_analysis_changes() )
+            {
+                // Static/dynamic evidence may have added exact IDB edges or
+                // metadata while this flowchart prerequisite was running.
+                // Rebuild once from the enriched database.
+                chernobog::hybrid::hybrid_abandon_deobfuscation_projection(
+                    uint64_t(function_ea));
+                return MERR_REDO;
             }
         }
     }
@@ -387,6 +405,8 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
                 run_local_constant_branches(mba, &branch_ctx);
             if ( changes > 0 )
             {
+                chernobog::hybrid::hybrid_seal_deobfuscation_projection(
+                    uint64_t(mba->entry_ea));
                 debug_log(
                     "[chernobog] hxe_glbopt applied %d branch rewrites at %llx\n",
                     changes,
@@ -462,6 +482,11 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
                     msg("[chernobog] Ctree string materialization: applied %d literals\n",
                         changes);
             }
+        }
+        if ( cfunc != nullptr && maturity == CMAT_FINAL )
+        {
+            chernobog::hybrid::hybrid_finish_deobfuscation_projection(
+                uint64_t(cfunc->entry_ea));
         }
     }
     return 0;
@@ -625,6 +650,8 @@ bool chernobog_plugmod_t::activate()
         msg("[chernobog] Cleared Hex-Rays decompiler cache (CHERNOBOG_RESET=1)\n");
     }
 
+    if ( ida_analysis && auto_is_ok() )
+        ida_analysis->on_autoanalysis_complete();
     recover_hikari_cfg_if_ready();
     recover_native_opaque_if_ready();
 
@@ -759,11 +786,17 @@ static ssize_t idaapi idb_callback(void *ud, int event_id, va_list)
     if ( self != nullptr )
     {
         if ( event_id == idb_event::closebase )
+        {
             self->clear_processing_state();
+            if ( self->ida_analysis )
+                self->ida_analysis->reset();
+        }
         else if ( event_id == idb_event::auto_empty_finally )
         {
             if ( !self->hexrays_initialized && !self->activate() )
                 self->schedule_activation_retry();
+            if ( self->ida_analysis )
+                self->ida_analysis->on_autoanalysis_complete();
             self->recover_hikari_cfg_if_ready();
             self->recover_native_opaque_if_ready();
         }
@@ -776,6 +809,7 @@ chernobog_plugmod_t::chernobog_plugmod_t()
     debug_log("[chernobog] Per-IDB plugmod created, dbctx=%lld\n",
         static_cast<long long>(get_dbctx_id()));
 
+    ida_analysis.reset(new chernobog::ida_analysis::NativeAnalysisEngine());
     hybrid_session.reset(new chernobog::hybrid::Session(
         static_cast<int64_t>(get_dbctx_id())));
 

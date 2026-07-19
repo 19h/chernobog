@@ -68,10 +68,18 @@ bool patch_arm64_indirect_tail(ea_t branch_ea, ea_t target_ea)
 
     // patch_dword preserves the original IDB bytes for Edit/Patch program/
     // Revert. The input file on disk is not modified.
-    if ( !patch_dword(branch_ea, *encoding)
-      && static_cast<uint32_t>(get_dword(branch_ea)) != *encoding )
-    {
+    patch_dword(branch_ea, *encoding);
+    if ( static_cast<uint32_t>(get_dword(branch_ea)) != *encoding )
         return false;
+
+    // A display projection can retain this exact Chernobog-owned patch, but
+    // no other function-byte change in the decompiler window. Authorization
+    // records the bytes after patch_dword has verified the final encoding.
+    const func_t *owner = get_func(branch_ea);
+    if ( owner != nullptr )
+    {
+        (void)chernobog::hybrid::hybrid_authorize_deobfuscation_patch(
+            uint64_t(owner->start_ea), uint64_t(branch_ea), sizeof(uint32_t));
     }
 
     // A prior multi-target CFG annotation may have attached several exact

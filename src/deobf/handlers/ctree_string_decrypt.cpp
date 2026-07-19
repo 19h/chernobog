@@ -1316,14 +1316,15 @@ int ctree_string_decrypt_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx)
     // prevents a shorter static fragment at the same address from winning.
     if ( !runtime_plaintexts.empty() ) {
         runtime_object_replacements = replace_encrypted_strings(
-            cfunc, runtime_plaintexts);
+            cfunc, runtime_plaintexts, false);
         replacements += runtime_object_replacements;
         for ( const auto &entry : runtime_plaintexts )
             addr_to_plaintext.erase(entry.first);
     }
 
     if ( !addr_to_plaintext.empty() ) {
-        int replaced = replace_encrypted_strings(cfunc, addr_to_plaintext);
+        int replaced = replace_encrypted_strings(
+            cfunc, addr_to_plaintext, true);
         if ( replaced > 0 ) {
             replacements += replaced;
             ctree_str_debug("[ctree_string] Materialized %d encrypted string references\n", replaced);
@@ -1376,11 +1377,15 @@ static bool replace_ctree_string_literal(cexpr_t *target,
 struct encrypted_string_replacer_t : public ctree_visitor_t {
     cfunc_t *cfunc;
     const std::map<ea_t, qstring> &known_plaintexts;
+    bool persist_annotations;
     std::map<ea_t, qstring> recovered_comments;
     int replacements = 0;
     
-    encrypted_string_replacer_t(cfunc_t *cf, const std::map<ea_t, qstring> &plaintexts)
-        : ctree_visitor_t(CV_FAST), cfunc(cf), known_plaintexts(plaintexts) {}
+    encrypted_string_replacer_t(
+        cfunc_t *cf, const std::map<ea_t, qstring> &plaintexts,
+        bool persist)
+        : ctree_visitor_t(CV_FAST), cfunc(cf),
+          known_plaintexts(plaintexts), persist_annotations(persist) {}
     
     // Check if data at address looks encrypted (has non-printable chars)
     static bool is_encrypted_string(ea_t addr, size_t max_len = 256)
@@ -1790,10 +1795,11 @@ struct encrypted_string_replacer_t : public ctree_visitor_t {
         const ea_t target_ea = target_expr->ea;
 
         // Add comment at the expression's address
-        if ( target_ea != BADADDR ) {
+        if ( persist_annotations && target_ea != BADADDR ) {
             qstring comment;
             comment.sprnt("DEOBF: Decrypted CFSTR = \"%s\"", decrypted.c_str());
-            set_cmt(target_ea, comment.c_str(), false);
+            deobf::set_cmt_if_changed(
+                target_ea, comment.c_str(), false);
         }
 
         if ( replace_ctree_string_literal(target_expr, decrypted) ) {
@@ -1809,7 +1815,7 @@ struct encrypted_string_replacer_t : public ctree_visitor_t {
         // ctree comment for the final rendering as well; install it after the
         // visitor completes so traversing the current tree is side-effect
         // free.
-        if ( target_ea != BADADDR )
+        if ( persist_annotations && target_ea != BADADDR )
             recovered_comments.emplace(target_ea, decrypted);
         return 0;
     }
@@ -1937,9 +1943,11 @@ static int apply_runtime_string_arguments(
 
 int ctree_string_decrypt_handler_t::replace_encrypted_strings(
     cfunc_t *cfunc, 
-    const std::map<ea_t, qstring> &known_plaintexts)
+    const std::map<ea_t, qstring> &known_plaintexts,
+    bool persist_annotations)
 {
-    encrypted_string_replacer_t replacer(cfunc, known_plaintexts);
+    encrypted_string_replacer_t replacer(
+        cfunc, known_plaintexts, persist_annotations);
     replacer.apply_to(&cfunc->body, nullptr);
     bool comments_changed = false;
     for ( const auto &entry : replacer.recovered_comments )
@@ -1987,13 +1995,14 @@ void ctree_string_decrypt_handler_t::annotate_reveal(const string_reveal_t &reve
         comment.sprnt("DEOBF: %s reveals \"%s\"", type, reveal.plaintext.c_str());
     }
     
-    set_cmt(reveal.location, comment.c_str(), false);
+    deobf::set_cmt_if_changed(reveal.location, comment.c_str(), false);
     
     // Also annotate at destination if it's a global
     if ( reveal.dest_addr != BADADDR ) {
         qstring dest_comment;
         dest_comment.sprnt("Decrypted: \"%s\"", reveal.plaintext.c_str());
-        set_cmt(reveal.dest_addr, dest_comment.c_str(), true);
+        deobf::set_cmt_if_changed(
+            reveal.dest_addr, dest_comment.c_str(), true);
     }
 }
 
@@ -2006,13 +2015,15 @@ void ctree_string_decrypt_handler_t::annotate_char_string(const char_string_t &s
     comment.sprnt("DEOBF: Stack string \"%s\"", str.reconstructed.c_str());
     
     // Annotate at first instruction
-    set_cmt(str.insn_addrs[0], comment.c_str(), false);
+    deobf::set_cmt_if_changed(
+        str.insn_addrs[0], comment.c_str(), false);
     
     // Also annotate at variable address if global
     if ( str.var_addr != BADADDR ) {
         qstring var_comment;
         var_comment.sprnt("Decrypted: \"%s\"", str.reconstructed.c_str());
-        set_cmt(str.var_addr, var_comment.c_str(), true);
+        deobf::set_cmt_if_changed(
+            str.var_addr, var_comment.c_str(), true);
     }
 }
 
@@ -2047,19 +2058,21 @@ void ctree_string_decrypt_handler_t::annotate_crypto_call(const crypto_call_t &c
                      crypto.algorithm_bits, key_hex.c_str());
     }
     
-    set_cmt(crypto.location, comment.c_str(), false);
+    deobf::set_cmt_if_changed(crypto.location, comment.c_str(), false);
     
     // If we have decrypted data and an output address, annotate there too
     if ( !crypto.decrypted.empty() && crypto.output_addr != BADADDR ) {
         qstring output_comment;
         output_comment.sprnt("AES Decrypted: \"%s\"", crypto.decrypted.c_str());
-        set_cmt(crypto.output_addr, output_comment.c_str(), true);
+        deobf::set_cmt_if_changed(
+            crypto.output_addr, output_comment.c_str(), true);
     }
     
     // Also annotate at input address with what was encrypted
     if ( !crypto.decrypted.empty() && crypto.input_addr != BADADDR ) {
         qstring input_comment;
         input_comment.sprnt("Encrypted data -> \"%s\"", crypto.decrypted.c_str());
-        set_cmt(crypto.input_addr, input_comment.c_str(), true);
+        deobf::set_cmt_if_changed(
+            crypto.input_addr, input_comment.c_str(), true);
     }
 }

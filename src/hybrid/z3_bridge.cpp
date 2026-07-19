@@ -21,10 +21,21 @@
 namespace chernobog::hybrid {
 namespace {
 
+struct DeobfuscationProjection
+{
+  std::shared_ptr<const TargetEvidence> source;
+  std::vector<RuntimeStringCandidate> runtime_strings;
+  std::vector<FunctionChunkIdentity> function_identity;
+  std::map<uint64_t, uint8_t> authorized_function_bytes;
+  bool sealing_open = true;
+};
+
 struct Registry
 {
   std::mutex mutex;
   std::map<int64_t, std::shared_ptr<const TargetEvidence>> evidence;
+  std::map<int64_t, std::shared_ptr<const DeobfuscationProjection>>
+      deobfuscation_projections;
   std::map<int64_t, std::deque<Z3ModelReplayRequest>> replays;
 };
 
@@ -122,8 +133,11 @@ bool byte_identity_matches(const Identity &expected, const char *kind,
   return false;
 }
 
-bool current_function_identity_matches(const TargetEvidence &evidence,
-                                       std::string *reason = nullptr)
+bool current_function_shape_matches(
+    const TargetEvidence &evidence,
+    const std::vector<FunctionChunkIdentity> &expected_identity,
+    std::vector<range_t> *current_chunks,
+    std::string *reason = nullptr)
 {
   func_t *function = get_func(ea_t(evidence.scope.function_start));
   if ( function == nullptr || uint64_t(function->start_ea) != evidence.scope.function_start )
@@ -171,10 +185,10 @@ bool current_function_identity_matches(const TargetEvidence &evidence,
   func_tail_iterator_t iterator(function);
   for ( bool ok = iterator.main(); ok; ok = iterator.next() )
     chunks.push_back(iterator.chunk());
-  if ( chunks.size() != evidence.function_identity.size() )
+  if ( chunks.size() != expected_identity.size() )
   {
     set_reason(reason, "function chunk count changed (expected="
-        + std::to_string(evidence.function_identity.size()) + ", actual="
+        + std::to_string(expected_identity.size()) + ", actual="
         + std::to_string(chunks.size()) + ")");
     return false;
   }
@@ -182,7 +196,7 @@ bool current_function_identity_matches(const TargetEvidence &evidence,
   for ( size_t index = 0; index < chunks.size(); ++index )
   {
     const range_t &current = chunks[index];
-    const FunctionChunkIdentity &expected = evidence.function_identity[index];
+    const FunctionChunkIdentity &expected = expected_identity[index];
     if ( current.end_ea <= current.start_ea
       || uint64_t(current.start_ea) != expected.start
       || uint64_t(current.end_ea - current.start_ea) != expected.bytes.size() )
@@ -191,9 +205,74 @@ bool current_function_identity_matches(const TargetEvidence &evidence,
           + std::to_string(index));
       return false;
     }
-    if ( !byte_identity_matches(expected, "function chunk", index, reason) )
-      return false;
   }
+  if ( current_chunks != nullptr )
+    *current_chunks = std::move(chunks);
+  return true;
+}
+
+bool current_function_identity_matches(
+    const TargetEvidence &evidence,
+    const std::vector<FunctionChunkIdentity> &expected_identity,
+    std::string *reason = nullptr)
+{
+  if ( !current_function_shape_matches(
+          evidence, expected_identity, nullptr, reason) )
+  {
+    return false;
+  }
+  for ( size_t index = 0; index < expected_identity.size(); ++index )
+    if ( !byte_identity_matches(
+            expected_identity[index], "function chunk", index, reason) )
+      return false;
+  return true;
+}
+
+bool current_function_identity_matches(const TargetEvidence &evidence,
+                                       std::string *reason = nullptr)
+{
+  return current_function_identity_matches(
+      evidence, evidence.function_identity, reason);
+}
+
+bool capture_current_function_identity(
+    const TargetEvidence &source,
+    std::vector<FunctionChunkIdentity> *captured,
+    std::string *reason = nullptr)
+{
+  if ( captured == nullptr )
+  {
+    set_reason(reason, "missing function-identity destination");
+    return false;
+  }
+  std::vector<range_t> chunks;
+  if ( !current_function_shape_matches(
+          source, source.function_identity, &chunks, reason) )
+  {
+    return false;
+  }
+
+  std::vector<FunctionChunkIdentity> result;
+  result.reserve(chunks.size());
+  for ( size_t index = 0; index < chunks.size(); ++index )
+  {
+    const range_t &chunk = chunks[index];
+    const size_t size = size_t(chunk.end_ea - chunk.start_ea);
+    FunctionChunkIdentity identity;
+    identity.start = uint64_t(chunk.start_ea);
+    identity.bytes.assign(size, 0);
+    identity.loaded_mask.assign((size + 7) / 8, 0);
+    if ( get_bytes(identity.bytes.data(), ssize_t(size), chunk.start_ea,
+                   GMB_READALL, identity.loaded_mask.data()) < 0 )
+    {
+      set_reason(reason, "get_bytes failed while sealing function chunk "
+          + std::to_string(index) + " at "
+          + address_string(identity.start));
+      return false;
+    }
+    result.push_back(std::move(identity));
+  }
+  *captured = std::move(result);
   return true;
 }
 
@@ -278,6 +357,7 @@ bool hybrid_publish_evidence(
         rejection_reason.c_str());
   Registry &state = registry();
   std::lock_guard<std::mutex> lock(state.mutex);
+  state.deobfuscation_projections.erase(database_id);
   if ( evidence && valid )
     state.evidence[database_id] = std::move(evidence);
   else
@@ -290,6 +370,7 @@ void hybrid_clear_evidence(int64_t database_id)
   Registry &state = registry();
   std::lock_guard<std::mutex> lock(state.mutex);
   state.evidence.erase(database_id);
+  state.deobfuscation_projections.erase(database_id);
   state.replays.erase(database_id);
 }
 
@@ -299,6 +380,264 @@ bool hybrid_current_evidence_is_fresh(uint64_t function_start)
       registry_evidence(int64_t(get_dbctx_id()));
   return evidence && evidence->scope.function_start == function_start
       && current_identity_matches(*evidence);
+}
+
+bool hybrid_begin_deobfuscation_projection(uint64_t function_start)
+{
+  const int64_t database_id = int64_t(get_dbctx_id());
+  const std::shared_ptr<const TargetEvidence> evidence =
+      registry_evidence(database_id);
+  if ( !evidence || evidence->scope.function_start != function_start
+    || !current_identity_matches(*evidence) )
+  {
+    Registry &state = registry();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    state.deobfuscation_projections.erase(database_id);
+    return false;
+  }
+
+  auto projection = std::make_shared<DeobfuscationProjection>();
+  projection->source = evidence;
+  projection->runtime_strings = hybrid_consensus_runtime_strings(*evidence);
+  projection->function_identity = evidence->function_identity;
+
+  Registry &state = registry();
+  std::lock_guard<std::mutex> lock(state.mutex);
+  const auto current = state.evidence.find(database_id);
+  if ( current == state.evidence.end() || current->second != evidence )
+    return false;
+  state.deobfuscation_projections[database_id] = std::move(projection);
+  return true;
+}
+
+void hybrid_abandon_deobfuscation_projection(uint64_t function_start)
+{
+  const int64_t database_id = int64_t(get_dbctx_id());
+  Registry &state = registry();
+  std::lock_guard<std::mutex> lock(state.mutex);
+  const auto found = state.deobfuscation_projections.find(database_id);
+  if ( found != state.deobfuscation_projections.end() && found->second
+    && found->second->source
+    && found->second->source->scope.function_start == function_start )
+  {
+    state.deobfuscation_projections.erase(found);
+  }
+}
+
+bool hybrid_authorize_deobfuscation_patch(
+    uint64_t function_start, uint64_t address, size_t size)
+{
+  if ( size == 0 || size > 4096
+    || address > UINT64_MAX - uint64_t(size) )
+  {
+    return false;
+  }
+
+  const int64_t database_id = int64_t(get_dbctx_id());
+  std::shared_ptr<const DeobfuscationProjection> projection;
+  {
+    Registry &state = registry();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    const auto found = state.deobfuscation_projections.find(database_id);
+    if ( found == state.deobfuscation_projections.end() )
+      return false;
+    projection = found->second;
+  }
+  if ( !projection || !projection->sealing_open || !projection->source
+    || projection->source->scope.function_start != function_start )
+  {
+    return false;
+  }
+
+  const FunctionChunkIdentity *containing_chunk = nullptr;
+  for ( const FunctionChunkIdentity &chunk : projection->function_identity )
+  {
+    if ( address >= chunk.start
+      && address - chunk.start <= chunk.bytes.size()
+      && size <= chunk.bytes.size() - size_t(address - chunk.start) )
+    {
+      containing_chunk = &chunk;
+      break;
+    }
+  }
+  if ( containing_chunk == nullptr )
+    return false;
+
+  std::vector<uint8_t> bytes(size, 0);
+  std::vector<uint8_t> mask((size + 7) / 8, 0);
+  if ( get_bytes(bytes.data(), ssize_t(size), ea_t(address), GMB_READALL,
+                 mask.data()) < 0 )
+  {
+    return false;
+  }
+  for ( size_t offset = 0; offset < size; ++offset )
+    if ( (mask[offset / 8] & uint8_t(1u << (offset & 7))) == 0 )
+      return false;
+
+  auto updated = std::make_shared<DeobfuscationProjection>(*projection);
+  for ( size_t offset = 0; offset < size; ++offset )
+  {
+    const uint64_t byte_address = address + uint64_t(offset);
+    const auto existing = updated->authorized_function_bytes.find(byte_address);
+    if ( existing != updated->authorized_function_bytes.end()
+      && existing->second != bytes[offset] )
+    {
+      return false;
+    }
+    updated->authorized_function_bytes[byte_address] = bytes[offset];
+  }
+
+  Registry &state = registry();
+  std::lock_guard<std::mutex> lock(state.mutex);
+  const auto found = state.deobfuscation_projections.find(database_id);
+  if ( found == state.deobfuscation_projections.end()
+    || found->second != projection )
+  {
+    return false;
+  }
+  found->second = std::move(updated);
+  return true;
+}
+
+bool hybrid_seal_deobfuscation_projection(uint64_t function_start)
+{
+  const int64_t database_id = int64_t(get_dbctx_id());
+  std::shared_ptr<const DeobfuscationProjection> projection;
+  {
+    Registry &state = registry();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    const auto found = state.deobfuscation_projections.find(database_id);
+    if ( found == state.deobfuscation_projections.end() )
+      return false;
+    projection = found->second;
+  }
+  if ( !projection || !projection->sealing_open || !projection->source
+    || projection->source->scope.function_start != function_start )
+  {
+    return false;
+  }
+
+  std::vector<FunctionChunkIdentity> sealed_identity;
+  std::string rejection_reason;
+  if ( !capture_current_function_identity(
+          *projection->source, &sealed_identity, &rejection_reason) )
+  {
+    Registry &state = registry();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    const auto found = state.deobfuscation_projections.find(database_id);
+    if ( found != state.deobfuscation_projections.end()
+      && found->second == projection )
+    {
+      state.deobfuscation_projections.erase(found);
+    }
+    msg("[chernobog][rax] Runtime plaintext projection invalidated at %a: %s\n",
+        ea_t(function_start), rejection_reason.c_str());
+    return false;
+  }
+
+  size_t changed_bytes = 0;
+  std::string unauthorized_reason;
+  if ( sealed_identity.size() == projection->function_identity.size() )
+  {
+    for ( size_t chunk = 0; chunk < sealed_identity.size(); ++chunk )
+    {
+      const FunctionChunkIdentity &before = projection->function_identity[chunk];
+      const FunctionChunkIdentity &after = sealed_identity[chunk];
+      const size_t count = std::min(before.bytes.size(), after.bytes.size());
+      for ( size_t offset = 0; offset < count; ++offset )
+      {
+        const bool before_loaded = offset / 8 < before.loaded_mask.size()
+            && (before.loaded_mask[offset / 8]
+                & uint8_t(1u << (offset & 7))) != 0;
+        const bool after_loaded = offset / 8 < after.loaded_mask.size()
+            && (after.loaded_mask[offset / 8]
+                & uint8_t(1u << (offset & 7))) != 0;
+        const uint64_t byte_address = after.start + uint64_t(offset);
+        if ( before_loaded != after_loaded )
+        {
+          unauthorized_reason = "loaded state changed at "
+              + address_string(byte_address);
+          break;
+        }
+        if ( before_loaded && before.bytes[offset] != after.bytes[offset] )
+        {
+          const auto authorized =
+              projection->authorized_function_bytes.find(byte_address);
+          if ( authorized == projection->authorized_function_bytes.end()
+            || authorized->second != after.bytes[offset] )
+          {
+            unauthorized_reason = "unregistered function-byte change at "
+                + address_string(byte_address);
+            break;
+          }
+          ++changed_bytes;
+        }
+      }
+      if ( !unauthorized_reason.empty() )
+        break;
+    }
+  }
+  if ( !unauthorized_reason.empty() )
+  {
+    Registry &state = registry();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    const auto found = state.deobfuscation_projections.find(database_id);
+    if ( found != state.deobfuscation_projections.end()
+      && found->second == projection )
+    {
+      state.deobfuscation_projections.erase(found);
+    }
+    msg("[chernobog][rax] Runtime plaintext projection invalidated at %a: %s\n",
+        ea_t(function_start), unauthorized_reason.c_str());
+    return false;
+  }
+
+  auto sealed = std::make_shared<DeobfuscationProjection>(*projection);
+  sealed->function_identity = std::move(sealed_identity);
+  sealed->authorized_function_bytes.clear();
+  {
+    Registry &state = registry();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    const auto found = state.deobfuscation_projections.find(database_id);
+    if ( found == state.deobfuscation_projections.end()
+      || found->second != projection )
+    {
+      return false;
+    }
+    found->second = std::move(sealed);
+  }
+  if ( changed_bytes != 0 && !projection->runtime_strings.empty() )
+  {
+    msg("[chernobog][rax] Retained %zu runtime plaintexts across %zu trusted function-byte changes at %a\n",
+        projection->runtime_strings.size(), changed_bytes,
+        ea_t(function_start));
+  }
+  return true;
+}
+
+bool hybrid_finish_deobfuscation_projection(uint64_t function_start)
+{
+  // Capture any final trusted mutations before making the display identity
+  // immutable. A later decompilation or analyst edit cannot reopen this lease;
+  // only a new exact-fresh ensure_explored() prerequisite can do that.
+  if ( !hybrid_seal_deobfuscation_projection(function_start) )
+    return false;
+
+  const int64_t database_id = int64_t(get_dbctx_id());
+  Registry &state = registry();
+  std::lock_guard<std::mutex> lock(state.mutex);
+  const auto found = state.deobfuscation_projections.find(database_id);
+  if ( found == state.deobfuscation_projections.end() || !found->second
+    || !found->second->source
+    || found->second->source->scope.function_start != function_start )
+  {
+    return false;
+  }
+  auto finished =
+      std::make_shared<DeobfuscationProjection>(*found->second);
+  finished->sealing_open = false;
+  found->second = std::move(finished);
+  return true;
 }
 
 std::vector<RuntimeStringCandidate> hybrid_current_runtime_strings(
@@ -317,14 +656,34 @@ std::vector<RuntimeStringCandidate> hybrid_current_runtime_strings(
 std::vector<RuntimeStringCandidate>
 hybrid_current_runtime_strings_for_decompilation(uint64_t function_start)
 {
-  const std::shared_ptr<const TargetEvidence> evidence =
-      registry_evidence(int64_t(get_dbctx_id()));
-  if ( !evidence || evidence->scope.function_start != function_start
-    || !current_function_identity_matches(*evidence) )
+  std::shared_ptr<const TargetEvidence> evidence;
+  std::shared_ptr<const DeobfuscationProjection> projection;
+  {
+    Registry &state = registry();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    const int64_t database_id = int64_t(get_dbctx_id());
+    const auto evidence_found = state.evidence.find(database_id);
+    if ( evidence_found != state.evidence.end() )
+      evidence = evidence_found->second;
+    const auto projection_found =
+        state.deobfuscation_projections.find(database_id);
+    if ( projection_found != state.deobfuscation_projections.end() )
+      projection = projection_found->second;
+  }
+  if ( evidence && evidence->scope.function_start == function_start
+    && current_function_identity_matches(*evidence) )
+  {
+    return hybrid_consensus_runtime_strings(*evidence);
+  }
+  if ( !projection || projection->source != evidence
+    || !projection->source
+    || projection->source->scope.function_start != function_start
+    || !current_function_identity_matches(
+          *projection->source, projection->function_identity) )
   {
     return {};
   }
-  return hybrid_consensus_runtime_strings(*evidence);
+  return projection->runtime_strings;
 }
 
 HybridBranchCheck hybrid_check_current_branch_claim(

@@ -1,6 +1,7 @@
 #include "string_decrypt.h"
 #include "../../common/ida_memory.h"
 #include "../../common/string_recovery.h"
+#include "../../hybrid/z3_bridge.hpp"
 
 #include <cstdarg>
 #include <cstring>
@@ -636,6 +637,18 @@ int string_decrypt_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
         if ( !readable || current != initializer.output )
             patch_bytes(destination, initializer.output.data(),
                         initializer.output.size());
+        std::vector<uint8_t> materialized(initializer.output.size());
+        if ( chernobog::ida_memory::read_exact(
+                 materialized.data(), materialized.size(), destination)
+          && materialized == initializer.output )
+        {
+            // Usually this is writable data outside the function identity.
+            // Inline-data destinations inside a function chunk are the one
+            // exception and require exact patch authorization before sealing.
+            (void)chernobog::hybrid::hybrid_authorize_deobfuscation_patch(
+                uint64_t(ctx->func_ea), uint64_t(destination),
+                materialized.size());
+        }
 
         for ( const static_write_t& write : initializer.writes )
         {
