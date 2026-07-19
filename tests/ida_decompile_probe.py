@@ -2,6 +2,7 @@
 
 import os
 import time
+from pathlib import Path
 
 import ida_auto
 import ida_funcs
@@ -55,6 +56,9 @@ try:
     pseudocode = "\n".join(
         ida_lines.tag_remove(line.line) for line in cfunc.get_pseudocode()
     )
+    output_path = os.environ.get("CHERNOBOG_PSEUDOCODE_OUT")
+    if output_path:
+        Path(output_path).write_text(pseudocode + "\n", encoding="utf-8")
     finish(
         0,
         "PASS function=0x%X requested=0x%X elapsed=%.3f s "

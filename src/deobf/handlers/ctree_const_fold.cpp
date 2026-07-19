@@ -1,6 +1,8 @@
 #include "ctree_const_fold.h"
+#include "../analysis/dependency_liveness.hpp"
 #include "../../common/ida_memory.h"
 
+#include <algorithm>
 #include <vector>
 
 namespace {
@@ -106,24 +108,70 @@ bool is_discardable_rhs(const cexpr_t *expression)
     }
 }
 
-struct dead_assignment_visitor_t final : public ctree_visitor_t
+bool is_safe_dead_assignment_destination(
+    const lvar_t &variable,
+    const lvar_usage_t &usage)
+{
+    return !usage.address_taken
+        && !variable.is_arg_var() && !variable.is_result_var()
+        && !variable.is_fake_var() && !variable.is_used_byref()
+        && !variable.is_overlapped_var() && !variable.is_mapdst_var()
+        && !variable.is_shared() && !variable.is_noprop()
+        && !variable.in_asm() && !variable.has_user_info()
+        && variable.tif.is_scalar() && !variable.tif.is_volatile();
+}
+
+struct rhs_lvar_collector_t final : public ctree_visitor_t
+{
+    std::vector<int> sources;
+    std::vector<int> &internal_reads;
+
+    explicit rhs_lvar_collector_t(std::vector<int> &internal_reads)
+        : ctree_visitor_t(CV_FAST), internal_reads(internal_reads)
+    {
+    }
+
+    int idaapi visit_expr(cexpr_t *expression) override
+    {
+        if ( expression == nullptr || expression->op != cot_var )
+            return 0;
+
+        const int index = expression->v.idx;
+        if ( index < 0 || static_cast<size_t>(index) >= internal_reads.size() )
+            return 0;
+
+        ++internal_reads[index];
+        if ( std::find(sources.begin(), sources.end(), index) == sources.end() )
+            sources.push_back(index);
+        return 0;
+    }
+};
+
+struct removable_assignment_t
+{
+    cinsn_t *instruction = nullptr;
+    int destination = -1;
+    std::vector<int> sources;
+};
+
+struct removable_assignment_collector_t final : public ctree_visitor_t
 {
     cfunc_t *function;
     const std::vector<lvar_usage_t> &usage;
-    std::vector<int> removed_by_variable;
-    int changes = 0;
+    std::vector<int> internal_reads;
+    std::vector<removable_assignment_t> assignments;
 
-    dead_assignment_visitor_t(cfunc_t *function,
+    removable_assignment_collector_t(cfunc_t *function,
         const std::vector<lvar_usage_t> &usage)
-        : ctree_visitor_t(CV_PARENTS), function(function), usage(usage),
-          removed_by_variable(usage.size(), 0)
+        : ctree_visitor_t(CV_INSNS), function(function), usage(usage),
+          internal_reads(usage.size(), 0)
     {
     }
 
     int idaapi visit_insn(cinsn_t *instruction) override
     {
         if ( instruction == nullptr || instruction->op != cit_expr
-          || instruction->label_num != -1
+          || instruction->label_num >= 0
           || instruction->cexpr == nullptr
           || instruction->cexpr->op != cot_asg
           || instruction->cexpr->x == nullptr
@@ -142,23 +190,17 @@ struct dead_assignment_visitor_t final : public ctree_visitor_t
             return 0;
         }
 
-        const lvar_usage_t &entry = usage[index];
         const lvar_t &variable = (*variables)[index];
-        if ( entry.reads != 0 || entry.address_taken
-          || variable.is_arg_var() || variable.is_result_var()
-          || variable.is_fake_var() || variable.is_used_byref()
-          || variable.is_overlapped_var() || variable.is_mapdst_var()
-          || variable.is_shared() || variable.is_noprop()
-          || variable.in_asm() || variable.has_user_info()
-          || !variable.tif.is_scalar() || variable.tif.is_volatile()
+        if ( !is_safe_dead_assignment_destination(variable, usage[index])
           || !is_discardable_rhs(instruction->cexpr->y) )
         {
             return 0;
         }
 
-        instruction->cleanup();
-        ++removed_by_variable[index];
-        ++changes;
+        rhs_lvar_collector_t collector(internal_reads);
+        collector.apply_to(instruction->cexpr->y, instruction->cexpr);
+        assignments.push_back(
+            {instruction, index, std::move(collector.sources)});
         return 0;
     }
 };
@@ -186,7 +228,7 @@ struct empty_statement_visitor_t final : public ctree_visitor_t
     }
 };
 
-int remove_write_only_local_assignments(cfunc_t *function)
+int remove_transitively_dead_local_assignments(cfunc_t *function)
 {
     lvars_t *variables = function != nullptr ? function->get_lvars() : nullptr;
     if ( function == nullptr || variables == nullptr || variables->empty() )
@@ -195,21 +237,69 @@ int remove_write_only_local_assignments(cfunc_t *function)
     lvar_usage_visitor_t usage(variables->size());
     usage.apply_to(&function->body, nullptr);
 
-    dead_assignment_visitor_t remover(function, usage.usage);
-    remover.apply_to(&function->body, nullptr);
+    removable_assignment_collector_t candidates(function, usage.usage);
+    candidates.apply_to(&function->body, nullptr);
+    if ( candidates.assignments.empty() )
+        return 0;
+
+    // Candidate RHS reads are internal data-flow edges. Any read outside that
+    // set is an observable sink, from which liveness propagates backwards.
+    // This deliberately operates at lvar granularity: it may retain extra
+    // definitions, but cannot erase a definition that reaches an external use.
+    std::vector<std::vector<size_t>> dependencies(variables->size());
+    for ( const removable_assignment_t &assignment : candidates.assignments )
+    {
+        std::vector<size_t> &sources = dependencies[assignment.destination];
+        for ( int source : assignment.sources )
+        {
+            const size_t source_index = static_cast<size_t>(source);
+            if ( std::find(sources.begin(), sources.end(), source_index)
+              == sources.end() )
+            {
+                sources.push_back(source_index);
+            }
+        }
+    }
+
+    std::vector<uint8_t> observable(variables->size(), 0);
+    for ( size_t index = 0; index < usage.usage.size(); ++index )
+    {
+        if ( usage.usage[index].reads > candidates.internal_reads[index] )
+            observable[index] = 1;
+    }
+    const std::vector<uint8_t> live =
+        chernobog::analysis::propagate_dependency_liveness(
+            variables->size(), observable, dependencies);
+
+    std::vector<int> removed_by_variable(variables->size(), 0);
+    int changes = 0;
+    for ( const removable_assignment_t &assignment : candidates.assignments )
+    {
+        if ( live[assignment.destination] )
+            continue;
+        assignment.instruction->cleanup();
+        ++removed_by_variable[assignment.destination];
+        ++changes;
+    }
+
+    if ( changes == 0 )
+        return 0;
 
     empty_statement_visitor_t empty_remover;
     empty_remover.apply_to(&function->body, nullptr);
 
+    lvar_usage_visitor_t remaining(variables->size());
+    remaining.apply_to(&function->body, nullptr);
     for ( size_t index = 0; index < variables->size(); ++index )
     {
-        if ( usage.usage[index].reads == 0
-          && remover.removed_by_variable[index] == usage.usage[index].writes )
+        if ( removed_by_variable[index] > 0
+          && remaining.usage[index].reads == 0
+          && remaining.usage[index].writes == 0 )
         {
             (*variables)[index].clear_used();
         }
     }
-    return remover.changes;
+    return changes;
 }
 
 } // namespace
@@ -312,13 +402,14 @@ int ctree_const_fold_handler_t::run(cfunc_t *cfunc)
     const_fold_visitor_t visitor(cfunc);
     visitor.apply_to(&cfunc->body, nullptr);
 
-    const int dead_assignments = remove_write_only_local_assignments(cfunc);
+    const int dead_assignments =
+        remove_transitively_dead_local_assignments(cfunc);
     const int total_changes = visitor.changes + dead_assignments;
 
     if ( total_changes > 0 ) {
         deobf::log(
             "[ctree_const_fold] Folded %d constants and removed %d "
-            "write-only local assignments\n",
+            "transitively dead local assignments\n",
             visitor.changes, dead_assignments);
         cfunc->verify(ALLOW_UNUSED_LABELS, false);
     }

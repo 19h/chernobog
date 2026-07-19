@@ -17,13 +17,17 @@
 #include "handlers/global_const.h"
 #include "handlers/ptr_resolve.h"
 #include "handlers/indirect_call.h"
+#include "handlers/resolver_call_args.h"
 #include "handlers/ctree_string_decrypt.h"
 #include "rules/rule_registry.h"
 #include "../hybrid/session.hpp"
 #include "../hybrid/z3_bridge.hpp"
 
 // Forward declaration
-static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx);
+static int run_deobfuscation_passes(
+    mbl_array_t *mba,
+    deobf_ctx_t *ctx,
+    bool replay_only = false);
 
 static void ensure_current_function_explored(ea_t function_ea)
 {
@@ -45,6 +49,7 @@ struct deobf_module_state_t
     bool active = false;
     ea_t last_inactive_ea = BADADDR;
     std::set<std::pair<ea_t, int>> optblock_processed;
+    std::set<std::pair<const mbl_array_t *, int>> mba_maturity_processed;
 };
 
 // IDA stores one pointer for this data ID in each database context.
@@ -70,12 +75,22 @@ void chernobog_clear_function_tracking(ea_t func_ea)
     {
         for ( int m = 0; m < 16; ++m )
             state->optblock_processed.erase({func_ea, m});
+        state->mba_maturity_processed.clear();
     }
 
     // Clear deferred analysis for all handlers
     deflatten_handler_t::clear_deferred(func_ea);
     identity_call_handler_t::clear_caches();
     vm_mba_handler_t::clear_function(func_ea);
+}
+
+void chernobog_begin_mba_tracking(mbl_array_t *mba)
+{
+    deobf_module_state_t *state = get_deobf_state();
+    if ( state == nullptr || mba == nullptr )
+        return;
+    for ( int maturity = 0; maturity < 16; ++maturity )
+        state->mba_maturity_processed.erase({mba, maturity});
 }
 
 bool chernobog_function_requires_deobfuscation(ea_t func_ea)
@@ -99,7 +114,10 @@ void chernobog_clear_all_tracking()
 {
     deobf_module_state_t *state = get_deobf_state();
     if ( state != nullptr )
+    {
         state->optblock_processed.clear();
+        state->mba_maturity_processed.clear();
+    }
     deflatten_handler_t::s_deferred_analysis.clear();
     identity_call_handler_t::clear_caches();
     hikari_wrapper_handler_t::clear_cache();
@@ -165,16 +183,22 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
          maturity != MMAT_GLBOPT1 && maturity != MMAT_GLBOPT2 )
         return 0;
 
-    // Track which function+maturity combinations we've processed to avoid duplicate work
-    const auto key = std::make_pair(func_ea, maturity);
-
-    if ( state->optblock_processed.count(key) )
+    // Hex-Rays invokes optblock once per block. Deduplicate within this MBA,
+    // while retaining separate function-level state for one-shot database and
+    // byte mutations. A later no-cache decompilation gets a new hxe_microcode
+    // lifecycle and must receive all transient microcode rewrites again.
+    const auto mba_key = std::make_pair(
+        static_cast<const mbl_array_t *>(mba), maturity);
+    if ( !state->mba_maturity_processed.insert(mba_key).second )
     {
-        optblock_debug("[optblock] Already processed %llx/%d\n",
-                       (unsigned long long)func_ea, maturity);
+        optblock_debug("[optblock] Already processed MBA %p/%d\n",
+                       static_cast<void *>(mba), maturity);
         return 0;
     }
-    state->optblock_processed.insert(key);
+
+    const auto key = std::make_pair(func_ea, maturity);
+    const bool first_function_pass =
+        state->optblock_processed.insert(key).second;
 
     optblock_debug("[optblock] NEW processing: maturity=%d, func=%llx\n", maturity, (unsigned long long)func_ea);
     deobf::log_verbose("[optblock] Processing %a at maturity %d (blk %d)\n",
@@ -183,12 +207,15 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
     // Run full deobfuscation at maturity 3 (MMAT_LOCOPT) - first opportunity for CFG mods
     if ( maturity == MMAT_LOCOPT )
     {
-        optblock_debug("[optblock] Running FULL deobfuscation passes at maturity 3\n");
+        optblock_debug(
+            "[optblock] Running %s deobfuscation passes at maturity 3\n",
+            first_function_pass ? "FULL" : "REPLAY-SAFE");
         deobf_ctx_t full_ctx;
         full_ctx.mba = mba;
         full_ctx.func_ea = func_ea;
 
-        const int full_changes = run_deobfuscation_passes(mba, &full_ctx);
+        const int full_changes = run_deobfuscation_passes(
+            mba, &full_ctx, !first_function_pass);
         // The prerequisite captured the pre-pass identity. Preserve only the
         // display-only runtime plaintext projection across the exact bytes
         // written by this trusted pass; proof consumers remain fail-closed.
@@ -224,6 +251,7 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
         icall_ctx.func_ea = func_ea;
 
         int total_changes = 0;
+        total_changes += resolver_call_args_handler_t::run(mba, &icall_ctx);
         if ( vm_mba_handler_t::detect(mba) )
             total_changes += vm_mba_handler_t::run(mba, &icall_ctx);
 
@@ -453,7 +481,10 @@ void chernobog_t::deobfuscate_function(cfunc_t *cfunc)
 //--------------------------------------------------------------------------
 // Core deobfuscation passes (shared by all entry points)
 //--------------------------------------------------------------------------
-static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx)
+static int run_deobfuscation_passes(
+    mbl_array_t *mba,
+    deobf_ctx_t *ctx,
+    bool replay_only)
 {
     if ( !mba || !ctx )
         return 0;
@@ -467,7 +498,7 @@ static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx)
 
     deobf::log("[chernobog] Detected obfuscations: 0x%x\n", ctx->detected_obf);
 
-    if ( ctx->detected_obf & OBF_STRING_ENC )
+    if ( !replay_only && (ctx->detected_obf & OBF_STRING_ENC) )
     {
         deobf::log("[chernobog] - String encryption detected\n");
     }
@@ -503,7 +534,7 @@ static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx)
     {
         deobf::log("[chernobog] - Global constants detected\n");
     }
-    if ( ctx->detected_obf & OBF_PTR_INDIRECT )
+    if ( !replay_only && (ctx->detected_obf & OBF_PTR_INDIRECT) )
     {
         deobf::log("[chernobog] - Indirect pointer references detected\n");
     }
@@ -542,7 +573,7 @@ static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx)
     }
 
     // 2. Decrypt strings
-    if ( ctx->detected_obf & OBF_STRING_ENC )
+    if ( !replay_only && (ctx->detected_obf & OBF_STRING_ENC) )
     {
         total_changes += chernobog_t::decrypt_strings(mba, ctx);
     }
@@ -567,7 +598,7 @@ static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx)
     total_changes += global_const_handler_t::remove_write_only_stores(mba);
 
     // 3.6. Resolve indirect pointer references
-    if ( ctx->detected_obf & OBF_PTR_INDIRECT )
+    if ( !replay_only && (ctx->detected_obf & OBF_PTR_INDIRECT) )
     {
         total_changes += ptr_resolve_handler_t::run(mba, ctx);
     }
@@ -941,6 +972,7 @@ void deobf_done()
     vm_mba_handler_t::clear();
     global_const_handler_t::clear_cache();
     state->optblock_processed.clear();
+    state->mba_maturity_processed.clear();
 
     // NOTE: Do NOT call RuleRegistry::instance().clear() here!
     // The RuleRegistry singleton intentionally leaks to avoid crashes from

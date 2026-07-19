@@ -531,10 +531,12 @@ call/pop CFG recovery at native, flowchart, and codegen stages plus ARM64
 preoptimized constant/character reconstruction. The parameterized
 `tests/ida_native_negative_smoke.py` covers ordinary calls, multi-caller
 prologues, orphan callee promotion, and indirect SEH dispatchers.
-`tests/ida_cff_plugin_probe.py` asserts that the reference recurrent dispatcher
-is absent from final pseudocode. `tests/ida_decompile_probe.py` and
-`tests/ida_interr_scan.py` provide targeted and whole-IDB decompiler regression
-checks for timeouts and internal errors.
+`tests/ida_cff_plugin_probe.py` repeats uncached decompilation and asserts that
+the reference recurrent dispatcher is absent from every result, proven-unused
+recurrent-resolver arguments are neutralized, and output converges
+deterministically after Hex-Rays type propagation.
+`tests/ida_decompile_probe.py` and `tests/ida_interr_scan.py` provide targeted
+and whole-IDB decompiler regression checks for timeouts and internal errors.
 
 The CTest targets are SDK-linked but do not constitute a live-IDB decompiler
 integration test. Runtime validation requires an IDA/Hex-Rays build compatible

@@ -473,6 +473,18 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     else if ( event == hxe_microcode )
     {
         mba_t *mba = va_arg(va, mba_t *);
+        chernobog_begin_mba_tracking(mba);
+        if ( mba != nullptr )
+        {
+            // Every generated MBA will produce a distinct ctree, even for the
+            // same function under DECOMP_NO_CACHE. Reset only transient tree
+            // guards; one-shot database/byte mutation state remains intact.
+            const ea_t func_ea = mba->entry_ea;
+            self->ctree_const_folded.erase(func_ea);
+            self->ctree_switch_folded.erase(func_ea);
+            self->ctree_indirect_call_processed.erase(func_ea);
+            self->ctree_string_decrypt_processed.erase(func_ea);
+        }
         const int changes = self->early_hexrays != nullptr
                           ? self->early_hexrays->on_microcode(mba) : 0;
         debug_log("[chernobog] hxe_microcode: mba=%p, auto=%d\n", mba, is_auto_mode_enabled() ? 1 : 0);

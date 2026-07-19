@@ -4,6 +4,7 @@
 #include "common/hexrays_compat.h"
 #include "common/simd.h"
 #include "common/string_recovery.h"
+#include "deobf/analysis/dependency_liveness.hpp"
 #include "deobf/analysis/switch_dispatch_classifier.hpp"
 
 #include <array>
@@ -93,6 +94,53 @@ void test_hexrays_merror_layout_compatibility()
           && !uses_timeout_merror_layout("9.4.0.260717-extra")
           && !uses_timeout_merror_layout("9.4.0.99999999999999999999"),
           "malformed Hex-Rays versions fail closed");
+}
+
+void test_dependency_liveness()
+{
+    using chernobog::analysis::propagate_dependency_liveness;
+    using chernobog::analysis::transfer_bit_liveness;
+
+    const auto partial_write = transfer_bit_liveness(
+        ~uint64_t{0}, 0, uint64_t{0xFF});
+    check(!partial_write.observed
+          && partial_write.live_after == ~uint64_t{0xFF},
+          "partial register write kills only overwritten incoming bits");
+    const auto rewritten_low_read = transfer_bit_liveness(
+        partial_write.live_after, uint64_t{0xFF}, uint64_t{0xFF});
+    check(!rewritten_low_read.observed,
+          "read after partial write does not observe killed incoming bits");
+    const auto surviving_high_read = transfer_bit_liveness(
+        rewritten_low_read.live_after, ~uint64_t{0}, 0);
+    check(surviving_high_read.observed,
+          "full read observes incoming high bits after a partial write");
+    const auto full_write = transfer_bit_liveness(
+        ~uint64_t{0}, 0, ~uint64_t{0});
+    check(!full_write.observed && full_write.live_after == 0,
+          "full register write kills the complete incoming value");
+
+    // v0 and v1 form an isolated self-feedback component. v2 reaches the
+    // observable v4 through v3 and must retain its complete dependency chain.
+    const std::vector<std::vector<size_t>> dependencies = {
+        {1},       // v0 = f(v1)
+        {0},       // v1 = f(v0)
+        {},        // v2 = constant
+        {2},       // v3 = f(v2)
+        {3},       // v4 = f(v3)
+        {99},      // malformed edge cannot manufacture liveness
+    };
+    const std::vector<uint8_t> observable = {0, 0, 0, 0, 1, 0};
+    const auto live = propagate_dependency_liveness(
+        dependencies.size(), observable, dependencies);
+
+    check(live.size() == dependencies.size(),
+          "dependency liveness result size");
+    check(live[0] == 0 && live[1] == 0,
+          "isolated dependency cycle remains dead");
+    check(live[2] != 0 && live[3] != 0 && live[4] != 0,
+          "observable dependency chain propagates backwards");
+    check(live[5] == 0,
+          "invalid dependency edge is ignored");
 }
 
 void test_switch_dispatch_classifier()
@@ -505,6 +553,7 @@ int main()
 {
     test_bitvectors();
     test_hexrays_merror_layout_compatibility();
+    test_dependency_liveness();
     test_switch_dispatch_classifier();
     test_arm64_direct_branch_encoding();
     test_arm64_predicates();

@@ -359,6 +359,7 @@ ida_add_plugin(chernobog
     src/deobf/handlers/const_decrypt.cpp
     src/deobf/handlers/indirect_branch.cpp
     src/deobf/handlers/indirect_call.cpp
+    src/deobf/handlers/resolver_call_args.cpp
     src/deobf/handlers/block_merge.cpp
     src/deobf/handlers/select_chain.cpp
     src/deobf/handlers/mba_simplify.cpp

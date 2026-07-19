@@ -59,6 +59,9 @@ void deobf_attach_popup(TWidget *widget, TPopupMenu *popup, vdui_t *vu);
 
 // Clear tracking for a function to allow re-deobfuscation
 void chernobog_clear_function_tracking(ea_t func_ea);
+// Begin tracking a newly generated MBA. This resets only transient optimizer
+// deduplication; persistent one-shot database/byte mutation guards remain.
+void chernobog_begin_mba_tracking(mbl_array_t *mba);
 // True until the whole-MBA LOCOPT pipeline has run for this database/function.
 // The Hex-Rays flowchart callback uses this to gate one current-function rax
 // prerequisite before any optimizer mutation.
