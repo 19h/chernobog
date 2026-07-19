@@ -9,6 +9,7 @@
 #include "native_engine.hpp"
 
 #include "analysis_config.hpp"
+#include "ida_sdk_compat.hpp"
 
 #include "../common/warn_off.h"
 #include <pro.h>
@@ -927,7 +928,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         call_end, target, config.maximum_gap, instruction.ea);
     if ( is_unknown(get_flags(target)) )
       create_insn(target);
-    add_user_stkpnt(target, -inf_get_effective_addrsize());
+    add_user_stkpnt(target, -effective_address_size_compat());
 
     if ( gadget.discards_return )
     {
@@ -1213,7 +1214,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     ea_t target = BADADDR;
     if ( !find_reg_value_info(
             &value, instruction.ea, reg, config.register_scan_depth)
-      || !value.get_addr(&target) || !target_is_executable(target) )
+      || !reg_value_address_compat(value, &target)
+      || !target_is_executable(target) )
     {
       return false;
     }

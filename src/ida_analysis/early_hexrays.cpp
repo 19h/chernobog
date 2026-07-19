@@ -1,6 +1,7 @@
 #include "early_hexrays.hpp"
 
 #include "analysis_config.hpp"
+#include "ida_sdk_compat.hpp"
 
 #include "../common/warn_off.h"
 #include <allins.hpp>
@@ -562,14 +563,14 @@ ea_t instruction_write_target(ea_t instruction_ea)
       continue;
     }
     reg_value_info_t register_value;
-    if ( !find_regname_value_info(
+    if ( !find_register_value_info_compat(
             &register_value, instruction_ea,
-            register_name.c_str(), -1) )
+            register_name.c_str(), operand.reg, -1) )
     {
       continue;
     }
     ea_t base = BADADDR;
-    if ( !register_value.get_addr(&base) )
+    if ( !reg_value_address_compat(register_value, &base) )
       continue;
     ea_t target = BADADDR;
     if ( !add_signed_delta(base, sval_t(operand.addr), target)
@@ -612,9 +613,9 @@ bool fold_store_source_with_regfinder(minsn_t &instruction)
     return false;
   }
   reg_value_info_t register_value;
-  if ( !find_regname_value_info(
+  if ( !find_register_value_info_compat(
           &register_value, instruction.ea,
-          register_name.c_str(), -1) || !register_value.is_num() )
+          register_name.c_str(), -1, -1) || !register_value.is_num() )
   {
     return false;
   }
@@ -817,7 +818,9 @@ int mark_character_runs(
           number_format_t format(key_pair.second);
           format.flags = char_flag();
           format.props = NF_FIXED;
+#if IDA_SDK_VERSION >= 940
           mba.set_numform(key, format);
+#endif
           user_numforms_insert(formats, key, format);
           ++marked;
         }

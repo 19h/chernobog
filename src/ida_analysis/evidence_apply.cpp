@@ -586,7 +586,11 @@ void apply_no_return(const TargetEvidence &evidence,
     function->flags |= FUNC_NORET;
     if ( update_func(function) )
     {
+#if IDA_SDK_VERSION >= 940
       reanalyze_function_ea(function->start_ea);
+#else
+      reanalyze_function(function);
+#endif
       changed = true;
     }
     else
