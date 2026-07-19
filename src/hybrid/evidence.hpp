@@ -235,6 +235,26 @@ struct TargetEvidence
                                       bool expected_taken) const;
 };
 
+// A concrete runtime C-string witnessed with identical bytes at the same image
+// address in every run for which final-memory observation was available.  This
+// is deliberately a cross-run witness, not a claim that every possible input
+// produces the value.
+struct RuntimeStringCandidate
+{
+  uint64_t address = 0;
+  std::string value;
+  size_t observations = 0;
+  size_t eligible_runs = 0;
+  std::vector<uint32_t> runs;
+};
+
+// Pure evidence projection used by both the IDA bridge and native tests.
+// Candidates must be NUL-terminated printable ASCII prefixes. Conflicting or
+// missing per-run values fail closed.
+std::vector<RuntimeStringCandidate> hybrid_consensus_runtime_strings(
+    const TargetEvidence &evidence, size_t minimum_length = 4,
+    size_t maximum_length = 4096);
+
 TargetEvidence hybrid_build_target_evidence(
     const ProgramImage &image, const FuncRange &function,
     uint64_t focus_address, const StaticAnalysisResult &static_analysis,

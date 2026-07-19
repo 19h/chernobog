@@ -34,6 +34,19 @@ void hybrid_clear_evidence(int64_t database_id);
 // only; false also covers missing evidence and a database-context mismatch.
 bool hybrid_current_evidence_is_fresh(uint64_t function_start);
 
+// Consensus runtime plaintext for proof-adjacent consumers. This requires the
+// complete function-plus-consumed-context identity to remain current.
+std::vector<RuntimeStringCandidate> hybrid_current_runtime_strings(
+    uint64_t function_start);
+
+// Display-only projection for the ctree produced from the explored function.
+// Existing deobfuscation handlers may have patched data after exploration, so
+// this checks the exact function identity but intentionally does not promote
+// the strings to fresh branch/Z3 evidence. The values remain concrete
+// cross-run witnesses and may only be used for literals or annotations.
+std::vector<RuntimeStringCandidate>
+hybrid_current_runtime_strings_for_decompilation(uint64_t function_start);
+
 // Main-thread convenience used by microcode handlers. It derives the current
 // database ID and byte-compares every snapshotted function chunk before using
 // an observation, so stale evidence fails closed after patches/reanalysis.

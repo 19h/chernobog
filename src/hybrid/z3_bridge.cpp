@@ -122,8 +122,8 @@ bool byte_identity_matches(const Identity &expected, const char *kind,
   return false;
 }
 
-bool current_identity_matches(const TargetEvidence &evidence,
-                              std::string *reason = nullptr)
+bool current_function_identity_matches(const TargetEvidence &evidence,
+                                       std::string *reason = nullptr)
 {
   func_t *function = get_func(ea_t(evidence.scope.function_start));
   if ( function == nullptr || uint64_t(function->start_ea) != evidence.scope.function_start )
@@ -194,6 +194,14 @@ bool current_identity_matches(const TargetEvidence &evidence,
     if ( !byte_identity_matches(expected, "function chunk", index, reason) )
       return false;
   }
+  return true;
+}
+
+bool current_identity_matches(const TargetEvidence &evidence,
+                              std::string *reason = nullptr)
+{
+  if ( !current_function_identity_matches(evidence, reason) )
+    return false;
   for ( size_t index = 0; index < evidence.context_identity.size(); ++index )
     if ( !byte_identity_matches(evidence.context_identity[index],
                                 "consumed context", index, reason) )
@@ -291,6 +299,32 @@ bool hybrid_current_evidence_is_fresh(uint64_t function_start)
       registry_evidence(int64_t(get_dbctx_id()));
   return evidence && evidence->scope.function_start == function_start
       && current_identity_matches(*evidence);
+}
+
+std::vector<RuntimeStringCandidate> hybrid_current_runtime_strings(
+    uint64_t function_start)
+{
+  const std::shared_ptr<const TargetEvidence> evidence =
+      registry_evidence(int64_t(get_dbctx_id()));
+  if ( !evidence || evidence->scope.function_start != function_start
+    || !current_identity_matches(*evidence) )
+  {
+    return {};
+  }
+  return hybrid_consensus_runtime_strings(*evidence);
+}
+
+std::vector<RuntimeStringCandidate>
+hybrid_current_runtime_strings_for_decompilation(uint64_t function_start)
+{
+  const std::shared_ptr<const TargetEvidence> evidence =
+      registry_evidence(int64_t(get_dbctx_id()));
+  if ( !evidence || evidence->scope.function_start != function_start
+    || !current_function_identity_matches(*evidence) )
+  {
+    return {};
+  }
+  return hybrid_consensus_runtime_strings(*evidence);
 }
 
 HybridBranchCheck hybrid_check_current_branch_claim(

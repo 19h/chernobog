@@ -236,6 +236,15 @@ To see what obfuscation types are present without making changes:
 
 ### Explore the Current Function With rax
 
+Before Chernobog's first whole-MBA deobfuscation pass for the focused function, it
+automatically reuses fresh rax evidence or performs one bounded synchronous
+exploration of that function. This prerequisite is scoped to the function being
+viewed; background/"decompile all" requests do not trigger rax, and callees are
+not recursively emulated.
+Consensus NUL-terminated runtime strings are materialized as transient literals
+in the current pseudocode; the rax projection itself does not copy final-memory
+bytes into the IDB.
+
 Open the function in pseudocode and press `Ctrl+Shift+E`, or select **Explore
 current function with rax** from the pseudocode popup. Chernobog snapshots and
 explores only the displayed function plus its mapped memory context; it does

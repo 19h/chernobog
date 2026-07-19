@@ -8,6 +8,16 @@ snapshots the mapped image needed as memory context, but creates exactly one
 one rax engine are owned by that per-IDB session. Selecting another function
 cancels and replaces the generation.
 
+The Hex-Rays flowchart callback is also a current-function prerequisite. Before
+the first whole-MBA deobfuscation pass for the focused function, Chernobog reuses exact
+fresh evidence, waits for a matching in-flight job, or synchronously explores
+that function. Background and "decompile all" requests are not admitted; batch
+callers must set `CHERNOBOG_RAX_BATCH_EA`. It does not explore callees or
+enumerate the database. Disabled
+or unavailable rax fails open to the existing deobfuscation pipeline; a bounded
+job failure or user cancellation is reported and likewise does not fabricate
+evidence.
+
 Database bytes, instruction boundaries, call-site tracker values, names, and
 segment permissions are read on IDA's main thread. The worker receives only an
 immutable `ProgramImage`, one function, bounded run requests, and POD call
@@ -25,8 +35,14 @@ summaries. It never calls the IDA SDK.
 3. **Memory and object-layout semantics**: typed reads/writes, loaded pointer
    values, executable pointer candidates, exact final written ranges, and
    image/stack/heap/other scope classification.
-4. **Runtime materialization**: runtime ASCII candidates, decrypted/generated
-   buffers, and write-to-executable/self-modifying-code observations.
+4. **Runtime materialization**: final image writes are projected as runtime
+   ASCII C strings only when the same address and NUL-terminated value occur in
+   every run with available memory observation. Exact-address CFString and
+   admitted C-string call operands in the current final ctree are replaced with
+   transient literals. Conflicts, missing runs, stack/heap values, binary data,
+   and unterminated prefixes fail closed. Decrypted/generated buffers and
+   write-to-executable/self-modifying-code observations remain available as
+   typed evidence.
 5. **Static differential analysis**: IDA-versus-rax instruction size, flow,
    direct target, and conditional fallthrough comparison at IDA instruction
    heads in every chunk of the selected function. On AArch64, IDA macro heads
@@ -67,15 +83,22 @@ summaries. It never calls the IDA SDK.
     worker ticket, run ID, and seed. Before publication, display, Z3, or handler
     consumption, every function chunk plus the exact code/data ranges consumed
     by the trace are byte- and initialized-mask-compared with the live IDB;
-    stale evidence fails closed. AArch32 entry ARM/Thumb state is also compared.
+    stale evidence fails closed. Display-only runtime literals retain the exact
+    function-generation check but do not claim proof freshness after an
+    existing deobfuscation handler patches consumed data bytes. They are never
+    exposed to branch/Z3 proof consumers through that relaxed path. AArch32
+    entry ARM/Thumb state is also compared.
 14. **Reproducibility and regression evidence**: seeds, source-level input
     order, run identifiers, unique sites, observation multiplicities, decoder
     mismatch categories, and exact consumed ranges are retained so two runs or
     two decoder versions can be compared without conflating sites with events.
 
-No rax evidence path patches bytes, adds xrefs, creates functions, changes
-types, or rewrites microcode. Existing Chernobog transformations retain their
-own proof obligations.
+No rax evidence path patches database bytes, adds xrefs, creates functions,
+changes types, or rewrites microcode. Consensus runtime strings can rewrite
+only the newly built, current-function ctree into display literals and
+associated comments; rax final-memory bytes are not copied into the IDB.
+Existing Chernobog transformations can independently patch database bytes and
+retain their own proof obligations.
 
 ## Application-mode execution model
 
@@ -172,6 +195,9 @@ an eligible concrete counterexample is falsification of the universal claim.
 
 ## Actions
 
+- Opening/decompiling the focused function automatically performs the bounded
+  current-function prerequisite immediately before its first whole-MBA
+  deobfuscation pass when no exact fresh evidence exists.
 - `Ctrl+Shift+E`: explore the displayed function.
 - `Show current-function rax evidence`: print the typed summary and bounded
   detail (runs, decoder differences, branches, indirect targets, runtime

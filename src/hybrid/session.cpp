@@ -534,6 +534,64 @@ struct Session::Impl
       submit_model_replays();
     return pending ? config.poll_ms : 250;
   }
+
+  bool wait_for_pending(const char *purpose)
+  {
+    if ( !pending )
+      return evidence && hybrid_current_evidence_is_fresh(function.start);
+    unregister_poll_timer();
+    if ( !worker )
+      return false;
+
+    const auto finish_wait = [&](bool value)
+    {
+      // GUI sessions keep a low-frequency poll alive after the prerequisite
+      // so later Z3 model-replay requests are still consumed. Headless IDA has
+      // no reliable timer loop and never registers one.
+      if ( !batch )
+        start_timer();
+      return value;
+    };
+
+    const uint64_t count = std::max<uint64_t>(1, inputs.size());
+    const uint64_t raw_wait = count * (config.timeout_ms + 100) + 5000;
+    const uint64_t wait_ms = std::min<uint64_t>(raw_wait, 120000);
+    const auto deadline = std::chrono::steady_clock::now()
+                        + std::chrono::milliseconds(wait_ms);
+    const int quantum_ms = std::max(10, std::min(config.poll_ms, 100));
+    while ( pending )
+    {
+      const auto now = std::chrono::steady_clock::now();
+      if ( now >= deadline )
+      {
+        msg("[chernobog][rax] %s wait expired after %llu ms; cancelling bounded job\n",
+            purpose, static_cast<unsigned long long>(wait_ms));
+        worker->cancel_pending();
+        return finish_wait(false);
+      }
+      const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+          deadline - now);
+      const auto quantum = std::min(
+          remaining, std::chrono::milliseconds(quantum_ms));
+      EmulationJobResult result;
+      if ( worker->wait_take_next(result, quantum) )
+      {
+        pending = false;
+        pending_ticket = 0;
+        append_result(std::move(result));
+        report(false);
+        break;
+      }
+      if ( !batch && user_cancelled() )
+      {
+        msg("[chernobog][rax] Current-function prerequisite cancelled by user\n");
+        worker->cancel_pending();
+        return finish_wait(false);
+      }
+    }
+    return finish_wait(
+        evidence && hybrid_current_evidence_is_fresh(function.start));
+  }
 };
 
 Session::Session(int64_t database_id)
@@ -712,26 +770,46 @@ bool Session::explore(vdui_t *view, uint64_t fallback_address)
     // Batch/headless IDA has no reliable UI event loop for poll timers. The job
     // remains bounded by the sum of its per-run caps; wait here so explicit
     // invocation deterministically produces evidence before the script exits.
-    const uint64_t count = uint64_t(deterministic_runs + entry.inputs.size());
-    const uint64_t raw_wait = count * (impl_->config.timeout_ms + 100) + 5000;
-    const uint64_t wait_ms = std::min<uint64_t>(raw_wait, 120000);
-    EmulationJobResult result;
-    if ( impl_->worker->wait_take_next(
-          result, std::chrono::milliseconds(wait_ms)) )
-    {
-      impl_->pending = false;
-      impl_->pending_ticket = 0;
-      impl_->append_result(std::move(result));
-      impl_->report(false);
-    }
-    else
-    {
-      msg("[chernobog][rax] Headless wait expired; cancelling bounded job\n");
-      impl_->worker->cancel_pending();
+    if ( !impl_->wait_for_pending("Headless") )
       return false;
-    }
   }
   return true;
+}
+
+EnsureExploredResult Session::ensure_explored(
+    uint64_t function_start, uint64_t focus_address)
+{
+  impl_->config = hybrid_load_config();
+  if ( !impl_->config.enabled )
+    return EnsureExploredResult::DISABLED;
+  if ( hybrid_current_evidence_is_fresh(function_start) )
+    return EnsureExploredResult::ALREADY_FRESH;
+  if ( rax_load() == nullptr )
+  {
+    msg("[chernobog][rax] Pre-deobfuscation exploration unavailable: %s\n",
+        rax_unavailable_reason());
+    return EnsureExploredResult::UNAVAILABLE;
+  }
+
+  const bool matching_pending = impl_->pending
+      && impl_->function.start == function_start;
+  if ( !matching_pending )
+  {
+    const uint64_t focus = focus_address == UINT64_MAX
+                         ? function_start : focus_address;
+    if ( !explore(nullptr, focus) )
+      return user_cancelled() ? EnsureExploredResult::CANCELLED
+                              : EnsureExploredResult::FAILED;
+  }
+  if ( !impl_->pending )
+    return hybrid_current_evidence_is_fresh(function_start)
+         ? EnsureExploredResult::EXPLORED : EnsureExploredResult::FAILED;
+
+  WaitBox wait;
+  return impl_->wait_for_pending("Pre-deobfuscation")
+       ? EnsureExploredResult::EXPLORED
+       : user_cancelled() ? EnsureExploredResult::CANCELLED
+                          : EnsureExploredResult::FAILED;
 }
 
 void Session::show_last(vdui_t *view) const
@@ -791,6 +869,15 @@ Session *hybrid_current_session()
   std::lock_guard<std::mutex> lock(sessions_mutex());
   const auto found = sessions().find(database_id);
   return found == sessions().end() ? nullptr : found->second;
+}
+
+EnsureExploredResult hybrid_ensure_current_function_explored(
+    uint64_t function_start, uint64_t focus_address)
+{
+  Session *session = hybrid_current_session();
+  return session == nullptr
+       ? EnsureExploredResult::UNAVAILABLE
+       : session->ensure_explored(function_start, focus_address);
 }
 
 } // namespace chernobog::hybrid

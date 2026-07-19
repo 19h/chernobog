@@ -15,7 +15,9 @@
 #include "../deobf/handlers/jump_optimizer.h"
 #include "../deobf/handlers/native_opaque.h"
 #include "../hybrid/session.hpp"
+#include "../hybrid/z3_bridge.hpp"
 
+#include <map>
 #include <set>
 #include <cstdio>
 #include <memory>
@@ -69,7 +71,10 @@ struct chernobog_plugmod_t final : public plugmod_t
     std::set<ea_t> ctree_const_folded;
     std::set<ea_t> ctree_switch_folded;
     std::set<ea_t> ctree_indirect_call_processed;
-    std::set<ea_t> ctree_string_decrypt_processed;
+    // A no-cache decompilation creates a new cfunc for the same function.
+    // Track ctree string rewrites by tree identity so every rebuilt tree
+    // receives transient runtime literals.
+    std::map<ea_t, const cfunc_t *> ctree_string_decrypt_processed;
 
     chernobog_plugmod_t();
     virtual ~chernobog_plugmod_t();
@@ -145,6 +150,42 @@ static bool is_disabled_mode_enabled()
     qstring env;
     return qgetenv("CHERNOBOG_DISABLE", &env)
         && !env.empty() && env[0] != '0';
+}
+
+//--------------------------------------------------------------------------
+// Admit automatic rax work only for the function the user selected. This
+// prevents "decompile all" and background Hex-Rays requests from turning the
+// current-function prerequisite into a database sweep. Batch callers must name
+// the authoritative target explicitly, as the existing rax batch action does.
+//--------------------------------------------------------------------------
+static bool is_focused_function(ea_t function_ea)
+{
+    if ( function_ea == BADADDR )
+        return false;
+
+    if ( batch )
+    {
+        qstring raw;
+        ea_t requested = BADADDR;
+        if ( !qgetenv("CHERNOBOG_RAX_BATCH_EA", &raw) || raw.empty()
+          || !str2ea(&requested, raw.c_str(), BADADDR) )
+        {
+            return false;
+        }
+        const func_t *function = get_func(requested);
+        return function != nullptr && function->start_ea == function_ea;
+    }
+
+    TWidget *widget = get_current_widget();
+    vdui_t *view = widget != nullptr ? get_widget_vdui(widget) : nullptr;
+    if ( view != nullptr && view->cfunc != nullptr
+      && view->cfunc->entry_ea == function_ea )
+    {
+        return true;
+    }
+
+    const func_t *function = get_func(get_screen_ea());
+    return function != nullptr && function->start_ea == function_ea;
 }
 
 //--------------------------------------------------------------------------
@@ -230,16 +271,59 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         msg("[chernobog] Hexrays callback registered and active\n");
     }
 
-    // Batch/IDALib sessions can finish autoanalysis without emitting a final
-    // IDB notification after the plugin activates. The flowchart event is the
-    // earliest decompiler point guaranteed to occur after the caller's
-    // auto_wait(). Request one complete restart if tier 2 changed native CFG.
-    if ( event == hxe_flowchart )
+    // This is the earliest decompiler event, before microcode generation and
+    // optinsn/optblock mutation. Recover native CFG first; if it changed, the
+    // restarted flowchart will snapshot those exact bytes. Then synchronously
+    // ensure rax evidence only for the function whose MBA pipeline is about to
+    // run. IDA 9.4 emits the ea-based event; retain the 9.3 legacy variant.
+    const bool is_flowchart_event = event == hxe_flowchart
+#if IDA_SDK_VERSION >= 940
+        || event == hxe_flowchart_ea
+#endif
+        ;
+    if ( is_flowchart_event )
     {
+        ea_t function_ea = BADADDR;
+#if IDA_SDK_VERSION >= 940
+        if ( event == hxe_flowchart_ea )
+        {
+            const qflow_chart_ea_t *fc = va_arg(va, const qflow_chart_ea_t *);
+            mba_t *mba = va_arg(va, mba_t *);
+            function_ea = fc != nullptr ? fc->func_ea : BADADDR;
+            if ( function_ea == BADADDR && mba != nullptr )
+                function_ea = mba->entry_ea;
+        }
+        else
+#endif
+        {
+            const qflow_chart_t *fc = va_arg(va, const qflow_chart_t *);
+            mba_t *mba = va_arg(va, mba_t *);
+            if ( fc != nullptr && fc->pfn != nullptr )
+                function_ea = fc->pfn->start_ea;
+            else if ( mba != nullptr )
+                function_ea = mba->entry_ea;
+        }
+
         const bool hikari_changed = self->recover_hikari_cfg_if_ready(true);
         const bool native_changed = self->recover_native_opaque_if_ready(true);
         if ( hikari_changed || native_changed )
             return MERR_REDO;
+
+        if ( function_ea != BADADDR && is_focused_function(function_ea)
+          && !is_disabled_mode_enabled()
+          && chernobog_function_requires_deobfuscation(function_ea) )
+        {
+            const chernobog::hybrid::EnsureExploredResult result =
+                self->hybrid_session != nullptr
+                ? self->hybrid_session->ensure_explored(uint64_t(function_ea))
+                : chernobog::hybrid::EnsureExploredResult::UNAVAILABLE;
+            if ( result == chernobog::hybrid::EnsureExploredResult::FAILED
+              || result == chernobog::hybrid::EnsureExploredResult::CANCELLED )
+            {
+                msg("[chernobog][rax] Pre-deobfuscation exploration for %a did not produce fresh evidence; continuing without rax evidence\n",
+                    function_ea);
+            }
+        }
     }
 
     if ( event == hxe_populating_popup )
@@ -255,8 +339,10 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         // Attach all component actions
         component_registry_t::attach_to_popup(widget, popup, vu);
     }
-    // Clear tracking when view is refreshed (e.g., after inlining)
-    // This allows re-deobfuscation when user makes changes
+    // A rebuilt cfunc needs its ctree-only rewrites applied to the new tree.
+    // Do not clear whole-MBA tracking or rax evidence merely because a view was
+    // rendered again: the manual action itself refreshes the view, and doing so
+    // previously decrypted already-patched bytes a second time.
     else if ( event == hxe_refresh_pseudocode )
     {
         vdui_t *vu = va_arg(va, vdui_t *);
@@ -267,9 +353,6 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             self->ctree_switch_folded.erase(func_ea);
             self->ctree_indirect_call_processed.erase(func_ea);
             self->ctree_string_decrypt_processed.erase(func_ea);
-            chernobog_clear_function_tracking(func_ea);
-            if ( self->hybrid_session )
-                self->hybrid_session->invalidate_function(uint64_t(func_ea));
         }
     }
     // The installed optinsn/optblock handlers own microcode deobfuscation.
@@ -344,21 +427,40 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
                     ctree_indirect_call_handler_t::run(cfunc, nullptr);
                 }
             }
-            // String decryption (strcpy reveals, char-by-char, AES keys)
-            if ( self->ctree_string_decrypt_processed.find(func_ea) == self->ctree_string_decrypt_processed.end() )
+        }
+
+        // Runtime plaintext is a current-function display feature, not an
+        // automatic whole-database optimization. Outside AUTO mode, run this
+        // handler only when this exact function owns display-eligible rax
+        // strings; background/decompile-all cfuncs therefore remain untouched.
+        const bool ctree_strings_ready = cfunc != nullptr
+          && maturity == CMAT_FINAL && !is_disabled_mode_enabled();
+        const bool runtime_strings_available = ctree_strings_ready
+          && !chernobog::hybrid::
+                hybrid_current_runtime_strings_for_decompilation(
+                    uint64_t(cfunc->entry_ea)).empty();
+        const bool static_strings_detected = ctree_strings_ready
+          && is_auto_mode_enabled()
+          && !runtime_strings_available
+          && ctree_string_decrypt_handler_t::detect(cfunc);
+        if ( ctree_strings_ready
+          && (runtime_strings_available || static_strings_detected) )
+        {
+            const ea_t func_ea = cfunc->entry_ea;
+            const auto processed =
+                self->ctree_string_decrypt_processed.find(func_ea);
+            if ( processed == self->ctree_string_decrypt_processed.end()
+              || processed->second != cfunc )
             {
-                self->ctree_string_decrypt_processed.insert(func_ea);
-                if ( ctree_string_decrypt_handler_t::detect(cfunc) )
-                {
-                    deobf_ctx_t str_ctx;
-                    str_ctx.cfunc = cfunc;
-                    str_ctx.func_ea = func_ea;
-                    int changes = ctree_string_decrypt_handler_t::run(cfunc, &str_ctx);
-                    if ( changes > 0 )
-                    {
-                        msg("[chernobog] Ctree string decryption: found %d strings\n", changes);
-                    }
-                }
+                self->ctree_string_decrypt_processed[func_ea] = cfunc;
+                deobf_ctx_t str_ctx;
+                str_ctx.cfunc = cfunc;
+                str_ctx.func_ea = func_ea;
+                const int changes = ctree_string_decrypt_handler_t::run(
+                    cfunc, &str_ctx);
+                if ( changes > 0 )
+                    msg("[chernobog] Ctree string materialization: applied %d literals\n",
+                        changes);
             }
         }
     }

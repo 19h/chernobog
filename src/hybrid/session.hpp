@@ -10,6 +10,16 @@
 
 namespace chernobog::hybrid {
 
+enum class EnsureExploredResult : uint8_t
+{
+  ALREADY_FRESH = 0,
+  EXPLORED,
+  DISABLED,
+  UNAVAILABLE,
+  CANCELLED,
+  FAILED,
+};
+
 class Session
 {
 public:
@@ -20,6 +30,10 @@ public:
   Session &operator=(const Session &) = delete;
 
   bool explore(vdui_t *view, uint64_t fallback_address = UINT64_MAX);
+  // Bounded main-thread prerequisite used by deobfuscation. It reuses exact
+  // fresh evidence, waits for a matching job, or explores only this function.
+  EnsureExploredResult ensure_explored(
+      uint64_t function_start, uint64_t focus_address = UINT64_MAX);
   bool explore_batch_target();
   void show_last(vdui_t *view) const;
   void cancel();
@@ -36,5 +50,7 @@ private:
 };
 
 Session *hybrid_current_session();
+EnsureExploredResult hybrid_ensure_current_function_explored(
+    uint64_t function_start, uint64_t focus_address = UINT64_MAX);
 
 } // namespace chernobog::hybrid

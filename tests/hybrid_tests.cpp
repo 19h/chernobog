@@ -486,6 +486,88 @@ void test_identity_comparison()
         "identity comparison must detect loaded-byte changes");
 }
 
+MemoryBytes runtime_bytes(uint64_t address, const char *value,
+                          uint32_t run_id, uint64_t seed,
+                          DataScope scope = DataScope::IMAGE,
+                          bool terminate = true)
+{
+  MemoryBytes bytes;
+  bytes.addr = address;
+  bytes.scope = scope;
+  bytes.run_id = run_id;
+  bytes.seed = seed;
+  while ( *value != '\0' )
+    bytes.bytes.push_back(uint8_t(*value++));
+  if ( terminate )
+    bytes.bytes.push_back(0);
+  return bytes;
+}
+
+void add_memory_run(TargetEvidence *evidence, uint32_t run_id, uint64_t seed,
+                    bool observation_available = true)
+{
+  RunObservation run;
+  run.ran = true;
+  run.outcome.memory_observation_available = observation_available;
+  run.provenance.run_id = run_id;
+  run.provenance.seed = seed;
+  evidence->runs.push_back(run);
+}
+
+void test_runtime_string_consensus()
+{
+  TargetEvidence evidence;
+  add_memory_run(&evidence, 0, 0x10);
+  add_memory_run(&evidence, 1, 0x20);
+  add_memory_run(&evidence, 2, 0x30, false);
+  evidence.events.final_writes.push_back(
+      runtime_bytes(0x4000, "frida-server", 0, 0x10));
+  evidence.events.final_writes.push_back(
+      runtime_bytes(0x4000, "frida-server", 1, 0x20));
+  evidence.events.final_writes.push_back(
+      runtime_bytes(0x5000, "only-one-run", 0, 0x10));
+  evidence.events.final_writes.push_back(
+      runtime_bytes(0x6000, "unterminated", 0, 0x10,
+                    DataScope::IMAGE, false));
+  evidence.events.final_writes.push_back(
+      runtime_bytes(0x6000, "unterminated", 1, 0x20,
+                    DataScope::IMAGE, false));
+  evidence.events.final_writes.push_back(
+      runtime_bytes(0x7000, "stack-only", 0, 0x10, DataScope::STACK));
+  evidence.events.final_writes.push_back(
+      runtime_bytes(0x7000, "stack-only", 1, 0x20, DataScope::STACK));
+
+  const std::vector<RuntimeStringCandidate> candidates =
+      hybrid_consensus_runtime_strings(evidence);
+  check(candidates.size() == 1,
+        "runtime strings must require identical terminated image bytes in every observable run");
+  if ( candidates.size() == 1 )
+  {
+    check(candidates[0].address == 0x4000
+          && candidates[0].value == "frida-server"
+          && candidates[0].observations == 2
+          && candidates[0].eligible_runs == 2
+          && candidates[0].runs == std::vector<uint32_t>({ 0, 1 }),
+          "runtime string consensus must retain address, value, and run provenance");
+  }
+
+  TargetEvidence conflict = evidence;
+  conflict.events.final_writes.back() =
+      runtime_bytes(0x4000, "different", 1, 0x20);
+  conflict.events.final_writes.push_back(
+      runtime_bytes(0x4000, "different", 1, 0x20));
+  check(hybrid_consensus_runtime_strings(conflict).empty(),
+        "a per-run runtime plaintext conflict must reject the candidate");
+
+  TargetEvidence non_printable;
+  add_memory_run(&non_printable, 0, 0x10);
+  MemoryBytes binary = runtime_bytes(0x8000, "abcd", 0, 0x10);
+  binary.bytes[2] = 1;
+  non_printable.events.final_writes.push_back(std::move(binary));
+  check(hybrid_consensus_runtime_strings(non_printable).empty(),
+        "binary final writes must not be projected as runtime strings");
+}
+
 void test_decoder_and_smir(const RaxApi *api, const ProgramImage &image)
 {
   const SegImage &segment = image.segs.front();
@@ -681,6 +763,7 @@ int main()
 {
   test_config_bounds();
   test_identity_comparison();
+  test_runtime_string_consensus();
   test_function_profiles_and_call_policy();
   const RaxApi *api = rax_load();
   check(api != nullptr, rax_unavailable_reason());

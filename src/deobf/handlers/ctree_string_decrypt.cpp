@@ -4,6 +4,7 @@
 #include "../analysis/arch_utils.h"
 #include "../../common/bitvector.h"
 #include "../../common/ida_memory.h"
+#include "../../hybrid/z3_bridge.hpp"
 
 //--------------------------------------------------------------------------
 // Platform-specific crypto support
@@ -1185,6 +1186,9 @@ bool ctree_string_decrypt_handler_t::detect(cfunc_t *cfunc)
 //--------------------------------------------------------------------------
 // Main entry point
 //--------------------------------------------------------------------------
+static int apply_runtime_string_arguments(
+    cfunc_t *cfunc, const std::map<ea_t, qstring> &runtime_plaintexts);
+
 static void record_plaintext_fact(
     deobf_ctx_t *ctx, ea_t address, const char *plaintext, const char *source)
 {
@@ -1216,6 +1220,26 @@ int ctree_string_decrypt_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx)
         
     ctree_str_debug("[ctree_string] Analyzing function at 0x%llx\n",
                    (unsigned long long)cfunc->entry_ea);
+
+    // rax final-memory observations are concrete witnesses. Require identical
+    // NUL-terminated bytes in every memory-observable run, then retain them as
+    // display facts for this exact function generation. Data-only deobfuscation
+    // may already have patched the IDB, so this path intentionally does not
+    // promote them to fresh branch/Z3 proof.
+    std::map<ea_t, qstring> runtime_plaintexts;
+    const std::vector<chernobog::hybrid::RuntimeStringCandidate> runtime_strings =
+        chernobog::hybrid::hybrid_current_runtime_strings_for_decompilation(
+            uint64_t(cfunc->entry_ea));
+    for ( const chernobog::hybrid::RuntimeStringCandidate &candidate :
+          runtime_strings )
+    {
+        if ( candidate.address > uint64_t(BADADDR) )
+            continue;
+        const ea_t address = ea_t(candidate.address);
+        record_plaintext_fact(
+            ctx, address, candidate.value.c_str(), "rax cross-run consensus");
+        runtime_plaintexts.emplace(address, candidate.value.c_str());
+    }
     
     // Find string function calls (strcpy, memcpy, CCCrypt)
     string_call_visitor_t call_visitor(cfunc);
@@ -1281,24 +1305,74 @@ int ctree_string_decrypt_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx)
                            (unsigned long long)entry.first, entry.second.c_str());
         }
     }
-    
     ctree_str_debug("[ctree_string] Built address->plaintext map with %zu entries\n", addr_to_plaintext.size());
     
+    int replacements = 0;
+    int runtime_object_replacements = 0;
+    int runtime_argument_replacements = 0;
+
+    // Apply the separately provenance-gated rax display facts first. This
+    // gives an exact accounting of runtime-derived CFString/object uses and
+    // prevents a shorter static fragment at the same address from winning.
+    if ( !runtime_plaintexts.empty() ) {
+        runtime_object_replacements = replace_encrypted_strings(
+            cfunc, runtime_plaintexts);
+        replacements += runtime_object_replacements;
+        for ( const auto &entry : runtime_plaintexts )
+            addr_to_plaintext.erase(entry.first);
+    }
+
     if ( !addr_to_plaintext.empty() ) {
         int replaced = replace_encrypted_strings(cfunc, addr_to_plaintext);
         if ( replaced > 0 ) {
-            ctree_str_debug("[ctree_string] Annotated %d encrypted string references\n", replaced);
+            replacements += replaced;
+            ctree_str_debug("[ctree_string] Materialized %d encrypted string references\n", replaced);
         }
     }
 
-    // The current implementation records recovered strings and annotations;
-    // it does not mutate the ctree.
-    return 0;
+    if ( !runtime_plaintexts.empty() ) {
+        runtime_argument_replacements = apply_runtime_string_arguments(
+            cfunc, runtime_plaintexts);
+        replacements += runtime_argument_replacements;
+        deobf::log("[chernobog][rax] Runtime plaintext: %zu consensus strings, %d CFString/object uses and %d C-string argument uses applied\n",
+                   runtime_plaintexts.size(), runtime_object_replacements,
+                   runtime_argument_replacements);
+    }
+    ctx->strings_decrypted += replacements;
+    return replacements;
 }
 
 //--------------------------------------------------------------------------
 // Encrypted string replacement visitor
 //--------------------------------------------------------------------------
+static bool replace_ctree_string_literal(cexpr_t *target,
+                                         const qstring &plaintext)
+{
+    if ( target == nullptr || plaintext.empty() )
+        return false;
+    if ( target->op == cot_str && target->string != nullptr
+      && plaintext == target->string )
+        return false;
+
+    cexpr_t *replacement = new cexpr_t();
+    replacement->op = cot_str;
+    replacement->string = qstrdup(plaintext.c_str());
+    if ( replacement->string == nullptr ) {
+        delete replacement;
+        return false;
+    }
+    replacement->ea = target->ea;
+    replacement->type = target->type;
+    replacement->exflags = EXFL_CSTR;
+
+    // replace_by() abandons children. Clean the old expression first so a
+    // cot_ref/cast/object chain does not leak, then move the new literal into
+    // the existing allocation (which can be a carg_t).
+    target->cleanup();
+    target->replace_by(replacement);
+    return true;
+}
+
 struct encrypted_string_replacer_t : public ctree_visitor_t {
     cfunc_t *cfunc;
     const std::map<ea_t, qstring> &known_plaintexts;
@@ -1713,25 +1787,153 @@ struct encrypted_string_replacer_t : public ctree_visitor_t {
         if ( !found ) 
             return 0;
             
-        // Add comment at the expression's address  
-        if ( target_expr->ea != BADADDR ) {
+        const ea_t target_ea = target_expr->ea;
+
+        // Add comment at the expression's address
+        if ( target_ea != BADADDR ) {
             qstring comment;
             comment.sprnt("DEOBF: Decrypted CFSTR = \"%s\"", decrypted.c_str());
-            set_cmt(target_expr->ea, comment.c_str(), false);
+            set_cmt(target_ea, comment.c_str(), false);
         }
-        
-        ctree_str_debug("[replace] Added comment at 0x%llx for \"%s\"\n",
-                       (unsigned long long)target_expr->ea, decrypted.c_str());
+
+        if ( replace_ctree_string_literal(target_expr, decrypted) ) {
+            ++replacements;
+            ctree_str_debug("[replace] Materialized cot_str at 0x%llx: \"%s\"\n",
+                           (unsigned long long)target_ea, decrypted.c_str());
+            if ( target_expr == e )
+                prune_now();
+        }
 
         // A disassembly comment added during CMAT_FINAL is not guaranteed to
         // appear in the already-built pseudocode. Retain one exact-address
         // ctree comment for the final rendering as well; install it after the
         // visitor completes so traversing the current tree is side-effect
         // free.
-        recovered_comments.emplace(target_expr->ea, decrypted);
+        if ( target_ea != BADADDR )
+            recovered_comments.emplace(target_ea, decrypted);
         return 0;
     }
 };
+
+static cexpr_t *unwrap_runtime_argument(cexpr_t *expression)
+{
+    while ( expression != nullptr && expression->op == cot_cast )
+        expression = expression->x;
+    return expression;
+}
+
+static ea_t runtime_argument_address(cexpr_t *expression)
+{
+    expression = unwrap_runtime_argument(expression);
+    if ( expression == nullptr )
+        return BADADDR;
+    if ( expression->op == cot_obj )
+        return expression->obj_ea;
+    if ( expression->op == cot_ref ) {
+        cexpr_t *referent = unwrap_runtime_argument(expression->x);
+        if ( referent != nullptr && referent->op == cot_obj )
+            return referent->obj_ea;
+    }
+    return BADADDR;
+}
+
+static std::string runtime_call_name(const cexpr_t *call)
+{
+    if ( call == nullptr || call->op != cot_call || call->x == nullptr )
+        return {};
+    const cexpr_t *callee = call->x;
+    while ( callee != nullptr && callee->op == cot_cast )
+        callee = callee->x;
+    if ( callee == nullptr )
+        return {};
+    qstring raw;
+    if ( callee->op == cot_obj )
+        get_name(&raw, callee->obj_ea);
+    else if ( callee->op == cot_helper && callee->helper != nullptr )
+        raw = callee->helper;
+    return normalize_call_name(raw);
+}
+
+static bool formal_const_character_pointer(const carg_t &argument)
+{
+    const tinfo_t &formal = argument.formal_type;
+    if ( formal.empty() || !formal.is_ptr() )
+        return false;
+    const tinfo_t pointee = formal.get_pointed_object();
+    return pointee.is_const() && (pointee.is_char() || pointee.is_uchar());
+}
+
+static bool known_runtime_string_argument(const std::string &name,
+                                          const carglist_t &arguments,
+                                          size_t index)
+{
+    if ( (name == "objc_msgSend" || name == "objc_msgSendSuper")
+      && index >= 2 )
+        return true;
+    // Resolved Objective-C calls retain the selector as argument one.
+    if ( arguments.size() >= 2 && arguments[1].op == cot_str && index >= 2 )
+        return true;
+
+    if ( name == "strstr" || name == "strcasestr" || name == "strcmp"
+      || name == "strcasecmp" || name == "strncmp" || name == "strncasecmp"
+      || name == "popen" || name == "fopen" )
+        return index <= 1;
+    if ( name == "strlen" || name == "strdup" || name == "strchr"
+      || name == "strrchr" || name == "strpbrk" || name == "strspn"
+      || name == "strcspn" || name == "system" || name == "puts"
+      || name == "atoi" || name == "atol" || name == "atoll"
+      || name == "strtol" || name == "strtoul" || name == "strtoll"
+      || name == "strtoull" || name == "printf" || name == "scanf" )
+        return index == 0;
+    if ( name == "fprintf" || name == "fscanf" || name == "sscanf" )
+        return index == 1;
+    if ( name == "snprintf" || name == "vsnprintf" )
+        return index == 2;
+    return false;
+}
+
+struct runtime_string_argument_replacer_t : public ctree_visitor_t
+{
+    const std::map<ea_t, qstring> &plaintexts;
+    int replacements = 0;
+
+    explicit runtime_string_argument_replacer_t(
+        const std::map<ea_t, qstring> &values)
+        : ctree_visitor_t(CV_FAST), plaintexts(values) {}
+
+    int idaapi visit_expr(cexpr_t *expression) override
+    {
+        if ( expression->op != cot_call || expression->a == nullptr )
+            return 0;
+        const std::string name = runtime_call_name(expression);
+        for ( size_t index = 0; index < expression->a->size(); ++index ) {
+            carg_t &argument = (*expression->a)[index];
+            const ea_t address = runtime_argument_address(&argument);
+            const auto candidate = plaintexts.find(address);
+            if ( candidate == plaintexts.end() )
+                continue;
+            if ( !known_runtime_string_argument(name, *expression->a, index)
+              && !formal_const_character_pointer(argument) )
+                continue;
+            if ( replace_ctree_string_literal(&argument, candidate->second) ) {
+                ++replacements;
+                ctree_str_debug(
+                    "[rax] Applied runtime literal at call 0x%llx arg %zu: \"%s\"\n",
+                    (unsigned long long)expression->ea, index,
+                    candidate->second.c_str());
+            }
+        }
+        return 0;
+    }
+};
+
+static int apply_runtime_string_arguments(
+    cfunc_t *cfunc, const std::map<ea_t, qstring> &runtime_plaintexts)
+{
+    runtime_string_argument_replacer_t replacer(runtime_plaintexts);
+    replacer.apply_to(&cfunc->body, nullptr);
+    return replacer.replacements;
+}
 
 int ctree_string_decrypt_handler_t::replace_encrypted_strings(
     cfunc_t *cfunc, 
@@ -1761,7 +1963,6 @@ int ctree_string_decrypt_handler_t::replace_encrypted_strings(
             cfunc->set_user_cmt(location, comment.c_str());
             comments_changed = true;
         }
-        ++replacer.replacements;
     }
     if ( comments_changed )
         cfunc->save_user_cmts();

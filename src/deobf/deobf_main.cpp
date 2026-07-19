@@ -19,9 +19,23 @@
 #include "handlers/indirect_call.h"
 #include "handlers/ctree_string_decrypt.h"
 #include "rules/rule_registry.h"
+#include "../hybrid/session.hpp"
 
 // Forward declaration
 static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx);
+
+static void ensure_current_function_explored(ea_t function_ea)
+{
+    const chernobog::hybrid::EnsureExploredResult result =
+        chernobog::hybrid::hybrid_ensure_current_function_explored(
+            uint64_t(function_ea));
+    if ( result == chernobog::hybrid::EnsureExploredResult::FAILED
+      || result == chernobog::hybrid::EnsureExploredResult::CANCELLED )
+    {
+        deobf::log("[chernobog][rax] Pre-deobfuscation exploration for %a did not produce fresh evidence; continuing without rax evidence\n",
+                   function_ea);
+    }
+}
 
 struct deobf_module_state_t
 {
@@ -61,6 +75,20 @@ void chernobog_clear_function_tracking(ea_t func_ea)
     deflatten_handler_t::clear_deferred(func_ea);
     identity_call_handler_t::clear_caches();
     vm_mba_handler_t::clear_function(func_ea);
+}
+
+bool chernobog_function_requires_deobfuscation(ea_t func_ea)
+{
+    const deobf_module_state_t *state = get_deobf_state();
+    return state != nullptr && state->active
+        && state->optblock_processed.count({func_ea, MMAT_LOCOPT}) == 0;
+}
+
+void chernobog_mark_function_deobfuscated(ea_t func_ea)
+{
+    deobf_module_state_t *state = get_deobf_state();
+    if ( state != nullptr )
+        state->optblock_processed.insert({func_ea, MMAT_LOCOPT});
 }
 
 // Clear ALL tracking caches (called on database load if CHERNOBOG_RESET=1)
@@ -361,6 +389,14 @@ void chernobog_t::deobfuscate_mba(mbl_array_t *mba)
     if ( !mba )
         return;
 
+    if ( !chernobog_function_requires_deobfuscation(mba->entry_ea) )
+    {
+        deobf::log("[chernobog] Function %a already has a completed deobfuscation pass; duplicate request skipped\n",
+                   mba->entry_ea);
+        return;
+    }
+
+    ensure_current_function_explored(mba->entry_ea);
     deobf::log("[chernobog] Deobfuscating %a (from mba)\n", mba->entry_ea);
 
     deobf_ctx_t ctx;
@@ -369,6 +405,7 @@ void chernobog_t::deobfuscate_mba(mbl_array_t *mba)
 
     // Run the core deobfuscation logic
     run_deobfuscation_passes(mba, &ctx);
+    chernobog_mark_function_deobfuscated(mba->entry_ea);
 }
 
 //--------------------------------------------------------------------------
@@ -379,6 +416,20 @@ void chernobog_t::deobfuscate_function(cfunc_t *cfunc)
     if ( !cfunc || !cfunc->mba )
         return;
 
+    if ( !chernobog_function_requires_deobfuscation(cfunc->entry_ea) )
+    {
+        deobf_ctx_t ctree_ctx;
+        ctree_ctx.mba = cfunc->mba;
+        ctree_ctx.cfunc = cfunc;
+        ctree_ctx.func_ea = cfunc->entry_ea;
+        const int ctree_changes = ctree_string_decrypt_handler_t::run(
+            cfunc, &ctree_ctx);
+        deobf::log("[chernobog] Function %a already has a completed MBA pass; skipped duplicate byte/CFG transformations and applied %d ctree string literals\n",
+                   cfunc->entry_ea, ctree_changes);
+        return;
+    }
+
+    ensure_current_function_explored(cfunc->entry_ea);
     deobf::log("[chernobog] Deobfuscating %a\n", cfunc->entry_ea);
 
     deobf_ctx_t ctx;
@@ -388,6 +439,7 @@ void chernobog_t::deobfuscate_function(cfunc_t *cfunc)
 
     // Run the core deobfuscation logic
     run_deobfuscation_passes(cfunc->mba, &ctx);
+    chernobog_mark_function_deobfuscated(cfunc->entry_ea);
 }
 
 //--------------------------------------------------------------------------
@@ -924,8 +976,13 @@ static int do_deobfuscate(vdui_t *vu)
     if ( !vu || !vu->cfunc )
         return 0;
 
+    const bool redo_mba = chernobog_function_requires_deobfuscation(
+        vu->cfunc->entry_ea);
     chernobog_t::deobfuscate_function(vu->cfunc);
-    vu->refresh_view(true);
+    if ( redo_mba )
+        vu->refresh_view(true);
+    else
+        vu->refresh_ctext();
     return 1;
 }
 

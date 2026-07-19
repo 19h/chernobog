@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include <map>
+#include <set>
 #include <tuple>
 #include <unordered_set>
 
@@ -165,6 +166,101 @@ bool TargetEvidence::matches(uint64_t function_start,
 {
   return scope.function_start == function_start
       && scope.function_hash == function_hash;
+}
+
+std::vector<RuntimeStringCandidate> hybrid_consensus_runtime_strings(
+    const TargetEvidence &evidence, size_t minimum_length,
+    size_t maximum_length)
+{
+  std::vector<RuntimeStringCandidate> result;
+  if ( minimum_length == 0 || maximum_length < minimum_length )
+    return result;
+
+  using RunKey = std::pair<uint32_t, uint64_t>;
+  std::set<RunKey> eligible;
+  for ( const RunObservation &run : evidence.runs )
+  {
+    if ( run.ran && run.outcome.memory_observation_available )
+      eligible.emplace(run.provenance.run_id, run.provenance.seed);
+  }
+  if ( eligible.empty() )
+    return result;
+
+  // One address may appear more than once in a backend trace (for example,
+  // after model-replay evidence is merged). Retain one exact value per run and
+  // reject that run/address if its final ranges disagree.
+  std::map<uint64_t, std::map<RunKey, std::string>> values;
+  std::map<uint64_t, std::set<RunKey>> ambiguous;
+  for ( const MemoryBytes &written : evidence.events.final_writes )
+  {
+    const RunKey run{ written.run_id, written.seed };
+    if ( written.scope != DataScope::IMAGE || eligible.count(run) == 0
+      || written.bytes.empty() )
+    {
+      continue;
+    }
+
+    size_t length = 0;
+    while ( length < written.bytes.size() && written.bytes[length] != 0 )
+    {
+      const uint8_t byte = written.bytes[length];
+      if ( byte < 0x20 || byte > 0x7E || length == maximum_length )
+      {
+        length = 0;
+        break;
+      }
+      ++length;
+    }
+    // A captured range without its terminator could be a prefix of arbitrary
+    // binary data; do not turn it into a string fact.
+    if ( length < minimum_length || length >= written.bytes.size()
+      || written.bytes[length] != 0 )
+    {
+      continue;
+    }
+
+    const std::string candidate(
+        reinterpret_cast<const char *>(written.bytes.data()), length);
+    auto &per_run = values[written.addr];
+    const auto prior = per_run.find(run);
+    if ( prior == per_run.end() )
+      per_run.emplace(run, candidate);
+    else if ( prior->second != candidate )
+      ambiguous[written.addr].insert(run);
+  }
+
+  for ( const auto &address_values : values )
+  {
+    const uint64_t address = address_values.first;
+    const auto &per_run = address_values.second;
+    if ( per_run.size() != eligible.size()
+      || !ambiguous[address].empty() )
+    {
+      continue;
+    }
+    const std::string &consensus = per_run.begin()->second;
+    bool same = true;
+    RuntimeStringCandidate candidate;
+    candidate.address = address;
+    candidate.value = consensus;
+    candidate.eligible_runs = eligible.size();
+    for ( const RunKey &run : eligible )
+    {
+      const auto observed = per_run.find(run);
+      if ( observed == per_run.end() || observed->second != consensus )
+      {
+        same = false;
+        break;
+      }
+      candidate.runs.push_back(run.first);
+    }
+    if ( same )
+    {
+      candidate.observations = candidate.runs.size();
+      result.push_back(std::move(candidate));
+    }
+  }
+  return result;
 }
 
 BranchClaimCheck TargetEvidence::check_branch_claim(
