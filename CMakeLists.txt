@@ -353,6 +353,7 @@ ida_add_plugin(chernobog
     src/deobf/handlers/peephole.cpp
     src/deobf/handlers/jump_optimizer.cpp
     src/deobf/handlers/deflatten.cpp
+    src/deobf/handlers/recurrent_switch.cpp
     src/deobf/handlers/bogus_cf.cpp
     src/deobf/handlers/string_decrypt.cpp
     src/deobf/handlers/const_decrypt.cpp

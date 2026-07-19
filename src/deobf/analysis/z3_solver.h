@@ -155,6 +155,8 @@ public:
     // Forget current bindings while retaining fresh-name monotonicity.
     void invalidate_all_values();
     void invalidate_memory_values();
+    void invalidate_values_if(
+        const std::function<bool(const symbolic_var_t&)>& predicate);
     void invalidate_aliases(const symbolic_var_t& var);
 
     // Clear state (but keep context)
@@ -200,6 +202,18 @@ public:
     // Execute an entire block symbolically
     void execute_block(const mblock_t* blk);
 
+    // Read an operand through the executor's current bindings. Unlike
+    // get_value(), this also translates nested expressions.
+    z3::expr evaluate_operand(const mop_t& op, int default_size = 4);
+
+    // Install a path invariant and keep it across call-clobber invalidation.
+    // The caller must only preserve ABI/nonvolatile values it has proved.
+    void set_value(const mop_t& op, const z3::expr& value,
+                   bool preserve_across_calls = false);
+
+    // Forget memory-backed bindings while retaining register invariants.
+    void invalidate_memory_values();
+
     // Get symbolic value of a variable after execution
     std::optional<z3::expr> get_value(const mop_t& op);
     std::optional<z3::expr> get_value(const symbolic_var_t& var);
@@ -223,6 +237,7 @@ private:
 
     // Current symbolic state: variable -> expression (using shared_ptr)
     std::unordered_map<symbolic_var_t, std::shared_ptr<z3::expr>, symbolic_var_t::hash_t> m_state;
+    std::vector<symbolic_var_t> m_call_preserved;
 
 };
 

@@ -23,6 +23,7 @@ struct flatten_info_t {
     std::size_t direct_return_target_count = 0;
     std::size_t return_frontier_count = 0;
     unsigned confidence_score = 0;
+    std::set<int> dispatcher_blocks;
     mop_t state_var;
     std::map<uint64_t, int> state_to_block;
 };

@@ -25,7 +25,9 @@ Chernobog automatically detects and reverses the following Hikari obfuscation te
   - State-variable aliasing and conditional (data-dependent) transitions
   - Index-based jump-table flattening
   - Encoded recurrent switch dispatchers, using bounded CFG recurrence,
-    distributed-backedge, selector-transform, and target-diversity evidence
+    distributed-backedge, selector-transform, and target-diversity evidence;
+    exact Z3 transition proofs replace the dispatcher with direct CFG edges
+    before ctree construction
   - Hikari magic-constant dispatch detection
 - **Bogus Control Flow (BCF)** - Identifies and removes opaque predicates, dead branches, and unreachable code blocks, including arithmetic identity predicates such as `x*(x+1) % 2 == 0` (always true)
 - **Basic Block Splitting** - Merges artificially split basic blocks back together
@@ -137,7 +139,7 @@ Applied after microcode optimization for additional cleanup:
 
 ## Requirements
 
-- IDA Pro 9.3+ with Hex-Rays decompiler (the plugin is developed against the 9.3/9.4 SDK; the built binary requires the IDA version matching the SDK used to build it)
+- IDA Pro 9.4 with Hex-Rays decompiler (the build rejects any SDK whose `IDA_SDK_VERSION` is not `940`)
 - CMake 3.27+
 - Ninja build system
 - Rust stable toolchain with Cargo
@@ -448,6 +450,11 @@ can be modified safely:
 - **Pattern Detection**: Identifies obfuscation patterns (flattening, MBA, encrypted strings, etc.)
 - **Z3 Symbolic Execution**: Analyzes dispatcher state machines and solves for control flow transitions
 - **CFG Reconstruction**: Applies control flow changes, storing transitions by state values and block start addresses (not block indices) for stability across maturity levels
+- **Recurrent-Switch Reconstruction**: Enumerates bounded paths from each
+  encoded case back to the dispatcher, proves a unique next target for every
+  path, specializes shared side-effecting frontiers, and removes the dispatcher.
+  The pass is fail-closed if state storage escapes, any transition is ambiguous,
+  path bounds are exceeded, or a rewrite would skip observable effects.
 - **MBA Simplification**: Z3-certified simplification with average O(1) root-opcode lookup and lazy commutative matching
 - **Peephole Optimization**: Local optimizations (constant folding, dead code elimination)
 
@@ -524,6 +531,10 @@ call/pop CFG recovery at native, flowchart, and codegen stages plus ARM64
 preoptimized constant/character reconstruction. The parameterized
 `tests/ida_native_negative_smoke.py` covers ordinary calls, multi-caller
 prologues, orphan callee promotion, and indirect SEH dispatchers.
+`tests/ida_cff_plugin_probe.py` asserts that the reference recurrent dispatcher
+is absent from final pseudocode. `tests/ida_decompile_probe.py` and
+`tests/ida_interr_scan.py` provide targeted and whole-IDB decompiler regression
+checks for timeouts and internal errors.
 
 The CTest targets are SDK-linked but do not constitute a live-IDB decompiler
 integration test. Runtime validation requires an IDA/Hex-Rays build compatible
@@ -533,8 +544,9 @@ with the SDK used to compile the plugin and a representative binary corpus.
 
 - Requires functions to be decompilable by Hex-Rays
 - Custom or heavily modified Hikari variants may not be fully supported
-- Encoded recurrent switch dispatchers are currently classified for analysis;
-  their edges are not rewritten until an exact encoded-state mapping is proved
+- Encoded recurrent switch dispatchers are rewritten only when every bounded
+  returning path has a unique proved target and the complete rewrite plan is
+  side-effect safe; unsupported graph shapes remain intact
 - Some obfuscation patterns may require manual cleanup after automated processing
 - Anti-analysis tricks (anti-debug, VM detection) are not handled
 - Z3 analysis is bounded by fixed internal timeouts (about 5 s per solve, shorter for opaque-predicate and rule-verification checks); extremely complex state machines may not solve within them

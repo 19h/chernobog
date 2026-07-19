@@ -801,6 +801,9 @@ bool detect_flatten_pattern(mbl_array_t *mba, flatten_info_t *out) {
                 out->return_frontier_count =
                     features.return_frontier_count;
                 out->confidence_score = best_evidence.assessment.score;
+                out->dispatcher_blocks.insert(
+                    best_evidence.region.blocks.begin(),
+                    best_evidence.region.blocks.end());
             }
             return true;
         }

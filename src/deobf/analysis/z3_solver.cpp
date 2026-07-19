@@ -2,6 +2,7 @@
 #include "opaque_eval.h"
 #include "../../common/bitvector.h"
 #include "../../common/z3_utils.h"
+#include <cstring>
 
 namespace z3_solver {
 
@@ -110,6 +111,34 @@ z3::expr mcode_translator_t::make_symbolic(const symbolic_var_t& var) {
         return *cache_it->second;
     }
 
+    // Hex-Rays names overlapping machine-register views by byte intervals.
+    // A write to RDX followed by a read from EDX must therefore reuse the low
+    // 32 bits of the RDX value instead of creating an unrelated symbol.
+    if ( var.kind() == symbolic_var_t::VAR_REGISTER && var.size() > 0 ) {
+        for ( const auto &entry : m_known_values ) {
+            const symbolic_var_t &stored = entry.first;
+            if ( stored.kind() != symbolic_var_t::VAR_REGISTER
+              || stored.id() != var.id() || stored.size() < var.size() )
+                continue;
+            const uint64_t mask = var.size() >= 8
+                ? UINT64_MAX : ((uint64_t(1) << (var.size() * 8)) - 1);
+            return make_const(entry.second & mask, bits);
+        }
+        for ( const auto &entry : m_var_cache ) {
+            const symbolic_var_t &stored = entry.first;
+            if ( stored.kind() != symbolic_var_t::VAR_REGISTER
+              || stored.id() != var.id() || stored.size() < var.size()
+              || !entry.second )
+                continue;
+            const z3::expr &value = *entry.second;
+            const int value_bits = value.get_sort().bv_size();
+            if ( value_bits == bits )
+                return value;
+            if ( value_bits > bits )
+                return extract(value, bits - 1, 0);
+        }
+    }
+
     // Create fresh symbolic variable
     std::string name;
     switch (var.kind()) {
@@ -129,6 +158,9 @@ z3::expr mcode_translator_t::make_symbolic(const symbolic_var_t& var) {
             name = "tmp_" + std::to_string(m_fresh_counter++);
             break;
     }
+
+    name += "_" + std::to_string(var.size()) + "_v"
+          + std::to_string(m_fresh_counter++);
 
     z3::expr e = m_ctx.ctx().bv_const(name.c_str(), bits);
     m_var_cache[var] = std::make_shared<z3::expr>(e);
@@ -184,6 +216,16 @@ void mcode_translator_t::invalidate_memory_values() {
     }
 }
 
+void mcode_translator_t::invalidate_values_if(
+    const std::function<bool(const symbolic_var_t&)>& predicate) {
+    for ( auto p = m_var_cache.begin(); p != m_var_cache.end(); ) {
+        p = predicate(p->first) ? m_var_cache.erase(p) : std::next(p);
+    }
+    for ( auto p = m_known_values.begin(); p != m_known_values.end(); ) {
+        p = predicate(p->first) ? m_known_values.erase(p) : std::next(p);
+    }
+}
+
 namespace {
 
 bool variables_may_alias(const symbolic_var_t& left,
@@ -195,8 +237,22 @@ bool variables_may_alias(const symbolic_var_t& left,
                kind == symbolic_var_t::VAR_MEMORY;
     };
 
-    if ( is_memory(left.kind()) && is_memory(right.kind()) )
-        return true;
+    if ( is_memory(left.kind()) && is_memory(right.kind()) ) {
+        if ( left.kind() == symbolic_var_t::VAR_MEMORY
+          || right.kind() == symbolic_var_t::VAR_MEMORY )
+            return true;
+        if ( left.kind() != right.kind() )
+            return false;
+        if ( left.size() <= 0 || right.size() <= 0 )
+            return left.id() == right.id();
+        const uint64_t left_size = static_cast<uint64_t>(left.size());
+        const uint64_t right_size = static_cast<uint64_t>(right.size());
+        if ( left.id() > UINT64_MAX - left_size
+          || right.id() > UINT64_MAX - right_size )
+            return left.id() == right.id();
+        return left.id() < right.id() + right_size
+            && right.id() < left.id() + left_size;
+    }
     if ( left.kind() != right.kind() )
         return false;
 
@@ -217,13 +273,37 @@ bool variables_may_alias(const symbolic_var_t& left,
     return left.id() == right.id();
 }
 
+std::optional<symbolic_var_t> symbolic_var_from_mop(const mop_t& op)
+{
+    switch ( op.t ) {
+        case mop_r:
+            return symbolic_var_t(
+                symbolic_var_t::VAR_REGISTER, op.r, op.size);
+        case mop_S:
+            if ( op.s )
+                return symbolic_var_t(
+                    symbolic_var_t::VAR_STACK,
+                    static_cast<uint64_t>(op.s->off), op.size);
+            break;
+        case mop_v:
+            return symbolic_var_t(
+                symbolic_var_t::VAR_GLOBAL, op.g, op.size);
+        case mop_l:
+            if ( op.l )
+                return symbolic_var_t(
+                    symbolic_var_t::VAR_LOCAL,
+                    static_cast<uint64_t>(op.l->idx), op.size);
+            break;
+        default:
+            break;
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 void mcode_translator_t::invalidate_aliases(const symbolic_var_t& var) {
-    const bool memory = var.kind() == symbolic_var_t::VAR_STACK ||
-                        var.kind() == symbolic_var_t::VAR_GLOBAL ||
-                        var.kind() == symbolic_var_t::VAR_MEMORY;
-    if ( memory ) {
+    if ( var.kind() == symbolic_var_t::VAR_MEMORY ) {
         invalidate_memory_values();
         return;
     }
@@ -329,6 +409,38 @@ z3::expr mcode_translator_t::translate_insn(const minsn_t* ins) {
     if (ins->is_fpinsn()) {
         return m_ctx.ctx().bv_const(
             ("fp_" + std::to_string(m_fresh_counter++)).c_str(), result_bits);
+    }
+
+    // Hex-Rays represents rotate intrinsics as nested helper calls (for
+    // example, `mov call !__ROL4__(x, 7), edx`). They are pure bit-vector
+    // operations and must remain related to their arguments for encoded CFF
+    // state expressions to cancel exactly.
+    if ( ins->opcode == m_call && ins->d.t == mop_f && ins->d.f
+      && ins->d.f->args.size() >= 2 ) {
+        const funcrole_t role = ins->d.f->role;
+        const char *helper = ins->l.t == mop_h ? ins->l.helper : nullptr;
+        const bool is_rol = role == ROLE_ROL
+          || (helper && std::strstr(helper, "ROL") != nullptr);
+        const bool is_ror = role == ROLE_ROR
+          || (helper && std::strstr(helper, "ROR") != nullptr);
+        if ( is_rol || is_ror ) {
+            z3::expr value = translate_operand(ins->d.f->args[0]);
+            const int width = value.get_sort().bv_size();
+            if ( width > 0 && (width & (width - 1)) == 0 ) {
+                z3::expr shift = resize(
+                    translate_operand(ins->d.f->args[1]), width);
+                const z3::expr mask = make_const(
+                    static_cast<uint64_t>(width - 1), width);
+                shift = shift & mask;
+                const z3::expr inverse =
+                    (make_const(static_cast<uint64_t>(width), width) - shift)
+                    & mask;
+                z3::expr rotated = is_rol
+                    ? (z3::shl(value, shift) | z3::lshr(value, inverse))
+                    : (z3::lshr(value, shift) | z3::shl(value, inverse));
+                return resize(rotated, result_bits);
+            }
+        }
     }
 
     // Translate operands
@@ -610,17 +722,45 @@ symbolic_executor_t::symbolic_executor_t(z3_context_t& ctx)
 
 void symbolic_executor_t::reset() {
     m_state.clear();
+    m_call_preserved.clear();
     m_translator.reset();
 }
 
 void symbolic_executor_t::execute_insn(const minsn_t* ins) {
     if (!ins) return;
 
-    // Calls may clobber registers and any memory reachable through arguments.
-    // Without a complete mcallinfo alias/spoil model, retain no prior binding.
+    // Respect Hex-Rays' explicit spoiled-register set. At LOCOPT some direct
+    // calls have no mcallinfo yet; in that case invalidate registers but keep
+    // local stack slots, which are not call-visible unless their address has
+    // escaped. The recurrent-switch caller separately rejects escaped state
+    // storage and preserves only proved ABI-nonvolatile selector registers.
     if (is_mcode_call(ins->opcode)) {
-        m_state.clear();
-        m_translator.invalidate_all_values();
+        const mcallinfo_t *call_info =
+            ins->d.t == mop_f ? ins->d.f : nullptr;
+        const auto preserved = [&](const symbolic_var_t &candidate) {
+            return std::any_of(
+                m_call_preserved.begin(), m_call_preserved.end(),
+                [&](const symbolic_var_t &value) {
+                    return variables_may_alias(candidate, value);
+                });
+        };
+        const auto invalidated = [&](const symbolic_var_t &candidate) {
+            if ( preserved(candidate) )
+                return false;
+            if ( candidate.kind() == symbolic_var_t::VAR_REGISTER ) {
+                return !call_info || call_info->spoiled.reg.has_any(
+                    static_cast<mreg_t>(candidate.id()), candidate.size());
+            }
+            if ( candidate.kind() == symbolic_var_t::VAR_GLOBAL
+              || candidate.kind() == symbolic_var_t::VAR_MEMORY ) {
+                return !call_info || call_info->spoiled.has_memory();
+            }
+            return false;
+        };
+        for ( auto p = m_state.begin(); p != m_state.end(); ) {
+            p = invalidated(p->first) ? m_state.erase(p) : std::next(p);
+        }
+        m_translator.invalidate_values_if(invalidated);
         return;
     }
 
@@ -653,18 +793,10 @@ void symbolic_executor_t::handle_assignment(const minsn_t* ins) {
     z3::expr value = m_translator.translate_insn(ins);
 
     // Get destination variable
-    if (ins->d.t == mop_r || ins->d.t == mop_S || ins->d.t == mop_v || ins->d.t == mop_l) {
-        symbolic_var_t dst_var = symbolic_var_t(
-            ins->d.t == mop_r ? symbolic_var_t::VAR_REGISTER :
-            ins->d.t == mop_S ? symbolic_var_t::VAR_STACK :
-            ins->d.t == mop_v ? symbolic_var_t::VAR_GLOBAL :
-            symbolic_var_t::VAR_LOCAL,
-            ins->d.t == mop_r ? ins->d.r :
-            ins->d.t == mop_S && ins->d.s ? ins->d.s->off :
-            ins->d.t == mop_v ? ins->d.g :
-            ins->d.l ? ins->d.l->idx : 0,
-            ins->d.size
-        );
+    const std::optional<symbolic_var_t> destination =
+        symbolic_var_from_mop(ins->d);
+    if ( destination ) {
+        const symbolic_var_t &dst_var = *destination;
         for ( auto p = m_state.begin(); p != m_state.end(); ) {
             p = variables_may_alias(p->first, dst_var) ? m_state.erase(p)
                                                         : std::next(p);
@@ -719,10 +851,66 @@ void symbolic_executor_t::execute_block(const mblock_t* blk) {
     }
 }
 
+z3::expr symbolic_executor_t::evaluate_operand(
+    const mop_t& op, int default_size) {
+    return m_translator.translate_operand(op, default_size);
+}
+
+void symbolic_executor_t::set_value(
+    const mop_t& op, const z3::expr& value, bool preserve_across_calls) {
+    const std::optional<symbolic_var_t> destination =
+        symbolic_var_from_mop(op);
+    if ( !destination )
+        return;
+    for ( auto p = m_state.begin(); p != m_state.end(); ) {
+        p = variables_may_alias(p->first, *destination)
+            ? m_state.erase(p) : std::next(p);
+    }
+    m_translator.invalidate_aliases(*destination);
+    m_state[*destination] = std::make_shared<z3::expr>(value);
+    m_translator.set_symbolic_value(*destination, value);
+    if ( preserve_across_calls
+      && std::none_of(
+          m_call_preserved.begin(), m_call_preserved.end(),
+          [&](const symbolic_var_t &existing) {
+              return existing == *destination;
+          }) ) {
+        m_call_preserved.push_back(*destination);
+    }
+}
+
+void symbolic_executor_t::invalidate_memory_values() {
+    const auto is_memory = [](const symbolic_var_t &var) {
+        return var.kind() == symbolic_var_t::VAR_STACK
+            || var.kind() == symbolic_var_t::VAR_GLOBAL
+            || var.kind() == symbolic_var_t::VAR_LOCAL
+            || var.kind() == symbolic_var_t::VAR_MEMORY;
+    };
+    for ( auto p = m_state.begin(); p != m_state.end(); ) {
+        p = is_memory(p->first) ? m_state.erase(p) : std::next(p);
+    }
+    m_translator.invalidate_values_if(is_memory);
+}
+
 std::optional<z3::expr> symbolic_executor_t::get_value(const symbolic_var_t& var) {
     auto it = m_state.find(var);
     if (it != m_state.end() && it->second) {
         return *it->second;
+    }
+    if ( var.kind() == symbolic_var_t::VAR_REGISTER && var.size() > 0 ) {
+        for ( const auto &entry : m_state ) {
+            const symbolic_var_t &stored = entry.first;
+            if ( stored.kind() != symbolic_var_t::VAR_REGISTER
+              || stored.id() != var.id() || stored.size() < var.size()
+              || !entry.second )
+                continue;
+            const int bits = var.size() * 8;
+            const z3::expr &value = *entry.second;
+            if ( value.get_sort().bv_size() == static_cast<unsigned>(bits) )
+                return value;
+            if ( value.get_sort().bv_size() > static_cast<unsigned>(bits) )
+                return value.extract(bits - 1, 0);
+        }
     }
     return std::nullopt;
 }
@@ -732,18 +920,8 @@ std::optional<z3::expr> symbolic_executor_t::get_value(const mop_t& op) {
          (op.t != mop_r && op.t != mop_S && op.t != mop_v && op.t != mop_l) )
         return std::nullopt;
 
-    symbolic_var_t var(
-        op.t == mop_r ? symbolic_var_t::VAR_REGISTER :
-        op.t == mop_S ? symbolic_var_t::VAR_STACK :
-        op.t == mop_v ? symbolic_var_t::VAR_GLOBAL :
-        symbolic_var_t::VAR_LOCAL,
-        op.t == mop_r ? op.r :
-        op.t == mop_S && op.s ? op.s->off :
-        op.t == mop_v ? op.g :
-        op.l ? op.l->idx : 0,
-        op.size
-    );
-    return get_value(var);
+    const std::optional<symbolic_var_t> var = symbolic_var_from_mop(op);
+    return var ? get_value(*var) : std::nullopt;
 }
 
 std::optional<uint64_t> symbolic_executor_t::solve_for_value(const z3::expr& expr) {
