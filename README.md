@@ -206,7 +206,8 @@ dirty.
 
 Windows builds can be cross-compiled with `clang-cl` targeting
 `x86_64-pc-windows-msvc`; no MinGW GCC toolchain or GitHub Windows runner is
-required.
+required. This remains a local and manually-dispatched compatibility build;
+published Windows release artifacts are compiled natively with MSVC.
 
 ```bash
 # Prepare an xwin CRT/SDK sysroot once
@@ -242,15 +243,19 @@ make all-platforms
 Notes:
 
 - Linux builds run in Docker on non-Linux hosts and require `docker`.
-- Windows builds still use the local `clang-cl` + `xwin` flow above.
+- The local all-platform command uses the `clang-cl` + `xwin` flow above.
 
-GitHub Actions also builds native Linux ARM64 and Windows ARM64 release
-artifacts on the `ubuntu-24.04-arm` and `windows-11-arm` hosted runners. The
-ARM64 jobs select `aarch64-unknown-linux-gnu` and
-`aarch64-pc-windows-msvc`, respectively, and reject artifacts whose ELF or PE
-machine type does not match ARM64. Unix CI runs the portable CTest suite;
-Windows CI disables it because the SDK checkout does not include the IDA
-runtime DLL required by the catalog test executable.
+GitHub Actions builds native Linux ARM64, Windows x86-64, and Windows ARM64
+release artifacts. Windows releases use the Visual Studio generator and MSVC
+on native Windows runners, and CI verifies both the PE machine type and the
+base IDA 9.4 register-finder import. Unix builds retain the current IDA 9.4 SDK
+patch and its matching runtime stubs; the ABI-compatible base SDK pin is
+Windows-specific. The ARM64 jobs select
+`aarch64-unknown-linux-gnu` and `aarch64-pc-windows-msvc`, respectively. Unix
+CI runs the portable CTest suite; the macOS x86-64 job uses the native
+`macos-15-intel` runner instead of executing its tests through Rosetta. Windows
+CI disables the tests because the SDK checkout does not include the IDA runtime
+DLL required by the catalog test executable.
 
 ## Installation
 
