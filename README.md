@@ -14,6 +14,18 @@ Instruction substitutions simplified back to their obvious forms.<br/>
 The obfuscation dissolves. The algorithm emerges.
 </h5>
 
+> [!NOTE]
+> **Chernobog 6** is a major release. New since 5.3.0:
+>
+> - **rax hybrid engine** — bounded, focused-function emulation that materializes runtime strings and projects decoder, branch, memory, and Z3 cross-check evidence into the IDB (see [`RAX_HYBRID.md`](RAX_HYBRID.md))
+> - **Native pre-lift analysis** — early native/Hex-Rays enrichment passes that repair call/pop and get-PC control flow, resolve indirect targets, and fold constants before decompilation
+> - **Recurrent-switch CFF recovery** — encoded recurrent switch dispatchers are classified and rewritten with exact Z3 transition proofs
+> - **VM-family MBA recovery** with exact-Z3 affine reconstruction, plus **cross-function Hikari CFG recovery**, reversible native opaque-predicate and branch patching, and writable-constant inlining
+> - **Select/cmov cascade collapse** and static XOR/NOT stack-string recovery
+> - **Multi-database support** (`PLUGIN_MULTI`) — isolated state per open database
+>
+> Chernobog 6 **requires IDA Pro 9.4** (SDK `940`); older SDKs are rejected at build time.
+
 ## Features
 
 Chernobog automatically detects and reverses the following Hikari obfuscation techniques:
@@ -31,8 +43,9 @@ Chernobog automatically detects and reverses the following Hikari obfuscation te
   - Hikari magic-constant dispatch detection
 - **Bogus Control Flow (BCF)** - Identifies and removes opaque predicates, dead branches, and unreachable code blocks, including arithmetic identity predicates such as `x*(x+1) % 2 == 0` (always true)
 - **Basic Block Splitting** - Merges artificially split basic blocks back together
-- **Indirect Branches** - Resolves computed branch targets with support for multiple encodings (direct, offset, XOR, combined)
+- **Indirect Branches** - Resolves computed branch targets whose offset expression folds to an exact address, following register copies, zero/sign extensions, and add/subtract offsets (other bitwise or combined forms only when they reduce to a constant)
 - **Indirect Calls** - Resolves Hikari's `call(table[index] - offset)` pattern to direct calls
+- **Recurrent-Resolver Argument Cleanup** - Neutralizes call-site argument expressions in ABI registers that a recurrent, statically closed resolver thunk provably never reads; the physical ABI slots are retained so live arguments do not shift (default-on at `MMAT_CALLS`)
 - **Select-Chain Collapse** - Collapses long cascades of conditional-move (select) diamonds from LLVM select lowering into equivalent branchless expressions, keeping very long chains within Hex-Rays' structural limits
 - **Cross-Function Dispatch (opt-in, `CHERNOBOG_HIKARI_CFG`)** - Recovers Hikari's two-target ARM64 dispatch encoding across IDA function boundaries (relocation table + `CSET` index + signed bias, with an observed XOR key), adds exact IDB edges/comments, and can optionally rewrite side-effect-free dispatch tails to direct conditional branches
 
@@ -76,7 +89,15 @@ Mixed Boolean-Arithmetic (MBA) simplification using Z3-certified rules and lazy 
 
 Additional carry-disjoint rules include `x + (y & ~x)` → `x | y`,
 `((y | ~x) + x) + 1` → `x & y`, and
-`(x & y) + (~x & y)` → `y`. All 108 registered rules are checked for
+`(x & y) + (~x & y)` → `y`.
+
+**Negation, NOT, and multiplication identities:**
+- `~~x` → `x`, `-x - 1` → `~x`, `~(x - 1)` → `-x`
+- `-(-x)` → `x`, `~x + 1` → `-x`, `-(x - y)` → `y - x`, `-(x + y)` → `-x - y`
+- `x * 2` → `x + x`, `x * (-1)` → `-x`, `(-x) * (-y)` → `x * y`
+- Absorbing identities: `x + 0` → `x`, `x | x` → `x`, `x & x` → `x`
+
+All 108 registered rules are checked for
 8-, 16-, 32-, and 64-bit equivalence before admission.
 
 ### VM-Family MBA Recovery
@@ -98,7 +119,7 @@ enabled separately with `CHERNOBOG_VM_Z3=1`.
 
 ### Function Call Obfuscation
 - **Identity Function Calls** - Detects and resolves identity-function call chains to their final targets (analysis/annotation only; no structural rewrite is applied)
-- **Hikari Function Wrappers** - Identifies `HikariFunctionWrapper_*` functions, renames them to reflect the real target (e.g. `ObjC_Wrapper_`/`DynAPI_`), and annotates call sites with the resolved API
+- **Hikari Function Wrappers** - Identifies `HikariFunctionWrapper_*` functions that forward to `objc_msgSend` or the dynamic loader (`dlsym`/`dlopen`), resolves the real target (an `ObjC_Wrapper_*` identity for Objective-C, or the looked-up symbol for dynamic loads), and annotates the call sites with the resolved API. Only wrappers with a proven runtime API are admitted; the wrapper functions themselves are not renamed
 - **Saved-Register Slot Resolution (savedregs)** - Resolves indirect call targets and string arguments read from saved-register stack slots using conservative reaching-definition tracing; results are IDB annotations (microcode is not mutated)
 
 ### Platform-Specific
@@ -147,6 +168,7 @@ Applied after microcode optimization for additional cleanup:
 - Rust stable toolchain with Cargo
 - IDA SDK (set `IDASDK` environment variable)
 - Git
+- macOS 13.3+ on Apple hosts (the default deployment target; the bundled Z3 4.16's C++20 formatting path requires it — set `CMAKE_OSX_DEPLOYMENT_TARGET` to override)
 
 Optional, per target:
 
@@ -237,9 +259,13 @@ runtime DLL required by the catalog test executable.
 make install
 ```
 
+On macOS, `make install` also ad-hoc codesigns the copied dylib
+(`codesign -s - -f`), replacing any existing signature.
+
 Or manually copy the built plugin. The ida-cmake build writes the plugin into
-the IDA SDK's plugin directory (`$IDASDK/bin/plugins`, or `$IDASDK/src/bin/plugins`
-for the GitHub SDK layout) as `chernobog.dylib`/`.so`/`.dll` (no `64` suffix):
+the IDA SDK's plugin directory (`$IDASDK/bin/plugins`, `$IDASDK/src/bin/plugins`
+for the GitHub SDK layout, or `$IDABIN/plugins` when the `IDABIN` environment
+variable is set) as `chernobog.dylib`/`.so`/`.dll` (no `64` suffix):
 - macOS: `$IDASDK/bin/plugins/chernobog.dylib` → `~/.idapro/plugins/`
 - Linux: `$IDASDK/bin/plugins/chernobog.so` → `~/.idapro/plugins/`
 - Windows: `$IDASDK\bin\plugins\chernobog.dll` → `%APPDATA%\Hex-Rays\IDA Pro\plugins\`
@@ -298,6 +324,13 @@ function and invoke the plugin with argument `0x524158` (ASCII `RAX`) to run the
 exploration synchronously. The complete report semantics, capability boundaries,
 and configuration are in [`RAX_HYBRID.md`](RAX_HYBRID.md).
 
+An analogous analysis-only probe exists for control-flow flattening: set
+`CHERNOBOG_CFF_BATCH_EA` to an address inside the target function and invoke the
+plugin with argument `0x434646` (ASCII `CFF`) to generate uncached `MMAT_LOCOPT`
+microcode, run the flattening detector, and print its verdict to the output
+window. No mutation components are enabled, so it reports detector behavior
+without applying any deobfuscation.
+
 ### Environment Variables
 
 | Variable | Description |
@@ -319,7 +352,16 @@ and configuration are in [`RAX_HYBRID.md`](RAX_HYBRID.md).
 | `CHERNOBOG_IDA_EARLY_MAX_INSNS=<n>` | Bound each early Hex-Rays pass (default 1000000; range 1..100000000 microinstructions/native heads) |
 | `CHERNOBOG_IDA_POST_SCAN_HEADS=<n>` | Bound the one-shot native orphan-call scan to `n` heads in executable segments (default 1000000; hard range 1..100000000) |
 | `CHERNOBOG_IDA_POST_SCAN_FUNCTIONS=<n>` | Bound the one-shot wrapper scan to `n` IDA functions (default 100000; hard range 1..10000000) |
+| `CHERNOBOG_IDA_POP_RET_DEPTH=<n>` | Bound call/pop-return get-PC gadget scans (default 4; range 1..64) |
+| `CHERNOBOG_IDA_FLAG_SCAN_DEPTH=<n>` | Bound x86 flag-predicate back-scans (default 8; range 1..64) |
+| `CHERNOBOG_IDA_REGISTER_SCAN_DEPTH=<n>` | Extra register-tracker depth for indirect-target resolution (default 0; range 0..1024) |
+| `CHERNOBOG_IDA_ORPHAN_SCAN_INSNS=<n>` | Bound the orphan-callee decoder scan (default 2000; range 1..1000000) |
+| `CHERNOBOG_IDA_WRAPPER_MAX_INSNS=<n>` | Maximum instructions for a function to qualify as an outlinable wrapper (default 20; range 1..256) |
+| `CHERNOBOG_IDA_WRAPPER_MAX_CALLERS=<n>` | Maximum callers for wrapper outlining (default 1; 0 = unlimited; up to 1000000) |
+| `CHERNOBOG_IDA_MAX_GAP=<n>` | Maximum jump-over-garbage gap retyped between heads (default 0x100; capped at 1 MiB) |
+| `CHERNOBOG_IDA_ENTRY_WINDOW=<n>` | Instruction window for entry-flag predicate proofs (default 0x10; capped at 1 MiB) |
 | `CHERNOBOG_IDA_GET_PC_TRACE=1` | Emit exact classifier and transactional native-edge diagnostics for call/pop fixture debugging |
+| `CHERNOBOG_CFF_BATCH_EA=<addr>` | Text/batch mode: with plugin argument `0x434646` (ASCII `CFF`), run the analysis-only flattening detector on the containing function and print detector evidence; no mutation components are enabled |
 | `CHERNOBOG_RAX_APPLY_ANALYSIS=0` | Retain current-function rax reporting/display evidence but suppress all IDB materialization from it |
 | `CHERNOBOG_RAX_MIN_DYNAMIC_RUNS=<n>` | Minimum distinct current-function runs for dynamic xrefs/types (default 2; range 1..32) |
 | `CHERNOBOG_RAX_MIN_NORET_RUNS=<n>` | Minimum conclusive non-returning runs for a no-return comment (default 3; range 2..64) |
@@ -345,6 +387,23 @@ and configuration are in [`RAX_HYBRID.md`](RAX_HYBRID.md).
 File-based debug and dump output (`CHERNOBOG_DEBUG`, `CHERNOBOG_MBA_DEBUG`,
 `CHERNOBOG_VM_DEBUG`, `CHERNOBOG_VM_DUMP_JSON`) is available on macOS and Linux
 only; it is compiled out and has no effect in Windows builds.
+
+Each native-analysis pass gated by `CHERNOBOG_IDA_ANALYSIS` also has an
+individual default-on toggle; set any to `0` to disable that pass alone while
+leaving the rest of the enrichment engine active: `CHERNOBOG_IDA_REDUNDANT_PREFIX`,
+`CHERNOBOG_IDA_CALL_POP` (native call/pop get-PC recovery, distinct from the
+`CHERNOBOG_IDA_CALL_POP_FLOWCHART`/`_CODEGEN` early-Hex-Rays toggles above),
+`CHERNOBOG_IDA_PUSH_RET`, `CHERNOBOG_IDA_ZERO_REGISTER`,
+`CHERNOBOG_IDA_OPPOSITE_BRANCHES`, `CHERNOBOG_IDA_ENTRY_PREDICATES`,
+`CHERNOBOG_IDA_KNOWN_FLAGS`, `CHERNOBOG_IDA_INDIRECT_BRANCHES`,
+`CHERNOBOG_IDA_JUMP_GAPS`, `CHERNOBOG_IDA_ORPHAN_FUNCTIONS`, and
+`CHERNOBOG_IDA_OUTLINE_WRAPPERS`.
+
+The current-function rax evidence consumer (`CHERNOBOG_RAX_APPLY_ANALYSIS`)
+similarly exposes per-category toggles — code and data references, code
+creation, pointer offsets, data typing, string creation, comments, function
+recovery, stack purge, argument registers, and no-return comments — each a
+`CHERNOBOG_RAX_*` switch documented in [`RAX_HYBRID.md`](RAX_HYBRID.md).
 
 Raising `CHERNOBOG_MAX_FUNCSIZE_KB` admits larger functions to Hex-Rays and can
 materially increase decompilation time and memory use. It does not override
@@ -407,7 +466,10 @@ Press `Ctrl+Shift+H` to display plugin information and supported obfuscation typ
 ## How It Works
 
 Chernobog combines IDA processor/IDB listeners with Hex-Rays ingress,
-optimizer, and ctree callbacks. The system uses a multi-phase approach:
+optimizer, and ctree callbacks. It loads as one instance per open database
+(`PLUGIN_MULTI`): every optimizer callback, analysis cache, and evidence store
+is keyed by database context, so multiple IDBs open in one IDA process stay
+fully isolated. The system uses a multi-phase approach:
 
 ### Phase 0: Native analysis and decompiler ingress
 
@@ -417,9 +479,9 @@ corresponding generic deobfuscator mechanisms:
 - `ev_ana_insn`/`ev_emu_insn`: repair native instructions, xrefs, junk gaps,
   call/pop and push/return control flow, opaque branches, and statically
   resolved indirect targets while IDA autoanalysis is constructing the IDB.
-- `auto_empty_finally`: promote direct orphan callees and mark small wrapper
-  functions as outlined, then close proven get-PC functions over unowned
-  non-call CFG successors.
+- `auto_empty_finally`: close proven get-PC functions over unowned non-call
+  CFG successors, then promote direct orphan callees and mark small wrapper
+  functions as outlined.
 - `hxe_flowchart` and the microcode filter: repair call/pop successors and
   translate resolved gadget returns before microcode generation.
 - `hxe_microcode`: provide a generated-MBA fallback for unresolved
@@ -478,10 +540,11 @@ can be modified safely:
 - **MBA Simplification**: Z3-certified simplification with average O(1) root-opcode lookup and lazy commutative matching
 - **Peephole Optimization**: Local optimizations (constant folding, dead code elimination)
 
-### Phase 2: Late Passes (MMAT_CALLS, MMAT_GLBOPT2, hxe_glbopt)
-- **Indirect Call Resolution**: Runs once call arguments are materialized (`MMAT_CALLS`)
-- **Late VM/MBA Recovery**: VM-family and residual MBA passes run at `MMAT_GLBOPT2`
-- **ARM64 Branch Rewrites**: Reversible native branch and opaque-predicate patching is applied at `hxe_glbopt`
+### Phase 2: Late Passes (MMAT_CALLS, MMAT_GLBOPT1, MMAT_GLBOPT2, hxe_glbopt)
+- **Indirect Call Resolution and Resolver Cleanup (`MMAT_CALLS`)**: Once call arguments are materialized, indirect calls are resolved, a first VM-family pass runs, and pure call-site argument expressions that a recurrent, statically closed resolver thunk provably never reads are neutralized (physical ABI slots are retained so live arguments do not shift)
+- **Deferred Reapplication (`MMAT_GLBOPT1`)**: Global-constant inlining is retried and the deferred identity-call and deflattening analyses are applied — or flattening is freshly re-detected — once addresses have resolved
+- **Late VM/MBA Recovery (`MMAT_GLBOPT2`)**: VM-family and residual MBA passes run again
+- **Late Branch Resolution (`hxe_glbopt`, auto mode only)**: Register-defined indirect tail targets are resolved in microcode and constant same-block conditional branches are simplified; with the separate `CHERNOBOG_PATCH_BRANCHES=1` opt-in a resolved ARM64 `BR` tail is additionally patched to a reversible direct `B`. Native opaque-predicate patching runs earlier, at flowchart/auto-analysis time (see `CHERNOBOG_NATIVE_OPAQUE`)
 
 ### Phase 3: Ctree Cleanup (CMAT_FINAL)
 - **High-Level Optimization**: Additional cleanup at the decompiler AST level
@@ -557,6 +620,14 @@ recurrent-resolver arguments are neutralized, and output converges
 deterministically after Hex-Rays type propagation.
 `tests/ida_decompile_probe.py` and `tests/ida_interr_scan.py` provide targeted
 and whole-IDB decompiler regression checks for timeouts and internal errors.
+`tests/ida_rax_smoke.py`, `tests/ida_rax_deobf_smoke.py`, and
+`tests/ida_rax_gui_lifecycle_smoke.py` cover current-function rax exploration,
+automatic rax-before-deobfuscation integration, and GUI first-view string
+materialization (the last requires the graphical IDA executable).
+`tests/ida_cff_detector_smoke.py` drives the headless CFF detector probe
+(`CHERNOBOG_CFF_BATCH_EA`), `tests/ida_cff_switch_probe.py` checks recurrent
+switch-dispatch classification, and `tests/ida_cff_transition_probe.py` is a
+plugin-free dump of transition microcode.
 
 The CTest targets are SDK-linked but do not constitute a live-IDB decompiler
 integration test. Runtime validation requires an IDA/Hex-Rays build compatible
@@ -580,7 +651,12 @@ marker because IDA does not consistently propagate `qexit(N)`, and disables
 rax execution/materialization by default. `--enable-rax` opts in. Database
 inputs (`.i64`, `.idb`, and sidecar formats) are rejected unless
 `--allow-database` is explicit. A retained `--output-dir` contains `ida.log`
-and the disposable database for audit.
+and the disposable database for audit. The required log pattern can be
+overridden with `--expect-log`; `--ida` and `--plugin` default to the
+`CHERNOBOG_IDAT` and `CHERNOBOG_PLUGIN` environment variables, `--license`
+(default `IDA_LICENSE_FILE`) supplies an optional key file, `--ida-user-template`
+selects the source of the isolated user directory (default `~/.idapro`), and
+`--verbose` echoes runner activity.
 
 IDA does not unload a previously mapped plugin image when the dylib/so/DLL is
 rebuilt in place. Restart IDA before GUI validation and match the startup line
@@ -612,13 +688,21 @@ Contributions are welcome! Areas that could use improvement:
 - Additional MBA simplification rules
 - New dispatcher/flattening patterns for the deflatten handler
 
-When adding new MBA rules, use the `DEFINE_MBA_RULE` macro:
+When adding new MBA rules, define the rule with the `DEFINE_MBA_RULE` macro and
+register it with `REGISTER_MBA_RULE` in the matching `rules_*.cpp`:
 ```cpp
 DEFINE_MBA_RULE(MyRule, "my_rule",
     sub(x_0(), neg(x_1())),  // pattern: x - (-y)
     add(x_0(), x_1())        // replacement: x + y
 );
+
+REGISTER_MBA_RULE(MyRule);   // without this the rule is never applied
 ```
+`DEFINE_MBA_RULE` only defines the rule class; it takes effect only once
+`REGISTER_MBA_RULE` adds it to the registry. New rules must pass Z3 equivalence
+verification at 8, 16, 32, and 64 bits during registry initialization or they
+are rejected and logged. Rules that need constant-operand validation use
+`DEFINE_MBA_RULE_WITH_CHECK`.
 
 ## License
 

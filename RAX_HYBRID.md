@@ -249,6 +249,17 @@ All values are read when an exploration starts.
 | `CHERNOBOG_RAX_MAX_RUNTIME_BYTES` | `1048576` | Final dirty bytes per run, maximum 64 MiB |
 | `CHERNOBOG_RAX_BATCH_EA` | unset | Batch/text-mode only: address inside the target function (base autodetection, `0x` accepted); invalid or unset aborts with `BADADDR` |
 | `CHERNOBOG_RAX_APPLY_ANALYSIS` | `1` | Guarded current-function evidence-to-IDB consumer; `0` retains reporting/display only |
+| `CHERNOBOG_RAX_APPLY_CREFS` | `1` | Apply resolved code cross-references; `0` suppresses this category |
+| `CHERNOBOG_RAX_APPLY_DREFS` | `1` | Apply resolved data cross-references |
+| `CHERNOBOG_RAX_MAKE_CODE` | `1` | Convert proven-reachable undefined heads to code |
+| `CHERNOBOG_RAX_POINTER_OFFSETS` | `1` | Apply resolved pointer/offset references |
+| `CHERNOBOG_RAX_TYPE_DATA` | `1` | Type undefined data from evidence |
+| `CHERNOBOG_RAX_CREATE_STRINGS` | `1` | Create strings for consensus runtime literals |
+| `CHERNOBOG_RAX_COMMENTS` | `1` | Emit analysis comments |
+| `CHERNOBOG_RAX_FUNCTION_RECOVERY` | `1` | Create function candidates |
+| `CHERNOBOG_RAX_PURGE` | `1` | Apply i386 stack-purge metadata |
+| `CHERNOBOG_RAX_ARGREGS` | `1` | Apply argument-register evidence |
+| `CHERNOBOG_RAX_NORET` | `1` | Emit no-return comments (setting `FUNC_NORET` still requires `CHERNOBOG_RAX_SET_NORET`) |
 | `CHERNOBOG_RAX_MIN_DYNAMIC_RUNS` | `2` | Corroboration floor for dynamic xrefs/data metadata, range 1–32 |
 | `CHERNOBOG_RAX_MIN_NORET_RUNS` | `3` | Conclusive non-returning-run floor for comments, range 2–64 |
 | `CHERNOBOG_RAX_SET_NORET` | `0` | Opt in to setting `FUNC_NORET` and reanalysis |
