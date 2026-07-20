@@ -10,8 +10,10 @@ on:
 
 env:
   IDA_SDK_REPO: HexRaysSA/ida-sdk
-  # Match idax's reproducible IDA 9.4.0 release-patch SDK pin.
-  IDA_SDK_STABLE_REF: 6929db6868a524496eb66e76e4ec6c9d720a0594
+  # Build against the base IDA 9.4.0 release ABI. The later SDK release patch
+  # redirects find_reg_value_info() to reg_finder94_find_reg_value_info(), an
+  # export absent from IDA 9.4 build 260713 and other pre-patch installations.
+  IDA_SDK_STABLE_REF: f45fa5149caac89a954d1d82cd9d76b3899ee6a6
   XWIN_VERSION: 0.8.0
 
 permissions:
@@ -76,6 +78,12 @@ jobs:
           - os: ubuntu-24.04-arm
             name: linux-arm64
             rust_target: aarch64-unknown-linux-gnu
+            ida_branch: ""
+            ida_suffix: ""
+          - os: windows-latest
+            name: windows-x86_64
+            cmake_arch: x64
+            rust_target: x86_64-pc-windows-msvc
             ida_branch: ""
             ida_suffix: ""
           - os: windows-11-arm
@@ -186,11 +194,24 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
-      - name: Configure CMake (Windows ARM64)
+      - name: Configure CMake (Windows MSVC)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           cmake -S . -B build -A "${{ matrix.cmake_arch }}" -DBUILD_TESTING=OFF
+
+          $compilerMetadata = @(
+            Get-ChildItem -Path build -Recurse -Filter CMakeCXXCompiler.cmake -File
+          )
+          if ($compilerMetadata.Count -eq 0) {
+            throw "CMake did not generate C++ compiler metadata"
+          }
+          $compilerDescription = $compilerMetadata |
+            ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw } |
+            Out-String
+          if ($compilerDescription -notmatch 'CMAKE_CXX_COMPILER_ID "MSVC"') {
+            throw "Windows release artifacts must be compiled with native MSVC"
+          }
 
       - name: Build (Unix)
         if: runner.os != 'Windows'
@@ -198,7 +219,7 @@ jobs:
           parallelism="$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
           cmake --build build --config Release --parallel "$parallelism"
 
-      - name: Build (Windows ARM64)
+      - name: Build (Windows MSVC)
         if: runner.os == 'Windows'
         shell: pwsh
         run: cmake --build build --config Release --parallel $env:NUMBER_OF_PROCESSORS
@@ -249,9 +270,9 @@ jobs:
           printf '%s\n' "plugin_file=$PLUGIN_FILE" >> "$GITHUB_OUTPUT"
           printf '%s\n' "extension=so" >> "$GITHUB_OUTPUT"
 
-      - name: Find built plugin (Windows ARM64)
+      - name: Find and verify built plugin (Windows MSVC)
         if: runner.os == 'Windows'
-        id: find_plugin_windows_arm64
+        id: find_plugin_windows
         shell: pwsh
         run: |
           $pluginFile = "$env:IDASDK/src/bin/plugins/chernobog.dll"
@@ -261,19 +282,18 @@ jobs:
             throw "Could not find built plugin at $pluginFile"
           }
 
-          # IMAGE_FILE_MACHINE_ARM64 = 0xAA64. Verify the release artifact is
-          # not an emulated or accidentally cross-selected x86-64 binary.
-          $bytes = [System.IO.File]::ReadAllBytes($pluginFile)
-          if ($bytes.Length -lt 64) {
-            throw "Built plugin is too small to contain a PE header"
+          $expectedMachine = switch ("${{ matrix.name }}") {
+            'windows-x86_64' { 'amd64' }
+            'windows-arm64' { 'arm64' }
+            default { throw "No PE machine mapping for ${{ matrix.name }}" }
           }
-          $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
-          if ($peOffset -lt 0 -or $peOffset + 6 -gt $bytes.Length) {
-            throw "Built plugin has an invalid PE header offset"
-          }
-          $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
-          if ($machine -ne 0xAA64) {
-            throw ('Built plugin PE machine is 0x{0:X4}; expected ARM64 (0xAA64)' -f $machine)
+          python tests/verify_windows_pe.py $pluginFile `
+            --machine $expectedMachine `
+            --require-import 'ida.dll!find_reg_value_info' `
+            --forbid-import 'ida.dll!reg_finder94_find_reg_value_info' `
+            --require-export PLUGIN
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows PE verification failed"
           }
 
           "plugin_file=$pluginFile" |
@@ -293,12 +313,12 @@ jobs:
           mkdir -p artifacts
           cp "${{ steps.find_plugin_linux.outputs.plugin_file }}" "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_linux.outputs.extension }}"
 
-      - name: Prepare artifact (Windows ARM64)
+      - name: Prepare artifact (Windows MSVC)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Copy-Item -LiteralPath "${{ steps.find_plugin_windows_arm64.outputs.plugin_file }}" -Destination "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_windows_arm64.outputs.extension }}"
+          Copy-Item -LiteralPath "${{ steps.find_plugin_windows.outputs.plugin_file }}" -Destination "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_windows.outputs.extension }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -308,9 +328,10 @@ jobs:
           retention-days: 30
 
   build-windows-cross:
+    if: github.event_name == 'workflow_dispatch'
     needs: validate-source
     runs-on: ubuntu-latest
-    name: Build windows-x86_64-clang
+    name: Build windows-x86_64-clang (manual compatibility check)
 
     steps:
       - name: Checkout repository
@@ -483,7 +504,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, build-windows-cross]
+    needs: [build]
     runs-on: ubuntu-latest
     permissions:
       contents: write

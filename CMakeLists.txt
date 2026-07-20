@@ -293,8 +293,9 @@ message(STATUS
 include(${CMAKE_CURRENT_LIST_DIR}/ida-cmake/bootstrap.cmake)
 find_package(idasdk REQUIRED)
 
-# Match idax's fail-fast SDK check. CI pins the corresponding release-patch
-# commit; caller-owned IDASDK overrides must still resolve to the 9.4 ABI.
+# CI pins the base IDA 9.4 release SDK so release binaries retain the original
+# 9.4 export set. Caller-owned IDASDK overrides must still resolve to that ABI
+# version; CI additionally rejects imports introduced by later SDK patches.
 set(CHERNOBOG_REQUIRED_IDA_SDK_VERSION 940)
 if(NOT DEFINED IDASDK OR NOT EXISTS "${IDASDK}/include/pro.h")
     message(FATAL_ERROR
