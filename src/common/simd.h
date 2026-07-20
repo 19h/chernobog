@@ -32,7 +32,11 @@
 #elif defined(__aarch64__) || defined(_M_ARM64)
     #define CHERNOBOG_ARM64 1
     #define CHERNOBOG_NEON 1
-    #include <arm_neon.h>
+    #if defined(_MSC_VER)
+        #include <arm64_neon.h>
+    #else
+        #include <arm_neon.h>
+    #endif
 #elif defined(__arm__) && defined(__ARM_NEON)
     #define CHERNOBOG_ARM32 1
     #define CHERNOBOG_NEON 1
@@ -49,7 +53,9 @@
         #pragma intrinsic(_BitScanForward64, _BitScanReverse64)
         #pragma intrinsic(__popcnt64)
     #endif
-    #pragma intrinsic(__popcnt)
+    #if defined(_M_X64) || defined(_M_IX86)
+        #pragma intrinsic(__popcnt)
+    #endif
 #endif
 
 // Force inline macro
@@ -72,8 +78,13 @@
 
 // Prefetch hints
 #ifdef _MSC_VER
-    #define SIMD_PREFETCH_READ(addr) _mm_prefetch((const char*)(addr), _MM_HINT_T0)
-    #define SIMD_PREFETCH_WRITE(addr) _mm_prefetch((const char*)(addr), _MM_HINT_T0)
+    #if defined(_M_ARM64)
+        #define SIMD_PREFETCH_READ(addr) __prefetch((const void*)(addr))
+        #define SIMD_PREFETCH_WRITE(addr) __prefetch((const void*)(addr))
+    #else
+        #define SIMD_PREFETCH_READ(addr) _mm_prefetch((const char*)(addr), _MM_HINT_T0)
+        #define SIMD_PREFETCH_WRITE(addr) _mm_prefetch((const char*)(addr), _MM_HINT_T0)
+    #endif
 #elif defined(__GNUC__) || defined(__clang__)
     #define SIMD_PREFETCH_READ(addr) __builtin_prefetch((addr), 0, 3)
     #define SIMD_PREFETCH_WRITE(addr) __builtin_prefetch((addr), 1, 3)
@@ -428,7 +439,11 @@ SIMD_FORCE_INLINE uint32_t hash_u32(uint32_t x)
 SIMD_FORCE_INLINE int popcount32(uint32_t x)
 {
 #if defined(_MSC_VER)
-    return __popcnt(x);
+    #if defined(_M_ARM64)
+        return (int)_CountOneBits(x);
+    #else
+        return __popcnt(x);
+    #endif
 #else
     return __builtin_popcount(x);
 #endif
@@ -437,7 +452,9 @@ SIMD_FORCE_INLINE int popcount32(uint32_t x)
 SIMD_FORCE_INLINE int popcount64(uint64_t x)
 {
 #if defined(_MSC_VER)
-    #if defined(_M_X64)
+    #if defined(_M_ARM64)
+        return (int)_CountOneBits64(x);
+    #elif defined(_M_X64)
         return (int)__popcnt64(x);
     #else
         return __popcnt((uint32_t)x) + __popcnt((uint32_t)(x >> 32));

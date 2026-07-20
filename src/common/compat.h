@@ -17,10 +17,14 @@
     #define O_APPEND _O_APPEND
     #define O_TRUNC _O_TRUNC
     
-    // Portable popcount - MSVC uses __popcnt
+    // Portable popcount using the target-specific MSVC intrinsic.
     inline int portable_popcount(uint32_t val)
     {
-        return (int)__popcnt(val);
+        #if defined(_M_ARM64)
+            return (int)_CountOneBits(val);
+        #else
+            return (int)__popcnt(val);
+        #endif
     }
     
     // MSVC doesn't support __attribute__((constructor))

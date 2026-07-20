@@ -73,6 +73,17 @@ jobs:
             rust_target: x86_64-unknown-linux-gnu
             ida_branch: ""
             ida_suffix: ""
+          - os: ubuntu-24.04-arm
+            name: linux-arm64
+            rust_target: aarch64-unknown-linux-gnu
+            ida_branch: ""
+            ida_suffix: ""
+          - os: windows-11-arm
+            name: windows-arm64
+            cmake_arch: ARM64
+            rust_target: aarch64-pc-windows-msvc
+            ida_branch: ""
+            ida_suffix: ""
 
     runs-on: ${{ matrix.os }}
     name: Build ${{ matrix.name }}${{ matrix.ida_suffix }}
@@ -149,6 +160,13 @@ jobs:
             printf '%s\n' "CCACHE_MAXSIZE=1G"
           } >> "$GITHUB_ENV"
 
+      - name: Set environment variables (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "IDASDK=${{ github.workspace }}/ida-sdk" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Configure CMake (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -168,11 +186,22 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
+      - name: Configure CMake (Windows ARM64)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -S . -B build -A "${{ matrix.cmake_arch }}" -DBUILD_TESTING=OFF
+
       - name: Build (Unix)
         if: runner.os != 'Windows'
         run: |
           parallelism="$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
           cmake --build build --config Release --parallel "$parallelism"
+
+      - name: Build (Windows ARM64)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake --build build --config Release --parallel $env:NUMBER_OF_PROCESSORS
 
       - name: Test (Unix)
         if: runner.os != 'Windows'
@@ -207,8 +236,50 @@ jobs:
             find . -name "chernobog*" -type f 2>/dev/null || true
             exit 1
           fi
+          case "${{ matrix.name }}" in
+            linux-x86_64) expected_machine="Advanced Micro Devices X86-64" ;;
+            linux-arm64) expected_machine="AArch64" ;;
+            *) echo "ERROR: No ELF machine mapping for ${{ matrix.name }}"; exit 1 ;;
+          esac
+          actual_machine="$(readelf -h "$PLUGIN_FILE" | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p')"
+          if [[ "$actual_machine" != "$expected_machine" ]]; then
+            echo "ERROR: Built plugin ELF machine is '$actual_machine'; expected '$expected_machine'"
+            exit 1
+          fi
           printf '%s\n' "plugin_file=$PLUGIN_FILE" >> "$GITHUB_OUTPUT"
           printf '%s\n' "extension=so" >> "$GITHUB_OUTPUT"
+
+      - name: Find built plugin (Windows ARM64)
+        if: runner.os == 'Windows'
+        id: find_plugin_windows_arm64
+        shell: pwsh
+        run: |
+          $pluginFile = "$env:IDASDK/src/bin/plugins/chernobog.dll"
+          if (-not (Test-Path -LiteralPath $pluginFile -PathType Leaf)) {
+            Get-ChildItem -Path . -Recurse -Filter 'chernobog*' -File |
+              ForEach-Object { $_.FullName }
+            throw "Could not find built plugin at $pluginFile"
+          }
+
+          # IMAGE_FILE_MACHINE_ARM64 = 0xAA64. Verify the release artifact is
+          # not an emulated or accidentally cross-selected x86-64 binary.
+          $bytes = [System.IO.File]::ReadAllBytes($pluginFile)
+          if ($bytes.Length -lt 64) {
+            throw "Built plugin is too small to contain a PE header"
+          }
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+          if ($peOffset -lt 0 -or $peOffset + 6 -gt $bytes.Length) {
+            throw "Built plugin has an invalid PE header offset"
+          }
+          $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+          if ($machine -ne 0xAA64) {
+            throw ('Built plugin PE machine is 0x{0:X4}; expected ARM64 (0xAA64)' -f $machine)
+          }
+
+          "plugin_file=$pluginFile" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "extension=dll" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Prepare artifact (macOS)
         if: runner.os == 'macOS'
@@ -221,6 +292,13 @@ jobs:
         run: |
           mkdir -p artifacts
           cp "${{ steps.find_plugin_linux.outputs.plugin_file }}" "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_linux.outputs.extension }}"
+
+      - name: Prepare artifact (Windows ARM64)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item -LiteralPath "${{ steps.find_plugin_windows_arm64.outputs.plugin_file }}" -Destination "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_windows_arm64.outputs.extension }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

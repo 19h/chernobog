@@ -181,10 +181,14 @@ if(APPLE)
         message(FATAL_ERROR "Unsupported macOS rax target: ${_chernobog_target_processor}")
     endif()
 elseif(WIN32)
-    if(NOT _chernobog_target_processor MATCHES "^(x86_64|amd64)$")
-        message(FATAL_ERROR "Only x86_64 Windows is supported by this build matrix")
+    if(_chernobog_target_processor MATCHES "^(x86_64|amd64)$")
+        set(CHERNOBOG_RAX_RUST_TARGET "x86_64-pc-windows-msvc")
+    elseif(_chernobog_target_processor MATCHES "^(arm64|aarch64)$")
+        set(CHERNOBOG_RAX_RUST_TARGET "aarch64-pc-windows-msvc")
+    else()
+        message(FATAL_ERROR
+            "Unsupported Windows rax target: ${_chernobog_target_processor}")
     endif()
-    set(CHERNOBOG_RAX_RUST_TARGET "x86_64-pc-windows-msvc")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if(_chernobog_target_processor MATCHES "^(x86_64|amd64)$")
         set(CHERNOBOG_RAX_RUST_TARGET "x86_64-unknown-linux-gnu")
@@ -218,6 +222,8 @@ if(WIN32)
     # native and cross builds.
     set(_chernobog_rax_cflags "/MT")
     set(_chernobog_rax_rustflags "-Ctarget-feature=+crt-static")
+    string(REPLACE "-" "_" _chernobog_rust_env_target_lower
+        "${CHERNOBOG_RAX_RUST_TARGET}")
     if(CMAKE_CROSSCOMPILING)
         string(TOUPPER "${CHERNOBOG_RAX_RUST_TARGET}" _chernobog_rust_env_target)
         string(REPLACE "-" "_" _chernobog_rust_env_target
@@ -227,9 +233,9 @@ if(WIN32)
                 "CARGO_TARGET_${_chernobog_rust_env_target}_LINKER=${CMAKE_LINKER}")
         endif()
         list(APPEND _chernobog_rax_environment
-            "CC_x86_64_pc_windows_msvc=${CMAKE_C_COMPILER}"
-            "CXX_x86_64_pc_windows_msvc=${CMAKE_CXX_COMPILER}"
-            "AR_x86_64_pc_windows_msvc=${CMAKE_AR}")
+            "CC_${_chernobog_rust_env_target_lower}=${CMAKE_C_COMPILER}"
+            "CXX_${_chernobog_rust_env_target_lower}=${CMAKE_CXX_COMPILER}"
+            "AR_${_chernobog_rust_env_target_lower}=${CMAKE_AR}")
         if(XWIN_ROOT)
             string(APPEND _chernobog_rax_cflags
                 " /imsvc${XWIN_ROOT}/crt/include /imsvc${XWIN_ROOT}/sdk/include/ucrt /imsvc${XWIN_ROOT}/sdk/include/shared /imsvc${XWIN_ROOT}/sdk/include/um")
@@ -238,8 +244,8 @@ if(WIN32)
         endif()
     endif()
     list(APPEND _chernobog_rax_environment
-        "CFLAGS_x86_64_pc_windows_msvc=${_chernobog_rax_cflags}"
-        "CXXFLAGS_x86_64_pc_windows_msvc=${_chernobog_rax_cflags}"
+        "CFLAGS_${_chernobog_rust_env_target_lower}=${_chernobog_rax_cflags}"
+        "CXXFLAGS_${_chernobog_rust_env_target_lower}=${_chernobog_rax_cflags}"
         "RUSTFLAGS=${_chernobog_rax_rustflags}")
 endif()
 

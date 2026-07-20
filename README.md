@@ -222,6 +222,14 @@ Notes:
 - Linux builds run in Docker on non-Linux hosts and require `docker`.
 - Windows builds still use the local `clang-cl` + `xwin` flow above.
 
+GitHub Actions also builds native Linux ARM64 and Windows ARM64 release
+artifacts on the `ubuntu-24.04-arm` and `windows-11-arm` hosted runners. The
+ARM64 jobs select `aarch64-unknown-linux-gnu` and
+`aarch64-pc-windows-msvc`, respectively, and reject artifacts whose ELF or PE
+machine type does not match ARM64. Unix CI runs the portable CTest suite;
+Windows CI disables it because the SDK checkout does not include the IDA
+runtime DLL required by the catalog test executable.
+
 ## Installation
 
 ```bash
