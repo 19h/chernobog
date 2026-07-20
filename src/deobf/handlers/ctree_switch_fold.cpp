@@ -66,6 +66,11 @@ static bool remove_trailing_break(cinsn_t *ins)
 struct switch_fold_visitor_t : public ctree_visitor_t {
     cfunc_t *func;
     int changes = 0;
+    int inspected = 0;
+    int proved = 0;
+    int rejected_nonconstant = 0;
+    int rejected_no_case = 0;
+    int rejected_fallthrough = 0;
 
     explicit switch_fold_visitor_t(cfunc_t *f)
         : ctree_visitor_t(CV_PARENTS), func(f) {}
@@ -77,11 +82,12 @@ struct switch_fold_visitor_t : public ctree_visitor_t {
         cswitch_t *sw = ins->cswitch;
         cexpr_t *switch_expr = &sw->expr;
 
-        deobf::log("[ctree_switch_fold] Found switch at %a with %zu cases\n",
-                  ins->ea, sw->cases.size());
+        ++inspected;
 
         // Debug: log switch expression type
-        deobf::log_verbose("[ctree_switch_fold] Switch expr op=%d\n", switch_expr->op);
+        deobf::log_verbose(
+            "[ctree_switch_fold] inspected switch at %a cases=%zu expr-op=%d\n",
+            ins->ea, sw->cases.size(), switch_expr->op);
 
         uint64_t const_val = 0;
         bool is_constant = false;
@@ -89,8 +95,6 @@ struct switch_fold_visitor_t : public ctree_visitor_t {
         // Check if switch expression is a direct constant
         if ( try_eval_switch_expr(switch_expr, &const_val) ) {
             is_constant = true;
-            deobf::log("[ctree_switch_fold] Switch expression is constant: 0x%llx\n",
-                      (unsigned long long)const_val);
         }
 
         // Check for ( cast )&object pattern - this is a constant address
@@ -103,14 +107,18 @@ struct switch_fold_visitor_t : public ctree_visitor_t {
                 if ( obj_addr != BADADDR ) {
                     const_val = (uint64_t)obj_addr;
                     is_constant = true;
-                    deobf::log("[ctree_switch_fold] Switch on &object: addr 0x%llx\n",
-                              (unsigned long long)const_val);
                 }
             }
         }
 
-        if ( !is_constant ) 
+        if ( !is_constant ) {
+            ++rejected_nonconstant;
             return 0;
+        }
+        ++proved;
+        deobf::log_verbose(
+            "[ctree_switch_fold] proved selector at %a value=0x%llx\n",
+            ins->ea, (unsigned long long)const_val);
 
         // Find the matching case
         int matching_idx = find_case_value(sw->cases, const_val);
@@ -125,12 +133,13 @@ struct switch_fold_visitor_t : public ctree_visitor_t {
         }
 
         if ( matching_idx < 0 ) {
-            deobf::log("[ctree_switch_fold] No matching case for value 0x%llx\n",
-                      (unsigned long long)const_val);
+            ++rejected_no_case;
+            deobf::log(
+                "[ctree_switch_fold] proved but rejected at %a: "
+                "value=0x%llx has no case/default\n",
+                ins->ea, (unsigned long long)const_val);
             return 0;
         }
-
-        deobf::log("[ctree_switch_fold] Replacing switch with case %d body\n", matching_idx);
 
         // Deep-copy the selected body before cleaning the switch. A case that
         // is not last must end in an unconditional top-level break; otherwise
@@ -141,8 +150,11 @@ struct switch_fold_visitor_t : public ctree_visitor_t {
         if ( static_cast<size_t>(matching_idx + 1) < sw->cases.size()
           && !had_trailing_break ) {
             delete replacement;
-            deobf::log_verbose("[ctree_switch_fold] Case %d may fall through; not folding\n",
-                              matching_idx);
+            ++rejected_fallthrough;
+            deobf::log(
+                "[ctree_switch_fold] proved but rejected at %a: "
+                "case=%d may fall through\n",
+                ins->ea, matching_idx);
             return 0;
         }
 
@@ -150,6 +162,9 @@ struct switch_fold_visitor_t : public ctree_visitor_t {
         ins->replace_by(replacement);
 
         changes++;
+        deobf::log(
+            "[ctree_switch_fold] rewritten at %a: value=0x%llx case=%d\n",
+            ins->ea, (unsigned long long)const_val, matching_idx);
         return 0;
     }
 };
@@ -166,8 +181,15 @@ int ctree_switch_fold_handler_t::run(cfunc_t *cfunc) {
     switch_fold_visitor_t folder(cfunc);
     folder.apply_to(&cfunc->body, nullptr);
 
+    if ( folder.inspected > 0 ) {
+        deobf::log(
+            "[ctree_switch_fold] summary function=%a inspected=%d proved=%d "
+            "rewritten=%d rejected={nonconstant:%d,no-case:%d,fallthrough:%d}\n",
+            cfunc->entry_ea, folder.inspected, folder.proved, folder.changes,
+            folder.rejected_nonconstant, folder.rejected_no_case,
+            folder.rejected_fallthrough);
+    }
     if ( folder.changes > 0 ) {
-        deobf::log("[ctree_switch_fold] Folded %d switches\n", folder.changes);
         // Verify the ctree after modification
         cfunc->verify(ALLOW_UNUSED_LABELS, false);
     }

@@ -87,10 +87,15 @@ public:
     static int apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx);
 
     // Storage for deferred analysis results
-    static std::map<ea_t, deferred_analysis_t> s_deferred_analysis;
+    using deferred_cache_t = std::map<ea_t, deferred_analysis_t>;
+    static std::map<ssize_t, deferred_cache_t> s_deferred_analysis;
 
     // Clear deferred analysis for a function
     static void clear_deferred(ea_t func_ea);
+
+    // Clear only the active IDB's deferred records. Multiple databases can be
+    // open in one IDA process and frequently reuse the same virtual addresses.
+    static void clear_cache();
 
     // Check if we have pending analysis for a function
     static bool has_pending_analysis(ea_t func_ea);

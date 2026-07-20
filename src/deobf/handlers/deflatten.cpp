@@ -11,19 +11,43 @@
 using namespace z3_solver;
 
 // Static storage for deferred analysis results
-std::map<ea_t, deferred_analysis_t> deflatten_handler_t::s_deferred_analysis;
+std::map<ssize_t, deflatten_handler_t::deferred_cache_t>
+    deflatten_handler_t::s_deferred_analysis;
+
+namespace {
+
+deflatten_handler_t::deferred_cache_t &current_deflatten_cache()
+{
+    return deflatten_handler_t::s_deferred_analysis[get_dbctx_id()];
+}
+
+} // namespace
 
 // Clear deferred analysis
 void deflatten_handler_t::clear_deferred(ea_t func_ea)
 {
-    s_deferred_analysis.erase(func_ea);
+    const ssize_t database = get_dbctx_id();
+    auto databases = s_deferred_analysis.find(database);
+    if ( databases == s_deferred_analysis.end() )
+        return;
+    databases->second.erase(func_ea);
+    if ( databases->second.empty() )
+        s_deferred_analysis.erase(databases);
+}
+
+void deflatten_handler_t::clear_cache()
+{
+    s_deferred_analysis.erase(get_dbctx_id());
 }
 
 // Check for pending analysis
 bool deflatten_handler_t::has_pending_analysis(ea_t func_ea)
 {
-    auto p = s_deferred_analysis.find(func_ea);
-    return p != s_deferred_analysis.end() && p->second.analysis_complete;
+    const auto databases = s_deferred_analysis.find(get_dbctx_id());
+    if ( databases == s_deferred_analysis.end() )
+        return false;
+    const auto p = databases->second.find(func_ea);
+    return p != databases->second.end() && p->second.analysis_complete;
 }
 
 //--------------------------------------------------------------------------
@@ -2150,7 +2174,7 @@ int deflatten_handler_t::analyze_and_store(mbl_array_t *mba, deobf_ctx_t *ctx)
 
     // Store minimal info for Phase 2 - just mark that this function needs deflattening
     // The actual transition analysis will happen at maturity 3 when CFG is fully formed
-    deferred_analysis_t &analysis = s_deferred_analysis[func_ea];
+    deferred_analysis_t &analysis = current_deflatten_cache()[func_ea];
     analysis.func_ea = func_ea;
     analysis.analysis_maturity = mba->maturity;
     analysis.analysis_complete = true;  // Mark as ready for Phase 2
@@ -2185,8 +2209,9 @@ int deflatten_handler_t::apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx)
 
     ea_t func_ea = mba->entry_ea;
 
-    auto p = s_deferred_analysis.find(func_ea);
-    if ( p == s_deferred_analysis.end() || !p->second.analysis_complete ) {
+    deferred_cache_t &cache = current_deflatten_cache();
+    auto p = cache.find(func_ea);
+    if ( p == cache.end() || !p->second.analysis_complete ) {
         return 0;
     }
 

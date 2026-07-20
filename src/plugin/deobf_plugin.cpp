@@ -5,6 +5,7 @@
 
 #include "component_registry.h"
 #include "../common/hexrays_compat.h"
+#include <chernobog/build_provenance.hpp>
 
 // Include component headers to trigger registration
 #include "../deobf/deobf_main.h"
@@ -93,6 +94,7 @@ static void dylib_loaded()
 
 struct chernobog_plugmod_t final : public plugmod_t
 {
+    ssize_t database_id = -1;
     bool hexrays_initialized = false;
     bool components_initialized = false;
     bool ui_hooked = false;
@@ -313,7 +315,7 @@ static void check_verbose_mode()
 static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list va)
 {
     chernobog_plugmod_t *self = static_cast<chernobog_plugmod_t *>(ud);
-    if ( self == nullptr )
+    if ( self == nullptr || get_dbctx_id() != self->database_id )
         return 0;
 
     // Debug: log all events
@@ -330,7 +332,8 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     // optinsn/optblock mutation. Recover native CFG first; if it changed, the
     // restarted flowchart will snapshot those exact bytes. Then synchronously
     // ensure rax evidence only for the function whose MBA pipeline is about to
-    // run. IDA 9.4 emits the ea-based event; retain the 9.3 legacy variant.
+    // run. IDA 9.4 normally emits the ea-based event; retain the legacy event
+    // because it is still part of the supported 9.4 callback ABI.
     const bool is_flowchart_event = event == hxe_flowchart
 #if IDA_SDK_VERSION >= 940
         || event == hxe_flowchart_ea
@@ -726,6 +729,15 @@ bool chernobog_plugmod_t::activate()
     if ( hexrays_initialized )
         return true;
 
+    msg("[chernobog] build=%s dirty=%s source=%s sdk=%s rax=%.12s "
+        "dbctx=%lld\n",
+        chernobog::build_provenance::revision,
+        chernobog::build_provenance::dirty,
+        chernobog::build_provenance::source_fingerprint,
+        chernobog::build_provenance::ida_sdk,
+        chernobog::build_provenance::rax_revision,
+        static_cast<long long>(database_id));
+
     if ( !init_hexrays_plugin() )
     {
         debug_log("[chernobog] init_hexrays_plugin() failed\n");
@@ -916,7 +928,7 @@ void chernobog_plugmod_t::deactivate()
 static ssize_t idaapi ui_callback(void *ud, int event_id, va_list va)
 {
     chernobog_plugmod_t *self = static_cast<chernobog_plugmod_t *>(ud);
-    if ( self == nullptr )
+    if ( self == nullptr || get_dbctx_id() != self->database_id )
         return 0;
 
     if ( event_id == ui_preprocess_action )
@@ -960,7 +972,7 @@ static ssize_t idaapi ui_callback(void *ud, int event_id, va_list va)
 static ssize_t idaapi idb_callback(void *ud, int event_id, va_list)
 {
     chernobog_plugmod_t *self = static_cast<chernobog_plugmod_t *>(ud);
-    if ( self != nullptr )
+    if ( self != nullptr && get_dbctx_id() == self->database_id )
     {
         if ( event_id == idb_event::closebase )
         {
@@ -983,6 +995,7 @@ static ssize_t idaapi idb_callback(void *ud, int event_id, va_list)
 
 chernobog_plugmod_t::chernobog_plugmod_t()
 {
+    database_id = get_dbctx_id();
     debug_log("[chernobog] Per-IDB plugmod created, dbctx=%lld\n",
         static_cast<long long>(get_dbctx_id()));
 

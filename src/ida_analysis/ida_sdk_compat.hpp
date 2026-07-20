@@ -6,16 +6,16 @@
 
 namespace chernobog::ida_analysis {
 
-// IDA 9.4 added inf_get_effective_addrsize(). Keep the same 2/4/8-byte
-// semantics for downstream builds that still compile against IDA SDK 9.3.
+// Keep address-size handling explicit and uniform across the IDA 9.4 public
+// SDK variants. CMake rejects older SDK ABIs before this header is compiled.
 inline int effective_address_size_compat()
 {
   return int(inf_get_app_bitness() / 8);
 }
 
-// IDA 9.4's reg_value_info_t carries the address-size context and exposes
-// get_addr(). The 9.3 tracker only exposes its unique numeric value, so apply
-// the equivalent address-width truncation explicitly.
+// IDA 9.4's reg_value_info_t carries address-size context and exposes
+// get_addr(). The pre-9.4 branch documents the equivalent truncation for
+// source compatibility, but is unreachable in supported Chernobog builds.
 inline bool reg_value_address_compat(
     const reg_value_info_t &value,
     ea_t *address)
@@ -37,8 +37,9 @@ inline bool reg_value_address_compat(
 #endif
 }
 
-// Named register tracking was added in IDA 9.4. On 9.3, use the decoded
-// processor-register id when available, or resolve the native register name.
+// Named register tracking is available in IDA 9.4. The fallback is retained as
+// documentation/source compatibility; supported builds always take the 9.4
+// branch because the SDK ABI is hard-pinned at configure time.
 inline bool find_register_value_info_compat(
     reg_value_info_t *value,
     ea_t address,

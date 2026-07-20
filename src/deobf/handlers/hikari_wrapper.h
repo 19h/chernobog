@@ -84,6 +84,8 @@ private:
     static bool has_dlsym_call(ea_t func_ea);
 
     // Cache of analyzed wrappers
-    static std::map<ea_t, wrapper_info_t> s_wrapper_cache;
-    static std::set<ea_t> s_non_wrapper_cache;
+    static std::map<ssize_t, std::map<ea_t, wrapper_info_t>> s_wrapper_cache;
+    static std::map<ssize_t, std::set<ea_t>> s_non_wrapper_cache;
+    static std::map<ea_t, wrapper_info_t> &wrapper_cache();
+    static std::set<ea_t> &non_wrapper_cache();
 };

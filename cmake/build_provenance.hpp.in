@@ -1,0 +1,15 @@
+#pragma once
+
+// Configured by CMake. Keep this template in the source tree: clean CI
+// checkouts require it before any plugin target can be generated.
+
+namespace chernobog::build_provenance {
+
+inline constexpr const char revision[] = "@CHERNOBOG_BUILD_REVISION@";
+inline constexpr const char dirty[] = "@CHERNOBOG_BUILD_DIRTY@";
+inline constexpr const char source_fingerprint[] =
+    "@CHERNOBOG_SOURCE_FINGERPRINT@";
+inline constexpr const char ida_sdk[] = "@CHERNOBOG_IDA_SDK_VERSION@";
+inline constexpr const char rax_revision[] = "@CHERNOBOG_RAX_GIT_REVISION@";
+
+} // namespace chernobog::build_provenance

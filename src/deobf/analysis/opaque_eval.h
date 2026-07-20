@@ -104,6 +104,7 @@ private:
     // Global cache
     // Width is part of the key: reading one byte must not poison a later
     // eight-byte read at the same address.
-    static std::map<std::pair<ea_t, int>, uint64_t> s_global_cache;
+    using global_cache_t = std::map<std::pair<ea_t, int>, uint64_t>;
+    static std::map<ssize_t, global_cache_t> s_global_cache;
     static constexpr int MAX_EVAL_DEPTH = 100;
 };

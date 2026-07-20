@@ -103,7 +103,7 @@ enabled separately with `CHERNOBOG_VM_Z3=1`.
 
 ### Platform-Specific
 - **Obfuscated Objective-C Method Calls** - Identifies direct and indirect `objc_msgSend` call sites on macOS/iOS binaries, traces selector strings and receivers, and annotates call sites with the resolved method signature
-- **Pointer Reference Resolution** - Handles ObjC class references through indirection tables
+- **Pointer Reference Resolution** - Handles ObjC class references through indirection tables; CFConstantString annotations require an exact-length admissible UTF-8 payload, and encrypted/runtime-initialized payloads remain unannotated
 
 ### IDA Analysis Enrichment
 
@@ -118,7 +118,9 @@ analysis techniques without importing either plugin wholesale:
 - add exact indirect targets resolved by IDA's register tracker and conservatively
   retype bounded jump-over-garbage gaps
 - after autoanalysis, perform one bounded IDA decoder/xref pass for direct-call
-  orphan functions and wrapper outlining
+  orphan functions and wrapper outlining; functions containing proven get-PC
+  transfers also absorb only reachable, non-call code heads without another
+  function owner or user name
 - project fresh current-function rax evidence into guarded code/data references,
   undefined data types/strings, pointer offsets, function candidates, i386 purge
   metadata, and analysis comments
@@ -309,6 +311,7 @@ and configuration are in [`RAX_HYBRID.md`](RAX_HYBRID.md).
 | `CHERNOBOG_IDA_EARLY_MAX_INSNS=<n>` | Bound each early Hex-Rays pass (default 1000000; range 1..100000000 microinstructions/native heads) |
 | `CHERNOBOG_IDA_POST_SCAN_HEADS=<n>` | Bound the one-shot native orphan-call scan to `n` heads in executable segments (default 1000000; hard range 1..100000000) |
 | `CHERNOBOG_IDA_POST_SCAN_FUNCTIONS=<n>` | Bound the one-shot wrapper scan to `n` IDA functions (default 100000; hard range 1..10000000) |
+| `CHERNOBOG_IDA_GET_PC_TRACE=1` | Emit exact classifier and transactional native-edge diagnostics for call/pop fixture debugging |
 | `CHERNOBOG_RAX_APPLY_ANALYSIS=0` | Retain current-function rax reporting/display evidence but suppress all IDB materialization from it |
 | `CHERNOBOG_RAX_MIN_DYNAMIC_RUNS=<n>` | Minimum distinct current-function runs for dynamic xrefs/types (default 2; range 1..32) |
 | `CHERNOBOG_RAX_MIN_NORET_RUNS=<n>` | Minimum conclusive non-returning runs for a no-return comment (default 3; range 2..64) |
@@ -407,7 +410,8 @@ corresponding generic deobfuscator mechanisms:
   call/pop and push/return control flow, opaque branches, and statically
   resolved indirect targets while IDA autoanalysis is constructing the IDB.
 - `auto_empty_finally`: promote direct orphan callees and mark small wrapper
-  functions as outlined.
+  functions as outlined, then close proven get-PC functions over unowned
+  non-call CFG successors.
 - `hxe_flowchart` and the microcode filter: repair call/pop successors and
   translate resolved gadget returns before microcode generation.
 - `hxe_microcode`: provide a generated-MBA fallback for unresolved
@@ -427,19 +431,22 @@ marked call/pop sites, repair costs
 with `R` candidate return terminators, generated-goto repair costs
 `O(B log B + R log B + E)` time and `O(B)` state. For an MBA whose blocks
 contain `I_b` microinstructions, constant resolution has the
-conservative worst-case bound `O(Σ_b I_b²)` because definitions are searched
-backward within a block; character collection adds `O(I + C log C)` time and
-`O(S + C)` state, where `S` is the number of admitted stack/frame slots and
-`C` the number of candidate character bytes. Native post-analysis scans are
-`O(H + F)`, where `H` is the bounded executable-head count and `F` the bounded
-function count; later autoanalysis completions examine only the retained direct
-call-target set in `O(T)` time, bounded by the same configured head cap.
+conservative worst-case bound `O(Σ_b I_b²)` for SDK def-list construction and
+worst-case abstract-state invalidation; the register domain is capped at 256
+exact ranges. Character collection adds `O(I + C log C)` time and `O(S + C)`
+state, where `S` is the number of exact stack/frame slots and `C` the number of
+candidate character bytes. Native post-analysis scans are `O(H + F + G)` time
+and `O(G)` worklist state, where `H` is the bounded executable-head count, `F`
+the bounded function count, and `G` the reachable non-call edges of affected
+get-PC functions. Later autoanalysis completions examine only retained targets.
 
-Early stack/frame folding admits only slots initialized by a constant store in
-the entry block, with no preceding entry-block load and no later unresolved or
-different store. Static memory folding requires loaded 1/2/4/8-byte storage and
-rejects every observed direct `dr_W` reference. IDA's direct-xref model cannot
-exclude an indirect or external mutation; disable
+Early folding carries exact register and stable frame-slot facts forward only
+within one microblock. Calls clear both domains; unknown/overlapping register
+or memory definitions invalidate affected facts. Static memory folding requires
+loaded 1/2/4/8-byte storage outside external segments and rejects every
+observed direct `dr_W` reference. This admits initialized writable bytes used
+by string reconstructors. IDA's direct-xref model cannot exclude an indirect
+or external mutation; disable
 `CHERNOBOG_IDA_EARLY_CONSTANTS` when that closed-world assumption is invalid
 for the analyzed input.
 
@@ -452,9 +459,14 @@ can be modified safely:
 - **CFG Reconstruction**: Applies control flow changes, storing transitions by state values and block start addresses (not block indices) for stability across maturity levels
 - **Recurrent-Switch Reconstruction**: Enumerates bounded paths from each
   encoded case back to the dispatcher, proves a unique next target for every
-  path, specializes shared side-effecting frontiers, and removes the dispatcher.
-  The pass is fail-closed if state storage escapes, any transition is ambiguous,
-  path bounds are exceeded, or a rewrite would skip observable effects.
+  feasible path, separates infeasible paths from unresolved ones, specializes
+  shared side-effecting frontiers, and bypasses the dispatcher so Hex-Rays can
+  prune it in its normal optimizer lifecycle. Rewrites are
+  planned against stable addresses, applied transactionally from an MBA
+  snapshot, verified, and rolled back if any application step rejects. The pass is
+  fail-closed if state storage escapes, a call can spoil private state, any
+  transition is ambiguous, path/solver bounds are exceeded, or a rewrite would
+  skip observable effects.
 - **MBA Simplification**: Z3-certified simplification with average O(1) root-opcode lookup and lazy commutative matching
 - **Peephole Optimization**: Local optimizations (constant folding, dead code elimination)
 
@@ -542,6 +554,31 @@ The CTest targets are SDK-linked but do not constitute a live-IDB decompiler
 integration test. Runtime validation requires an IDA/Hex-Rays build compatible
 with the SDK used to compile the plugin and a representative binary corpus.
 
+Use the pristine runner for live tests so an existing IDA user directory,
+database cache, or installed plugin cannot affect the result:
+
+```bash
+python3 tests/run_ida_smoke.py \
+  --ida /path/to/idat \
+  --plugin /path/to/chernobog.dylib \
+  --output-dir /tmp/chernobog-smoke \
+  --set CHERNOBOG_SMOKE_EA=0x401000 \
+  /path/to/original-binary tests/ida_decompile_probe.py
+```
+
+The runner copies the raw input, creates an isolated `IDAUSR`, records SHA-256
+digests for the input and exact plugin artifact, requires a Chernobog `PASS`
+marker because IDA does not consistently propagate `qexit(N)`, and disables
+rax execution/materialization by default. `--enable-rax` opts in. Database
+inputs (`.i64`, `.idb`, and sidecar formats) are rejected unless
+`--allow-database` is explicit. A retained `--output-dir` contains `ida.log`
+and the disposable database for audit.
+
+IDA does not unload a previously mapped plugin image when the dylib/so/DLL is
+rebuilt in place. Restart IDA before GUI validation and match the startup line
+`[chernobog] build=<revision> dirty=<0|1> source=<fingerprint> sdk=940 rax=<revision> dbctx=<id>`
+to the artifact under test; otherwise GUI output can come from stale code.
+
 ## Limitations
 
 - Requires functions to be decompilable by Hex-Rays
@@ -551,7 +588,11 @@ with the SDK used to compile the plugin and a representative binary corpus.
   side-effect safe; unsupported graph shapes remain intact
 - Some obfuscation patterns may require manual cleanup after automated processing
 - Anti-analysis tricks (anti-debug, VM detection) are not handled
-- Z3 analysis is bounded by fixed internal timeouts (about 5 s per solve, shorter for opaque-predicate and rule-verification checks); extremely complex state machines may not solve within them
+- General Z3 analysis is bounded by a 5 s default query timeout (shorter for
+  opaque-predicate and rule-verification checks). Recurrent-switch recovery
+  uses at most 1 s per query and a 30 s total solver deadline, plus 32 blocks
+  per path, 256 paths per case, and 4096 total paths; exceeding any bound leaves
+  the original dispatcher intact
 
 ## Contributing
 

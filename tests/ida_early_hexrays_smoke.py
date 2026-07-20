@@ -45,9 +45,14 @@ try:
         # the fixture function so ev_emu_insn creates the early-stage marker.
         ida_auto.plan_and_wait(function.start_ea, function.end_ea)
 
-    comment = ida_bytes.get_cmt(0x403002, True) or ""
-    if "[chernobog][ida-analysis] call+pop" not in comment:
-        finish(5, "native call/pop marker absent: %r" % comment)
+    for call_ea in (0x403002, 0x40300E):
+        comment = ida_bytes.get_cmt(call_ea, True) or ""
+        if "[chernobog][ida-analysis] call+pop" not in comment:
+            finish(
+                5,
+                "native call/pop marker absent at 0x%X: %r"
+                % (call_ea, comment),
+            )
 
     marked_gadget = False
     observed_xrefs = []
@@ -74,6 +79,30 @@ try:
             "fl_JN call/pop marker 0x403002 -> 0x40300A absent; "
             "xrefs=%r target=%r" % (observed_xrefs, target_state),
         )
+
+    if not ida_bytes.is_code(ida_bytes.get_flags(0x403008)):
+        finish(6, "effective continuation 0x403008 is not code")
+    if ida_bytes.is_code(ida_bytes.get_flags(0x403007)):
+        finish(6, "junk byte 0x403007 remains code")
+    if ida_bytes.is_code(ida_bytes.get_flags(0x403013)):
+        finish(6, "junk byte 0x403013 remains code")
+
+    second_jump = False
+    xref = ida_xref.xrefblk_t()
+    valid = xref.first_from(0x40300E, ida_xref.XREF_ALL)
+    while valid:
+        if (
+            xref.to == 0x403014
+            and (xref.type & ida_xref.XREF_MASK) == ida_xref.fl_JN
+        ):
+            second_jump = True
+            break
+        valid = xref.next_from()
+    if not second_jump:
+        finish(6, "inline-pop edge 0x40300E -> 0x403014 absent")
+    for address in (0x403008, 0x403014):
+        if not ida_funcs.function_contains(function.start_ea, address):
+            finish(6, "0x%X is outside function 0x%X" % (address, function.start_ea))
 
     cfunc = ida_hexrays.decompile(
         function.start_ea, None, ida_hexrays.DECOMP_NO_CACHE

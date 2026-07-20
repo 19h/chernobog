@@ -60,7 +60,8 @@ private:
     static bool extract_objc_class_name(const char *symbol, qstring *out_class);
 
     // Check if address is a CFConstantString struct and extract its content
-    static bool try_extract_cfstring(ea_t struct_addr, qstring *out_string);
+    static bool try_extract_cfstring(ea_t struct_addr, qstring *out_string,
+                                     bool *recognized_layout = nullptr);
 
     // Annotate the resolved reference
     static void annotate_ptr_ref(const ptr_ref_t &ref);

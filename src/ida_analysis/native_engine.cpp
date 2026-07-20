@@ -9,6 +9,7 @@
 #include "native_engine.hpp"
 
 #include "analysis_config.hpp"
+#include "get_pc_ida.hpp"
 #include "ida_sdk_compat.hpp"
 
 #include "../common/warn_off.h"
@@ -83,18 +84,6 @@ struct FlagEffects
   FlagEffect zero = FlagEffect::None;
 };
 
-struct GadgetInfo
-{
-  int reg = -1;
-  sval_t delta = 0;
-  ea_t return_ea = BADADDR;
-  bool pops_return = false;
-  bool pushes_return = false;
-  bool has_return = false;
-  bool discards_return = false;
-  bool has_jump = false;
-};
-
 ea_t branch_target(const insn_t &instruction)
 {
   for ( int index = 0; index < UA_MAXOP; ++index )
@@ -121,6 +110,31 @@ bool target_is_mapped_executable(ea_t target)
   const segment_t *segment = getseg(target);
   return target != BADADDR && is_mapped(target) && segment != nullptr
       && (segment->perm == 0 || (segment->perm & SEGPERM_EXEC) != 0);
+}
+
+// Packers commonly place executable instructions in a PE section whose
+// loader permissions are RW.  For an already-proven control transfer, accept
+// such a target only when IDA can decode it and either IDA has classified the
+// segment/item as code or the transfer remains within the source segment.
+// This deliberately does not make arbitrary non-executable data branchable.
+bool target_is_proven_code_candidate(ea_t from, ea_t target)
+{
+  if ( target_is_mapped_executable(target) )
+    return true;
+  if ( from == BADADDR || target == BADADDR || !is_mapped(target) )
+    return false;
+  const segment_t *source_segment = getseg(from);
+  const segment_t *target_segment = getseg(target);
+  if ( source_segment == nullptr || target_segment == nullptr )
+    return false;
+  const flags64_t flags = get_flags(target);
+  if ( source_segment != target_segment
+    && target_segment->type != SEG_CODE && !is_code(flags) )
+  {
+    return false;
+  }
+  insn_t decoded;
+  return decode_insn(&decoded, target) > 0;
 }
 
 bool add_user_cref(
@@ -158,6 +172,218 @@ bool add_user_cref(
                            ? type
                            : cref_t(int(type) | XREF_USER);
   return add_cref(from, to, stored_type);
+}
+
+struct desired_code_edge_t
+{
+  ea_t target = BADADDR;
+  cref_t type = fl_U;
+  bool persistent = true;
+};
+
+bool edge_matches(
+    ea_t target,
+    int type,
+    const desired_code_edge_t &desired)
+{
+  return target == desired.target
+      && (int(type) & XREF_MASK) == (int(desired.type) & XREF_MASK);
+}
+
+bool exact_code_edge_exists(
+    ea_t from,
+    const desired_code_edge_t &desired)
+{
+  xrefblk_t xref;
+  for ( bool ok = xref.first_from(from, XREF_CODE); ok; ok = xref.next_from() )
+  {
+    if ( edge_matches(xref.to, xref.type, desired) )
+      return true;
+  }
+  return false;
+}
+
+struct existing_code_edge_t
+{
+  ea_t target = BADADDR;
+  cref_t type = fl_U;
+  bool user = false;
+};
+
+std::vector<existing_code_edge_t> collect_code_edges(ea_t from)
+{
+  std::vector<existing_code_edge_t> result;
+  xrefblk_t xref;
+  for ( bool ok = xref.first_from(from, XREF_CODE); ok; ok = xref.next_from() )
+  {
+    result.push_back(existing_code_edge_t{
+      xref.to, cref_t(int(xref.type) & XREF_MASK), xref.user,
+    });
+  }
+  return result;
+}
+
+bool desired_edge_set_is_exact(
+    ea_t from,
+    const std::vector<desired_code_edge_t> &desired)
+{
+  const std::vector<existing_code_edge_t> current = collect_code_edges(from);
+  if ( current.size() != desired.size() )
+    return false;
+  for ( const existing_code_edge_t &edge : current )
+  {
+    const auto found = std::find_if(
+        desired.begin(), desired.end(),
+        [&](const desired_code_edge_t &candidate) {
+          return edge_matches(edge.target, edge.type, candidate);
+        });
+    if ( found == desired.end() )
+      return false;
+    if ( found->persistent && found->type != fl_F && !edge.user )
+      return false;
+  }
+  return true;
+}
+
+void remove_generated_code_edges(ea_t from)
+{
+  std::vector<ea_t> targets;
+  for ( const existing_code_edge_t &edge : collect_code_edges(from) )
+  {
+    if ( !edge.user )
+      targets.push_back(edge.target);
+  }
+  std::sort(targets.begin(), targets.end());
+  targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
+  for ( ea_t target : targets )
+    del_cref(from, target, false);
+}
+
+// Replace only IDA-generated edges. A conflicting user edge is an explicit
+// boundary and makes an exclusive branch proof inapplicable.
+bool replace_generated_code_edges(
+    ea_t from,
+    const std::vector<desired_code_edge_t> &desired)
+{
+  qstring trace_value;
+  const bool trace = qgetenv(
+      "CHERNOBOG_IDA_GET_PC_TRACE", &trace_value)
+      && !trace_value.empty() && trace_value[0] != '0';
+  if ( trace )
+    msg("[chernobog][ida-analysis][edge-trace] enter from=%a desired=%zu\n",
+        from, desired.size());
+  if ( from == BADADDR || desired.empty() )
+  {
+    if ( trace )
+      msg("[chernobog][ida-analysis][edge-trace] reject invalid source/set\n");
+    return false;
+  }
+  for ( const desired_code_edge_t &edge : desired )
+  {
+    if ( edge.target == BADADDR
+      || !target_is_proven_code_candidate(from, edge.target) )
+    {
+      if ( trace )
+      {
+        const segment_t *segment = getseg(edge.target);
+        msg("[chernobog][ida-analysis][edge-trace] reject target=%a "
+            "mapped=%d segment=%p perm=%d\n",
+            edge.target, is_mapped(edge.target) ? 1 : 0, segment,
+            segment != nullptr ? segment->perm : -1);
+      }
+      return false;
+    }
+  }
+  for ( size_t index = 0; index < desired.size(); ++index )
+  {
+    for ( size_t other = index + 1; other < desired.size(); ++other )
+    {
+      if ( desired[index].target == desired[other].target )
+      {
+        if ( trace )
+          msg("[chernobog][ida-analysis][edge-trace] reject duplicate=%a\n",
+              desired[index].target);
+        return false;
+      }
+    }
+  }
+
+  const std::vector<existing_code_edge_t> original = collect_code_edges(from);
+  if ( trace )
+  {
+    msg("[chernobog][ida-analysis][edge-trace] from=%a original=%zu "
+        "desired=%zu\n", from, original.size(), desired.size());
+    for ( const existing_code_edge_t &edge : original )
+      msg("[chernobog][ida-analysis][edge-trace]   old to=%a type=%d "
+          "user=%d\n", edge.target, int(edge.type), edge.user ? 1 : 0);
+  }
+  for ( const existing_code_edge_t &edge : original )
+  {
+    if ( edge.user && std::none_of(
+          desired.begin(), desired.end(),
+          [&](const desired_code_edge_t &candidate) {
+            return edge_matches(edge.target, edge.type, candidate);
+          }) )
+    {
+      if ( trace )
+        msg("[chernobog][ida-analysis][edge-trace] reject conflicting "
+            "user edge to=%a type=%d\n", edge.target, int(edge.type));
+      return false;
+    }
+  }
+  if ( desired_edge_set_is_exact(from, desired) )
+    return true;
+
+  // Rebuild the generated portion as a transaction. User edges that agree
+  // with the proof remain untouched; every generated edge can be restored
+  // exactly if an insertion fails.
+  remove_generated_code_edges(from);
+  bool success = true;
+  std::vector<ea_t> inserted_targets;
+  for ( const desired_code_edge_t &edge : desired )
+  {
+    if ( exact_code_edge_exists(from, edge) )
+      continue;
+    const cref_t stored_type = edge.type == fl_F || !edge.persistent
+                            ? edge.type
+                            : cref_t(int(edge.type) | XREF_USER);
+    const bool inserted = add_cref(from, edge.target, stored_type);
+    if ( trace )
+      msg("[chernobog][ida-analysis][edge-trace]   add to=%a type=%d "
+          "inserted=%d exact=%d\n", edge.target, int(stored_type),
+          inserted ? 1 : 0,
+          exact_code_edge_exists(from, edge) ? 1 : 0);
+    if ( inserted || exact_code_edge_exists(from, edge) )
+      inserted_targets.push_back(edge.target);
+    if ( !inserted && !exact_code_edge_exists(from, edge) )
+    {
+      success = false;
+      break;
+    }
+  }
+  success = success && desired_edge_set_is_exact(from, desired);
+  if ( trace )
+  {
+    const std::vector<existing_code_edge_t> current = collect_code_edges(from);
+    msg("[chernobog][ida-analysis][edge-trace] final success=%d count=%zu\n",
+        success ? 1 : 0, current.size());
+    for ( const existing_code_edge_t &edge : current )
+      msg("[chernobog][ida-analysis][edge-trace]   now to=%a type=%d "
+          "user=%d\n", edge.target, int(edge.type), edge.user ? 1 : 0);
+  }
+  if ( success )
+    return true;
+
+  for ( ea_t target : inserted_targets )
+    del_cref(from, target, false);
+  remove_generated_code_edges(from);
+  for ( const existing_code_edge_t &edge : original )
+  {
+    if ( edge.user )
+      continue;
+    add_cref(from, edge.target, edge.type);
+  }
+  return false;
 }
 
 bool flow_xref_exists(ea_t address, bool outgoing, ea_t excluded = BADADDR,
@@ -287,144 +513,45 @@ size_t retype_gap_as_bytes(
   return changed;
 }
 
-bool has_other_callers(ea_t target, ea_t source)
+bool operands_equivalent(const op_t &left, const op_t &right)
 {
-  xrefblk_t xref;
-  for ( bool ok = xref.first_to(target, XREF_FLOW);
-        ok; ok = xref.next_to() )
-  {
-    if ( xref.from == source || !xref.iscode )
-      continue;
-    insn_t instruction;
-    if ( decode_insn(&instruction, xref.from) > 0
-      && is_call_insn(instruction) )
-    {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool is_stack_pointer_deref(const op_t &operand)
-{
-  // IDA's x86 register enumeration keeps SP/ESP/RSP at register id 4.
-  return operand.reg == 4
-      && (operand.type == o_phrase
-       || (operand.type == o_displ && operand.addr == 0));
-}
-
-void track_register_delta(sval_t &delta, const insn_t &instruction, int reg)
-{
-  switch ( instruction.itype )
-  {
-    case NN_inc:
-      ++delta;
-      break;
-    case NN_dec:
-      --delta;
-      break;
-    case NN_add:
-      if ( instruction.Op2.type == o_imm )
-        delta += sval_t(instruction.Op2.value);
-      break;
-    case NN_sub:
-      if ( instruction.Op2.type == o_imm )
-        delta -= sval_t(instruction.Op2.value);
-      break;
-    case NN_lea:
-      if ( instruction.Op2.type == o_displ && instruction.Op2.reg == reg )
-        delta += sval_t(instruction.Op2.addr);
-      break;
-    default:
-      break;
-  }
-}
-
-bool classify_gadget_entry(const insn_t &instruction, GadgetInfo &result)
-{
-  if ( instruction.itype == NN_pop && instruction.Op1.type == o_reg )
-  {
-    result.reg = instruction.Op1.reg;
-    result.pops_return = true;
-    return true;
-  }
-  if ( instruction.itype == NN_mov && instruction.Op1.type == o_reg
-    && is_stack_pointer_deref(instruction.Op2) )
-  {
-    result.reg = instruction.Op1.reg;
-    return true;
-  }
-  if ( instruction.itype == NN_add
-    && is_stack_pointer_deref(instruction.Op1)
-    && instruction.Op2.type == o_imm )
-  {
-    result.delta = sval_t(instruction.Op2.value);
-    result.pushes_return = true;
-    return true;
-  }
-  if ( instruction.itype == NN_add && instruction.Op1.type == o_reg
-    && instruction.Op1.reg == 4 && instruction.Op2.type == o_imm
-    && sval_t(instruction.Op2.value) > 0 )
-  {
-    result.discards_return = true;
-    return true;
-  }
-  return false;
-}
-
-bool analyze_get_pc_gadget(ea_t address, int depth, GadgetInfo &result)
-{
-  result = GadgetInfo{};
-  insn_t instruction;
-  if ( decode_insn(&instruction, address) <= 0
-    || !classify_gadget_entry(instruction, result) )
+  if ( left.type != right.type || left.dtype != right.dtype
+    || left.flags != right.flags )
   {
     return false;
   }
+  if ( left.type == o_void )
+    return true;
+  return left.reg == right.reg && left.value == right.value
+      && left.addr == right.addr && left.specval == right.specval
+      && left.specflag1 == right.specflag1
+      && left.specflag2 == right.specflag2
+      && left.specflag3 == right.specflag3
+      && left.specflag4 == right.specflag4;
+}
 
-  const int tracked_reg = result.reg;
-  ea_t scan = address + instruction.size;
-  bool saw_push = result.pushes_return;
-  for ( int index = 0; index < depth; ++index )
+bool instructions_equivalent_without_prefix(
+    const insn_t &prefixed,
+    const insn_t &plain)
+{
+  if ( prefixed.itype != plain.itype || prefixed.size != plain.size + 1
+    || prefixed.get_canon_feature(PH) != plain.get_canon_feature(PH) )
   {
-    if ( decode_insn(&instruction, scan) <= 0 )
+    return false;
+  }
+  for ( int index = 0; index < UA_MAXOP; ++index )
+  {
+    if ( !operands_equivalent(prefixed.ops[index], plain.ops[index]) )
+      return false;
+    if ( prefixed.ops[index].type == o_void )
       break;
-    if ( is_ret_insn(instruction) )
-    {
-      result.return_ea = scan;
-      result.pushes_return = saw_push;
-      result.has_return = !saw_push;
-      break;
-    }
-    const uint32_t features = instruction.get_canon_feature(PH);
-    if ( (features & CF_CALL) != 0 )
-      break;
-    if ( (features & CF_STOP) != 0 )
-    {
-      // A direct jmp legitimately terminates a discard-return gadget body.
-      // Match the generic deobfuscator: stop the scan, but reject only a
-      // non-jmp terminal/control-transfer shape.
-      result.has_jump = instruction.itype != NN_jmp;
-      break;
-    }
-    if ( instruction.itype == NN_push && instruction.Op1.type == o_reg
-      && instruction.Op1.reg == tracked_reg )
-    {
-      saw_push = true;
-      scan += instruction.size;
-      continue;
-    }
-    if ( instruction.Op1.type == o_reg
-      && instruction.Op1.reg == tracked_reg )
-    {
-      track_register_delta(result.delta, instruction, tracked_reg);
-    }
-    scan += instruction.size;
   }
   return true;
 }
 
-bool is_redundant_rep_prefix(ea_t address)
+bool prefix_candidate_is_semantically_eligible(
+    ea_t address,
+    const insn_t &prefixed)
 {
   if ( !is_loaded(address) || !is_loaded(address + 1) )
     return false;
@@ -432,17 +559,31 @@ bool is_redundant_rep_prefix(ea_t address)
   if ( prefix != 0xF2 && prefix != 0xF3 )
     return false;
   const uint8_t opcode = get_byte(address + 1);
-  if ( opcode == 0x0F || (prefix == 0xF3 && opcode == 0x90) )
+  // Any second prefix byte makes this a prefix train. Conservatively retain
+  // it; the following byte, not this one, determines REP semantics.
+  if ( opcode == 0x0F || opcode == 0x26 || opcode == 0x2E
+    || opcode == 0x36 || opcode == 0x3E || opcode == 0x64
+    || opcode == 0x65 || opcode == 0x66 || opcode == 0x67
+    || opcode == 0xF0 || opcode == 0xF2 || opcode == 0xF3
+    || (inf_is_64bit() && opcode >= 0x40 && opcode <= 0x4F)
+    || (prefix == 0xF3 && opcode == 0x90) )
+  {
     return false;
+  }
   if ( prefix == 0xF3
     && (opcode == 0xC2 || opcode == 0xC3
      || opcode == 0xCA || opcode == 0xCB) )
   {
     return false;
   }
-  return !((opcode >= 0xA4 && opcode <= 0xA7)
-        || (opcode >= 0xAA && opcode <= 0xAF)
-        || (opcode >= 0x6C && opcode <= 0x6F));
+  if ( (opcode >= 0xA4 && opcode <= 0xA7)
+    || (opcode >= 0xAA && opcode <= 0xAF)
+    || (opcode >= 0x6C && opcode <= 0x6F)
+    || is_call_insn(prefixed) || is_basic_block_end(prefixed, false) )
+  {
+    return false;
+  }
+  return true;
 }
 
 constexpr std::array<std::array<uint16_t, 2>, 8> kX86Opposites = {{
@@ -550,10 +691,10 @@ FlagValue scan_x86_flag(ea_t from, int depth, Effect effect)
     if ( current == FlagEffect::Flip
       || instruction_modifies_x86_flags(instruction.itype) )
     {
-      const bool get_pc_call = instruction.itype == NN_call
-          && flow_xref_exists(instruction.ea, true, BADADDR, fl_JN);
-      if ( !get_pc_call )
-        break;
+      // A CALL transfers through code that may change arithmetic flags. Even a
+      // proved get-PC gadget can contain INC/DEC/ADD/SUB, so flags never cross
+      // the call boundary without a separate complete effect summary.
+      break;
     }
     scan = previous;
   }
@@ -601,6 +742,41 @@ bool zero_register_operand(const op_t &operand)
       && (name == "XZR" || name == "WZR");
 }
 
+bool exact_register_operand(const op_t &left, const op_t &right)
+{
+  if ( left.type != o_reg || right.type != o_reg
+    || left.dtype != right.dtype )
+  {
+    return false;
+  }
+  const size_t width = get_dtype_size(left.dtype);
+  if ( width == 0 || width != get_dtype_size(right.dtype) )
+    return false;
+  qstring left_name;
+  qstring right_name;
+  if ( get_reg_name(&left_name, left.reg, width) <= 0
+    || get_reg_name(&right_name, right.reg, width) <= 0 )
+  {
+    return false;
+  }
+  bitrange_t left_range;
+  bitrange_t right_range;
+  const char *left_main = PH.get_reg_info(left_name.c_str(), &left_range);
+  const char *right_main = PH.get_reg_info(right_name.c_str(), &right_range);
+  if ( left_main == nullptr || right_main == nullptr
+    || str2reg(left_main) != str2reg(right_main) )
+  {
+    return false;
+  }
+  const size_t left_offset = left_range.empty() ? 0 : left_range.bitoff();
+  const size_t right_offset = right_range.empty() ? 0 : right_range.bitoff();
+  const size_t left_bits = left_range.empty() ? width * 8
+                                              : left_range.bitsize();
+  const size_t right_bits = right_range.empty() ? width * 8
+                                                : right_range.bitsize();
+  return left_offset == right_offset && left_bits == right_bits;
+}
+
 std::string normalized_mnemonic(ea_t address)
 {
   qstring raw;
@@ -621,13 +797,19 @@ bool opposite_arm_branch(const insn_t &left, const insn_t &right)
   if ( (left.itype == ARM_cbz && right.itype == ARM_cbnz)
     || (left.itype == ARM_cbnz && right.itype == ARM_cbz) )
   {
-    return left.Op1.reg == right.Op1.reg;
+    return exact_register_operand(left.Op1, right.Op1);
   }
   if ( (left.itype == ARM_tbz && right.itype == ARM_tbnz)
     || (left.itype == ARM_tbnz && right.itype == ARM_tbz) )
   {
-    return left.Op1.reg == right.Op1.reg
-        && left.Op2.value == right.Op2.value;
+    if ( !exact_register_operand(left.Op1, right.Op1)
+      || left.Op2.type != o_imm || right.Op2.type != o_imm
+      || left.Op2.value != right.Op2.value )
+    {
+      return false;
+    }
+    const size_t width = get_dtype_size(left.Op1.dtype);
+    return width != 0 && left.Op2.value < width * 8;
   }
   if ( left.itype != ARM_b || right.itype != ARM_b )
     return false;
@@ -696,6 +878,7 @@ bool wrapper_shape(const func_t *function, const NativeAnalysisConfig &config)
   int returns = 0;
   int other_terminators = 0;
   ea_t call_target = BADADDR;
+  bool final_instruction_is_return = false;
   for ( ea_t address = function->start_ea; address < function->end_ea; )
   {
     insn_t instruction;
@@ -719,15 +902,24 @@ bool wrapper_shape(const func_t *function, const NativeAnalysisConfig &config)
       ++returns;
     if ( !call && !ret && is_basic_block_end(instruction, false) )
       ++other_terminators;
-    address += instruction.size;
+    const ea_t next = address + instruction.size;
+    final_instruction_is_return = ret && next == function->end_ea;
+    address = next;
   }
-  if ( calls != 1 || other_terminators != 0 )
+  if ( calls != 1 || other_terminators != 0
+    || call_target == BADADDR || call_target == function->start_ea
+    || !target_is_mapped_executable(call_target) )
     return false;
-  if ( returns == 0 )
+  const func_t *callee = get_func(call_target);
+  const bool callee_returns = callee == nullptr || callee->does_return();
+  if ( callee_returns )
   {
-    const func_t *callee = get_func(call_target);
-    if ( callee == nullptr || callee->does_return() )
+    if ( returns != 1 || !final_instruction_is_return )
       return false;
+  }
+  else if ( returns != 0 )
+  {
+    return false;
   }
 
   int callers = 0;
@@ -771,19 +963,23 @@ ea_t bounded_function_end(ea_t start, int maximum_instructions)
 
 struct NativeAnalysisEngine::Impl final : event_listener_t
 {
+  const ssize_t owner_database = get_dbctx_id();
   NativeAnalysisConfig config = load_native_analysis_config();
   NativeAnalysisStats statistics;
   Architecture architecture = Architecture::Unsupported;
   bool hooked = false;
   bool post_analysis_running = false;
   bool post_metadata_scanned = false;
+  bool prefix_decode_probe = false;
   rangeset_t emulated;
   rangeset_t prefix_seen;
   std::set<std::pair<int, ea_t>> findings_seen;
+  std::set<ea_t> get_pc_function_roots;
   std::set<ea_t> observed_direct_call_targets;
   std::vector<std::pair<ea_t, ea_t>> pending_cfg_edges;
   size_t reported_orphan_functions = 0;
   size_t reported_outlined_wrappers = 0;
+  size_t reported_get_pc_tail_extensions = 0;
 
   Impl()
   {
@@ -811,15 +1007,18 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
   void reset()
   {
     post_analysis_running = false;
+    prefix_decode_probe = false;
     emulated.clear();
     prefix_seen.clear();
     findings_seen.clear();
+    get_pc_function_roots.clear();
     observed_direct_call_targets.clear();
     pending_cfg_edges.clear();
     statistics = NativeAnalysisStats{};
     post_metadata_scanned = false;
     reported_orphan_functions = 0;
     reported_outlined_wrappers = 0;
+    reported_get_pc_tail_extensions = 0;
   }
 
   bool mark_once(int category, ea_t address)
@@ -843,10 +1042,33 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     observed_direct_call_targets.insert(target);
   }
 
+  bool redundant_rep_prefix(ea_t address)
+  {
+    if ( prefix_decode_probe || !is_loaded(address)
+      || !is_loaded(address + 1) )
+    {
+      return false;
+    }
+    struct probe_scope_t
+    {
+      bool &active;
+      explicit probe_scope_t(bool &value) : active(value) { active = true; }
+      ~probe_scope_t() { active = false; }
+    } probe(prefix_decode_probe);
+
+    insn_t prefixed;
+    insn_t plain;
+    return decode_insn(&prefixed, address) > 0
+        && prefix_candidate_is_semantically_eligible(address, prefixed)
+        && decode_insn(&plain, address + 1) > 0
+        && instructions_equivalent_without_prefix(prefixed, plain);
+  }
+
   ssize_t handle_analysis(insn_t &instruction)
   {
-    if ( architecture != Architecture::X86 || !config.redundant_prefixes
-      || !is_redundant_rep_prefix(instruction.ea) )
+    if ( prefix_decode_probe || architecture != Architecture::X86
+      || !config.redundant_prefixes
+      || !redundant_rep_prefix(instruction.ea) )
     {
       return 0;
     }
@@ -863,7 +1085,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
   ssize_t handle_output_mnemonic(outctx_t &context)
   {
     if ( architecture != Architecture::X86 || !config.redundant_prefixes
-      || !is_redundant_rep_prefix(context.insn.ea) )
+      || !redundant_rep_prefix(context.insn.ea) )
     {
       return 0;
     }
@@ -881,38 +1103,37 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     }
     const ea_t target = instruction.Op1.addr;
     const ea_t call_end = instruction.ea + instruction.size;
-    if ( target == call_end || has_other_callers(target, instruction.ea) )
-      return false;
     if ( target > call_end
       && uint64_t(target - call_end) > config.maximum_gap )
     {
       return false;
     }
-    GadgetInfo gadget;
-    if ( !analyze_get_pc_gadget(target, config.pop_ret_depth, gadget)
-      || gadget.has_jump
-      || (!gadget.pops_return && !gadget.pushes_return
-       && !gadget.has_return && !gadget.discards_return)
-      || (!gadget.pops_return && gadget.has_return
-       && !gadget.pushes_return) )
-    {
+    const auto gadget = classify_ida_get_pc_call(
+        instruction, size_t(config.pop_ret_depth), true);
+    if ( !gadget )
       return false;
+    qstring trace;
+    if ( qgetenv("CHERNOBOG_IDA_GET_PC_TRACE", &trace)
+      && !trace.empty() && trace[0] != '0' )
+    {
+      msg("[chernobog][ida-analysis][get-pc-trace] native accepted call=%a "
+          "target=%a owner=%p revisiting=%d\n",
+          instruction.ea, target, get_func(instruction.ea),
+          revisiting ? 1 : 0);
     }
 
-    // Persist the semantic reclassification across subsequent autoanalysis
-    // waves. In this combined plugin, later function-tail recovery can cause
-    // the processor to revisit the call after AFL_NOTPROC was set; an
-    // IDA-owned fl_JN can then be discarded before the next chained gadget is
-    // reached. A user cref is still add-only with respect to pre-existing user
-    // choices because add_user_cref() refuses to replace a conflicting one.
-    const bool marker_added = add_user_cref(
-        instruction.ea, target, fl_JN, true, false);
-    if ( !marker_added
-      && !flow_xref_exists(instruction.ea, true, BADADDR, fl_JN) )
-    {
+    // This handler owns processor emulation for the reclassified CALL. Install
+    // the one exact outgoing transfer and remove stale IDA-generated call and
+    // fallthrough edges. Conflicting user edges make the proof inapplicable.
+    if ( !replace_generated_code_edges(
+            instruction.ea,
+            { desired_code_edge_t{target, fl_JN, true} }) )
       return false;
-    }
     set_notproc(target);
+    if ( is_unknown(get_flags(target)) )
+      create_insn(target);
+    auto_make_code(target);
+    plan_ea(target);
     // Every accepted get-PC form is an intra-function transfer. In
     // particular, add-sp/discard gadgets continue in the target body and have
     // no later return edge that could otherwise pull that range into the
@@ -920,32 +1141,39 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     // get-PC chains are traversed rather than truncated at an auto-created
     // tail boundary.
     func_t *call_owner = get_func(instruction.ea);
+    if ( call_owner != nullptr )
+      get_pc_function_roots.insert(call_owner->start_ea);
     if ( call_owner != nullptr && !func_contains(call_owner, target) )
-      append_func_tail(call_owner, target, BADADDR);
-    auto_make_code(target);
-    plan_ea(target);
+    {
+      const bool appended = append_func_tail_ea(
+          call_owner->start_ea, target, BADADDR);
+      if ( !trace.empty() && trace[0] != '0' )
+        msg("[chernobog][ida-analysis][get-pc-trace] target-tail owner=%a "
+            "target=%a appended=%d\n", call_owner->start_ea, target,
+            appended ? 1 : 0);
+    }
     statistics.gaps_retyped += retype_gap_as_bytes(
         call_end, target, config.maximum_gap, instruction.ea);
-    if ( is_unknown(get_flags(target)) )
-      create_insn(target);
     add_user_stkpnt(target, -effective_address_size_compat());
 
-    if ( gadget.discards_return )
+    append_analysis_comment(
+        instruction.ea,
+        gadget->mode == classifier::get_pc_mode_t::discard_return_address
+          ? "call+discard get-PC idiom" : "call+pop get-PC idiom");
+    if ( gadget->resumed_at.has_value() )
     {
-      append_analysis_comment(instruction.ea,
-                              "call+discard get-PC idiom");
-    }
-    else if ( gadget.pushes_return )
-    {
-      const ea_t resumed = ea_t(sval_t(call_end) + gadget.delta);
-      if ( target_is_executable(resumed) )
+      const ea_t resumed = ea_t(*gadget->resumed_at);
+      if ( target_is_proven_code_candidate(instruction.ea, resumed) )
       {
-        add_user_cref(instruction.ea, resumed, fl_F);
         if ( !revisiting && resumed >= call_end && resumed < target
           && is_unknown(get_flags(resumed)) )
         {
           create_insn(resumed);
         }
+        if ( is_unknown(get_flags(resumed)) )
+          create_insn(resumed);
+        auto_make_code(resumed);
+        plan_ea(resumed);
         func_t *owner = get_func(instruction.ea);
         // The effective return can already belong to a small auto-created
         // function or range while still being outside the caller.  The
@@ -953,22 +1181,30 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         // whether some function owns the address; that distinction is what
         // lets chained gadgets become one traversable CFG.
         if ( owner != nullptr && !func_contains(owner, resumed) )
-          append_func_tail(owner, resumed, BADADDR);
-        if ( gadget.return_ea != BADADDR )
+        {
+          const bool appended = append_func_tail_ea(
+              owner->start_ea, resumed, BADADDR);
+          if ( !trace.empty() && trace[0] != '0' )
+            msg("[chernobog][ida-analysis][get-pc-trace] resumed-tail owner=%a "
+                "resumed=%a appended=%d\n", owner->start_ea, resumed,
+                appended ? 1 : 0);
+        }
+        if ( gadget->return_instruction != classifier::k_bad_address )
         {
           // Queue the newly-proven continuation immediately. IDA may remove
           // this fallthrough while its first autoanalysis wave is still
           // classifying the return, so retain the deferred copy below too.
           // The deferred HS_FUNC_DONE-equivalent repair is authoritative.
-          if ( is_code(get_flags(gadget.return_ea))
-            && get_item_end(gadget.return_ea) == resumed )
+          const ea_t return_ea = ea_t(gadget->return_instruction);
+          if ( is_code(get_flags(return_ea))
+            && get_item_end(return_ea) == resumed )
           {
-            add_user_cref(gadget.return_ea, resumed, fl_F);
+            add_user_cref(return_ea, resumed, fl_F);
             auto_make_code(resumed);
-            plan_ea(gadget.return_ea);
+            plan_ea(return_ea);
             plan_ea(resumed);
           }
-          const auto edge = std::make_pair(gadget.return_ea, resumed);
+          const auto edge = std::make_pair(return_ea, resumed);
           if ( std::find(pending_cfg_edges.begin(), pending_cfg_edges.end(), edge)
             == pending_cfg_edges.end() )
           {
@@ -976,11 +1212,6 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
           }
         }
       }
-      append_analysis_comment(instruction.ea, "call+pop get-PC idiom");
-    }
-    else
-    {
-      append_analysis_comment(instruction.ea, "call+pop get-PC idiom");
     }
     if ( mark_once(1, instruction.ea) )
       ++statistics.get_pc_gadgets;
@@ -1042,10 +1273,19 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     const ea_t target = branch_target(instruction);
     if ( target == BADADDR )
       return false;
-    if ( decision == BranchDecision::Taken )
-      add_user_cref(instruction.ea, target, fl_JN, true, false);
-    else
-      add_user_cref(instruction.ea, instruction.ea + instruction.size, fl_F);
+    const ea_t selected = decision == BranchDecision::Taken
+                        ? target : instruction.ea + instruction.size;
+    const cref_t selected_type = decision == BranchDecision::Taken
+                               ? fl_JN : fl_F;
+    if ( !replace_generated_code_edges(
+            instruction.ea,
+            { desired_code_edge_t{
+                selected, selected_type, selected_type != fl_F} }) )
+    {
+      return false;
+    }
+    auto_make_code(selected);
+    plan_ea(selected);
     append_analysis_comment(
         instruction.ea, decision == BranchDecision::Taken
                       ? "always taken (architectural zero register)"
@@ -1163,18 +1403,27 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     if ( target == BADADDR )
       return false;
     const ea_t fallthrough = instruction.ea + instruction.size;
+    const ea_t selected = decision == BranchDecision::Taken
+                        ? target : fallthrough;
+    const cref_t selected_type = decision == BranchDecision::Taken
+                               ? fl_JN : fl_F;
+    if ( !replace_generated_code_edges(
+            instruction.ea,
+            { desired_code_edge_t{
+                selected, selected_type, selected_type != fl_F} }) )
+    {
+      return false;
+    }
     if ( decision == BranchDecision::Taken )
     {
-      add_user_cref(instruction.ea, target, fl_JN, true, false);
       statistics.gaps_retyped += retype_gap_as_bytes(
           fallthrough, target, config.maximum_gap, instruction.ea);
       if ( is_unknown(get_flags(target)) )
         create_insn(target);
     }
     else
-    {
-      add_user_cref(instruction.ea, fallthrough, fl_F);
-    }
+      auto_make_code(fallthrough);
+    plan_ea(selected);
     qstring comment;
     comment.sprnt("%s (locally known %s)",
                   decision == BranchDecision::Taken
@@ -1255,9 +1504,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     const bool revisiting = emulated.contains(instruction.ea);
     if ( !revisiting )
       emulated.add(instruction.ea, instruction.ea + instruction.size);
-    ssize_t handled = 0;
     const bool call_pop = handle_call_pop(instruction, revisiting);
-    handled |= call_pop ? 1 : 0;
     if ( !call_pop && config.orphan_functions && is_call_insn(instruction)
       && direct_transfer(instruction) )
     {
@@ -1265,19 +1512,22 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
       remember_direct_call_target(
           target, instruction.ea + instruction.size);
     }
-    handled |= handle_push_return(instruction) ? 1 : 0;
-    handled |= handle_zero_register(instruction) ? 1 : 0;
-    handled |= handle_opposite_pair(instruction, revisiting) ? 1 : 0;
-    handled |= handle_entry_predicate(instruction) ? 1 : 0;
-    handled |= handle_known_x86_flag(instruction, revisiting) ? 1 : 0;
-    handled |= handle_indirect_branch(instruction) ? 1 : 0;
-    handled |= handle_jump_gap(instruction, revisiting) ? 1 : 0;
-    return handled;
+    // Additive mutations must not claim ev_emu_insn: returning 1 suppresses
+    // the processor module's normal emulation. Only handlers that installed a
+    // complete exclusive edge set own the event.
+    (void)handle_push_return(instruction);
+    const bool zero_register = handle_zero_register(instruction);
+    (void)handle_opposite_pair(instruction, revisiting);
+    (void)handle_entry_predicate(instruction);
+    const bool known_flag = handle_known_x86_flag(instruction, revisiting);
+    (void)handle_indirect_branch(instruction);
+    (void)handle_jump_gap(instruction, revisiting);
+    return call_pop || zero_register || known_flag ? 1 : 0;
   }
 
   ssize_t idaapi on_event(ssize_t code, va_list arguments) override
   {
-    if ( !config.enabled )
+    if ( get_dbctx_id() != owner_database || !config.enabled )
       return 0;
     if ( code == processor_t::ev_ana_insn )
       return handle_analysis(*va_arg(arguments, insn_t *));
@@ -1309,6 +1559,93 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
       }
     }
     pending_cfg_edges.clear();
+  }
+
+  size_t expand_get_pc_function_tails()
+  {
+    size_t appended_count = 0;
+    size_t inspected = 0;
+    bool limit_hit = false;
+    std::set<ea_t> completed_roots;
+    for ( ea_t root : get_pc_function_roots )
+    {
+      func_t *function = get_func(root);
+      if ( function == nullptr || function->start_ea != root )
+      {
+        completed_roots.insert(root);
+        continue;
+      }
+
+      std::vector<std::pair<ea_t, ea_t>> worklist;
+      std::set<ea_t> queued;
+      auto queue_noncall_successors = [&](ea_t source) {
+        xrefblk_t xref;
+        for ( bool ok = xref.first_from(source, XREF_CODE);
+              ok; ok = xref.next_from() )
+        {
+          const int type = int(xref.type) & XREF_MASK;
+          if ( type != fl_F && type != fl_JF && type != fl_JN )
+            continue;
+          if ( queued.insert(xref.to).second )
+            worklist.emplace_back(source, xref.to);
+        }
+      };
+
+      function_item_iterator_t item(root);
+      for ( bool ok = item.first(); ok; ok = item.next_code() )
+      {
+        if ( ++inspected > config.maximum_post_scan_heads )
+        {
+          limit_hit = true;
+          completed_roots.insert(root);
+          break;
+        }
+        queue_noncall_successors(item.current());
+      }
+      if ( limit_hit )
+        break;
+
+      for ( size_t cursor = 0; cursor < worklist.size(); ++cursor )
+      {
+        if ( ++inspected > config.maximum_post_scan_heads )
+        {
+          limit_hit = true;
+          completed_roots.insert(root);
+          break;
+        }
+        const ea_t source = worklist[cursor].first;
+        const ea_t target = worklist[cursor].second;
+        func_t *owner = get_func(target);
+        if ( owner != nullptr )
+        {
+          if ( owner->start_ea == root )
+            queue_noncall_successors(target);
+          continue;
+        }
+        const flags64_t flags = get_flags(target);
+        if ( !is_code(flags) || !is_head(flags) || has_user_name(flags)
+          || !target_is_proven_code_candidate(source, target) )
+        {
+          continue;
+        }
+        const ea_t end = get_item_end(target);
+        if ( end == BADADDR || end <= target
+          || !append_func_tail_ea(root, target, end) )
+        {
+          continue;
+        }
+        ++appended_count;
+        queue_noncall_successors(target);
+      }
+      if ( limit_hit )
+        break;
+      completed_roots.insert(root);
+    }
+    for ( ea_t root : completed_roots )
+      get_pc_function_roots.erase(root);
+    statistics.post_scan_truncated |= limit_hit;
+    statistics.get_pc_tail_extensions += appended_count;
+    return appended_count;
   }
 
   size_t recover_orphan_functions(bool discover_database_targets)
@@ -1429,8 +1766,12 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
       func_t *function = getn_func(index);
       if ( function == nullptr || (function->flags & FUNC_OUTLINE) != 0 )
         continue;
+      // FUNC_OUTLINE changes decompiler structure. Require both independent
+      // signals: an explicit Hikari wrapper name and the complete bounded
+      // one-call forwarding shape. Neither a name nor a ubiquitous short
+      // one-call function is sufficient alone.
       if ( !name_contains_hikari_wrapper(function->start_ea)
-        && !wrapper_shape(function, config) )
+        || !wrapper_shape(function, config) )
       {
         continue;
       }
@@ -1448,10 +1789,12 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
 
   void on_autoanalysis_complete()
   {
-    if ( !config.enabled || post_analysis_running )
+    if ( get_dbctx_id() != owner_database
+      || !config.enabled || post_analysis_running )
       return;
     post_analysis_running = true;
     fix_pending_cfg_edges();
+    (void)expand_get_pc_function_tails();
     const bool initial_metadata_scan = !post_metadata_scanned;
     size_t promoted = 0;
     if ( !post_metadata_scanned )
@@ -1478,11 +1821,15 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
       }
     }
     if ( statistics.orphan_functions != reported_orphan_functions
-      || statistics.outlined_wrappers != reported_outlined_wrappers )
+      || statistics.outlined_wrappers != reported_outlined_wrappers
+      || statistics.get_pc_tail_extensions
+           != reported_get_pc_tail_extensions )
     {
-      msg("[chernobog][ida-analysis] post-analysis: %zu orphan functions, "
-          "%zu outlined wrappers\n",
+      msg("[chernobog][ida-analysis] post-analysis: %zu get-PC tail "
+          "extensions, %zu orphan functions, %zu outlined wrappers\n",
+          statistics.get_pc_tail_extensions,
           statistics.orphan_functions, statistics.outlined_wrappers);
+      reported_get_pc_tail_extensions = statistics.get_pc_tail_extensions;
       reported_orphan_functions = statistics.orphan_functions;
       reported_outlined_wrappers = statistics.outlined_wrappers;
     }

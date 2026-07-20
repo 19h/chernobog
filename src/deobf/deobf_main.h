@@ -36,6 +36,8 @@ public:
     static int merge_blocks(mbl_array_t *mba, deobf_ctx_t *ctx);
     static int simplify_substitutions(mbl_array_t *mba, deobf_ctx_t *ctx);
 
+private:
+    ssize_t owner_database_ = -1;
 };
 
 //--------------------------------------------------------------------------
@@ -44,8 +46,13 @@ public:
 //--------------------------------------------------------------------------
 class chernobog_optblock_t : public optblock_t {
 public:
+    chernobog_optblock_t();
+
     // optblock_t interface - called for each block during optimization
     virtual int idaapi func(mblock_t *blk) override;
+
+private:
+    ssize_t owner_database_ = -1;
 };
 
 //--------------------------------------------------------------------------

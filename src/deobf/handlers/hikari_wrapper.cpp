@@ -35,16 +35,121 @@ bool is_dynamic_loader_name(const qstring &raw_name)
     return name == "dlsym" || name == "dlopen";
 }
 
+enum class wrapper_runtime_t : uint8_t
+{
+    none = 0,
+    objc,
+    dynamic_loader,
+};
+
+bool unique_direct_transfer_target(ea_t from, ea_t *target)
+{
+    if ( !target )
+        return false;
+    *target = BADADDR;
+    xrefblk_t xref;
+    for ( bool ok = xref.first_from(from, XREF_CODE);
+          ok; ok = xref.next_from() ) {
+        const int type = int(xref.type) & XREF_MASK;
+        if ( type == fl_F )
+            continue;
+        if ( type != fl_CN && type != fl_CF )
+            return false;
+        if ( *target != BADADDR && *target != xref.to )
+            return false;
+        *target = xref.to;
+    }
+    return *target != BADADDR;
+}
+
+wrapper_runtime_t classify_strict_runtime_wrapper(
+    ea_t function_ea,
+    ea_t *runtime_target)
+{
+    if ( runtime_target )
+        *runtime_target = BADADDR;
+    const func_t *function = get_func(function_ea);
+    if ( !function || function->start_ea != function_ea
+      || function->tailqty != 0 || function->end_ea <= function->start_ea
+      || function->end_ea - function->start_ea > 128 )
+        return wrapper_runtime_t::none;
+
+    wrapper_runtime_t kind = wrapper_runtime_t::none;
+    ea_t selected_target = BADADDR;
+    size_t instruction_count = 0;
+    bool saw_return = false;
+    ea_t address = function->start_ea;
+    while ( address < function->end_ea ) {
+        if ( ++instruction_count > 32
+          || !is_head(get_flags(address)) || !is_code(get_flags(address)) )
+            return wrapper_runtime_t::none;
+        insn_t instruction;
+        if ( decode_insn(&instruction, address) <= 0
+          || instruction.size == 0
+          || instruction.ea + instruction.size > function->end_ea )
+            return wrapper_runtime_t::none;
+
+        if ( is_call_insn(instruction) ) {
+            if ( kind != wrapper_runtime_t::none )
+                return wrapper_runtime_t::none;
+            ea_t target = BADADDR;
+            if ( !unique_direct_transfer_target(instruction.ea, &target) )
+                return wrapper_runtime_t::none;
+            qstring name;
+            if ( get_func_name(&name, target) <= 0 )
+                get_name(&name, target);
+            if ( is_objc_dispatch_name(name) )
+                kind = wrapper_runtime_t::objc;
+            else if ( is_dynamic_loader_name(name) )
+                kind = wrapper_runtime_t::dynamic_loader;
+            else
+                return wrapper_runtime_t::none;
+            selected_target = target;
+        } else if ( is_ret_insn(instruction) ) {
+            if ( saw_return || kind == wrapper_runtime_t::none )
+                return wrapper_runtime_t::none;
+            saw_return = true;
+            if ( instruction.ea + instruction.size != function->end_ea )
+                return wrapper_runtime_t::none;
+        } else if ( is_basic_block_end(instruction, false) ) {
+            // A forwarding wrapper is one straight-line call/return body.
+            // Conditional control flow and secondary tail transfers require a
+            // separate path-complete semantic proof.
+            return wrapper_runtime_t::none;
+        }
+        address += instruction.size;
+    }
+    if ( !saw_return || kind == wrapper_runtime_t::none )
+        return wrapper_runtime_t::none;
+    if ( runtime_target )
+        *runtime_target = selected_target;
+    return kind;
+}
+
 } // namespace
 
 // Static member
-std::map<ea_t, hikari_wrapper_handler_t::wrapper_info_t> hikari_wrapper_handler_t::s_wrapper_cache;
-std::set<ea_t> hikari_wrapper_handler_t::s_non_wrapper_cache;
+std::map<ssize_t, std::map<ea_t, hikari_wrapper_handler_t::wrapper_info_t>>
+    hikari_wrapper_handler_t::s_wrapper_cache;
+std::map<ssize_t, std::set<ea_t>>
+    hikari_wrapper_handler_t::s_non_wrapper_cache;
+
+std::map<ea_t, hikari_wrapper_handler_t::wrapper_info_t> &
+hikari_wrapper_handler_t::wrapper_cache()
+{
+    return s_wrapper_cache[get_dbctx_id()];
+}
+
+std::set<ea_t> &hikari_wrapper_handler_t::non_wrapper_cache()
+{
+    return s_non_wrapper_cache[get_dbctx_id()];
+}
 
 void hikari_wrapper_handler_t::clear_cache()
 {
-    s_wrapper_cache.clear();
-    s_non_wrapper_cache.clear();
+    const ssize_t database = get_dbctx_id();
+    s_wrapper_cache.erase(database);
+    s_non_wrapper_cache.erase(database);
 }
 
 //--------------------------------------------------------------------------
@@ -96,9 +201,10 @@ int hikari_wrapper_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 
     for ( auto &call : calls ) {
         // Try to resolve the arguments
-        resolve_call_args(&call);
+        if ( !resolve_call_args(&call) )
+            continue;
         annotate_call_site(call);
-        changes++;
+        ++changes;
 
         deobf::log_verbose("[hikari_wrapper] Resolved call to %s -> %s\n",
                           call.wrapper.original_name.c_str(),
@@ -124,9 +230,14 @@ bool hikari_wrapper_handler_t::analyze_wrapper(ea_t func_ea, wrapper_info_t *out
     out->func_ea = func_ea;
     get_func_name(&out->original_name, func_ea);
 
-    // Check for objc_msgSend pattern
-    if ( has_objc_msgsend(func_ea) ) {
+    ea_t runtime_target = BADADDR;
+    const wrapper_runtime_t runtime = classify_strict_runtime_wrapper(
+        func_ea, &runtime_target);
+
+    // Check for one straight-line objc_msgSend forwarding body.
+    if ( runtime == wrapper_runtime_t::objc ) {
         out->is_objc = true;
+        out->target_func = runtime_target;
 
         // Try to extract the selector from the code
         // This is complex - the selector might be passed as argument
@@ -140,10 +251,13 @@ bool hikari_wrapper_handler_t::analyze_wrapper(ea_t func_ea, wrapper_info_t *out
     }
 
     // Check for dlsym pattern
-    if ( has_dlsym_call(func_ea) ) {
+    if ( runtime == wrapper_runtime_t::dynamic_loader ) {
         out->is_objc = false;
-        out->resolved_name = out->original_name;
-        out->resolved_name.replace("HikariFunctionWrapper_", "DynAPI_");
+        out->target_func = runtime_target;
+        if ( get_func_name(&out->resolved_name, runtime_target) <= 0 )
+            get_name(&out->resolved_name, runtime_target);
+        if ( out->resolved_name.empty() )
+            out->resolved_name = "dynamic_loader";
         return true;
     }
 
@@ -158,25 +272,27 @@ bool hikari_wrapper_handler_t::get_wrapper_info(ea_t func_ea,
     if ( func_ea == BADADDR || !out )
         return false;
 
-    const auto cached = s_wrapper_cache.find(func_ea);
-    if ( cached != s_wrapper_cache.end() ) {
+    std::map<ea_t, wrapper_info_t> &wrappers = wrapper_cache();
+    std::set<ea_t> &non_wrappers = non_wrapper_cache();
+    const auto cached = wrappers.find(func_ea);
+    if ( cached != wrappers.end() ) {
         *out = cached->second;
         return true;
     }
-    if ( s_non_wrapper_cache.count(func_ea) != 0 )
+    if ( non_wrappers.count(func_ea) != 0 )
         return false;
 
     if ( !is_wrapper_by_name(func_ea) && !is_wrapper_by_pattern(func_ea) ) {
-        s_non_wrapper_cache.insert(func_ea);
+        non_wrappers.insert(func_ea);
         return false;
     }
 
     wrapper_info_t wrapper;
     if ( !analyze_wrapper(func_ea, &wrapper) ) {
-        s_non_wrapper_cache.insert(func_ea);
+        non_wrappers.insert(func_ea);
         return false;
     }
-    s_wrapper_cache.emplace(func_ea, wrapper);
+    wrappers.emplace(func_ea, wrapper);
     *out = wrapper;
     return true;
 }
@@ -216,14 +332,8 @@ bool hikari_wrapper_handler_t::is_wrapper_by_pattern(ea_t func_ea)
     if ( !func ) 
         return false;
 
-    // Wrappers are typically very short
-    if ( func->end_ea - func->start_ea > 128 ) 
-        return false;
-
-    // An unnamed short function is considered only when its direct callee is
-    // a wrapper-specific runtime API. Merely containing a call is ubiquitous
-    // and does not establish wrapper semantics.
-    return has_objc_msgsend(func_ea) || has_dlsym_call(func_ea);
+    return classify_strict_runtime_wrapper(func_ea, nullptr)
+        != wrapper_runtime_t::none;
 }
 
 //--------------------------------------------------------------------------
@@ -325,15 +435,19 @@ void hikari_wrapper_handler_t::annotate_call_site(const call_site_t &call)
 
     qstring comment;
 
-    if ( call.wrapper.is_objc && !call.class_arg.empty() ) {
-        if ( !call.selector_arg.empty() ) {
+    if ( call.wrapper.is_objc ) {
+        if ( !call.class_arg.empty() && !call.selector_arg.empty() ) {
             comment.sprnt("ObjC: [%s %s]",
                          call.class_arg.c_str(), call.selector_arg.c_str());
-        } else {
+        } else if ( !call.class_arg.empty() ) {
             comment.sprnt("ObjC: %s method call", call.class_arg.c_str());
+        } else if ( !call.selector_arg.empty() ) {
+            comment.sprnt("ObjC selector: %s", call.selector_arg.c_str());
         }
-    } else if ( !call.wrapper.resolved_name.empty() ) {
-        comment.sprnt("Wrapper -> %s", call.wrapper.resolved_name.c_str());
+    } else if ( !call.selector_arg.empty() ) {
+        comment.sprnt("Dynamic lookup via %s: %s",
+                     call.wrapper.resolved_name.c_str(),
+                     call.selector_arg.c_str());
     }
 
     if ( !comment.empty() ) {
@@ -346,33 +460,8 @@ void hikari_wrapper_handler_t::annotate_call_site(const call_site_t &call)
 //--------------------------------------------------------------------------
 bool hikari_wrapper_handler_t::has_objc_msgsend(ea_t func_ea)
 {
-    func_t *func = get_func(func_ea);
-    if ( !func ) 
-        return false;
-
-    // Look for calls to objc_msgSend variants
-    ea_t curr = func->start_ea;
-    while ( curr < func->end_ea ) {
-        insn_t insn;
-        if ( decode_insn(&insn, curr) == 0 ) 
-            break;
-
-        if ( is_call_insn(insn) ) {
-            ea_t target = get_first_fcref_from(insn.ea);
-            if ( target != BADADDR ) {
-                qstring name;
-                if ( get_func_name(&name, target) > 0 ) {
-                    if ( is_objc_dispatch_name(name) ) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        curr = insn.ea + insn.size;
-    }
-
-    return false;
+    return classify_strict_runtime_wrapper(func_ea, nullptr)
+        == wrapper_runtime_t::objc;
 }
 
 //--------------------------------------------------------------------------
@@ -380,30 +469,6 @@ bool hikari_wrapper_handler_t::has_objc_msgsend(ea_t func_ea)
 //--------------------------------------------------------------------------
 bool hikari_wrapper_handler_t::has_dlsym_call(ea_t func_ea)
 {
-    func_t *func = get_func(func_ea);
-    if ( !func ) 
-        return false;
-
-    ea_t curr = func->start_ea;
-    while ( curr < func->end_ea ) {
-        insn_t insn;
-        if ( decode_insn(&insn, curr) == 0 ) 
-            break;
-
-        if ( is_call_insn(insn) ) {
-            ea_t target = get_first_fcref_from(insn.ea);
-            if ( target != BADADDR ) {
-                qstring name;
-                if ( get_func_name(&name, target) > 0 ) {
-                    if ( is_dynamic_loader_name(name) ) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        curr = insn.ea + insn.size;
-    }
-
-    return false;
+    return classify_strict_runtime_wrapper(func_ea, nullptr)
+        == wrapper_runtime_t::dynamic_loader;
 }

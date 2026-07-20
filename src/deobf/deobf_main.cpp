@@ -49,7 +49,10 @@ struct deobf_module_state_t
     bool active = false;
     ea_t last_inactive_ea = BADADDR;
     std::set<std::pair<ea_t, int>> optblock_processed;
-    std::set<std::pair<const mbl_array_t *, int>> mba_maturity_processed;
+    uint64_t next_mba_generation = 0;
+    std::map<const mbl_array_t *, uint64_t> mba_generations;
+    std::set<std::tuple<const mbl_array_t *, int, uint64_t>>
+        mba_maturity_processed;
 };
 
 // IDA stores one pointer for this data ID in each database context.
@@ -76,6 +79,7 @@ void chernobog_clear_function_tracking(ea_t func_ea)
         for ( int m = 0; m < 16; ++m )
             state->optblock_processed.erase({func_ea, m});
         state->mba_maturity_processed.clear();
+        state->mba_generations.clear();
     }
 
     // Clear deferred analysis for all handlers
@@ -89,8 +93,15 @@ void chernobog_begin_mba_tracking(mbl_array_t *mba)
     deobf_module_state_t *state = get_deobf_state();
     if ( state == nullptr || mba == nullptr )
         return;
-    for ( int maturity = 0; maturity < 16; ++maturity )
-        state->mba_maturity_processed.erase({mba, maturity});
+    for ( auto it = state->mba_maturity_processed.begin();
+          it != state->mba_maturity_processed.end(); )
+    {
+        if ( std::get<0>(*it) == mba )
+            it = state->mba_maturity_processed.erase(it);
+        else
+            ++it;
+    }
+    state->mba_generations[mba] = ++state->next_mba_generation;
 }
 
 bool chernobog_function_requires_deobfuscation(ea_t func_ea)
@@ -117,8 +128,9 @@ void chernobog_clear_all_tracking()
     {
         state->optblock_processed.clear();
         state->mba_maturity_processed.clear();
+        state->mba_generations.clear();
     }
-    deflatten_handler_t::s_deferred_analysis.clear();
+    deflatten_handler_t::clear_cache();
     identity_call_handler_t::clear_caches();
     hikari_wrapper_handler_t::clear_cache();
     opaque_eval_t::clear_cache();
@@ -148,6 +160,8 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
     optblock_debug("[optblock] func() called\n");
 
     // Debug: log every call to see if we're being invoked
+    if ( get_dbctx_id() != owner_database_ )
+        return 0;
     if ( !blk || !blk->mba )
     {
         optblock_debug("[optblock] null blk or mba!\n");
@@ -187,8 +201,17 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
     // while retaining separate function-level state for one-shot database and
     // byte mutations. A later no-cache decompilation gets a new hxe_microcode
     // lifecycle and must receive all transient microcode rewrites again.
-    const auto mba_key = std::make_pair(
-        static_cast<const mbl_array_t *>(mba), maturity);
+    auto generation = state->mba_generations.find(mba);
+    if ( generation == state->mba_generations.end() )
+    {
+        // Fail-safe for decompiler builds that omit hxe_microcode for a
+        // cached MBA: assign a database-local lifecycle generation here.
+        generation = state->mba_generations.emplace(
+            mba, ++state->next_mba_generation).first;
+    }
+    const auto mba_key = std::make_tuple(
+        static_cast<const mbl_array_t *>(mba), maturity,
+        generation->second);
     if ( !state->mba_maturity_processed.insert(mba_key).second )
     {
         optblock_debug("[optblock] Already processed MBA %p/%d\n",
@@ -373,6 +396,12 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
 // Constructor/Destructor
 //--------------------------------------------------------------------------
 chernobog_t::chernobog_t()
+    : owner_database_(get_dbctx_id())
+{
+}
+
+chernobog_optblock_t::chernobog_optblock_t()
+    : owner_database_(get_dbctx_id())
 {
 }
 
@@ -386,6 +415,8 @@ chernobog_t::~chernobog_t()
 //--------------------------------------------------------------------------
 int idaapi chernobog_t::func(mblock_t *blk, minsn_t *ins, int optflags)
 {
+    if ( get_dbctx_id() != owner_database_ )
+        return 0;
     if ( !blk || !ins )
     {
         return 0;
@@ -966,13 +997,14 @@ void deobf_done()
     }
 
     // Clear any pending analysis
-    deflatten_handler_t::s_deferred_analysis.clear();
+    deflatten_handler_t::clear_cache();
     identity_call_handler_t::clear_caches();
     vm_mba_handler_t::dump_statistics();
     vm_mba_handler_t::clear();
     global_const_handler_t::clear_cache();
     state->optblock_processed.clear();
     state->mba_maturity_processed.clear();
+    state->mba_generations.clear();
 
     // NOTE: Do NOT call RuleRegistry::instance().clear() here!
     // The RuleRegistry singleton intentionally leaks to avoid crashes from

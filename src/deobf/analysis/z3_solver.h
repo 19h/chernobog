@@ -194,6 +194,12 @@ private:
 //--------------------------------------------------------------------------
 class symbolic_executor_t {
 public:
+    enum class feasibility_t {
+        feasible,
+        infeasible,
+        unknown,
+    };
+
     explicit symbolic_executor_t(z3_context_t& ctx);
 
     // Execute a single instruction symbolically
@@ -206,10 +212,26 @@ public:
     // get_value(), this also translates nested expressions.
     z3::expr evaluate_operand(const mop_t& op, int default_size = 4);
 
+    // Translate a conditional jump using the executor's current bindings.
+    z3::expr evaluate_jcc_condition(const minsn_t* jcc);
+
+    // Add a branch/path condition. Constraints survive subsequent symbolic
+    // assignments and are installed for every solver query.
+    bool assume(const z3::expr& condition);
+
+    // Distinguish an impossible path from a solver failure. Rewriters may
+    // discard only paths proved infeasible; UNKNOWN must fail closed.
+    feasibility_t check_feasibility();
+
     // Install a path invariant and keep it across call-clobber invalidation.
     // The caller must only preserve ABI/nonvolatile values it has proved.
     void set_value(const mop_t& op, const z3::expr& value,
                    bool preserve_across_calls = false);
+
+    // Mark an operand as call-invariant without changing its current value.
+    // This is used only after an external escape proof (for example, private
+    // recurrent-dispatch state storage).
+    void preserve_across_calls(const mop_t& op);
 
     // Forget memory-backed bindings while retaining register invariants.
     void invalidate_memory_values();
@@ -225,6 +247,10 @@ public:
     void reset();
 
 private:
+    // Apply a call's explicit spoil set. Missing call information is a hard
+    // register/all-memory barrier; only explicitly proved invariants survive.
+    void invalidate_call_effects(const minsn_t* ins);
+
     // Handle assignment instructions
     void handle_assignment(const minsn_t* ins);
 
@@ -238,6 +264,7 @@ private:
     // Current symbolic state: variable -> expression (using shared_ptr)
     std::unordered_map<symbolic_var_t, std::shared_ptr<z3::expr>, symbolic_var_t::hash_t> m_state;
     std::vector<symbolic_var_t> m_call_preserved;
+    std::vector<z3::expr> m_assumptions;
 
 };
 
@@ -366,6 +393,9 @@ void reset_global_context();
 
 // Set global timeout (milliseconds)
 void set_global_timeout(unsigned ms);
+
+// Read the configured timeout so scoped analyses can restore it.
+unsigned get_global_timeout();
 
 //--------------------------------------------------------------------------
 // Convenience functions

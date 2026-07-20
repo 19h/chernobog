@@ -86,7 +86,9 @@ public:
     static table_resolution_t resolve_indexed_table(ea_t table_base, ea_t func_ea = BADADDR);
 
     // Deferred analysis storage (public for clearing on refresh)
-    static std::map<ea_t, std::vector<deferred_identity_call_t>> s_deferred_analysis;
+    using deferred_cache_t =
+        std::map<ea_t, std::vector<deferred_identity_call_t>>;
+    static std::map<ssize_t, deferred_cache_t> s_deferred_analysis;
 
 private:
     // Identity call pattern info (used during detection)
@@ -113,11 +115,16 @@ private:
     static bool is_trampoline_code(ea_t addr, ea_t *next_ptr_out = nullptr);
 
     // Cache of known identity functions
-    static std::set<ea_t> s_identity_funcs;
-    static std::set<ea_t> s_non_identity_funcs;
+    static std::map<ssize_t, std::set<ea_t>> s_identity_funcs;
+    static std::map<ssize_t, std::set<ea_t>> s_non_identity_funcs;
 
     // Cache of resolved trampolines: trampoline_addr -> final_target
-    static std::map<ea_t, ea_t> s_trampoline_cache;
+    static std::map<ssize_t, std::map<ea_t, ea_t>> s_trampoline_cache;
+
+    static std::set<ea_t> &identity_cache();
+    static std::set<ea_t> &non_identity_cache();
+    static std::map<ea_t, ea_t> &trampoline_cache();
+    static deferred_cache_t &deferred_cache();
 };
 
 // Deferred analysis record - stored between maturity 0 and MMAT_LOCOPT

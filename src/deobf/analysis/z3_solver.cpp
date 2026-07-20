@@ -2,9 +2,15 @@
 #include "opaque_eval.h"
 #include "../../common/bitvector.h"
 #include "../../common/z3_utils.h"
+#include <climits>
 #include <cstring>
 
 namespace z3_solver {
+
+namespace {
+bool register_range_contains(const symbolic_var_t& outer,
+                             const symbolic_var_t& inner);
+}
 
 //--------------------------------------------------------------------------
 // Global context management
@@ -31,6 +37,10 @@ void set_global_timeout(unsigned ms) {
     if (g_context) {
         g_context->set_timeout(ms);
     }
+}
+
+unsigned get_global_timeout() {
+    return g_timeout_ms;
 }
 
 //--------------------------------------------------------------------------
@@ -117,25 +127,34 @@ z3::expr mcode_translator_t::make_symbolic(const symbolic_var_t& var) {
     if ( var.kind() == symbolic_var_t::VAR_REGISTER && var.size() > 0 ) {
         for ( const auto &entry : m_known_values ) {
             const symbolic_var_t &stored = entry.first;
-            if ( stored.kind() != symbolic_var_t::VAR_REGISTER
-              || stored.id() != var.id() || stored.size() < var.size() )
+            if ( !register_range_contains(stored, var)
+              || stored.size() > 8 )
+                continue;
+            const uint64_t byte_offset = var.id() - stored.id();
+            if ( byte_offset >= 8 )
                 continue;
             const uint64_t mask = var.size() >= 8
                 ? UINT64_MAX : ((uint64_t(1) << (var.size() * 8)) - 1);
-            return make_const(entry.second & mask, bits);
+            return make_const(
+                (entry.second >> (byte_offset * 8)) & mask, bits);
         }
         for ( const auto &entry : m_var_cache ) {
             const symbolic_var_t &stored = entry.first;
-            if ( stored.kind() != symbolic_var_t::VAR_REGISTER
-              || stored.id() != var.id() || stored.size() < var.size()
-              || !entry.second )
+            if ( !register_range_contains(stored, var) || !entry.second )
                 continue;
             const z3::expr &value = *entry.second;
             const int value_bits = value.get_sort().bv_size();
-            if ( value_bits == bits )
+            const uint64_t byte_offset = var.id() - stored.id();
+            const uint64_t low = byte_offset * 8;
+            if ( low > static_cast<uint64_t>(INT_MAX)
+              || low + static_cast<uint64_t>(bits)
+                   > static_cast<uint64_t>(value_bits) )
+                continue;
+            if ( value_bits == bits && low == 0 )
                 return value;
-            if ( value_bits > bits )
-                return extract(value, bits - 1, 0);
+            return extract(
+                value, static_cast<int>(low) + bits - 1,
+                static_cast<int>(low));
         }
     }
 
@@ -228,6 +247,96 @@ void mcode_translator_t::invalidate_values_if(
 
 namespace {
 
+bool unsigned_ranges_overlap(uint64_t left, int left_size,
+                             uint64_t right, int right_size)
+{
+    if ( left_size <= 0 || right_size <= 0 )
+        return left == right;
+    const uint64_t lsize = static_cast<uint64_t>(left_size);
+    const uint64_t rsize = static_cast<uint64_t>(right_size);
+    if ( left > UINT64_MAX - lsize || right > UINT64_MAX - rsize )
+        return true;
+    return left < right + rsize && right < left + lsize;
+}
+
+bool signed_ranges_overlap(uint64_t left_id, int left_size,
+                           uint64_t right_id, int right_size)
+{
+    const int64_t left = static_cast<int64_t>(left_id);
+    const int64_t right = static_cast<int64_t>(right_id);
+    if ( left_size <= 0 || right_size <= 0 )
+        return left == right;
+    if ( left > INT64_MAX - left_size || right > INT64_MAX - right_size )
+        return true;
+    return left < right + right_size && right < left + left_size;
+}
+
+bool unsigned_range_contains(uint64_t outer, int outer_size,
+                             uint64_t inner, int inner_size)
+{
+    if ( outer_size <= 0 || inner_size <= 0 )
+        return outer == inner && outer_size == inner_size;
+    const uint64_t outer_width = static_cast<uint64_t>(outer_size);
+    const uint64_t inner_width = static_cast<uint64_t>(inner_size);
+    if ( outer > inner || outer > UINT64_MAX - outer_width
+      || inner > UINT64_MAX - inner_width )
+        return false;
+    return inner + inner_width <= outer + outer_width;
+}
+
+bool signed_range_contains(uint64_t outer_id, int outer_size,
+                           uint64_t inner_id, int inner_size)
+{
+    const int64_t outer = static_cast<int64_t>(outer_id);
+    const int64_t inner = static_cast<int64_t>(inner_id);
+    if ( outer_size <= 0 || inner_size <= 0 )
+        return outer == inner && outer_size == inner_size;
+    if ( outer > inner || outer > INT64_MAX - outer_size
+      || inner > INT64_MAX - inner_size )
+        return false;
+    return inner + inner_size <= outer + outer_size;
+}
+
+bool register_range_contains(const symbolic_var_t& outer,
+                             const symbolic_var_t& inner)
+{
+    if ( outer.kind() != symbolic_var_t::VAR_REGISTER
+      || inner.kind() != symbolic_var_t::VAR_REGISTER
+      || outer.size() <= 0 || inner.size() <= 0
+      || outer.id() > inner.id() )
+        return false;
+    const uint64_t outer_size = static_cast<uint64_t>(outer.size());
+    const uint64_t inner_size = static_cast<uint64_t>(inner.size());
+    if ( outer.id() > UINT64_MAX - outer_size
+      || inner.id() > UINT64_MAX - inner_size )
+        return false;
+    return inner.id() + inner_size <= outer.id() + outer_size;
+}
+
+bool variable_range_contains(const symbolic_var_t& outer,
+                             const symbolic_var_t& inner)
+{
+    if ( outer.kind() != inner.kind() )
+        return false;
+    switch ( outer.kind() ) {
+        case symbolic_var_t::VAR_REGISTER:
+            return register_range_contains(outer, inner);
+        case symbolic_var_t::VAR_STACK:
+            return signed_range_contains(
+                outer.id(), outer.size(), inner.id(), inner.size());
+        case symbolic_var_t::VAR_GLOBAL:
+            return unsigned_range_contains(
+                outer.id(), outer.size(), inner.id(), inner.size());
+        case symbolic_var_t::VAR_LOCAL:
+            return outer.id() == inner.id()
+                && (outer.size() <= 0 || inner.size() <= 0
+                    ? outer.size() == inner.size()
+                    : outer.size() >= inner.size());
+        default:
+            return outer == inner;
+    }
+}
+
 bool variables_may_alias(const symbolic_var_t& left,
                          const symbolic_var_t& right)
 {
@@ -243,29 +352,22 @@ bool variables_may_alias(const symbolic_var_t& left,
             return true;
         if ( left.kind() != right.kind() )
             return false;
-        if ( left.size() <= 0 || right.size() <= 0 )
-            return left.id() == right.id();
-        const uint64_t left_size = static_cast<uint64_t>(left.size());
-        const uint64_t right_size = static_cast<uint64_t>(right.size());
-        if ( left.id() > UINT64_MAX - left_size
-          || right.id() > UINT64_MAX - right_size )
-            return left.id() == right.id();
-        return left.id() < right.id() + right_size
-            && right.id() < left.id() + left_size;
+        if ( left.kind() == symbolic_var_t::VAR_STACK )
+            return signed_ranges_overlap(
+                left.id(), left.size(), right.id(), right.size());
+        if ( left.kind() == symbolic_var_t::VAR_GLOBAL )
+            return unsigned_ranges_overlap(
+                left.id(), left.size(), right.id(), right.size());
+        if ( left.kind() == symbolic_var_t::VAR_MEMORY )
+            return true;
+        return left.id() == right.id();
     }
     if ( left.kind() != right.kind() )
         return false;
 
     if ( left.kind() == symbolic_var_t::VAR_REGISTER ) {
-        if ( left.size() <= 0 || right.size() <= 0 )
-            return left.id() == right.id();
-        const uint64_t left_size = static_cast<uint64_t>(left.size());
-        const uint64_t right_size = static_cast<uint64_t>(right.size());
-        if ( left.id() > UINT64_MAX - left_size ||
-             right.id() > UINT64_MAX - right_size )
-            return left.id() == right.id();
-        return left.id() < right.id() + right_size &&
-               right.id() < left.id() + left_size;
+        return unsigned_ranges_overlap(
+            left.id(), left.size(), right.id(), right.size());
     }
 
     // Local IDs name the same lvar independent of the access width. Temporary
@@ -463,6 +565,7 @@ z3::expr mcode_translator_t::translate_insn(const minsn_t* ins) {
 
     switch (ins->opcode) {
         // Data movement
+        case m_ldc:
         case m_mov:
             result = l;
             break;
@@ -572,6 +675,22 @@ z3::expr mcode_translator_t::translate_insn(const minsn_t* ins) {
 
         case m_sar:
             result = z3::ashr(l, r);
+            break;
+
+        // These operations are pure and write only their explicit result.
+        // Keep the flag bit unconstrained instead of risking an incomplete
+        // architecture-specific flags model. This over-approximates the
+        // concrete operation and therefore cannot manufacture uniqueness.
+        case m_cfadd:
+        case m_ofadd:
+        case m_cfshl:
+        case m_cfshr:
+        case m_sets:
+        case m_seto:
+        case m_setp:
+            result = m_ctx.ctx().bv_const(
+                ("flag_" + std::to_string(m_fresh_counter++)).c_str(),
+                result_bits);
             break;
 
         // Comparisons (return 1 or 0)
@@ -723,44 +842,99 @@ symbolic_executor_t::symbolic_executor_t(z3_context_t& ctx)
 void symbolic_executor_t::reset() {
     m_state.clear();
     m_call_preserved.clear();
+    m_assumptions.clear();
     m_translator.reset();
+}
+
+namespace {
+
+bool is_modeled_pure_rotate_call(const minsn_t *instruction)
+{
+    if ( !instruction || instruction->opcode != m_call
+      || instruction->d.t != mop_f || !instruction->d.f )
+        return false;
+    if ( instruction->d.f->role == ROLE_ROL
+      || instruction->d.f->role == ROLE_ROR )
+        return true;
+    const char *helper = instruction->l.t == mop_h
+        ? instruction->l.helper : nullptr;
+    return helper && (std::strstr(helper, "ROL") != nullptr
+                   || std::strstr(helper, "ROR") != nullptr);
+}
+
+struct nested_call_collector_t : public minsn_visitor_t
+{
+    const minsn_t *root = nullptr;
+    std::vector<const minsn_t *> calls;
+
+    explicit nested_call_collector_t(const minsn_t *instruction)
+      : root(instruction) {}
+
+    int idaapi visit_minsn() override
+    {
+        if ( curins != nullptr && curins != root
+          && is_mcode_call(curins->opcode)
+          && !is_modeled_pure_rotate_call(curins) )
+        {
+            calls.push_back(curins);
+        }
+        return 0;
+    }
+};
+
+} // namespace
+
+void symbolic_executor_t::invalidate_call_effects(const minsn_t* ins) {
+    const mcallinfo_t *call_info =
+        ins && ins->d.t == mop_f ? ins->d.f : nullptr;
+    const auto preserved = [&](const symbolic_var_t &candidate) {
+        return std::any_of(
+            m_call_preserved.begin(), m_call_preserved.end(),
+            [&](const symbolic_var_t &value) {
+                // A proof for one byte/range cannot preserve a wider stale
+                // binding merely because the ranges overlap.
+                return variable_range_contains(value, candidate);
+            });
+    };
+    const auto invalidated = [&](const symbolic_var_t &candidate) {
+        if ( preserved(candidate) )
+            return false;
+        if ( candidate.kind() == symbolic_var_t::VAR_REGISTER ) {
+            return !call_info || call_info->spoiled.reg.has_any(
+                static_cast<mreg_t>(candidate.id()), candidate.size());
+        }
+        if ( candidate.kind() == symbolic_var_t::VAR_STACK
+          || candidate.kind() == symbolic_var_t::VAR_GLOBAL
+          || candidate.kind() == symbolic_var_t::VAR_LOCAL
+          || candidate.kind() == symbolic_var_t::VAR_MEMORY ) {
+            return !call_info || call_info->spoiled.has_memory();
+        }
+        return false;
+    };
+    for ( auto p = m_state.begin(); p != m_state.end(); )
+        p = invalidated(p->first) ? m_state.erase(p) : std::next(p);
+    m_translator.invalidate_values_if(invalidated);
 }
 
 void symbolic_executor_t::execute_insn(const minsn_t* ins) {
     if (!ins) return;
 
-    // Respect Hex-Rays' explicit spoiled-register set. At LOCOPT some direct
-    // calls have no mcallinfo yet; in that case invalidate registers but keep
-    // local stack slots, which are not call-visible unless their address has
-    // escaped. The recurrent-switch caller separately rejects escaped state
-    // storage and preserves only proved ABI-nonvolatile selector registers.
+    // Propagated expressions can contain calls. Apply their spoil sets before
+    // evaluating the enclosing assignment; otherwise a nested unknown call can
+    // leave a stale selector binding live and manufacture a transition proof.
+    nested_call_collector_t nested_calls(ins);
+    const_cast<minsn_t *>(ins)->for_all_insns(nested_calls);
+    for ( const minsn_t *nested : nested_calls.calls ) {
+        if ( !is_modeled_pure_rotate_call(nested) )
+            invalidate_call_effects(nested);
+    }
+
+    // Respect Hex-Rays' explicit spoiled-register set. Missing callinfo is a
+    // hard register/global-memory barrier. Private stack/local storage is not
+    // call-visible because recurrent-switch analysis rejects address escape.
     if (is_mcode_call(ins->opcode)) {
-        const mcallinfo_t *call_info =
-            ins->d.t == mop_f ? ins->d.f : nullptr;
-        const auto preserved = [&](const symbolic_var_t &candidate) {
-            return std::any_of(
-                m_call_preserved.begin(), m_call_preserved.end(),
-                [&](const symbolic_var_t &value) {
-                    return variables_may_alias(candidate, value);
-                });
-        };
-        const auto invalidated = [&](const symbolic_var_t &candidate) {
-            if ( preserved(candidate) )
-                return false;
-            if ( candidate.kind() == symbolic_var_t::VAR_REGISTER ) {
-                return !call_info || call_info->spoiled.reg.has_any(
-                    static_cast<mreg_t>(candidate.id()), candidate.size());
-            }
-            if ( candidate.kind() == symbolic_var_t::VAR_GLOBAL
-              || candidate.kind() == symbolic_var_t::VAR_MEMORY ) {
-                return !call_info || call_info->spoiled.has_memory();
-            }
-            return false;
-        };
-        for ( auto p = m_state.begin(); p != m_state.end(); ) {
-            p = invalidated(p->first) ? m_state.erase(p) : std::next(p);
-        }
-        m_translator.invalidate_values_if(invalidated);
+        if ( !is_modeled_pure_rotate_call(ins) )
+            invalidate_call_effects(ins);
         return;
     }
 
@@ -856,6 +1030,38 @@ z3::expr symbolic_executor_t::evaluate_operand(
     return m_translator.translate_operand(op, default_size);
 }
 
+z3::expr symbolic_executor_t::evaluate_jcc_condition(const minsn_t* jcc) {
+    return m_translator.translate_jcc_condition(jcc);
+}
+
+bool symbolic_executor_t::assume(const z3::expr& condition) {
+    if ( &condition.ctx() != &m_ctx.ctx() || !condition.is_bool() )
+        return false;
+    m_assumptions.push_back(condition);
+    return true;
+}
+
+symbolic_executor_t::feasibility_t
+symbolic_executor_t::check_feasibility() {
+    try {
+        m_ctx.solver().reset();
+        for ( const z3::expr &condition : m_assumptions )
+            m_ctx.solver().add(condition);
+        const z3::check_result result = m_ctx.solver().check();
+        if ( result == z3::sat )
+            return feasibility_t::feasible;
+        if ( result == z3::unsat )
+            return feasibility_t::infeasible;
+        deobf::log_verbose(
+            "[z3] path-feasibility query returned unknown: %s\n",
+            m_ctx.solver().reason_unknown().c_str());
+    } catch ( ... ) {
+        deobf::log_verbose(
+            "[z3] path-feasibility query raised an exception\n");
+    }
+    return feasibility_t::unknown;
+}
+
 void symbolic_executor_t::set_value(
     const mop_t& op, const z3::expr& value, bool preserve_across_calls) {
     const std::optional<symbolic_var_t> destination =
@@ -876,6 +1082,19 @@ void symbolic_executor_t::set_value(
               return existing == *destination;
           }) ) {
         m_call_preserved.push_back(*destination);
+    }
+}
+
+void symbolic_executor_t::preserve_across_calls(const mop_t& op) {
+    const std::optional<symbolic_var_t> value = symbolic_var_from_mop(op);
+    if ( !value )
+        return;
+    if ( std::none_of(
+            m_call_preserved.begin(), m_call_preserved.end(),
+            [&](const symbolic_var_t &existing) {
+                return existing == *value;
+            }) ) {
+        m_call_preserved.push_back(*value);
     }
 }
 
@@ -900,16 +1119,20 @@ std::optional<z3::expr> symbolic_executor_t::get_value(const symbolic_var_t& var
     if ( var.kind() == symbolic_var_t::VAR_REGISTER && var.size() > 0 ) {
         for ( const auto &entry : m_state ) {
             const symbolic_var_t &stored = entry.first;
-            if ( stored.kind() != symbolic_var_t::VAR_REGISTER
-              || stored.id() != var.id() || stored.size() < var.size()
-              || !entry.second )
+            if ( !register_range_contains(stored, var) || !entry.second )
                 continue;
             const int bits = var.size() * 8;
             const z3::expr &value = *entry.second;
-            if ( value.get_sort().bv_size() == static_cast<unsigned>(bits) )
+            const uint64_t byte_offset = var.id() - stored.id();
+            const uint64_t low = byte_offset * 8;
+            const uint64_t value_bits = value.get_sort().bv_size();
+            if ( low + static_cast<uint64_t>(bits) > value_bits )
+                continue;
+            if ( value_bits == static_cast<unsigned>(bits) && low == 0 )
                 return value;
-            if ( value.get_sort().bv_size() > static_cast<unsigned>(bits) )
-                return value.extract(bits - 1, 0);
+            return value.extract(
+                static_cast<unsigned>(low) + bits - 1,
+                static_cast<unsigned>(low));
         }
     }
     return std::nullopt;
@@ -925,8 +1148,44 @@ std::optional<z3::expr> symbolic_executor_t::get_value(const mop_t& op) {
 }
 
 std::optional<uint64_t> symbolic_executor_t::solve_for_value(const z3::expr& expr) {
-    m_ctx.solver().reset();
-    return chernobog::z3_utils::solve_unique_bv(m_ctx.solver(), expr);
+    try {
+        if ( !expr.is_bv() || expr.get_sort().bv_size() > 64U )
+            return std::nullopt;
+        m_ctx.solver().reset();
+        for ( const z3::expr &condition : m_assumptions )
+            m_ctx.solver().add(condition);
+        const z3::check_result first = m_ctx.solver().check();
+        if ( first != z3::sat ) {
+            if ( first == z3::unknown ) {
+                deobf::log_verbose(
+                    "[z3] unique-value model query returned unknown: %s\n",
+                    m_ctx.solver().reason_unknown().c_str());
+            }
+            return std::nullopt;
+        }
+        const z3::expr value = m_ctx.solver().get_model().eval(expr, true);
+        uint64_t concrete = 0;
+        if ( !value.is_numeral()
+          || !Z3_get_numeral_uint64(expr.ctx(), value, &concrete) )
+            return std::nullopt;
+
+        m_ctx.solver().push();
+        m_ctx.solver().add(expr != expr.ctx().bv_val(
+            concrete, expr.get_sort().bv_size()));
+        const z3::check_result alternative = m_ctx.solver().check();
+        if ( alternative == z3::unknown ) {
+            deobf::log_verbose(
+                "[z3] unique-value exclusion query returned unknown: %s\n",
+                m_ctx.solver().reason_unknown().c_str());
+        }
+        m_ctx.solver().pop();
+        return alternative == z3::unsat
+            ? std::optional<uint64_t>(concrete) : std::nullopt;
+    } catch ( ... ) {
+        deobf::log_verbose(
+            "[z3] unique-value query raised an exception\n");
+        return std::nullopt;
+    }
 }
 
 //--------------------------------------------------------------------------

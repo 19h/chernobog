@@ -17,6 +17,7 @@ struct NativeAnalysisStats
   size_t known_flag_branches = 0;
   size_t indirect_targets = 0;
   size_t gaps_retyped = 0;
+  size_t get_pc_tail_extensions = 0;
   size_t orphan_functions = 0;
   size_t outlined_wrappers = 0;
   size_t post_scan_heads = 0;

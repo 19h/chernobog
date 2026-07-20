@@ -1,6 +1,9 @@
 #include "ptr_resolve.h"
 #include "../analysis/arch_utils.h"
 #include "../../common/ida_memory.h"
+#include "../../common/string_recovery.h"
+
+#include <vector>
 
 //--------------------------------------------------------------------------
 // Detection
@@ -211,7 +214,8 @@ bool ptr_resolve_handler_t::resolve_ptr_target(ea_t ptr_addr, ptr_ref_t *out)
     // First, try to extract as a CFConstantString struct
     // This takes priority because CFConstantStrings are common in ObjC code
     qstring cf_string;
-    if ( try_extract_cfstring(ptr_addr, &cf_string) ) {
+    bool cfstring_layout = false;
+    if ( try_extract_cfstring(ptr_addr, &cf_string, &cfstring_layout) ) {
         out->is_cfstring = true;
         out->string_value = cf_string;
         out->target_addr = ptr_addr;
@@ -219,6 +223,11 @@ bool ptr_resolve_handler_t::resolve_ptr_target(ea_t ptr_addr, ptr_ref_t *out)
         out->is_objc_class = false;
         return true;
     }
+    // A structurally valid CFConstantString whose current payload is not
+    // admissible plaintext may be encrypted or runtime-initialized. Do not
+    // reinterpret its ISA slot as an ordinary pointer reference.
+    if ( cfstring_layout )
+        return false;
 
     // Read the pointer value
     ea_t target = arch::read_ptr(ptr_addr);
@@ -317,8 +326,11 @@ bool ptr_resolve_handler_t::extract_objc_class_name(const char *symbol, qstring 
 //   offset 2 * ptrsize: const char *data
 //   offset 3 * ptrsize: pointer-sized length
 //--------------------------------------------------------------------------
-bool ptr_resolve_handler_t::try_extract_cfstring(ea_t struct_addr, qstring *out_string)
+bool ptr_resolve_handler_t::try_extract_cfstring(
+    ea_t struct_addr, qstring *out_string, bool *recognized_layout)
 {
+    if ( recognized_layout )
+        *recognized_layout = false;
     if ( struct_addr == BADADDR || !out_string ) 
         return false;
 
@@ -341,6 +353,8 @@ bool ptr_resolve_handler_t::try_extract_cfstring(ea_t struct_addr, qstring *out_
     if ( isa_name.find("CFConstantStringClassReference") == qstring::npos &&
         isa_name.find("__CFConstantStringClassReference") == qstring::npos)
         return false;
+    if ( recognized_layout )
+        *recognized_layout = true;
 
     // This IS a CFConstantString - now extract the string content
     deobf::log_verbose("[ptr_resolve] CFString struct at %a (isa=%s)\n",
@@ -372,34 +386,46 @@ bool ptr_resolve_handler_t::try_extract_cfstring(ea_t struct_addr, qstring *out_
         return true;
     }
 
-    // Try to read the string content
-    size_t str_len = get_max_strlit_length(data_ptr, STRTYPE_C);
-    if ( str_len == 0 ) {
-        // Fallback: try reading directly using the length from the struct
-        const size_t length_bytes = static_cast<size_t>(length);
-        out_string->resize(length_bytes + 1);
-        if ( chernobog::ida_memory::read_exact(
-                out_string->begin(), length_bytes, data_ptr) ) {
-            (*out_string)[length_bytes] = '\0';
-            out_string->resize(length_bytes);
-            return true;
-        }
-        deobf::log_verbose("[ptr_resolve] CFString at %a: get_max_strlit_length failed for %a\n",
-                          struct_addr, data_ptr);
+    const size_t length_bytes = static_cast<size_t>(length);
+    std::vector<uint8_t> bytes(length_bytes);
+    if ( !chernobog::ida_memory::read_exact(
+            bytes.data(), bytes.size(), data_ptr) )
+    {
+        deobf::log_verbose(
+            "[ptr_resolve] CFString at %a: exact payload read failed for %a\n",
+            struct_addr, data_ptr);
         return false;
     }
-
-    // Use the smaller of the two lengths
-    if ( str_len > length + 1 ) 
-        str_len = length + 1;
-
-    out_string->resize(str_len);
-    if ( get_strlit_contents(out_string, data_ptr, str_len, STRTYPE_C) <= 0 ) {
-        deobf::log_verbose("[ptr_resolve] CFString at %a: get_strlit_contents failed\n", struct_addr);
+    const auto recovered = chernobog::string_recovery::recover_static_text(
+        bytes, 1, inf_is_be(), true);
+    if ( !recovered )
+    {
+        deobf::log_verbose(
+            "[ptr_resolve] CFString at %a: payload is not admissible UTF-8\n",
+            struct_addr);
         return false;
     }
-
+    *out_string = recovered->utf8.c_str();
     return true;
+}
+
+static qstring escaped_cfstring_text(const qstring &value)
+{
+    qstring result;
+    for ( size_t index = 0; index < value.length(); ++index )
+    {
+        const char character = value[index];
+        switch ( character )
+        {
+            case '\\': result.append("\\\\"); break;
+            case '"': result.append("\\\""); break;
+            case '\n': result.append("\\n"); break;
+            case '\r': result.append("\\r"); break;
+            case '\t': result.append("\\t"); break;
+            default: result.append(character); break;
+        }
+    }
+    return result;
 }
 
 //--------------------------------------------------------------------------
@@ -415,7 +441,8 @@ void ptr_resolve_handler_t::annotate_ptr_ref(const ptr_ref_t &ref)
 
     if ( ref.is_cfstring ) {
         // For CFConstantStrings, show the string content
-        comment.sprnt("@\"%s\"", ref.string_value.c_str());
+        const qstring escaped = escaped_cfstring_text(ref.string_value);
+        comment.sprnt("@\"%s\"", escaped.c_str());
 
         // Create a name based on the string content (sanitized)
         qstring sanitized = ref.string_value;
@@ -431,7 +458,10 @@ void ptr_resolve_handler_t::annotate_ptr_ref(const ptr_ref_t &ref)
                 sanitized[i] = '_';
             }
         }
-        new_name.sprnt("cfstr_%s", sanitized.c_str());
+        if ( sanitized.empty() )
+            new_name.sprnt("cfstr_%llX", (unsigned long long)ref.ptr_addr);
+        else
+            new_name.sprnt("cfstr_%s", sanitized.c_str());
     } else if ( ref.is_objc_class ) {
         comment.sprnt("-> %s (class %s)", ref.target_name.c_str(), ref.class_name.c_str());
         new_name.sprnt("classRef_%s", ref.class_name.c_str());

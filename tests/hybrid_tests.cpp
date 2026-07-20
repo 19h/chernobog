@@ -88,6 +88,42 @@ ProgramImage branch_image()
   return image;
 }
 
+ProgramImage x86_tls_image()
+{
+  ProgramImage image;
+  image.arch = HybridArch::X86_64;
+  image.big_endian = false;
+  image.lo = 0x100000;
+  image.generation = 8;
+
+  // mov rax, qword ptr fs:[0]; ret
+  const uint8_t code[] = {
+    0x64, 0x48, 0x8B, 0x04, 0x25, 0x00, 0x00, 0x00, 0x00,
+    0xC3,
+  };
+  image.hi = image.lo + sizeof(code);
+
+  SegImage segment;
+  segment.start = image.lo;
+  segment.end = image.hi;
+  segment.perm = uint32_t(HybridSegPerm::READ)
+               | uint32_t(HybridSegPerm::EXEC);
+  segment.bitness = 2;
+  segment.bytes.assign(std::begin(code), std::end(code));
+  segment.mask.assign((segment.bytes.size() + 7) / 8, 0xFF);
+  image.segs.push_back(std::move(segment));
+
+  FuncRange function;
+  function.start = image.lo;
+  function.end = image.hi;
+  function.chunks.push_back(FuncChunk{ function.start, function.end });
+  function.generation = image.generation;
+  image.entries.push_back(std::move(function));
+  image.entries[0].byte_hash = hybrid_function_byte_hash(image, image.entries[0]);
+  image.content_hash = hybrid_program_content_hash(image);
+  return image;
+}
+
 ProgramImage arm64_image(const std::vector<uint8_t> &code,
                          const HybridFunctionProfile &profile = {},
                          bool external_segment = false)
@@ -351,6 +387,25 @@ void test_arm64_application_boundary(const RaxApi *api)
     check(outcome.stop_pc == 0x200,
           "AArch64 synchronous exception vector must be reported as 0x200");
   }
+}
+
+void test_x86_tls_environment_boundary(const RaxApi *api)
+{
+  const ProgramImage image = x86_tls_image();
+  EmuEvents events;
+  EmuOutcome outcome;
+  check(run_direct(api, image, {}, &events, &outcome),
+        "x86-64 TLS dependency must remain a reportable run");
+  check(outcome.environment_model_failure && !outcome.returned,
+        "unmodeled FS access must be an environment-model failure");
+  check(outcome.stop_reason == RAX_STOP_STOPPED
+        && outcome.stop_reason != RAX_STOP_ERROR,
+        "unmodeled FS access must stop through the host hook, not engine-error");
+  check(outcome.external_target == image.lo
+        && outcome.external_name == "unmodeled memory or translation dependency",
+        "TLS boundary must retain the faulting instruction and classification");
+  check(!outcome.consumed_context_complete,
+        "unmodeled TLS state must never become proof-quality evidence");
 }
 
 void test_arm64_function_boundary(const RaxApi *api)
@@ -818,6 +873,7 @@ int main()
     test_decoder_and_smir(api, image);
     test_inflight_cancellation(api);
     test_worker_and_evidence(api, std::move(image));
+    test_x86_tls_environment_boundary(api);
     test_arm64_memory_and_accounting(api);
     test_arm64_external_boundaries(api);
     test_arm64_application_boundary(api);

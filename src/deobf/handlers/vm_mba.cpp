@@ -40,10 +40,35 @@ static void vm_debug(const char *fmt, ...)
 }
 
 bool vm_mba_handler_t::initialized_ = false;
-std::unordered_set<ea_t> vm_mba_handler_t::candidates_;
-std::map<ea_t, vm_mba_handler_t::handler_summary_t> vm_mba_handler_t::summaries_;
-std::map<uint32_t, int> vm_mba_handler_t::carrier_hits_;
-std::unordered_set<uint64_t> vm_mba_handler_t::pair_no_compact_cache_;
+std::map<ssize_t, vm_mba_handler_t::candidate_set_t>
+    vm_mba_handler_t::candidates_;
+std::map<ssize_t, vm_mba_handler_t::summary_map_t>
+    vm_mba_handler_t::summaries_;
+std::map<ssize_t, vm_mba_handler_t::carrier_map_t>
+    vm_mba_handler_t::carrier_hits_;
+std::map<ssize_t, vm_mba_handler_t::expression_cache_t>
+    vm_mba_handler_t::pair_no_compact_cache_;
+
+vm_mba_handler_t::candidate_set_t &vm_mba_handler_t::current_candidates()
+{
+    return candidates_[get_dbctx_id()];
+}
+
+vm_mba_handler_t::summary_map_t &vm_mba_handler_t::current_summaries()
+{
+    return summaries_[get_dbctx_id()];
+}
+
+vm_mba_handler_t::carrier_map_t &vm_mba_handler_t::current_carrier_hits()
+{
+    return carrier_hits_[get_dbctx_id()];
+}
+
+vm_mba_handler_t::expression_cache_t &
+vm_mba_handler_t::current_pair_no_compact_cache()
+{
+    return pair_no_compact_cache_[get_dbctx_id()];
+}
 
 static const std::vector<uint32_t> &carrier_pool()
 {
@@ -393,17 +418,18 @@ void vm_mba_handler_t::initialize()
 
 void vm_mba_handler_t::clear()
 {
-    candidates_.clear();
-    summaries_.clear();
-    carrier_hits_.clear();
-    pair_no_compact_cache_.clear();
+    const ssize_t database = get_dbctx_id();
+    candidates_.erase(database);
+    summaries_.erase(database);
+    carrier_hits_.erase(database);
+    pair_no_compact_cache_.erase(database);
 }
 
 void vm_mba_handler_t::clear_function(ea_t ea)
 {
-    candidates_.erase(ea);
-    summaries_.erase(ea);
-    pair_no_compact_cache_.clear();
+    current_candidates().erase(ea);
+    current_summaries().erase(ea);
+    current_pair_no_compact_cache().clear();
     rebuild_graph_metadata();
 }
 
@@ -471,18 +497,18 @@ bool vm_mba_handler_t::detect(mbl_array_t *mba)
 
     if ( candidate )
     {
-        candidates_.insert(mba->entry_ea);
-        summaries_[mba->entry_ea] = summary;
+        current_candidates().insert(mba->entry_ea);
+        current_summaries()[mba->entry_ea] = summary;
         rebuild_graph_metadata();
-        persist_summary(summaries_[mba->entry_ea]);
+        persist_summary(current_summaries()[mba->entry_ea]);
         deobf::log("[chernobog:vm] detected %s: packs=%d ip_adv=%d reads=%d stride=%d succ=%zu\n",
                    summary.name.c_str(), summary.pack_writes, summary.ip_advances,
                    summary.bytecode_reads, summary.stride, summary.successors.size());
     }
     else
     {
-        candidates_.erase(mba->entry_ea);
-        summaries_.erase(mba->entry_ea);
+        current_candidates().erase(mba->entry_ea);
+        current_summaries().erase(mba->entry_ea);
     }
 
     return candidate;
@@ -490,13 +516,15 @@ bool vm_mba_handler_t::detect(mbl_array_t *mba)
 
 bool vm_mba_handler_t::is_candidate(ea_t ea)
 {
-    return candidates_.find(ea) != candidates_.end();
+    const candidate_set_t &candidates = current_candidates();
+    return candidates.find(ea) != candidates.end();
 }
 
 bool vm_mba_handler_t::get_summary(ea_t ea, handler_summary_t *out)
 {
-    auto it = summaries_.find(ea);
-    if ( it == summaries_.end() )
+    const summary_map_t &summaries = current_summaries();
+    auto it = summaries.find(ea);
+    if ( it == summaries.end() )
         return false;
     if ( out )
         *out = it->second;
@@ -532,9 +560,9 @@ int vm_mba_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
     }
 
     handler_summary_t summary = summarize(mba);
-    summaries_[mba->entry_ea] = summary;
+    current_summaries()[mba->entry_ea] = summary;
     rebuild_graph_metadata();
-    persist_summary(summaries_[mba->entry_ea]);
+    persist_summary(current_summaries()[mba->entry_ea]);
 
     if ( changes > 0 )
     {
@@ -679,7 +707,7 @@ int vm_mba_handler_t::simplify_killed_or_cap(minsn_t *ins)
         return 0;
 
     *expr = *payload;
-    carrier_hits_[(uint32_t)(cap & 0xFFFFFFFFU)]++;
+    current_carrier_hits()[(uint32_t)(cap & 0xFFFFFFFFU)]++;
     return 1;
 }
 
@@ -710,7 +738,7 @@ int vm_mba_handler_t::simplify_loword_killed_or_cap(minsn_t *ins)
         return 0;
 
     *expr = *payload;
-    carrier_hits_[(uint32_t)(cap & 0xFFFFFFFFU)]++;
+    current_carrier_hits()[(uint32_t)(cap & 0xFFFFFFFFU)]++;
     return 1;
 }
 
@@ -754,7 +782,7 @@ int vm_mba_handler_t::strip_masked_or_caps(mop_t *mop, uint64_t live_mask, int s
             mop_t replacement(*payload);
             replacement.size = mop->size > 0 ? mop->size : payload->size;
             mop->swap(replacement);
-            carrier_hits_[(uint32_t)(cap & 0xFFFFFFFFU)]++;
+            current_carrier_hits()[(uint32_t)(cap & 0xFFFFFFFFU)]++;
             return 1;
         }
     }
@@ -1729,7 +1757,8 @@ int vm_mba_handler_t::simplify_hikari_pair_mba(minsn_t *ins)
 
     uint64_t cache_key = chernobog::simd::hash_combine(hash_insn(ins), outer_const);
     cache_key = chernobog::simd::hash_combine(cache_key, add_const);
-    if ( pair_no_compact_cache_.find(cache_key) != pair_no_compact_cache_.end() )
+    expression_cache_t &no_compact = current_pair_no_compact_cache();
+    if ( no_compact.find(cache_key) != no_compact.end() )
         return 0;
 
     try
@@ -1796,7 +1825,7 @@ int vm_mba_handler_t::simplify_hikari_pair_mba(minsn_t *ins)
 
         vm_debug("[vm:pair] no compact form at %a C=0x%llx K=0x%llx\n",
                  ins->ea, (unsigned long long)add_const, (unsigned long long)outer_const);
-        pair_no_compact_cache_.insert(cache_key);
+        no_compact.insert(cache_key);
     }
     catch ( const z3::exception &e )
     {
@@ -2352,11 +2381,12 @@ void vm_mba_handler_t::persist_summary(const handler_summary_t &summary)
 
 void vm_mba_handler_t::rebuild_graph_metadata()
 {
-    if ( summaries_.empty() )
+    summary_map_t &summaries = current_summaries();
+    if ( summaries.empty() )
         return;
 
     std::map<ea_t, int> incoming;
-    for ( const auto &kv : summaries_ )
+    for ( const auto &kv : summaries )
     {
         for ( ea_t succ : kv.second.successors )
         {
@@ -2365,7 +2395,7 @@ void vm_mba_handler_t::rebuild_graph_metadata()
         }
     }
 
-    for ( auto &kv : summaries_ )
+    for ( auto &kv : summaries )
     {
         handler_summary_t &summary = kv.second;
         summary.is_entry = incoming.find(summary.ea) == incoming.end();
@@ -2377,7 +2407,7 @@ void vm_mba_handler_t::rebuild_graph_metadata()
     if ( node == BADNODE )
         return;
 
-    for ( const auto &kv : summaries_ )
+    for ( const auto &kv : summaries )
     {
         std::string json = summary_to_json(kv.second);
         node.supset_ea(kv.first, json.c_str(), json.size() + 1, 'V');
@@ -2457,11 +2487,13 @@ void vm_mba_handler_t::dump_summary(ea_t ea)
 
 void vm_mba_handler_t::dump_statistics()
 {
-    if ( summaries_.empty() )
+    const summary_map_t &summaries = current_summaries();
+    const carrier_map_t &carrier_hits = current_carrier_hits();
+    if ( summaries.empty() )
         return;
     msg("[chernobog:vm] summaries=%zu carrier_hits=%zu\n",
-        summaries_.size(), carrier_hits_.size());
-    for ( const auto &kv : carrier_hits_ )
+        summaries.size(), carrier_hits.size());
+    for ( const auto &kv : carrier_hits )
         msg("[chernobog:vm]   carrier 0x%08X killed %d times\n", kv.first, kv.second);
 }
 

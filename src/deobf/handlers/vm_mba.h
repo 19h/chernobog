@@ -65,10 +65,19 @@ private:
     };
 
     static bool initialized_;
-    static std::unordered_set<ea_t> candidates_;
-    static std::map<ea_t, handler_summary_t> summaries_;
-    static std::map<uint32_t, int> carrier_hits_;
-    static std::unordered_set<uint64_t> pair_no_compact_cache_;
+    using candidate_set_t = std::unordered_set<ea_t>;
+    using summary_map_t = std::map<ea_t, handler_summary_t>;
+    using carrier_map_t = std::map<uint32_t, int>;
+    using expression_cache_t = std::unordered_set<uint64_t>;
+    static std::map<ssize_t, candidate_set_t> candidates_;
+    static std::map<ssize_t, summary_map_t> summaries_;
+    static std::map<ssize_t, carrier_map_t> carrier_hits_;
+    static std::map<ssize_t, expression_cache_t> pair_no_compact_cache_;
+
+    static candidate_set_t &current_candidates();
+    static summary_map_t &current_summaries();
+    static carrier_map_t &current_carrier_hits();
+    static expression_cache_t &current_pair_no_compact_cache();
 
     static bool enabled();
     static bool name_matches(ea_t ea, qstring *out_name = nullptr);

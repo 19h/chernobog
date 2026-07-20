@@ -38,6 +38,10 @@ try:
     string_text = str(string_cfunc)
     has_vector = '"vector"' in string_text
     if has_vector != expect_vector:
+        ida_kernwin.msg(
+            "[chernobog][early-constants-smoke] string pseudocode:\n%s\n"
+            % string_text
+        )
         finish(
             4,
             "vector expectation=%d observed=%d pseudocode_chars=%d"

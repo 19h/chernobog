@@ -8,10 +8,33 @@
 #endif
 
 // Static members
-std::set<ea_t> identity_call_handler_t::s_identity_funcs;
-std::set<ea_t> identity_call_handler_t::s_non_identity_funcs;
-std::map<ea_t, ea_t> identity_call_handler_t::s_trampoline_cache;
-std::map<ea_t, std::vector<deferred_identity_call_t>> identity_call_handler_t::s_deferred_analysis;
+std::map<ssize_t, std::set<ea_t>> identity_call_handler_t::s_identity_funcs;
+std::map<ssize_t, std::set<ea_t>> identity_call_handler_t::s_non_identity_funcs;
+std::map<ssize_t, std::map<ea_t, ea_t>>
+    identity_call_handler_t::s_trampoline_cache;
+std::map<ssize_t, identity_call_handler_t::deferred_cache_t>
+    identity_call_handler_t::s_deferred_analysis;
+
+std::set<ea_t> &identity_call_handler_t::identity_cache()
+{
+    return s_identity_funcs[get_dbctx_id()];
+}
+
+std::set<ea_t> &identity_call_handler_t::non_identity_cache()
+{
+    return s_non_identity_funcs[get_dbctx_id()];
+}
+
+std::map<ea_t, ea_t> &identity_call_handler_t::trampoline_cache()
+{
+    return s_trampoline_cache[get_dbctx_id()];
+}
+
+identity_call_handler_t::deferred_cache_t &
+identity_call_handler_t::deferred_cache()
+{
+    return s_deferred_analysis[get_dbctx_id()];
+}
 
 //--------------------------------------------------------------------------
 // Detection
@@ -78,17 +101,17 @@ bool identity_call_handler_t::is_identity_function(ea_t func_ea)
         return false;
 
     // Check cache first
-    if ( s_identity_funcs.count(func_ea) ) 
+    if ( identity_cache().count(func_ea) )
         return true;
-    if ( s_non_identity_funcs.count(func_ea) ) 
+    if ( non_identity_cache().count(func_ea) )
         return false;
 
     bool result = analyze_identity_func(func_ea);
 
     if ( result ) 
-        s_identity_funcs.insert(func_ea);
+        identity_cache().insert(func_ea);
     else
-        s_non_identity_funcs.insert(func_ea);
+        non_identity_cache().insert(func_ea);
 
     return result;
 }
@@ -153,7 +176,7 @@ int identity_call_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 
     // Store for Phase 2
     if ( !deferred.empty() ) {
-        s_deferred_analysis[func_ea] = std::move(deferred);
+        deferred_cache()[func_ea] = std::move(deferred);
     }
 
     deobf::log("[identity_call] Analyzed %zu patterns\n", identity_calls.size());
@@ -173,8 +196,9 @@ int identity_call_handler_t::apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx)
 
     ea_t func_ea = mba->entry_ea;
 
-    auto p = s_deferred_analysis.find(func_ea);
-    if ( p == s_deferred_analysis.end() ) 
+    deferred_cache_t &cache = deferred_cache();
+    auto p = cache.find(func_ea);
+    if ( p == cache.end() )
         return 0;
 
     deobf::log("[identity_call] Phase 2: Processing %zu patterns at maturity %d\n",
@@ -189,7 +213,7 @@ int identity_call_handler_t::apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx)
     }
 
     // Clear the deferred analysis after processing
-    s_deferred_analysis.erase(p);
+    cache.erase(p);
 
     deobf::log("[identity_call] Phase 2 complete: analysis only\n");
     return 0;
@@ -200,8 +224,12 @@ int identity_call_handler_t::apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx)
 //--------------------------------------------------------------------------
 bool identity_call_handler_t::has_pending_analysis(ea_t func_ea)
 {
-    auto p = s_deferred_analysis.find(func_ea);
-    return p != s_deferred_analysis.end() && !p->second.empty();
+    const ssize_t database = get_dbctx_id();
+    const auto databases = s_deferred_analysis.find(database);
+    if ( databases == s_deferred_analysis.end() )
+        return false;
+    const auto p = databases->second.find(func_ea);
+    return p != databases->second.end() && !p->second.empty();
 }
 
 //--------------------------------------------------------------------------
@@ -209,15 +237,22 @@ bool identity_call_handler_t::has_pending_analysis(ea_t func_ea)
 //--------------------------------------------------------------------------
 void identity_call_handler_t::clear_deferred(ea_t func_ea)
 {
-    s_deferred_analysis.erase(func_ea);
+    const ssize_t database = get_dbctx_id();
+    auto databases = s_deferred_analysis.find(database);
+    if ( databases == s_deferred_analysis.end() )
+        return;
+    databases->second.erase(func_ea);
+    if ( databases->second.empty() )
+        s_deferred_analysis.erase(databases);
 }
 
 void identity_call_handler_t::clear_caches()
 {
-    s_identity_funcs.clear();
-    s_non_identity_funcs.clear();
-    s_trampoline_cache.clear();
-    s_deferred_analysis.clear();
+    const ssize_t database = get_dbctx_id();
+    s_identity_funcs.erase(database);
+    s_non_identity_funcs.erase(database);
+    s_trampoline_cache.erase(database);
+    s_deferred_analysis.erase(database);
 }
 
 //--------------------------------------------------------------------------
@@ -603,8 +638,9 @@ ea_t identity_call_handler_t::resolve_trampoline_chain(ea_t start_addr, int max_
         return start_addr;
 
     // Check cache
-    auto p = s_trampoline_cache.find(start_addr);
-    if ( p != s_trampoline_cache.end() ) {
+    std::map<ea_t, ea_t> &cache = trampoline_cache();
+    auto p = cache.find(start_addr);
+    if ( p != cache.end() ) {
         return p->second;
     }
 
@@ -635,7 +671,7 @@ ea_t identity_call_handler_t::resolve_trampoline_chain(ea_t start_addr, int max_
         }
     }
 
-    s_trampoline_cache[start_addr] = current;
+    cache[start_addr] = current;
     return current;
 }
 

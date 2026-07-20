@@ -14,8 +14,41 @@ env:
   IDA_SDK_STABLE_REF: 6929db6868a524496eb66e76e4ec6c9d720a0594
   XWIN_VERSION: 0.8.0
 
+permissions:
+  contents: read
+
 jobs:
+  validate-source:
+    runs-on: ubuntu-latest
+    name: Validate source tree
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Verify required build inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            CMakeLists.txt
+            CMakePresets.json
+            cmake/build_provenance.hpp.in
+            cmake/toolchains/windows-clang-msvc.cmake
+            vendor/rax/Cargo.toml
+          )
+          for required_file in "${required[@]}"; do
+            if [[ ! -f "$required_file" ]]; then
+              echo "::error file=$required_file::Required build input is absent from the checkout"
+              exit 1
+            fi
+          done
+          git submodule status --recursive
+
   build:
+    needs: validate-source
     strategy:
       fail-fast: false
       matrix:
@@ -46,7 +79,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -59,7 +92,7 @@ jobs:
 
       - name: Checkout IDA SDK (stable)
         if: matrix.ida_branch == ''
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ env.IDA_SDK_REPO }}
           ref: ${{ env.IDA_SDK_STABLE_REF }}
@@ -68,7 +101,7 @@ jobs:
 
       - name: Checkout IDA SDK (beta)
         if: matrix.ida_branch != ''
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ env.IDA_SDK_REPO }}
           ref: ${{ matrix.ida_branch }}
@@ -89,50 +122,48 @@ jobs:
           fi
 
       - name: Cache build tree
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build
-          key: build-v3-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
+          key: build-v3-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
           restore-keys: |
-            build-v3-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'ida-cmake/**', '.github/workflows/build.yml') }}-
+            build-v3-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-
 
       - name: Cache ccache
         if: runner.os != 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.ccache
-          key: ccache-v1-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'ida-cmake/**', 'src/**', '.github/workflows/build.yml') }}
+          key: ccache-v1-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'ida-cmake/**', 'src/**', '.github/workflows/build.yml') }}
           restore-keys: |
             ccache-v1-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-
 
       - name: Set environment variables (Unix)
         if: runner.os != 'Windows'
         run: |
-          echo "IDASDK=${{ github.workspace }}/ida-sdk" >> $GITHUB_ENV
-          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
-          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> $GITHUB_ENV
-          echo "CCACHE_COMPRESS=true" >> $GITHUB_ENV
-          echo "CCACHE_MAXSIZE=1G" >> $GITHUB_ENV
+          {
+            printf '%s\n' "IDASDK=${{ github.workspace }}/ida-sdk"
+            printf '%s\n' "CCACHE_DIR=${HOME}/.ccache"
+            printf '%s\n' "CCACHE_BASEDIR=${{ github.workspace }}"
+            printf '%s\n' "CCACHE_COMPRESS=true"
+            printf '%s\n' "CCACHE_MAXSIZE=1G"
+          } >> "$GITHUB_ENV"
 
       - name: Configure CMake (macOS)
         if: runner.os == 'macOS'
         run: |
-          mkdir -p build
-          cd build
           ccache --zero-stats || true
-          cmake .. \
+          cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_arch }}
+            -DCMAKE_OSX_ARCHITECTURES="${{ matrix.cmake_arch }}"
 
       - name: Configure CMake (Linux)
         if: runner.os == 'Linux'
         run: |
-          mkdir -p build
-          cd build
           ccache --zero-stats || true
-          cmake .. \
+          cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
@@ -140,8 +171,12 @@ jobs:
       - name: Build (Unix)
         if: runner.os != 'Windows'
         run: |
-          cd build
-          cmake --build . --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+          parallelism="$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
+          cmake --build build --config Release --parallel "$parallelism"
+
+      - name: Test (Unix)
+        if: runner.os != 'Windows'
+        run: ctest --test-dir build --build-config Release --output-on-failure
 
       - name: Show ccache stats
         if: runner.os != 'Windows'
@@ -158,8 +193,8 @@ jobs:
             find . -name "chernobog*" -type f 2>/dev/null || true
             exit 1
           fi
-          echo "plugin_file=$PLUGIN_FILE" >> $GITHUB_OUTPUT
-          echo "extension=dylib" >> $GITHUB_OUTPUT
+          printf '%s\n' "plugin_file=$PLUGIN_FILE" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "extension=dylib" >> "$GITHUB_OUTPUT"
 
       - name: Find built plugin (Linux)
         if: runner.os == 'Linux'
@@ -172,8 +207,8 @@ jobs:
             find . -name "chernobog*" -type f 2>/dev/null || true
             exit 1
           fi
-          echo "plugin_file=$PLUGIN_FILE" >> $GITHUB_OUTPUT
-          echo "extension=so" >> $GITHUB_OUTPUT
+          printf '%s\n' "plugin_file=$PLUGIN_FILE" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "extension=so" >> "$GITHUB_OUTPUT"
 
       - name: Prepare artifact (macOS)
         if: runner.os == 'macOS'
@@ -188,19 +223,20 @@ jobs:
           cp "${{ steps.find_plugin_linux.outputs.plugin_file }}" "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_linux.outputs.extension }}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: chernobog${{ matrix.ida_suffix }}-${{ matrix.name }}
           path: artifacts/
           retention-days: 30
 
   build-windows-cross:
+    needs: validate-source
     runs-on: ubuntu-latest
     name: Build windows-x86_64-clang
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -212,7 +248,7 @@ jobs:
           cargo --version
 
       - name: Checkout IDA SDK (stable)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ env.IDA_SDK_REPO }}
           ref: ${{ env.IDA_SDK_STABLE_REF }}
@@ -303,30 +339,32 @@ jobs:
           xwin --accept-license --arch x86_64 splat --output "${{ github.workspace }}/xwin"
 
       - name: Cache build tree
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: out/build/windows-clang-release
-          key: build-v3-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/toolchains/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
+          key: build-v3-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
           restore-keys: |
-            build-v3-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/toolchains/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-
+            build-v3-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-
 
       - name: Cache ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.ccache
-          key: ccache-v1-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/toolchains/**', 'ida-cmake/**', 'src/**', '.github/workflows/build.yml') }}
+          key: ccache-v1-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', 'src/**', '.github/workflows/build.yml') }}
           restore-keys: |
             ccache-v1-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-
 
       - name: Set environment variables
         run: |
-          echo "IDASDK=${{ github.workspace }}/ida-sdk" >> $GITHUB_ENV
-          echo "XWIN_ROOT=${{ github.workspace }}/xwin" >> $GITHUB_ENV
-          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
-          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> $GITHUB_ENV
-          echo "CCACHE_COMPILERCHECK=content" >> $GITHUB_ENV
-          echo "CCACHE_COMPRESS=true" >> $GITHUB_ENV
-          echo "CCACHE_MAXSIZE=1G" >> $GITHUB_ENV
+          {
+            printf '%s\n' "IDASDK=${{ github.workspace }}/ida-sdk"
+            printf '%s\n' "XWIN_ROOT=${{ github.workspace }}/xwin"
+            printf '%s\n' "CCACHE_DIR=${HOME}/.ccache"
+            printf '%s\n' "CCACHE_BASEDIR=${{ github.workspace }}"
+            printf '%s\n' "CCACHE_COMPILERCHECK=content"
+            printf '%s\n' "CCACHE_COMPRESS=true"
+            printf '%s\n' "CCACHE_MAXSIZE=1G"
+          } >> "$GITHUB_ENV"
 
       - name: Configure CMake (Windows cross)
         run: |
@@ -336,7 +374,7 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build (Windows cross)
-        run: cmake --build --preset windows-clang-release --parallel $(nproc)
+        run: cmake --build --preset windows-clang-release --parallel "$(nproc)"
 
       - name: Show ccache stats
         run: ccache --show-stats || true
@@ -350,8 +388,8 @@ jobs:
             find . -name "chernobog*" -type f 2>/dev/null || true
             exit 1
           fi
-          echo "plugin_file=$PLUGIN_FILE" >> $GITHUB_OUTPUT
-          echo "extension=dll" >> $GITHUB_OUTPUT
+          printf '%s\n' "plugin_file=$PLUGIN_FILE" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "extension=dll" >> "$GITHUB_OUTPUT"
 
       - name: Prepare artifact (Windows cross)
         run: |
@@ -359,7 +397,7 @@ jobs:
           cp "${{ steps.find_plugin_windows_cross.outputs.plugin_file }}" "artifacts/chernobog_windows-x86_64-clang.${{ steps.find_plugin_windows_cross.outputs.extension }}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: chernobog-windows-x86_64-clang
           path: artifacts/
@@ -374,7 +412,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -386,7 +424,7 @@ jobs:
           ls -la release/
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: release/*
           generate_release_notes: true

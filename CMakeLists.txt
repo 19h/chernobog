@@ -310,6 +310,71 @@ if(NOT CHERNOBOG_IDA_SDK_VERSION STREQUAL
         "resolved IDA_SDK_VERSION=${CHERNOBOG_IDA_SDK_VERSION}.")
 endif()
 
+# Generate a reproducible identity for the exact binary loaded by IDA. No
+# wall-clock timestamp is embedded. Hash every C/C++ and CMake build input so
+# successive dirty builds at the same Git revision remain distinguishable.
+execute_process(
+    COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_CURRENT_SOURCE_DIR}"
+            rev-parse --short=12 HEAD
+    RESULT_VARIABLE CHERNOBOG_BUILD_REVISION_RESULT
+    OUTPUT_VARIABLE CHERNOBOG_BUILD_REVISION
+    ERROR_QUIET
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT CHERNOBOG_BUILD_REVISION_RESULT EQUAL 0
+   OR CHERNOBOG_BUILD_REVISION STREQUAL "")
+    set(CHERNOBOG_BUILD_REVISION "unknown")
+endif()
+execute_process(
+    COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_CURRENT_SOURCE_DIR}"
+            status --porcelain --untracked-files=normal
+    OUTPUT_VARIABLE CHERNOBOG_BUILD_STATUS
+    ERROR_QUIET
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(CHERNOBOG_BUILD_STATUS STREQUAL "")
+    set(CHERNOBOG_BUILD_DIRTY "0")
+else()
+    set(CHERNOBOG_BUILD_DIRTY "1")
+endif()
+file(GLOB_RECURSE CHERNOBOG_PROVENANCE_INPUTS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/*.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/*.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ida-cmake/*.cmake")
+list(APPEND CHERNOBOG_PROVENANCE_INPUTS
+    "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
+list(REMOVE_DUPLICATES CHERNOBOG_PROVENANCE_INPUTS)
+list(SORT CHERNOBOG_PROVENANCE_INPUTS)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${CHERNOBOG_PROVENANCE_INPUTS})
+set(CHERNOBOG_SOURCE_MATERIAL "")
+foreach(CHERNOBOG_PROVENANCE_INPUT IN LISTS CHERNOBOG_PROVENANCE_INPUTS)
+    file(SHA256 "${CHERNOBOG_PROVENANCE_INPUT}"
+        CHERNOBOG_PROVENANCE_INPUT_HASH)
+    file(RELATIVE_PATH CHERNOBOG_PROVENANCE_INPUT_RELATIVE
+        "${CMAKE_CURRENT_SOURCE_DIR}" "${CHERNOBOG_PROVENANCE_INPUT}")
+    string(APPEND CHERNOBOG_SOURCE_MATERIAL
+        "${CHERNOBOG_PROVENANCE_INPUT_RELATIVE}:"
+        "${CHERNOBOG_PROVENANCE_INPUT_HASH}\n")
+endforeach()
+string(SHA256 CHERNOBOG_SOURCE_FINGERPRINT_FULL
+    "${CHERNOBOG_SOURCE_MATERIAL}")
+string(SUBSTRING "${CHERNOBOG_SOURCE_FINGERPRINT_FULL}" 0 12
+    CHERNOBOG_SOURCE_FINGERPRINT)
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/include/chernobog")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/build_provenance.hpp.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/include/chernobog/build_provenance.hpp"
+    @ONLY)
+message(STATUS
+    "Chernobog build: revision=${CHERNOBOG_BUILD_REVISION}, "
+    "dirty=${CHERNOBOG_BUILD_DIRTY}, source=${CHERNOBOG_SOURCE_FINGERPRINT}, "
+    "IDA_SDK_VERSION=${CHERNOBOG_IDA_SDK_VERSION}")
+
 # Set plugin variables before including addons.cmake
 ida_add_plugin(chernobog
   SOURCES
@@ -317,6 +382,8 @@ ida_add_plugin(chernobog
     src/plugin/deobf_plugin.cpp
     src/plugin/component_registry.cpp
     src/ida_analysis/analysis_config.cpp
+    src/ida_analysis/native_classifier.cpp
+    src/ida_analysis/get_pc_ida.cpp
     src/ida_analysis/native_engine.cpp
     src/ida_analysis/early_hexrays.cpp
     src/ida_analysis/evidence_apply.cpp
@@ -461,7 +528,9 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME chernobog.rax_hybrid COMMAND chernobog_hybrid_tests)
 
-    add_executable(chernobog_core_tests tests/core_tests.cpp)
+    add_executable(chernobog_core_tests
+        tests/core_tests.cpp
+        src/ida_analysis/native_classifier.cpp)
     target_include_directories(chernobog_core_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_compile_features(chernobog_core_tests PRIVATE cxx_std_17)

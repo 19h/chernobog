@@ -118,6 +118,24 @@ try:
                 )
                 for address in range(0x405036, 0x405041)
             ],
+            "discard_calls": {
+                "0x%X" % address: {
+                    "owner": ida_funcs.get_func_start(address),
+                    "code": ida_bytes.is_code(ida_bytes.get_flags(address)),
+                    "comment": ida_bytes.get_cmt(address, True),
+                    "xrefs": xrefs_from(address),
+                }
+                for address in (
+                    0x405001,
+                    0x405025,
+                    0x405039,
+                    0x40504B,
+                    0x405063,
+                    0x40506E,
+                    0x4050BC,
+                    0x405172,
+                )
+            },
         }
         ida_kernwin.msg(
             "[chernobog][early-acprotect-smoke] diagnostics=%r\n"
@@ -162,11 +180,15 @@ try:
     required = {
         "loop": re.search(r"\b(for|while|do)\b", pseudocode) is not None,
         "rotation": "__ROL4__" in pseudocode,
-        "key": "-17858287" in pseudocode or "0XFEEFBB11" in pseudocode.upper(),
-        "count": "60" in pseudocode,
+        "key": "-17858287" in pseudocode or "0XFEEF8111" in pseudocode.upper(),
+        "count": "60" in pseudocode or "0X3C" in pseudocode.upper(),
     }
     missing = [name for name, present in required.items() if not present]
     if missing:
+        ida_kernwin.msg(
+            "[chernobog][early-acprotect-smoke] pseudocode:\n%s\n"
+            % pseudocode
+        )
         finish(
             6,
             "decompilation missing %s (%d characters)"
@@ -213,8 +235,9 @@ try:
         is not None,
         "rotation": "__ROL4__" in repaired_pseudocode,
         "key": "-17858287" in repaired_pseudocode
-        or "0XFEEFBB11" in repaired_pseudocode.upper(),
-        "count": "60" in repaired_pseudocode,
+        or "0XFEEF8111" in repaired_pseudocode.upper(),
+        "count": "60" in repaired_pseudocode
+        or "0X3C" in repaired_pseudocode.upper(),
     }
     repaired_missing = [
         name for name, present in repaired_required.items() if not present

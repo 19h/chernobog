@@ -6,12 +6,14 @@
 #include "common/string_recovery.h"
 #include "deobf/analysis/dependency_liveness.hpp"
 #include "deobf/analysis/switch_dispatch_classifier.hpp"
+#include "ida_analysis/native_classifier.hpp"
 
 #include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <vector>
 
 namespace {
 
@@ -141,6 +143,158 @@ void test_dependency_liveness()
           "observable dependency chain propagates backwards");
     check(live[5] == 0,
           "invalid dependency edge is ignored");
+}
+
+void test_get_pc_classifier()
+{
+    using namespace chernobog::ida_analysis::classifier;
+    const register_slice_t rax{0, 0, 64};
+    const register_slice_t eax{0, 0, 32};
+    const register_slice_t ah{0, 8, 8};
+    const register_slice_t rbx{1, 0, 64};
+
+    instruction_t call;
+    call.address = 0x1000;
+    call.size = 5;
+    call.kind = instruction_kind_t::direct_call;
+    call.target = 0x1010;
+    call.stack_width_bits = 64;
+
+    instruction_t pop;
+    pop.address = 0x1010;
+    pop.size = 1;
+    pop.kind = instruction_kind_t::pop_register;
+    pop.destination = rax;
+    instruction_t add;
+    add.address = 0x1011;
+    add.size = 1;
+    add.kind = instruction_kind_t::add_register_immediate;
+    add.destination = rax;
+    add.source = rax;
+    add.immediate = 7;
+    instruction_t push;
+    push.address = 0x1012;
+    push.size = 1;
+    push.kind = instruction_kind_t::push_register;
+    push.source = rax;
+    instruction_t ret;
+    ret.address = 0x1013;
+    ret.size = 1;
+    ret.kind = instruction_kind_t::return_instruction;
+
+    auto result = classify_get_pc_gadget(
+        call, {pop, add, push, ret}, false, 8);
+    check(result && result->resumed_at == 0x100C
+          && result->return_instruction == 0x1013,
+          "exact get-PC pop/add/push/ret classification");
+
+    instruction_t alias_write = add;
+    alias_write.kind = instruction_kind_t::register_write;
+    alias_write.destination = ah;
+    check(!classify_get_pc_gadget(
+              call, {pop, alias_write, push, ret}, false, 8),
+          "overlapping partial-register write invalidates get-PC value");
+
+    instruction_t width_change = add;
+    width_change.destination = eax;
+    width_change.source = eax;
+    check(!classify_get_pc_gadget(
+              call, {pop, width_change, push, ret}, false, 8),
+          "different-width arithmetic invalidates get-PC value");
+
+    instruction_t other_push = push;
+    other_push.source = rbx;
+    check(!classify_get_pc_gadget(
+              call, {pop, add, other_push, ret}, false, 8),
+          "unrelated push rejects get-PC gadget");
+
+    instruction_t stack_write = add;
+    stack_write.kind = instruction_kind_t::stack_mutation;
+    check(!classify_get_pc_gadget(
+              call, {pop, stack_write, push, ret}, false, 8),
+          "unmodeled stack mutation rejects get-PC gadget");
+
+    instruction_t joined = push;
+    joined.alternate_predecessor = true;
+    check(!classify_get_pc_gadget(
+              call, {pop, add, joined, ret}, false, 8),
+          "alternate gadget predecessor rejects linear proof");
+    check(!classify_get_pc_gadget(
+              call, {pop, add, push, ret}, true, 8),
+          "alternate gadget entry rejects get-PC proof");
+
+    instruction_t discontinuous = add;
+    discontinuous.address = 0x1012;
+    check(!classify_get_pc_gadget(
+              call, {pop, discontinuous, push, ret}, false, 8),
+          "noncontiguous gadget instructions reject proof");
+    check(!classify_get_pc_gadget(call, {pop, ret}, false, 8),
+          "pop followed by unrelated return is rejected");
+
+    instruction_t adjust;
+    adjust.address = 0x1010;
+    adjust.size = 1;
+    adjust.kind = instruction_kind_t::add_stack_top_immediate;
+    adjust.immediate = 4;
+    adjust.stack_width_bits = 64;
+    ret.address = 0x1011;
+    result = classify_get_pc_gadget(call, {adjust, ret}, false, 8);
+    check(result && result->resumed_at == 0x1009,
+          "stack-top adjustment produces exact resumed address");
+
+    instruction_t discard = adjust;
+    discard.kind = instruction_kind_t::adjust_stack_pointer_immediate;
+    discard.immediate = 8;
+    result = classify_get_pc_gadget(call, {discard}, false, 8);
+    check(result && result->mode == get_pc_mode_t::discard_return_address
+          && result->resumed_at == 0x1011,
+          "return-address discard has an exact inline continuation");
+
+    instruction_t later_branch;
+    later_branch.address = 0x1011;
+    later_branch.size = 2;
+    later_branch.kind = instruction_kind_t::conditional_branch;
+    result = classify_get_pc_gadget(
+        call, {discard, later_branch}, false, 8);
+    check(result && result->resumed_at == 0x1011,
+          "discard proof terminates before later application control flow");
+
+    instruction_t invalid_call = call;
+    invalid_call.address = k_bad_address;
+    check(!classify_get_pc_gadget(
+              invalid_call, {discard}, false, 8),
+          "invalid call address rejects get-PC proof");
+    instruction_t overflowing_discard = discard;
+    overflowing_discard.address = k_bad_address - 3;
+    overflowing_discard.size = 8;
+    invalid_call = call;
+    invalid_call.target = overflowing_discard.address;
+    check(!classify_get_pc_gadget(
+              invalid_call, {overflowing_discard}, false, 8),
+          "overflowing gadget endpoint rejects get-PC proof");
+
+    instruction_t partial_discard = discard;
+    partial_discard.immediate = 4;
+    check(!classify_get_pc_gadget(
+              call, {partial_discard}, false, 8),
+          "partial return-address discard is rejected");
+    instruction_t wrong_width_discard = discard;
+    wrong_width_discard.stack_width_bits = 32;
+    check(!classify_get_pc_gadget(
+              call, {wrong_width_discard}, false, 8),
+          "wrong-width stack-pointer adjustment is rejected");
+
+    instruction_t inline_other;
+    inline_other.address = 0x1011;
+    inline_other.size = 2;
+    inline_other.kind = instruction_kind_t::other;
+    later_branch.address = 0x1013;
+    result = classify_get_pc_gadget(
+        call, {pop, inline_other, later_branch}, false, 8);
+    check(result && result->mode == get_pc_mode_t::pop_return_address
+          && result->resumed_at == 0x1011
+          && result->register_value_at_return == 0x1005,
+          "inline call/pop proof stops at the next control transfer");
 }
 
 void test_switch_dispatch_classifier()
@@ -554,6 +708,7 @@ int main()
     test_bitvectors();
     test_hexrays_merror_layout_compatibility();
     test_dependency_liveness();
+    test_get_pc_classifier();
     test_switch_dispatch_classifier();
     test_arm64_direct_branch_encoding();
     test_arm64_predicates();

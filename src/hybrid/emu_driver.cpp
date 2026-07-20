@@ -964,9 +964,23 @@ void mem_tr(rax_engine *engine, int kind, uint64_t addr, uint32_t size,
   }
 }
 
-int inv_tr(rax_engine *, uint64_t, void *)
+int inv_tr(rax_engine *engine, uint64_t address, void *user)
 {
-  return 0; // do not handle the fault: stop the run cleanly
+  HookCtx *c = static_cast<HookCtx *>(user);
+  if ( c == nullptr || c->api == nullptr )
+    return 0;
+
+  // The application-only driver intentionally does not invent an operating
+  // system, TLS block, loader state, or lazily mapped process memory.  Treat
+  // the first backend translation/fault boundary as missing environment state,
+  // not as a rax engine failure.  Returning non-zero tells rax that the hook
+  // handled the fault; emu_stop() then produces the reportable HOST_STOP exit
+  // on the next loop iteration without retrying the faulting instruction.
+  c->environment_model_failure = true;
+  c->external_target = address;
+  c->external_name = "unmodeled memory or translation dependency";
+  c->api->emu_stop(engine);
+  return 1;
 }
 
 // Fill the rax arch/mode and the register ids for a supported HybridArch.
@@ -1669,6 +1683,26 @@ bool EmuDriver::emulate_from(uint64_t entry, uint64_t func_end, const HybridConf
 
   if ( !restore_state() )
     return false;
+
+  if ( img_.arch == HybridArch::X86_64 )
+  {
+    // A zero FS/GS base is not a neutral userspace model: in PIE/ELF images it
+    // aliases mapped virtual address zero and turns TLS references into reads
+    // of the ELF header.  Seed both bases with distinct canonical, deliberately
+    // unmapped poison values.  A real TLS dependency therefore reaches inv_tr
+    // and is classified as an environment-model boundary.
+    static constexpr uint64_t kFsPoison = UINT64_C(0x00004F0000000000);
+    static constexpr uint64_t kGsPoison = UINT64_C(0x00004F1000000000);
+    const auto poison_is_clear = [this](uint64_t address)
+    {
+      return img_.segment_at(address) == nullptr
+          && !(address >= stack_base_ && address < stack_base_ + stack_size_);
+    };
+    if ( !poison_is_clear(kFsPoison) || !poison_is_clear(kGsPoison)
+      || api_->reg_write_u64(engine_, RAX_X86_REG_FS_BASE, kFsPoison) != RAX_OK
+      || api_->reg_write_u64(engine_, RAX_X86_REG_GS_BASE, kGsPoison) != RAX_OK )
+      return false;
+  }
 
   const bool is64 = img_.arch == HybridArch::X86_64 || img_.arch == HybridArch::ARM64
                  || img_.arch == HybridArch::RISCV64;

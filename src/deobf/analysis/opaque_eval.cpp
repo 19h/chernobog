@@ -6,7 +6,7 @@
 #include <funcs.hpp>
 
 // Static members
-std::map<std::pair<ea_t, int>, uint64_t> opaque_eval_t::s_global_cache;
+std::map<ssize_t, opaque_eval_t::global_cache_t> opaque_eval_t::s_global_cache;
 static constexpr unsigned OPAQUE_Z3_TIMEOUT_MS = 1000;
 
 namespace {
@@ -51,7 +51,7 @@ bool rax_vetoes_universal_branch_claim(const minsn_t *condition,
 // Clear cache
 //--------------------------------------------------------------------------
 void opaque_eval_t::clear_cache() {
-    s_global_cache.clear();
+    s_global_cache.erase(get_dbctx_id());
 }
 
 //--------------------------------------------------------------------------
@@ -196,8 +196,9 @@ std::optional<uint64_t> opaque_eval_t::read_global(ea_t addr, int size) {
 
     // Check cache
     const auto cache_key = std::make_pair(addr, bytes_to_read);
-    auto it = s_global_cache.find(cache_key);
-    if (it != s_global_cache.end()) {
+    global_cache_t &cache = s_global_cache[get_dbctx_id()];
+    auto it = cache.find(cache_key);
+    if (it != cache.end()) {
         return it->second;
     }
 
@@ -209,7 +210,7 @@ std::optional<uint64_t> opaque_eval_t::read_global(ea_t addr, int size) {
 
     // Cache and return
     uint64_t val = mask_by_size(*value, bytes_to_read);
-    s_global_cache[cache_key] = val;
+    cache[cache_key] = val;
     return val;
 }
 

@@ -1,6 +1,7 @@
 #include "early_hexrays.hpp"
 
 #include "analysis_config.hpp"
+#include "get_pc_ida.hpp"
 #include "ida_sdk_compat.hpp"
 
 #include "../common/warn_off.h"
@@ -12,7 +13,6 @@
 #include <idp.hpp>
 #include <kernwin.hpp>
 #include <nalt.hpp>
-#include <regfinder.hpp>
 #include <segment.hpp>
 #include <ua.hpp>
 #include <xref.hpp>
@@ -20,24 +20,14 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <map>
+#include <optional>
 #include <set>
 #include <utility>
 
 namespace chernobog::ida_analysis {
 namespace {
-
-struct GadgetInfo
-{
-  int reg = -1;
-  sval_t delta = 0;
-  ea_t return_ea = BADADDR;
-  bool pops_return = false;
-  bool pushes_return = false;
-  bool discards_return = false;
-  bool has_return = false;
-  bool has_control_transfer = false;
-};
 
 bool is_x86_database()
 {
@@ -56,137 +46,6 @@ bool executable_code(ea_t address)
       // Older/packed inputs can leave segment permissions unspecified (0).
       && (segment->perm == 0 || (segment->perm & SEGPERM_EXEC) != 0)
       && is_mapped(address) && is_code(get_flags(address));
-}
-
-bool stack_pointer_deref(const op_t &operand)
-{
-  // IDA's x86 register enumeration uses id 4 for SP/ESP/RSP.
-  return operand.reg == 4
-      && (operand.type == o_phrase
-       || (operand.type == o_displ && operand.addr == 0));
-}
-
-void update_register_delta(
-    sval_t &delta,
-    const insn_t &instruction,
-    int tracked_register)
-{
-  switch ( instruction.itype )
-  {
-    case NN_inc:
-      ++delta;
-      break;
-    case NN_dec:
-      --delta;
-      break;
-    case NN_add:
-      if ( instruction.Op2.type == o_imm )
-        delta += sval_t(instruction.Op2.value);
-      break;
-    case NN_sub:
-      if ( instruction.Op2.type == o_imm )
-        delta -= sval_t(instruction.Op2.value);
-      break;
-    case NN_lea:
-      if ( instruction.Op2.type == o_displ
-        && instruction.Op2.reg == tracked_register )
-      {
-        delta += sval_t(instruction.Op2.addr);
-      }
-      break;
-    default:
-      break;
-  }
-}
-
-bool classify_gadget_entry(
-    const insn_t &instruction,
-    GadgetInfo &result)
-{
-  if ( instruction.itype == NN_pop && instruction.Op1.type == o_reg )
-  {
-    result.reg = instruction.Op1.reg;
-    result.pops_return = true;
-    return true;
-  }
-  if ( instruction.itype == NN_mov && instruction.Op1.type == o_reg
-    && stack_pointer_deref(instruction.Op2) )
-  {
-    result.reg = instruction.Op1.reg;
-    return true;
-  }
-  if ( instruction.itype == NN_add
-    && stack_pointer_deref(instruction.Op1)
-    && instruction.Op2.type == o_imm )
-  {
-    result.delta = sval_t(instruction.Op2.value);
-    result.pushes_return = true;
-    return true;
-  }
-  if ( instruction.itype == NN_add && instruction.Op1.type == o_reg
-    && instruction.Op1.reg == 4 && instruction.Op2.type == o_imm
-    && sval_t(instruction.Op2.value) > 0 )
-  {
-    result.discards_return = true;
-    return true;
-  }
-  return false;
-}
-
-bool analyze_get_pc_gadget(
-    ea_t entry,
-    int depth,
-    GadgetInfo &result)
-{
-  result = GadgetInfo{};
-  insn_t instruction;
-  if ( decode_insn(&instruction, entry) <= 0
-    || !classify_gadget_entry(instruction, result) )
-  {
-    return false;
-  }
-
-  const int tracked_register = result.reg;
-  ea_t cursor = entry + instruction.size;
-  bool saw_push = result.pushes_return;
-  for ( int index = 0; index < depth; ++index )
-  {
-    if ( decode_insn(&instruction, cursor) <= 0 )
-      break;
-    if ( is_return_instruction(instruction) )
-    {
-      result.return_ea = cursor;
-      result.pushes_return = saw_push;
-      result.has_return = !saw_push;
-      break;
-    }
-
-    const uint32 features = instruction.get_canon_feature(PH);
-    if ( (features & CF_CALL) != 0 )
-    {
-      result.has_control_transfer = true;
-      break;
-    }
-    if ( (features & CF_STOP) != 0 )
-    {
-      result.has_control_transfer = instruction.itype != NN_jmp;
-      break;
-    }
-    if ( instruction.itype == NN_push && instruction.Op1.type == o_reg
-      && instruction.Op1.reg == tracked_register )
-    {
-      saw_push = true;
-      cursor += instruction.size;
-      continue;
-    }
-    if ( instruction.Op1.type == o_reg
-      && instruction.Op1.reg == tracked_register )
-    {
-      update_register_delta(result.delta, instruction, tracked_register);
-    }
-    cursor += instruction.size;
-  }
-  return true;
 }
 
 bool add_signed_delta(ea_t base, sval_t delta, ea_t &result)
@@ -247,14 +106,6 @@ ea_t resolve_gadget_return(ea_t return_ea, int scan_depth)
       break;
     cursor = previous;
 
-    GadgetInfo gadget;
-    if ( !analyze_get_pc_gadget(previous, scan_depth, gadget)
-      || !gadget.pushes_return || gadget.has_control_transfer
-      || gadget.return_ea != return_ea )
-    {
-      continue;
-    }
-
     ea_t consensus = BADADDR;
     bool found = false;
     xrefblk_t xref;
@@ -270,12 +121,16 @@ ea_t resolve_gadget_return(ea_t return_ea, int scan_depth)
       {
         continue;
       }
-      ea_t target = BADADDR;
-      if ( !add_signed_delta(call.ea + call.size, gadget.delta, target)
-        || !executable_code(target) )
+      const auto candidate = classify_ida_get_pc_call(
+          call, size_t(scan_depth), false);
+      if ( !candidate || !candidate->resumed_at.has_value()
+        || candidate->return_instruction != uint64_t(return_ea) )
       {
         continue;
       }
+      const ea_t target = ea_t(*candidate->resumed_at);
+      if ( !executable_code(target) )
+        continue;
       if ( found && target != consensus )
         return BADADDR;
       consensus = target;
@@ -379,23 +234,26 @@ int repair_flowchart(
       if ( is_marked_get_pc_call(address)
         && decode_insn(&call, address) > 0 )
       {
-        GadgetInfo gadget;
-        if ( analyze_get_pc_gadget(
-                call.Op1.addr, config.gadget_scan_depth, gadget)
-          && gadget.pushes_return && !gadget.has_control_transfer )
+        const auto gadget = classify_ida_get_pc_call(
+            call, size_t(config.gadget_scan_depth), false);
+        if ( gadget && gadget->resumed_at.has_value()
+          && gadget->return_instruction != classifier::k_bad_address )
         {
-          ea_t target = BADADDR;
-          if ( add_signed_delta(call.ea + call.size, gadget.delta, target) )
+          const ea_t target = ea_t(*gadget->resumed_at);
+          const auto exact_target = blocks_by_start.find(target);
+          const int return_block = block_containing(
+              flowchart, blocks_by_start, ea_t(gadget->return_instruction));
+          if ( exact_target != blocks_by_start.end() && return_block >= 0 )
           {
-            const int target_block = block_containing(
-                flowchart, blocks_by_start, target);
-            if ( target_block >= 0 && target_block != int(index)
-              && !contains_index(block.succ, target_block) )
+            const int target_block = exact_target->second;
+            qbasic_block_t &source = flowchart.blocks[return_block];
+            if ( target_block != return_block
+              && !contains_index(source.succ, target_block) )
             {
-              block.succ.push_back(target_block);
+              source.succ.push_back(target_block);
               qbasic_block_t &destination = flowchart.blocks[target_block];
-              if ( !contains_index(destination.pred, int(index)) )
-                destination.pred.push_back(int(index));
+              if ( !contains_index(destination.pred, return_block) )
+                destination.pred.push_back(return_block);
               if ( reachable != nullptr )
                 reachable->add(target_block);
               ++changes;
@@ -518,6 +376,83 @@ namespace {
 
 uint64 truncate_to_size(uint64 value, int size);
 
+struct RegisterKey
+{
+  mreg_t start = mr_none;
+  int size = 0;
+
+  bool operator<(const RegisterKey &other) const
+  {
+    return start < other.start
+        || (start == other.start && size < other.size);
+  }
+};
+
+struct SlotAddress
+{
+  mreg_t base = mr_none;
+  sval_t offset = 0;
+};
+
+struct SlotKey
+{
+  mreg_t base = mr_none;
+  sval_t offset = 0;
+  int size = 0;
+
+  bool operator<(const SlotKey &other) const
+  {
+    if ( base != other.base )
+      return base < other.base;
+    if ( offset != other.offset )
+      return offset < other.offset;
+    return size < other.size;
+  }
+};
+
+struct ConstantValue
+{
+  uint64 value = 0;
+  ea_t operand_ea = BADADDR;
+  int operand_number = -1;
+};
+
+struct ForwardState
+{
+  std::map<RegisterKey, ConstantValue> registers;
+  std::map<SlotKey, ConstantValue> slots;
+  std::optional<mreg_t> slot_base;
+};
+
+constexpr size_t maximum_forward_register_constants = 256;
+
+struct ForwardEffect
+{
+  mlist_t definitions;
+  std::optional<RegisterKey> result_register;
+  std::optional<ConstantValue> result;
+  std::optional<SlotKey> stored_slot;
+  std::optional<ConstantValue> stored_value;
+  bool call = false;
+  bool writes_memory = false;
+};
+
+bool evaluate_forward_operand(
+    const ForwardState &state,
+    const minsn_t *current,
+    const mop_t &operand,
+    ConstantValue &value,
+    int depth = 0);
+
+ForwardEffect analyze_forward_effect(
+    const mblock_t &block,
+    const minsn_t &instruction,
+    const ForwardState &state);
+
+void apply_forward_effect(
+    ForwardState &state,
+    const ForwardEffect &effect);
+
 struct CharacterCandidate
 {
   ea_t target = BADADDR;
@@ -539,114 +474,7 @@ ea_t instruction_write_target(ea_t instruction_ea)
       return BADADDR;
     result = xref.to;
   }
-  if ( result != BADADDR )
-    return result;
-
-  insn_t native;
-  if ( decode_insn(&native, instruction_ea) <= 0 )
-    return BADADDR;
-  const uint32 features = native.get_canon_feature(PH);
-  for ( int index = 0; index < UA_MAXOP; ++index )
-  {
-    const op_t &operand = native.ops[index];
-    if ( operand.type == o_void )
-      break;
-    if ( operand.type != o_displ && operand.type != o_phrase )
-      continue;
-    if ( (features & (CF_CHG1 << index)) == 0 )
-      continue;
-
-    qstring register_name;
-    if ( get_reg_name(
-            &register_name, operand.reg, inf_is_64bit() ? 8 : 4) <= 0 )
-    {
-      continue;
-    }
-    reg_value_info_t register_value;
-    if ( !find_register_value_info_compat(
-            &register_value, instruction_ea,
-            register_name.c_str(), operand.reg, -1) )
-    {
-      continue;
-    }
-    ea_t base = BADADDR;
-    if ( !reg_value_address_compat(register_value, &base) )
-      continue;
-    ea_t target = BADADDR;
-    if ( !add_signed_delta(base, sval_t(operand.addr), target)
-      || !is_mapped(target) )
-    {
-      return BADADDR;
-    }
-    return target;
-  }
-  return BADADDR;
-}
-
-const minsn_t *find_constant_register_definition(
-    const minsn_t &before,
-    mreg_t reg)
-{
-  for ( const minsn_t *instruction = before.prev;
-        instruction != nullptr; instruction = instruction->prev )
-  {
-    if ( instruction->d.t != mop_r || instruction->d.r != reg )
-      continue;
-    if ( (instruction->opcode == m_ldc || instruction->opcode == m_mov)
-      && instruction->l.t == mop_n && instruction->l.nnn != nullptr )
-    {
-      return instruction;
-    }
-    return nullptr;
-  }
-  return nullptr;
-}
-
-bool fold_store_source_with_regfinder(minsn_t &instruction)
-{
-  if ( instruction.l.t != mop_r || instruction.is_fpinsn() )
-    return false;
-  qstring register_name;
-  if ( get_mreg_name(
-          &register_name, instruction.l.r, instruction.l.size) <= 0 )
-  {
-    return false;
-  }
-  reg_value_info_t register_value;
-  if ( !find_register_value_info_compat(
-          &register_value, instruction.ea,
-          register_name.c_str(), -1, -1) || !register_value.is_num() )
-  {
-    return false;
-  }
-  uint64 value = 0;
-  if ( !register_value.get_num(&value) )
-    return false;
-  instruction.l.make_number(
-      truncate_to_size(value, instruction.l.size),
-      instruction.l.size, instruction.ea);
-  return true;
-}
-
-const mnumber_t *resolve_store_source(
-    minsn_t &instruction,
-    bool &mutated)
-{
-  mutated = false;
-  if ( instruction.l.t == mop_n )
-    return instruction.l.nnn;
-  if ( instruction.l.t != mop_r )
-    return nullptr;
-  const minsn_t *definition = find_constant_register_definition(
-      instruction, instruction.l.r);
-  if ( definition != nullptr )
-    return definition->l.nnn;
-  if ( fold_store_source_with_regfinder(instruction) )
-  {
-    mutated = true;
-    return instruction.l.nnn;
-  }
-  return nullptr;
+  return result;
 }
 
 bool character_byte(uint8 value)
@@ -683,41 +511,44 @@ bool safe_character_target(ea_t base, int size)
   return true;
 }
 
-bool collect_character_store(
+void collect_character_store(
     qvector<CharacterCandidate> &candidates,
-    minsn_t &instruction)
+    const minsn_t &instruction,
+    const ForwardState &state)
 {
   const int size = instruction.l.size;
   if ( instruction.opcode != m_stx
     || (size != 1 && size != 2 && size != 4 && size != 8) )
   {
-    return false;
+    return;
   }
 
-  bool mutated = false;
-  const mnumber_t *number = resolve_store_source(instruction, mutated);
-  if ( number == nullptr )
-    return mutated;
-  const uint64 value = number->value;
+  ConstantValue source;
+  if ( !evaluate_forward_operand(
+          state, &instruction, instruction.l, source)
+    || source.operand_ea == BADADDR || source.operand_number < 0 )
+  {
+    return;
+  }
+  const uint64 value = truncate_to_size(source.value, size);
   for ( int offset = 0; offset < size; ++offset )
   {
     if ( !character_byte(stored_byte(value, size, offset)) )
-      return mutated;
+      return;
   }
 
   const ea_t base = instruction_write_target(instruction.ea);
   if ( base == BADADDR || !safe_character_target(base, size) )
-    return mutated;
+    return;
   for ( int offset = 0; offset < size; ++offset )
   {
     CharacterCandidate candidate;
     candidate.target = base + offset;
     candidate.value = stored_byte(value, size, offset);
-    candidate.operand_ea = number->ea;
-    candidate.operand_number = number->opnum;
+    candidate.operand_ea = source.operand_ea;
+    candidate.operand_number = source.operand_number;
     candidates.push_back(candidate);
   }
-  return mutated;
 }
 
 int mark_character_runs(
@@ -845,14 +676,15 @@ int force_character_strings(
   for ( int index = 0; index < mba.qty; ++index )
   {
     mblock_t *block = mba.get_mblock(index);
-    bool dirty = false;
+    ForwardState state;
     for ( minsn_t *instruction = block->head;
           instruction != nullptr; instruction = instruction->next )
     {
-      dirty = collect_character_store(candidates, *instruction) || dirty;
+      collect_character_store(candidates, *instruction, state);
+      const ForwardEffect effect = analyze_forward_effect(
+          *block, *instruction, state);
+      apply_forward_effect(state, effect);
     }
-    if ( dirty )
-      block->mark_lists_dirty();
   }
   return mark_character_runs(mba, candidates);
 }
@@ -860,14 +692,6 @@ int force_character_strings(
 } // namespace
 
 namespace {
-
-using SlotKey = std::pair<mreg_t, sval_t>;
-using SlotMap = std::map<SlotKey, uint64>;
-
-struct FoldContext
-{
-  const SlotMap &slots;
-};
 
 ea_t resolved_data_read(ea_t instruction_ea)
 {
@@ -896,8 +720,11 @@ bool read_constant_memory(ea_t address, int size, uint64 &value)
     return false;
   }
   const segment_t *first_segment = getseg(address);
-  if ( first_segment == nullptr || getseg(last) != first_segment )
+  if ( first_segment == nullptr || getseg(last) != first_segment
+    || first_segment->type == SEG_XTRN )
+  {
     return false;
+  }
 
   for ( int offset = 0; offset < size; ++offset )
   {
@@ -908,7 +735,7 @@ bool read_constant_memory(ea_t address, int size, uint64 &value)
     for ( bool ok = xref.first_to(current, XREF_DATA);
           ok; ok = xref.next_to() )
     {
-      if ( !xref.iscode && (int(xref.type) & XREF_MASK) == dr_W )
+      if ( (int(xref.type) & XREF_MASK) == dr_W )
         return false;
     }
   }
@@ -954,22 +781,24 @@ bool evaluate_binary(mcode_t opcode, uint64 lhs, uint64 rhs, uint64 &value)
     case m_mul:
       value = lhs * rhs;
       return true;
+    case m_shl:
+      if ( rhs >= 64 )
+        return false;
+      value = lhs << rhs;
+      return true;
+    case m_shr:
+      if ( rhs >= 64 )
+        return false;
+      value = lhs >> rhs;
+      return true;
     default:
       return false;
   }
 }
 
-const minsn_t *find_local_definition(
-    const minsn_t *before,
-    mreg_t reg)
+bool valid_scalar_size(int size)
 {
-  for ( const minsn_t *instruction = before->prev;
-        instruction != nullptr; instruction = instruction->prev )
-  {
-    if ( instruction->d.t == mop_r && instruction->d.r == reg )
-      return instruction;
-  }
-  return nullptr;
+  return size == 1 || size == 2 || size == 4 || size == 8;
 }
 
 bool stable_frame_base(mreg_t reg)
@@ -987,11 +816,11 @@ bool stable_frame_base(mreg_t reg)
   return false;
 }
 
-bool extract_slot_key(const mop_t &memory, SlotKey &key)
+bool extract_slot_address(const mop_t &memory, SlotAddress &address)
 {
   if ( memory.t == mop_r )
   {
-    key = { memory.r, 0 };
+    address = { memory.r, 0 };
     return true;
   }
   if ( memory.t != mop_d || memory.d == nullptr )
@@ -1003,7 +832,7 @@ bool extract_slot_key(const mop_t &memory, SlotKey &key)
   uint64 immediate = 0;
   if ( inner.l.t == mop_r && inner.r.is_constant(&immediate, false) )
   {
-    key = {
+    address = {
       inner.l.r,
       inner.opcode == m_sub ? -sval_t(immediate) : sval_t(immediate),
     };
@@ -1012,7 +841,7 @@ bool extract_slot_key(const mop_t &memory, SlotKey &key)
   if ( inner.opcode == m_add
     && inner.l.is_constant(&immediate, false) && inner.r.t == mop_r )
   {
-    key = { inner.r.r, sval_t(immediate) };
+    address = { inner.r.r, sval_t(immediate) };
     return true;
   }
   return false;
@@ -1025,36 +854,100 @@ uint64 truncate_to_size(uint64 value, int size)
   return value & ((uint64(1) << (size * 8)) - 1);
 }
 
-bool resolve_instruction_result(
-    const FoldContext &context,
-    const minsn_t *instruction,
-    uint64 &value,
-    int depth);
-
-bool resolve_constant_operand(
-    const FoldContext &context,
-    const minsn_t *current,
-    const mop_t &operand,
-    uint64 &value,
-    int depth)
+bool register_ranges_overlap(const RegisterKey &left, const RegisterKey &right)
 {
-  if ( depth > 64 )
-    return false;
-  if ( operand.is_constant(&value, false) )
+  if ( left.size <= 0 || right.size <= 0 )
     return true;
-  if ( operand.t == mop_r )
+  const int64 left_start = int64(left.start);
+  const int64 right_start = int64(right.start);
+  return left_start < right_start + int64(right.size)
+      && right_start < left_start + int64(left.size);
+}
+
+bool register_list_overlaps(const rlist_t &list, const RegisterKey &key)
+{
+  if ( key.start == mr_none || key.size <= 0 )
+    return true;
+  for ( int offset = 0; offset < key.size; ++offset )
   {
-    const minsn_t *definition = find_local_definition(current, operand.r);
-    return definition != nullptr
-        && resolve_instruction_result(
-            context, definition, value, depth + 1);
-  }
-  if ( operand.t == mop_d && operand.d != nullptr )
-  {
-    return resolve_instruction_result(
-        context, operand.d, value, depth + 1);
+    if ( list.has(key.start + offset) )
+      return true;
   }
   return false;
+}
+
+bool slot_ranges_overlap(const SlotKey &left, const SlotKey &right)
+{
+  if ( left.base != right.base )
+    return false;
+  if ( left.size <= 0 || right.size <= 0 )
+    return true;
+  const sval_t maximum = std::numeric_limits<sval_t>::max();
+  if ( left.offset > maximum - (left.size - 1)
+    || right.offset > maximum - (right.size - 1) )
+  {
+    return true;
+  }
+  const sval_t left_last = left.offset + left.size - 1;
+  const sval_t right_last = right.offset + right.size - 1;
+  return left.offset <= right_last && right.offset <= left_last;
+}
+
+bool slot_base_is_defined(const rlist_t &definitions, mreg_t base)
+{
+  const int pointer_size = inf_is_64bit() ? 8 : 4;
+  return register_list_overlaps(
+      definitions, RegisterKey{ base, pointer_size });
+}
+
+void erase_register_range(
+    std::map<RegisterKey, ConstantValue> &registers,
+    const RegisterKey &range)
+{
+  auto iterator = registers.lower_bound(RegisterKey{ range.start, 0 });
+  if ( iterator != registers.begin() )
+  {
+    auto previous = iterator;
+    --previous;
+    if ( register_ranges_overlap(previous->first, range) )
+      registers.erase(previous);
+  }
+  const int64 end = int64(range.start) + int64(std::max(range.size, 1));
+  while ( iterator != registers.end()
+    && int64(iterator->first.start) < end )
+  {
+    if ( register_ranges_overlap(iterator->first, range) )
+      iterator = registers.erase(iterator);
+    else
+      ++iterator;
+  }
+}
+
+void erase_overlapping_slots(
+    std::map<SlotKey, ConstantValue> &slots,
+    const SlotKey &range)
+{
+  auto iterator = slots.lower_bound(
+      SlotKey{ range.base, range.offset, 0 });
+  if ( iterator != slots.begin() )
+  {
+    auto previous = iterator;
+    --previous;
+    if ( slot_ranges_overlap(previous->first, range) )
+      slots.erase(previous);
+  }
+  const sval_t maximum = std::numeric_limits<sval_t>::max();
+  const sval_t last = range.offset > maximum - (range.size - 1)
+                    ? maximum : range.offset + range.size - 1;
+  while ( iterator != slots.end()
+    && iterator->first.base == range.base
+    && iterator->first.offset <= last )
+  {
+    if ( slot_ranges_overlap(iterator->first, range) )
+      iterator = slots.erase(iterator);
+    else
+      ++iterator;
+  }
 }
 
 uint64 sign_extend_value(uint64 value, int source_bits)
@@ -1098,224 +991,288 @@ bool evaluate_unary(
   }
 }
 
-bool resolve_load_result(
-    const FoldContext &context,
+bool evaluate_forward_instruction(
+    const ForwardState &state,
     const minsn_t *instruction,
-    uint64 &value,
+    ConstantValue &value,
     int depth)
 {
-  const int size = instruction->d.size;
-  const ea_t xref_address = resolved_data_read(instruction->ea);
-  if ( xref_address != BADADDR )
-    return read_constant_memory(xref_address, size, value);
+  if ( instruction == nullptr || depth > 16 || instruction->is_fpinsn() )
+    return false;
 
-  SlotKey key;
-  if ( extract_slot_key(instruction->r, key) )
+  if ( instruction->opcode != m_ldx )
   {
-    if ( stable_frame_base(key.first) )
+    ConstantValue lhs;
+    if ( !evaluate_forward_operand(
+            state, instruction, instruction->l, lhs, depth + 1) )
     {
-      const auto found = context.slots.find(key);
-      if ( found != context.slots.end() )
+      return false;
+    }
+    uint64 result = 0;
+    if ( evaluate_unary(
+            instruction->opcode, lhs.value,
+            8 * instruction->l.size, result) )
+    {
+      value.value = truncate_to_size(result, instruction->d.size);
+      if ( instruction->opcode == m_ldc || instruction->opcode == m_mov )
       {
-        value = found->second;
-        return true;
+        value.operand_ea = lhs.operand_ea;
+        value.operand_number = lhs.operand_number;
+      }
+      return true;
+    }
+
+    ConstantValue rhs;
+    if ( !evaluate_forward_operand(
+            state, instruction, instruction->r, rhs, depth + 1)
+      || !evaluate_binary(
+            instruction->opcode, lhs.value, rhs.value, result) )
+    {
+      return false;
+    }
+    if ( is_mcode_shift(instruction->opcode) )
+    {
+      if ( instruction->l.size <= 0
+        || rhs.value > uint64(8 * instruction->l.size - 1) )
+      {
+        return false;
       }
     }
-
-    const minsn_t *definition = find_local_definition(
-        instruction, key.first);
-    uint64 base = 0;
-    ea_t address = BADADDR;
-    if ( definition != nullptr
-      && resolve_instruction_result(
-          context, definition, base, depth + 1)
-      && add_signed_delta(ea_t(base), key.second, address) )
-    {
-      return read_constant_memory(address, size, value);
-    }
-  }
-
-  uint64 address = 0;
-  if ( !resolve_constant_operand(
-          context, instruction, instruction->r, address, depth + 1) )
-  {
-    return false;
-  }
-  return read_constant_memory(ea_t(address), size, value);
-}
-
-bool resolve_instruction_result(
-    const FoldContext &context,
-    const minsn_t *instruction,
-    uint64 &value,
-    int depth)
-{
-  if ( instruction == nullptr || depth > 64 )
-    return false;
-  if ( instruction->opcode == m_ldx )
-    return resolve_load_result(context, instruction, value, depth + 1);
-
-  uint64 lhs = 0;
-  if ( !resolve_constant_operand(
-          context, instruction, instruction->l, lhs, depth + 1) )
-  {
-    return false;
-  }
-  if ( evaluate_unary(
-          instruction->opcode, lhs, 8 * instruction->l.size, value) )
-  {
-    value = truncate_to_size(value, instruction->d.size);
+    value.value = truncate_to_size(result, instruction->d.size);
     return true;
   }
 
-  uint64 rhs = 0;
-  if ( !resolve_constant_operand(
-          context, instruction, instruction->r, rhs, depth + 1)
-    || !evaluate_binary(instruction->opcode, lhs, rhs, value) )
+  const int size = instruction->d.size;
+  if ( !valid_scalar_size(size) )
+    return false;
+
+  const ea_t xref_address = resolved_data_read(instruction->ea);
+  if ( xref_address != BADADDR )
+    return read_constant_memory(xref_address, size, value.value);
+
+  SlotAddress slot_address;
+  if ( extract_slot_address(instruction->r, slot_address)
+    && stable_frame_base(slot_address.base) )
+  {
+    const SlotKey key{ slot_address.base, slot_address.offset, size };
+    const auto found = state.slots.find(key);
+    if ( found != state.slots.end() )
+    {
+      value = found->second;
+      value.value = truncate_to_size(value.value, size);
+      return true;
+    }
+  }
+
+  ConstantValue address_value;
+  if ( !evaluate_forward_operand(
+          state, instruction, instruction->r,
+          address_value, depth + 1) )
   {
     return false;
   }
-  value = truncate_to_size(value, instruction->d.size);
-  return true;
+  return read_constant_memory(ea_t(address_value.value), size, value.value);
 }
 
-void build_stable_slot_map(mba_t &mba, SlotMap &slots)
+bool evaluate_forward_operand(
+    const ForwardState &state,
+    const minsn_t *current,
+    const mop_t &operand,
+    ConstantValue &value,
+    int depth)
 {
-  static const SlotMap empty_slots;
-  const FoldContext bootstrap{ empty_slots };
-  std::set<SlotKey> invalid;
-  if ( mba.qty <= 0 )
-    return;
-
-  // Admit a stack/frame slot only after a constant store in the entry block.
-  // That store dominates every reachable successor; loads preceding it in the
-  // entry block invalidate the slot. A same-valued later store is harmless,
-  // while an unresolved or differing store invalidates the candidate. This is
-  // stricter than a function-wide "all observed constants agree" map, which
-  // can incorrectly fold a load on a path that bypasses the first store.
-  const mblock_t *entry = mba.get_mblock(0);
-  for ( const minsn_t *instruction = entry->head;
-        instruction != nullptr; instruction = instruction->next )
+  if ( current == nullptr || depth > 16 )
+    return false;
+  if ( operand.t == mop_n && operand.nnn != nullptr )
   {
-    SlotKey key;
-    if ( instruction->opcode == m_ldx
-      && extract_slot_key(instruction->r, key)
-      && stable_frame_base(key.first) && slots.count(key) == 0 )
-    {
-      invalid.insert(key);
-      continue;
-    }
-    if ( instruction->opcode != m_stx
-      || !extract_slot_key(instruction->d, key)
-      || !stable_frame_base(key.first) )
-    {
-      continue;
-    }
-    uint64 value = 0;
-    if ( !resolve_constant_operand(
-            bootstrap, instruction, instruction->l, value, 0) )
-    {
-      slots.erase(key);
-      invalid.insert(key);
-      continue;
-    }
-    value = truncate_to_size(value, instruction->l.size);
-    const auto found = slots.find(key);
-    if ( invalid.count(key) != 0 )
-      continue;
-    if ( found == slots.end() )
-      slots.emplace(key, value);
-    else if ( found->second != value )
-    {
-      slots.erase(found);
-      invalid.insert(key);
-    }
+    value.value = truncate_to_size(operand.nnn->value, operand.size);
+    value.operand_ea = operand.nnn->ea;
+    value.operand_number = operand.nnn->opnum;
+    return true;
   }
-
-  for ( int index = 1; index < mba.qty; ++index )
+  if ( operand.t == mop_r && operand.size > 0 )
   {
-    const mblock_t *block = mba.get_mblock(index);
-    for ( const minsn_t *instruction = block->head;
-          instruction != nullptr; instruction = instruction->next )
-    {
-      if ( instruction->opcode != m_stx )
-        continue;
-      SlotKey key;
-      if ( !extract_slot_key(instruction->d, key)
-        || !stable_frame_base(key.first) )
-      {
-        continue;
-      }
-      uint64 value = 0;
-      if ( !resolve_constant_operand(
-              bootstrap, instruction, instruction->l, value, 0) )
-      {
-        slots.erase(key);
-        invalid.insert(key);
-        continue;
-      }
-      value = truncate_to_size(value, instruction->l.size);
-      const auto found = slots.find(key);
-      if ( found == slots.end() || found->second != value )
-      {
-        if ( found != slots.end() )
-          slots.erase(found);
-        invalid.insert(key);
-      }
-    }
+    const auto found = state.registers.find(
+        RegisterKey{ operand.r, operand.size });
+    if ( found == state.registers.end() )
+      return false;
+    value = found->second;
+    value.value = truncate_to_size(value.value, operand.size);
+    return true;
   }
-  for ( const SlotKey &key : invalid )
-    slots.erase(key);
+  if ( operand.t == mop_d && operand.d != nullptr )
+  {
+    return evaluate_forward_instruction(
+        state, operand.d, value, depth + 1);
+  }
+  return false;
 }
 
-bool flatten_operand(
-    const FoldContext &context,
+ForwardEffect analyze_forward_effect(
+    const mblock_t &block,
+    const minsn_t &instruction,
+    const ForwardState &state)
+{
+  ForwardEffect effect;
+  effect.call = is_mcode_call(instruction.opcode);
+  effect.definitions = block.build_def_list(
+      instruction,
+      MAY_ACCESS | INCLUDE_SPOILED_REGS | INCLUDE_DEAD_RETREGS);
+  effect.writes_memory = !effect.definitions.mem.empty();
+
+  if ( instruction.modifies_d()
+    && instruction.d.t == mop_r && instruction.d.size > 0 )
+  {
+    effect.result_register = RegisterKey{
+      instruction.d.r, instruction.d.size,
+    };
+    ConstantValue result;
+    if ( valid_scalar_size(instruction.d.size)
+      && evaluate_forward_instruction(state, &instruction, result, 0) )
+    {
+      effect.result = result;
+    }
+  }
+
+  if ( instruction.opcode == m_stx
+    && valid_scalar_size(instruction.l.size) )
+  {
+    SlotAddress address;
+    if ( extract_slot_address(instruction.d, address)
+      && stable_frame_base(address.base) )
+    {
+      effect.stored_slot = SlotKey{
+        address.base, address.offset, instruction.l.size,
+      };
+      ConstantValue stored;
+      if ( evaluate_forward_operand(
+              state, &instruction, instruction.l, stored) )
+      {
+        stored.value = truncate_to_size(stored.value, instruction.l.size);
+        effect.stored_value = stored;
+      }
+    }
+  }
+  return effect;
+}
+
+void apply_forward_effect(
+    ForwardState &state,
+    const ForwardEffect &effect)
+{
+  // Unknown and ordinary calls are hard barriers. This deliberately does not
+  // borrow regfinder facts from after a call: an incomplete prototype or call
+  // model must reduce optimization, never manufacture a constant.
+  if ( effect.call )
+  {
+    state.registers.clear();
+    state.slots.clear();
+    state.slot_base.reset();
+    return;
+  }
+
+  // Keep the abstract domain explicitly bounded. Scanning at most 256 exact
+  // byte ranges per instruction is O(I) with a fixed constant and avoids the
+  // previous unbounded backward searches.
+  for ( auto iterator = state.registers.begin();
+        iterator != state.registers.end(); )
+  {
+    if ( register_list_overlaps(effect.definitions.reg, iterator->first) )
+      iterator = state.registers.erase(iterator);
+    else
+      ++iterator;
+  }
+  if ( effect.result_register )
+    erase_register_range(state.registers, *effect.result_register);
+
+  if ( state.slot_base
+    && slot_base_is_defined(effect.definitions.reg, *state.slot_base) )
+  {
+    state.slots.clear();
+    state.slot_base.reset();
+  }
+
+  if ( effect.writes_memory )
+  {
+    if ( !effect.stored_slot )
+    {
+      state.slots.clear();
+      state.slot_base.reset();
+    }
+    else
+    {
+      if ( state.slot_base && *state.slot_base != effect.stored_slot->base )
+      {
+        state.slots.clear();
+        state.slot_base.reset();
+      }
+      erase_overlapping_slots(state.slots, *effect.stored_slot);
+    }
+  }
+
+  if ( effect.stored_slot && effect.stored_value )
+  {
+    state.slot_base = effect.stored_slot->base;
+    state.slots[*effect.stored_slot] = *effect.stored_value;
+  }
+  if ( effect.result_register && effect.result )
+  {
+    state.registers[*effect.result_register] = *effect.result;
+    if ( state.registers.size() > maximum_forward_register_constants )
+      state.registers.clear();
+  }
+}
+
+bool flatten_forward_operand(
+    const ForwardState &state,
     minsn_t *current,
     mop_t &operand)
 {
   if ( operand.t == mop_n )
     return false;
-  uint64 value = 0;
+  ConstantValue value;
   if ( operand.size > 0 && operand.size <= 8
-    && resolve_constant_operand(context, current, operand, value, 0) )
+    && evaluate_forward_operand(state, current, operand, value, 0) )
   {
     if ( is_mcode_shift(current->opcode) && &operand == &current->r )
     {
       if ( current->l.size <= 0 )
         return false;
       const uint64 maximum = uint64(8 * current->l.size - 1);
-      if ( value > maximum )
+      if ( value.value > maximum )
         return false;
     }
     operand.make_number(
-        truncate_to_size(value, operand.size), operand.size, current->ea);
+        truncate_to_size(value.value, operand.size),
+        operand.size, current->ea);
     return true;
   }
   if ( operand.t != mop_d || operand.d == nullptr )
     return false;
   minsn_t *inner = operand.d;
-  bool changed = flatten_operand(context, inner, inner->l);
+  bool changed = flatten_forward_operand(state, inner, inner->l);
   if ( inner->r.t != mop_z )
-    changed = flatten_operand(context, inner, inner->r) || changed;
+    changed = flatten_forward_operand(state, inner, inner->r) || changed;
   return changed;
 }
 
 bool fold_instruction(
-    const FoldContext &context,
-    minsn_t *instruction)
+    minsn_t *instruction,
+    const ForwardEffect &effect)
 {
   const int size = instruction->d.size;
-  if ( (size != 1 && size != 2 && size != 4 && size != 8)
+  if ( !valid_scalar_size(size) || !effect.result
+    || !effect.result_register || instruction->d.t != mop_r
+    || instruction->is_fpinsn()
     || instruction->opcode == m_mov || instruction->opcode == m_ldc )
   {
     return false;
   }
-  uint64 value = 0;
-  if ( !resolve_instruction_result(context, instruction, value, 0) )
-    return false;
   instruction->opcode = m_mov;
+  instruction->clr_fpinsn();
+  instruction->clr_assert();
   instruction->l.make_number(
-      truncate_to_size(value, size), size, instruction->ea);
+      truncate_to_size(effect.result->value, size), size, instruction->ea);
   instruction->r.erase();
   return true;
 }
@@ -1324,25 +1281,30 @@ int fold_constants(mba_t &mba, const EarlyHexRaysConfig &config)
 {
   if ( !mba_within_bounds(mba, config) )
     return -1;
-  SlotMap slots;
-  build_stable_slot_map(mba, slots);
-  const FoldContext context{ slots };
   int changes = 0;
   for ( int index = 0; index < mba.qty; ++index )
   {
     mblock_t *block = mba.get_mblock(index);
+    ForwardState state;
     bool dirty = false;
     for ( minsn_t *instruction = block->head;
           instruction != nullptr; instruction = instruction->next )
     {
-      bool changed = flatten_operand(
-          context, instruction, instruction->l);
-      if ( instruction->r.t != mop_z )
+      const ForwardEffect effect = analyze_forward_effect(
+          *block, *instruction, state);
+      bool changed = false;
+      if ( !effect.call && !instruction->is_fpinsn() )
       {
-        changed = flatten_operand(
-            context, instruction, instruction->r) || changed;
+        changed = flatten_forward_operand(
+            state, instruction, instruction->l);
+        if ( instruction->r.t != mop_z )
+        {
+          changed = flatten_forward_operand(
+              state, instruction, instruction->r) || changed;
+        }
+        changed = fold_instruction(instruction, effect) || changed;
       }
-      changed = fold_instruction(context, instruction) || changed;
+      apply_forward_effect(state, effect);
       if ( changed )
       {
         ++changes;
@@ -1359,13 +1321,15 @@ int fold_constants(mba_t &mba, const EarlyHexRaysConfig &config)
 
 struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
 {
+  const ssize_t owner_database = get_dbctx_id();
   EarlyHexRaysConfig config = load_early_hexrays_config();
   EarlyHexRaysStats statistics;
   bool installed = false;
 
   bool match(codegen_t &codegen) override
   {
-    return config.enabled && config.call_pop_codegen
+    return get_dbctx_id() == owner_database
+        && config.enabled && config.call_pop_codegen
         && is_x86_database()
         && is_return_instruction(codegen.insn)
         && resolve_gadget_return(
@@ -1374,6 +1338,8 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
 
   merror_t apply(codegen_t &codegen) override
   {
+    if ( get_dbctx_id() != owner_database )
+      return MERR_INSN;
     const ea_t target = resolve_gadget_return(
         codegen.insn.ea, config.gadget_scan_depth);
     if ( target == BADADDR )
@@ -1411,7 +1377,8 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
   template <class Flowchart>
   int flowchart(const Flowchart *input, bitset_t *reachable)
   {
-    if ( !config.enabled || !config.call_pop_flowchart || input == nullptr )
+    if ( get_dbctx_id() != owner_database || !config.enabled
+      || !config.call_pop_flowchart || input == nullptr )
       return 0;
     bool bounded = false;
     Flowchart *mutable_flowchart = const_cast<Flowchart *>(input);
@@ -1425,7 +1392,8 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
 
   int microcode(mba_t *mba)
   {
-    if ( !config.enabled || !config.generated_gotos || mba == nullptr )
+    if ( get_dbctx_id() != owner_database || !config.enabled
+      || !config.generated_gotos || mba == nullptr )
       return 0;
     if ( !mba_within_bounds(*mba, config) )
     {
@@ -1439,7 +1407,7 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
 
   int preoptimized(mba_t *mba)
   {
-    if ( !config.enabled || mba == nullptr )
+    if ( get_dbctx_id() != owner_database || !config.enabled || mba == nullptr )
       return 0;
     if ( !mba_within_bounds(*mba, config) )
     {
@@ -1448,6 +1416,10 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
     }
 
     int total = 0;
+    // Fold first so a proven store expression has one in-flight numeric
+    // operand that can carry the character numform. Source bytes in writable
+    // segments are admitted only by read_constant_memory() when loaded and
+    // free of every statically known write reference.
     if ( config.constant_folding )
     {
       const int changes = fold_constants(*mba, config);

@@ -799,9 +799,31 @@ bool global_const_handler_t::is_direct_write_only_data(ea_t addr, int size)
 
 void global_const_handler_t::clear_cache()
 {
-    s_writable_classification.clear();
-    s_writable_object_classification.clear();
-    s_write_only_classification.clear();
+    const ssize_t database = get_dbctx_id();
+    for ( auto it = s_writable_classification.begin();
+          it != s_writable_classification.end(); )
+    {
+        if ( std::get<0>(it->first) == database )
+            it = s_writable_classification.erase(it);
+        else
+            ++it;
+    }
+    for ( auto it = s_writable_object_classification.begin();
+          it != s_writable_object_classification.end(); )
+    {
+        if ( std::get<0>(it->first) == database )
+            it = s_writable_object_classification.erase(it);
+        else
+            ++it;
+    }
+    for ( auto it = s_write_only_classification.begin();
+          it != s_write_only_classification.end(); )
+    {
+        if ( std::get<0>(it->first) == database )
+            it = s_write_only_classification.erase(it);
+        else
+            ++it;
+    }
 }
 
 //--------------------------------------------------------------------------
