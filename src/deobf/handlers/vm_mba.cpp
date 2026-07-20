@@ -2,6 +2,7 @@
 #include "../analysis/mop_utils.h"
 #include "../analysis/z3_solver.h"
 #include "../analysis/chain_simplify.h"
+#include "../../common/bitvector.h"
 #include "../../common/ida_memory.h"
 #include "../../common/z3_utils.h"
 #include "../../common/simd.h"
@@ -1605,7 +1606,8 @@ bool vm_mba_handler_t::replace_with_simple_expr(minsn_t *ins, mcode_t op,
         return false;
 
     int size = ins->d.size > 0 ? ins->d.size : var.size;
-    if ( size <= 0 || (var.size > 0 && var.size != size) )
+    if ( !chernobog::bitvector::valid_byte_width(size)
+      || (var.size > 0 && var.size != size) )
         return false;
 
     uint64_t mask = mask_for_size(size);

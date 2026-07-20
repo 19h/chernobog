@@ -1,8 +1,8 @@
 """IDA batch smoke test for stage-correct early Hex-Rays analysis.
 
-The caller supplies CHERNOBOG_PLUGIN_PATH and opens the generic-deobfuscator
-ASPack 2.12 fixture.  The first entry-point call uses a pop/inc/push/return
-get-PC gadget whose effective continuation is 0x403008.
+The caller supplies CHERNOBOG_PLUGIN_PATH and opens the ASPack 2.12 fixture.
+The first entry-point call uses a pop/inc/push/return get-PC gadget whose
+effective continuation is 0x403008.
 """
 
 import os

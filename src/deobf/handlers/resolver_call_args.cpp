@@ -1,5 +1,6 @@
 #include "resolver_call_args.h"
 #include "../analysis/dependency_liveness.hpp"
+#include "../../common/bitvector.h"
 
 #include <intel.hpp>
 #include <nalt.hpp>
@@ -1285,7 +1286,7 @@ bool neutralizable_call_argument(
     const argument_usage_t &usage)
 {
     if ( !argument.argloc.is_reg1()
-      || argument.size <= 0
+      || !chernobog::bitvector::valid_byte_width(argument.size)
       || argument.has_side_effects(true) )
         return false;
     const int index = argument_usage_index(usage, argument.argloc.reg1());

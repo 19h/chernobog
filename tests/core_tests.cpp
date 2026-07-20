@@ -31,6 +31,11 @@ void test_bitvectors()
 {
     using namespace chernobog::bitvector;
 
+    check(valid_byte_width(1) && valid_byte_width(8),
+          "scalar byte widths are admitted");
+    check(!valid_byte_width(0) && !valid_byte_width(9)
+          && !valid_byte_width(16) && !valid_byte_width(32),
+          "non-scalar and SIMD byte widths are rejected");
     check(mask(1) == 0xFFULL, "8-bit mask");
     check(mask(3) == 0xFFFFFFULL, "24-bit mask");
     check(mask(8) == std::numeric_limits<uint64_t>::max(), "64-bit mask");

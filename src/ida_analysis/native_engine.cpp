@@ -1,10 +1,10 @@
 /*
  * Native IDA analysis-quality additions.
  *
- * The pattern set is derived from viy's IDA-native/structural providers and
- * Hex-Rays' generic deobfuscator.  This implementation is per-IDB, preserves
- * existing annotations, and validates a complete candidate before changing
- * item boundaries or function metadata.
+ * The pattern set is derived from viy's IDA-native/structural providers.
+ * This implementation is per-IDB, preserves existing annotations, and
+ * validates a complete candidate before changing item boundaries or function
+ * metadata.
  */
 #include "native_engine.hpp"
 
@@ -1176,10 +1176,10 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         plan_ea(resumed);
         func_t *owner = get_func(instruction.ea);
         // The effective return can already belong to a small auto-created
-        // function or range while still being outside the caller.  The
-        // generic deobfuscator tests containment in the caller, not merely
-        // whether some function owns the address; that distinction is what
-        // lets chained gadgets become one traversable CFG.
+        // function or range while still being outside the caller. Test
+        // containment in the caller, not merely whether some function owns
+        // the address; that distinction lets chained gadgets become one
+        // traversable CFG.
         if ( owner != nullptr && !func_contains(owner, resumed) )
         {
           const bool appended = append_func_tail_ea(

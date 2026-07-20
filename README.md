@@ -129,8 +129,8 @@ enabled separately with `CHERNOBOG_VM_Z3=1`.
 ### IDA Analysis Enrichment
 
 Chernobog improves the native IDB before Hex-Rays lifting. The default-on,
-per-database engine integrates selected viy and Hex-Rays generic-deobfuscator
-analysis techniques without importing either plugin wholesale:
+per-database engine integrates selected viy analysis techniques without
+importing the plugin wholesale:
 
 - correct x86 redundant-prefix decoding; recover call/pop and constant
   push/return control flow
@@ -474,7 +474,7 @@ fully isolated. The system uses a multi-phase approach:
 ### Phase 0: Native analysis and decompiler ingress
 
 Default-on, bounded analysis-quality passes run at the same stages as the
-corresponding generic deobfuscator mechanisms:
+corresponding IDA and Hex-Rays analysis mechanisms:
 
 - `ev_ana_insn`/`ev_emu_insn`: repair native instructions, xrefs, junk gaps,
   call/pop and push/return control flow, opaque branches, and statically

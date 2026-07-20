@@ -550,6 +550,14 @@ int ChainSimplifier::simplify_chain(mblock_t* blk, minsn_t* ins) {
     if (!blk || !ins)
         return 0;
 
+    // This simplifier represents folded constants with mnumber_t, whose
+    // payload is at most 64 bits.  Hex-Rays also uses these opcodes for SIMD
+    // and other wide values; constructing a numeric mop for such a result
+    // loses the operand's address provenance and can trigger INTERR 51617
+    // during the decompiler's later sign-extension pass.
+    if (!chernobog::bitvector::valid_byte_width(ins->d.size))
+        return 0;
+
     chain_result_t result;
 
     switch (ins->opcode) {

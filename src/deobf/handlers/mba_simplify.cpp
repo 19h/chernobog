@@ -3,6 +3,7 @@
 #include "../analysis/ast_builder.h"
 #include "../analysis/chain_simplify.h"
 #include "../analysis/z3_solver.h"
+#include "../../common/bitvector.h"
 #include "../../common/z3_utils.h"
 
 // Include all rule headers to trigger registration
@@ -548,6 +549,10 @@ bool mba_simplify_handler_t::detect(mbl_array_t *mba) {
         if ( !blk) continue;
 
         for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
+            if ( !chernobog::bitvector::valid_byte_width(ins->d.size) ) {
+                continue;
+            }
+
             // Look for nested operations (sign of obfuscation)
             if ( !is_mba_opcode(ins->opcode) ) {
                 continue;
@@ -658,6 +663,14 @@ int mba_simplify_handler_t::simplify_insn(mblock_t *blk, minsn_t *ins, deobf_ctx
 //--------------------------------------------------------------------------
 int mba_simplify_handler_t::try_simplify_instruction(mblock_t *blk, minsn_t *ins) {
     if ( !ins || ins->is_fpinsn() || !is_mba_opcode(ins->opcode) ) {
+        return 0;
+    }
+
+    // The registered MBA rules and their replacements are certified over
+    // scalar bit-vectors representable by mnumber_t.  Do not apply them to
+    // SIMD/wide microcode values: replacement constants would otherwise be
+    // created with a width above 8 bytes and no source EA.
+    if ( !chernobog::bitvector::valid_byte_width(ins->d.size) ) {
         return 0;
     }
 
