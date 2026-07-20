@@ -10,10 +10,12 @@ on:
 
 env:
   IDA_SDK_REPO: HexRaysSA/ida-sdk
-  # Build against the base IDA 9.4.0 release ABI. The later SDK release patch
-  # redirects find_reg_value_info() to reg_finder94_find_reg_value_info(), an
-  # export absent from IDA 9.4 build 260713 and other pre-patch installations.
-  IDA_SDK_STABLE_REF: f45fa5149caac89a954d1d82cd9d76b3899ee6a6
+  # Unix builds use the current 9.4 SDK patch and its matching runtime stubs.
+  IDA_SDK_STABLE_REF: 6929db6868a524496eb66e76e4ec6c9d720a0594
+  # Windows release DLLs retain the base 9.4 ABI. The later patch redirects
+  # find_reg_value_info() to reg_finder94_find_reg_value_info(), an export
+  # absent from IDA 9.4 build 260713 and other pre-patch installations.
+  IDA_SDK_WINDOWS_COMPAT_REF: f45fa5149caac89a954d1d82cd9d76b3899ee6a6
   XWIN_VERSION: 0.8.0
 
 permissions:
@@ -62,34 +64,40 @@ jobs:
             name: macos-x86_64
             cmake_arch: x86_64
             rust_target: x86_64-apple-darwin
+            ida_sdk_ref: 6929db6868a524496eb66e76e4ec6c9d720a0594
             ida_branch: ""
             ida_suffix: ""
           - os: macos-latest
             name: macos-arm64
             cmake_arch: arm64
             rust_target: aarch64-apple-darwin
+            ida_sdk_ref: 6929db6868a524496eb66e76e4ec6c9d720a0594
             ida_branch: ""
             ida_suffix: ""
           - os: ubuntu-latest
             name: linux-x86_64
             rust_target: x86_64-unknown-linux-gnu
+            ida_sdk_ref: 6929db6868a524496eb66e76e4ec6c9d720a0594
             ida_branch: ""
             ida_suffix: ""
           - os: ubuntu-24.04-arm
             name: linux-arm64
             rust_target: aarch64-unknown-linux-gnu
+            ida_sdk_ref: 6929db6868a524496eb66e76e4ec6c9d720a0594
             ida_branch: ""
             ida_suffix: ""
           - os: windows-latest
             name: windows-x86_64
             cmake_arch: x64
             rust_target: x86_64-pc-windows-msvc
+            ida_sdk_ref: f45fa5149caac89a954d1d82cd9d76b3899ee6a6
             ida_branch: ""
             ida_suffix: ""
           - os: windows-11-arm
             name: windows-arm64
             cmake_arch: ARM64
             rust_target: aarch64-pc-windows-msvc
+            ida_sdk_ref: f45fa5149caac89a954d1d82cd9d76b3899ee6a6
             ida_branch: ""
             ida_suffix: ""
 
@@ -114,7 +122,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ${{ env.IDA_SDK_REPO }}
-          ref: ${{ env.IDA_SDK_STABLE_REF }}
+          ref: ${{ matrix.ida_sdk_ref }}
           path: ida-sdk
           submodules: recursive
 
@@ -144,18 +152,18 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build
-          key: build-v3-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
+          key: build-v3-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
           restore-keys: |
-            build-v3-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-
+            build-v3-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-
 
       - name: Cache ccache
         if: runner.os != 'Windows'
         uses: actions/cache@v6
         with:
           path: ~/.ccache
-          key: ccache-v1-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'ida-cmake/**', 'src/**', '.github/workflows/build.yml') }}
+          key: ccache-v1-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'ida-cmake/**', 'src/**', '.github/workflows/build.yml') }}
           restore-keys: |
-            ccache-v1-${{ runner.os }}-${{ matrix.name }}-${{ env.IDA_SDK_STABLE_REF }}-
+            ccache-v1-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-
 
       - name: Set environment variables (Unix)
         if: runner.os != 'Windows'
@@ -350,7 +358,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ${{ env.IDA_SDK_REPO }}
-          ref: ${{ env.IDA_SDK_STABLE_REF }}
+          ref: ${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}
           path: ida-sdk
           submodules: recursive
 
@@ -441,17 +449,17 @@ jobs:
         uses: actions/cache@v6
         with:
           path: out/build/windows-clang-release
-          key: build-v3-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
+          key: build-v3-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
           restore-keys: |
-            build-v3-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-
+            build-v3-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-
 
       - name: Cache ccache
         uses: actions/cache@v6
         with:
           path: ~/.ccache
-          key: ccache-v1-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', 'src/**', '.github/workflows/build.yml') }}
+          key: ccache-v1-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', 'src/**', '.github/workflows/build.yml') }}
           restore-keys: |
-            ccache-v1-linux-windows-clang-${{ env.IDA_SDK_STABLE_REF }}-
+            ccache-v1-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-
 
       - name: Set environment variables
         run: |

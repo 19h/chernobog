@@ -248,7 +248,9 @@ Notes:
 GitHub Actions builds native Linux ARM64, Windows x86-64, and Windows ARM64
 release artifacts. Windows releases use the Visual Studio generator and MSVC
 on native Windows runners, and CI verifies both the PE machine type and the
-base IDA 9.4 register-finder import. The ARM64 jobs select
+base IDA 9.4 register-finder import. Unix builds retain the current IDA 9.4 SDK
+patch and its matching runtime stubs; the ABI-compatible base SDK pin is
+Windows-specific. The ARM64 jobs select
 `aarch64-unknown-linux-gnu` and `aarch64-pc-windows-msvc`, respectively. Unix
 CI runs the portable CTest suite; Windows CI disables it because the SDK
 checkout does not include the IDA runtime DLL required by the catalog test

@@ -293,9 +293,10 @@ message(STATUS
 include(${CMAKE_CURRENT_LIST_DIR}/ida-cmake/bootstrap.cmake)
 find_package(idasdk REQUIRED)
 
-# CI pins the base IDA 9.4 release SDK so release binaries retain the original
-# 9.4 export set. Caller-owned IDASDK overrides must still resolve to that ABI
-# version; CI additionally rejects imports introduced by later SDK patches.
+# Windows CI pins the base IDA 9.4 release SDK so release DLLs retain the
+# original 9.4 export set. Caller-owned IDASDK overrides must still resolve to
+# that ABI version; Windows CI additionally rejects imports introduced by
+# later SDK patches.
 set(CHERNOBOG_REQUIRED_IDA_SDK_VERSION 940)
 if(NOT DEFINED IDASDK OR NOT EXISTS "${IDASDK}/include/pro.h")
     message(FATAL_ERROR
