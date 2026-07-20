@@ -252,9 +252,10 @@ base IDA 9.4 register-finder import. Unix builds retain the current IDA 9.4 SDK
 patch and its matching runtime stubs; the ABI-compatible base SDK pin is
 Windows-specific. The ARM64 jobs select
 `aarch64-unknown-linux-gnu` and `aarch64-pc-windows-msvc`, respectively. Unix
-CI runs the portable CTest suite; Windows CI disables it because the SDK
-checkout does not include the IDA runtime DLL required by the catalog test
-executable.
+CI runs the portable CTest suite; the macOS x86-64 job uses the native
+`macos-15-intel` runner instead of executing its tests through Rosetta. Windows
+CI disables the tests because the SDK checkout does not include the IDA runtime
+DLL required by the catalog test executable.
 
 ## Installation
 

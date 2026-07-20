@@ -58,9 +58,9 @@ jobs:
       matrix:
         include:
           # IDA stable builds
-          # Build x86_64 on the newer Apple Silicon image: Z3 4.16 uses
-          # C++20 aggregate initialization that older Xcode images reject.
-          - os: macos-latest
+          # Run x86_64 binaries natively. macos-latest is now ARM64, where
+          # clean Rosetta executions reproducibly SIGBUS in mba_catalog.
+          - os: macos-15-intel
             name: macos-x86_64
             cmake_arch: x86_64
             rust_target: x86_64-apple-darwin
