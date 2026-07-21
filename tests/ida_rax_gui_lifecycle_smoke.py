@@ -203,7 +203,8 @@ try:
 
     function_ea = int(os.environ["CHERNOBOG_SMOKE_EA"], 0)
     state["function_ea"] = function_ea
-    os.environ["CHERNOBOG_RAX_BATCH_EA"] = hex(function_ea)
+    # Direct API navigation is not wrapped in a named GUI action. Automatic
+    # flowchart/view ingress must still explore the function.
     state["timer"] = ida_kernwin.register_timer(250, lifecycle_tick)
     if state["timer"] is None:
         finish(13, "timer registration failed")

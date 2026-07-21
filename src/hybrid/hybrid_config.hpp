@@ -1,9 +1,10 @@
 /*
- * Runtime policy for one explicitly selected Hex-Rays function.
+ * Runtime policy for the one Hex-Rays function currently being processed.
  *
  * There are intentionally no database-sweep, epoch, worker-count, or automatic
- * mutation controls here.  A session owns one worker and replaces its pending
- * generation whenever the user selects another function.
+ * mutation controls here. A session owns one worker and replaces its pending
+ * generation whenever Hex-Rays requests another function, including during a
+ * sequential decompile-all operation.
  */
 #pragma once
 

@@ -2,21 +2,24 @@
 
 ## Scope invariant
 
-The integration has no whole-database emulation entry point. `Ctrl+Shift+E`
-snapshots the mapped image needed as memory context, but creates exactly one
-`FuncRange`: the function displayed in the active Hex-Rays view. One worker and
-one rax engine are owned by that per-IDB session. Selecting another function
-cancels and replaces the generation.
+The integration has no whole-database emulation job. Every automatic or manual
+invocation snapshots the mapped image needed as memory context, but creates
+exactly one `FuncRange`: the function currently submitted by Hex-Rays, or the
+displayed function for `Ctrl+Shift+E`. One worker and one rax engine are owned
+by that per-IDB session. Processing another function cancels and replaces the
+generation.
 
-The Hex-Rays flowchart callback is also a current-function prerequisite. Before
-the first whole-MBA deobfuscation pass for the focused function, Chernobog reuses exact
-fresh evidence, waits for a matching in-flight job, or synchronously explores
-that function. Background and "decompile all" requests are not admitted; batch
-callers must set `CHERNOBOG_RAX_BATCH_EA`. It does not explore callees or
-enumerate the database. Disabled
-or unavailable rax fails open to the existing deobfuscation pipeline; a bounded
-job failure or user cancellation is reported and likewise does not fabricate
-evidence.
+The Hex-Rays flowchart callback is also a per-function prerequisite. For every
+function submitted to Hex-Rays, Chernobog reuses exact fresh evidence, waits for
+a matching in-flight job, or synchronously explores that function. This applies
+equally to interactive, API, background, and "decompile all" clients. Functions
+are processed sequentially as Hex-Rays requests them; Chernobog still does not
+recursively explore callees, enumerate the database, or retain multiple live
+emulation engines. Cached pseudocode that produces no new flowchart is covered
+by ctree and pseudocode open/switch fallbacks, with a per-IDB completed-function
+set preventing repeated fallback work. Disabled or unavailable rax fails open
+to the existing deobfuscation pipeline; a bounded job failure or user
+cancellation is reported and likewise does not fabricate evidence.
 
 Database bytes, instruction boundaries, call-site tracker values, names, and
 segment permissions are read on IDA's main thread. The worker receives only an
@@ -208,16 +211,18 @@ an eligible concrete counterexample is falsification of the universal claim.
 
 ## Actions
 
-- Opening/decompiling the focused function automatically performs the bounded
-  current-function prerequisite immediately before its first whole-MBA
-  deobfuscation pass when no exact fresh evidence exists.
+- Every function submitted to Hex-Rays automatically performs the bounded
+  one-function prerequisite when no exact fresh evidence exists. This includes
+  decompile-all and cached pseudocode navigation.
 - `Ctrl+Shift+E`: explore the displayed function.
 - `Show current-function rax evidence`: print the typed summary and bounded
   detail (runs, decoder differences, branches, indirect targets, runtime
   strings) to the Output window.
 - `Cancel current-function rax exploration`: cancel queued runs; a rax call
   already in progress stops cooperatively at its next instruction boundary.
-- In IDA batch mode, set `CHERNOBOG_RAX_BATCH_EA` to an address in the target
+- Automatic batch decompilation needs no target environment variable: every
+  function passed to Hex-Rays is explored. For a standalone explicit batch
+  exploration, set `CHERNOBOG_RAX_BATCH_EA` to an address in the target
   function, load the plugin, and call `ida_loader.run_plugin(plugin, 0x524158)`
   (`0x524158` is ASCII `RAX`). Execution completes synchronously because
   text-mode IDA neither registers GUI actions nor provides a reliable UI timer
@@ -247,7 +252,7 @@ All values are read when an exploration starts.
 | `CHERNOBOG_RAX_IMPORT_SUMMARIES` | `1` | Known external-call models |
 | `CHERNOBOG_RAX_STRICT_PERMS` | `1` | Honor IDA segment permissions |
 | `CHERNOBOG_RAX_MAX_RUNTIME_BYTES` | `1048576` | Final dirty bytes per run, maximum 64 MiB |
-| `CHERNOBOG_RAX_BATCH_EA` | unset | Batch/text-mode only: address inside the target function (base autodetection, `0x` accepted); invalid or unset aborts with `BADADDR` |
+| `CHERNOBOG_RAX_BATCH_EA` | unset | Standalone explicit batch action only: address inside the target function (base autodetection, `0x` accepted); automatic Hex-Rays decompilation does not require it |
 | `CHERNOBOG_RAX_APPLY_ANALYSIS` | `1` | Guarded current-function evidence-to-IDB consumer; `0` retains reporting/display only |
 | `CHERNOBOG_RAX_APPLY_CREFS` | `1` | Apply resolved code cross-references; `0` suppresses this category |
 | `CHERNOBOG_RAX_APPLY_DREFS` | `1` | Apply resolved data cross-references |

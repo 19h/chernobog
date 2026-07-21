@@ -33,7 +33,9 @@ try:
         finish(3, "plugin load failed: %s" % plugin_path)
 
     function_ea = int(os.environ["CHERNOBOG_SMOKE_EA"], 0)
-    os.environ["CHERNOBOG_RAX_BATCH_EA"] = hex(function_ea)
+    # Automatic batch decompilation must trigger rax from Hex-Rays function
+    # ingress; the standalone CHERNOBOG_RAX_BATCH_EA action is intentionally
+    # not armed here.
     cfunc = ida_hexrays.decompile(
         function_ea, None, ida_hexrays.DECOMP_NO_CACHE
     )

@@ -306,11 +306,13 @@ To see what obfuscation types are present without making changes:
 
 ### Explore the Current Function With rax
 
-Before Chernobog's first whole-MBA deobfuscation pass for the focused function, it
-automatically reuses fresh rax evidence or performs one bounded synchronous
-exploration of that function. This prerequisite is scoped to the function being
-viewed; background/"decompile all" requests do not trigger rax, and callees are
-not recursively emulated.
+For every function submitted to Hex-Rays, Chernobog automatically reuses fresh
+rax evidence or performs one bounded synchronous exploration of that function.
+This includes interactive navigation, API/background decompilation, and
+decompile-all. Exploration remains sequential and scoped to the function Hex-Rays
+is currently processing; callees are not recursively emulated and Chernobog does
+not independently enumerate the database. Cached pseudocode navigation is
+covered even when Hex-Rays reuses a cfunc without rebuilding its flowchart.
 Consensus NUL-terminated runtime strings are materialized as transient literals
 in the current pseudocode; the rax projection itself does not copy final-memory
 bytes into the IDB.
@@ -323,10 +325,11 @@ evidence** for decoder/SMIR, concrete path, branch, indirect-target, memory, and
 Z3 cross-check evidence. Application-mode execution models bounded imports,
 stops before unknown external code, and treats synthetic Objective-C entry
 state or host summaries as exploratory rather than proof-complete. Use
-**Cancel current-function rax exploration** to stop queued runs. In IDA's
-text/batch mode, set `CHERNOBOG_RAX_BATCH_EA` to an address inside the target
-function and invoke the plugin with argument `0x524158` (ASCII `RAX`) to run the
-exploration synchronously. The complete report semantics, capability boundaries,
+**Cancel current-function rax exploration** to stop queued runs. Automatic
+text/batch decompilation explores every function without an address variable.
+For a standalone explicit batch exploration, set `CHERNOBOG_RAX_BATCH_EA` to an
+address inside the target function and invoke the plugin with argument
+`0x524158` (ASCII `RAX`). The complete report semantics, capability boundaries,
 and configuration are in [`RAX_HYBRID.md`](RAX_HYBRID.md).
 
 An analogous analysis-only probe exists for control-flow flattening: set
@@ -495,10 +498,10 @@ corresponding IDA and Hex-Rays analysis mechanisms:
   numforms before later optimizer passes consume the MBA.
 
 These static passes do not run rax or emulate the program. The separate rax
-path remains an explicit, bounded exploration of the focused function as
-described above. The early stages are also distinct from Chernobog's existing
-LOCOPT and final-ctree algorithms; similarity of an output rewrite does not
-make the analysis stages equivalent.
+path remains a bounded, one-function-at-a-time exploration for each function
+submitted to Hex-Rays, as described above. The early stages are also distinct
+from Chernobog's existing LOCOPT and final-ctree algorithms; similarity of an
+output rewrite does not make the analysis stages equivalent.
 
 For a native flowchart with `B` blocks, `E` edges, `I` instructions, and `K`
 marked call/pop sites, repair costs

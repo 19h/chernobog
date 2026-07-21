@@ -102,10 +102,12 @@ struct chernobog_plugmod_t final : public plugmod_t
     bool first_hexrays_callback = true;
     bool hikari_cfg_attempted = false;
     bool native_opaque_attempted = false;
-    // A flowchart callback does not identify its caller. Arm automatic rax
-    // only for the synchronous duration of an explicit GUI pseudocode action;
-    // get_screen_ea() alone is ambient UI state and must not authorize work.
-    ea_t user_decompile_target = BADADDR;
+    // Automatic rax is keyed by the function Hex-Rays actually hands us, not
+    // by ambient UI state. The completed set supplies a cached-view fallback:
+    // a function that did not generate a new flowchart still gets one bounded
+    // exploration when its pseudocode view is opened or switched to.
+    ea_t rax_pipeline_target = BADADDR;
+    std::set<ea_t> rax_completed_functions;
     qtimer_t activation_timer = nullptr;
     int activation_attempts = 0;
     std::unique_ptr<chernobog::ida_analysis::NativeAnalysisEngine>
@@ -199,50 +201,86 @@ static bool is_disabled_mode_enabled()
         && !env.empty() && env[0] != '0';
 }
 
-//--------------------------------------------------------------------------
-// Admit automatic rax work only for the function the user selected. This
-// prevents "decompile all" and background Hex-Rays requests from turning the
-// current-function prerequisite into a database sweep. Batch callers must name
-// the authoritative target explicitly, as the existing rax batch action does.
-//--------------------------------------------------------------------------
-static bool explicit_rax_target_matches(ea_t function_ea)
+static bool automatic_rax_succeeded(
+    chernobog::hybrid::EnsureExploredResult result)
 {
-    qstring raw;
-    ea_t requested = BADADDR;
-    if ( !qgetenv("CHERNOBOG_RAX_BATCH_EA", &raw) || raw.empty()
-      || !str2ea(&requested, raw.c_str(), BADADDR) )
+    return result == chernobog::hybrid::EnsureExploredResult::ALREADY_FRESH
+        || result == chernobog::hybrid::EnsureExploredResult::EXPLORED;
+}
+
+//--------------------------------------------------------------------------
+// Make the Hex-Rays function identity authoritative for automatic rax. Every
+// real decompilation calls this at flowchart ingress. Ctree/view callbacks use
+// it only as a fallback for cached functions that produced no new flowchart.
+// The session remains strictly one-function-at-a-time and bounded.
+//--------------------------------------------------------------------------
+static bool ensure_automatic_rax(
+    chernobog_plugmod_t *self,
+    ea_t function_ea,
+    const char *trigger,
+    bool keep_projection_open)
+{
+    if ( self == nullptr || function_ea == BADADDR
+      || is_disabled_mode_enabled() )
     {
         return false;
     }
-    const func_t *function = get_func(requested);
-    return function != nullptr && function->start_ea == function_ea;
+
+    const chernobog::hybrid::EnsureExploredResult result =
+        self->hybrid_session != nullptr
+        ? self->hybrid_session->ensure_explored(uint64_t(function_ea))
+        : chernobog::hybrid::EnsureExploredResult::UNAVAILABLE;
+    const bool succeeded = automatic_rax_succeeded(result);
+    if ( succeeded )
+    {
+        self->rax_completed_functions.insert(function_ea);
+        if ( !keep_projection_open )
+        {
+            chernobog::hybrid::hybrid_finish_deobfuscation_projection(
+                uint64_t(function_ea));
+        }
+    }
+    else if ( result == chernobog::hybrid::EnsureExploredResult::FAILED
+           || result == chernobog::hybrid::EnsureExploredResult::CANCELLED )
+    {
+        msg("[chernobog][rax] Automatic exploration for %a at %s did not produce fresh evidence; continuing\n",
+            function_ea, trigger != nullptr ? trigger : "unknown ingress");
+    }
+    debug_log(
+        "[chernobog][rax] automatic ingress=%s function=%llx result=%d\n",
+        trigger != nullptr ? trigger : "unknown",
+        static_cast<unsigned long long>(function_ea),
+        static_cast<int>(result));
+    return succeeded;
 }
 
-static bool is_user_pseudocode_action(const char *name)
+static void ensure_cached_rax_fallback(
+    chernobog_plugmod_t *self, ea_t function_ea, const char *trigger)
 {
-    return name != nullptr
-        && (streq(name, "hx:GenPseudo")
-         || streq(name, "hx:JumpPseudo")
-         || streq(name, "hx:JumpNewPseudo"));
-}
+    if ( self == nullptr || function_ea == BADADDR
+      || self->rax_completed_functions.count(function_ea) != 0 )
+    {
+        return;
+    }
+    if ( chernobog::hybrid::hybrid_current_evidence_is_fresh(
+            uint64_t(function_ea)) )
+    {
+        self->rax_completed_functions.insert(function_ea);
+        return;
+    }
 
-//--------------------------------------------------------------------------
-// Admit automatic rax work only while an explicit user pseudocode action owns
-// this function. Hex-Rays flowchart events have no caller metadata, and the
-// GUI screen address may remain on a function while unrelated plugins or
-// background/decompile-all clients request its decompilation. IDALIB and text
-// mode have no GUI action boundary and therefore require an explicit address.
-//--------------------------------------------------------------------------
-static bool is_focused_function(
-    const chernobog_plugmod_t *self, ea_t function_ea)
-{
-    if ( self == nullptr || function_ea == BADADDR )
-        return false;
-
-    if ( batch || is_ida_library() )
-        return explicit_rax_target_matches(function_ea);
-
-    return self->user_decompile_target == function_ea;
+    (void)ensure_automatic_rax(self, function_ea, trigger, false);
+    if ( self->hybrid_session != nullptr
+      && self->hybrid_session->take_analysis_changes() )
+    {
+        // This callback is later than flowchart ingress and cannot request a
+        // coherent MERR_REDO. Consume the signal here so it cannot leak into
+        // the next function; IDA already owns the applied xrefs/metadata.
+        debug_log(
+            "[chernobog][rax] late ingress=%s applied IDB analysis at %llx\n",
+            trigger != nullptr ? trigger : "unknown",
+            static_cast<unsigned long long>(function_ea));
+    }
 }
 
 //--------------------------------------------------------------------------
@@ -331,9 +369,10 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     // This is the earliest decompiler event, before microcode generation and
     // optinsn/optblock mutation. Recover native CFG first; if it changed, the
     // restarted flowchart will snapshot those exact bytes. Then synchronously
-    // ensure rax evidence only for the function whose MBA pipeline is about to
-    // run. IDA 9.4 normally emits the ea-based event; retain the legacy event
-    // because it is still part of the supported 9.4 callback ABI.
+    // ensure rax evidence for every function whose MBA pipeline is about to
+    // run. This event is authoritative for interactive, background, API, and
+    // decompile-all clients alike. IDA 9.4 normally emits the ea-based event;
+    // retain the legacy event because it remains part of the supported ABI.
     const bool is_flowchart_event = event == hxe_flowchart
 #if IDA_SDK_VERSION >= 940
         || event == hxe_flowchart_ea
@@ -383,21 +422,11 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             return MERR_REDO;
         }
 
-        if ( function_ea != BADADDR
-          && is_focused_function(self, function_ea)
-          && !is_disabled_mode_enabled()
-          && chernobog_function_requires_deobfuscation(function_ea) )
+        if ( function_ea != BADADDR && !is_disabled_mode_enabled() )
         {
-            const chernobog::hybrid::EnsureExploredResult result =
-                self->hybrid_session != nullptr
-                ? self->hybrid_session->ensure_explored(uint64_t(function_ea))
-                : chernobog::hybrid::EnsureExploredResult::UNAVAILABLE;
-            if ( result == chernobog::hybrid::EnsureExploredResult::FAILED
-              || result == chernobog::hybrid::EnsureExploredResult::CANCELLED )
-            {
-                msg("[chernobog][rax] Pre-deobfuscation exploration for %a did not produce fresh evidence; continuing without rax evidence\n",
-                    function_ea);
-            }
+            if ( ensure_automatic_rax(
+                    self, function_ea, "flowchart", true) )
+                self->rax_pipeline_target = function_ea;
             if ( self->hybrid_session != nullptr
               && self->hybrid_session->take_analysis_changes() )
             {
@@ -410,7 +439,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             }
         }
 
-        // The generic deobf call/pop repair belongs to this event: Hex-Rays
+        // The early call/pop repair belongs to this event: Hex-Rays
         // has built a native flowchart, but has not generated microcode yet.
         // It is intentionally independent of CHERNOBOG_AUTO and distinct from
         // the later MMAT_LOCOPT deobfuscation pipeline.
@@ -440,7 +469,32 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         }
     }
 
-    if ( event == hxe_populating_popup )
+    // A cached cfunc can be printed or attached to a pseudocode widget without
+    // rebuilding its flowchart. These late hooks close that coverage gap while
+    // the completed set prevents repeated exploration on refresh/navigation.
+    if ( event == hxe_func_printed )
+    {
+        cfunc_t *cfunc = va_arg(va, cfunc_t *);
+        if ( cfunc != nullptr )
+        {
+            ensure_cached_rax_fallback(
+                self, cfunc->entry_ea, "function text");
+        }
+    }
+    else if ( event == hxe_open_pseudocode
+           || event == hxe_switch_pseudocode )
+    {
+        vdui_t *vu = va_arg(va, vdui_t *);
+        if ( vu != nullptr && vu->cfunc != nullptr )
+        {
+            ensure_cached_rax_fallback(
+                self,
+                vu->cfunc->entry_ea,
+                event == hxe_open_pseudocode
+                    ? "pseudocode open" : "pseudocode switch");
+        }
+    }
+    else if ( event == hxe_populating_popup )
     {
         TWidget *widget = va_arg(va, TWidget *);
         TPopupMenu *popup = va_arg(va, TPopupMenu *);
@@ -562,6 +616,23 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     {
         cfunc_t *cfunc = va_arg(va, cfunc_t *);
         ctree_maturity_t maturity = va_argi(va, ctree_maturity_t);
+        // Defensive ingress for decompiler variants that omit both flowchart
+        // callbacks. CMAT_BUILT is the first ctree event and therefore still
+        // guarantees one bounded emulation before final pseudocode is emitted.
+        if ( cfunc != nullptr && maturity == CMAT_BUILT
+          && self->rax_pipeline_target != cfunc->entry_ea )
+        {
+            if ( ensure_automatic_rax(
+                    self, cfunc->entry_ea, "ctree built", true) )
+                self->rax_pipeline_target = cfunc->entry_ea;
+            if ( self->hybrid_session != nullptr
+              && self->hybrid_session->take_analysis_changes() )
+            {
+                debug_log(
+                    "[chernobog][rax] ctree fallback applied IDB analysis at %llx\n",
+                    static_cast<unsigned long long>(cfunc->entry_ea));
+            }
+        }
         // Run at CMAT_FINAL when the ctree is complete
         // Track by function to avoid infinite recursion if ctree modification triggers reprocessing
         if ( cfunc && maturity == CMAT_FINAL && is_auto_mode_enabled()
@@ -591,10 +662,9 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             }
         }
 
-        // Runtime plaintext is a current-function display feature, not an
-        // automatic whole-database optimization. Outside AUTO mode, run this
-        // handler only when this exact function owns display-eligible rax
-        // strings; background/decompile-all cfuncs therefore remain untouched.
+        // Runtime plaintext remains scoped to the one function currently in
+        // this Hex-Rays pipeline. Automatic decompile-all can reach this path,
+        // but each cfunc must own an exact display-eligible rax projection.
         const bool ctree_strings_ready = cfunc != nullptr
           && maturity == CMAT_FINAL && !is_disabled_mode_enabled();
         const bool runtime_strings_available = ctree_strings_ready
@@ -629,6 +699,8 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         {
             chernobog::hybrid::hybrid_finish_deobfuscation_projection(
                 uint64_t(cfunc->entry_ea));
+            if ( self->rax_pipeline_target == cfunc->entry_ea )
+                self->rax_pipeline_target = BADADDR;
         }
     }
     return 0;
@@ -647,7 +719,8 @@ static bool is_hexrays_plugin(const plugin_t *entry)
 
 void chernobog_plugmod_t::clear_processing_state()
 {
-    user_decompile_target = BADADDR;
+    rax_pipeline_target = BADADDR;
+    rax_completed_functions.clear();
     ctree_const_folded.clear();
     ctree_switch_folded.clear();
     ctree_indirect_call_processed.clear();
@@ -931,22 +1004,7 @@ static ssize_t idaapi ui_callback(void *ud, int event_id, va_list va)
     if ( self == nullptr || get_dbctx_id() != self->database_id )
         return 0;
 
-    if ( event_id == ui_preprocess_action )
-    {
-        const char *name = va_arg(va, const char *);
-        self->user_decompile_target = BADADDR;
-        if ( is_user_pseudocode_action(name) )
-        {
-            const func_t *function = get_func(get_screen_ea());
-            if ( function != nullptr )
-                self->user_decompile_target = function->start_ea;
-        }
-    }
-    else if ( event_id == ui_postprocess_action )
-    {
-        self->user_decompile_target = BADADDR;
-    }
-    else if ( event_id == ui_ready_to_run || event_id == ui_database_inited )
+    if ( event_id == ui_ready_to_run || event_id == ui_database_inited )
     {
         if ( !self->activate() )
             self->schedule_activation_retry();
