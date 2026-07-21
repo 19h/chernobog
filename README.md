@@ -304,6 +304,11 @@ To see what obfuscation types are present without making changes:
    - Or press `Ctrl+Shift+A`
 2. Check the IDA output window for the analysis results
 
+Detection flags are structural candidates, not transformation counts. A
+candidate for which no guarded rewrite matches is reported as `No
+transformations applied`. When rewrites do apply, the total is the sum of the
+nonzero per-pass lines; zero-valued categories are omitted.
+
 ### Explore the Current Function With rax
 
 For every function submitted to Hex-Rays, Chernobog automatically reuses fresh

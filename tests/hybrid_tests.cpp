@@ -219,6 +219,16 @@ void test_function_profiles_and_call_policy()
         && !native.explicit_arguments_known,
         "native name must not fabricate an arity");
 
+  ProgramImage identity = arm64_image({
+      0xC0, 0x03, 0x5F, 0xD6 }, native);
+  const uint64_t unknown_arity_hash = identity.entries.front().byte_hash;
+  identity.entries.front().profile.explicit_arguments = 2;
+  identity.entries.front().profile.explicit_arguments_known = true;
+  const uint64_t known_arity_hash = hybrid_function_byte_hash(
+      identity, identity.entries.front());
+  check(unknown_arity_hash != known_arity_hash,
+        "entry-profile refinement must invalidate proof execution identity");
+
   check(hybrid_canonical_call_name("__imp__objc_retain") == "objc_retain",
         "import-prefix canonicalization");
   const auto retain = hybrid_classify_call_summary_name("_objc_retain");

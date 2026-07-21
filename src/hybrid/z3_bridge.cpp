@@ -26,6 +26,7 @@ struct DeobfuscationProjection
   std::shared_ptr<const TargetEvidence> source;
   std::vector<RuntimeStringCandidate> runtime_strings;
   std::vector<FunctionChunkIdentity> function_identity;
+  HybridFunctionProfile function_profile;
   std::map<uint64_t, uint8_t> authorized_function_bytes;
   bool sealing_open = true;
 };
@@ -78,6 +79,20 @@ std::string address_string(uint64_t address)
   out << "0x" << std::uppercase << std::hex << address;
   return out.str();
 }
+
+// Only projection sealing may ignore an in-flight Hex-Rays refinement; it
+// captures the refined profile and all later consumers compare it exactly.
+enum class EntryProfilePolicy
+{
+  REQUIRE_EXACT,
+  IGNORE_FOR_DISPLAY_ONLY,
+};
+
+struct CurrentFunctionShape
+{
+  std::vector<range_t> chunks;
+  HybridFunctionProfile profile;
+};
 
 template <typename Identity>
 bool byte_identity_matches(const Identity &expected, const char *kind,
@@ -136,11 +151,14 @@ bool byte_identity_matches(const Identity &expected, const char *kind,
 bool current_function_shape_matches(
     const TargetEvidence &evidence,
     const std::vector<FunctionChunkIdentity> &expected_identity,
-    std::vector<range_t> *current_chunks,
+    const HybridFunctionProfile &expected_profile,
+    EntryProfilePolicy profile_policy,
+    CurrentFunctionShape *current_shape,
     std::string *reason = nullptr)
 {
   func_t *function = get_func(ea_t(evidence.scope.function_start));
-  if ( function == nullptr || uint64_t(function->start_ea) != evidence.scope.function_start )
+  if ( function == nullptr
+    || uint64_t(function->start_ea) != evidence.scope.function_start )
   {
     set_reason(reason, "selected function no longer exists at "
         + address_string(evidence.scope.function_start));
@@ -168,17 +186,19 @@ bool current_function_shape_matches(
       current_profile.explicit_arguments_known = true;
     }
   }
-  const HybridFunctionProfile &expected_profile = evidence.function_profile;
-  if ( current_profile.flavor != expected_profile.flavor
-    || current_profile.name != expected_profile.name
-    || current_profile.objc_selector != expected_profile.objc_selector
-    || current_profile.explicit_arguments != expected_profile.explicit_arguments
-    || current_profile.explicit_arguments_known
-       != expected_profile.explicit_arguments_known )
+  if ( profile_policy == EntryProfilePolicy::REQUIRE_EXACT )
   {
-    set_reason(reason, "function name/type-derived entry profile changed at "
-        + address_string(evidence.scope.function_start));
-    return false;
+    if ( current_profile.flavor != expected_profile.flavor
+      || current_profile.name != expected_profile.name
+      || current_profile.objc_selector != expected_profile.objc_selector
+      || current_profile.explicit_arguments != expected_profile.explicit_arguments
+      || current_profile.explicit_arguments_known
+         != expected_profile.explicit_arguments_known )
+    {
+      set_reason(reason, "function name/type-derived entry profile changed at "
+          + address_string(evidence.scope.function_start));
+      return false;
+    }
   }
 
   std::vector<range_t> chunks;
@@ -206,18 +226,24 @@ bool current_function_shape_matches(
       return false;
     }
   }
-  if ( current_chunks != nullptr )
-    *current_chunks = std::move(chunks);
+  if ( current_shape != nullptr )
+  {
+    current_shape->chunks = std::move(chunks);
+    current_shape->profile = std::move(current_profile);
+  }
   return true;
 }
 
 bool current_function_identity_matches(
     const TargetEvidence &evidence,
     const std::vector<FunctionChunkIdentity> &expected_identity,
+    const HybridFunctionProfile &expected_profile,
+    EntryProfilePolicy profile_policy,
     std::string *reason = nullptr)
 {
   if ( !current_function_shape_matches(
-          evidence, expected_identity, nullptr, reason) )
+          evidence, expected_identity, expected_profile, profile_policy,
+          nullptr, reason) )
   {
     return false;
   }
@@ -232,31 +258,35 @@ bool current_function_identity_matches(const TargetEvidence &evidence,
                                        std::string *reason = nullptr)
 {
   return current_function_identity_matches(
-      evidence, evidence.function_identity, reason);
+      evidence, evidence.function_identity, evidence.function_profile,
+      EntryProfilePolicy::REQUIRE_EXACT, reason);
 }
 
 bool capture_current_function_identity(
     const TargetEvidence &source,
     std::vector<FunctionChunkIdentity> *captured,
+    HybridFunctionProfile *captured_profile,
+    EntryProfilePolicy profile_policy,
     std::string *reason = nullptr)
 {
-  if ( captured == nullptr )
+  if ( captured == nullptr || captured_profile == nullptr )
   {
-    set_reason(reason, "missing function-identity destination");
+    set_reason(reason, "missing function-identity/profile destination");
     return false;
   }
-  std::vector<range_t> chunks;
+  CurrentFunctionShape shape;
   if ( !current_function_shape_matches(
-          source, source.function_identity, &chunks, reason) )
+          source, source.function_identity, source.function_profile,
+          profile_policy, &shape, reason) )
   {
     return false;
   }
 
   std::vector<FunctionChunkIdentity> result;
-  result.reserve(chunks.size());
-  for ( size_t index = 0; index < chunks.size(); ++index )
+  result.reserve(shape.chunks.size());
+  for ( size_t index = 0; index < shape.chunks.size(); ++index )
   {
-    const range_t &chunk = chunks[index];
+    const range_t &chunk = shape.chunks[index];
     const size_t size = size_t(chunk.end_ea - chunk.start_ea);
     FunctionChunkIdentity identity;
     identity.start = uint64_t(chunk.start_ea);
@@ -273,6 +303,7 @@ bool capture_current_function_identity(
     result.push_back(std::move(identity));
   }
   *captured = std::move(result);
+  *captured_profile = std::move(shape.profile);
   return true;
 }
 
@@ -400,6 +431,7 @@ bool hybrid_begin_deobfuscation_projection(uint64_t function_start)
   projection->source = evidence;
   projection->runtime_strings = hybrid_consensus_runtime_strings(*evidence);
   projection->function_identity = evidence->function_identity;
+  projection->function_profile = evidence->function_profile;
 
   Registry &state = registry();
   std::lock_guard<std::mutex> lock(state.mutex);
@@ -518,9 +550,11 @@ bool hybrid_seal_deobfuscation_projection(uint64_t function_start)
   }
 
   std::vector<FunctionChunkIdentity> sealed_identity;
+  HybridFunctionProfile sealed_profile;
   std::string rejection_reason;
   if ( !capture_current_function_identity(
-          *projection->source, &sealed_identity, &rejection_reason) )
+          *projection->source, &sealed_identity, &sealed_profile,
+          EntryProfilePolicy::IGNORE_FOR_DISPLAY_ONLY, &rejection_reason) )
   {
     Registry &state = registry();
     std::lock_guard<std::mutex> lock(state.mutex);
@@ -594,6 +628,7 @@ bool hybrid_seal_deobfuscation_projection(uint64_t function_start)
 
   auto sealed = std::make_shared<DeobfuscationProjection>(*projection);
   sealed->function_identity = std::move(sealed_identity);
+  sealed->function_profile = std::move(sealed_profile);
   sealed->authorized_function_bytes.clear();
   {
     Registry &state = registry();
@@ -679,7 +714,9 @@ hybrid_current_runtime_strings_for_decompilation(uint64_t function_start)
     || !projection->source
     || projection->source->scope.function_start != function_start
     || !current_function_identity_matches(
-          *projection->source, projection->function_identity) )
+          *projection->source, projection->function_identity,
+          projection->function_profile,
+          EntryProfilePolicy::REQUIRE_EXACT) )
   {
     return {};
   }

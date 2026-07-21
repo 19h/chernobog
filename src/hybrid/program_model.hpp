@@ -132,8 +132,8 @@ struct FuncRange
   HybridEntryMode entry_mode = HybridEntryMode::DEFAULT;
   HybridFunctionProfile profile;
 
-  // Deterministic hash of entry execution mode, chunk topology,
-  // initialized-byte state, and bytes.
+  // Deterministic hash of the name/type-derived entry profile, entry execution
+  // mode, chunk topology, initialized-byte state, and bytes.
   // The hash is rebase-stable: chunk locations are represented relative to the
   // function entry. See hybrid_function_byte_hash().
   uint64_t byte_hash = 0;
@@ -184,10 +184,10 @@ struct ProgramImage
   const FuncRange *function_at(uint64_t ea) const;
 };
 
-// Stable, IDA-independent identity for a function's current bytes in `img`.
-// It includes entry execution mode, every chunk, holes/uninitialized bytes,
-// and relative chunk topology, but not absolute addresses (so rebasing does
-// not change the hash).
+// Stable, IDA-independent execution identity for a function in `img`.
+// It includes the entry profile and execution mode plus every chunk,
+// holes/uninitialized bytes, and relative chunk topology, but not absolute
+// addresses (so rebasing does not change the hash).
 uint64_t hybrid_function_byte_hash(const ProgramImage &img, const FuncRange &func);
 uint64_t hybrid_program_content_hash(const ProgramImage &img);
 

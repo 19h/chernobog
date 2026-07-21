@@ -527,7 +527,7 @@ static int run_deobfuscation_passes(
     // Detect what obfuscations are present
     ctx->detected_obf = chernobog_t::detect_obfuscations(mba);
 
-    deobf::log("[chernobog] Detected obfuscations: 0x%x\n", ctx->detected_obf);
+    deobf::log("[chernobog] Obfuscation candidates: 0x%x\n", ctx->detected_obf);
 
     if ( !replay_only && (ctx->detected_obf & OBF_STRING_ENC) )
     {
@@ -551,7 +551,7 @@ static int run_deobfuscation_passes(
     }
     if ( ctx->detected_obf & OBF_SUBSTITUTION )
     {
-        deobf::log("[chernobog] - Instruction substitution detected\n");
+        deobf::log("[chernobog] - Instruction substitution/MBA candidate\n");
     }
     if ( ctx->detected_obf & OBF_SAVEDREGS )
     {
@@ -584,108 +584,133 @@ static int run_deobfuscation_passes(
 
     // Apply deobfuscation passes in order
     int total_changes = 0;
+    std::vector<std::pair<const char *, int>> applied_changes;
+    const auto record_changes = [&](const char *label, int changes)
+    {
+        if ( changes <= 0 )
+            return;
+        total_changes += changes;
+        applied_changes.emplace_back(label, changes);
+    };
 
     // Collapse compiler-lowered select cascades before general CFG passes.
     // This prevents thousands of two-way blocks from reaching ctree.
     if ( ctx->detected_obf & OBF_SELECT_CHAIN )
     {
-        total_changes += select_chain_handler_t::run(mba, ctx);
+        record_changes("Select chains collapsed",
+                       select_chain_handler_t::run(mba, ctx));
     }
 
     if ( ctx->detected_obf & OBF_VM_MBA )
     {
-        total_changes += vm_mba_handler_t::run(mba, ctx);
+        record_changes("VM/MBA expressions simplified",
+                       vm_mba_handler_t::run(mba, ctx));
     }
 
     // 1. First merge split blocks (simplest transformation)
     if ( ctx->detected_obf & OBF_SPLIT_BLOCKS )
     {
-        total_changes += chernobog_t::merge_blocks(mba, ctx);
+        record_changes("Blocks merged", chernobog_t::merge_blocks(mba, ctx));
     }
 
     // 2. Decrypt strings
     if ( !replay_only && (ctx->detected_obf & OBF_STRING_ENC) )
     {
-        total_changes += chernobog_t::decrypt_strings(mba, ctx);
+        record_changes("Strings decrypted",
+                       chernobog_t::decrypt_strings(mba, ctx));
     }
 
     // 2.5. Reconstruct stack strings
     if ( ctx->detected_obf & OBF_STACK_STRING )
     {
-        total_changes += stack_string_handler_t::run(mba, ctx);
+        record_changes("Stack strings reconstructed",
+                       stack_string_handler_t::run(mba, ctx));
     }
 
     // 3. Decrypt constants
     if ( ctx->detected_obf & OBF_CONST_ENC )
     {
-        total_changes += chernobog_t::decrypt_consts(mba, ctx);
+        record_changes("Constants decrypted",
+                       chernobog_t::decrypt_consts(mba, ctx));
     }
 
     // 3.5. Inline global constants
     if ( ctx->detected_obf & OBF_GLOBAL_CONST )
     {
-        total_changes += global_const_handler_t::run(mba, ctx);
+        record_changes("Global constants inlined",
+                       global_const_handler_t::run(mba, ctx));
     }
-    total_changes += global_const_handler_t::remove_write_only_stores(mba);
+    record_changes("Write-only stores removed",
+                   global_const_handler_t::remove_write_only_stores(mba));
 
     // 3.6. Resolve indirect pointer references
     if ( !replay_only && (ctx->detected_obf & OBF_PTR_INDIRECT) )
     {
-        total_changes += ptr_resolve_handler_t::run(mba, ctx);
+        record_changes("Pointer references resolved",
+                       ptr_resolve_handler_t::run(mba, ctx));
     }
 
     // 4. Simplify substituted expressions
     if ( ctx->detected_obf & OBF_SUBSTITUTION )
     {
-        total_changes += chernobog_t::simplify_substitutions(mba, ctx);
+        record_changes("Substituted expressions simplified",
+                       chernobog_t::simplify_substitutions(mba, ctx));
     }
 
     // 5. Resolve indirect branches
     if ( ctx->detected_obf & OBF_INDIRECT_BR )
     {
-        total_changes += chernobog_t::resolve_indirect_branches(mba, ctx);
+        record_changes("Indirect branches resolved",
+                       chernobog_t::resolve_indirect_branches(mba, ctx));
     }
 
     // 5.1. Resolve indirect calls (Hikari IndirectCall obfuscation)
     if ( ctx->detected_obf & OBF_INDIRECT_CALL )
     {
-        total_changes += indirect_call_handler_t::run(mba, ctx);
+        record_changes("Indirect calls resolved",
+                       indirect_call_handler_t::run(mba, ctx));
     }
 
     // 5.5. Resolve identity function calls
     if ( ctx->detected_obf & OBF_IDENTITY_CALL )
     {
-        total_changes += identity_call_handler_t::run(mba, ctx);
+        record_changes("Identity calls resolved",
+                       identity_call_handler_t::run(mba, ctx));
     }
 
     // 5.6. Resolve Hikari function wrappers
     if ( ctx->detected_obf & OBF_FUNC_WRAPPER )
     {
-        total_changes += hikari_wrapper_handler_t::run(mba, ctx);
+        record_changes("Function wrappers resolved",
+                       hikari_wrapper_handler_t::run(mba, ctx));
     }
 
     // 5.7. Resolve savedregs (register demotion) patterns
     if ( ctx->detected_obf & OBF_SAVEDREGS )
     {
-        total_changes += savedregs_handler_t::run(mba, ctx);
+        record_changes("Saved-register references resolved",
+                       savedregs_handler_t::run(mba, ctx));
     }
 
     // 5.8. Resolve obfuscated ObjC method calls
     if ( ctx->detected_obf & OBF_OBJC_OBFUSC )
     {
-        total_changes += objc_resolve_handler_t::run(mba, ctx);
+        record_changes("Objective-C calls resolved",
+                       objc_resolve_handler_t::run(mba, ctx));
     }
 
     // 6. Remove bogus control flow
     if ( ctx->detected_obf & OBF_BOGUS_CF )
     {
-        total_changes += chernobog_t::remove_bogus_cf(mba, ctx);
+        record_changes("Bogus branches removed",
+                       chernobog_t::remove_bogus_cf(mba, ctx));
     }
 
     // 7. Deflatten control flow (most complex, do last)
     if ( ctx->detected_obf & OBF_FLATTENED )
     {
-        total_changes += chernobog_t::deflatten(mba, ctx);
+        record_changes("Flattened control flow rewritten",
+                       chernobog_t::deflatten(mba, ctx));
     }
 
     // 8. Ctree-level string analysis (runs on cfunc if available)
@@ -698,20 +723,18 @@ static int run_deobfuscation_passes(
         chernobog::hybrid::hybrid_seal_deobfuscation_projection(
             uint64_t(ctx->func_ea));
         int str_changes = ctree_string_decrypt_handler_t::run(ctx->cfunc, ctx);
-        if ( str_changes > 0 )
-        {
-            total_changes += str_changes;
-            deobf::log("[chernobog] Ctree string analysis: %d strings found\n", str_changes);
-        }
+        record_changes("Ctree string literals materialized", str_changes);
+    }
+
+    if ( total_changes == 0 )
+    {
+        deobf::log("[chernobog] Deobfuscation complete. No transformations applied\n");
+        return 0;
     }
 
     deobf::log("[chernobog] Deobfuscation complete. Total changes: %d\n", total_changes);
-    deobf::log("[chernobog]   Blocks merged: %d\n", ctx->blocks_merged);
-    deobf::log("[chernobog]   Branches simplified: %d\n", ctx->branches_simplified);
-    deobf::log("[chernobog]   Strings decrypted: %d\n", ctx->strings_decrypted);
-    deobf::log("[chernobog]   Constants decrypted: %d\n", ctx->consts_decrypted);
-    deobf::log("[chernobog]   Expressions simplified: %d\n", ctx->expressions_simplified);
-    deobf::log("[chernobog]   Indirect calls resolved: %d\n", ctx->indirect_resolved);
+    for ( const auto &entry : applied_changes )
+        deobf::log("[chernobog]   %s: %d\n", entry.first, entry.second);
     return total_changes;
 }
 
@@ -766,14 +789,14 @@ void chernobog_t::analyze_function(ea_t ea)
     uint32_t obf = detect_obfuscations(cfunc->mba);
 
     msg("[chernobog] Analysis of %a:\n", ea);
-    msg("  Detected obfuscations: 0x%x\n", obf);
+    msg("  Obfuscation candidates: 0x%x\n", obf);
 
     if ( obf & OBF_FLATTENED ) msg("  - Control flow flattening\n");
     if ( obf & OBF_BOGUS_CF ) msg("  - Bogus control flow\n");
     if ( obf & OBF_STRING_ENC ) msg("  - String encryption\n");
     if ( obf & OBF_CONST_ENC ) msg("  - Constant encryption\n");
     if ( obf & OBF_INDIRECT_BR ) msg("  - Indirect branches\n");
-    if ( obf & OBF_SUBSTITUTION ) msg("  - Instruction substitution\n");
+    if ( obf & OBF_SUBSTITUTION ) msg("  - Instruction substitution/MBA candidate\n");
     if ( obf & OBF_SPLIT_BLOCKS ) msg("  - Split basic blocks\n");
     if ( obf & OBF_FUNC_WRAPPER ) msg("  - Hikari function wrappers\n");
     if ( obf & OBF_IDENTITY_CALL ) msg("  - Identity function call obfuscation\n");

@@ -96,10 +96,15 @@ summaries. It never calls the IDA SDK.
     window while the original evidence remains stale for branch/Z3 proof
     consumers. Every changed function byte must also belong to an explicitly
     registered Chernobog patch site and equal its registered result. Later or
-    unregistered function-byte edits, topology changes, and entry-profile
-    changes fail the sealed identity check. Consumed data-byte
-    changes are also never promoted to proof freshness. AArch32 entry
-    ARM/Thumb state is compared.
+    unregistered function-byte edits and topology changes fail the sealed
+    identity check. Entry-profile changes always invalidate proof evidence
+    because they affect ABI seeding. During the bounded display-only window,
+    however, Hex-Rays name/prototype refinement does not discard plaintext
+    already witnessed by rax when function bytes, topology, and entry mode
+    still match. The refined profile is captured by the seal and must match
+    later display requests exactly; this exception never promotes the source
+    evidence to proof freshness. Consumed data-byte changes are also never
+    promoted to proof freshness. AArch32 entry ARM/Thumb state is compared.
 14. **Reproducibility and regression evidence**: seeds, source-level input
     order, run identifiers, unique sites, observation multiplicities, decoder
     mismatch categories, and exact consumed ranges are retained so two runs or

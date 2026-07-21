@@ -40,7 +40,11 @@ bool hybrid_current_evidence_is_fresh(uint64_t function_start);
 // cross-run runtime literals may survive through this explicitly bounded
 // transformation window. All operations are main-thread only. A failed seal
 // invalidates the window; changed function bytes also require exact patch-site
-// authorization. Finish prevents any later resealing.
+// authorization. Hex-Rays name/prototype refinement is ignored only by this
+// display lease because it cannot change already-witnessed plaintext or the
+// sealed bytes. The refined profile is captured by each seal and matched
+// exactly on later display requests; proof consumers continue to require the
+// original exact entry profile. Finish prevents any later resealing.
 bool hybrid_begin_deobfuscation_projection(uint64_t function_start);
 void hybrid_abandon_deobfuscation_projection(uint64_t function_start);
 bool hybrid_authorize_deobfuscation_patch(
