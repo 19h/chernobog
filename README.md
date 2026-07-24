@@ -292,10 +292,13 @@ Manual invocation also retries activation.
 
 ### Automatic Mode
 
-Set the environment variable `CHERNOBOG_AUTO=1` to automatically deobfuscate
-functions when they are decompiled. When the variable is unset, auto mode can
-also be enabled by creating an empty `~/.chernobog_auto` marker file; an explicit
-`CHERNOBOG_AUTO` value (including `0`) overrides the marker.
+Set the environment variable `CHERNOBOG_AUTO=1` to automatically run bounded
+rax emulation and deobfuscate functions when they are submitted to Hex-Rays.
+When the variable is unset, auto mode can also be enabled by creating an empty
+`~/.chernobog_auto` marker file; an explicit `CHERNOBOG_AUTO` value (including
+`0`) overrides the marker. With auto mode disabled, native IDA and early
+Hex-Rays analysis enrichment remains active, while emulation and deobfuscation
+require the explicit rax and **Deobfuscate (Chernobog)** actions.
 
 ### Analyze Without Modifying
 
@@ -311,13 +314,14 @@ nonzero per-pass lines; zero-valued categories are omitted.
 
 ### Explore the Current Function With rax
 
-For every function submitted to Hex-Rays, Chernobog automatically reuses fresh
-rax evidence or performs one bounded synchronous exploration of that function.
+In automatic mode, every function submitted to Hex-Rays reuses fresh rax
+evidence or performs one bounded synchronous exploration of that function.
 This includes interactive navigation, API/background decompilation, and
-decompile-all. Exploration remains sequential and scoped to the function Hex-Rays
-is currently processing; callees are not recursively emulated and Chernobog does
-not independently enumerate the database. Cached pseudocode navigation is
-covered even when Hex-Rays reuses a cfunc without rebuilding its flowchart.
+decompile-all. Exploration remains sequential and scoped to the function
+Hex-Rays is currently processing; callees are not recursively emulated and
+Chernobog does not independently enumerate the database. Cached pseudocode
+navigation is covered even when Hex-Rays reuses a cfunc without rebuilding its
+flowchart.
 Consensus NUL-terminated runtime strings are materialized as transient literals
 in the current pseudocode; the rax projection itself does not copy final-memory
 bytes into the IDB.
@@ -330,8 +334,9 @@ evidence** for decoder/SMIR, concrete path, branch, indirect-target, memory, and
 Z3 cross-check evidence. Application-mode execution models bounded imports,
 stops before unknown external code, and treats synthetic Objective-C entry
 state or host summaries as exploratory rather than proof-complete. Use
-**Cancel current-function rax exploration** to stop queued runs. Automatic
-text/batch decompilation explores every function without an address variable.
+**Cancel current-function rax exploration** to stop queued runs. With
+`CHERNOBOG_AUTO=1`, automatic text/batch decompilation explores every function
+without an address variable.
 For a standalone explicit batch exploration, set `CHERNOBOG_RAX_BATCH_EA` to an
 address inside the target function and invoke the plugin with argument
 `0x524158` (ASCII `RAX`). The complete report semantics, capability boundaries,
@@ -348,7 +353,7 @@ without applying any deobfuscation.
 
 | Variable | Description |
 |----------|-------------|
-| `CHERNOBOG_AUTO=1` | Auto-deobfuscate on decompilation |
+| `CHERNOBOG_AUTO=1` | Automatically run bounded rax emulation and deobfuscation for every function submitted to Hex-Rays |
 | `CHERNOBOG_VERBOSE=1` | Enable verbose logging |
 | `CHERNOBOG_DEBUG=1` | Enable debug output to `/tmp/chernobog_debug.log` |
 | `CHERNOBOG_RESET=1` | Clear decompiler cache on startup |

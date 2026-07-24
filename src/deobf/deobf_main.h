@@ -64,6 +64,14 @@ void deobf_init();
 void deobf_done();
 void deobf_attach_popup(TWidget *widget, TPopupMenu *popup, vdui_t *vu);
 
+// Configure automatic Hex-Rays mutation for this database. The optimizer
+// handlers remain installed so explicit per-function actions keep working.
+void chernobog_configure_automatic_deobfuscation(bool enabled);
+// Admit one function after an explicit Deobfuscate action.
+void chernobog_request_function_deobfuscation(ea_t func_ea);
+// True when auto mode or an explicit request admits this function.
+bool chernobog_function_deobfuscation_enabled(ea_t func_ea);
+
 // Clear tracking for a function to allow re-deobfuscation
 void chernobog_clear_function_tracking(ea_t func_ea);
 // Begin tracking a newly generated MBA. This resets only transient optimizer

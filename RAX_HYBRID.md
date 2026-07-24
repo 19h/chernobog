@@ -9,17 +9,18 @@ displayed function for `Ctrl+Shift+E`. One worker and one rax engine are owned
 by that per-IDB session. Processing another function cancels and replaces the
 generation.
 
-The Hex-Rays flowchart callback is also a per-function prerequisite. For every
-function submitted to Hex-Rays, Chernobog reuses exact fresh evidence, waits for
-a matching in-flight job, or synchronously explores that function. This applies
-equally to interactive, API, background, and "decompile all" clients. Functions
-are processed sequentially as Hex-Rays requests them; Chernobog still does not
-recursively explore callees, enumerate the database, or retain multiple live
-emulation engines. Cached pseudocode that produces no new flowchart is covered
-by ctree and pseudocode open/switch fallbacks, with a per-IDB completed-function
-set preventing repeated fallback work. Disabled or unavailable rax fails open
-to the existing deobfuscation pipeline; a bounded job failure or user
-cancellation is reported and likewise does not fabricate evidence.
+In auto mode, the Hex-Rays flowchart callback is also a per-function
+prerequisite. For every function submitted to Hex-Rays, Chernobog reuses exact
+fresh evidence, waits for a matching in-flight job, or synchronously explores
+that function. This applies equally to interactive, API, background, and
+"decompile all" clients. Functions are processed sequentially as Hex-Rays
+requests them; Chernobog still does not recursively explore callees, enumerate
+the database, or retain multiple live emulation engines. Cached pseudocode that
+produces no new flowchart is covered by ctree and pseudocode open/switch
+fallbacks, with a per-IDB completed-function set preventing repeated fallback
+work. Disabled or unavailable rax fails open to the existing deobfuscation
+pipeline; a bounded job failure or user cancellation is reported and likewise
+does not fabricate evidence.
 
 Database bytes, instruction boundaries, call-site tracker values, names, and
 segment permissions are read on IDA's main thread. The worker receives only an
@@ -216,22 +217,22 @@ an eligible concrete counterexample is falsification of the universal claim.
 
 ## Actions
 
-- Every function submitted to Hex-Rays automatically performs the bounded
-  one-function prerequisite when no exact fresh evidence exists. This includes
-  decompile-all and cached pseudocode navigation.
+- With `CHERNOBOG_AUTO=1`, every function submitted to Hex-Rays automatically
+  performs the bounded one-function prerequisite when no exact fresh evidence
+  exists. This includes decompile-all and cached pseudocode navigation.
 - `Ctrl+Shift+E`: explore the displayed function.
 - `Show current-function rax evidence`: print the typed summary and bounded
   detail (runs, decoder differences, branches, indirect targets, runtime
   strings) to the Output window.
 - `Cancel current-function rax exploration`: cancel queued runs; a rax call
   already in progress stops cooperatively at its next instruction boundary.
-- Automatic batch decompilation needs no target environment variable: every
-  function passed to Hex-Rays is explored. For a standalone explicit batch
-  exploration, set `CHERNOBOG_RAX_BATCH_EA` to an address in the target
-  function, load the plugin, and call `ida_loader.run_plugin(plugin, 0x524158)`
-  (`0x524158` is ASCII `RAX`). Execution completes synchronously because
-  text-mode IDA neither registers GUI actions nor provides a reliable UI timer
-  loop.
+- With `CHERNOBOG_AUTO=1`, automatic batch decompilation needs no target
+  environment variable: every function passed to Hex-Rays is explored. For a
+  standalone explicit batch exploration, set `CHERNOBOG_RAX_BATCH_EA` to an
+  address in the target function, load the plugin, and call
+  `ida_loader.run_plugin(plugin, 0x524158)` (`0x524158` is ASCII `RAX`).
+  Execution completes synchronously because text-mode IDA neither registers
+  GUI actions nor provides a reliable UI timer loop.
 
 ## Runtime configuration
 

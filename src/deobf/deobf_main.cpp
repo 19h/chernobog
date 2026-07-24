@@ -19,6 +19,7 @@
 #include "handlers/indirect_call.h"
 #include "handlers/resolver_call_args.h"
 #include "handlers/ctree_string_decrypt.h"
+#include "execution_policy.hpp"
 #include "rules/rule_registry.h"
 #include "../hybrid/session.hpp"
 #include "../hybrid/z3_bridge.hpp"
@@ -47,6 +48,7 @@ struct deobf_module_state_t
     chernobog_t *deobf = nullptr;
     chernobog_optblock_t *optblock = nullptr;
     bool active = false;
+    chernobog::deobf::execution_policy_t execution_policy;
     ea_t last_inactive_ea = BADADDR;
     std::set<std::pair<ea_t, int>> optblock_processed;
     uint64_t next_mba_generation = 0;
@@ -67,6 +69,27 @@ static deobf_module_state_t *get_deobf_state()
 
 static void register_deobf_actions();
 static void unregister_deobf_actions();
+
+void chernobog_configure_automatic_deobfuscation(bool enabled)
+{
+    deobf_module_state_t *state = get_deobf_state();
+    if ( state != nullptr )
+        state->execution_policy.configure_automatic(enabled);
+}
+
+void chernobog_request_function_deobfuscation(ea_t func_ea)
+{
+    deobf_module_state_t *state = get_deobf_state();
+    if ( state != nullptr && func_ea != BADADDR )
+        state->execution_policy.request(uint64_t(func_ea));
+}
+
+bool chernobog_function_deobfuscation_enabled(ea_t func_ea)
+{
+    const deobf_module_state_t *state = get_deobf_state();
+    return state != nullptr && state->active && func_ea != BADADDR
+        && state->execution_policy.allows(uint64_t(func_ea));
+}
 
 // Clear tracking for a function to allow re-deobfuscation
 void chernobog_clear_function_tracking(ea_t func_ea)
@@ -107,7 +130,7 @@ void chernobog_begin_mba_tracking(mbl_array_t *mba)
 bool chernobog_function_requires_deobfuscation(ea_t func_ea)
 {
     const deobf_module_state_t *state = get_deobf_state();
-    return state != nullptr && state->active
+    return chernobog_function_deobfuscation_enabled(func_ea)
         && state->optblock_processed.count({func_ea, MMAT_LOCOPT}) == 0;
 }
 
@@ -126,6 +149,7 @@ void chernobog_clear_all_tracking()
     deobf_module_state_t *state = get_deobf_state();
     if ( state != nullptr )
     {
+        state->execution_policy.clear_requests();
         state->optblock_processed.clear();
         state->mba_maturity_processed.clear();
         state->mba_generations.clear();
@@ -171,20 +195,23 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
 
     int maturity = blk->mba->maturity;
     deobf_module_state_t *state = get_deobf_state();
-    const bool active = state != nullptr && state->active;
-    optblock_debug("[optblock] active=%d, entry_ea=%llx, maturity=%d, blk=%d\n",
-                   active ? 1 : 0,
+    const bool enabled = chernobog_function_deobfuscation_enabled(
+        blk->mba->entry_ea);
+    optblock_debug("[optblock] enabled=%d, entry_ea=%llx, maturity=%d, blk=%d\n",
+                   enabled ? 1 : 0,
                    (unsigned long long)blk->mba->entry_ea,
                    maturity,
                    blk->serial);
 
-    if ( !active )
+    if ( !enabled )
     {
         // Only log once per function to avoid spam
         if ( state != nullptr && blk->mba->entry_ea != state->last_inactive_ea )
         {
             state->last_inactive_ea = blk->mba->entry_ea;
-            msg("[optblock] inactive, skipping %a\n", blk->mba->entry_ea);
+            deobf::log_verbose(
+                "[optblock] automatic deobfuscation disabled, skipping %a\n",
+                blk->mba->entry_ea);
         }
         return 0;
     }
@@ -421,6 +448,11 @@ int idaapi chernobog_t::func(mblock_t *blk, minsn_t *ins, int optflags)
     {
         return 0;
     }
+    if ( blk->mba == nullptr
+      || !chernobog_function_deobfuscation_enabled(blk->mba->entry_ea) )
+    {
+        return 0;
+    }
 
     // Debug: log ldx instructions (opcode 14)
     if ( ins->opcode == m_ldx )
@@ -456,6 +488,7 @@ void chernobog_t::deobfuscate_mba(mbl_array_t *mba)
     if ( !mba )
         return;
 
+    chernobog_request_function_deobfuscation(mba->entry_ea);
     if ( !chernobog_function_requires_deobfuscation(mba->entry_ea) )
     {
         deobf::log("[chernobog] Function %a already has a completed deobfuscation pass; duplicate request skipped\n",
@@ -483,6 +516,7 @@ void chernobog_t::deobfuscate_function(cfunc_t *cfunc)
     if ( !cfunc || !cfunc->mba )
         return;
 
+    chernobog_request_function_deobfuscation(cfunc->entry_ea);
     if ( !chernobog_function_requires_deobfuscation(cfunc->entry_ea) )
     {
         deobf_ctx_t ctree_ctx;
@@ -1077,6 +1111,7 @@ static int do_deobfuscate(vdui_t *vu)
     if ( !vu || !vu->cfunc )
         return 0;
 
+    chernobog_request_function_deobfuscation(vu->cfunc->entry_ea);
     const bool redo_mba = chernobog_function_requires_deobfuscation(
         vu->cfunc->entry_ea);
     chernobog_t::deobfuscate_function(vu->cfunc);

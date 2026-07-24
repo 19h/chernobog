@@ -209,10 +209,11 @@ static bool automatic_rax_succeeded(
 }
 
 //--------------------------------------------------------------------------
-// Make the Hex-Rays function identity authoritative for automatic rax. Every
-// real decompilation calls this at flowchart ingress. Ctree/view callbacks use
-// it only as a fallback for cached functions that produced no new flowchart.
-// The session remains strictly one-function-at-a-time and bounded.
+// Make the Hex-Rays function identity authoritative for automatic rax. In auto
+// mode, every real decompilation calls this at flowchart ingress. Ctree/view
+// callbacks use it only as a fallback for cached functions that produced no
+// new flowchart. The session remains strictly one-function-at-a-time and
+// bounded.
 //--------------------------------------------------------------------------
 static bool ensure_automatic_rax(
     chernobog_plugmod_t *self,
@@ -221,7 +222,7 @@ static bool ensure_automatic_rax(
     bool keep_projection_open)
 {
     if ( self == nullptr || function_ea == BADADDR
-      || is_disabled_mode_enabled() )
+      || !is_auto_mode_enabled() || is_disabled_mode_enabled() )
     {
         return false;
     }
@@ -258,6 +259,7 @@ static void ensure_cached_rax_fallback(
     chernobog_plugmod_t *self, ea_t function_ea, const char *trigger)
 {
     if ( self == nullptr || function_ea == BADADDR
+      || !is_auto_mode_enabled()
       || self->rax_completed_functions.count(function_ea) != 0 )
     {
         return;
@@ -368,11 +370,12 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
 
     // This is the earliest decompiler event, before microcode generation and
     // optinsn/optblock mutation. Recover native CFG first; if it changed, the
-    // restarted flowchart will snapshot those exact bytes. Then synchronously
-    // ensure rax evidence for every function whose MBA pipeline is about to
-    // run. This event is authoritative for interactive, background, API, and
-    // decompile-all clients alike. IDA 9.4 normally emits the ea-based event;
-    // retain the legacy event because it remains part of the supported ABI.
+    // restarted flowchart will snapshot those exact bytes. In auto mode, then
+    // synchronously ensure rax evidence for every function whose MBA pipeline
+    // is about to run. This event is authoritative for interactive,
+    // background, API, and decompile-all clients alike. IDA 9.4 normally emits
+    // the ea-based event; retain the legacy event because it remains part of
+    // the supported ABI.
     const bool is_flowchart_event = event == hxe_flowchart
 #if IDA_SDK_VERSION >= 940
         || event == hxe_flowchart_ea
@@ -586,7 +589,9 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     else if ( event == hxe_glbopt )
     {
         mbl_array_t *mba = va_arg(va, mbl_array_t *);
-        if ( mba && is_auto_mode_enabled() && !is_disabled_mode_enabled() )
+        if ( mba
+          && chernobog_function_deobfuscation_enabled(mba->entry_ea)
+          && !is_disabled_mode_enabled() )
         {
             deobf_ctx_t branch_ctx;
             branch_ctx.mba = mba;
@@ -635,7 +640,8 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         }
         // Run at CMAT_FINAL when the ctree is complete
         // Track by function to avoid infinite recursion if ctree modification triggers reprocessing
-        if ( cfunc && maturity == CMAT_FINAL && is_auto_mode_enabled()
+        if ( cfunc && maturity == CMAT_FINAL
+          && chernobog_function_deobfuscation_enabled(cfunc->entry_ea)
           && !is_disabled_mode_enabled() )
         {
             ea_t func_ea = cfunc->entry_ea;
@@ -672,7 +678,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
                 hybrid_current_runtime_strings_for_decompilation(
                     uint64_t(cfunc->entry_ea)).empty();
         const bool static_strings_detected = ctree_strings_ready
-          && is_auto_mode_enabled()
+          && chernobog_function_deobfuscation_enabled(cfunc->entry_ea)
           && !runtime_strings_available
           && ctree_string_decrypt_handler_t::detect(cfunc);
         if ( ctree_strings_ready
@@ -865,6 +871,7 @@ bool chernobog_plugmod_t::activate()
     debug_log("[chernobog] Calling init_all()...\n");
     const int initialized = component_registry_t::init_all();
     components_initialized = initialized > 0;
+    chernobog_configure_automatic_deobfuscation(auto_mode);
     debug_log("[chernobog] init_all() returned %d components initialized\n", initialized);
 
     if ( component_registry_t::get_count() != 0 && !components_initialized )
@@ -892,7 +899,7 @@ bool chernobog_plugmod_t::activate()
 
     msg("[chernobog] Plugin ready (%d components initialized)\n", initialized);
     if ( auto_mode )
-        msg("[chernobog] *** AUTO MODE ACTIVE - will deobfuscate on decompilation ***\n");
+        msg("[chernobog] *** AUTO MODE ACTIVE - will emulate and deobfuscate on decompilation ***\n");
 
     msg("[chernobog] Use Ctrl+Shift+D to deobfuscate current function\n");
     msg("[chernobog] Use Ctrl+Shift+A to analyze obfuscation types\n");
@@ -1198,7 +1205,7 @@ bool idaapi chernobog_plugmod_t::run(size_t argument)
     msg("  Or press Ctrl+Shift+E\n\n");
     msg("Auto-deobfuscation mode:\n");
     msg("  Set CHERNOBOG_AUTO=1 environment variable before starting IDA\n");
-    msg("  to automatically deobfuscate functions when they are decompiled.\n\n");
+    msg("  to automatically emulate and deobfuscate functions when they are decompiled.\n\n");
 
     return true;
 }

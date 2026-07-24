@@ -6,6 +6,7 @@
 #include "common/string_recovery.h"
 #include "deobf/analysis/dependency_liveness.hpp"
 #include "deobf/analysis/switch_dispatch_classifier.hpp"
+#include "deobf/execution_policy.hpp"
 #include "ida_analysis/native_classifier.hpp"
 
 #include <array>
@@ -148,6 +149,26 @@ void test_dependency_liveness()
           "observable dependency chain propagates backwards");
     check(live[5] == 0,
           "invalid dependency edge is ignored");
+}
+
+void test_deobfuscation_execution_policy()
+{
+    chernobog::deobf::execution_policy_t policy;
+
+    check(!policy.automatic() && !policy.allows(0x1000),
+          "deobfuscation defaults to manual-only");
+    policy.request(0x1000);
+    check(policy.allows(0x1000) && !policy.allows(0x2000),
+          "an explicit request admits only its function");
+    policy.configure_automatic(true);
+    check(policy.automatic() && policy.allows(0x2000),
+          "automatic mode admits every decompiled function");
+    policy.configure_automatic(false);
+    check(policy.allows(0x1000) && !policy.allows(0x2000),
+          "disabling automatic mode retains explicit requests");
+    policy.clear_requests();
+    check(!policy.allows(0x1000),
+          "clearing database state removes explicit requests");
 }
 
 void test_get_pc_classifier()
@@ -712,6 +733,7 @@ int main()
 {
     test_bitvectors();
     test_hexrays_merror_layout_compatibility();
+    test_deobfuscation_execution_policy();
     test_dependency_liveness();
     test_get_pc_classifier();
     test_switch_dispatch_classifier();
