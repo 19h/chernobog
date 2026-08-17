@@ -288,27 +288,26 @@ jobs:
             echo "::endgroup::"
           done
 
-          # Take the binary path and environment from CTest rather than
-          # reconstructing them, so this cannot drift from the real test.
-          testfile="build/CTestTestfile.cmake"
-          if [ ! -f "$testfile" ]; then
-            echo "No CTestTestfile.cmake; the build did not reach test generation"
+          # Ask CTest for the command and environment it actually uses, so
+          # this cannot drift from the real test the way parsing the generated
+          # CMake file did.
+          scratch="${RUNNER_TEMP:-/tmp}"
+          ctest --test-dir build --show-only=json-v1 > "$scratch/ctest-tests.json" 2>/dev/null
+          select_test="[t for t in json.load(open('$scratch/ctest-tests.json'))['tests'] if t.get('name') == 'chernobog.mba_catalog']"
+          binary="$(python3 -c "import json; t = ${select_test}; c = (t[0].get('command') or ['']) if t else ['']; print(c[0])" 2>/dev/null)"
+          libdir="$(python3 -c "import json; t = ${select_test}; e = [v for x in t for p in x.get('properties', []) if p.get('name') == 'ENVIRONMENT' for v in p.get('value', []) if v.startswith('DYLD_LIBRARY_PATH=')]; print(e[0].split('=', 1)[1] if e else '')" 2>/dev/null)"
+          echo "binary=${binary:-<unresolved>}"
+          echo "DYLD_LIBRARY_PATH=${libdir:-<unresolved>}"
+          if [ -z "$binary" ] || [ ! -x "$binary" ]; then
+            echo "chernobog_catalog_tests is not available; nothing to reproduce"
             exit 0
           fi
-          binary="$(sed -n 's/^add_test(\[=\[chernobog\.mba_catalog\]=\] "\(.*\)")$/\1/p' "$testfile")"
-          libdir="$(sed -n 's/.*DYLD_LIBRARY_PATH=\([^"]*\)".*/\1/p' "$testfile" | head -1)"
-          if [ ! -x "$binary" ]; then
-            echo "chernobog_catalog_tests was not built; nothing to reproduce"
-            exit 0
-          fi
-          echo "binary=$binary"
-          echo "DYLD_LIBRARY_PATH=$libdir"
 
           sudo DevToolsSecurity -enable >/dev/null 2>&1 || true
 
           attempts=25
           for attempt in $(seq 1 "$attempts"); do
-            log="lldb-attempt-${attempt}.log"
+            log="$scratch/lldb-attempt-${attempt}.log"
             lldb --batch \
                  -o "settings set target.env-vars DYLD_LIBRARY_PATH=${libdir}" \
                  -o "run" \

@@ -590,6 +590,24 @@ if(BUILD_TESTING)
     target_link_libraries(chernobog_catalog_tests PRIVATE libz3 idasdk::plugin)
     target_compile_definitions(chernobog_catalog_tests PRIVATE
         CHERNOBOG_CATALOG_TEST=1)
+
+    # This executable has no IDA kernel, so the Hex-Rays dispatcher behind
+    # HEXDSP does not exist and calling it jumps to an arbitrary address.
+    # Force-include the replacement into every translation unit rather than
+    # editing individual headers: the SDK expands HEXDSP inside inline
+    # functions, so a partial opt-in would give this target two definitions of
+    # the same inline function.
+    set(CHERNOBOG_CATALOG_PRELUDE
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/catalog_hexdsp.h")
+    if(MSVC)
+        target_compile_options(chernobog_catalog_tests PRIVATE
+            "/FI${CHERNOBOG_CATALOG_PRELUDE}")
+    else()
+        target_compile_options(chernobog_catalog_tests PRIVATE
+            "SHELL:-include ${CHERNOBOG_CATALOG_PRELUDE}")
+    endif()
+    set_property(TARGET chernobog_catalog_tests APPEND PROPERTY
+        LINK_DEPENDS "${CHERNOBOG_CATALOG_PRELUDE}")
     target_compile_features(chernobog_catalog_tests PRIVATE cxx_std_17)
     if(MSVC)
         target_compile_options(chernobog_catalog_tests PRIVATE /W4)

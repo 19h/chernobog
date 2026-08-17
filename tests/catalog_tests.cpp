@@ -1,6 +1,17 @@
 #include "deobf/rules/rule_registry.h"
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
+
+// Every HEXDSP call in this target routes here; see catalog_hexdsp.h, which
+// the build force-includes ahead of the SDK headers. Returning nullptr is the
+// correct model for a program with no decompiler: the only dispatcher calls
+// this test can reach are mop_t lifetime operations on operands it never
+// populates, and there is nothing for the decompiler to release.
+extern "C" void *chernobog_catalog_hexdsp(int, ...)
+{
+    return nullptr;
+}
 
 namespace {
 
@@ -76,10 +87,46 @@ bool test_commutative_matching()
            ordered_bindings->count == 0;
 }
 
+// Destroying an AST reaches mop_t's hexapi destructor. With the real
+// dispatcher absent that call jumped to an address derived from its arguments
+// and killed the process, so the catalog previously depended on retaining
+// every tree it built -- an invariant an exception unwind out of rule
+// verification silently breaks. Exercise both shapes directly so the
+// dispatcher redirection cannot regress unnoticed.
+bool test_ast_destruction()
+{
+    for ( int depth = 0; depth < 64; ++depth )
+    {
+        AstPtr tree = make_node(
+            m_xor, make_leaf("x"),
+            make_node(m_add, make_leaf("y"), make_leaf("z")));
+        if ( !tree )
+            return false;
+    }
+
+    try
+    {
+        AstPtr tree = make_node(m_add, make_leaf("x"), make_leaf("y"));
+        if ( !tree )
+            return false;
+        throw std::runtime_error("unwind past a live AST");
+    }
+    catch ( const std::runtime_error & )
+    {
+    }
+    return true;
+}
+
 } // namespace
 
 int main()
 {
+    if ( !test_ast_destruction() )
+    {
+        std::cerr << "AST destruction regression\n";
+        return EXIT_FAILURE;
+    }
+
     if ( !test_commutative_matching() )
     {
         std::cerr << "commutative matcher regression\n";
