@@ -148,17 +148,23 @@ jobs:
             brew install ccache
           fi
 
-      - name: Cache build tree
-        uses: actions/cache@v6
+      # Restore and save are separate actions on purpose. actions/cache saves
+      # in a post-job step gated on success(), so one failing test discards
+      # both caches and the next attempt rebuilds Z3 and the whole tree from
+      # scratch. The matching save steps run right after the build instead.
+      - name: Restore build tree
+        id: build_tree_cache
+        uses: actions/cache/restore@v6
         with:
           path: build
           key: build-v3-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
           restore-keys: |
             build-v3-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-
 
-      - name: Cache ccache
+      - name: Restore ccache
+        id: ccache_cache
         if: runner.os != 'Windows'
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: ~/.ccache
           key: ccache-v1-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'ida-cmake/**', 'src/**', '.github/workflows/build.yml') }}
@@ -232,9 +238,94 @@ jobs:
         shell: pwsh
         run: cmake --build build --config Release --parallel $env:NUMBER_OF_PROCESSORS
 
+      # Publish before testing so a failed or flaky test still leaves a warm
+      # cache to retry against. always() also covers a failed build: the
+      # objects that did compile are still worth keeping. A cache entry is
+      # immutable, so an exact restore hit has nothing to write back.
+      - name: Save ccache
+        if: always() && runner.os != 'Windows' && steps.ccache_cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.ccache
+          key: ${{ steps.ccache_cache.outputs.cache-primary-key }}
+
+      - name: Save build tree
+        if: always() && steps.build_tree_cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: build
+          key: ${{ steps.build_tree_cache.outputs.cache-primary-key }}
+
       - name: Test (Unix)
         if: runner.os != 'Windows'
         run: ctest --test-dir build --build-config Release --output-on-failure
+
+      # chernobog.mba_catalog faults intermittently on macOS x86_64 with no
+      # output of its own, so a rerun tells us nothing. Print the crash report
+      # the failed run left behind, then try to reproduce under lldb for a
+      # symbolised backtrace. Neither can affect the job result.
+      - name: Capture crash diagnostics (macOS)
+        if: failure() && runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          set +e
+          shopt -s nullglob
+
+          # ReportCrash writes asynchronously, after the process is reaped.
+          sleep 5
+          reports=(
+            "${HOME}"/Library/Logs/DiagnosticReports/chernobog_*
+            /Library/Logs/DiagnosticReports/chernobog_*
+          )
+          if [ ${#reports[@]} -eq 0 ]; then
+            echo "No crash report was written for the failed run"
+          fi
+          for report in "${reports[@]}"; do
+            echo "::group::Crash report ${report##*/}"
+            cat "$report"
+            echo "::endgroup::"
+          done
+
+          # Take the binary path and environment from CTest rather than
+          # reconstructing them, so this cannot drift from the real test.
+          testfile="build/CTestTestfile.cmake"
+          if [ ! -f "$testfile" ]; then
+            echo "No CTestTestfile.cmake; the build did not reach test generation"
+            exit 0
+          fi
+          binary="$(sed -n 's/^add_test(\[=\[chernobog\.mba_catalog\]=\] "\(.*\)")$/\1/p' "$testfile")"
+          libdir="$(sed -n 's/.*DYLD_LIBRARY_PATH=\([^"]*\)".*/\1/p' "$testfile" | head -1)"
+          if [ ! -x "$binary" ]; then
+            echo "chernobog_catalog_tests was not built; nothing to reproduce"
+            exit 0
+          fi
+          echo "binary=$binary"
+          echo "DYLD_LIBRARY_PATH=$libdir"
+
+          sudo DevToolsSecurity -enable >/dev/null 2>&1 || true
+
+          attempts=25
+          for attempt in $(seq 1 "$attempts"); do
+            log="lldb-attempt-${attempt}.log"
+            lldb --batch \
+                 -o "settings set target.env-vars DYLD_LIBRARY_PATH=${libdir}" \
+                 -o "run" \
+                 -k "bt all" \
+                 -k "register read" \
+                 -k "image list" \
+                 -k "quit 1" \
+                 -- "$binary" > "$log" 2>&1
+            status=$?
+            if [ "$status" -ne 0 ] || grep -q "stop reason" "$log"; then
+              echo "::group::mba_catalog crashed under lldb on attempt ${attempt}"
+              cat "$log"
+              echo "::endgroup::"
+              exit 0
+            fi
+          done
+          echo "mba_catalog completed ${attempts} lldb runs without crashing"
 
       - name: Show ccache stats
         if: runner.os != 'Windows'
@@ -445,16 +536,20 @@ jobs:
         run: |
           xwin --accept-license --arch x86_64 splat --output "${{ github.workspace }}/xwin"
 
-      - name: Cache build tree
-        uses: actions/cache@v6
+      # Split for the same reason as the build job: the caches must survive a
+      # failing step so a retry starts warm.
+      - name: Restore build tree
+        id: build_tree_cache
+        uses: actions/cache/restore@v6
         with:
           path: out/build/windows-clang-release
           key: build-v3-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
           restore-keys: |
             build-v3-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-
 
-      - name: Cache ccache
-        uses: actions/cache@v6
+      - name: Restore ccache
+        id: ccache_cache
+        uses: actions/cache/restore@v6
         with:
           path: ~/.ccache
           key: ccache-v1-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', 'src/**', '.github/workflows/build.yml') }}
@@ -482,6 +577,22 @@ jobs:
 
       - name: Build (Windows cross)
         run: cmake --build --preset windows-clang-release --parallel "$(nproc)"
+
+      - name: Save ccache
+        if: always() && steps.ccache_cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.ccache
+          key: ${{ steps.ccache_cache.outputs.cache-primary-key }}
+
+      - name: Save build tree
+        if: always() && steps.build_tree_cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: out/build/windows-clang-release
+          key: ${{ steps.build_tree_cache.outputs.cache-primary-key }}
 
       - name: Show ccache stats
         run: ccache --show-stats || true
