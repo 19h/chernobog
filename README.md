@@ -160,6 +160,14 @@ Applied after microcode optimization for additional cleanup:
 - **Indirect Call Resolution** - Resolves Hikari's `(table[index] - offset)(args)` indirect calls to direct calls in the Ctree
 - **String Decryption** - Decrypts strings visible only at Ctree maturity
 
+### Scripting
+- **IDC Orchestration** - 43 `chernobog_*` functions registered in IDA's IDC
+  interpreter cover the whole plugin: introspection, runtime options,
+  analysis-only detection, per-function and database-wide deobfuscation,
+  pseudocode extraction, the native pre-lifting passes, bounded rax
+  exploration with its evidence accessors, and the MBA rule registry. See
+  [IDC Orchestration](#idc-orchestration).
+
 ## Requirements
 
 - IDA Pro 9.4 with Hex-Rays decompiler (the build rejects any SDK whose `IDA_SDK_VERSION` is not `940`)
@@ -481,6 +489,123 @@ and the input file is never modified.
 
 Press `Ctrl+Shift+H` to display plugin information and supported obfuscation types.
 
+### IDC Orchestration
+
+Chernobog registers `chernobog_*` functions in IDA's IDC interpreter, so every
+capability reachable through a hotkey, popup action, or environment variable is
+also scriptable. The functions appear as soon as the plugin loads a database;
+`chernobog_help()` prints the complete table with one-line descriptions, and
+`chernobog_list_options()` prints every option alias with its variable, current
+value, and meaning.
+
+```c
+#include <idc.idc>
+
+static main()
+{
+    auto ea, detection, text;
+
+    auto_wait();
+    msg("%s\n", chernobog_version());
+
+    for (ea = get_next_func(0); ea != BADADDR; ea = get_next_func(ea))
+    {
+        detection = chernobog_detect(ea);          // analysis only
+        if (!detection.ok || !detection.any)
+            continue;
+        msg("%a %s: %s\n", ea, get_func_name(ea), detection.names);
+
+        chernobog_rax_explore(ea);                 // bounded, one function
+        text = chernobog_deobfuscate_text(ea);     // admit, re-run, decompile
+        msg("%s\n", text);
+    }
+}
+```
+
+[`idc/chernobog_report.idc`](idc/chernobog_report.idc) is a complete worked
+example that surveys a database, reports rax witnesses, and transforms the
+obfuscated functions.
+
+The same surface is reachable from IDAPython by evaluating IDC expressions.
+[`LLM_ORCHESTRATION.md`](LLM_ORCHESTRATION.md) documents that route in the
+detail an autonomous agent needs: a paste-ready helper that returns Python
+values, argument encoding, result shapes, recipes, the cost and side effect of
+each call, and the interpreter behaviours that are easy to get wrong.
+
+| Function | Result |
+|----------|--------|
+| `chernobog_help()` | Every registered function with a one-line description |
+| `chernobog_version()` | Build revision, source fingerprint, SDK, pinned rax revision |
+| `chernobog_status()` | Lifecycle, mode, rax, rule, and architecture state |
+| `chernobog_activate()` | Install the Hex-Rays lifecycle now; `1` when ready |
+| `chernobog_get_option(name)` | Current value of an option alias or `CHERNOBOG_` variable |
+| `chernobog_set_option(name, value)` | Set an option for this process; `1` on success |
+| `chernobog_list_options()` | Aliases, variables, current values, and descriptions |
+| `chernobog_detect(ea)` | Obfuscation candidates from uncached `MMAT_LOCOPT` microcode |
+| `chernobog_obf_names(mask)` | Comma-separated names for an obfuscation mask |
+| `chernobog_analyze(ea)` | Print the `Ctrl+Shift+A` candidate report |
+| `chernobog_detect_flatten(ea)` | Control-flow flattening detector evidence |
+| `chernobog_deobfuscate(ea)` | Run the `Ctrl+Shift+D` action on one function |
+| `chernobog_deobfuscate_text(ea)` | Admit, re-decompile uncached, return the pseudocode |
+| `chernobog_decompile(ea)` | Pseudocode without forcing a new pass |
+| `chernobog_deobfuscate_range(start, end)` | Deobfuscate every function entry in `[start, end)` |
+| `chernobog_deobfuscate_all()` | Deobfuscate every function in the database |
+| `chernobog_request(ea)` | Admit a function for the next decompilation |
+| `chernobog_enabled_for(ea)` | `1` when auto mode or an explicit request admits this function |
+| `chernobog_pending(ea)` | `1` when the LOCOPT pipeline has not completed for this function |
+| `chernobog_clear_function(ea)` | Drop per-function tracking and rax evidence |
+| `chernobog_clear_all()` | Drop every cache and tracking set for this database |
+| `chernobog_clear_cache()` | Clear the Hex-Rays decompiler cache |
+| `chernobog_hikari_cfg()` | Run Hikari ARM64 dispatch recovery, report its statistics |
+| `chernobog_native_opaque()` | Run pre-lifting opaque predicate resolution |
+| `chernobog_native_analysis()` | Run native IDA analysis enrichment, report its counters |
+| `chernobog_early_stats()` | Cumulative early Hex-Rays pass counters |
+| `chernobog_rax_explore(ea)` | Bounded synchronous exploration of one function |
+| `chernobog_rax_result_name(code)` | Name for a `chernobog_rax_explore()` result code |
+| `chernobog_rax_fresh(ea)` | `1` when exact evidence for this function is still current |
+| `chernobog_rax_show()` | Print the last evidence report |
+| `chernobog_rax_cancel()` | Stop queued runs at the next instruction boundary |
+| `chernobog_rax_clear()` | Discard the session and its published evidence |
+| `chernobog_rax_summary(ea)` | Scope, provenance, and every evidence counter |
+| `chernobog_rax_string_count(ea)` | Number of consensus runtime string witnesses |
+| `chernobog_rax_string(ea, index)` | One runtime string witness by index |
+| `chernobog_rax_target_count(ea, insn_ea)` | Number of observed targets for an indirect call/jump |
+| `chernobog_rax_target(ea, insn_ea, index)` | One observed indirect target by index |
+| `chernobog_rax_branch(ea, insn_ea, expected_taken)` | Cross-check a universal branch claim against observations |
+| `chernobog_rule_stats()` | Registry size, verification outcome, and match counters |
+| `chernobog_rule_count()` | Number of registered MBA rules |
+| `chernobog_rule_name(index)` | Name of a registered rule by index |
+| `chernobog_rule_hits(name)` | Hit count for one rule; `-1` when the name is unknown |
+| `chernobog_rule_reset_stats()` | Reset per-rule hit counters |
+
+Conventions:
+
+- Address arguments accept **any address inside a function**, exactly like the
+  popup actions and the batch probes; the containing function is used.
+- Failure is a return value, never an IDC exception. Numeric functions return
+  `0` or `-1`, string functions return `""`, and object results always carry
+  their complete attribute set with an `ok` or `available` flag — so
+  `chernobog_detect(ea).mask` is safe to read without checking first.
+- The `status` object names auto mode `auto_mode`, because `auto` is an IDC
+  keyword.
+- Every call resolves the plugin instance for **IDA's current database**. With
+  several IDBs open, a script always drives the one it is running in.
+- Options accept either an alias (`"rax_runs"`) or the variable itself
+  (`"CHERNOBOG_RAX_EXPLORE_RUNS"`), and either a string or a number; setting a
+  value to `""` clears it. Address-valued options are rendered in base 16, so
+  `chernobog_set_option("rax_batch_ea", 0x1576)` is unambiguous. `auto` and
+  `verbose` are cached at startup and are re-applied immediately when set.
+- `chernobog_detect()` and `chernobog_detect_flatten()` generate uncached
+  `MMAT_LOCOPT` microcode with no mutation components enabled and add nothing
+  to the decompiler cache. Use them to survey a database without changing it.
+- `chernobog_deobfuscate_all()` and `chernobog_deobfuscate_range()` honour
+  IDA's cancel request and report `cancelled` when the user interrupts them.
+- rax remains one-function-at-a-time and bounded. `chernobog_rax_explore()`
+  reuses exact fresh evidence, waits for a matching in-flight job, or explores
+  only that function; it never sweeps the database. Runtime strings and
+  indirect targets are cross-run concrete witnesses, not universal claims,
+  which is why there is no "unique target" entry point.
+
 ## How It Works
 
 Chernobog combines IDA processor/IDB listeners with Hex-Rays ingress,
@@ -646,6 +771,13 @@ materialization (the last requires the graphical IDA executable).
 (`CHERNOBOG_CFF_BATCH_EA`), `tests/ida_cff_switch_probe.py` checks recurrent
 switch-dispatch classification, and `tests/ida_cff_transition_probe.py` is a
 plugin-free dump of transition microcode.
+`tests/ida_idc_smoke.py` exercises the whole IDC surface through IDA's IDC
+interpreter rather than the Python bindings: registration and introspection,
+option aliases and numeric/address values, analysis-only detection, admission
+tracking, bounded rax exploration and its evidence accessors, the rule
+registry, transformation with text extraction, and the sweep and cache-clearing
+entry points. It also asserts that object results keep their full attribute set
+on failure paths, since a missing attribute is a runtime error in IDC.
 
 The CTest targets are SDK-linked but do not constitute a live-IDB decompiler
 integration test. Runtime validation requires an IDA/Hex-Rays build compatible

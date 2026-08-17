@@ -61,6 +61,11 @@ void set_verbose(bool v)
     g_verbose = v;
 }
 
+bool verbose_enabled()
+{
+    return g_verbose;
+}
+
 void log(const char *fmt, ...)
 {
     va_list va;

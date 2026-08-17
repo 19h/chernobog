@@ -4,6 +4,7 @@
 #include "../common/warn_on.h"
 
 #include "component_registry.h"
+#include "idc_api.h"
 #include "../common/hexrays_compat.h"
 #include <chernobog/build_provenance.hpp>
 
@@ -92,16 +93,22 @@ static void dylib_loaded()
 }
 #endif
 
-struct chernobog_plugmod_t final : public plugmod_t
+struct chernobog_plugmod_t final
+    : public plugmod_t, public chernobog::idc::Host
 {
     ssize_t database_id = -1;
     bool hexrays_initialized = false;
     bool components_initialized = false;
     bool ui_hooked = false;
     bool idb_hooked = false;
+    bool idc_installed = false;
     bool first_hexrays_callback = true;
     bool hikari_cfg_attempted = false;
     bool native_opaque_attempted = false;
+    // Statistics from the most recent run of each one-shot database pass,
+    // whether it was triggered automatically or explicitly.
+    hikari_cfg_stats_t last_hikari_cfg_stats;
+    native_opaque_stats_t last_native_opaque_stats;
     // Automatic rax is keyed by the function Hex-Rays actually hands us, not
     // by ambient UI state. The completed set supplies a cached-view fallback:
     // a function that did not generate a new flowchart still gets one bounded
@@ -137,14 +144,56 @@ struct chernobog_plugmod_t final : public plugmod_t
     bool recover_hikari_cfg_if_ready(bool force = false);
     bool recover_native_opaque_if_ready(bool force = false);
     virtual bool idaapi run(size_t arg) override;
+
+    // chernobog::idc::Host. The IDC layer reaches exactly the same state the
+    // hotkeys, popup actions, and automatic callbacks do.
+    virtual int64_t database_context() const override
+    {
+        return int64_t(database_id);
+    }
+    virtual bool ensure_activated() override { return activate(); }
+    virtual bool hexrays_ready() const override { return hexrays_initialized; }
+    virtual bool components_ready() const override
+    {
+        return components_initialized;
+    }
+    virtual void clear_state() override { clear_processing_state(); }
+    virtual bool auto_mode() const override;
+    virtual void set_auto_mode(bool enabled) override;
+    virtual bool transformations_disabled() const override;
+    virtual chernobog::hybrid::Session *rax_session() override
+    {
+        return hybrid_session.get();
+    }
+    virtual chernobog::ida_analysis::NativeAnalysisEngine *
+        native_analysis_engine() override
+    {
+        return ida_analysis.get();
+    }
+    virtual chernobog::ida_analysis::EarlyHexRaysAnalysis *
+        early_hexrays_analysis() override
+    {
+        return early_hexrays.get();
+    }
+    virtual bool run_hikari_cfg(hikari_cfg_stats_t *out) override;
+    virtual bool run_native_opaque(native_opaque_stats_t *out) override;
 };
 
 //--------------------------------------------------------------------------
 // Check if auto mode is enabled
 // Supports: CHERNOBOG_AUTO=1 env var, or ~/.chernobog_auto file
+//
+// The startup decision is cached because it is consulted on every decompiler
+// event. An explicit runtime request (currently only from IDC) overrides it
+// for the remainder of the process; -1 means "no override".
 //--------------------------------------------------------------------------
+static int s_auto_mode_override = -1;
+
 static bool is_auto_mode_enabled()
 {
+    if ( s_auto_mode_override >= 0 )
+        return s_auto_mode_override != 0;
+
     static int cached = -1;
     if ( cached == -1 )
     {
@@ -756,6 +805,7 @@ bool chernobog_plugmod_t::recover_hikari_cfg_if_ready(bool force)
     // ensuing auto_empty notification cannot recursively rerun the pass.
     hikari_cfg_attempted = true;
     const hikari_cfg_stats_t stats = hikari_cfg_handler_t::run();
+    last_hikari_cfg_stats = stats;
     debug_log(
         "[chernobog] CFG stats: slots=%d indirect=%d recovered=%d patched=%d "
         "reachable=%d\n",
@@ -785,6 +835,7 @@ bool chernobog_plugmod_t::recover_native_opaque_if_ready(bool force)
 
     native_opaque_attempted = true;
     const native_opaque_stats_t stats = native_opaque_handler_t::run();
+    last_native_opaque_stats = stats;
     debug_log(
         "[chernobog] Native predicate stats: functions=%d blocks=%d "
         "conditional=%d proved=%d patched=%d\n",
@@ -797,6 +848,60 @@ bool chernobog_plugmod_t::recover_native_opaque_if_ready(bool force)
         stats.predicates_proved, stats.conditional_branches,
         stats.branches_patched);
     return stats.branches_patched > 0;
+}
+
+//--------------------------------------------------------------------------
+// chernobog::idc::Host implementation
+//--------------------------------------------------------------------------
+bool chernobog_plugmod_t::auto_mode() const
+{
+    return is_auto_mode_enabled();
+}
+
+// The startup decision this overrides is itself process-wide, so the override
+// is too; the execution policy it configures remains per-database.
+void chernobog_plugmod_t::set_auto_mode(bool enabled)
+{
+    s_auto_mode_override = enabled ? 1 : 0;
+    chernobog_configure_automatic_deobfuscation(enabled);
+    msg("[chernobog] Automatic emulation and deobfuscation %s for this "
+        "process\n", enabled ? "enabled" : "disabled");
+}
+
+bool chernobog_plugmod_t::transformations_disabled() const
+{
+    return is_disabled_mode_enabled();
+}
+
+// An explicit request re-arms the one-shot latch first, so the pass runs even
+// when the automatic path already attempted it, and the automatic path will
+// not repeat the work afterwards. Both report whether the pass executed; the
+// statistics describe that run.
+bool chernobog_plugmod_t::run_hikari_cfg(hikari_cfg_stats_t *out)
+{
+    const bool eligible = hikari_cfg_handler_t::mode() != 0;
+    if ( eligible )
+    {
+        hikari_cfg_attempted = false;
+        (void)recover_hikari_cfg_if_ready(true);
+    }
+    if ( out != nullptr )
+        *out = eligible ? last_hikari_cfg_stats : hikari_cfg_stats_t();
+    return eligible;
+}
+
+bool chernobog_plugmod_t::run_native_opaque(native_opaque_stats_t *out)
+{
+    const bool eligible = native_opaque_handler_t::mode() != 0
+                       && !is_disabled_mode_enabled();
+    if ( eligible )
+    {
+        native_opaque_attempted = false;
+        (void)recover_native_opaque_if_ready(true);
+    }
+    if ( out != nullptr )
+        *out = eligible ? last_native_opaque_stats : native_opaque_stats_t();
+    return eligible;
 }
 
 bool chernobog_plugmod_t::activate()
@@ -1076,6 +1181,20 @@ chernobog_plugmod_t::chernobog_plugmod_t()
             idb_hooked ? 1 : 0, ui_hooked ? 1 : 0);
     }
 
+    // The IDC surface is bound before activation so a batch script can drive
+    // it even when Hex-Rays is not ready yet; each call retries activation.
+    idc_installed = chernobog::idc::install(this);
+    if ( idc_installed )
+    {
+        msg("[chernobog] %zu IDC functions registered; run "
+            "chernobog_help() for the list\n",
+            chernobog::idc::function_count());
+    }
+    else
+    {
+        msg("[chernobog] IDC function registration failed\n");
+    }
+
     if ( !activate() )
     {
         debug_log("[chernobog] Hex-Rays not ready; activation deferred\n");
@@ -1087,6 +1206,11 @@ chernobog_plugmod_t::chernobog_plugmod_t()
 chernobog_plugmod_t::~chernobog_plugmod_t()
 {
     cancel_activation_retry();
+    if ( idc_installed )
+    {
+        chernobog::idc::uninstall(this);
+        idc_installed = false;
+    }
     if ( idb_hooked )
         unhook_from_notification_point(HT_IDB, idb_callback, this);
     if ( ui_hooked )

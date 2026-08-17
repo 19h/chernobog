@@ -932,6 +932,16 @@ void Session::invalidate_function(uint64_t function_start)
     clear();
 }
 
+std::shared_ptr<const TargetEvidence> Session::evidence() const
+{
+  return impl_->evidence;
+}
+
+uint64_t Session::explored_function() const
+{
+  return impl_->function.start;
+}
+
 bool Session::take_analysis_changes()
 {
   const bool changed = impl_->analysis_changed;

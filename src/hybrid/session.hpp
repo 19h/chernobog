@@ -10,6 +10,8 @@
 
 namespace chernobog::hybrid {
 
+struct TargetEvidence;
+
 enum class EnsureExploredResult : uint8_t
 {
   ALREADY_FRESH = 0,
@@ -45,6 +47,12 @@ public:
 
   int64_t database_id() const { return database_id_; }
   bool enabled() const;
+
+  // The evidence this session last published, or null. It may already be
+  // stale: consumers must still check hybrid_current_evidence_is_fresh().
+  std::shared_ptr<const TargetEvidence> evidence() const;
+  // Entry address of the function this session currently owns, or 0.
+  uint64_t explored_function() const;
 
 private:
   struct Impl;

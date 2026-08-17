@@ -109,6 +109,7 @@ namespace deobf {
     void log(const char *fmt, ...);
     void log_verbose(const char *fmt, ...);
     void set_verbose(bool v);
+    bool verbose_enabled();
     bool debug_enabled();
     void debug_vlog(const char *path, const char *fmt, va_list va);
     bool set_cmt_if_changed(ea_t address, const char *comment,

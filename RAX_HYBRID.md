@@ -234,6 +234,40 @@ an eligible concrete counterexample is falsification of the universal claim.
   Execution completes synchronously because text-mode IDA neither registers
   GUI actions nor provides a reliable UI timer loop.
 
+## IDC entry points
+
+The same bounded session is scriptable from IDA's IDC interpreter, with no
+target environment variable and no plugin argument. `chernobog_rax_explore(ea)`
+is the exact prerequisite the deobfuscation pipeline uses: it reuses fresh
+evidence, waits for a matching in-flight job, or explores only that function,
+and returns a code that `chernobog_rax_result_name()` renders as
+`already_fresh`, `explored`, `disabled`, `unavailable`, `cancelled`, or
+`failed`.
+
+| Function | Result |
+|---|---|
+| `chernobog_rax_explore(ea)` | Bounded synchronous exploration of one function |
+| `chernobog_rax_result_name(code)` | Name for an exploration result code |
+| `chernobog_rax_fresh(ea)` | `1` when exact evidence is still current |
+| `chernobog_rax_summary(ea)` | Scope, provenance, and every counter in `EvidenceSummary` |
+| `chernobog_rax_string_count(ea)` / `chernobog_rax_string(ea, i)` | Consensus runtime string witnesses |
+| `chernobog_rax_target_count(ea, insn)` / `chernobog_rax_target(ea, insn, i)` | Observed indirect targets |
+| `chernobog_rax_branch(ea, insn, taken)` | Branch-claim cross-check, including `veto` |
+| `chernobog_rax_show()` | Print the report described above |
+| `chernobog_rax_cancel()` / `chernobog_rax_clear()` | Cancel queued runs / discard the session |
+
+These are also the entry points to use from IDAPython, by evaluating the IDC
+expression; [`LLM_ORCHESTRATION.md`](LLM_ORCHESTRATION.md) documents that route.
+
+Evidence strength is unchanged by the interface: `chernobog_rax_summary()`
+reports `available` only for the function the session currently owns, and
+`fresh` only while the exact function-plus-context bytes still match. Strings
+and targets remain cross-run concrete witnesses, so no entry point claims a
+unique target. Every `CHERNOBOG_RAX_*` variable in the next section is also
+readable and writable through `chernobog_get_option()` /
+`chernobog_set_option()`, using either the variable name or the short alias
+listed by `chernobog_list_options()`.
+
 ## Runtime configuration
 
 All values are read when an exploration starts.

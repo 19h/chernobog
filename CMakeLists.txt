@@ -389,6 +389,7 @@ ida_add_plugin(chernobog
     # Plugin core
     src/plugin/deobf_plugin.cpp
     src/plugin/component_registry.cpp
+    src/plugin/idc_api.cpp
     src/ida_analysis/analysis_config.cpp
     src/ida_analysis/native_classifier.cpp
     src/ida_analysis/get_pc_ida.cpp
