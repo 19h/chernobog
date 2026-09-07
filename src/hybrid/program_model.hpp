@@ -153,6 +153,8 @@ struct ProgramImage
   bool     big_endian = false;
   uint64_t lo = 0;      // min segment start (image lower bound)
   uint64_t hi = 0;      // max segment end   (image upper bound)
+  // Sorted by start; segments have positive sizes and do not overlap.
+  // Query and hashing routines rely on this snapshot invariant.
   std::vector<SegImage>  segs;
   std::vector<FuncRange> entries; // functions to emulate
 

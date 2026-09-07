@@ -8,6 +8,7 @@
 #include "program_model.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <iterator>
 #include <limits>
 
@@ -124,6 +125,34 @@ void hash_byte(uint64_t &hash, uint8_t value)
   hash *= kFnvPrime;
 }
 
+constexpr uint64_t zero_byte_multiplier(unsigned count)
+{
+  uint64_t multiplier = 1;
+  for ( unsigned i = 0; i < count; ++i )
+    multiplier *= kFnvPrime;
+  return multiplier;
+}
+
+void hash_bytes(uint64_t &hash, const std::vector<uint8_t> &bytes)
+{
+  // Zero-filled data (including snapshot BSS) still participates in the exact
+  // identity. Eight zero-byte FNV-1a steps equal one multiplication by P^8
+  // modulo 2^64. memcpy keeps the zero test alignment- and endian-independent.
+  size_t offset = 0;
+  for ( ; bytes.size() - offset >= sizeof(uint64_t); offset += sizeof(uint64_t) )
+  {
+    uint64_t word;
+    std::memcpy(&word, bytes.data() + offset, sizeof(word));
+    if ( word == 0 )
+      hash *= zero_byte_multiplier(sizeof(word));
+    else
+      for ( size_t i = 0; i < sizeof(word); ++i )
+        hash_byte(hash, bytes[offset + i]);
+  }
+  for ( ; offset < bytes.size(); ++offset )
+    hash_byte(hash, bytes[offset]);
+}
+
 void hash_u64(uint64_t &hash, uint64_t value)
 {
   // Fixed byte order makes the result host-independent.
@@ -145,29 +174,33 @@ void hash_chunk_bytes(uint64_t &hash, const ProgramImage &img,
   hash_u64(hash, chunk.size());
 
   uint64_t ea = chunk.start;
+  // Locate the first possible containing segment once, then advance through
+  // the sorted, non-overlapping snapshot. Restarting a scan at each hole made
+  // fragmented chunks quadratic in the number of segments.
+  auto segment = std::upper_bound(img.segs.begin(), img.segs.end(), ea,
+                                 [](uint64_t value, const SegImage &candidate)
+                                 { return value < candidate.start; });
+  if ( segment != img.segs.begin() )
+    --segment;
   while ( ea < chunk.end )
   {
-    const SegImage *seg = img.segment_at(ea);
-    if ( seg == nullptr )
+    while ( segment != img.segs.end() && segment->end <= ea )
+      ++segment;
+    if ( segment == img.segs.end() || !segment->contains(ea) )
     {
       // Function chunks should normally be mapped. Encode an unmapped run as a
       // distinct marker+length rather than hashing a potentially huge hole byte
       // by byte.
       uint64_t next = chunk.end;
-      for ( const SegImage &candidate : img.segs )
-      {
-        if ( candidate.start > ea )
-        {
-          next = std::min(next, candidate.start);
-          break;
-        }
-      }
+      if ( segment != img.segs.end() )
+        next = std::min(next, segment->start);
       hash_byte(hash, 0); // unmapped-run marker
       hash_u64(hash, next - ea);
       ea = next;
       continue;
     }
 
+    const SegImage *seg = &*segment;
     const uint64_t run_end = std::min(chunk.end, seg->end);
     const uint64_t off = ea - seg->start;
     for ( uint64_t i = 0, count = run_end - ea; i < count; ++i )
@@ -227,10 +260,8 @@ uint64_t hybrid_program_content_hash(const ProgramImage &img)
     hash_byte(hash, static_cast<uint8_t>(segment.kind));
     hash_u64(hash, uint64_t(segment.bytes.size()));
     hash_u64(hash, uint64_t(segment.mask.size()));
-    for ( uint8_t byte : segment.mask )
-      hash_byte(hash, byte);
-    for ( uint8_t byte : segment.bytes )
-      hash_byte(hash, byte);
+    hash_bytes(hash, segment.mask);
+    hash_bytes(hash, segment.bytes);
   }
   return hash;
 }

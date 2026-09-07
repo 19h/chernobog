@@ -510,6 +510,14 @@ endif()
 # the AST matcher.
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(chernobog_program_model_tests
+        tests/program_model_tests.cpp
+        src/hybrid/program_model_core.cpp)
+    target_include_directories(chernobog_program_model_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_features(chernobog_program_model_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.program_model COMMAND chernobog_program_model_tests)
+
     add_executable(chernobog_hybrid_tests
         tests/hybrid_tests.cpp
         src/hybrid/rax_loader.cpp
