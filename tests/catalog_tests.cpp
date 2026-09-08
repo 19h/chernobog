@@ -1,4 +1,5 @@
 #include "deobf/rules/rule_registry.h"
+#include <cstdarg>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -21,16 +22,45 @@ using chernobog::ast::make_leaf;
 using chernobog::ast::make_node;
 using chernobog::ast::match_pattern;
 
+std::size_t empty_operand_erases = 0;
+
+void *catalog_dispatcher(int code, ...)
+{
+    // The SDK's link stub is not an initialized Hex-Rays runtime. Catalog
+    // patterns own only empty SDK operands; emulate precisely their cleanup
+    // and fail on any operation that would require real decompiler behavior.
+    if ( code != hx_mop_t_erase )
+    {
+        std::cerr << "unsupported catalog SDK operation: " << code << '\n';
+        std::abort();
+    }
+    va_list arguments;
+    va_start(arguments, code);
+    mop_t *operand = va_arg(arguments, mop_t *);
+    va_end(arguments);
+    if ( operand == nullptr || operand->t != mop_z )
+    {
+        std::cerr << "catalog SDK erase requires a nonnull empty operand\n";
+        std::abort();
+    }
+    operand->zero();
+    ++empty_operand_erases;
+    return nullptr;
+}
+
+class RejectedCatalogRule final : public chernobog::rules::PatternMatchingRule
+{
+public:
+    const char *name() const override { return "catalog_intentionally_rejected"; }
+    AstPtr get_pattern() const override
+    {
+        return make_node(m_add, make_leaf("x"), chernobog::ast::make_const(1));
+    }
+    AstPtr get_replacement() const override { return make_leaf("x"); }
+};
+
 bool test_commutative_matching()
 {
-    // The standalone catalog executable has no initialized IDA kernel. Retain
-    // SDK mop_t-owning ASTs and bindings for process lifetime so their IDA-side
-    // destructors are not invoked after the test.
-    static auto* retained_asts = new std::vector<AstPtr>();
-    const auto retain = [&](const AstPtr& ast) {
-        retained_asts->push_back(ast);
-    };
-
     constexpr mcode_t commutative_ops[] = {m_add, m_mul, m_and, m_or, m_xor};
     for ( mcode_t op : commutative_ops )
     {
@@ -40,15 +70,12 @@ bool test_commutative_matching()
         AstPtr candidate = make_node(
             op, make_node(m_sub, make_leaf("a"), make_leaf("b")),
             make_leaf("c"));
-        retain(pattern);
-        retain(candidate);
-
-        auto* bindings = new MatchBindings();
-        if ( !match_pattern(pattern.get(), candidate.get(), *bindings) ||
-             bindings->count != 3 )
+        MatchBindings bindings;
+        if ( !match_pattern(pattern.get(), candidate.get(), bindings) ||
+             bindings.count != 3 )
             return false;
 
-        if ( !bindings->find("x") )
+        if ( !bindings.find("x") )
             return false;
     }
 
@@ -64,12 +91,10 @@ bool test_commutative_matching()
                   make_node(m_sub, make_leaf("a"), make_leaf("b")),
                   make_leaf("c")),
         make_leaf("d"));
-    retain(nested_pattern);
-    retain(nested_candidate);
-    auto* nested_bindings = new MatchBindings();
+    MatchBindings nested_bindings;
     if ( !match_pattern(nested_pattern.get(), nested_candidate.get(),
-                        *nested_bindings) ||
-         nested_bindings->count != 4 )
+                        nested_bindings) ||
+         nested_bindings.count != 4 )
         return false;
 
     // Subtraction is order-sensitive and must not take the commuted branch.
@@ -79,12 +104,10 @@ bool test_commutative_matching()
     AstPtr reversed_candidate = make_node(
         m_sub, make_node(m_and, make_leaf("a"), make_leaf("b")),
         make_leaf("a"));
-    retain(ordered_pattern);
-    retain(reversed_candidate);
-    auto* ordered_bindings = new MatchBindings();
+    MatchBindings ordered_bindings;
     return !match_pattern(ordered_pattern.get(), reversed_candidate.get(),
-                          *ordered_bindings) &&
-           ordered_bindings->count == 0;
+                          ordered_bindings) &&
+           ordered_bindings.count == 0;
 }
 
 // Destroying an AST reaches mop_t's hexapi destructor. With the real
@@ -119,6 +142,14 @@ bool test_ast_destruction()
 
 } // namespace
 
+// Resolve SDK calls within this executable to the strict catalog-only shim,
+// including calls made by separately compiled production AST/registry code.
+// Production plugin targets do not compile this file or override the dispatcher.
+hexdsp_t *ida_export get_hexdsp()
+{
+    return catalog_dispatcher;
+}
+
 int main()
 {
     if ( !test_ast_destruction() )
@@ -143,6 +174,34 @@ int main()
               << verified << " verified, " << rejected << " rejected\n";
 
     if ( registered < 100 || verified != registered || rejected != 0 )
+    {
+        // Keep production verification budgets and fail-closed behavior. A
+        // solver timeout remains a failed test rather than an SDK-stub crash.
         return EXIT_FAILURE;
+    }
+
+    // A rejected pattern is destroyed during registry initialization, unlike
+    // accepted patterns retained by storage. This deterministically exercises
+    // the cleanup path that previously jumped through the SDK link stub.
+    registry.register_rule(std::make_unique<RejectedCatalogRule>());
+    const std::size_t erases_before_rebuild = empty_operand_erases;
+    registry.reinitialize();
+    std::cout << "MBA rejection control: " << registry.rule_count()
+              << " registered, " << registry.verified_rule_count()
+              << " verified, " << registry.rejected_rule_count() << " rejected\n";
+    if ( registry.rule_count() != registered + 1
+      || registry.verified_rule_count() != registered
+      || registry.rejected_rule_count() != 1
+      || registry.pattern_count() != registered
+      || empty_operand_erases <= erases_before_rebuild )
+    {
+        return EXIT_FAILURE;
+    }
+    registry.clear();
+    if ( registry.rule_count() != 0 || registry.pattern_count() != 0
+      || registry.verified_rule_count() != 0 || registry.rejected_rule_count() != 0 )
+    {
+        return EXIT_FAILURE;
+    }
     return EXIT_SUCCESS;
 }
