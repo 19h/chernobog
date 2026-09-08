@@ -471,6 +471,8 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             if ( function_ea != BADADDR )
                 chernobog::hybrid::hybrid_abandon_deobfuscation_projection(
                     uint64_t(function_ea));
+            if ( self->rax_pipeline_target == function_ea )
+                self->rax_pipeline_target = BADADDR;
             return MERR_REDO;
         }
 
@@ -487,6 +489,8 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
                 // Rebuild once from the enriched database.
                 chernobog::hybrid::hybrid_abandon_deobfuscation_projection(
                     uint64_t(function_ea));
+                if ( self->rax_pipeline_target == function_ea )
+                    self->rax_pipeline_target = BADADDR;
                 return MERR_REDO;
             }
         }
@@ -722,6 +726,12 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         // but each cfunc must own an exact display-eligible rax projection.
         const bool ctree_strings_ready = cfunc != nullptr
           && maturity == CMAT_FINAL && !is_disabled_mode_enabled();
+        // Hex-Rays can refine the entry prototype after the last microcode
+        // pass. Seal the still-owned display projection before its exact
+        // profile check, rather than only after string materialization.
+        if ( ctree_strings_ready && self->rax_pipeline_target == cfunc->entry_ea )
+            chernobog::hybrid::hybrid_seal_deobfuscation_projection(
+                uint64_t(cfunc->entry_ea));
         const bool runtime_strings_available = ctree_strings_ready
           && !chernobog::hybrid::
                 hybrid_current_runtime_strings_for_decompilation(

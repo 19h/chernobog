@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -188,7 +189,7 @@ bool run_direct(const RaxApi *api, const ProgramImage &image,
                 uint64_t seed = 0, const EmuInput *input = nullptr)
 {
   EmuDriver driver(api, image, true, false, summaries);
-  check(driver.can_discover(), "ARM64 direct-test driver must initialize");
+  check(driver.can_discover(), "direct-test driver must initialize");
   if ( !driver.can_discover() )
     return false;
   return driver.emulate_from(
@@ -239,6 +240,308 @@ void test_function_profiles_and_call_policy()
         "objc_storeStrong must be a pointer-store summary");
   check(!hybrid_classify_call_summary_name("_objc_msgSend"),
         "dynamic Objective-C dispatch must remain explicitly unmodeled");
+  check(hybrid_classify_call_summary_name("__imp__memchr") == EmuSummaryKind::MEMCHR
+        && hybrid_classify_call_summary_name("j__strnlen") == EmuSummaryKind::STRNLEN,
+        "bounded byte-search summaries must recognize decorated external names");
+  check(!hybrid_classify_call_summary_name("wmemchr")
+        && !hybrid_classify_call_summary_name("strnlen_s")
+        && !hybrid_classify_call_summary_name("__memchr_chk"),
+        "different code-unit widths and checked-call contracts require separate models");
+}
+
+ProgramImage byte_search_image(HybridArch arch, const std::vector<uint8_t> &payload,
+                              uint32_t source_permissions)
+{
+  // Arguments arrive through the driver's ABI input plan. After the external
+  // call, store its actual return register into image memory for observation.
+  const std::vector<uint8_t> arm64_code = {
+      0x08, 0x00, 0x84, 0xD2, // mov x8,#0x2000
+      0xE9, 0x03, 0x1E, 0xAA, // mov x9,lr
+      0x00, 0x01, 0x3F, 0xD6, // blr x8
+      0xFE, 0x03, 0x09, 0xAA, // mov lr,x9
+      0x08, 0x00, 0x88, 0xD2, // mov x8,#0x4000
+      0x00, 0x01, 0x00, 0xF9, // str x0,[x8]
+      0xC0, 0x03, 0x5F, 0xD6 }; // ret
+  const std::vector<uint8_t> x64_code = {
+      0x48, 0xC7, 0xC0, 0x00, 0x20, 0x00, 0x00, // mov rax,0x2000
+      0xFF, 0xD0, // call rax
+      0x48, 0xA3, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mov [0x4000],rax
+      0xC3 }; // ret
+  ProgramImage image = arm64_image(
+      arch == HybridArch::ARM64 ? arm64_code : x64_code, {}, true);
+  image.arch = arch;
+  SegImage source;
+  source.start = 0x3000;
+  source.end = source.start + payload.size();
+  source.perm = source_permissions;
+  source.bitness = 2;
+  source.bytes = payload;
+  source.mask.assign((payload.size() + 7) / 8, 0xFF);
+  image.segs.push_back(std::move(source));
+  SegImage result;
+  result.start = 0x4000;
+  result.end = result.start + 8;
+  result.perm = uint32_t(HybridSegPerm::READ) | uint32_t(HybridSegPerm::WRITE);
+  result.bitness = 2;
+  result.bytes.assign(8, 0xA5);
+  result.mask.assign(1, 0xFF);
+  image.hi = result.end;
+  image.segs.push_back(std::move(result));
+  image.entries.front().byte_hash = hybrid_function_byte_hash(image, image.entries.front());
+  image.content_hash = hybrid_program_content_hash(image);
+  return image;
+}
+
+void test_bounded_byte_search_summaries(const RaxApi *api)
+{
+  struct AbiCase { HybridArch arch; bool windows_x64; const char *name; };
+  for ( const AbiCase abi : { AbiCase{HybridArch::ARM64, false, "AAPCS64"},
+                             AbiCase{HybridArch::X86_64, false, "SysV x86-64"},
+                             AbiCase{HybridArch::X86_64, true, "Windows x86-64"} } )
+  {
+    auto run_case = [&](const char *label, EmuSummaryKind kind,
+                        const std::vector<uint8_t> &payload,
+                        const std::vector<uint64_t> &arguments,
+                        uint64_t expected, uint32_t consumed,
+                        bool success = true, bool permission_failure = false,
+                        uint32_t permissions = uint32_t(HybridSegPerm::READ))
+    {
+      const int prior_failures = failures;
+      const ProgramImage image = byte_search_image(abi.arch, payload, permissions);
+      const char *name = kind == EmuSummaryKind::MEMCHR ? "memchr" : "strnlen";
+      EmuDriver driver(api, image, true, abi.windows_x64,
+                       { EmuCallSummary{0x2000, kind, name} });
+      check(driver.can_discover(), "byte-search test driver must initialize");
+      if ( !driver.can_discover() )
+        return;
+      EmuInput input;
+      input.args = arguments;
+      input.run_id = 7;
+      input.seed = 0xABC;
+      EmuEvents events;
+      EmuOutcome outcome;
+      check(driver.emulate_from(image.entries.front().start, image.entries.front().end,
+                                short_run_config(), events, &outcome, true,
+                                input.seed, input.run_id, &input),
+            "byte-search summary must produce a run outcome");
+      check(outcome.returned == success
+            && outcome.environment_model_failure == !success
+            && outcome.permission_violation == permission_failure
+            && outcome.summarized_calls == (success ? 1u : 0u)
+            && !outcome.unmodeled_external,
+            "byte-search success and failure boundaries must be classified exactly");
+      check(!outcome.consumed_context_complete,
+            "a modeled external call remains exploratory evidence");
+      const auto written = std::find_if(events.data.begin(), events.data.end(),
+          [](const DataAcc &access) {
+            return access.kind == RAX_MEM_WRITE && access.scope == DataScope::IMAGE
+                && access.addr == 0x4000 && access.size == 8;
+          });
+      if ( success )
+      {
+        check(written != events.data.end() && written->value == expected,
+              "guest code must observe the byte-search function's exact return value");
+        check(outcome.external_model_used,
+              "successful byte-search summaries must retain external-model provenance");
+      }
+      else
+      {
+        check(written == events.data.end() && outcome.external_target == 0x2000
+              && outcome.external_name == name,
+              "failed byte-search summaries must stop before continuation and retain the symbol");
+      }
+      check(events.consumed_image_reads.size() == (consumed == 0 ? 0u : 1u),
+            "byte searches must record one consumed prefix and no unused tail");
+      if ( consumed != 0 && !events.consumed_image_reads.empty() )
+      {
+        const auto &read = events.consumed_image_reads.front();
+        check(read.addr == arguments.front() && read.size == consumed
+              && read.run_id == input.run_id && read.seed == input.seed,
+              "byte-search dependencies must include exactly the inspected bytes and run identity");
+        uint64_t preview = 0;
+        for ( size_t i = 0; i < std::min<size_t>(consumed, 8); ++i )
+          preview |= uint64_t(payload[i]) << (8 * i);
+        const auto recorded = std::find_if(events.data.begin(), events.data.end(),
+            [&](const DataAcc &access) {
+              return access.kind == RAX_MEM_READ && access.scope == DataScope::IMAGE
+                  && access.addr == arguments.front();
+            });
+        check(recorded != events.data.end() && recorded->size == consumed
+              && recorded->value == preview
+              && recorded->from == (abi.arch == HybridArch::ARM64 ? 0x1008u : 0x1007u),
+              "byte-search memory evidence must retain the first eight bytes and call source");
+      }
+      check(std::none_of(events.execution.begin(), events.execution.end(),
+                         [](const ExecPoint &point) { return point.pc == 0x2000; }),
+            "byte-search summaries must not execute external placeholder bytes");
+      if ( failures != prior_failures )
+        std::cerr << "  byte-search case: " << abi.name << ": " << label << '\n';
+    };
+
+    constexpr uint64_t source = 0x3000;
+    constexpr uint64_t cap = 1u << 20;
+    constexpr uint64_t maximum_address = std::numeric_limits<uint64_t>::max();
+    const std::vector<uint8_t> binary{0x41, 0, 0x80, 0x80};
+    run_case("memchr unsigned byte conversion and first match", EmuSummaryKind::MEMCHR,
+             binary, {source, 0x180, 4}, source + 2, 3);
+    run_case("memchr embedded zero", EmuSummaryKind::MEMCHR,
+             binary, {source, 0, 4}, source + 1, 2);
+    run_case("memchr does not terminate at zero", EmuSummaryKind::MEMCHR,
+             binary, {source, 0x80, 2}, 0, 2);
+    run_case("memchr negative int and unmapped unused tail", EmuSummaryKind::MEMCHR,
+             {0xFF}, {source, maximum_address, 4096}, source, 1);
+    run_case("memchr exact bound miss", EmuSummaryKind::MEMCHR,
+             {1, 2, 3}, {source, 4, 3}, 0, 3);
+    run_case("memchr preview truncation and last-byte match", EmuSummaryKind::MEMCHR,
+             {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+             {source, 16, 16}, source + 15, 16);
+    run_case("memchr zero bound reads no address", EmuSummaryKind::MEMCHR,
+             {1}, {maximum_address, 1, 0}, 0, 0);
+    run_case("memchr exact model cap", EmuSummaryKind::MEMCHR,
+             {1}, {source, 1, cap}, source, 1);
+    run_case("memchr over model cap rejects even an early match", EmuSummaryKind::MEMCHR,
+             {1}, {source, 1, cap + 1}, 0, 0, false);
+    run_case("memchr unavailable next byte retains observed prefix", EmuSummaryKind::MEMCHR,
+             {1, 2}, {source, 3, 3}, 0, 2, false, true);
+    run_case("memchr source permission failure", EmuSummaryKind::MEMCHR,
+             {1}, {source, 1, 1}, 0, 0, false, true, uint32_t(HybridSegPerm::WRITE));
+    run_case("memchr unmapped source", EmuSummaryKind::MEMCHR,
+             {1}, {0x9000, 1, 1}, 0, 0, false);
+    run_case("memchr address-boundary overflow", EmuSummaryKind::MEMCHR,
+             {1}, {maximum_address, 1, 2}, 0, 0, false, true);
+
+    run_case("strnlen unterminated bounded array", EmuSummaryKind::STRNLEN,
+             {'a', 'b', 'c'}, {source, 3}, 3, 3);
+    run_case("strnlen includes NUL in consumed bytes", EmuSummaryKind::STRNLEN,
+             {'a', 'b', 'c', 0}, {source, 4}, 3, 4);
+    run_case("strnlen empty string and unmapped unused tail", EmuSummaryKind::STRNLEN,
+             {0}, {source, 4096}, 0, 1);
+    run_case("strnlen counts encoded bytes", EmuSummaryKind::STRNLEN,
+             {0xC3, 0xA9, 0}, {source, 3}, 2, 3);
+    run_case("strnlen excludes a NUL beyond the bound", EmuSummaryKind::STRNLEN,
+             {'a', 'b', 0}, {source, 2}, 2, 2);
+    run_case("strnlen zero bound reads no address", EmuSummaryKind::STRNLEN,
+             {0}, {maximum_address, 0}, 0, 0);
+    run_case("strnlen exact model cap", EmuSummaryKind::STRNLEN,
+             {0}, {source, cap}, 0, 1);
+    run_case("strnlen over model cap rejects even an early NUL", EmuSummaryKind::STRNLEN,
+             {0}, {source, cap + 1}, 0, 0, false);
+    run_case("strnlen unavailable next byte retains observed prefix", EmuSummaryKind::STRNLEN,
+             {'a', 'b'}, {source, 3}, 0, 2, false, true);
+  }
+}
+
+void test_byte_search_scope_transitions(const RaxApi *api)
+{
+  struct ExpectedRead { uint64_t address; uint32_t size; uint64_t preview; };
+  struct AbiCase { HybridArch arch; bool windows_x64; const char *name; };
+  for ( const AbiCase abi : { AbiCase{HybridArch::ARM64, false, "AAPCS64"},
+                             AbiCase{HybridArch::X86_64, false, "SysV x86-64"},
+                             AbiCase{HybridArch::X86_64, true, "Windows x86-64"} } )
+  {
+    auto run_case = [&](const char *label, const ProgramImage &image, EmuSummaryKind kind,
+                        const std::vector<uint64_t> &arguments, uint64_t expected_result,
+                        const std::vector<ExpectedRead> &expected_reads,
+                        bool strict = false, bool success = true,
+                        bool permission_failure = false)
+    {
+      const int prior_failures = failures;
+      const char *name = kind == EmuSummaryKind::MEMCHR ? "memchr" : "strnlen";
+      EmuDriver driver(api, image, strict, abi.windows_x64,
+                       {{0x2000, kind, name}});
+      check(driver.can_discover(), "scope-transition driver must initialize");
+      if ( !driver.can_discover() )
+        return;
+      EmuInput input;
+      input.args = arguments;
+      input.seed = 0xDEF;
+      input.run_id = 9;
+      EmuEvents events;
+      EmuOutcome outcome;
+      check(driver.emulate_from(image.entries.front().start, image.entries.front().end,
+                                short_run_config(), events, &outcome, true,
+                                input.seed, input.run_id, &input),
+            "scope-transition summary must produce an outcome");
+      check(outcome.returned == success && outcome.environment_model_failure == !success
+            && outcome.permission_violation == permission_failure
+            && outcome.summarized_calls == (success ? 1u : 0u)
+            && !outcome.consumed_context_complete,
+            "scope transitions must retain exact summary outcome classification");
+      const auto written = std::find_if(events.data.begin(), events.data.end(),
+          [](const DataAcc &access) {
+            return access.kind == RAX_MEM_WRITE && access.addr == 0x4000;
+          });
+      check(success ? written != events.data.end() && written->value == expected_result
+                    : written == events.data.end(),
+            "scope transitions must preserve the guest result or stop before continuation");
+      check(events.consumed_image_reads.size() == expected_reads.size(),
+            "scope transitions must preserve every consumed image range");
+      std::vector<DataAcc> recorded_reads;
+      for ( const auto &access : events.data )
+        if ( access.kind == RAX_MEM_READ && access.scope == DataScope::IMAGE )
+          recorded_reads.push_back(access);
+      check(recorded_reads.size() == expected_reads.size(),
+            "scope transitions must preserve each image read's data record");
+      for ( size_t i = 0; i < expected_reads.size(); ++i )
+      {
+        const auto &expected = expected_reads[i];
+        if ( i < events.consumed_image_reads.size() )
+        {
+          const auto &read = events.consumed_image_reads[i];
+          check(read.addr == expected.address && read.size == expected.size
+                && read.run_id == input.run_id && read.seed == input.seed,
+                "split dependencies must preserve exact addresses, lengths, and run provenance");
+        }
+        if ( i < recorded_reads.size() )
+        {
+          const auto &read = recorded_reads[i];
+          check(read.addr == expected.address && read.size == expected.size
+                && read.value == expected.preview
+                && read.from == (abi.arch == HybridArch::ARM64 ? 0x1008u : 0x1007u),
+                "each split scope must retain its own byte preview and call source");
+        }
+      }
+      if ( failures != prior_failures )
+        std::cerr << "  scope-transition case: " << abi.name << ": " << label << '\n';
+    };
+    const auto padding = byte_search_image(abi.arch, {'a', 'b'},
+                                           uint32_t(HybridSegPerm::READ));
+    run_case("memchr image to engine padding", padding, EmuSummaryKind::MEMCHR,
+             {0x3000, 0, 3}, 0x3002, {{0x3000, 2, 0x6261}});
+    run_case("strnlen image to engine padding", padding, EmuSummaryKind::STRNLEN,
+             {0x3000, 3}, 2, {{0x3000, 2, 0x6261}});
+    run_case("memchr engine padding to image", padding, EmuSummaryKind::MEMCHR,
+             {0x2FFF, 'b', 3}, 0x3001, {{0x3000, 2, 0x6261}});
+    // Neither page-padding range belongs to the image. A later failed read
+    // must retain both initialized image ranges reached before the failure.
+    run_case("memchr padding followed by an unmapped page", padding, EmuSummaryKind::MEMCHR,
+             {0x3000, 0xFE, 0x2001}, 0,
+             {{0x3000, 2, 0x6261}, {0x4000, 8, UINT64_C(0xA5A5A5A5A5A5A5A5)}},
+             false, false);
+
+    auto adjacent = byte_search_image(abi.arch, {'a', 'b', 'c', 'd', 0},
+                                      uint32_t(HybridSegPerm::READ));
+    SegImage tail = adjacent.segs[2];
+    tail.start += 2;
+    tail.bytes.erase(tail.bytes.begin(), tail.bytes.begin() + 2);
+    adjacent.segs[2].end = tail.start;
+    adjacent.segs[2].bytes.resize(2);
+    adjacent.segs.insert(adjacent.segs.begin() + 3, tail);
+    adjacent.content_hash = hybrid_program_content_hash(adjacent);
+    run_case("memchr across adjacent image segments", adjacent, EmuSummaryKind::MEMCHR,
+             {0x3000, 'd', 5}, 0x3003, {{0x3000, 4, 0x64636261}}, true);
+    run_case("strnlen across adjacent image segments", adjacent, EmuSummaryKind::STRNLEN,
+             {0x3000, 5}, 4, {{0x3000, 5, 0x64636261}}, true);
+
+    auto gap = adjacent;
+    ++gap.segs[3].start;
+    ++gap.segs[3].end;
+    gap.content_hash = hybrid_program_content_hash(gap);
+    run_case("memchr image to padding to image", gap, EmuSummaryKind::MEMCHR,
+             {0x3000, 'd', 6}, 0x3004, {{0x3000, 2, 0x6261}, {0x3003, 2, 0x6463}});
+    run_case("memchr strict gap retains observed image prefix", gap, EmuSummaryKind::MEMCHR,
+             {0x3000, 'd', 6}, 0, {{0x3000, 2, 0x6261}}, true, false, true);
+  }
 }
 
 void test_arm64_memory_and_accounting(const RaxApi *api)
@@ -281,6 +584,7 @@ void test_arm64_memory_and_accounting(const RaxApi *api)
   static_result.function_start = image.lo;
   static_result.stats.instruction_heads = 3;
   static_result.stats.canonical_instructions = 4;
+  static_result.stats.truncated = true;
   static_result.stats.ida_macro_heads = 1;
   static_result.stats.ida_macro_components = 2;
   static_result.stats.decoder_comparisons = 2;
@@ -306,6 +610,8 @@ void test_arm64_memory_and_accounting(const RaxApi *api)
         && evidence.summary.static_instructions == 4
         && evidence.summary.executed_addresses_without_static_record == 0,
         "coverage must compare physical ARM64 PCs against a physical denominator");
+  check(evidence.summary.static_analysis_truncated,
+        "coverage summaries must expose a truncated static denominator");
   check(evidence.summary.ida_instruction_heads == 3
         && evidence.summary.ida_macro_heads == 1
         && evidence.summary.ida_macro_components == 2,
@@ -676,6 +982,76 @@ void test_runtime_string_consensus()
         "binary final writes must not be projected as runtime strings");
 }
 
+const void *expected_smir_bytes = nullptr;
+size_t expected_smir_size = 0;
+size_t smir_input_calls = 0;
+
+rax_status check_smir_input(int, uint32_t, uint64_t, const void *bytes, size_t size,
+                           rax_analysis *summary, rax_analysis_effect *effects,
+                           size_t capacity, size_t *required)
+{
+  ++smir_input_calls;
+  check(bytes == expected_smir_bytes, "SMIR must borrow the exact snapshot bytes");
+  check(size == expected_smir_size, "SMIR must respect the initialized backing extent");
+  *required = 33; // Exercise both the inline call and larger-effect retry.
+  *summary = {};
+  summary->struct_size = sizeof(*summary);
+  summary->abi_version = RAX_ANALYSIS_ABI_VERSION;
+  summary->required_effect_count = 33;
+  summary->effect_count = static_cast<uint32_t>(std::min(capacity, size_t(33)));
+  summary->flags = RAX_ANALYSIS_VALID;
+  for (size_t i = 0; i < summary->effect_count; ++i)
+  {
+    effects[i] = {};
+    effects[i].struct_size = sizeof(effects[i]);
+    effects[i].abi_version = RAX_ANALYSIS_ABI_VERSION;
+  }
+  if (capacity < 33)
+  {
+    summary->flags |= RAX_ANALYSIS_TRUNCATED;
+    return RAX_ERR_BOUNDS;
+  }
+  return RAX_OK;
+}
+
+void test_smir_input_bounds()
+{
+  RaxApi api{};
+  api.analyze = check_smir_input;
+  ProgramImage image = branch_image();
+  auto &segment = image.segs.front();
+  segment.bytes.resize(3);
+  expected_smir_bytes = segment.bytes.data() + 1;
+  expected_smir_size = 2;
+  smir_input_calls = 0;
+  const auto truncated = hybrid_analyze_instruction_effects(
+      &api, image, segment.start + 1, RAX_MODE_64, 16);
+  check(truncated.valid() && smir_input_calls == 2,
+        "truncated backing storage must bound both SMIR calls");
+  segment.mask[0] = 3;
+  expected_smir_size = 1;
+  const auto hole = hybrid_analyze_instruction_effects(
+      &api, image, segment.start + 1, RAX_MODE_64, 16);
+  check(hole.valid(), "SMIR input must stop at the first unloaded byte");
+  const size_t calls = smir_input_calls;
+  segment.bytes.clear();
+  const auto empty = hybrid_analyze_instruction_effects(
+      &api, image, segment.start, RAX_MODE_64, 16);
+  check(empty.status == SmirStatus::UNMAPPED && smir_input_calls == calls,
+        "empty backing storage must not reach the SMIR backend");
+  segment.bytes.assign(32, 0x90);
+  segment.mask.assign(4, 255);
+  expected_smir_bytes = segment.bytes.data();
+  expected_smir_size = 16;
+  check(hybrid_analyze_instruction_effects(
+      &api, image, segment.start, RAX_MODE_64, 32).valid(),
+      "SMIR must cap even larger offered windows at 16 bytes");
+  expected_smir_size = 3;
+  check(hybrid_analyze_instruction_effects(
+      &api, image, segment.start, RAX_MODE_64, 3).valid(),
+      "SMIR must retain the caller's narrower chunk bound");
+}
+
 void test_decoder_and_smir(const RaxApi *api, const ProgramImage &image)
 {
   const SegImage &segment = image.segs.front();
@@ -873,6 +1249,7 @@ int main()
   test_identity_comparison();
   test_runtime_string_consensus();
   test_function_profiles_and_call_policy();
+  test_smir_input_bounds();
   const RaxApi *api = rax_load();
   check(api != nullptr, rax_unavailable_reason());
   if ( api != nullptr )
@@ -886,6 +1263,8 @@ int main()
     test_x86_tls_environment_boundary(api);
     test_arm64_memory_and_accounting(api);
     test_arm64_external_boundaries(api);
+    test_bounded_byte_search_summaries(api);
+    test_byte_search_scope_transitions(api);
     test_arm64_application_boundary(api);
     test_arm64_function_boundary(api);
     test_objc_entry_abi(api);

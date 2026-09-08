@@ -1,14 +1,29 @@
 #include "evidence.hpp"
+#include "../common/string_recovery.h"
 
 #include <algorithm>
+#include <array>
+#include <cstring>
 #include <limits>
 #include <map>
 #include <set>
+#include <stdexcept>
 #include <tuple>
 #include <unordered_set>
 
 namespace chernobog::hybrid {
 namespace {
+
+constexpr auto make_loaded_byte_masks()
+{
+  std::array<std::array<uint8_t, 8>, 256> masks{};
+  for ( size_t bits = 0; bits < masks.size(); ++bits )
+    for ( size_t byte = 0; byte < 8; ++byte )
+      masks[bits][byte] = (bits & (size_t(1) << byte)) != 0 ? 255 : 0;
+  return masks;
+}
+
+constexpr auto kLoadedByteMasks = make_loaded_byte_masks();
 
 EvidenceProvenance provenance_for(
     const ProgramImage &image, const FuncRange &function,
@@ -87,24 +102,78 @@ void append_dependency_range(std::vector<DependencyRange> &ranges,
   }
 }
 
-ContextRangeIdentity capture_context_identity(
+template<class Identity>
+Identity capture_identity(
     const ProgramImage &image, uint64_t start, uint64_t end)
 {
-  ContextRangeIdentity identity;
+  Identity identity;
   identity.start = start;
   if ( end <= start )
     return identity;
-  const size_t size = size_t(end - start);
+  if ( end - start > identity.bytes.max_size() )
+    throw std::length_error("snapshot identity range exceeds vector capacity");
+  const size_t size = static_cast<size_t>(end - start);
   identity.bytes.assign(size, 0);
-  identity.loaded_mask.assign((size + 7) / 8, 0);
-  for ( size_t offset = 0; offset < size; ++offset )
+  identity.loaded_mask.assign(size / 8 + (size % 8 != 0), 0);
+
+  auto segment = std::upper_bound(image.segs.begin(), image.segs.end(), start,
+                                 [](uint64_t value, const SegImage &candidate)
+                                 { return value < candidate.start; });
+  if ( segment != image.segs.begin() )
+    --segment;
+  for ( ; segment != image.segs.end() && segment->start < end; ++segment )
   {
-    const uint64_t address = start + uint64_t(offset);
-    const SegImage *segment = image.segment_at(address);
-    if ( segment == nullptr || !segment->byte_loaded(address) )
+    if ( segment->end <= start )
       continue;
-    identity.bytes[offset] = segment->bytes[size_t(address - segment->start)];
-    identity.loaded_mask[offset / 8] |= uint8_t(1u << (offset & 7));
+    uint64_t cursor = std::max(start, segment->start);
+    const uint64_t source_offset = cursor - segment->start;
+    if ( source_offset >= segment->bytes.size() )
+      continue;
+    const uint64_t available = std::min<uint64_t>(
+        std::min(end, segment->end) - cursor, segment->bytes.size() - source_offset);
+    const uint64_t run_end = cursor + available;
+    while ( cursor < run_end )
+    {
+      const uint64_t source = cursor - segment->start;
+      if ( source / 8 >= segment->mask.size() )
+        break;
+      const unsigned bits = unsigned(segment->mask[source / 8]) >> (source & 7);
+      const size_t count = static_cast<size_t>(std::min<uint64_t>(
+          8 - (source & 7), run_end - cursor));
+      if ( (bits & ((1u << count) - 1)) != ((1u << count) - 1) )
+      {
+        // Mixed bitmaps are handled once per mask byte instead of creating
+        // many single-byte views. Empty bitmap groups require no data reads.
+        if ( bits != 0 )
+          for ( size_t i = 0; i < count; ++i )
+            if ( (bits & (1u << i)) != 0 )
+            {
+              const size_t offset = static_cast<size_t>(cursor - start) + i;
+              identity.bytes[offset] = segment->bytes[static_cast<size_t>(source) + i];
+              identity.loaded_mask[offset / 8] |= static_cast<uint8_t>(1u << (offset & 7));
+            }
+        cursor += count;
+        continue;
+      }
+
+      const LoadedByteView view = segment->loaded_view(
+          cursor, static_cast<size_t>(run_end - cursor));
+      size_t offset = static_cast<size_t>(cursor - start);
+      std::memcpy(identity.bytes.data() + offset, view.data, view.size);
+      // Set the destination's bit range, whose alignment may differ from the
+      // source segment bitmap. Complete mask bytes can be filled in bulk.
+      const size_t stop = offset + view.size;
+      const size_t leading = std::min(view.size, size_t(8) - (offset & 7));
+      identity.loaded_mask[offset / 8] |=
+          static_cast<uint8_t>(((1u << leading) - 1) << (offset & 7));
+      offset += leading;
+      const size_t whole = (stop - offset) / 8;
+      std::fill_n(identity.loaded_mask.data() + offset / 8, whole, uint8_t(255));
+      offset += whole * 8;
+      if ( offset < stop )
+        identity.loaded_mask[offset / 8] |= static_cast<uint8_t>((1u << (stop - offset)) - 1);
+      cursor += view.size;
+    }
   }
   return identity;
 }
@@ -126,7 +195,8 @@ IdentityComparison hybrid_compare_identity_bytes(
     return result;
   }
 
-  const size_t required_mask_size = (expected_bytes.size() + 7) / 8;
+  const size_t required_mask_size = expected_bytes.size() / 8
+                                + (expected_bytes.size() % 8 != 0);
   if ( expected_mask.size() < required_mask_size
     || actual_mask.size() < required_mask_size )
   {
@@ -136,26 +206,78 @@ IdentityComparison hybrid_compare_identity_bytes(
     return result;
   }
 
-  for ( size_t offset = 0; offset < expected_bytes.size(); ++offset )
+  for ( size_t begin = 0; begin < expected_bytes.size(); )
   {
-    const uint8_t bit = uint8_t(1u << (offset & 7));
-    const bool expected_loaded = (expected_mask[offset / 8] & bit) != 0;
-    const bool actual_loaded = (actual_mask[offset / 8] & bit) != 0;
-    if ( expected_loaded != actual_loaded )
+    const size_t count = std::min(size_t(64), expected_bytes.size() - begin);
+    if ( count == 64 )
     {
-      result.mismatch = IdentityMismatchKind::LOADED_STATE;
-      result.offset = offset;
-      result.expected_byte = expected_loaded ? 1 : 0;
-      result.actual_byte = actual_loaded ? 1 : 0;
-      return result;
+      // A bitmap word covers exactly 64 payload bytes. Equality and zero
+      // tests are independent of host endianness; memcpy permits unaligned
+      // storage. Keep blocks bounded so an early mismatch remains cheap.
+      uint64_t expected_bits;
+      uint64_t actual_bits;
+      std::memcpy(&expected_bits, expected_mask.data() + begin / 8, sizeof(expected_bits));
+      std::memcpy(&actual_bits, actual_mask.data() + begin / 8, sizeof(actual_bits));
+      if ( (expected_bits == 0 && actual_bits == 0)
+        || (expected_bits == actual_bits
+            && std::memcmp(expected_bytes.data() + begin,
+                           actual_bytes.data() + begin, count) == 0) )
+      {
+        begin += count;
+        continue;
+      }
     }
-    if ( expected_loaded && expected_bytes[offset] != actual_bytes[offset] )
+    // Equal short groups can also bypass bytewise work. For differing groups,
+    // preserve the original byte order: an earlier payload difference beats a
+    // later loaded-state difference, and padding never participates.
+    const size_t end = begin + count;
+    while ( begin < end )
     {
-      result.mismatch = IdentityMismatchKind::BYTE_VALUE;
-      result.offset = offset;
-      result.expected_byte = expected_bytes[offset];
-      result.actual_byte = actual_bytes[offset];
-      return result;
+      const size_t group = std::min(size_t(8), end - begin);
+      const uint8_t expected_bits = expected_mask[begin / 8];
+      const uint8_t actual_bits = actual_mask[begin / 8];
+      if ( group == 8 && expected_bits == actual_bits )
+      {
+        uint64_t difference = 0;
+        if ( expected_bits != 0 )
+        {
+          uint64_t expected_word, actual_word, loaded_bytes;
+          std::memcpy(&expected_word, expected_bytes.data() + begin, 8);
+          std::memcpy(&actual_word, actual_bytes.data() + begin, 8);
+          // Load byte masks in the same native order as both payload words;
+          // no little-endian assumption or unaligned typed access is needed.
+          std::memcpy(&loaded_bytes, kLoadedByteMasks[expected_bits].data(), 8);
+          difference = (expected_word ^ actual_word) & loaded_bytes;
+        }
+        if ( difference == 0 )
+        {
+          begin += group;
+          continue;
+        }
+      }
+      for ( size_t index = 0; index < group; ++index )
+      {
+        const uint8_t bit = uint8_t(1u << index);
+        const bool expected_loaded = (expected_bits & bit) != 0;
+        const bool actual_loaded = (actual_bits & bit) != 0;
+        if ( expected_loaded != actual_loaded )
+        {
+          result.mismatch = IdentityMismatchKind::LOADED_STATE;
+          result.offset = begin + index;
+          result.expected_byte = expected_loaded ? 1 : 0;
+          result.actual_byte = actual_loaded ? 1 : 0;
+          return result;
+        }
+        if ( expected_loaded && expected_bytes[begin + index] != actual_bytes[begin + index] )
+        {
+          result.mismatch = IdentityMismatchKind::BYTE_VALUE;
+          result.offset = begin + index;
+          result.expected_byte = expected_bytes[begin + index];
+          result.actual_byte = actual_bytes[begin + index];
+          return result;
+        }
+      }
+      begin += group;
     }
   }
   return result;
@@ -190,43 +312,32 @@ std::vector<RuntimeStringCandidate> hybrid_consensus_runtime_strings(
   // after model-replay evidence is merged). Retain one exact value per run and
   // reject that run/address if its final ranges disagree.
   std::map<uint64_t, std::map<RunKey, std::string>> values;
-  std::map<uint64_t, std::set<RunKey>> ambiguous;
+  std::set<uint64_t> ambiguous;
   for ( const MemoryBytes &written : evidence.events.final_writes )
   {
     const RunKey run{ written.run_id, written.seed };
-    if ( written.scope != DataScope::IMAGE || eligible.count(run) == 0
-      || written.bytes.empty() )
+    if ( written.scope != DataScope::IMAGE || eligible.count(run) == 0 )
     {
       continue;
     }
 
-    size_t length = 0;
-    while ( length < written.bytes.size() && written.bytes[length] != 0 )
+    const auto decoded = string_recovery::recover_runtime_utf8_prefix(
+        written.bytes, minimum_length, maximum_length);
+    if ( !decoded )
     {
-      const uint8_t byte = written.bytes[length];
-      if ( byte < 0x20 || byte > 0x7E || length == maximum_length )
-      {
-        length = 0;
-        break;
-      }
-      ++length;
-    }
-    // A captured range without its terminator could be a prefix of arbitrary
-    // binary data; do not turn it into a string fact.
-    if ( length < minimum_length || length >= written.bytes.size()
-      || written.bytes[length] != 0 )
-    {
+      // An incomplete or invalid duplicate must not be hidden by a valid
+      // observation at the same address/run in another final-memory range.
+      ambiguous.insert(written.addr);
       continue;
     }
 
-    const std::string candidate(
-        reinterpret_cast<const char *>(written.bytes.data()), length);
+    const std::string &candidate = decoded->utf8;
     auto &per_run = values[written.addr];
     const auto prior = per_run.find(run);
     if ( prior == per_run.end() )
       per_run.emplace(run, candidate);
     else if ( prior->second != candidate )
-      ambiguous[written.addr].insert(run);
+      ambiguous.insert(written.addr);
   }
 
   for ( const auto &address_values : values )
@@ -234,7 +345,7 @@ std::vector<RuntimeStringCandidate> hybrid_consensus_runtime_strings(
     const uint64_t address = address_values.first;
     const auto &per_run = address_values.second;
     if ( per_run.size() != eligible.size()
-      || !ambiguous[address].empty() )
+      || ambiguous.count(address) != 0 )
     {
       continue;
     }
@@ -321,22 +432,8 @@ TargetEvidence hybrid_build_target_evidence(
   {
     if ( chunk.end <= chunk.start )
       continue;
-    FunctionChunkIdentity identity;
-    identity.start = chunk.start;
-    const size_t size = size_t(chunk.end - chunk.start);
-    identity.bytes.resize(size);
-    identity.loaded_mask.assign((size + 7) / 8, 0);
-    for ( size_t offset = 0; offset < size; ++offset )
-    {
-      const uint64_t address = chunk.start + uint64_t(offset);
-      const SegImage *segment = image.segment_at(address);
-      if ( segment == nullptr || !segment->byte_loaded(address) )
-        continue;
-      identity.bytes[offset] =
-          segment->bytes[size_t(address - segment->start)];
-      identity.loaded_mask[offset / 8] |= uint8_t(1u << (offset & 7));
-    }
-    result.function_identity.push_back(std::move(identity));
+    result.function_identity.push_back(capture_identity<FunctionChunkIdentity>(
+        image, chunk.start, chunk.end));
   }
   result.static_analysis = static_analysis;
   result.inputs = inputs;
@@ -344,6 +441,7 @@ TargetEvidence hybrid_build_target_evidence(
   result.diagnostic = emulation.diagnostic;
 
   result.summary.ida_instruction_heads = static_analysis.stats.instruction_heads;
+  result.summary.static_analysis_truncated = static_analysis.stats.truncated;
   result.summary.static_instructions = static_analysis.stats.canonical_instructions != 0
       ? static_analysis.stats.canonical_instructions
       : static_analysis.instructions.size();
@@ -445,7 +543,7 @@ TargetEvidence hybrid_build_target_evidence(
   result.context_identity.reserve(merged_dependencies.size());
   for ( const DependencyRange &range : merged_dependencies )
   {
-    ContextRangeIdentity identity = capture_context_identity(
+    ContextRangeIdentity identity = capture_identity<ContextRangeIdentity>(
         image, range.start, range.end);
     result.summary.context_identity_bytes += identity.bytes.size();
     result.context_identity.push_back(std::move(identity));

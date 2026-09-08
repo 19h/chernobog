@@ -43,6 +43,8 @@ std::optional<EmuSummaryKind> hybrid_classify_call_summary_name(
   if ( name == "strncpy" ) return EmuSummaryKind::STRNCPY;
   if ( name == "strlen" ) return EmuSummaryKind::STRLEN;
   if ( name == "strcmp" ) return EmuSummaryKind::STRCMP;
+  if ( name == "memchr" ) return EmuSummaryKind::MEMCHR;
+  if ( name == "strnlen" ) return EmuSummaryKind::STRNLEN;
   if ( name == "malloc" || starts_with("operator new(")
     || starts_with("operator new[](") || name == "znwm" || name == "znwj"
     || name == "znam" || name == "znaj" )

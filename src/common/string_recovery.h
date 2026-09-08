@@ -140,6 +140,35 @@ inline uint32_t decode_unit(const uint8_t *bytes, size_t width, bool big_endian)
     return value;
 }
 
+// Recover a NUL-terminated runtime prefix without guessing a legacy encoding.
+// Bounds are Unicode scalar count (minimum) and encoded bytes (maximum).
+// Runtime display facts retain the prior exclusion of ASCII control bytes;
+// the shared decoder additionally rejects malformed UTF-8 and C1 controls.
+inline std::optional<recovered_text_t> recover_runtime_utf8_prefix(
+    const std::vector<uint8_t>& bytes,
+    size_t minimum_characters = 4,
+    size_t maximum_payload_bytes = 4096)
+{
+    if ( minimum_characters == 0 || maximum_payload_bytes < minimum_characters )
+        return std::nullopt;
+    size_t length = 0;
+    while ( length < bytes.size() && bytes[length] != 0 )
+    {
+        if ( length == maximum_payload_bytes || bytes[length] < 0x20
+          || bytes[length] == 0x7F )
+            return std::nullopt;
+        ++length;
+    }
+    if ( length == bytes.size() )
+        return std::nullopt;
+    recovered_text_t result;
+    if ( !decode_utf8_payload(bytes, length, &result)
+      || result.characters < minimum_characters )
+        return std::nullopt;
+    result.explicitly_terminated = true;
+    return result;
+}
+
 inline bool decode_wide_payload(const std::vector<uint8_t>& bytes,
                                 size_t payload_bytes,
                                 size_t unit_width,

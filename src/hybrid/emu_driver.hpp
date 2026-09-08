@@ -82,6 +82,8 @@ enum class EmuSummaryKind : uint8_t
   ALLOCATE_OBJECT,
   RANDOM_U32,
   RANDOM_UNIFORM,
+  MEMCHR,
+  STRNLEN,
 };
 
 struct EmuCallSummary

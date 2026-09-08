@@ -1,0 +1,24 @@
+/* Benign UTF-8 runtime-decoding fixture; compile with -O1. */
+#include <stddef.h>
+#include <stdio.h>
+
+static const unsigned char encoded[] = { 0x1d, 0x28, 0x99, 0xe6, 0x99, 0xc5, 0x3f, 0x7a, 0xbe, 0xe2, 0xcc, 0xbd, 0xcf, 0xd6, 0x5a };
+volatile unsigned char utf8_key = 0x5a;
+unsigned char utf8_output[15] __attribute__((aligned(64)));
+unsigned char utf8_existing[15] __attribute__((aligned(64))) = { 0x47, 0x72, 0xc3, 0xbc, 0xc3, 0x9f, 0x65, 0x20, 0xe4, 0xb8, 0x96, 0xe7, 0x95, 0x8c, 0x00 };
+unsigned char utf8_named[15] __attribute__((aligned(64))) = { 0x47, 0x72, 0xc3, 0xbc, 0xc3, 0x9f, 0x65, 0x20, 0xe4, 0xb8, 0x96, 0xe7, 0x95, 0x8c, 0x00 };
+unsigned char utf8_commented[15] __attribute__((aligned(64))) = { 0x47, 0x72, 0xc3, 0xbc, 0xc3, 0x9f, 0x65, 0x20, 0xe4, 0xb8, 0x96, 0xe7, 0x95, 0x8c, 0x00 };
+
+__attribute__((noinline)) int utf8_fixture(void)
+{
+    for (size_t i = 0; i < sizeof(encoded); ++i) {
+        unsigned char value = encoded[i] ^ utf8_key;
+        utf8_output[i] = value;
+        utf8_existing[i] = value;
+        utf8_named[i] = value;
+        utf8_commented[i] = value;
+    }
+    return puts((const char *)utf8_output);
+}
+
+int main(void) { return utf8_fixture(); }

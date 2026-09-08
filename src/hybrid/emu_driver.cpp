@@ -326,6 +326,25 @@ DataScope access_scope(const HookCtx *c, uint64_t address, uint32_t size,
   return DataScope::OTHER;
 }
 
+uint64_t next_scope_boundary(const HookCtx *c, uint64_t address)
+{
+  uint64_t boundary = std::numeric_limits<uint64_t>::max();
+  if ( c->image != nullptr )
+  {
+    const auto next = std::upper_bound(
+        c->image->segs.begin(), c->image->segs.end(), address,
+        [](uint64_t value, const SegImage &segment) { return value < segment.start; });
+    if ( next != c->image->segs.begin() && (next - 1)->contains(address) )
+      boundary = (next - 1)->end;
+    else if ( next != c->image->segs.end() )
+      boundary = next->start;
+  }
+  for ( uint64_t edge : {c->heap_lo, c->heap_hi, c->stack_lo, c->stack_hi} )
+    if ( edge > address )
+      boundary = std::min(boundary, edge);
+  return boundary;
+}
+
 void record_summary_access(HookCtx *c, int kind, uint64_t address,
                            uint64_t value, uint32_t size)
 {
@@ -455,6 +474,82 @@ bool apply_summary(HookCtx *c, rax_engine *engine, const EmuCallSummary &summary
                             scalar_from_memory(c, bytes.data(), bytes.size()),
                             uint32_t(bytes.size()));
       break;
+    case EmuSummaryKind::MEMCHR:
+    case EmuSummaryKind::STRNLEN:
+    {
+      const bool is_memchr = summary.kind == EmuSummaryKind::MEMCHR;
+      if ( !args(is_memchr ? 3 : 2) )
+        return false;
+      const uint64_t limit = is_memchr ? a2 : a1;
+      // The requested bound, rather than the eventual matching prefix, is
+      // subject to the same byte cap as the other bounded memory models.
+      if ( limit > kMaxModelBytes )
+        return false;
+      const uint8_t needle = is_memchr ? uint8_t(a1) : 0;
+      uint8_t preview[8] = {};
+      uint32_t consumed = 0;
+      uint64_t recorded_start = a0;
+      DataScope recorded_scope = DataScope::OTHER;
+      uint64_t scope_boundary = 0;
+      DataScope current_scope = DataScope::OTHER;
+      bool recordable = false;
+      auto record_prefix = [&]()
+      {
+        if ( consumed != 0 )
+          record_summary_access(c, RAX_MEM_READ, recorded_start,
+                                scalar_from_memory(c, preview, consumed), consumed);
+        consumed = 0;
+      };
+      bool readable = true;
+      result = is_memchr ? 0 : limit;
+      for ( uint64_t offset = 0; offset < limit; ++offset )
+      {
+        uint64_t source = 0;
+        uint8_t byte = 0;
+        // A matching byte can precede an unmapped or unreadable tail. Do not
+        // prevalidate the whole bound or read beyond the first match/NUL.
+        if ( !checked_add(a0, offset, &source) || c->api->mem_read == nullptr
+          || !summary_access_allowed(c, engine, source, 1, HybridSegPerm::READ)
+          || c->api->mem_read(engine, source, &byte, 1) != RAX_OK )
+        {
+          readable = false;
+          break;
+        }
+        // Permissive execution can traverse engine page padding between image
+        // ranges. Keep each record within one memory scope so an OTHER byte
+        // cannot cause the surrounding IMAGE dependencies to be discarded.
+        // Reclassify only at segment/scratch boundaries, not for every byte.
+        if ( source >= scope_boundary )
+        {
+          current_scope = access_scope(c, source, 1, &recordable);
+          scope_boundary = next_scope_boundary(c, source);
+        }
+        if ( consumed != 0 && (!recordable || current_scope != recorded_scope) )
+          record_prefix();
+        if ( recordable )
+        {
+          if ( consumed == 0 )
+          {
+            recorded_start = source;
+            recorded_scope = current_scope;
+          }
+          if ( consumed < sizeof(preview) )
+            preview[consumed] = byte;
+          ++consumed;
+        }
+        if ( byte == needle )
+        {
+          result = is_memchr ? source : offset;
+          break;
+        }
+      }
+      record_prefix();
+      // Retain the successfully observed prefix even if its next byte fails.
+      // The caller classifies this boundary as an environment-model failure.
+      if ( !readable )
+        return false;
+      break;
+    }
     case EmuSummaryKind::STRCMP:
     {
       std::vector<uint8_t> rhs;

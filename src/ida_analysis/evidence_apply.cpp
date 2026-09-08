@@ -114,9 +114,10 @@ bool source_is_instruction(ea_t source)
   return is_code(flags) && is_head(flags);
 }
 
-bool has_protected_metadata(flags64_t flags)
+bool has_protected_metadata(flags64_t flags, bool allow_dummy_names = false)
 {
-  return has_any_name(flags) || has_cmt(flags) || has_extra_cmts(flags);
+  return (has_any_name(flags) && !(allow_dummy_names && has_dummy_name(flags)))
+      || has_cmt(flags) || has_extra_cmts(flags);
 }
 
 bool ensure_code_target(ea_t target, bool call, const EvidenceApplyConfig &config,
@@ -160,7 +161,7 @@ bool add_code_reference(ea_t from, ea_t to, bool call,
   return true;
 }
 
-bool range_is_undefined_data(ea_t address, size_t size)
+bool range_is_undefined_data(ea_t address, size_t size, bool allow_dummy_names = false)
 {
   const segment_t *segment = getseg(address);
   if ( size == 0 || !nonexecutable_data(address) || segment == nullptr
@@ -172,7 +173,7 @@ bool range_is_undefined_data(ea_t address, size_t size)
     const ea_t current = address + ea_t(offset);
     const flags64_t flags = get_flags(current);
     if ( getseg(current) != segment || !is_mapped(current)
-      || !is_unknown(flags) || has_protected_metadata(flags) )
+      || !is_unknown(flags) || has_protected_metadata(flags, allow_dummy_names) )
     {
       return false;
     }
@@ -242,7 +243,10 @@ bool create_ascii_string(ea_t address)
 
 bool idb_matches_string(ea_t address, const std::string &value)
 {
-  if ( value.empty() || !range_is_undefined_data(address, value.size() + 1) )
+  // Dynamic drefs can create dummy labels on every observed byte immediately
+  // before this pass. Those labels carry no user/analysis name; real names and
+  // comments remain protected, including in the middle of the string range.
+  if ( value.empty() || !range_is_undefined_data(address, value.size() + 1, true) )
     return false;
   for ( size_t index = 0; index < value.size(); ++index )
   {
@@ -485,12 +489,18 @@ void apply_consensus_runtime_strings(const TargetEvidence &evidence,
 {
   if ( !config.strings )
     return;
+  int utf8_encoding = -1;
   for ( const RuntimeStringCandidate &candidate :
         chernobog::hybrid::hybrid_consensus_runtime_strings(evidence) )
   {
     const ea_t address = ea_t(candidate.address);
-    if ( idb_matches_string(address, candidate.value)
-      && create_strlit(address, candidate.value.size() + 1, STRTYPE_C) )
+    if ( !idb_matches_string(address, candidate.value) )
+      continue;
+    if ( utf8_encoding < 0 )
+      utf8_encoding = add_encoding("UTF-8");
+    if ( utf8_encoding > 0 && utf8_encoding < STRENC_NONE
+      && create_strlit(address, candidate.value.size() + 1,
+                       make_str_type(STRTYPE_C, utf8_encoding)) )
     {
       ++stats.strings;
     }

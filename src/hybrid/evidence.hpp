@@ -122,6 +122,8 @@ struct EvidenceSummary
 {
   size_t ida_instruction_heads = 0;
   size_t static_instructions = 0;
+  // Coverage uses only the static records retained within the configured cap.
+  bool static_analysis_truncated = false;
   size_t ida_macro_heads = 0;
   size_t ida_macro_components = 0;
   size_t smir_effects = 0;
@@ -250,8 +252,10 @@ struct RuntimeStringCandidate
 };
 
 // Pure evidence projection used by both the IDA bridge and native tests.
-// Candidates must be NUL-terminated printable ASCII prefixes. Conflicting or
-// missing per-run values fail closed.
+// Candidates must be NUL-terminated admissible UTF-8 prefixes (ASCII included).
+// minimum_length counts Unicode scalar values; maximum_length bounds payload
+// bytes. ASCII/C1 controls, malformed encoding, conflicting/invalid duplicates,
+// and missing per-run values fail closed. No Unicode normalization is applied.
 std::vector<RuntimeStringCandidate> hybrid_consensus_runtime_strings(
     const TargetEvidence &evidence, size_t minimum_length = 4,
     size_t maximum_length = 4096);

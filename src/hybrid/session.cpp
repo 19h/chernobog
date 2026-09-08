@@ -11,6 +11,7 @@
 #include "z3_bridge.hpp"
 #include "../ida_analysis/evidence_apply.hpp"
 #include "../plugin/component_registry.h"
+#include "../common/string_recovery.h"
 
 #include <pro.h>
 #include <ida.hpp>
@@ -124,6 +125,22 @@ ea_t action_target_address(const action_ctx_base_t *context)
 
 std::string printable_preview(const std::vector<uint8_t> &bytes)
 {
+  const auto decoded = string_recovery::recover_runtime_utf8_prefix(bytes);
+  if ( decoded )
+  {
+    std::string preview = decoded->utf8;
+    if ( preview.size() > 80 )
+    {
+      size_t boundary = 80;
+      while ( boundary != 0 && (uint8_t(preview[boundary]) & 0xC0) == 0x80 )
+        --boundary;
+      preview.resize(boundary);
+      preview += "...";
+    }
+    return preview;
+  }
+  // Preserve the existing short ASCII preview for incomplete captured ranges;
+  // these previews are observations and are not consensus string candidates.
   std::string result;
   for ( uint8_t byte : bytes )
   {
@@ -286,10 +303,11 @@ struct Session::Impl
           summary.synthetic_entry_context_runs,
           summary.attempted_steps_unknown_runs, summary.summarized_calls);
       msg("[chernobog][rax] coverage: physical=%zu/%zu (%zu.%02zu%%) "
-          "unmatched_executed=%zu; branches=%zu sites/%zu observations "
+          "static_truncated=%d unmatched_executed=%zu; branches=%zu sites/%zu observations "
           "predicate_inputs=%zu; indirect=%zu sites/%zu unique targets/%zu observations\n",
           summary.executed_instruction_addresses, summary.static_instructions,
           coverage_hundredths / 100, coverage_hundredths % 100,
+          int(summary.static_analysis_truncated),
           summary.executed_addresses_without_static_record,
           summary.conditional_sites, summary.conditional_observations,
           summary.predicate_state_inputs, summary.indirect_sites,
