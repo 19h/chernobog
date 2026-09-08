@@ -15,6 +15,16 @@ The obfuscation dissolves. The algorithm emerges.
 </h5>
 
 > [!NOTE]
+> **Chernobog 6.2** — new since 6.1.0:
+>
+> - **Range-guarded recurrent-switch CFF recovery** — unflattens dispatchers with unsigned range-check self-loops and restored selector registers, using exact Z3 transition proofs while preserving dispatcher side effects
+> - **Runtime UTF-8 string recovery** — materializes byte-exact, cross-run consensus strings as transient pseudocode literals, including non-Latin text and supplementary Unicode characters
+> - **Numeric CFString annotations** — displays recovered plaintext at supported AArch64 numeric-address uses while preserving the original object address and integer type
+> - **Extended rax call summaries** — bounded memchr and strnlen emulation with consumed-byte provenance
+> - **Analysis performance improvements** — faster image hashing, sparse-segment traversal, and evidence validation; bounded static-analysis and split-block searches; cached Z3 path witnesses and fewer redundant native decodes
+> - **Constant-folding correctness fixes** — early database-memory folding now requires a proven effective address and readable, nonwritable storage, preserving mutable globals and unresolved indexed switch-table loads
+> - **Expanded regression infrastructure** — isolated IDA smoke runs with timing and artifact reports, architecture-aware test compilation, and additional native-reference checks for dispatcher recovery and string display
+>
 > **Chernobog 6** is a major release. New since 5.3.0:
 >
 > - **rax hybrid engine** — bounded, focused-function emulation that materializes runtime strings and projects decoder, branch, memory, and Z3 cross-check evidence into the IDB (see [`RAX_HYBRID.md`](RAX_HYBRID.md))
