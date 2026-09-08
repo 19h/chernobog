@@ -4,6 +4,7 @@ The selected function and dispatcher addresses are supplied by CHERNOBOG_SMOKE_E
 and CHERNOBOG_DISPATCH_EA, defaulting to the reference ELF. Use an isolated raw
 input and CHERNOBOG_DISABLE=1 to inspect the decompiler without transformations.
 Set CHERNOBOG_CFF_DUMP_GLBOPT=1 to include the later global-optimization form.
+Set CHERNOBOG_CFF_DUMP_ALL=1 to retain every basic block and instruction.
 Set CHERNOBOG_CFF_REQUIRE_SWITCH=1 to assert that the LOCOPT microcode retains
 every native switch case and target after the table's lowcase normalization,
 including the indirect-read regression.
@@ -111,7 +112,8 @@ try:
                 for index, target in enumerate(switch.tail.r.c.targets)
             ] if switch.tail.opcode == ida_hexrays.m_jtbl else [],
             "blocks": [block_record(mba.get_mblock(index)) for index in sorted(
-                set(range(min(16, mba.qty)))
+                set(range(mba.qty if os.environ.get("CHERNOBOG_CFF_DUMP_ALL") == "1"
+                          else min(16, mba.qty)))
                 | {dispatch.serial, switch.serial}
                 | set(dispatch.succ(index) for index in range(dispatch.nsucc()))
             )],

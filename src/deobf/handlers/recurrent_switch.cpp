@@ -285,63 +285,132 @@ bool build_dispatcher_path(
     int current = pattern.dispatcher_block;
     while ( current != pattern.switch_block ) {
         if ( current < 0 || current >= mba->qty
+          || path->size() >= k_max_path_blocks
           || !seen.insert(current).second )
             return false;
         path->push_back(current);
         const mblock_t *block = mba->get_mblock(current);
-        if ( !block || block->nsucc() != 1 )
+        if ( !block )
             return false;
-        current = block->succ(0);
+        if ( block->nsucc() == 1 ) {
+            if ( block->tail && block->tail->opcode != m_goto
+              && must_mcode_close_block(block->tail->opcode, true) )
+                return false;
+            current = block->succ(0);
+        } else {
+            // Admit a range guard structurally, without claiming that its
+            // continuation is feasible. Every actual entry/return must later
+            // prove this unsigned self-edge impossible before bypassing it.
+            const minsn_t *tail = block->tail;
+            if ( block->nsucc() != 2 || !tail || tail->opcode != m_ja
+              || tail->is_fpinsn() || tail->d.t != mop_b
+              || tail->d.b != current || !block->succset.has(current)
+              || tail->l.t != mop_r || tail->r.t != mop_n
+              || tail->l.size != tail->r.size
+              || (tail->l.size != 1 && tail->l.size != 2
+                  && tail->l.size != 4 && tail->l.size != 8) )
+            {
+                return false;
+            }
+            const int continuation = block->succ(0) == current
+                ? block->succ(1) : block->succ(0);
+            if ( continuation == current )
+                return false;
+            current = continuation;
+        }
         if ( pattern.dispatcher_blocks.count(current) == 0 )
             return false;
     }
-    return !path->empty();
+    if ( path->empty() || path->size() >= k_max_path_blocks )
+        return false;
+    // The jtbl selector may be captured by an instruction in this block.
+    // Its complete prelude also carries live register and memory effects.
+    path->push_back(pattern.switch_block);
+    return true;
 }
 
 bool collect_selector_inputs(
     mbl_array_t *mba,
     const std::vector<int> &dispatcher_path,
+    const mop_t &selector,
     std::vector<mop_t> *live_registers,
     std::vector<mop_t> *state_operands,
     std::set<storage_key_t> *state_storage)
 {
     if ( !mba || !live_registers || !state_operands || !state_storage )
         return false;
-    std::vector<mop_t> definitions;
-    for ( int block_index : dispatcher_path ) {
-        mblock_t *block = mba->get_mblock(block_index);
+    std::vector<mop_t> required_registers;
+    std::set<storage_key_t> required_storage;
+    const auto add_inputs = [&](const operand_collector_t &collector) {
+        for ( const mop_t &source : collector.source_registers )
+            add_register_unique(&required_registers, source);
+        required_storage.insert(collector.source_storage.begin(),
+                                collector.source_storage.end());
+        state_storage->insert(collector.source_storage.begin(),
+                              collector.source_storage.end());
+        for ( const mop_t &operand : collector.source_storage_operands ) {
+            const auto candidate = storage_key(operand);
+            const bool duplicate = candidate && std::any_of(
+                state_operands->begin(), state_operands->end(),
+                [&](const mop_t &existing) {
+                    const auto key = storage_key(existing);
+                    return key && same_storage(*key, *candidate);
+                });
+            if ( candidate && !duplicate )
+                state_operands->push_back(operand);
+        }
+    };
+    minsn_t selector_read(BADADDR);
+    selector_read.opcode = m_mov;
+    selector_read.l = selector;
+    operand_collector_t selector_inputs;
+    selector_read.for_all_ops(selector_inputs);
+    add_inputs(selector_inputs);
+
+    // Backward dependency collection excludes unrelated switch setup (for
+    // example a table read after the selector was captured) from synthetic
+    // private state. That setup is still executed and copied in full below.
+    for ( auto block_index = dispatcher_path.rbegin();
+          block_index != dispatcher_path.rend(); ++block_index ) {
+        mblock_t *block = mba->get_mblock(*block_index);
         if ( !block )
             return false;
-        for ( minsn_t *instruction = block->head;
-              instruction; instruction = instruction->next ) {
+        for ( minsn_t *instruction = block->tail;
+              instruction; instruction = instruction->prev ) {
             operand_collector_t collector;
             instruction->for_all_ops(collector);
-            state_storage->insert(
-                collector.source_storage.begin(),
-                collector.source_storage.end());
-            for ( const mop_t &operand : collector.source_storage_operands ) {
-                const std::optional<storage_key_t> candidate =
-                    storage_key(operand);
-                if ( !candidate )
-                    continue;
-                const bool duplicate = std::any_of(
-                    state_operands->begin(), state_operands->end(),
-                    [&](const mop_t &existing) {
-                        const std::optional<storage_key_t> key =
-                            storage_key(existing);
-                        return key && same_storage(*key, *candidate);
+            bool relevant = instruction == block->tail
+                && block->nsucc() == 2 && instruction->opcode == m_ja
+                && instruction->d.t == mop_b
+                && instruction->d.b == block->serial;
+            for ( const mop_t &target : collector.target_registers ) {
+                relevant = relevant || register_is_defined(
+                    target, required_registers);
+            }
+            const auto destination = storage_key(instruction->d);
+            if ( destination ) {
+                relevant = relevant || std::any_of(
+                    required_storage.begin(), required_storage.end(),
+                    [&](const storage_key_t &needed) {
+                        return same_storage(*destination, needed);
                     });
-                if ( !duplicate )
-                    state_operands->push_back(operand);
             }
-            for ( const mop_t &source : collector.source_registers ) {
-                if ( !register_is_defined(source, definitions) )
-                    add_register_unique(live_registers, source);
+            if ( !relevant )
+                continue;
+            for ( const mop_t &target : collector.target_registers ) {
+                required_registers.erase(std::remove_if(
+                    required_registers.begin(), required_registers.end(),
+                    [&](const mop_t &needed) {
+                        return target.r <= needed.r && target.size > 0
+                            && needed.size > 0
+                            && int64_t(target.r) + target.size
+                                >= int64_t(needed.r) + needed.size;
+                    }), required_registers.end());
             }
-            for ( const mop_t &target : collector.target_registers )
-                add_register_unique(&definitions, target);
+            add_inputs(collector);
         }
     }
+    *live_registers = std::move(required_registers);
     return !state_storage->empty();
 }
 
@@ -393,6 +462,38 @@ bool is_pure_rotate_call(const minsn_t *instruction)
     const std::string name(helper);
     return name.find("ROL") != std::string::npos
         || name.find("ROR") != std::string::npos;
+}
+
+struct dispatcher_copy_visitor_t : public minsn_visitor_t {
+    bool supported = true;
+
+    int idaapi visit_minsn() override
+    {
+        if ( curins && is_mcode_call(curins->opcode)
+          && !is_pure_rotate_call(curins) ) {
+            // Later Hex-Rays stages enforce MBA2_NO_DUP_CALLS. Duplicating a
+            // real call with the same EA needs separate call-site handling;
+            // modeled pure rotate expressions do not.
+            supported = false;
+            return 1;
+        }
+        return 0;
+    }
+};
+
+bool block_chain_is_copyable(
+    mbl_array_t *mba, const std::vector<int> &dispatcher_path)
+{
+    for ( int block_index : dispatcher_path ) {
+        mblock_t *block = mba ? mba->get_mblock(block_index) : nullptr;
+        if ( !block )
+            return false;
+        dispatcher_copy_visitor_t visitor;
+        block->for_all_insns(visitor);
+        if ( !visitor.supported )
+            return false;
+    }
+    return true;
 }
 
 bool is_supported_proof_opcode(const minsn_t *instruction)
@@ -627,7 +728,7 @@ bool decode_microcode_switch(
     const mblock_t *block = mba->get_mblock(switch_block_index);
     const minsn_t *tail = block ? block->tail : nullptr;
     if ( !tail || tail->opcode != m_jtbl || tail->r.t != mop_c
-      || !tail->r.c || tail->l.empty() )
+      || !tail->r.c || tail->l.t != mop_r )
         return false;
     const mcases_t &cases = *tail->r.c;
     if ( cases.values.size() != cases.targets.size() )
@@ -665,9 +766,11 @@ bool enumerate_case_paths(
     const std::set<int> &case_targets,
     const std::set<int> &dispatcher_blocks,
     std::vector<case_path_t> *paths,
+    std::set<edge_key_t> *terminal_path_edges,
     bool *terminated_without_dispatch)
 {
-    if ( !mba || !paths || !terminated_without_dispatch )
+    if ( !mba || !paths || !terminal_path_edges
+      || !terminated_without_dispatch )
         return false;
     struct work_t {
         std::vector<int> blocks;
@@ -691,6 +794,12 @@ bool enumerate_case_paths(
             return false;
         if ( block->nsucc() == 0 ) {
             *terminated_without_dispatch = true;
+            // A returning path may share a prefix with a terminal path.
+            // Rewriting that prefix based only on returning-path targets
+            // would remove the terminal behavior, even with a unique target.
+            for ( std::size_t index = 1; index < work.blocks.size(); ++index )
+                terminal_path_edges->insert(
+                    edge_key_t{work.blocks[index - 1], work.blocks[index]});
             continue;
         }
         for ( int successor : block->succset ) {
@@ -753,9 +862,12 @@ bool find_unique_entry_path(
         for ( int successor : block->succset ) {
             if ( successor < 0 || successor >= mba->qty
               || dispatcher_blocks.count(successor) != 0
-              || case_targets.count(successor) != 0
-              || std::find(path.begin(), path.end(), successor) != path.end() )
+              || case_targets.count(successor) != 0 )
                 continue;
+            // One acyclic route does not establish entry provenance when a
+            // loop can change values before taking the same dispatcher edge.
+            if ( std::find(path.begin(), path.end(), successor) != path.end() )
+                return false;
             std::vector<int> next = path;
             next.push_back(successor);
             worklist.push_back(std::move(next));
@@ -900,6 +1012,30 @@ bool register_preserved_across_calls(
     return true;
 }
 
+bool register_is_recurrence_invariant(
+    mbl_array_t *mba,
+    const std::set<int> &recurrence_blocks,
+    const mop_t &candidate)
+{
+    if ( !register_preserved_across_calls(mba, recurrence_blocks, candidate) )
+        return false;
+    for ( int block_index : recurrence_blocks ) {
+        const mblock_t *block = mba->get_mblock(block_index);
+        if ( !block )
+            return false;
+        for ( minsn_t *instruction = block->head;
+              instruction; instruction = instruction->next ) {
+            operand_collector_t collector;
+            instruction->for_all_ops(collector);
+            for ( const mop_t &target : collector.target_registers ) {
+                if ( register_aliases(candidate, target) )
+                    return false;
+            }
+        }
+    }
+    return true;
+}
+
 bool constrain_selected_edge(
     const mblock_t *block,
     int destination,
@@ -945,16 +1081,205 @@ bool execute_path(
     return true;
 }
 
+z3::expr simplify_proof_expression(const z3::expr &expression)
+{
+    // Sort associative/commutative BV operands before extraction propagation
+    // expands them. Encoded state updates repeatedly XOR identical terms;
+    // cancelling those terms first avoids unnecessary nonlinear bit-blasting.
+    z3::params parameters(expression.ctx());
+    parameters.set("bv_sort_ac", true);
+    return expression.simplify(parameters);
+}
+
 std::optional<uint64_t> prove_unique_value(
     z3_solver::symbolic_executor_t *executor, const z3::expr &expression)
 {
     if ( !executor )
         return std::nullopt;
-    const z3::expr simplified = expression.simplify();
+    const z3::expr simplified = simplify_proof_expression(expression);
     uint64_t value = 0;
     if ( simplified.is_numeral_u64(value) )
         return value;
     return executor->solve_for_value(simplified);
+}
+
+enum class dispatcher_execution_t { completed, infeasible, unresolved };
+enum class dispatcher_execution_mode_t {
+    actual_return,
+    hypothetical_case,
+    unconstrained_case,
+};
+
+struct proof_profile_stats_t {
+    std::size_t remaining_logs = 8;
+    double phase_ms[6] = {};
+};
+
+struct resolution_profile_t {
+    const case_path_t *path;
+    dispatcher_execution_mode_t mode;
+    proof_profile_stats_t *statistics;
+    std::chrono::steady_clock::time_point stamp = std::chrono::steady_clock::now();
+    double phase_ms[6] = {};
+    std::size_t phase = 0;
+
+    void next()
+    {
+        const auto now = std::chrono::steady_clock::now();
+        if ( phase < 6 )
+            phase_ms[phase] += std::chrono::duration<double, std::milli>(now - stamp).count();
+        stamp = now;
+        ++phase;
+    }
+
+    ~resolution_profile_t()
+    {
+        next();
+        double total = 0;
+        for ( std::size_t index = 0; index < 6; ++index ) {
+            total += phase_ms[index];
+            if ( statistics )
+                statistics->phase_ms[index] += phase_ms[index];
+        }
+        if ( !statistics || statistics->remaining_logs == 0 || total < 20 )
+            return;
+        --statistics->remaining_logs;
+        deobf::log_verbose(
+            "[deflatten][cff-switch] slow proof state=0x%llx mode=%s "
+            "total_ms=%.2f entry=%.2f incoming=%.2f case=%.2f "
+            "dispatcher=%.2f feasible=%.2f unique=%.2f\n",
+            static_cast<unsigned long long>(path ? path->state : 0),
+            !path ? "entry" : mode == dispatcher_execution_mode_t::unconstrained_case
+                ? "unconditioned" : "conditioned",
+            total, phase_ms[0], phase_ms[1], phase_ms[2],
+            phase_ms[3], phase_ms[4], phase_ms[5]);
+    }
+};
+
+dispatcher_execution_t execute_dispatcher(
+    mbl_array_t *mba,
+    const std::vector<int> &dispatcher_path,
+    z3_solver::symbolic_executor_t *executor,
+    dispatcher_execution_mode_t mode,
+    const std::chrono::steady_clock::time_point &deadline)
+{
+    using feasibility_t = z3_solver::symbolic_executor_t::feasibility_t;
+    if ( !mba || !executor || dispatcher_path.empty() )
+        return dispatcher_execution_t::unresolved;
+    for ( std::size_t index = 0; index < dispatcher_path.size(); ++index ) {
+        const mblock_t *block = mba->get_mblock(dispatcher_path[index]);
+        if ( !block )
+            return dispatcher_execution_t::unresolved;
+        for ( const minsn_t *instruction = block->head;
+              instruction; instruction = instruction->next ) {
+            if ( instruction == block->tail
+              && (instruction->opcode == m_goto
+                  || instruction->opcode == m_ja
+                  || instruction->opcode == m_jtbl) )
+                break;
+            executor->execute_insn(instruction);
+        }
+        if ( index + 1 == dispatcher_path.size() ) {
+            if ( !block->tail || block->tail->opcode != m_jtbl )
+                return dispatcher_execution_t::unresolved;
+            continue;
+        }
+        if ( block->nsucc() == 1 ) {
+            if ( block->succ(0) != dispatcher_path[index + 1] )
+                return dispatcher_execution_t::unresolved;
+            continue;
+        }
+        const minsn_t *guard = block->tail;
+        if ( block->nsucc() != 2 || !guard || guard->opcode != m_ja
+          || guard->d.t != mop_b || guard->d.b != block->serial
+          || !block->succset.has(dispatcher_path[index + 1]) )
+            return dispatcher_execution_t::unresolved;
+        // Omitting incoming edge assumptions is a stronger overapproximation
+        // of states reaching a case. Its actual return still uses the strict
+        // guard proof below; only an unresolved proof needs the tighter model.
+        if ( mode == dispatcher_execution_mode_t::unconstrained_case )
+            continue;
+        const z3::expr self_edge = simplify_proof_expression(
+            executor->evaluate_jcc_condition(guard));
+        if ( mode == dispatcher_execution_mode_t::actual_return
+          && !self_edge.is_false() ) {
+            // Do not assume the exit on an actual return: that would erase
+            // feasible out-of-range executions before checking the guard.
+            if ( !apply_remaining_solver_budget(deadline) )
+                return dispatcher_execution_t::unresolved;
+            const feasibility_t feasible = executor->check_feasibility();
+            if ( feasible == feasibility_t::infeasible )
+                return dispatcher_execution_t::infeasible;
+            if ( feasible != feasibility_t::feasible
+              || !apply_remaining_solver_budget(deadline) )
+                return dispatcher_execution_t::unresolved;
+            const feasibility_t self_feasible =
+                executor->check_feasibility_with(self_edge);
+            if ( self_feasible != feasibility_t::infeasible ) {
+                deobf::log_verbose(
+                    "[deflatten][cff-switch] self-edge proof block=%d result=%s\n",
+                    block->serial,
+                    self_feasible == feasibility_t::feasible ? "SAT" : "UNKNOWN");
+                return dispatcher_execution_t::unresolved;
+            }
+        }
+        // An incoming case models only executions that reached that case.
+        // Actual entries reach here only after proving their self-edge UNSAT.
+        if ( !executor->assume(!self_edge) )
+            return dispatcher_execution_t::unresolved;
+    }
+    return dispatcher_execution_t::completed;
+}
+
+bool prove_recurrence_register(
+    mbl_array_t *mba,
+    const mop_t &candidate,
+    const std::vector<int> &dispatcher_path,
+    const std::vector<case_path_t> &paths,
+    const std::vector<mop_t> &preserved_registers,
+    const std::vector<mop_t> &private_state_operands,
+    const mop_t &selector,
+    const std::chrono::steady_clock::time_point &deadline)
+{
+    using feasibility_t = z3_solver::symbolic_executor_t::feasibility_t;
+    for ( const case_path_t &path : paths ) {
+        if ( !apply_remaining_solver_budget(deadline) )
+            return false;
+        std::set<int> blocks(dispatcher_path.begin(), dispatcher_path.end());
+        blocks.insert(path.blocks.begin(), path.blocks.end());
+        if ( register_is_recurrence_invariant(mba, blocks, candidate) )
+            continue;
+
+        // This induction step starts from arbitrary values, without replaying
+        // entry code or assuming the candidate already equals an entry value.
+        z3_solver::symbolic_executor_t executor(z3_solver::get_global_context());
+        for ( const mop_t &operand : preserved_registers )
+            executor.preserve_across_calls(operand);
+        for ( const mop_t &operand : private_state_operands )
+            executor.preserve_across_calls(operand);
+        const z3::expr before = executor.evaluate_operand(candidate);
+        if ( execute_dispatcher(
+                mba, dispatcher_path, &executor,
+                dispatcher_execution_mode_t::hypothetical_case, deadline)
+                != dispatcher_execution_t::completed )
+            return false;
+        const z3::expr incoming = executor.evaluate_operand(selector);
+        if ( !executor.assume(incoming == incoming.ctx().bv_val(
+                normalize_scalar(path.state, selector.size), selector.size * 8))
+          || path.edges.empty()
+          || !execute_path(mba, path.blocks, path.edges.back().destination,
+                           &executor) )
+            return false;
+        const z3::expr changed =
+            (executor.evaluate_operand(candidate) != before).simplify();
+        if ( changed.is_false() )
+            continue;
+        if ( !apply_remaining_solver_budget(deadline)
+          || executor.check_feasibility_with(changed)
+               != feasibility_t::infeasible )
+            return false;
+    }
+    return true;
 }
 
 selector_resolution_t resolve_selector_target(
@@ -962,14 +1287,17 @@ selector_resolution_t resolve_selector_target(
     const std::vector<int> &entry_path,
     int entry_destination,
     const std::vector<int> &dispatcher_path,
-    int switch_block,
     const case_path_t *case_path,
     const std::vector<mop_t> &preserved_registers,
+    const std::vector<mop_t> &invariant_registers,
     const std::vector<mop_t> &private_state_operands,
     const mop_t &selector,
     const std::map<uint64_t, int> &state_to_block,
-    bool clear_memory)
+    dispatcher_execution_mode_t incoming_mode,
+    proof_profile_stats_t *proof_statistics,
+    const std::chrono::steady_clock::time_point &deadline)
 {
+    resolution_profile_t profile{case_path, incoming_mode, proof_statistics};
     z3_solver::symbolic_executor_t executor(
         z3_solver::get_global_context());
     for ( const mop_t &operand : private_state_operands )
@@ -977,31 +1305,34 @@ selector_resolution_t resolve_selector_target(
     if ( !execute_path(
             mba, entry_path, entry_destination, &executor) )
         return {};
-    for ( const mop_t &operand : preserved_registers ) {
-        const z3::expr value = executor.evaluate_operand(operand);
-        executor.set_value(operand, value, true);
-    }
-    if ( clear_memory )
-        executor.invalidate_memory_values();
-    for ( const mop_t &operand : private_state_operands ) {
-        const z3::expr value = executor.evaluate_operand(operand);
-        executor.set_value(operand, value, true);
-    }
+    for ( const mop_t &operand : preserved_registers )
+        executor.preserve_across_calls(operand);
+    profile.next();
 
-    if ( clear_memory ) {
-        if ( !execute_path(
-                mba, dispatcher_path, switch_block,
-                &executor) )
+    if ( case_path ) {
+        if ( incoming_mode == dispatcher_execution_mode_t::actual_return )
             return {};
-        const z3::expr incoming_selector =
-            executor.evaluate_operand(selector);
-        const uint64_t normalized = normalize_scalar(
-            case_path ? case_path->state : 0, selector.size);
-        if ( !case_path || !executor.assume(
-                incoming_selector == incoming_selector.ctx().bv_val(
+        std::vector<std::pair<mop_t, z3::expr>> invariants;
+        for ( const mop_t &operand : invariant_registers )
+            invariants.emplace_back(operand, executor.evaluate_operand(operand));
+        // A return can occur after arbitrarily many cases. Entry values of
+        // mutable registers and storage are not loop invariants.
+        executor.invalidate_all_values();
+        for ( const auto &invariant : invariants )
+            executor.set_value(invariant.first, invariant.second, true);
+        if ( execute_dispatcher(
+                mba, dispatcher_path, &executor, incoming_mode, deadline)
+                != dispatcher_execution_t::completed )
+            return {};
+        if ( incoming_mode == dispatcher_execution_mode_t::hypothetical_case ) {
+            const z3::expr incoming_selector = executor.evaluate_operand(selector);
+            const uint64_t normalized = normalize_scalar(case_path->state, selector.size);
+            if ( !executor.assume(incoming_selector == incoming_selector.ctx().bv_val(
                     normalized, selector.size * 8)) )
-            return {};
+                return {};
+        }
     }
+    profile.next();
     if ( case_path ) {
         const int final_destination = case_path->edges.empty()
             ? -1 : case_path->edges.back().destination;
@@ -1010,20 +1341,41 @@ selector_resolution_t resolve_selector_target(
                 &executor) )
             return {};
     }
-    if ( !execute_path(
-            mba, dispatcher_path, switch_block,
-            &executor) )
+    profile.next();
+    const dispatcher_execution_t dispatch = execute_dispatcher(
+        mba, dispatcher_path, &executor,
+        dispatcher_execution_mode_t::actual_return, deadline);
+    if ( dispatch == dispatcher_execution_t::infeasible )
+        return {selector_resolution_kind_t::infeasible, -1};
+    if ( dispatch != dispatcher_execution_t::completed
+      || !apply_remaining_solver_budget(deadline) )
         return {};
+    profile.next();
 
     const auto feasibility = executor.check_feasibility();
     if ( feasibility == z3_solver::symbolic_executor_t::feasibility_t::infeasible )
         return {selector_resolution_kind_t::infeasible, -1};
     if ( feasibility != z3_solver::symbolic_executor_t::feasibility_t::feasible )
         return {};
-    const std::optional<uint64_t> state = prove_unique_value(
-        &executor, executor.evaluate_operand(selector));
-    if ( !state )
+    profile.next();
+    if ( !apply_remaining_solver_budget(deadline) )
         return {};
+    const z3::expr outgoing_selector = executor.evaluate_operand(selector);
+    if ( case_path && case_path->state == 0
+      && incoming_mode == dispatcher_execution_mode_t::unconstrained_case ) {
+        const std::string expression = simplify_proof_expression(outgoing_selector).to_string();
+        deobf::log_verbose(
+            "[deflatten][cff-switch] state-zero selector (%zu chars): %s\n",
+            expression.size(), expression.substr(0, 4000).c_str());
+    }
+    const std::optional<uint64_t> state = prove_unique_value(
+        &executor, outgoing_selector);
+    if ( !state ) {
+        deobf::log_verbose(
+            "[deflatten][cff-switch] selector uniqueness proof failed%s\n",
+            case_path ? " after case return" : " at entry");
+        return {};
+    }
     const auto target = state_to_block.find(
         normalize_scalar(*state, selector.size));
     return target == state_to_block.end()
@@ -1094,6 +1446,149 @@ bool apply_edge_rewrite(
     return true;
 }
 
+bool can_append_dispatcher(mbl_array_t *mba, const edge_key_t &edge)
+{
+    const mblock_t *block = mba && edge.source >= 0 && edge.source < mba->qty
+        ? mba->get_mblock(edge.source) : nullptr;
+    return block && block->nsucc() == 1
+        && edge_is_rewriteable(mba, edge);
+}
+
+bool append_dispatcher_prelude(
+    mbl_array_t *mba,
+    const std::vector<int> &dispatcher_path,
+    mblock_t *destination,
+    std::vector<minsn_t *> *copied_roots)
+{
+    if ( !mba || !destination || !copied_roots || destination->nsucc() != 1 )
+        return false;
+    minsn_t *anchor = destination->tail;
+    if ( anchor && anchor->opcode == m_goto )
+        anchor = anchor->prev;
+    else if ( anchor && must_mcode_close_block(anchor->opcode, true) )
+        return false;
+    for ( int block_index : dispatcher_path ) {
+        const mblock_t *source = mba->get_mblock(block_index);
+        if ( !source )
+            return false;
+        destination->maxbsp = std::max(destination->maxbsp, source->maxbsp);
+        destination->minbstkref = std::min(
+            destination->minbstkref, source->minbstkref);
+        destination->minbargref = std::min(
+            destination->minbargref, source->minbargref);
+        for ( const minsn_t *instruction = source->head;
+              instruction; instruction = instruction->next ) {
+            if ( instruction == source->tail
+              && (instruction->opcode == m_goto
+                  || instruction->opcode == m_ja
+                  || instruction->opcode == m_jtbl) )
+                break;
+            minsn_t *copy = new minsn_t(*instruction);
+            if ( !is_mcode_fpu(copy->opcode) )
+                copy->clr_fpinsn();
+            copy->clr_assert();
+            destination->insert_into_block(copy, anchor);
+            copied_roots->push_back(copy);
+            anchor = copy;
+        }
+    }
+    destination->mark_lists_dirty();
+    return true;
+}
+
+bool apply_dispatcher_rewrite(
+    mbl_array_t *mba,
+    const edge_key_t &edge,
+    int target,
+    const std::vector<int> &dispatcher_path,
+    std::vector<minsn_t *> *copied_roots)
+{
+    return can_append_dispatcher(mba, edge)
+        && append_dispatcher_prelude(
+            mba, dispatcher_path, mba->get_mblock(edge.source), copied_roots)
+        && apply_edge_rewrite(mba, edge, target);
+}
+
+bool retire_unreachable_dispatcher(
+    mbl_array_t *mba,
+    const std::set<int> &dispatcher_blocks,
+    std::size_t *retired_blocks)
+{
+    if ( !mba || mba->qty < 2 || !retired_blocks )
+        return false;
+    *retired_blocks = 0;
+    mblock_t *exit = mba->get_mblock(mba->qty - 1);
+    if ( !exit || exit->nsucc() != 0 )
+        return false;
+    std::set<int> reachable;
+    std::vector<int> pending{0};
+    while ( !pending.empty() ) {
+        const int current = pending.back();
+        pending.pop_back();
+        if ( current < 0 || current >= mba->qty )
+            return false;
+        if ( !reachable.insert(current).second )
+            continue;
+        const mblock_t *block = mba->get_mblock(current);
+        if ( !block )
+            return false;
+        for ( int successor : block->succset )
+            pending.push_back(successor);
+    }
+    for ( int index : dispatcher_blocks ) {
+        if ( reachable.count(index) != 0 )
+            continue;
+        mblock_t *block = mba->get_mblock(index);
+        if ( !block || block == exit || (block->flags & MBL_KEEP) != 0 )
+            return false;
+        for ( int successor : block->succset ) {
+            mblock_t *destination = mba->get_mblock(successor);
+            if ( !destination )
+                return false;
+            destination->predset.del(index);
+            destination->mark_lists_dirty();
+        }
+        block->succset.clear();
+        for ( minsn_t *instruction = block->head; instruction; ) {
+            minsn_t *next = block->remove_from_block(instruction);
+            delete instruction;
+            instruction = next;
+        }
+        append_goto(block, exit->serial);
+        block->type = BLT_1WAY;
+        block->flags &= ~(MBL_NORET | MBL_TCAL | MBL_CALL | MBL_PUSH);
+        block->succset.add(exit->serial);
+        exit->predset.add(index);
+        block->mark_lists_dirty();
+        ++*retired_blocks;
+    }
+    exit->mark_lists_dirty();
+    return true;
+}
+
+struct copied_address_visitor_t : public minsn_visitor_t {
+    mbl_array_t *mba;
+
+    explicit copied_address_visitor_t(mbl_array_t *array) : mba(array) {}
+
+    int idaapi visit_minsn() override
+    {
+        if ( curins )
+            curins->ea = mba->alloc_fict_ea(mba->map_fict_ea(curins->ea));
+        return 0;
+    }
+};
+
+void assign_copied_instruction_addresses(
+    mbl_array_t *mba, const std::vector<minsn_t *> &copied_roots)
+{
+    // Distinct copied definitions need distinct lvar locations. The SDK's
+    // fictional addresses retain reverse mappings to their native provenance.
+    copied_address_visitor_t visitor(mba);
+    for ( minsn_t *root : copied_roots )
+        root->for_all_insns(visitor);
+}
+
 bool path_uses_edge(const case_path_t &path, const edge_key_t &edge)
 {
     return std::find_if(
@@ -1145,6 +1640,7 @@ bool try_build_frontier_specializations(
     const std::vector<const case_path_t *> &state_paths,
     const std::map<edge_key_t, edge_proof_t> &proofs,
     const std::set<int> &dispatcher_blocks,
+    const std::set<edge_key_t> &terminal_path_edges,
     std::vector<specialization_rewrite_t> *result)
 {
     if ( !mba || !result || state_paths.empty() )
@@ -1172,7 +1668,8 @@ bool try_build_frontier_specializations(
         const edge_key_t incoming{predecessor_index, frontier_index};
         mblock_t *predecessor = mba->get_mblock(predecessor_index);
         const auto proof = proofs.find(incoming);
-        if ( !predecessor || predecessor->nsucc() != 1
+        if ( terminal_path_edges.count(incoming) != 0
+          || !predecessor || predecessor->nsucc() != 1
           || predecessor->succ(0) != frontier_index
           || (predecessor->tail
               && predecessor->tail->opcode != m_goto
@@ -1198,6 +1695,7 @@ bool try_build_split_rewrite(
     mbl_array_t *mba,
     const std::vector<const case_path_t *> &state_paths,
     const std::set<int> &dispatcher_blocks,
+    const std::set<edge_key_t> &terminal_path_edges,
     split_rewrite_t *result)
 {
     if ( !mba || !result || state_paths.empty() )
@@ -1299,6 +1797,9 @@ bool try_build_split_rewrite(
 
     const edge_key_t direct_edge{branch->serial, suffix_entry};
     const edge_key_t alternate_edge{alternate->serial, suffix_entry};
+    if ( terminal_path_edges.count(direct_edge) != 0
+      || terminal_path_edges.count(alternate_edge) != 0 )
+        return false;
     std::set<int> direct_targets;
     std::set<int> alternate_targets;
     for ( const case_path_t *path : state_paths ) {
@@ -1400,9 +1901,9 @@ bool clone_block_chain_into(
     mbl_array_t *mba,
     const std::vector<int> &suffix,
     mblock_t *destination,
-    const std::set<storage_key_t> *omitted_storage = nullptr)
+    std::vector<minsn_t *> *copied_roots)
 {
-    if ( !mba || !destination || suffix.empty() )
+    if ( !mba || !destination || !copied_roots || suffix.empty() )
         return false;
     mblock_t *terminal_block = mba->get_mblock(suffix.back());
     if ( !terminal_block || terminal_block->nsucc() != 1
@@ -1436,9 +1937,6 @@ bool clone_block_chain_into(
             if ( instruction == block->tail
               && instruction->opcode == m_goto )
                 continue;
-            if ( omitted_storage
-              && is_state_storage(instruction->d, *omitted_storage) )
-                continue;
             minsn_t *copy = new minsn_t(*instruction);
             // These properties are invalid on copied non-FPU/control-flow
             // instructions and cause Hex-Rays INTERR 50801/52123 if retained.
@@ -1446,6 +1944,7 @@ bool clone_block_chain_into(
                 copy->clr_fpinsn();
             copy->clr_assert();
             destination->insert_into_block(copy, anchor);
+            copied_roots->push_back(copy);
             anchor = copy;
         }
     }
@@ -1456,6 +1955,7 @@ bool clone_block_chain_into(
             terminal->clr_fpinsn();
             terminal->clr_assert();
             destination->insert_into_block(terminal, anchor);
+            copied_roots->push_back(terminal);
         } else {
             append_goto(destination, terminal_block->succ(0));
         }
@@ -1487,30 +1987,33 @@ bool validate_specialization_rewrite(
 }
 
 bool apply_specialization_rewrite(
-    mbl_array_t *mba, const specialization_rewrite_t &rewrite)
+    mbl_array_t *mba, const specialization_rewrite_t &rewrite,
+    const std::vector<int> &dispatcher_path,
+    std::vector<minsn_t *> *copied_roots)
 {
     mblock_t *predecessor = mba->get_mblock(rewrite.predecessor);
     mblock_t *frontier = mba->get_mblock(rewrite.frontier);
     if ( !predecessor || !frontier
       || !clone_block_chain_into(
-            mba, std::vector<int>{rewrite.frontier}, predecessor) )
+            mba, std::vector<int>{rewrite.frontier}, predecessor, copied_roots) )
         return false;
-    return apply_edge_rewrite(
+    return apply_dispatcher_rewrite(
         mba, edge_key_t{rewrite.predecessor, rewrite.frontier},
-        rewrite.target);
+        rewrite.target, dispatcher_path, copied_roots);
 }
 
 bool apply_split_rewrite(
     mbl_array_t *mba,
     const split_rewrite_t &rewrite,
-    const std::set<storage_key_t> &state_storage)
+    const std::vector<int> &dispatcher_path,
+    std::vector<minsn_t *> *copied_roots)
 {
     mblock_t *alternate = mba->get_mblock(rewrite.alternate);
     mblock_t *direct = rewrite.suffix.empty()
         ? nullptr : mba->get_mblock(rewrite.suffix.front());
     if ( !alternate || !direct
       || !clone_block_chain_into(
-            mba, rewrite.suffix, alternate, &state_storage) )
+            mba, rewrite.suffix, alternate, copied_roots) )
         return false;
 
     edge_key_t direct_edge;
@@ -1522,87 +2025,18 @@ bool apply_split_rewrite(
         const std::vector<int> tail(
             rewrite.suffix.begin() + 1, rewrite.suffix.end());
         if ( !clone_block_chain_into(
-                mba, tail, direct, &state_storage) )
+                mba, tail, direct, copied_roots) )
             return false;
         direct_edge = edge_key_t{direct->serial, rewrite.suffix[1]};
     }
-    if ( !apply_edge_rewrite(mba, direct_edge, rewrite.direct_target) )
+    if ( !apply_dispatcher_rewrite(
+            mba, direct_edge, rewrite.direct_target, dispatcher_path, copied_roots) )
         return false;
-    if ( !apply_edge_rewrite(
+    if ( !apply_dispatcher_rewrite(
             mba, edge_key_t{rewrite.alternate, rewrite.suffix.front()},
-            rewrite.alternate_target) )
+            rewrite.alternate_target, dispatcher_path, copied_roots) )
         return false;
     return true;
-}
-
-bool collect_split_state_erasures(
-    mbl_array_t *mba,
-    const std::vector<split_rewrite_t> &split_plan,
-    const std::set<storage_key_t> &state_storage,
-    std::set<std::pair<int, minsn_t *>> *erasures)
-{
-    if ( !mba || !erasures )
-        return false;
-    for ( const split_rewrite_t &rewrite : split_plan ) {
-        std::set<storage_key_t> erased_storage;
-        // The suffix tail may be shared by unrelated inputs. It is copied
-        // into both selected arms and remains unmodified in its original
-        // location. Only the specialized suffix entry is made state-free.
-        const std::vector<int> specialized_blocks = rewrite.suffix.empty()
-            ? std::vector<int>{}
-            : std::vector<int>{rewrite.suffix.front()};
-        for ( int block_index : specialized_blocks ) {
-            mblock_t *block = mba->get_mblock(block_index);
-            if ( !block )
-                return false;
-            for ( minsn_t *instruction = block->head;
-                  instruction; instruction = instruction->next ) {
-                if ( !is_state_storage(instruction->d, state_storage) ) {
-                    // Once a synthetic state definition is removed, a later
-                    // retained instruction must not observe that definition.
-                    // Reject instead of attempting register/data-flow slicing
-                    // at this microcode maturity.
-                    operand_collector_t collector;
-                    instruction->for_all_ops(collector);
-                    for ( const storage_key_t &source
-                          : collector.source_storage ) {
-                        if ( std::any_of(
-                                erased_storage.begin(),
-                                erased_storage.end(),
-                                [&](const storage_key_t &erased) {
-                                    return same_storage(source, erased);
-                                }) )
-                            return false;
-                    }
-                    continue;
-                }
-                // The destination store is synthetic and its successor has
-                // been proven directly.  Nested side effects would make
-                // deleting the store unsafe, so reject such a topology.
-                if ( instruction->l.has_side_effects()
-                  || instruction->r.has_side_effects() )
-                    return false;
-                const std::optional<storage_key_t> destination =
-                    storage_key(instruction->d);
-                if ( destination )
-                    erased_storage.insert(*destination);
-                erasures->insert({block_index, instruction});
-            }
-        }
-    }
-    return true;
-}
-
-void apply_state_erasures(
-    mbl_array_t *mba,
-    const std::set<std::pair<int, minsn_t *>> &erasures)
-{
-    for ( const auto &erasure : erasures ) {
-        minsn_t *instruction = erasure.second;
-        instruction->clr_fpinsn();
-        instruction->clr_assert();
-        mba->get_mblock(erasure.first)->make_nop(instruction);
-    }
 }
 
 struct block_snapshot_t {
@@ -1716,7 +2150,11 @@ int run(mbl_array_t *mba,
 
     std::vector<int> dispatcher_path;
     if ( !build_dispatcher_path(mba, pattern, &dispatcher_path) ) {
-        deobf::log("[deflatten][cff-switch] rejected: dispatcher chain is not linear\n");
+        deobf::log("[deflatten][cff-switch] rejected: unsupported dispatcher route\n");
+        return 0;
+    }
+    if ( !block_chain_is_copyable(mba, dispatcher_path) ) {
+        deobf::log("[deflatten][cff-switch] rejected: dispatcher contains a non-duplicable call\n");
         return 0;
     }
 
@@ -1732,7 +2170,7 @@ int run(mbl_array_t *mba,
     std::vector<mop_t> private_state_operands;
     std::set<storage_key_t> state_storage;
     if ( !collect_selector_inputs(
-            mba, dispatcher_path, &selector_live_registers,
+            mba, dispatcher_path, selector, &selector_live_registers,
             &private_state_operands, &state_storage)
       || !state_storage_is_private(mba, state_storage) ) {
         deobf::log("[deflatten][cff-switch] rejected: selector state storage is not private\n");
@@ -1748,13 +2186,15 @@ int run(mbl_array_t *mba,
 
     std::vector<case_path_t> paths;
     std::set<edge_key_t> terminal_case_edges;
+    std::set<edge_key_t> terminal_path_edges;
     std::size_t terminal_cases = 0;
     for ( const auto &mapping : state_to_block ) {
         const std::size_t before = paths.size();
         bool terminated_without_dispatch = false;
         if ( !enumerate_case_paths(
                 mba, mapping.first, mapping.second, case_targets,
-                dispatcher_blocks, &paths, &terminated_without_dispatch) ) {
+                dispatcher_blocks, &paths, &terminal_path_edges,
+                &terminated_without_dispatch) ) {
             deobf::log(
                 "[deflatten][cff-switch] rejected: path enumeration exceeded proof bounds\n");
             return 0;
@@ -1791,6 +2231,14 @@ int run(mbl_array_t *mba,
         return 0;
     }
     const edge_key_t entry_edge = *entry_edges.begin();
+    if ( entry_edge.destination != dispatcher_path.front()
+      || std::any_of(terminal_case_edges.begin(), terminal_case_edges.end(),
+                     [&](const edge_key_t &edge) {
+                         return edge.destination != dispatcher_path.front();
+                     }) ) {
+        deobf::log("[deflatten][cff-switch] rejected: entry bypasses dispatcher prefix\n");
+        return 0;
+    }
     std::vector<int> entry_path;
     if ( !find_unique_entry_path(
             mba, entry_edge.source, case_targets,
@@ -1810,6 +2258,10 @@ int run(mbl_array_t *mba,
         dispatcher_path.begin(), dispatcher_path.end());
     for ( const case_path_t &path : paths )
         executed_blocks.insert(path.blocks.begin(), path.blocks.end());
+    std::set<int> recurrence_blocks(
+        dispatcher_path.begin(), dispatcher_path.end());
+    for ( const case_path_t &path : paths )
+        recurrence_blocks.insert(path.blocks.begin(), path.blocks.end());
 
     int rejected_block = -1;
     mcode_t rejected_opcode = m_nop;
@@ -1828,16 +2280,44 @@ int run(mbl_array_t *mba,
     for ( const mop_t &operand : stack_pointers )
         add_register_unique(&preservation_candidates, operand);
     std::vector<mop_t> preserved_registers;
+    std::vector<mop_t> invariant_registers;
     for ( const mop_t &operand : preservation_candidates ) {
         if ( register_preserved_across_calls(
                 mba, executed_blocks, operand) )
             add_register_unique(&preserved_registers, operand);
+        if ( register_is_recurrence_invariant(
+                mba, recurrence_blocks, operand) )
+            add_register_unique(&invariant_registers, operand);
     }
-
     scoped_solver_timeout_t restore_solver_timeout;
     z3_solver::reset_global_context();
     const auto solver_deadline = std::chrono::steady_clock::now()
         + std::chrono::milliseconds(k_solver_total_budget_ms);
+    proof_profile_stats_t proof_statistics;
+    for ( const mop_t &operand : selector_live_registers ) {
+        if ( register_is_defined(operand, invariant_registers)
+          || !register_preserved_across_calls(mba, recurrence_blocks, operand) )
+            continue;
+        if ( prove_recurrence_register(
+                mba, operand, dispatcher_path, paths, preserved_registers,
+                private_state_operands, selector, solver_deadline) ) {
+            add_register_unique(&invariant_registers, operand);
+            deobf::log_verbose(
+                "[deflatten][cff-switch] proved recurrence identity for %s.%d\n",
+                register_name(operand).c_str(), operand.size);
+        }
+    }
+
+    qstring invariant_names;
+    for ( const mop_t &operand : invariant_registers ) {
+        if ( !invariant_names.empty() )
+            invariant_names.append(',');
+        invariant_names.cat_sprnt(
+            "%s.%d", register_name(operand).c_str(), operand.size);
+    }
+    deobf::log_verbose(
+        "[deflatten][cff-switch] recurrence-invariant registers=%s\n",
+        invariant_names.c_str());
 
     if ( !apply_remaining_solver_budget(solver_deadline) ) {
         deobf::log("[deflatten][cff-switch] rejected: solver budget exhausted before initial proof\n");
@@ -1845,8 +2325,10 @@ int run(mbl_array_t *mba,
     }
     const selector_resolution_t initial_resolution = resolve_selector_target(
         mba, entry_path, entry_edge.destination, dispatcher_path,
-        pattern.switch_block, nullptr, preserved_registers,
-        private_state_operands, selector, state_to_block, false);
+        nullptr, preserved_registers, invariant_registers,
+        private_state_operands, selector, state_to_block,
+        dispatcher_execution_mode_t::hypothetical_case,
+        &proof_statistics, solver_deadline);
     if ( std::chrono::steady_clock::now() >= solver_deadline ) {
         deobf::log(
             "[deflatten][cff-switch] rejected: total solver deadline exceeded "
@@ -1871,6 +2353,8 @@ int run(mbl_array_t *mba,
     std::size_t infeasible_paths = 0;
     std::size_t unresolved_paths = 0;
     std::size_t cache_hits = 0;
+    std::size_t unconditioned_proofs = 0;
+    std::size_t conditioned_fallbacks = 0;
     for ( case_path_t &path : paths ) {
         ++syntactic_paths_by_state[path.state];
         const transition_key_t cache_key{path.state, path.edges};
@@ -1889,14 +2373,34 @@ int run(mbl_array_t *mba,
             }
             resolution = resolve_selector_target(
                 mba, entry_path, entry_edge.destination, dispatcher_path,
-                pattern.switch_block, &path, preserved_registers,
-                private_state_operands, selector, state_to_block, true);
+                &path, preserved_registers, invariant_registers,
+                private_state_operands, selector, state_to_block,
+                dispatcher_execution_mode_t::unconstrained_case,
+                &proof_statistics, solver_deadline);
+            if ( resolution.kind == selector_resolution_kind_t::unresolved ) {
+                ++conditioned_fallbacks;
+                resolution = resolve_selector_target(
+                    mba, entry_path, entry_edge.destination, dispatcher_path,
+                    &path, preserved_registers, invariant_registers,
+                    private_state_operands, selector, state_to_block,
+                    dispatcher_execution_mode_t::hypothetical_case,
+                    &proof_statistics, solver_deadline);
+            } else {
+                ++unconditioned_proofs;
+            }
             transition_cache.emplace(cache_key, resolution);
             if ( std::chrono::steady_clock::now() >= solver_deadline ) {
                 deobf::log(
                     "[deflatten][cff-switch] rejected: total solver deadline "
-                    "exceeded while proving path %zu/%zu\n",
-                    resolved_paths + 1, paths.size());
+                    "exceeded while proving path %zu/%zu "
+                    "(unconditioned=%zu fallback=%zu infeasible=%zu); "
+                    "cumulative_ms entry=%.2f incoming=%.2f case=%.2f "
+                    "dispatcher=%.2f feasible=%.2f unique=%.2f\n",
+                    resolved_paths + 1, paths.size(), unconditioned_proofs,
+                    conditioned_fallbacks, infeasible_paths,
+                    proof_statistics.phase_ms[0], proof_statistics.phase_ms[1],
+                    proof_statistics.phase_ms[2], proof_statistics.phase_ms[3],
+                    proof_statistics.phase_ms[4], proof_statistics.phase_ms[5]);
                 return 0;
             }
         }
@@ -1965,9 +2469,11 @@ int run(mbl_array_t *mba,
     }
     deobf::log_verbose(
         "[deflatten][cff-switch] transition paths=%zu feasible=%zu "
-        "infeasible=%zu unique-proofs=%zu cache-hits=%zu\n",
+        "infeasible=%zu unique-proofs=%zu cache-hits=%zu "
+        "unconditioned-proofs=%zu conditioned-fallbacks=%zu\n",
         paths.size(), resolved_paths, infeasible_paths,
-        transition_cache.size(), cache_hits);
+        transition_cache.size(), cache_hits,
+        unconditioned_proofs, conditioned_fallbacks);
 
     std::map<edge_key_t, int> rewrite_plan;
     std::map<edge_key_t, specialization_rewrite_t> specialization_plan;
@@ -1986,11 +2492,16 @@ int run(mbl_array_t *mba,
             bool selected = false;
             for ( auto edge = path->edges.rbegin();
                   edge != path->edges.rend(); ++edge ) {
+                // Copy the dispatcher only after the complete case body,
+                // including its final state definitions, has executed.
+                if ( edge != path->edges.rbegin() )
+                    break;
                 const auto proof = proofs.find(*edge);
                 if ( proof == proofs.end() || proof->second.unresolved
+                  || terminal_path_edges.count(*edge) != 0
                   || !proof->second.suffix_safe
                   || proof->second.targets.size() != 1
-                  || !edge_is_rewriteable(mba, *edge) )
+                  || !can_append_dispatcher(mba, *edge) )
                     continue;
                 state_rewrites[*edge] = *proof->second.targets.begin();
                 selected = true;
@@ -2009,7 +2520,7 @@ int run(mbl_array_t *mba,
         std::vector<specialization_rewrite_t> specializations;
         if ( try_build_frontier_specializations(
                 mba, state_group.second, proofs,
-                dispatcher_blocks, &specializations) ) {
+                dispatcher_blocks, terminal_path_edges, &specializations) ) {
             for ( const specialization_rewrite_t &specialization
                   : specializations ) {
                 const edge_key_t edge{
@@ -2030,7 +2541,8 @@ int run(mbl_array_t *mba,
 
         split_rewrite_t split;
         if ( !try_build_split_rewrite(
-                mba, state_group.second, dispatcher_blocks, &split) ) {
+                mba, state_group.second, dispatcher_blocks,
+                terminal_path_edges, &split) ) {
             log_cut_diagnostics(
                 mba, state_group.first, state_group.second, proofs);
             deobf::log(
@@ -2042,19 +2554,11 @@ int run(mbl_array_t *mba,
         split_plan.push_back(split);
     }
 
-    std::set<std::pair<int, minsn_t *>> state_erasures;
-    if ( !collect_split_state_erasures(
-            mba, split_plan, state_storage, &state_erasures) ) {
-        deobf::log(
-            "[deflatten][cff-switch] rejected: split state assignment has "
-            "nested side effects\n");
-        return 0;
-    }
-
     // Validate the complete plan against the unmodified graph. No partial
     // mutation is allowed if any planned edge is no longer representable.
     for ( const auto &rewrite : rewrite_plan ) {
-        if ( !edge_is_rewriteable(mba, rewrite.first) ) {
+        if ( terminal_path_edges.count(rewrite.first) != 0
+          || !can_append_dispatcher(mba, rewrite.first) ) {
             deobf::log("[deflatten][cff-switch] rejected: rewrite plan became stale\n");
             return 0;
         }
@@ -2065,6 +2569,10 @@ int run(mbl_array_t *mba,
     for ( const auto &planned : specialization_plan )
         bypassed_inputs.insert(planned.first);
     for ( const split_rewrite_t &rewrite : split_plan ) {
+        if ( !block_chain_is_copyable(mba, rewrite.suffix) ) {
+            deobf::log("[deflatten][cff-switch] rejected: split suffix contains a non-duplicable call\n");
+            return 0;
+        }
         if ( !validate_split_rewrite(
                 mba, rewrite, dispatcher_blocks, bypassed_inputs) ) {
             deobf::log("[deflatten][cff-switch] rejected: split plan became stale\n");
@@ -2072,10 +2580,56 @@ int run(mbl_array_t *mba,
         }
     }
     for ( const auto &planned : specialization_plan ) {
+        if ( !block_chain_is_copyable(mba, {planned.second.frontier}) ) {
+            deobf::log("[deflatten][cff-switch] rejected: frontier contains a non-duplicable call\n");
+            return 0;
+        }
         if ( !validate_specialization_rewrite(
                 mba, planned.second, dispatcher_blocks) ) {
             deobf::log(
                 "[deflatten][cff-switch] rejected: specialization plan became stale\n");
+            return 0;
+        }
+    }
+
+    // Clones must observe the original body, and a body may be rewritten
+    // only once. Check the actual application order: copying a frontier
+    // before a later split specializes it in-place is intentional.
+    std::set<int> modified_blocks;
+    const auto reserve_operation = [&](const std::vector<int> &reads,
+                                       const std::vector<int> &writes) {
+        for ( int block : reads ) {
+            if ( modified_blocks.count(block) != 0 )
+                return false;
+        }
+        for ( int block : dispatcher_path ) {
+            if ( modified_blocks.count(block) != 0 )
+                return false;
+        }
+        for ( int block : writes ) {
+            if ( !modified_blocks.insert(block).second )
+                return false;
+        }
+        return true;
+    };
+    for ( const auto &planned : specialization_plan ) {
+        const specialization_rewrite_t &rewrite = planned.second;
+        if ( !reserve_operation(
+                {rewrite.frontier}, {rewrite.predecessor}) ) {
+            deobf::log("[deflatten][cff-switch] rejected: overlapping specialization bodies\n");
+            return 0;
+        }
+    }
+    for ( const split_rewrite_t &rewrite : split_plan ) {
+        if ( !reserve_operation(
+                rewrite.suffix, {rewrite.alternate, rewrite.suffix.front()}) ) {
+            deobf::log("[deflatten][cff-switch] rejected: overlapping split bodies\n");
+            return 0;
+        }
+    }
+    for ( const auto &rewrite : rewrite_plan ) {
+        if ( !reserve_operation({}, {rewrite.first.source}) ) {
+            deobf::log("[deflatten][cff-switch] rejected: overlapping edge bodies\n");
             return 0;
         }
     }
@@ -2108,14 +2662,26 @@ int run(mbl_array_t *mba,
                 transaction_blocks.insert(terminal->succ(0));
         }
     }
-    for ( const auto &erasure : state_erasures )
-        transaction_blocks.insert(erasure.first);
+
+    // Retiring an unreachable dispatcher updates its old successors' input
+    // lists and the exit's input list without deleting or renumbering blocks.
+    transaction_blocks.insert(mba->qty - 1);
+    for ( int index : dispatcher_blocks ) {
+        const mblock_t *block = mba->get_mblock(index);
+        if ( !block )
+            return 0;
+        transaction_blocks.insert(index);
+        for ( int successor : block->succset )
+            transaction_blocks.insert(successor);
+    }
 
     mba_rewrite_transaction_t transaction(mba, transaction_blocks);
+    std::vector<minsn_t *> copied_roots;
     int changes = 0;
     for ( const auto &planned : specialization_plan ) {
         const specialization_rewrite_t &rewrite = planned.second;
-        if ( !apply_specialization_rewrite(mba, rewrite) ) {
+        if ( !apply_specialization_rewrite(
+                mba, rewrite, dispatcher_path, &copied_roots) ) {
             deobf::log(
                 "[deflatten][cff-switch] internal rejection while specializing "
                 "state 0x%llx at edge %d->%d\n",
@@ -2126,7 +2692,8 @@ int run(mbl_array_t *mba,
         ++changes;
     }
     for ( const split_rewrite_t &rewrite : split_plan ) {
-        if ( !apply_split_rewrite(mba, rewrite, state_storage) ) {
+        if ( !apply_split_rewrite(
+                mba, rewrite, dispatcher_path, &copied_roots) ) {
             deobf::log(
                 "[deflatten][cff-switch] internal rejection while splitting "
                 "state 0x%llx\n",
@@ -2135,9 +2702,9 @@ int run(mbl_array_t *mba,
         }
         changes += 2;
     }
-    apply_state_erasures(mba, state_erasures);
     for ( const auto &rewrite : rewrite_plan ) {
-        if ( !apply_edge_rewrite(mba, rewrite.first, rewrite.second) ) {
+        if ( !apply_dispatcher_rewrite(
+                mba, rewrite.first, rewrite.second, dispatcher_path, &copied_roots) ) {
             deobf::log(
                 "[deflatten][cff-switch] internal rejection while applying edge %d->%d\n",
                 rewrite.first.source, rewrite.first.destination);
@@ -2147,20 +2714,33 @@ int run(mbl_array_t *mba,
     }
 
     if ( changes > 0 ) {
+        std::size_t retired_dispatcher_blocks = 0;
+        if ( !retire_unreachable_dispatcher(
+                mba, dispatcher_blocks, &retired_dispatcher_blocks) ) {
+            deobf::log("[deflatten][cff-switch] internal rejection while retiring dispatcher\n");
+            return 0;
+        }
+        mba->mark_chains_dirty();
+        mba->verify(true);
+        // Delay fictional-address allocation until the complete structural
+        // rewrite has verified. Rollback restores all graph/instruction state;
+        // the SDK's private monotonic address pool has no undo API and may
+        // retain unreferenced entries after an exceptional allocation failure.
+        assign_copied_instruction_addresses(mba, copied_roots);
         mba->mark_chains_dirty();
         mba->verify(true);
         ctx->branches_simplified += changes;
         transaction.commit();
         // Return the exact mutation count to the owning optblock pass. Hex-
-        // Rays will rebuild chains and prune unreachable blocks in its normal
-        // optimizer lifecycle. Calling optimize_local/remove-unreachable from
-        // inside this callback is re-entrant and was a source of fast INTERRs.
+        // Rays will rebuild chains and prune the retired acyclic blocks in
+        // its normal lifecycle. An unreachable dispatcher SCC left intact can
+        // stall that optimizer; calling the optimizer here is re-entrant.
         deobf::log(
             "[deflatten][cff-switch] rewrote %d proven edges across %zu paths "
             "(%zu specialized edges, %zu split frontiers, %zu terminal cases); "
-            "dispatcher cleanup=deferred\n",
+            "unreachable dispatcher blocks retired=%zu\n",
             changes, paths.size(), specialization_plan.size(),
-            split_plan.size(), terminal_cases);
+            split_plan.size(), terminal_cases, retired_dispatcher_blocks);
     }
     return changes;
 }

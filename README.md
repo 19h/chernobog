@@ -40,6 +40,9 @@ Chernobog automatically detects and reverses the following Hikari obfuscation te
     distributed-backedge, selector-transform, and target-diversity evidence;
     exact Z3 transition proofs replace the dispatcher with direct CFG edges
     before ctree construction
+  - Unsigned range-check self-loops preceding recurrent switches, when every
+    modeled returning path excludes the self-edge and proves one successor;
+    copied operations retain their effects and native-address provenance
   - Hikari magic-constant dispatch detection
 - **Bogus Control Flow (BCF)** - Identifies and removes opaque predicates, dead branches, and unreachable code blocks, including arithmetic identity predicates such as `x*(x+1) % 2 == 0` (always true)
 - **Basic Block Splitting** - Merges artificially split basic blocks back together
@@ -764,6 +767,10 @@ Test coverage includes:
   ([validation](tests/BOUNDED_LIBC_MODELS.md))
 - alignment-independent SIMD hashing and comparison
 - unique-model Z3 solving, including ambiguous/unsatisfiable/64-bit cases
+- recurrence-value freshness, isolated feasibility queries, and cached path
+  witnesses with independent uniqueness exclusion ([validation](tests/SYMBOLIC_EXECUTOR.md))
+- native prefix prechecks that avoid recursive decoding of ordinary opcodes,
+  with identical instruction and prefix metadata ([validation](tests/NATIVE_PREFIX_GATE.md))
 - all 108 registered MBA rules, Z3-verified at 8, 16, 32, and 64 bits
 - commutative AST matching and binding rollback for five microcode operators
 - Hikari XOR-string recovery with both terminator forms and corruption rejection
@@ -791,8 +798,14 @@ decoder-key change; see [the reproducible fixture](tests/RUNTIME_UTF8.md).
 `tests/ida_early_writable_read_smoke.py` check that unknown indexed reads and
 writable globals remain loads, while exact readonly loads retain their folds.
 `tests/ida_cff_dispatcher_probe.py` checks every key and target of the reference
-249-case switch. Its range-check self-loop remains an unsupported rewrite
-topology; preserving the case map does not assert complete unflattening.
+249-case switch before the recurrent rewrite. `tests/ida_recurrent_guard_smoke.py`
+and its matched-run comparator check sixteen native-reference scenarios,
+observable dispatcher effects, rejected transitions, unchanged native bytes,
+and copied-instruction address mappings. Four supported fixture dispatchers are
+removed; seven negative functions retain their exact recorded microcode and
+execution traces ([fixture validation](tests/RECURRENT_GUARDS.md)). The reference
+ELF's range-guarded dispatcher also completes three uncached decompilations with
+zero case labels; see [the proof model and corpus results](tests/RECURRENT_SWITCH.md).
 `tests/ida_numeric_cfstring_smoke.py` checks pointer-value preservation,
 per-use display text, rejected candidates, header changes, and unchanged IDB
 bytes and persistent metadata during display.
@@ -865,7 +878,10 @@ to the artifact under test; otherwise GUI output can come from stale code.
 - Custom or heavily modified Hikari variants may not be fully supported
 - Encoded recurrent switch dispatchers are rewritten only when every bounded
   returning path has a unique proved target and the complete rewrite plan is
-  side-effect safe; unsupported graph shapes remain intact
+  side-effect safe within the Hex-Rays integer, storage, and call-spoil model;
+  unsupported graph shapes remain intact. Guard recovery currently supports
+  unsigned register/constant self-loops. Real calls in copied dispatcher or
+  suffix bodies are rejected; modeled pure rotate helpers are supported
 - Some obfuscation patterns may require manual cleanup after automated processing
 - Anti-analysis tricks (anti-debug, VM detection) are not handled
 - General Z3 analysis is bounded by a 5 s default query timeout (shorter for

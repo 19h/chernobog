@@ -1,18 +1,22 @@
 """Exercise Chernobog's real Hex-Rays callback on the reference CFF main."""
 
 import difflib
+import hashlib
+import json
 import os
 import re
 import time
 from pathlib import Path
 
 import ida_auto
+import ida_bytes
 import ida_funcs
 import ida_hexrays
 import ida_idaapi
 import ida_kernwin
 import ida_lines
 import ida_pro
+import idautils
 
 
 TARGET_EA = 0x82AF0
@@ -45,6 +49,19 @@ def decompile_no_cache():
     return elapsed, pseudocode
 
 
+def native_identity():
+    records = []
+    for first, last in idautils.Chunks(TARGET_EA):
+        contents = ida_bytes.get_bytes(first, last - first)
+        if contents is None or len(contents) != last - first:
+            finish(3, "native function chunk is not fully readable")
+        records.append({"start": int(first), "end": int(last),
+                        "sha256": hashlib.sha256(contents).hexdigest()})
+    if not records:
+        finish(3, "native function has no chunks")
+    return records
+
+
 try:
     ida_auto.auto_wait()
     if not ida_hexrays.init_hexrays_plugin():
@@ -53,6 +70,7 @@ try:
     if function_start == ida_idaapi.BADADDR or function_start != TARGET_EA:
         finish(3, "reference function 0x%X was not discovered" % TARGET_EA)
 
+    native_before = native_identity()
     elapsed_runs = []
     pseudocode_runs = []
     for _ in range(DECOMPILE_RUNS):
@@ -61,13 +79,34 @@ try:
         pseudocode_runs.append(pseudocode)
 
     pseudocode = pseudocode_runs[-1]
-    output_path = os.environ.get("CHERNOBOG_PSEUDOCODE_OUT")
+    native_after = native_identity()
+    run_directory = (Path(os.environ["IDAUSR"]).parent
+                     if "IDAUSR" in os.environ else Path.cwd())
+    output_path = os.environ.get(
+        "CHERNOBOG_PSEUDOCODE_OUT", str(run_directory / "cff_pseudocode.txt")
+    )
     if output_path:
         Path(output_path).write_text(pseudocode + "\n", encoding="utf-8")
         for run_index, run_pseudocode in enumerate(pseudocode_runs, 1):
             Path("%s.run%d" % (output_path, run_index)).write_text(
                 run_pseudocode + "\n", encoding="utf-8"
             )
+    # Retain all observations before assertions, including rejected baseline
+    # runs. These intervals measure decompilation, not native execution.
+    (run_directory / "cff_decompilation.json").write_text(
+        json.dumps({
+            "function_ea": TARGET_EA,
+            "elapsed_seconds": elapsed_runs,
+            "pseudocode_lines": [len(text.splitlines())
+                                 for text in pseudocode_runs],
+            "case_labels": [text.count("case ") for text in pseudocode_runs],
+            "native_before": native_before,
+            "native_after": native_after,
+            "native_unchanged": native_before == native_after,
+        }, indent=2) + "\n", encoding="utf-8"
+    )
+    if native_before != native_after:
+        finish(8, "native function bytes changed during decompilation")
     dispatcher_markers = (
         "0x83DAC1F1",
         "0x2ED4B00E",
