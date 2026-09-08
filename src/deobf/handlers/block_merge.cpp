@@ -34,21 +34,32 @@ bool block_merge_handler_t::detect_split_blocks(mbl_array_t *mba)
         }
     }
 
-    int max_chain = 0;
+    const double ratio = static_cast<double>(small_blocks) /
+                         static_cast<double>(mba->qty);
+    if ( ratio <= 0.30 )
+        return false;
+
+    // Detection needs four distinct blocks, not the exact longest chain.
+    // Bound each walk to that threshold so long chains/cycles do not cause
+    // quadratic rescanning. A fixed local history preserves short-cycle
+    // rejection without allocating a function-sized bitmap for every start.
+    constexpr int required_chain = 4;
     for ( int start = 0; start < mba->qty; ++start )
     {
         if ( !candidates[static_cast<size_t>(start)] )
             continue;
 
-        std::vector<bool> seen(static_cast<size_t>(mba->qty), false);
+        int seen[required_chain];
         int current = start;
         int chain_length = 0;
         while ( current >= 0 && current < mba->qty
              && candidates[static_cast<size_t>(current)]
-             && !seen[static_cast<size_t>(current)] )
+             && std::find(seen, seen + chain_length, current)
+                  == seen + chain_length )
         {
-            seen[static_cast<size_t>(current)] = true;
-            ++chain_length;
+            seen[chain_length++] = current;
+            if ( chain_length == required_chain )
+                return true;
 
             mblock_t *blk = mba->get_mblock(current);
             if ( !blk || blk->nsucc() != 1 )
@@ -64,12 +75,8 @@ bool block_merge_handler_t::detect_split_blocks(mbl_array_t *mba)
                 break;
             current = successor;
         }
-        max_chain = std::max(max_chain, chain_length);
     }
-
-    const double ratio = static_cast<double>(small_blocks) /
-                         static_cast<double>(mba->qty);
-    return ratio > 0.30 && max_chain >= 4;
+    return false;
 }
 
 //--------------------------------------------------------------------------
@@ -105,7 +112,10 @@ int block_merge_handler_t::count_insns(mblock_t *blk)
     int count = 0;
     for ( minsn_t *ins = blk->head; ins; ins = ins->next ) 
     {
-        count++;
+        // The detector only distinguishes <= 2 from > 2 instructions.
+        // There is no need to count the rest of a large noncandidate block.
+        if ( ++count > 2 )
+            break;
     }
     return count;
 }
