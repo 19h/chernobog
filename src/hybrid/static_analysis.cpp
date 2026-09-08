@@ -94,24 +94,6 @@ DecoderArmState arm_state_at(const DecoderArchitecture &architecture,
   return state == 0 ? DecoderArmState::Arm : DecoderArmState::Thumb;
 }
 
-size_t copy_instruction_window(const ProgramImage &image, uint64_t address,
-                               size_t maximum, uint8_t *output)
-{
-  const SegImage *segment = image.segment_at(address);
-  if ( segment == nullptr || address >= segment->end )
-    return 0;
-  const size_t available = size_t(std::min<uint64_t>(maximum, segment->end - address));
-  size_t copied = 0;
-  for ( ; copied < available; ++copied )
-  {
-    const uint64_t current = address + uint64_t(copied);
-    if ( !segment->byte_loaded(current) )
-      break;
-    output[copied] = segment->bytes[size_t(current - segment->start)];
-  }
-  return copied;
-}
-
 } // namespace
 
 StaticAnalysisResult hybrid_analyze_current_function(
@@ -130,13 +112,20 @@ StaticAnalysisResult hybrid_analyze_current_function(
   const int t_register = architecture.per_instruction_thumb ? str2reg("T") : -1;
 
   size_t remaining = config.max_static_instructions;
+  size_t cancellation_steps = 0;
+  const auto check_cancelled = [&cancellation_steps]()
+  {
+    // Count traversal work rather than successful decodes: data/invalid heads
+    // and the components of one large IDA macro must remain cancellable too.
+    return (cancellation_steps++ & 0xFFu) == 0 && user_cancelled();
+  };
   for ( const FuncChunk &chunk : function.chunks )
   {
     ea_t address = ea_t(chunk.start);
     const ea_t end = ea_t(chunk.end);
     while ( address != BADADDR && address < end )
     {
-      if ( (result.stats.instruction_heads & 0xFFu) == 0 && user_cancelled() )
+      if ( check_cancelled() )
       {
         result.stats.truncated = true;
         break;
@@ -148,13 +137,22 @@ StaticAnalysisResult hybrid_analyze_current_function(
         if ( decode_insn(&instruction, address) > 0 )
         {
           ++result.stats.instruction_heads;
+          // One successful decode beyond the budget distinguishes omitted
+          // instructions from an exact-cap result followed only by data or
+          // undecodable heads. Do not project xrefs or traverse further once
+          // that lookahead has established truncation.
+          if ( remaining == 0 )
+          {
+            result.stats.truncated = true;
+            break;
+          }
           const DecoderInstruction ida_projection = project_ida(address, instruction);
           size_t component_offset = 0;
           size_t component_index = 0;
           bool macro_counted = false;
           while ( component_offset < instruction.size )
           {
-            if ( remaining == 0 )
+            if ( remaining == 0 || check_cancelled() )
             {
               result.stats.truncated = true;
               break;
@@ -172,17 +170,15 @@ StaticAnalysisResult hybrid_analyze_current_function(
                 architecture, t_register, ea_t(component_address));
             const size_t offered = hybrid_decoder_window_size(
                 component_address, chunk.end, kMaximumInstructionBytes);
-            uint8_t bytes[kMaximumInstructionBytes] = {};
-            const size_t copied = copy_instruction_window(
-                image, component_address, offered, bytes);
-            if ( copied != 0
+            const LoadedByteView bytes = image.loaded_view(component_address, offered);
+            if ( bytes.size != 0
               && hybrid_decoder_mode(architecture, state, item.mode) )
             {
               // Decode is required for canonical traversal even when only SMIR
               // output was requested.
               item.rax = hybrid_decode_one(
                     api->decode, architecture.rax_arch, item.mode,
-                    component_address, bytes, copied);
+                    component_address, bytes.data, bytes.size);
               if ( item.rax.status == DecoderDecodeStatus::Valid )
               {
                 ++result.stats.rax_decoded;
@@ -252,6 +248,8 @@ StaticAnalysisResult hybrid_analyze_current_function(
         }
       }
 
+      if ( result.stats.truncated )
+        break;
       const ea_t next = next_head(address, end);
       if ( next == BADADDR || next <= address )
         break;

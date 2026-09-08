@@ -45,25 +45,9 @@ SmirInstructionAnalysis hybrid_analyze_instruction_effects(
   }
   result.arch = architecture.rax_arch;
 
-  const SegImage *segment = image.segment_at(instruction);
-  if ( segment == nullptr || instruction >= segment->end || maximum_bytes == 0 )
-  {
-    result.status = SmirStatus::UNMAPPED;
-    return result;
-  }
-  const size_t available = size_t(std::min<uint64_t>(
-      std::min<size_t>(kMaximumInstructionBytes, maximum_bytes),
-      segment->end - instruction));
-  std::vector<uint8_t> bytes;
-  bytes.reserve(available);
-  for ( size_t offset = 0; offset < available; ++offset )
-  {
-    const uint64_t address = instruction + uint64_t(offset);
-    if ( !segment->byte_loaded(address) )
-      break;
-    bytes.push_back(segment->bytes[size_t(address - segment->start)]);
-  }
-  if ( bytes.empty() )
+  const LoadedByteView bytes = image.loaded_view(
+      instruction, std::min(kMaximumInstructionBytes, maximum_bytes));
+  if ( bytes.size == 0 )
   {
     result.status = SmirStatus::UNMAPPED;
     return result;
@@ -72,7 +56,7 @@ SmirInstructionAnalysis hybrid_analyze_instruction_effects(
   result.effects.resize(kInlineEffects);
   size_t required = 0;
   rax_status status = api->analyze(
-      result.arch, result.mode, instruction, bytes.data(), bytes.size(),
+      result.arch, result.mode, instruction, bytes.data, bytes.size,
       &result.summary, result.effects.data(), result.effects.size(), &required);
   if ( required > kMaximumEffects )
   {
@@ -100,7 +84,7 @@ SmirInstructionAnalysis hybrid_analyze_instruction_effects(
     result.effects.resize(required);
     size_t retry_required = 0;
     status = api->analyze(
-        result.arch, result.mode, instruction, bytes.data(), bytes.size(),
+        result.arch, result.mode, instruction, bytes.data, bytes.size,
         &result.summary, result.effects.data(), result.effects.size(),
         &retry_required);
     if ( retry_required != required
