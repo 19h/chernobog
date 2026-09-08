@@ -133,6 +133,17 @@ The display projection is sealed before the final ctree lookup so late prototype
 refinement does not suppress first-view literals. See the
 [runtime UTF-8 validation](tests/RUNTIME_UTF8.md).
 
+For a restricted AArch64 store pattern, a plain 64-bit numeric CFString address
+can become an explicitly cast address expression with the same integer type and
+address bits. Admission requires exact `ADRP; ADD; STR` construction, compatible
+IDA-visible entries, and a loaded CFString header whose ASCII payload has an
+exact-length runtime consensus fact. The final print event adds bounded,
+transient use-site text describing the current IDB header relation and final
+emulator bytes separately. It changes neither saved comments nor IDB bytes,
+and does not establish the object's value when the store executes. The header
+relation and function evidence are revalidated for printing. See
+[the positive and negative live fixture](tests/NUMERIC_CFSTRING_DISPLAY.md).
+
 ## Application-mode execution model
 
 The mapped database image supplies bytes and permissions, but it is not treated

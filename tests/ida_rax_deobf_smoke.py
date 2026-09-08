@@ -11,6 +11,7 @@ import ida_auto
 import ida_bytes
 import ida_hexrays
 import ida_kernwin
+import ida_lines
 import ida_loader
 import ida_pro
 
@@ -20,6 +21,14 @@ def finish(code, message):
     print(line, flush=True)
     ida_kernwin.msg("%s\n" % line)
     ida_pro.qexit(code)
+
+
+def displayed_pseudocode(cfunc):
+    # __str__ invokes print_func() directly and omits hxe_func_printed sv
+    # annotations. Inspect the same rendered lines used by the pseudocode UI.
+    return "\n".join(
+        ida_lines.tag_remove(line.line) for line in cfunc.get_pseudocode()
+    )
 
 
 try:
@@ -42,7 +51,7 @@ try:
     if cfunc is None:
         finish(4, "decompilation failed at 0x%X" % function_ea)
 
-    pseudocode = str(cfunc)
+    pseudocode = displayed_pseudocode(cfunc)
     expected_literals = (
         '"WARNING"',
         '"frida"',
@@ -71,6 +80,11 @@ try:
     after = ida_bytes.get_bytes(destination, 12)
     if second is None or before != after:
         finish(6, "duplicate decompilation changed materialized data bytes")
+    second_pseudocode = displayed_pseudocode(second)
+    missing = [value for value in expected_literals
+               if value not in second_pseudocode]
+    if missing:
+        finish(7, "runtime literals absent from repeated pseudocode: %s" % missing)
 
     finish(
         0,

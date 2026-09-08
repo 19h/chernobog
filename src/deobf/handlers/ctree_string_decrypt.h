@@ -36,7 +36,13 @@
 class ctree_string_decrypt_handler_t {
 public:
     // Main entry point - run on decompiled function
-    static int run(cfunc_t *cfunc, deobf_ctx_t *ctx);
+    static int run(cfunc_t *cfunc, deobf_ctx_t *ctx,
+                   ctree_maturity_t event_maturity = CMAT_ZERO);
+
+    // hxe_func_printed only: add bounded, transient per-use text to cfunc->sv.
+    // The AST keeps the exact CFString address; observations describe final
+    // emulator bytes, not the object's value when the assignment executes.
+    static int annotate_runtime_cfstring_addresses(cfunc_t *cfunc);
     
     // Detection - check if function likely has string obfuscation
     static bool detect(cfunc_t *cfunc);

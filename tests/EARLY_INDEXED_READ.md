@@ -52,9 +52,12 @@ mode is for diagnosing later representations, not this regression assertion.
 
 ## Assumption register and bounded scope
 
-- E1: Loaded data without recorded writes is admissible constant memory under
-  the existing early-folder model. The fixture uses a const table; this change
-  does not establish the absence of unrecorded runtime writes in other inputs.
+- E1: The image's read and write permissions describe the memory during the
+  analyzed execution. Database-memory constants require positive read permission,
+  nonwritable storage, loaded bytes, and no recorded writes. The fixture uses a
+  const table. Writable globals remain loads even without write xrefs; the
+  [alias-store and call regression](EARLY_WRITABLE_READ.md) falsifies that older
+  admission rule. Runtime permission changes remain outside this static model.
 - E2: The effective address is represented by the evaluated microcode operands.
   The SDK identifies `mop_a` as an address operand and `mop_v.g` as the global's
   linear address. Low-address and undefined address-of forms are not evaluated.

@@ -705,11 +705,17 @@ bool read_constant_memory(ea_t address, int size, uint64 &value)
   }
   const segment_t *first_segment = getseg(address);
   if ( first_segment == nullptr || getseg(last) != first_segment
-    || first_segment->type == SEG_XTRN )
+    || first_segment->type == SEG_XTRN
+    || (first_segment->perm & SEGPERM_READ) == 0
+    || (first_segment->perm & SEGPERM_WRITE) != 0 )
   {
     return false;
   }
 
+  // Database bytes in writable storage are initial values. Missing write
+  // xrefs do not exclude aliasing stores, calls, or earlier invocations.
+  // Require positive read permission and nonwritable storage before treating
+  // the bytes as constants; retain the loaded-byte and known-write checks.
   for ( int offset = 0; offset < size; ++offset )
   {
     const ea_t current = address + offset;
@@ -1413,9 +1419,9 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
 
     int total = 0;
     // Fold first so a proven store expression has one in-flight numeric
-    // operand that can carry the character numform. Source bytes in writable
-    // segments are admitted only by read_constant_memory() when loaded and
-    // free of every statically known write reference.
+    // operand that can carry the character numform. Database-memory constants
+    // require loaded, read-permitted, nonwritable bytes without known writes.
+    // Exact stack-slot forwarding uses the separate in-flight store state.
     if ( config.constant_folding )
     {
       const int changes = fold_constants(*mba, config);

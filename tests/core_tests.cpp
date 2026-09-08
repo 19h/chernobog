@@ -1,3 +1,4 @@
+#include "common/aarch64_address_origin.h"
 #include "common/arm64_branch.h"
 #include "common/arm64_predicate.h"
 #include "common/bitvector.h"
@@ -77,6 +78,58 @@ void test_bitvectors()
           "little-endian 24-bit decode");
     check(decode_bytes(nullptr, 4, false) == 0,
           "null byte decode is rejected");
+}
+
+void test_aarch64_address_origin()
+{
+    using chernobog::aarch64_address_origin::decode_adrp_add_str_address;
+    // These instruction words come from independently assembling/disassembling
+    // tests/aarch64_address_origin.s, not from an encoder shared with the parser.
+    check(decode_adrp_add_str_address(
+              0x12345FF8, 0xB0000008, 0x91048D08, 0xF9000008) == 0x12346123,
+          "ADRP uses its own 4096-byte PC page, then ADD's byte offset");
+    check(decode_adrp_add_str_address(
+              0x5008, 0xF0FFFFFE, 0x913FFFDE, 0xF93FFFFE) == 0x4FFF,
+          "negative page displacement, X30, SP base and maximum STR offset");
+    check(decode_adrp_add_str_address(
+              0x200000000ULL, 0xF07FFFE0, 0x91000000, 0xF9000420)
+              == 0x2FFFFF000ULL,
+          "maximum positive signed 21-bit page displacement");
+    check(decode_adrp_add_str_address(
+              0x200000000ULL, 0x90800010, 0x91000610, 0xF9000A30)
+              == 0x100000001ULL,
+          "minimum negative signed 21-bit page displacement");
+    check(decode_adrp_add_str_address(
+              0xFFFFFFFFFFFFF000ULL, 0xB0000008, 0x91048D08, 0xF9000008)
+              == 0x123,
+          "architectural upper-address addition wraps modulo 2^64");
+    check(decode_adrp_add_str_address(
+              0, 0xF0FFFFFE, 0x913FFFDE, 0xF93FFFFE)
+              == 0xFFFFFFFFFFFFFFFFULL,
+          "negative page addition wraps without signed overflow");
+    check(!decode_adrp_add_str_address(
+              0x1001, 0xB0000008, 0x91048D08, 0xF9000008),
+          "unaligned AArch64 instruction address rejected");
+    check(!decode_adrp_add_str_address(
+              0x1000, 0x10008008, 0x91048D08, 0xF9000008),
+          "ADR is not treated as page-relative ADRP");
+    for ( uint32_t add : {0x91400508U, 0xB1000508U, 0x11000508U,
+                         0x91048D28U, 0x91048D09U} )
+    {
+        check(!decode_adrp_add_str_address(
+                  0x1000, 0xB0000008, add, 0xF9000008),
+              "shifted/flag-setting/32-bit ADD or mismatched registers rejected");
+    }
+    for ( uint32_t store : {0xB9000008U, 0xF9400008U, 0xF8000008U,
+                           0xF8216808U, 0xF8008408U, 0xF9000009U} )
+    {
+        check(!decode_adrp_add_str_address(
+                  0x1000, 0xB0000008, 0x91048D08, store),
+              "different memory operation/width/addressing or source rejected");
+    }
+    check(!decode_adrp_add_str_address(
+              0x1000, 0x9000001F, 0x910003FF, 0xF900001F),
+          "XZR/SP cannot serve as the constructed-address register");
 }
 
 void test_hexrays_merror_layout_compatibility()
@@ -732,6 +785,7 @@ void test_hikari_string_recovery()
 int main()
 {
     test_bitvectors();
+    test_aarch64_address_origin();
     test_hexrays_merror_layout_compatibility();
     test_deobfuscation_execution_policy();
     test_dependency_liveness();

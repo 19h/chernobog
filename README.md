@@ -336,6 +336,11 @@ flowchart.
 Consensus NUL-terminated runtime strings are materialized as transient literals
 in the current pseudocode; the rax projection itself does not copy final-memory
 bytes into the IDB.
+Selected AArch64 numeric CFString address stores retain their exact address and
+integer type while displaying a temporary use-site comment linking the current
+IDB header to the observed final payload bytes. This requires an exact native
+address-construction pattern, header layout, and runtime fact; see
+[numeric CFString validation](tests/NUMERIC_CFSTRING_DISPLAY.md).
 
 Open the function in pseudocode and press `Ctrl+Shift+E`, or select **Explore
 current function with rax** from the pseudocode popup. Chernobog snapshots and
@@ -782,6 +787,15 @@ materialization (the last requires the graphical IDA executable).
 `tests/ida_runtime_utf8_smoke.py` covers UTF-8 runtime literals, explicit IDB
 encoding, protected metadata, repeated decompilation, and invalidation after a
 decoder-key change; see [the reproducible fixture](tests/RUNTIME_UTF8.md).
+`tests/ida_early_indexed_read_smoke.py` and
+`tests/ida_early_writable_read_smoke.py` check that unknown indexed reads and
+writable globals remain loads, while exact readonly loads retain their folds.
+`tests/ida_cff_dispatcher_probe.py` checks every key and target of the reference
+249-case switch. Its range-check self-loop remains an unsupported rewrite
+topology; preserving the case map does not assert complete unflattening.
+`tests/ida_numeric_cfstring_smoke.py` checks pointer-value preservation,
+per-use display text, rejected candidates, header changes, and unchanged IDB
+bytes and persistent metadata during display.
 `tests/ida_cff_detector_smoke.py` drives the headless CFF detector probe
 (`CHERNOBOG_CFF_BATCH_EA`), `tests/ida_cff_switch_probe.py` checks recurrent
 switch-dispatch classification, and `tests/ida_cff_transition_probe.py` is a

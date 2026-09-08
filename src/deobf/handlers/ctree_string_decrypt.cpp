@@ -3,6 +3,7 @@
 #include "../analysis/pattern_match.h"
 #include "../analysis/arch_utils.h"
 #include "../../common/bitvector.h"
+#include "../../common/aarch64_address_origin.h"
 #include "../../common/ida_memory.h"
 #include "../../hybrid/z3_bridge.hpp"
 
@@ -1188,6 +1189,10 @@ bool ctree_string_decrypt_handler_t::detect(cfunc_t *cfunc)
 //--------------------------------------------------------------------------
 static int apply_runtime_string_arguments(
     cfunc_t *cfunc, const std::map<ea_t, qstring> &runtime_plaintexts);
+static int preserve_runtime_cfstring_addresses(
+    cfunc_t *cfunc, const std::map<ea_t, qstring> &runtime_plaintexts);
+static bool protected_runtime_cfstring_address(
+    const cfunc_t *cfunc, const cexpr_t *assignment, ea_t *address);
 
 static void record_plaintext_fact(
     deobf_ctx_t *ctx, ea_t address, const char *plaintext, const char *source)
@@ -1213,7 +1218,8 @@ static void record_plaintext_fact(
                     source, (unsigned long long)address, plaintext);
 }
 
-int ctree_string_decrypt_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx)
+int ctree_string_decrypt_handler_t::run(
+    cfunc_t *cfunc, deobf_ctx_t *ctx, ctree_maturity_t event_maturity)
 {
     if ( !cfunc || !ctx ) 
         return 0;
@@ -1340,7 +1346,17 @@ int ctree_string_decrypt_handler_t::run(cfunc_t *cfunc, deobf_ctx_t *ctx)
                    runtime_argument_replacements);
     }
     ctx->strings_decrypted += replacements;
-    return replacements;
+    // Last in this final-maturity pass: preserve address-valued integers as
+    // typed address expressions after the literal replacers have finished.
+    // These edits carry no plaintext and do not count as decrypted strings.
+    // In hxe_maturity the SDK updates cfunc->maturity only after callbacks
+    // return. Trust the explicitly supplied event stage there; callers with
+    // an already completed cfunc use its field through the default argument.
+    const int addresses = (event_maturity == CMAT_FINAL
+                         || cfunc->maturity == CMAT_FINAL)
+        ? preserve_runtime_cfstring_addresses(cfunc, runtime_plaintexts) : 0;
+    ctx->expressions_simplified += addresses;
+    return replacements + addresses;
 }
 
 //--------------------------------------------------------------------------
@@ -1559,6 +1575,13 @@ struct encrypted_string_replacer_t : public ctree_visitor_t {
     }
     
     int idaapi visit_expr(cexpr_t *e) override {
+        // A later pass over the same tree must preserve an explicit integer
+        // address introduced below. Its observed plaintext is sv-only text.
+        if ( e->op == cot_asg
+          && protected_runtime_cfstring_address(cfunc, e, nullptr) ) {
+            prune_now();
+            return 0;
+        }
         // Debug: log all cot_obj and cot_ref nodes to understand what we're seeing
         if ( e->op == cot_ref && e->x && e->x->op == cot_obj ) {
             qstring name;
@@ -1985,6 +2008,405 @@ static int apply_runtime_string_arguments(
     runtime_string_argument_replacer_t replacer(runtime_plaintexts);
     replacer.apply_to(&cfunc->body, nullptr);
     return replacer.replacements;
+}
+
+//--------------------------------------------------------------------------
+// Address-preserving CFString display. These checks never admit mutable IDB
+// contents into constant propagation, and never replace an object by bytes.
+//--------------------------------------------------------------------------
+static bool fully_loaded_range(ea_t address, size_t size)
+{
+    if ( address == BADADDR || size == 0
+      || size - 1 > uint64_t(BADADDR - 1 - address) )
+    {
+        return false;
+    }
+    for ( size_t offset = 0; offset < size; ++offset ) {
+        if ( !is_loaded(address + ea_t(offset)) )
+            return false;
+    }
+    return true;
+}
+
+static bool only_preceding_flow_enters(ea_t target, ea_t preceding_head)
+{
+    xrefblk_t reference;
+    for ( bool present = reference.first_to(target, XREF_ALL); present;
+          present = reference.next_to() ) {
+        if ( reference.iscode
+          && (reference.type != fl_F || reference.from != preceding_head) )
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool native_cfstring_address_origin(
+    const cfunc_t *cfunc, ea_t store_ea, ea_t expected_address)
+{
+    if ( cfunc == nullptr || !arch::is_arm64() || inf_is_be()
+      || store_ea == BADADDR || store_ea < 8 || (store_ea & 3U) != 0
+      || expected_address == BADADDR )
+    {
+        return false;
+    }
+    const ea_t adrp_ea = store_ea - 8;
+    const ea_t add_ea = store_ea - 4;
+    func_t *function = get_func(store_ea);
+    if ( function == nullptr || function->start_ea != cfunc->entry_ea
+      || !is_same_fchunk(adrp_ea, store_ea)
+      || !is_same_fchunk(add_ea, store_ea)
+      || cfunc->entry_ea == add_ea || cfunc->entry_ea == store_ea
+      || !fully_loaded_range(adrp_ea, 12)
+      || get_item_head(adrp_ea) != adrp_ea
+      || get_item_head(store_ea) != store_ea
+      || !is_code(get_full_flags(adrp_ea))
+      || !is_code(get_full_flags(store_ea)) )
+    {
+        return false;
+    }
+
+    // IDA can represent ADRP+ADD as one 8-byte ADRL macro. Its fallthrough
+    // therefore originates at ADRP. Accept that exact item boundary as well
+    // as two 4-byte items. Xref absence is only an IDA-visible CFG condition;
+    // it is not a claim that unobserved indirect entries are impossible.
+    const ea_t add_head = get_item_head(add_ea);
+    if ( (add_head != add_ea && add_head != adrp_ea)
+      || get_item_end(add_head) != store_ea
+      || (add_head == add_ea && get_item_end(adrp_ea) != add_ea)
+      || !only_preceding_flow_enters(add_ea, adrp_ea)
+      || !only_preceding_flow_enters(store_ea, add_head) )
+    {
+        return false;
+    }
+
+    const auto adrp = chernobog::ida_memory::read_integer(adrp_ea, 4);
+    const auto add = chernobog::ida_memory::read_integer(add_ea, 4);
+    const auto store = chernobog::ida_memory::read_integer(store_ea, 4);
+    if ( !adrp || !add || !store )
+        return false;
+    const auto address = chernobog::aarch64_address_origin::
+        decode_adrp_add_str_address(
+            uint64_t(adrp_ea), uint32_t(*adrp), uint32_t(*add),
+            uint32_t(*store));
+    return address && *address == uint64_t(expected_address);
+}
+
+static bool plain_64bit_memory_assignment(const cexpr_t *assignment)
+{
+    if ( assignment == nullptr || assignment->op != cot_asg
+      || assignment->x == nullptr || assignment->y == nullptr
+      || (assignment->x->op != cot_ptr && assignment->x->op != cot_idx) )
+    {
+        return false;
+    }
+    const tinfo_t &left = assignment->x->type;
+    const tinfo_t &right = assignment->y->type;
+    return left.is_integral() && !left.is_enum() && !left.is_bool()
+        && right.is_integral() && !right.is_enum() && !right.is_bool()
+        && left.get_size() == 8 && right.get_size() == 8
+        && (left.is_signed() || left.is_unsigned())
+        && left.get_sign() == right.get_sign() && left == right;
+}
+
+static bool protected_runtime_cfstring_address(
+    const cfunc_t *cfunc, const cexpr_t *assignment, ea_t *address)
+{
+    if ( !plain_64bit_memory_assignment(assignment) )
+        return false;
+    const cexpr_t *cast = assignment->y;
+    if ( cast->op != cot_cast || (cast->exflags & EXFL_UCAST) == 0
+      || cast->ea != assignment->ea || cast->x == nullptr
+      || cast->x->op != cot_ref || cast->x->x == nullptr
+      || cast->x->x->op != cot_obj
+      || cast->x->ea != assignment->ea
+      || cast->x->x->ea != assignment->ea
+      || !cast->x->type.is_ptr() || cast->x->type.get_size() != 8
+      || cast->x->type.get_pointed_object() != cast->x->x->type
+      || cast->x->x->refwidth != -1 )
+    {
+        return false;
+    }
+    const ea_t object_address = cast->x->x->obj_ea;
+    if ( !native_cfstring_address_origin(
+              cfunc, assignment->ea, object_address) )
+    {
+        return false;
+    }
+    if ( address != nullptr )
+        *address = object_address;
+    return true;
+}
+
+struct runtime_cfstring_relation_t
+{
+    ea_t payload = BADADDR;
+    qstring plaintext;
+};
+
+static bool strict_runtime_cfstring_relation(
+    ea_t object_address, const std::map<ea_t, qstring> &runtime_plaintexts,
+    runtime_cfstring_relation_t *relation)
+{
+    if ( relation == nullptr || arch::get_ptr_size() != 8 || inf_is_be()
+      || !fully_loaded_range(object_address, 32) )
+    {
+        return false;
+    }
+    const segment_t *header_segment = getseg(object_address);
+    if ( header_segment == nullptr
+      || getseg(object_address + 31) != header_segment
+      || (header_segment->perm & SEGPERM_READ) == 0
+      || header_segment->type == SEG_XTRN )
+    {
+        return false;
+    }
+    uint64_t slots[4] = {};
+    for ( size_t index = 0; index < 4; ++index ) {
+        const auto value = chernobog::ida_memory::read_integer(
+            object_address + ea_t(index * 8), 8);
+        if ( !value )
+            return false;
+        slots[index] = *value;
+    }
+    // Exact compiler/runtime symbol identity, including the Mach-O assembler
+    // prefix. A section/name heuristic or merely plausible header is not
+    // sufficient. The symbol is the address in the isa slot, not its contents.
+    if ( slots[0] == 0 || slots[0] >= uint64_t(BADADDR)
+      || slots[1] != 0x7C8 || slots[2] == 0
+      || slots[2] >= uint64_t(BADADDR) || slots[3] == 0
+      || slots[3] > 4095 )
+    {
+        return false;
+    }
+    const ea_t class_reference = ea_t(slots[0]);
+    qstring class_name;
+    get_name(&class_name, class_reference);
+    if ( (class_name != "__CFConstantStringClassReference"
+       && class_name != "___CFConstantStringClassReference")
+      || get_name_ea(BADADDR, class_name.c_str()) != class_reference )
+    {
+        return false;
+    }
+    const ea_t payload = ea_t(slots[2]);
+    const auto fact = runtime_plaintexts.find(payload);
+    if ( fact == runtime_plaintexts.end()
+      || fact->second.length() != slots[3]
+      || !fully_loaded_range(payload, size_t(slots[3]) + 1) )
+    {
+        return false;
+    }
+    // 0x7C8 is the compiler's narrow ASCII constant-string layout. This
+    // relation describes current IDB header metadata and witnessed final
+    // payload bytes independently; it does not read plaintext from the IDB.
+    for ( size_t index = 0; index < fact->second.length(); ++index ) {
+        const unsigned char byte =
+            static_cast<unsigned char>(fact->second[index]);
+        if ( byte < 0x20 || byte > 0x7E )
+            return false;
+    }
+    relation->payload = payload;
+    relation->plaintext = fact->second;
+    return true;
+}
+
+static int preserve_runtime_cfstring_addresses(
+    cfunc_t *cfunc, const std::map<ea_t, qstring> &runtime_plaintexts)
+{
+    if ( runtime_plaintexts.empty() || !arch::is_arm64() || inf_is_be() )
+        return 0;
+    struct preserver_t : public ctree_visitor_t
+    {
+        cfunc_t *function;
+        const std::map<ea_t, qstring> &facts;
+        int count = 0;
+
+        preserver_t(cfunc_t *cf, const std::map<ea_t, qstring> &values)
+            : ctree_visitor_t(CV_FAST), function(cf), facts(values) {}
+
+        int idaapi visit_expr(cexpr_t *assignment) override
+        {
+            if ( !plain_64bit_memory_assignment(assignment) )
+                return 0;
+            cexpr_t *number = assignment->y;
+            if ( number->op != cot_num || number->n == nullptr
+              || number->ea != assignment->ea || number->is_undef_val()
+              || number->is_type_partial() || number->n->nf.is_fixed()
+              || !number->n->nf.is_numop()
+              || number->n->nf.org_nbytes != 8
+              || !number->n->nf.type_name.empty()
+              || number->n->nf.serial != 0
+              || number->numval() != number->n->_value
+              || number->numval() >= uint64_t(BADADDR) )
+            {
+                return 0;
+            }
+            const ea_t object_address = ea_t(number->numval());
+            runtime_cfstring_relation_t relation;
+            if ( !native_cfstring_address_origin(
+                      function, assignment->ea, object_address)
+              || !strict_runtime_cfstring_relation(
+                      object_address, facts, &relation) )
+            {
+                return 0;
+            }
+
+            tinfo_t object_type;
+            if ( !get_tinfo(&object_type, object_address)
+              || object_type.empty() || object_type.is_func()
+              || object_type.is_void() )
+            {
+                object_type = tinfo_t(BT_INT8 | BTMT_UNSIGNED);
+            }
+            tinfo_t address_type;
+            if ( !address_type.create_ptr(object_type) )
+                return 0;
+            cexpr_t *object = new cexpr_t();
+            object->op = cot_obj;
+            object->obj_ea = object_address;
+            object->refwidth = -1; // Taking the address performs no read.
+            object->type = object_type;
+            object->ea = number->ea;
+            cexpr_t *reference = new cexpr_t();
+            reference->op = cot_ref;
+            reference->x = object;
+            reference->type = address_type;
+            reference->ea = number->ea;
+            cexpr_t *cast = new cexpr_t();
+            cast->op = cot_cast;
+            cast->x = reference;
+            cast->type = number->type;
+            cast->ea = number->ea;
+            cast->exflags = EXFL_UCAST;
+            number->cleanup();
+            number->replace_by(cast);
+            ++count;
+            return 0;
+        }
+    } preserver(cfunc, runtime_plaintexts);
+    preserver.apply_to(&cfunc->body, nullptr);
+    if ( preserver.count != 0 ) {
+        deobf::log(
+            "[chernobog][rax] Preserved %d numeric CFString addresses for transient final-byte display\n",
+            preserver.count);
+    }
+    return preserver.count;
+}
+
+static qstring bounded_runtime_cfstring_text(
+    ea_t object_address, const runtime_cfstring_relation_t &relation)
+{
+    qstring text;
+    text.sprnt("IDB CFString 0x%llX -> bytes 0x%llX; rax-final: \"",
+               (unsigned long long)object_address,
+               (unsigned long long)relation.payload);
+    constexpr size_t MAX_DISPLAY_BYTES = 128;
+    const size_t shown = std::min(
+        size_t(relation.plaintext.length()), MAX_DISPLAY_BYTES);
+    for ( size_t index = 0; index < shown; ++index ) {
+        const char byte = relation.plaintext[index];
+        if ( byte == '\\' || byte == '"' )
+            text.append('\\');
+        text.append(byte);
+    }
+    text.append('"');
+    if ( shown < relation.plaintext.length() ) {
+        text.cat_sprnt(" [first %zu of %zu bytes]", shown,
+                      size_t(relation.plaintext.length()));
+    }
+    return text;
+}
+
+int ctree_string_decrypt_handler_t::annotate_runtime_cfstring_addresses(
+    cfunc_t *cfunc)
+{
+    if ( cfunc == nullptr || cfunc->maturity != CMAT_FINAL
+      || cfunc->sv.empty() || !arch::is_arm64() || inf_is_be() )
+    {
+        return 0;
+    }
+    // This getter validates the current function identity against the source
+    // or the finished display lease. No cfunc pointer or header relation is
+    // cached, and finish does not reopen the lease to later mutations.
+    const auto candidates = chernobog::hybrid::
+        hybrid_current_runtime_strings_for_decompilation(
+            uint64_t(cfunc->entry_ea));
+    std::map<ea_t, qstring> runtime_plaintexts;
+    std::set<ea_t> ambiguous;
+    for ( const auto &candidate : candidates ) {
+        if ( candidate.address >= uint64_t(BADADDR)
+          || candidate.value.empty()
+          || candidate.value.find('\0') != std::string::npos )
+        {
+            continue;
+        }
+        const ea_t address = ea_t(candidate.address);
+        const auto inserted = runtime_plaintexts.emplace(
+            address, candidate.value.c_str());
+        if ( !inserted.second
+          && inserted.first->second != candidate.value.c_str() )
+        {
+            ambiguous.insert(address);
+        }
+    }
+    for ( ea_t address : ambiguous )
+        runtime_plaintexts.erase(address);
+    if ( runtime_plaintexts.empty() )
+        return 0;
+
+    struct annotator_t : public ctree_visitor_t
+    {
+        cfunc_t *function;
+        const std::map<ea_t, qstring> &facts;
+        std::map<int, std::set<qstring>> lines;
+
+        annotator_t(cfunc_t *cf, const std::map<ea_t, qstring> &values)
+            : ctree_visitor_t(CV_FAST), function(cf), facts(values) {}
+
+        int idaapi visit_expr(cexpr_t *assignment) override
+        {
+            ea_t object_address = BADADDR;
+            runtime_cfstring_relation_t relation;
+            if ( !protected_runtime_cfstring_address(
+                      function, assignment, &object_address)
+              || !strict_runtime_cfstring_relation(
+                      object_address, facts, &relation) )
+            {
+                return 0;
+            }
+            int x = -1;
+            int y = -1;
+            if ( !function->find_item_coords(assignment->y, &x, &y)
+              && !function->find_item_coords(assignment, &x, &y) )
+            {
+                return 0;
+            }
+            if ( y >= 0 && size_t(y) < function->sv.size()
+              && lines[y].size() < 2 )
+            {
+                lines[y].insert(
+                    bounded_runtime_cfstring_text(object_address, relation));
+            }
+            return 0;
+        }
+    } annotator(cfunc, runtime_plaintexts);
+    // Resolve every coordinate before appending text. Only sv is mutable in
+    // hxe_func_printed; neither ctree nor persistent comments are touched.
+    annotator.apply_to(&cfunc->body, nullptr);
+    int count = 0;
+    for ( const auto &line : annotator.lines ) {
+        qstring &rendered = cfunc->sv[size_t(line.first)].line;
+        for ( const qstring &text : line.second ) {
+            if ( rendered.find(text) != qstring::npos )
+                continue;
+            rendered.append(" " SCOLOR_ON SCOLOR_AUTOCMT "// ");
+            rendered.append(text);
+            rendered.append(SCOLOR_OFF SCOLOR_AUTOCMT);
+            ++count;
+        }
+    }
+    return count;
 }
 
 int ctree_string_decrypt_handler_t::replace_encrypted_strings(

@@ -417,6 +417,14 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         msg("[chernobog] Hexrays callback registered and active\n");
     }
 
+    if ( event == hxe_func_printed )
+    {
+        cfunc_t *cfunc = va_arg(va, cfunc_t *);
+        if ( cfunc != nullptr && !is_disabled_mode_enabled() )
+            ctree_string_decrypt_handler_t::annotate_runtime_cfstring_addresses(cfunc);
+        return 0;
+    }
+
     // This is the earliest decompiler event, before microcode generation and
     // optinsn/optblock mutation. Recover native CFG first; if it changed, the
     // restarted flowchart will snapshot those exact bytes. In auto mode, then
@@ -754,9 +762,9 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
                 str_ctx.cfunc = cfunc;
                 str_ctx.func_ea = func_ea;
                 const int changes = ctree_string_decrypt_handler_t::run(
-                    cfunc, &str_ctx);
+                    cfunc, &str_ctx, maturity);
                 if ( changes > 0 )
-                    msg("[chernobog] Ctree string materialization: applied %d literals\n",
+                    msg("[chernobog] Ctree string display: applied %d expression changes\n",
                         changes);
             }
         }
