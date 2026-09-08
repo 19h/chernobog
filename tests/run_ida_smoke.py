@@ -5,12 +5,14 @@ Raw inputs are copied into a disposable directory before IDA starts, and IDAUSR
 contains only the requested Chernobog artifact plus the minimum accepted-license
 configuration. Database inputs are rejected unless --allow-database is explicit.
 RAX execution/materialization is disabled unless --enable-rax is explicit.
+Inherited CHERNOBOG_* options are removed; use --set for explicit overrides.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -18,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 
 DATABASE_SUFFIXES = {
@@ -44,6 +47,10 @@ CONTROLLED_ENVIRONMENT = {
     "CHERNOBOG_RAX_APPLY_ANALYSIS",
 }
 
+# The copied plugin's identity is reported separately. Its per-run transport
+# path must not make otherwise identical configurations compare differently.
+ENVIRONMENT_DIGEST_EXCLUSIONS = {"CHERNOBOG_PLUGIN_PATH"}
+
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -51,6 +58,26 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def observed_sha256(path: Path) -> str | None:
+    """A missing/unreadable artifact after execution invalidates attribution."""
+    try:
+        return sha256(path)
+    except OSError:
+        return None
+
+
+def chernobog_environment_sha256(environment: dict[str, str]) -> str:
+    configuration = {
+        key: value for key, value in environment.items()
+        if key.startswith("CHERNOBOG_")
+        and key not in ENVIRONMENT_DIGEST_EXCLUSIONS
+    }
+    serialized = json.dumps(
+        configuration, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+    return hashlib.sha256(serialized).hexdigest()
 
 
 def parse_assignment(raw: str) -> tuple[str, str]:
@@ -174,11 +201,18 @@ def main() -> int:
         shutil.copy2(source, ida_user / filename)
     installed_plugin = plugins / plugin.name
     shutil.copy2(plugin, installed_plugin)
+    probe_directory = run_dir / "probe"
+    probe_directory.mkdir()
+    copied_script = probe_directory / arguments.script.name
+    shutil.copy2(arguments.script, copied_script)
     copied_input = run_dir / input_path.name
     shutil.copy2(input_path, copied_input)
     log_path = run_dir / "ida.log"
 
-    environment = os.environ.copy()
+    environment = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith("CHERNOBOG_")
+    }
     environment.update(
         {
             "IDAUSR": str(ida_user),
@@ -214,31 +248,84 @@ def main() -> int:
     command.extend(
         [
             "-L%s" % log_path,
-            "-S%s" % arguments.script,
+            "-S%s" % copied_script,
             str(copied_input),
         ]
     )
 
     print("run_dir=%s" % run_dir, flush=True)
     print("input_sha256=%s" % source_hash, flush=True)
-    print("plugin_sha256=%s" % sha256(plugin), flush=True)
+    plugin_hash = sha256(installed_plugin)
+    script_hash = sha256(copied_script)
+    source_script_hash = sha256(arguments.script)
+    copied_input_hash = sha256(copied_input)
+    ida_hash = sha256(ida)
+    print("plugin_sha256=%s" % plugin_hash, flush=True)
+    started = time.perf_counter_ns()
     completed = subprocess.run(command, env=environment, check=False)
-    unchanged = sha256(input_path) == source_hash
-    if not unchanged:
-        print("source input changed during isolated run", file=sys.stderr)
+    elapsed_ns = time.perf_counter_ns() - started
+    unchanged = observed_sha256(input_path) == source_hash
+    copied_script_unchanged = observed_sha256(copied_script) == script_hash
+    plugin_unchanged = observed_sha256(installed_plugin) == plugin_hash
+    ida_hash_after = observed_sha256(ida)
+    ida_unchanged = ida_hash_after == ida_hash
+    input_copy_matches_source = copied_input_hash == source_hash
+    artifacts_unchanged = (
+        unchanged and copied_script_unchanged and plugin_unchanged
+        and ida_unchanged and input_copy_matches_source
+    )
+    if not artifacts_unchanged:
+        print("run artifact integrity check failed", file=sys.stderr)
         return_code = 125
     else:
         return_code = completed.returncode
-    log_text = log_path.read_text(encoding="utf-8", errors="replace")
-    if return_code == 0 and re.search(arguments.expect_log, log_text) is None:
+    log_text = (
+        log_path.read_text(encoding="utf-8", errors="replace")
+        if log_path.is_file() else ""
+    )
+    marker_found = re.search(arguments.expect_log, log_text) is not None
+    if return_code == 0 and not marker_found:
         print(
             "required log marker absent: %s" % arguments.expect_log,
             file=sys.stderr,
         )
         return_code = 124
 
+    report = {
+        "schema_version": 2,
+        "input_sha256": copied_input_hash,
+        "source_input_sha256": source_hash,
+        "plugin_sha256": plugin_hash,
+        "plugin_unchanged": plugin_unchanged,
+        "script_sha256": script_hash,
+        "script_unchanged": copied_script_unchanged,
+        "source_script_sha256": source_script_hash,
+        "source_script_unchanged": (
+            observed_sha256(arguments.script) == source_script_hash
+        ),
+        "source_input_unchanged": unchanged,
+        "input_copy_matches_source": input_copy_matches_source,
+        "ida_path": str(ida),
+        "ida_sha256": ida_hash,
+        "ida_sha256_after": ida_hash_after,
+        "ida_unchanged": ida_unchanged,
+        "artifacts_unchanged": artifacts_unchanged,
+        "chernobog_environment_sha256": chernobog_environment_sha256(environment),
+        "enable_rax": arguments.enable_rax,
+        "verbose": arguments.verbose,
+        "process_elapsed_ns": elapsed_ns,
+        "process_return_code": completed.returncode,
+        "expected_log_pattern": arguments.expect_log,
+        "expected_log_found": marker_found,
+        "runner_return_code": return_code,
+    }
+    report_path = run_dir / "run.json"
+    report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    print("process_elapsed_ns=%d" % elapsed_ns, flush=True)
+
     if return_code != 0 or not disposable:
         print("ida_log=%s" % log_path, flush=True)
+        print("run_report=%s" % report_path, flush=True)
     if disposable and return_code == 0:
         shutil.rmtree(run_dir)
     elif disposable:
