@@ -1044,8 +1044,12 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
 
   bool redundant_rep_prefix(ea_t address)
   {
-    if ( prefix_decode_probe || !is_loaded(address)
-      || !is_loaded(address + 1) )
+    if ( prefix_decode_probe || !is_loaded(address) )
+      return false;
+    // The same first-byte condition is required by the semantic eligibility
+    // check below. Reject ordinary opcodes before the recursive raw decode.
+    const uint8_t prefix = get_byte(address);
+    if ( (prefix != 0xF2 && prefix != 0xF3) || !is_loaded(address + 1) )
     {
       return false;
     }
