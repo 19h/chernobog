@@ -693,22 +693,6 @@ int force_character_strings(
 
 namespace {
 
-ea_t resolved_data_read(ea_t instruction_ea)
-{
-  ea_t result = BADADDR;
-  xrefblk_t xref;
-  for ( bool ok = xref.first_from(instruction_ea, XREF_DATA);
-        ok; ok = xref.next_from() )
-  {
-    if ( (int(xref.type) & XREF_MASK) != dr_R )
-      continue;
-    if ( result != BADADDR && result != xref.to )
-      return BADADDR;
-    result = xref.to;
-  }
-  return result;
-}
-
 bool read_constant_memory(ea_t address, int size, uint64 &value)
 {
   if ( size != 1 && size != 2 && size != 4 && size != 8 )
@@ -1046,10 +1030,6 @@ bool evaluate_forward_instruction(
   if ( !valid_scalar_size(size) )
     return false;
 
-  const ea_t xref_address = resolved_data_read(instruction->ea);
-  if ( xref_address != BADADDR )
-    return read_constant_memory(xref_address, size, value.value);
-
   SlotAddress slot_address;
   if ( extract_slot_address(instruction->r, slot_address)
     && stable_frame_base(slot_address.base) )
@@ -1065,6 +1045,11 @@ bool evaluate_forward_instruction(
   }
 
   ConstantValue address_value;
+  // A data-read xref can name the base of an indexed object rather than the
+  // effective address of this load. Only the actual microcode address, proved
+  // constant in this block, can justify substituting bytes from the database.
+  // In particular, a switch-table xref must not collapse a dynamic table read
+  // to the first entry and destroy the decompiler's m_jtbl successor map.
   if ( !evaluate_forward_operand(
           state, instruction, instruction->r,
           address_value, depth + 1) )
@@ -1088,6 +1073,17 @@ bool evaluate_forward_operand(
     value.value = truncate_to_size(operand.nnn->value, operand.size);
     value.operand_ea = operand.nnn->ea;
     value.operand_number = operand.nnn->opnum;
+    return true;
+  }
+  if ( operand.t == mop_a && operand.a != nullptr
+    && operand.a->t == mop_v && operand.a->g != BADADDR
+    && !operand.is_lowaddr() && !operand.a->is_lowaddr()
+    && !operand.is_undef_val() && !operand.a->is_undef_val()
+    && valid_scalar_size(operand.size) )
+  {
+    // &global is an address constant, whereas a bare mop_v denotes the
+    // global's contents. Keep that distinction when deriving load addresses.
+    value.value = truncate_to_size(uint64(operand.a->g), operand.size);
     return true;
   }
   if ( operand.t == mop_r && operand.size > 0 )
@@ -1228,7 +1224,7 @@ bool flatten_forward_operand(
     minsn_t *current,
     mop_t &operand)
 {
-  if ( operand.t == mop_n )
+  if ( operand.t == mop_n || operand.t == mop_a )
     return false;
   ConstantValue value;
   if ( operand.size > 0 && operand.size <= 8
