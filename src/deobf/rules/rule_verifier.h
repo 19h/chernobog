@@ -36,7 +36,9 @@ const char* rule_verification_status_name(RuleVerificationStatus status);
 // widths accepted by the MBA rewriter (8, 16, 32, and 64 bits).
 class RuleVerifier {
 public:
-    explicit RuleVerifier(unsigned timeout_ms = 250);
+    // A nonzero resource limit bounds Z3 work independently of wall-clock
+    // scheduling. Zero leaves Z3's resource policy unchanged.
+    explicit RuleVerifier(unsigned timeout_ms = 250, unsigned resource_limit = 0);
 
     RuleVerificationResult verify(const ast::AstPtr& pattern,
                                   const ast::AstPtr& replacement);
@@ -55,6 +57,7 @@ private:
     z3::context context_;
     z3::solver solver_;
     unsigned timeout_ms_;
+    unsigned resource_limit_;
 };
 
 } // namespace rules

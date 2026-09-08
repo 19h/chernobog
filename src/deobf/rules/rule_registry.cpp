@@ -1,6 +1,9 @@
 #include "rule_registry.h"
 #include "rule_verifier.h"
 #include "../analysis/ast_builder.h"
+#if defined(CHERNOBOG_CATALOG_TEST)
+#include <iostream>
+#endif
 
 namespace chernobog {
 namespace rules {
@@ -70,7 +73,13 @@ void RuleRegistry::rebuild_storage_locked()
     verified_rule_count_ = 0;
     rejected_rule_count_ = 0;
 
+#if defined(CHERNOBOG_CATALOG_TEST)
+    // CI certifies catalog semantics, not a host-dependent runtime deadline.
+    // Every identity must still prove; UNKNOWN remains a rejected rule.
+    RuleVerifier verifier(10'000);
+#else
     RuleVerifier verifier;
+#endif
     for ( auto& rule : rules_ )
     {
         if ( !rule )
@@ -83,7 +92,12 @@ void RuleRegistry::rebuild_storage_locked()
         if ( !verification.verified() )
         {
             ++rejected_rule_count_;
-#if !defined(CHERNOBOG_CATALOG_TEST)
+#if defined(CHERNOBOG_CATALOG_TEST)
+            std::cerr << "rejected MBA rule '" << rule->name() << "': "
+                      << rule_verification_status_name(verification.status)
+                      << " at " << verification.bit_width << " bits ("
+                      << verification.detail << ")\n";
+#else
             msg("[chernobog] rejected MBA rule '%s': %s at %u bits (%s)\n",
                 rule->name(), rule_verification_status_name(verification.status),
                 verification.bit_width, verification.detail.c_str());

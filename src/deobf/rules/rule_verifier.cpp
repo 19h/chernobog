@@ -20,9 +20,10 @@ const char* rule_verification_status_name(RuleVerificationStatus status)
     return "unknown";
 }
 
-RuleVerifier::RuleVerifier(unsigned timeout_ms)
+RuleVerifier::RuleVerifier(unsigned timeout_ms, unsigned resource_limit)
     : solver_(context_)
     , timeout_ms_(timeout_ms)
+    , resource_limit_(resource_limit)
 {
 }
 
@@ -166,6 +167,8 @@ RuleVerificationResult RuleVerifier::verify(const AstPtr& pattern,
         solver_.reset();
         z3::params parameters(context_);
         parameters.set("timeout", timeout_ms_);
+        if ( resource_limit_ != 0 )
+            parameters.set("rlimit", resource_limit_);
         solver_.set(parameters);
         solver_.add(z3::mk_or(disjunction));
 

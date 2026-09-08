@@ -129,12 +129,87 @@ lldb --batch \
 | --- | --- | --- |
 | Catalog-only AST cleanup needs only empty-operand erasure. | Nonempty operands and unsupported opcodes abort; both guard branches were exercised. | The shim supports catalog destruction, not general microcode execution. |
 | Every catalog translation unit receives the same dispatcher redirection. | Check the force-include flag in compile commands; require the erase counter to increase during rejection rebuild. | The upstream routing covers separately compiled AST/registry code; other host/compiler execution remains unverified here. |
-| Every production rule proves within the production budget. | Initial verification requires all registered rules verified and zero rejected. | Any rejection remains a normal test failure. |
+| Every production rule proves within the CI correctness budget. | Initial verification requires all registered rules verified and zero rejected; resource exhaustion is tested separately. | Any rejection remains a normal test failure; this is not a runtime latency guarantee. |
 
-The verifier's default budget remains 250 ms (0.250 s) per solver check, and its
-fail-closed behavior is unchanged. A timeout is neither converted to acceptance
-nor hidden by a larger test budget. Under load, a valid rule may therefore still
-fail the catalog test; this correction removes the SDK-stub crash on its cleanup
-path. Impact: the same guard also exposes future accidental dependencies on
-nonempty SDK operands (medium). No production semantic change or speedup is
-claimed.
+The verifier's runtime default remains 250 ms (0.250 s) per solver check.
+The standalone catalog target now uses a separate 10,000 ms (10 s) correctness
+budget; the previous shared-budget failure and its reproduction are described
+below. Both modes require the same equivalence proofs at 8, 16, 32, and 64 bits.
+A timeout remains `UNKNOWN`, is never admitted, and still fails the catalog
+test. The empty-operand guard also exposes future accidental dependencies on
+nonempty SDK operands (medium impact). No production speedup is claimed.
+
+## CI run 102: separate correctness from the runtime deadline
+
+[Run 102](https://github.com/19h/chernobog/actions/runs/34187192158), at
+`dd726bd540d3aa1c558c80fd49b7024e778741d4`, compiled all six platform targets.
+Five jobs passed; macOS x86-64 failed only `chernobog.mba_catalog` with
+`108 registered, 107 verified, 1 rejected`. This was a normal test failure,
+not the earlier SDK-dispatch crash. The old test-specific registry build
+suppressed rejection diagnostics, so the exact rejected CI rule and its reason
+are unknown from that log.
+
+The identified scheduling-sensitive failure mode is that a correctness test
+requires every identity to prove within the runtime's 0.250 s deadline.
+Profiling the unchanged verifier on macOS arm64 measured individual successful
+proof intervals up to approximately 0.128 s. A controlled scheduling probe
+then paused only its child test process for a nominal 80 ms after each nominal
+20 ms running interval. This models lost execution opportunity; it does not
+reproduce or measure the GitHub runner's exact load.
+
+| Controlled probe | Production catalog | Deliberately invalid rule | Process exit |
+|---|---|---|---:|
+| Original 0.250 s budget, periodically paused | 98 verified; 10 `UNKNOWN (timeout)` rejections | Not reached | 1 |
+| CI 10 s budget, periodically paused | 108 verified; zero rejected | Rejected; 108 stored patterns and cleanup counter increased | 0 |
+
+The baseline logged timeouts for `Add_OllvmRule_3`,
+`Add_SpecialConstantRule_1`, `Add_SpecialConstantRule_2`, `Add_FactorRule_1`,
+`Sub_HackersDelightRule_3`, `Sub_HackersDelightRule_4`,
+`Sub_SpecialConstantRule_1`, `Xor_HackersDelightRule_4`,
+`Xor_HackersDelightRule_5`, and `Xor_SpecialConstantRule_1`.
+These names identify the local controlled failures, not the unidentified CI
+failure. Both executions used the same catalog and bundled Z3 4.16.0 library;
+the baseline registry additionally printed per-rule timings. This is a
+functional deadline test, not a performance comparison. Retained outputs:
+`/var/folders/m5/xcy1lpz12mb19rld1y8vxphh0000gn/T/chernobog-ci102-paused-y5mugn02/results.json`.
+
+The final full native build and all 11 CTest targets passed; the catalog
+target took 3.12 s within a 7.56 s suite run. Compiler-command inspection
+confirmed the test macro is present only in catalog objects, not plugin
+objects. Logs: `/tmp/chernobog-ci102-final-build.log` and
+`/tmp/chernobog-ci102-final-ctest.log`.
+
+The fix changes only the standalone registry's timeout selection. Plugin
+targets do not define `CHERNOBOG_CATALOG_TEST` and still construct the default
+0.250 s verifier. Test rejections now print the rule name, verification status,
+operand width, and solver reason to stderr. Aggregate and cleanup failures also
+print their failing state.
+
+An optional Z3 resource limit supports a scheduling-independent exhaustion
+control. At resource limit 1, the existing `Sub_HackersDelightRule_3` identity
+must return `UNKNOWN`, include a reason, and remain unverified. Additional
+controls require an unsupported opcode to remain `UNSUPPORTED` and require
+`2^32 == 0` to be disproved specifically at 64 bits, despite equivalence after
+truncation to 8, 16, and 32 bits. The deliberately invalid `x + 1 -> x` rule
+still exercises actual registry rejection and destruction. No retry or
+acceptance of `UNKNOWN` is introduced. Resource limit zero leaves Z3's resource
+policy unchanged; the optional limit is unused by production callers.
+Parameter semantics follow the [primary Z3 documentation](https://microsoft.github.io/z3guide/programming/Parameters/).
+
+| Assumption | Stress test / falsification probe | Scope |
+|---|---|---|
+| A1: Lost execution time can cause valid proofs to exceed the old deadline. | Periodically paused baseline rejects ten rules with explicit timeout reasons. | Reproduces the failure class; exact CI rule and scheduler state remain unknown. |
+| A2: The CI correctness budget allows the supported catalog to finish. | Full catalog and rejection rebuild pass both normally and with the pause schedule. | Finite 10 s per solver check; more severe stalls can still fail, with diagnostics. |
+| A3: Resource exhaustion cannot certify a rule. | Resource-limit-1 control requires `UNKNOWN` and `verified() == false`. | Tested with pinned Z3 4.16.0; no wall-clock race is used to force the result. |
+| A4: The larger budget does not alter bit-vector semantics or runtime policy. | Same AST translation/solver/admission code; counterexample and unsupported controls; plugin compile flags omit the test macro. | Runtime default remains 0.250 s; CI is not a production latency assertion. |
+
+For `R` catalog rules and AST size `N`, the added diagnostics and policy
+selection contribute `O(R)` operations and `O(1)` auxiliary state; AST
+translation remains `O(N)` per width, excluding map costs and SMT solving.
+SMT complexity is unchanged and no polynomial solving-time bound is claimed.
+The budget conversion is exact: `10,000 ms × 10^-3 s/ms = 10 s`; both the
+solver timeout and pause intervals are scheduling-dependent wall-clock limits,
+not calibrated execution-time guarantees. High-impact finding: catalog
+correctness was coupled to runtime availability. Medium-impact finding:
+suppressed diagnostics made ordinary proof rejections resemble prior crashes.
+QG1–QG7 apply to the bounded observations and assumptions above.

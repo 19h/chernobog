@@ -1,4 +1,6 @@
 #include "deobf/rules/rule_registry.h"
+#include "deobf/rules/rule_verifier.h"
+#include "deobf/rules/rules_sub.h"
 #include <cstdarg>
 #include <cstdlib>
 #include <iostream>
@@ -54,6 +56,48 @@ public:
     }
     AstPtr get_replacement() const override { return make_leaf("x"); }
 };
+
+bool test_verifier_rejection_states()
+{
+    using namespace chernobog::rules;
+    // Resource exhaustion is deterministic with this solver-bound identity;
+    // a millisecond timeout would make the negative control scheduler-dependent.
+    Sub_HackersDelightRule_3 identity;
+    RuleVerifier exhausted(10'000, 1);
+    const auto unknown = exhausted.verify(
+        identity.get_pattern(), identity.get_replacement());
+    if ( unknown.status != RuleVerificationStatus::UNKNOWN || unknown.verified()
+      || unknown.detail.empty() )
+    {
+        std::cerr << "resource exhaustion must remain UNKNOWN and unverified: "
+                  << rule_verification_status_name(unknown.status) << " ("
+                  << unknown.detail << ")\n";
+        return false;
+    }
+
+    RuleVerifier verifier;
+    const auto unsupported = verifier.verify(
+        make_node(m_udiv, make_leaf("x"), make_leaf("y")), make_leaf("x"));
+    if ( unsupported.status != RuleVerificationStatus::UNSUPPORTED
+      || unsupported.verified() )
+    {
+        std::cerr << "unsupported opcode was not rejected\n";
+        return false;
+    }
+    // Equal at 8/16/32 bits, unequal only at 64: all admitted widths matter.
+    const auto wide_mismatch = verifier.verify(
+        chernobog::ast::make_const(uint64_t{1} << 32),
+        chernobog::ast::make_const(0));
+    if ( wide_mismatch.status != RuleVerificationStatus::DISPROVED
+      || wide_mismatch.bit_width != 64 || wide_mismatch.verified() )
+    {
+        std::cerr << "64-bit-only counterexample was not rejected\n";
+        return false;
+    }
+    std::cout << "MBA verifier rejection states: UNKNOWN, UNSUPPORTED, "
+                 "and 64-bit DISPROVED checked\n";
+    return true;
+}
 
 bool test_commutative_matching()
 {
@@ -140,6 +184,8 @@ bool test_ast_destruction()
 
 int main()
 {
+    if ( !test_verifier_rejection_states() )
+        return EXIT_FAILURE;
     if ( !test_ast_destruction() )
     {
         std::cerr << "AST destruction regression\n";
@@ -163,8 +209,9 @@ int main()
 
     if ( registered < 100 || verified != registered || rejected != 0 )
     {
-        // Keep production verification budgets and fail-closed behavior. A
-        // solver timeout remains a failed test rather than an SDK-stub crash.
+        // CI uses a separate correctness budget. Every production identity
+        // must still prove; a timeout remains a failed test.
+        std::cerr << "production catalog contains an unverified rule\n";
         return EXIT_FAILURE;
     }
 
@@ -183,6 +230,9 @@ int main()
       || registry.pattern_count() != registered
       || empty_operand_erases <= erases_before_rebuild )
     {
+        std::cerr << "rejection control failed: patterns=" << registry.pattern_count()
+                  << ", erases before=" << erases_before_rebuild
+                  << ", erases after=" << empty_operand_erases << '\n';
         return EXIT_FAILURE;
     }
     registry.clear();
