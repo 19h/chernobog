@@ -843,6 +843,8 @@ void symbolic_executor_t::reset() {
     m_state.clear();
     m_call_preserved.clear();
     m_assumptions.clear();
+    m_path_feasibility.reset();
+    m_path_model.reset();
     m_translator.reset();
 }
 
@@ -1038,11 +1040,15 @@ bool symbolic_executor_t::assume(const z3::expr& condition) {
     if ( &condition.ctx() != &m_ctx.ctx() || !condition.is_bool() )
         return false;
     m_assumptions.push_back(condition);
+    m_path_feasibility.reset();
+    m_path_model.reset();
     return true;
 }
 
 symbolic_executor_t::feasibility_t
 symbolic_executor_t::check_feasibility() {
+    if ( m_path_feasibility )
+        return *m_path_feasibility;
     return query_feasibility(nullptr);
 }
 
@@ -1051,6 +1057,8 @@ symbolic_executor_t::check_feasibility_with(const z3::expr& condition) {
     if ( &condition.ctx() != &m_ctx.ctx()
       || static_cast<Z3_ast>(condition) == nullptr || !condition.is_bool() )
         return feasibility_t::unknown;
+    if ( m_path_feasibility == feasibility_t::infeasible )
+        return feasibility_t::infeasible;
     return query_feasibility(&condition);
 }
 
@@ -1063,10 +1071,21 @@ symbolic_executor_t::query_feasibility(const z3::expr* extra_condition) {
         if ( extra_condition != nullptr )
             m_ctx.solver().add(*extra_condition);
         const z3::check_result result = m_ctx.solver().check();
-        if ( result == z3::sat )
+        if ( result == z3::sat ) {
+            // A model satisfying the path plus an extra condition also
+            // satisfies the path alone. Keep it as a candidate witness;
+            // uniqueness still requires an independent exclusion query.
+            m_path_model = m_ctx.solver().get_model();
+            m_path_feasibility = feasibility_t::feasible;
             return feasibility_t::feasible;
-        if ( result == z3::unsat )
+        }
+        if ( result == z3::unsat ) {
+            if ( extra_condition == nullptr ) {
+                m_path_feasibility = feasibility_t::infeasible;
+                m_path_model.reset();
+            }
             return feasibility_t::infeasible;
+        }
         deobf::log_verbose(
             "[z3] path-feasibility query returned unknown: %s\n",
             m_ctx.solver().reason_unknown().c_str());
@@ -1169,37 +1188,22 @@ std::optional<z3::expr> symbolic_executor_t::get_value(const mop_t& op) {
 
 std::optional<uint64_t> symbolic_executor_t::solve_for_value(const z3::expr& expr) {
     try {
-        if ( !expr.is_bv() || expr.get_sort().bv_size() > 64U )
+        if ( &expr.ctx() != &m_ctx.ctx()
+          || static_cast<Z3_ast>(expr) == nullptr || !expr.is_bv()
+          || expr.get_sort().bv_size() > 64U )
             return std::nullopt;
-        m_ctx.solver().reset();
-        for ( const z3::expr &condition : m_assumptions )
-            m_ctx.solver().add(condition);
-        const z3::check_result first = m_ctx.solver().check();
-        if ( first != z3::sat ) {
-            if ( first == z3::unknown ) {
-                deobf::log_verbose(
-                    "[z3] unique-value model query returned unknown: %s\n",
-                    m_ctx.solver().reason_unknown().c_str());
-            }
+        if ( check_feasibility() != feasibility_t::feasible || !m_path_model )
             return std::nullopt;
-        }
-        const z3::expr value = m_ctx.solver().get_model().eval(expr, true);
+        const z3::expr value = m_path_model->eval(expr, true);
         uint64_t concrete = 0;
         if ( !value.is_numeral()
           || !Z3_get_numeral_uint64(expr.ctx(), value, &concrete) )
             return std::nullopt;
 
-        m_ctx.solver().push();
-        m_ctx.solver().add(expr != expr.ctx().bv_val(
-            concrete, expr.get_sort().bv_size()));
-        const z3::check_result alternative = m_ctx.solver().check();
-        if ( alternative == z3::unknown ) {
-            deobf::log_verbose(
-                "[z3] unique-value exclusion query returned unknown: %s\n",
-                m_ctx.solver().reason_unknown().c_str());
-        }
-        m_ctx.solver().pop();
-        return alternative == z3::unsat
+        const z3::expr different = expr != expr.ctx().bv_val(
+            concrete, expr.get_sort().bv_size());
+        const feasibility_t alternative = query_feasibility(&different);
+        return alternative == feasibility_t::infeasible
             ? std::optional<uint64_t>(concrete) : std::nullopt;
     } catch ( ... ) {
         deobf::log_verbose(

@@ -162,6 +162,47 @@ int main(int argc, char **argv)
               == feasibility_t::infeasible,
           "extra-condition queries respect persistent path infeasibility");
 
+    const z3::expr query_value = context.ctx().bv_const("query_value", 64);
+    executor_t queries(context);
+    check(queries.check_feasibility_with(query_value == 31)
+              == feasibility_t::feasible,
+          "a temporary SAT query supplies a valid base-path witness");
+    check(!queries.solve_for_value(query_value).has_value(),
+          "a temporary SAT witness does not establish a unique base-path value");
+    check(queries.assume(query_value == 41),
+          "a new constraint replaces the earlier witness");
+    check(queries.solve_for_value(query_value) == std::optional<uint64_t>(41),
+          "uniqueness uses the current assumptions after an earlier SAT query");
+    check(queries.check_feasibility_with(query_value != 41)
+              == feasibility_t::infeasible,
+          "a temporary contradiction does not replace the base-path witness");
+    check(queries.check_feasibility() == feasibility_t::feasible,
+          "the base path stays feasible after a temporary contradiction");
+    queries.set_value(recurrent_register, query_value);
+    queries.invalidate_all_values();
+    check(queries.solve_for_value(query_value) == std::optional<uint64_t>(41),
+          "binding invalidation preserves a constraint on an existing expression");
+
+    executor_t other_queries(context);
+    check(other_queries.assume(query_value == 59)
+          && other_queries.solve_for_value(query_value) == std::optional<uint64_t>(59),
+          "another executor can query different assumptions through the shared solver");
+    check(queries.solve_for_value(query_value) == std::optional<uint64_t>(41),
+          "a retained witness and exclusion query belong to their owning executor");
+    check(queries.assume(query_value != 41)
+          && queries.check_feasibility() == feasibility_t::infeasible,
+          "a new contradictory assumption invalidates prior SAT information");
+    check(!queries.solve_for_value(query_value).has_value(),
+          "an inconsistent path has no unique value");
+    queries.reset();
+    check(queries.check_feasibility() == feasibility_t::feasible,
+          "reset discards prior UNSAT information");
+    check(!queries.solve_for_value(query_value).has_value(),
+          "reset discards the former unique-value constraint");
+    check(!queries.solve_for_value(foreign_context.bv_val(1, 64)).has_value()
+          && !queries.solve_for_value(z3::expr(context.ctx())).has_value(),
+          "invalid value queries cannot reuse a retained model");
+
     if ( failures == 0 )
         std::cout << "symbolic executor tests: PASS (freshness and isolated queries)\n";
     return failures == 0 ? 0 : 1;

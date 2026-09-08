@@ -278,6 +278,12 @@ private:
     std::vector<symbolic_var_t> m_call_preserved;
     std::vector<z3::expr> m_assumptions;
 
+    // These facts concern immutable path expressions, not current operand
+    // bindings. Only assume()/reset() can invalidate them. UNKNOWN is never
+    // cached, and a temporary UNSAT query says nothing about the base path.
+    std::optional<feasibility_t> m_path_feasibility;
+    std::optional<z3::model> m_path_model;
+
 };
 
 //--------------------------------------------------------------------------
