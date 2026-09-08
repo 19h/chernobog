@@ -223,6 +223,11 @@ public:
     // discard only paths proved infeasible; UNKNOWN must fail closed.
     feasibility_t check_feasibility();
 
+    // Query one additional Boolean condition without retaining it as a path
+    // assumption. This distinguishes a feasible rejected edge from an edge
+    // proved unreachable under the current path constraints.
+    feasibility_t check_feasibility_with(const z3::expr& condition);
+
     // Install a path invariant and keep it across call-clobber invalidation.
     // The caller must only preserve ABI/nonvolatile values it has proved.
     void set_value(const mop_t& op, const z3::expr& value,
@@ -233,8 +238,13 @@ public:
     // recurrent-dispatch state storage).
     void preserve_across_calls(const mop_t& op);
 
-    // Forget memory-backed bindings while retaining register invariants.
+    // Forget memory-backed bindings while retaining all register bindings.
     void invalidate_memory_values();
+
+    // Forget all current bindings while retaining path assumptions, the
+    // call-preservation set, and monotonically fresh symbolic names. Callers
+    // must separately prove and reinstall any values invariant across a loop.
+    void invalidate_all_values();
 
     // Get symbolic value of a variable after execution
     std::optional<z3::expr> get_value(const mop_t& op);
@@ -247,6 +257,8 @@ public:
     void reset();
 
 private:
+    feasibility_t query_feasibility(const z3::expr* extra_condition);
+
     // Apply a call's explicit spoil set. Missing call information is a hard
     // register/all-memory barrier; only explicitly proved invariants survive.
     void invalidate_call_effects(const minsn_t* ins);

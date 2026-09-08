@@ -1043,10 +1043,25 @@ bool symbolic_executor_t::assume(const z3::expr& condition) {
 
 symbolic_executor_t::feasibility_t
 symbolic_executor_t::check_feasibility() {
+    return query_feasibility(nullptr);
+}
+
+symbolic_executor_t::feasibility_t
+symbolic_executor_t::check_feasibility_with(const z3::expr& condition) {
+    if ( &condition.ctx() != &m_ctx.ctx()
+      || static_cast<Z3_ast>(condition) == nullptr || !condition.is_bool() )
+        return feasibility_t::unknown;
+    return query_feasibility(&condition);
+}
+
+symbolic_executor_t::feasibility_t
+symbolic_executor_t::query_feasibility(const z3::expr* extra_condition) {
     try {
         m_ctx.solver().reset();
         for ( const z3::expr &condition : m_assumptions )
             m_ctx.solver().add(condition);
+        if ( extra_condition != nullptr )
+            m_ctx.solver().add(*extra_condition);
         const z3::check_result result = m_ctx.solver().check();
         if ( result == z3::sat )
             return feasibility_t::feasible;
@@ -1109,6 +1124,11 @@ void symbolic_executor_t::invalidate_memory_values() {
         p = is_memory(p->first) ? m_state.erase(p) : std::next(p);
     }
     m_translator.invalidate_values_if(is_memory);
+}
+
+void symbolic_executor_t::invalidate_all_values() {
+    m_state.clear();
+    m_translator.invalidate_all_values();
 }
 
 std::optional<z3::expr> symbolic_executor_t::get_value(const symbolic_var_t& var) {

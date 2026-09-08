@@ -610,6 +610,35 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME chernobog.z3 COMMAND chernobog_z3_tests)
 
+    add_executable(chernobog_symbolic_executor_tests
+        tests/symbolic_executor_tests.cpp
+        src/deobf/analysis/z3_solver.cpp)
+    target_include_directories(chernobog_symbolic_executor_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_include_directories(chernobog_symbolic_executor_tests SYSTEM PRIVATE
+        ${CHERNOBOG_Z3_INCLUDE_DIRS})
+    target_link_libraries(chernobog_symbolic_executor_tests PRIVATE
+        libz3 idasdk::plugin)
+    target_compile_features(chernobog_symbolic_executor_tests PRIVATE cxx_std_17)
+    set(CHERNOBOG_EXECUTOR_PRELUDE
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/symbolic_executor_hexdsp.h")
+    if(MSVC)
+        target_compile_options(chernobog_symbolic_executor_tests PRIVATE
+            /W4 "/FI${CHERNOBOG_EXECUTOR_PRELUDE}")
+    else()
+        target_compile_options(chernobog_symbolic_executor_tests PRIVATE
+            -Wall -Wextra -Wpedantic -include "${CHERNOBOG_EXECUTOR_PRELUDE}")
+    endif()
+    add_test(NAME chernobog.symbolic_executor
+        COMMAND chernobog_symbolic_executor_tests)
+    if(APPLE)
+        set_tests_properties(chernobog.symbolic_executor PROPERTIES
+            ENVIRONMENT "DYLD_LIBRARY_PATH=${IDA_LIB_DIR}")
+    elseif(UNIX)
+        set_tests_properties(chernobog.symbolic_executor PROPERTIES
+            ENVIRONMENT "LD_LIBRARY_PATH=${IDA_LIB_DIR}")
+    endif()
+
     # Compile and execute the exact statically-registered MBA catalog through
     # its fail-closed Z3 verifier. Only the catalog's IDA-independent runtime
     # is linked, avoiding unrelated plugin initializers in the SDK stub test.
