@@ -62,6 +62,14 @@ enum class HybridSegmentKind : uint8_t
   EXTERNAL,
 };
 
+// Non-owning initialized bytes from one segment. The image must outlive the
+// view and its segment vectors must remain unchanged while the view is used.
+struct LoadedByteView
+{
+  const uint8_t *data = nullptr;
+  size_t size = 0;
+};
+
 // One mapped segment's bytes plus an initialized-byte bitmap (1 bit per byte;
 // bit set => the byte was loaded, i.e. not .bss). Uninitialized bytes are left
 // out of the emulator image and read back as engine zero-fill.
@@ -77,6 +85,8 @@ struct SegImage
 
   bool contains(uint64_t ea) const;
   bool byte_loaded(uint64_t ea) const;
+  // Stop at the first unloaded byte, segment end, or backing-buffer end.
+  LoadedByteView loaded_view(uint64_t ea, size_t maximum_bytes) const;
   bool has_perm(HybridSegPerm required) const;
 };
 
@@ -167,6 +177,7 @@ struct ProgramImage
   uint64_t generation = 0;
 
   const SegImage *segment_at(uint64_t ea) const;
+  LoadedByteView loaded_view(uint64_t ea, size_t maximum_bytes) const;
   bool contains(uint64_t ea) const { return segment_at(ea) != nullptr; }
   bool byte_loaded(uint64_t ea) const;
   bool has_perm(uint64_t ea, HybridSegPerm required, bool allow_unknown = false) const;

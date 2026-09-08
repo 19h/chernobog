@@ -33,6 +33,36 @@ bool SegImage::has_perm(HybridSegPerm required) const
   return (perm & bits) == bits;
 }
 
+LoadedByteView SegImage::loaded_view(uint64_t ea, size_t maximum_bytes) const
+{
+  if ( !contains(ea) || maximum_bytes == 0 )
+    return {};
+  const uint64_t offset = ea - start;
+  if ( offset >= bytes.size() )
+    return {};
+  const size_t begin = static_cast<size_t>(offset);
+  const size_t limit = static_cast<size_t>(std::min<uint64_t>(
+      end - ea, std::min(maximum_bytes, bytes.size() - begin)));
+  size_t length = 0;
+  while ( length < limit )
+  {
+    const size_t current = begin + length;
+    if ( current / 8 >= mask.size() )
+      break;
+    const size_t count = std::min(size_t(8) - (current & 7), limit - length);
+    const unsigned bits = unsigned(mask[current / 8]) >> (current & 7);
+    const unsigned required = (1u << count) - 1;
+    if ( (bits & required) != required )
+    {
+      for ( size_t i = 0; i < count && (bits & (1u << i)) != 0; ++i )
+        ++length;
+      break;
+    }
+    length += count;
+  }
+  return length == 0 ? LoadedByteView{} : LoadedByteView{ bytes.data() + begin, length };
+}
+
 bool FuncRange::contains(uint64_t ea) const
 {
   if ( chunks.empty() )
@@ -82,6 +112,12 @@ bool ProgramImage::byte_loaded(uint64_t ea) const
 {
   const SegImage *seg = segment_at(ea);
   return seg != nullptr && seg->byte_loaded(ea);
+}
+
+LoadedByteView ProgramImage::loaded_view(uint64_t ea, size_t maximum_bytes) const
+{
+  const SegImage *segment = segment_at(ea);
+  return segment == nullptr ? LoadedByteView{} : segment->loaded_view(ea, maximum_bytes);
 }
 
 bool ProgramImage::has_perm(uint64_t ea, HybridSegPerm required, bool allow_unknown) const
@@ -136,18 +172,40 @@ constexpr uint64_t zero_byte_multiplier(unsigned count)
 void hash_bytes(uint64_t &hash, const std::vector<uint8_t> &bytes)
 {
   // Zero-filled data (including snapshot BSS) still participates in the exact
-  // identity. Eight zero-byte FNV-1a steps equal one multiplication by P^8
-  // modulo 2^64. memcpy keeps the zero test alignment- and endian-independent.
+  // identity. A run of N zero bytes multiplies the hash by P^N modulo 2^64.
+  // Scan zero words without the serial hash dependency, then apply the factor
+  // with exponentiation by squaring. memcpy is alignment/endian independent.
   size_t offset = 0;
-  for ( ; bytes.size() - offset >= sizeof(uint64_t); offset += sizeof(uint64_t) )
+  while ( bytes.size() - offset >= sizeof(uint64_t) )
   {
     uint64_t word;
     std::memcpy(&word, bytes.data() + offset, sizeof(word));
     if ( word == 0 )
-      hash *= zero_byte_multiplier(sizeof(word));
+    {
+      const size_t begin = offset;
+      do
+      {
+        offset += sizeof(word);
+        if ( bytes.size() - offset < sizeof(word) )
+          break;
+        std::memcpy(&word, bytes.data() + offset, sizeof(word));
+      } while ( word == 0 );
+      size_t words = (offset - begin) / sizeof(word);
+      uint64_t multiplier = zero_byte_multiplier(sizeof(word));
+      while ( words != 0 )
+      {
+        if ( (words & 1) != 0 )
+          hash *= multiplier;
+        multiplier *= multiplier;
+        words >>= 1;
+      }
+    }
     else
+    {
       for ( size_t i = 0; i < sizeof(word); ++i )
         hash_byte(hash, bytes[offset + i]);
+      offset += sizeof(word);
+    }
   }
   for ( ; offset < bytes.size(); ++offset )
     hash_byte(hash, bytes[offset]);
