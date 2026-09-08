@@ -510,6 +510,32 @@ endif()
 # the AST matcher.
 include(CTest)
 if(BUILD_TESTING)
+    if(UNIX)
+        find_package(Python3 QUIET COMPONENTS Interpreter)
+        if(Python3_Interpreter_FOUND)
+            add_test(NAME chernobog.ida_runner
+                COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_run_ida_smoke.py")
+            if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+                include(cmake/ShimCompilerArguments.cmake)
+                chernobog_shim_compiler_arguments(_chernobog_shim_arguments)
+                add_test(NAME chernobog.shim_compiler_arguments
+                    COMMAND "${Python3_EXECUTABLE}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_shim_compiler_arguments.py"
+                        --cmake "${CMAKE_COMMAND}" --ctest "${CMAKE_CTEST_COMMAND}")
+                add_test(NAME chernobog.static_analysis
+                    COMMAND "${Python3_EXECUTABLE}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_static_analysis_tests.py"
+                        --cxx "${CMAKE_CXX_COMPILER}"
+                        ${_chernobog_shim_arguments})
+                add_test(NAME chernobog.block_merge
+                    COMMAND "${Python3_EXECUTABLE}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_block_merge_tests.py"
+                        --cxx "${CMAKE_CXX_COMPILER}"
+                        ${_chernobog_shim_arguments})
+            endif()
+        endif()
+    endif()
     add_executable(chernobog_program_model_tests
         tests/program_model_tests.cpp
         src/hybrid/program_model_core.cpp)
@@ -517,6 +543,16 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_compile_features(chernobog_program_model_tests PRIVATE cxx_std_17)
     add_test(NAME chernobog.program_model COMMAND chernobog_program_model_tests)
+
+    add_executable(chernobog_evidence_tests
+        tests/evidence_tests.cpp
+        src/hybrid/evidence.cpp
+        src/hybrid/program_model_core.cpp)
+    target_include_directories(chernobog_evidence_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${_chernobog_rax_capi}/include")
+    target_compile_features(chernobog_evidence_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.evidence COMMAND chernobog_evidence_tests)
 
     add_executable(chernobog_hybrid_tests
         tests/hybrid_tests.cpp

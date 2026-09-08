@@ -51,6 +51,9 @@ Chernobog automatically detects and reverses the following Hikari obfuscation te
 
 ### Data Obfuscation
 - **String Encryption** - Decrypts XOR- and bitwise-NOT-encrypted strings and annotates them in the disassembly
+- **Runtime UTF-8 Strings** - Materializes byte-exact, cross-run UTF-8 consensus
+  as transient ctree literals, including non-Latin text and supplementary
+  characters; malformed encodings and conflicting final-memory records are rejected
 - **Constant Encryption** - Resolves encrypted constants (XOR patterns with global variables)
 - **Stack String Construction** - Reconstructs strings built character-by-character on the stack
 - **Global Constant Inlining** - Replaces loads from read-only globals with immediate values
@@ -745,6 +748,15 @@ ctest --test-dir out/build/macos-x86_64-release --output-on-failure
 
 Test coverage includes:
 - exact-width bit-vector and target-endian decoding semantics
+- snapshot function/content hash equivalence, sparse segment traversal, rebases,
+  and zero-run hashing against independent bytewise references
+- exact function/context evidence bytes and loaded masks across segment gaps,
+  partial buffers, and unaligned ranges
+- bounded static decoding and macro traversal, exact-cap completion, and
+  cancellation through data/undecodable tails ([validation](tests/STATIC_ANALYSIS_BUDGET.md))
+- split-block detector equivalence and bounded CFG queries ([benchmark](tests/BLOCK_MERGE_BENCHMARK.md))
+- bounded `memchr`/`strnlen` runtime results and consumed-byte provenance
+  ([validation](tests/BOUNDED_LIBC_MODELS.md))
 - alignment-independent SIMD hashing and comparison
 - unique-model Z3 solving, including ambiguous/unsatisfiable/64-bit cases
 - all 108 registered MBA rules, Z3-verified at 8, 16, 32, and 64 bits
@@ -767,6 +779,9 @@ and whole-IDB decompiler regression checks for timeouts and internal errors.
 `tests/ida_rax_gui_lifecycle_smoke.py` cover current-function rax exploration,
 automatic rax-before-deobfuscation integration, and GUI first-view string
 materialization (the last requires the graphical IDA executable).
+`tests/ida_runtime_utf8_smoke.py` covers UTF-8 runtime literals, explicit IDB
+encoding, protected metadata, repeated decompilation, and invalidation after a
+decoder-key change; see [the reproducible fixture](tests/RUNTIME_UTF8.md).
 `tests/ida_cff_detector_smoke.py` drives the headless CFF detector probe
 (`CHERNOBOG_CFF_BATCH_EA`), `tests/ida_cff_switch_probe.py` checks recurrent
 switch-dispatch classification, and `tests/ida_cff_transition_probe.py` is a
@@ -779,12 +794,29 @@ registry, transformation with text extraction, and the sweep and cache-clearing
 entry points. It also asserts that object results keep their full attribute set
 on failure paths, since a missing attribute is a runtime error in IDC.
 
-The CTest targets are SDK-linked but do not constitute a live-IDB decompiler
-integration test. Runtime validation requires an IDA/Hex-Rays build compatible
+The program-model test target is independent of both the IDA SDK and rax;
+it also provides optional reproducible [hashing benchmarks](tests/PROGRAM_MODEL_BENCHMARK.md).
+The evidence test target requires only the pinned rax C header, links neither
+IDA nor rax, and provides [identity-capture benchmarks](tests/EVIDENCE_BENCHMARK.md)
+and [identity-comparison benchmarks](tests/IDENTITY_COMPARISON_BENCHMARK.md).
+On UNIX, the Python static-analysis and block-merge suites compile production
+sources against counted SDK shims. CTest forwards common/configuration C++ flags,
+Apple architecture/SDK/deployment settings, the common sysroot, and Clang target
+and external-toolchain settings. Standalone runs retain host defaults unless
+`--cxx` and repeated `--cxx-flag=<token>` arguments are supplied. These runners
+execute the resulting binaries directly: compiler launchers, cross-execution
+emulators, target-specific properties, linker-only flags, and separate
+compile/link sysroots are not propagated. The host must support executing the
+selected architecture; these suites verify algorithm behavior, not the SDK ABI.
+The other CTest targets do not constitute a live-IDB decompiler integration
+test. Runtime validation requires an IDA/Hex-Rays build compatible
 with the SDK used to compile the plugin and a representative binary corpus.
 
-Use the pristine runner for live tests so an existing IDA user directory,
-database cache, or installed plugin cannot affect the result:
+Use the pristine runner to copy raw inputs and load the specified plugin in a
+fresh IDA user directory. Set Chernobog options explicitly with `--set`:
+
+Retained runs include a [JSON timing and artifact report](tests/IDA_RUN_REPORT.md)
+in `run.json`; use `--output-dir` to retain successful runs.
 
 ```bash
 python3 tests/run_ida_smoke.py \

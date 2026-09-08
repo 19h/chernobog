@@ -100,3 +100,11 @@ The full native build and all six CTest entries passed (1.65 s in the final
 run). The standalone evidence suite, including UTF-8 cases, passed AddressSanitizer,
 UndefinedBehaviorSanitizer, and x86-64 execution. `CHERNOBOG_LEGACY_EVIDENCE`
 excludes these new consensus tests when reproducing older capture benchmarks.
+
+A subsequent integration run on the same date, after the bounded libc models
+and indexed-load correction, passed every UTF-8 smoke assertion again at
+`/tmp/chernobog-libc-indexed-utf8`. It used plugin SHA-256
+`5e595e591de1ad3dd0f6012e4ce63b4bbaa0cc2ac2e758c235b0161cb6db3e28`
+(source fingerprint `dac1293b6fb0`, SDK `940`); `run.json` records passing
+artifact-integrity checks and zero process/runner return codes. This is
+correctness evidence; no timing improvement is inferred from that run.

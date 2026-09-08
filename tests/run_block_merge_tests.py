@@ -20,6 +20,8 @@ def main():
     parser.add_argument("--source", type=Path,
                         default=root / "src/deobf/handlers/block_merge.cpp")
     parser.add_argument("--cxx", type=Path)
+    parser.add_argument("--cxx-flag", action="append", default=[],
+                        help="One compiler argument; repeat as --cxx-flag=<token>")
     parser.add_argument("--sanitize", action="store_true")
     parser.add_argument("--benchmark", action="store_true",
                         help="Emit CSV measurements after equivalence tests pass")
@@ -33,6 +35,7 @@ def main():
                     else shlex.split(os.environ.get("CXX", "c++")))
         command = compiler + [
             "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
+        ] + [flag for flag in args.cxx_flag if flag] + [
             "-I", str(root / "tests"),
             str(temporary / "block_merge.cpp"),
             str(root / "tests/block_merge_reference.cpp"),

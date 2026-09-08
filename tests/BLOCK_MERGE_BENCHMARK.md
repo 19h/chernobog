@@ -68,7 +68,7 @@ Ranges are observed minima/maxima, not confidence intervals.
 | 4,096-node chain | 0.0161 (0.0160–0.0162) | 7.58e-6 (7.33e-6–9.46e-6) | 2.13e3× |
 | 4,096-node cycle | 0.0390 (0.0389–0.0393) | 7.83e-6 (7.42e-6–8.38e-6) | 4.98e3× |
 | 1,000 candidates / 4,096 nodes | 9.36e-4 (9.22e-4–9.57e-4) | 4.67e-6 (4.58e-6–4.83e-6) | 201× |
-| Disjoint three-node cycles / 4,096 nodes | 1.06e-4 (1.02e-4–1.08e-4) | 4.00e-5 (3.88e-5–4.05e-5) | 2.66× |
+| 1,365 three-node cycles plus one self-loop / 4,096 nodes | 1.06e-4 (1.02e-4–1.08e-4) | 4.00e-5 (3.88e-5–4.05e-5) | 2.66× |
 | 512 blocks, 4,096 instructions each | 6.76e-4 (6.67e-4–1.18e-3) | 1.83e-6 (1.04e-6–4.08e-6) | 369× |
 | 16-node negative | 2.77e-8 (2.74e-8–2.86e-8) | 2.10e-8 (2.05e-8–2.19e-8) | 1.32× |
 

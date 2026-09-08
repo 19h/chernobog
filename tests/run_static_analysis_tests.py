@@ -23,6 +23,8 @@ def main():
     parser.add_argument("--sanitize", action="store_true")
     parser.add_argument("--cxx", type=Path,
                         help="Exact compiler executable; otherwise use CXX or c++")
+    parser.add_argument("--cxx-flag", action="append", default=[],
+                        help="One compiler argument; repeat as --cxx-flag=<token>")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="chernobog-static-tests-") as directory:
         temporary = Path(directory)
@@ -37,6 +39,7 @@ def main():
                     else shlex.split(os.environ.get("CXX", "c++")))
         command = compiler + [
             "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
+        ] + [flag for flag in args.cxx_flag if flag] + [
             "-I", str(temporary), "-I", str(root / "tests"),
             "-I", str(root / "src"), "-I", str(root / "src/hybrid"),
             "-I", str(root / "vendor/rax/capi/include"),
