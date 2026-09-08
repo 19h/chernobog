@@ -4,16 +4,6 @@
 #include <iostream>
 #include <stdexcept>
 
-// Every HEXDSP call in this target routes here; see catalog_hexdsp.h, which
-// the build force-includes ahead of the SDK headers. Returning nullptr is the
-// correct model for a program with no decompiler: the only dispatcher calls
-// this test can reach are mop_t lifetime operations on operands it never
-// populates, and there is nothing for the decompiler to release.
-extern "C" void *chernobog_catalog_hexdsp(int, ...)
-{
-    return nullptr;
-}
-
 namespace {
 
 using chernobog::ast::AstPtr;
@@ -24,7 +14,11 @@ using chernobog::ast::match_pattern;
 
 std::size_t empty_operand_erases = 0;
 
-void *catalog_dispatcher(int code, ...)
+} // namespace
+
+// catalog_hexdsp.h redirects every test translation unit to this entry point.
+// Keep its C linkage and validate the actual calls from the SDK inline code.
+extern "C" void *chernobog_catalog_hexdsp(int code, ...)
 {
     // The SDK's link stub is not an initialized Hex-Rays runtime. Catalog
     // patterns own only empty SDK operands; emulate precisely their cleanup
@@ -47,6 +41,8 @@ void *catalog_dispatcher(int code, ...)
     ++empty_operand_erases;
     return nullptr;
 }
+
+namespace {
 
 class RejectedCatalogRule final : public chernobog::rules::PatternMatchingRule
 {
@@ -141,14 +137,6 @@ bool test_ast_destruction()
 }
 
 } // namespace
-
-// Resolve SDK calls within this executable to the strict catalog-only shim,
-// including calls made by separately compiled production AST/registry code.
-// Production plugin targets do not compile this file or override the dispatcher.
-hexdsp_t *ida_export get_hexdsp()
-{
-    return catalog_dispatcher;
-}
 
 int main()
 {
