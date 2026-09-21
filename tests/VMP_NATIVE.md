@@ -30,6 +30,9 @@ not infer a unique target from repeated concrete witnesses.
 
 **Verification performed**
 
+This first-checkpoint table and its artifact hash are historical. The subsequent
+lifecycle checkpoint below records the current artifact and additional checks.
+
 | Check | Result and exact scope |
 |---|---|
 | Portable arithmetic | 4 operations × 256 left inputs × 256 right inputs × 2 incoming carry states = 524,288 cases, compared with independent integer/nibble/parity arithmetic |
@@ -52,9 +55,9 @@ performance conclusion follows from these timings.
 
 Retained isolated run artifacts:
 
-- `/tmp/chernobog-vmp-flags-validation-4`: default depth, 33 cases.
-- `/tmp/chernobog-vmp-flags-validation-5`: depth 64, 33 cases.
-- `/tmp/chernobog-vmp-stack-validation-2`: stack transfer, 12 cases.
+- `"${TMPDIR:-.}"/chernobog-vmp-flags-validation-4`: default depth, 33 cases.
+- `"${TMPDIR:-.}"/chernobog-vmp-flags-validation-5`: depth 64, 33 cases.
+- `"${TMPDIR:-.}"/chernobog-vmp-stack-validation-2`: stack transfer, 12 cases.
 
 Each directory contains `run.json`, input/plugin hashes, `ida.log`, and the
 probe's structured records. Earlier failed smoke runs remain available under
@@ -66,21 +69,75 @@ edges and are not reported as successes.
 ```sh
 cmake --build build -j 4
 ctest --test-dir build --output-on-failure
-xcrun clang++ -std=c++17 -O2 -Wall -Wextra -Wconversion -Wshadow -arch x86_64 -Isrc tests/x86_abstract_tests.cpp -o /tmp/chernobog-x86-abstract-native
-/tmp/chernobog-x86-abstract-native
-xcrun clang++ -std=c++17 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc tests/x86_abstract_tests.cpp -o /tmp/chernobog-x86-abstract-sanitized
-/tmp/chernobog-x86-abstract-sanitized
-xcrun clang -arch x86_64 -g0 tests/vmp_native/flags.S -o /tmp/chernobog-vmp-flags
-xcrun clang -arch x86_64 -g0 -Wl,-no_pie tests/vmp_native/stack.S -o /tmp/chernobog-vmp-stack
-/tmp/chernobog-vmp-stack
-python3 tests/run_ida_smoke.py /tmp/chernobog-vmp-flags tests/ida_x86_flags_smoke.py --ida '/Applications/IDA Professional 9.4.app/Contents/MacOS/idat' --plugin /Users/int/dev/ida-sdk/src/bin/plugins/chernobog.dylib
-python3 tests/run_ida_smoke.py /tmp/chernobog-vmp-flags tests/ida_x86_flags_smoke.py --ida '/Applications/IDA Professional 9.4.app/Contents/MacOS/idat' --plugin /Users/int/dev/ida-sdk/src/bin/plugins/chernobog.dylib --set CHERNOBOG_IDA_FLAG_SCAN_DEPTH=64
-python3 tests/run_ida_smoke.py /tmp/chernobog-vmp-stack tests/ida_stack_transfer_smoke.py --ida '/Applications/IDA Professional 9.4.app/Contents/MacOS/idat' --plugin /Users/int/dev/ida-sdk/src/bin/plugins/chernobog.dylib
+xcrun clang++ -std=c++17 -O2 -Wall -Wextra -Wconversion -Wshadow -arch x86_64 -Isrc tests/x86_abstract_tests.cpp -o "${TMPDIR:-.}"/chernobog-x86-abstract-native
+"${TMPDIR:-.}"/chernobog-x86-abstract-native
+xcrun clang++ -std=c++17 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc tests/x86_abstract_tests.cpp -o "${TMPDIR:-.}"/chernobog-x86-abstract-sanitized
+"${TMPDIR:-.}"/chernobog-x86-abstract-sanitized
+xcrun clang -arch x86_64 -g0 tests/vmp_native/flags.S -o "${TMPDIR:-.}"/chernobog-vmp-flags
+xcrun clang -arch x86_64 -g0 -Wl,-no_pie tests/vmp_native/stack.S -o "${TMPDIR:-.}"/chernobog-vmp-stack
+"${TMPDIR:-.}"/chernobog-vmp-stack
+python3 tests/run_ida_smoke.py "${TMPDIR:-.}"/chernobog-vmp-flags tests/ida_x86_flags_smoke.py --ida "$CHERNOBOG_IDAT" --plugin "$CHERNOBOG_PLUGIN"
+python3 tests/run_ida_smoke.py "${TMPDIR:-.}"/chernobog-vmp-flags tests/ida_x86_flags_smoke.py --ida "$CHERNOBOG_IDAT" --plugin "$CHERNOBOG_PLUGIN" --set CHERNOBOG_IDA_FLAG_SCAN_DEPTH=64
+python3 tests/run_ida_smoke.py "${TMPDIR:-.}"/chernobog-vmp-stack tests/ida_stack_transfer_smoke.py --ida "$CHERNOBOG_IDAT" --plugin "$CHERNOBOG_PLUGIN"
 ```
 
 The standalone stack fixture executes only its three valid positive transfers
 and returns zero if each returns the expected value. Unsupported/faulting
 negative controls are decoded in IDA, not executed.
+
+**Per-session lifecycle checkpoint**
+
+This checkpoint is historical. Persistent ownership and later lifecycle results
+are recorded in [NATIVE_PROOF_OWNERSHIP.md](../docs/NATIVE_PROOF_OWNERSHIP.md).
+
+The native engine now retains at most 4,096 ownership records for its new
+stack-transfer and flag facts. Records include supporting instruction bytes,
+consumed memory bytes, selected-target bytes, permissions, execution bitness,
+and code ownership. Byte patches, item destruction, new alternate entries,
+write references, and segment permission changes revoke affected records.
+Autoanalysis completion also checks current dependency bytes and ownership.
+Reanalysis is queued at the original proof source and metadata site.
+
+Revocation removes only edges inserted or promoted by the record and only the
+exact comment line inserted by the record. Preexisting user edges, external
+reassertions of a formerly owned edge, and user comment lines are preserved.
+The flag consumer retains skipped instruction/data metadata rather than
+retyping a gap that could not be reconstructed reliably after invalidation.
+
+`ida_native_proof_lifecycle_smoke.py` passed 10 flag controls and 8 stack
+controls in separate fresh IDA processes. These cover exact-to-unknown-to-exact
+byte changes, alternate-entry addition/removal, external edge ownership,
+comment preservation, pointer replacement/restoration, read-only-to-writable
+permission changes, and a newly introduced write reference. The existing
+33-case default-depth flag and 12-case stack probes also passed. CTest passed
+12/12 in 8.16 s; this is one run, not a latency estimate. The runner's 11 unit
+tests include path redaction while retaining hash-based artifact attribution.
+
+Plugin SHA-256:
+`3889ec077781062d828926405bd5a3c6f3766da183fc2a3285cbc11ada2e4721`.
+Fixture hashes and individual assertions are in the relative run directories
+`build/vmp-lifecycle-flags-run-1` and `build/vmp-lifecycle-stack-run-1`.
+Regression runs are in `build/vmp-lifecycle-flags-baseline-1` and
+`build/vmp-lifecycle-stack-baseline-1`. Report paths and known local roots in
+runner console/log output are redacted; input, script, executable, and plugin
+hashes remain exact. Configure `CHERNOBOG_IDAT` and `CHERNOBOG_PLUGIN` for the
+local installation, then use the existing runner with the lifecycle probe.
+
+Assumption L1: ownership records remain available for this engine session.
+Dependent result: the tested revocation behavior. Falsification probes still
+required include save/reopen, plugin reload, rebase, undo/redo, and legacy
+metadata migration. That checkpoint did not persist its ownership
+ledger and did not establish those cases. Assumption L2: the recorded byte,
+permission, and topology dependencies cover the admitted local proof;
+additional function-tail and SETcc/CMOV lifecycle controls remain required.
+
+With F retained records and D dependencies per record, range invalidation costs
+O(F·D) and byte freshness checks O(F·D·W), where each recorded dependency has
+W ≤ 16 bytes. Storage is O(F·D·W); F is capped at 4,096 and each local replay at
+64 instructions. The stack address calculation can retain separate base/index
+definition lists. Large-corpus latency remains unmeasured. High-impact remaining
+scope: persist metadata ownership and invalidate it across database relocation
+and reopen before claiming complete lifecycle support.
 
 **Assumptions and falsification probes**
 

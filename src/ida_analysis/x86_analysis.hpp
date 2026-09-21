@@ -24,6 +24,13 @@ std::optional<X86Condition> x86_condition(uint16_t instruction_type);
 // effects invalidate facts; no dynamic witnesses or writable memory are folded.
 x86_abstract::Flags analyze_x86_flags_before(const insn_t &instruction, size_t depth);
 
+struct X86FlagFact
+{
+    x86_abstract::Flags flags;
+    std::vector<uint64_t> support;
+};
+X86FlagFact analyze_x86_flag_fact_before(const insn_t &instruction, size_t depth);
+
 struct X86RegisterFact
 {
     std::optional<uint64_t> value;

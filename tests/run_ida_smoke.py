@@ -34,6 +34,7 @@ DATABASE_SUFFIXES = {
 }
 
 DEFAULT_PASS_PATTERN = r"\[chernobog\]\[[^\]\r\n]+\] PASS(?:\s|$)"
+INTERNAL_ERROR_PATTERN = r"(?i)\b(?:internal error|bad event detected during undo)\b"
 
 CONTROLLED_ENVIRONMENT = {
     "IDAUSR",
@@ -253,7 +254,19 @@ def main() -> int:
         ]
     )
 
-    print("run_dir=%s" % run_dir, flush=True)
+    def redact_paths(text: str) -> str:
+        roots = {
+            str(run_dir): "<run>", str(ida.parent): "<ida>",
+            str(Path.cwd()): "<workspace>", str(Path.home()): "<home>",
+            str(input_path.parent): "<input>",
+            str(arguments.script.parent): "<probe>",
+            str(plugin.parent): "<plugin>",
+        }
+        for root in sorted(roots, key=len, reverse=True):
+            text = text.replace(root, roots[root])
+        return text
+
+    print("run_dir=%s" % run_dir.name, flush=True)
     print("input_sha256=%s" % source_hash, flush=True)
     plugin_hash = sha256(installed_plugin)
     script_hash = sha256(copied_script)
@@ -262,8 +275,13 @@ def main() -> int:
     ida_hash = sha256(ida)
     print("plugin_sha256=%s" % plugin_hash, flush=True)
     started = time.perf_counter_ns()
-    completed = subprocess.run(command, env=environment, check=False)
+    completed = subprocess.run(command, env=environment, check=False,
+                               capture_output=True, text=True, errors="replace")
     elapsed_ns = time.perf_counter_ns() - started
+    if completed.stdout:
+        print(redact_paths(completed.stdout), end="")
+    if completed.stderr:
+        print(redact_paths(completed.stderr), end="", file=sys.stderr)
     unchanged = observed_sha256(input_path) == source_hash
     copied_script_unchanged = observed_sha256(copied_script) == script_hash
     plugin_unchanged = observed_sha256(installed_plugin) == plugin_hash
@@ -284,12 +302,20 @@ def main() -> int:
         if log_path.is_file() else ""
     )
     marker_found = re.search(arguments.expect_log, log_text) is not None
+    internal_error = re.search(
+        INTERNAL_ERROR_PATTERN, log_text + completed.stdout + completed.stderr
+    ) is not None
+    if log_path.is_file():
+        log_path.write_text(redact_paths(log_text), encoding="utf-8")
     if return_code == 0 and not marker_found:
         print(
             "required log marker absent: %s" % arguments.expect_log,
             file=sys.stderr,
         )
         return_code = 124
+    if return_code == 0 and internal_error:
+        print("IDA internal-error diagnostic invalidates the PASS marker", file=sys.stderr)
+        return_code = 123
 
     report = {
         "schema_version": 2,
@@ -305,7 +331,8 @@ def main() -> int:
         ),
         "source_input_unchanged": unchanged,
         "input_copy_matches_source": input_copy_matches_source,
-        "ida_path": str(ida),
+        "ida_path": "<ida>/" + ida.name,
+        "local_paths_redacted": True,
         "ida_sha256": ida_hash,
         "ida_sha256_after": ida_hash_after,
         "ida_unchanged": ida_unchanged,
@@ -317,6 +344,7 @@ def main() -> int:
         "process_return_code": completed.returncode,
         "expected_log_pattern": arguments.expect_log,
         "expected_log_found": marker_found,
+        "internal_error_found": internal_error,
         "runner_return_code": return_code,
     }
     report_path = run_dir / "run.json"
@@ -324,12 +352,12 @@ def main() -> int:
     print("process_elapsed_ns=%d" % elapsed_ns, flush=True)
 
     if return_code != 0 or not disposable:
-        print("ida_log=%s" % log_path, flush=True)
-        print("run_report=%s" % report_path, flush=True)
+        print("ida_log=%s" % log_path.name, flush=True)
+        print("run_report=%s" % report_path.name, flush=True)
     if disposable and return_code == 0:
         shutil.rmtree(run_dir)
     elif disposable:
-        print("failed artifacts retained at %s" % run_dir, file=sys.stderr)
+        print("failed artifacts retained in %s" % run_dir.name, file=sys.stderr)
     return return_code
 
 

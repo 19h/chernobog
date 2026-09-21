@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdarg>
 #include <memory>
 
 namespace chernobog::ida_analysis {
@@ -37,6 +38,7 @@ public:
   bool enabled() const;
   void reset();
   void on_autoanalysis_complete();
+  void on_database_event(int event, va_list arguments);
   const NativeAnalysisStats &stats() const;
 
 private:

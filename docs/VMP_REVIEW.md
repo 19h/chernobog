@@ -2,7 +2,7 @@
 
 Reviewed 2026-09-21 against Chernobog commit
 `c4440677e39f296e18bbd6f82eab50b878cebead` and the local tree
-`/Users/int/Downloads/vmp`. Source hashes and arithmetic-check results are in
+`vmp`. Source hashes and arithmetic-check results are in
 [VMP_REVIEW_EVIDENCE.json](VMP_REVIEW_EVIDENCE.json).
 
 The largest identifiable opportunities are native CFG recovery, per-flag x86
@@ -10,6 +10,14 @@ analysis, and temporally accurate string evidence. Full VM recovery requires a
 separate analysis model. Expanding the MBA rule count alone does not address
 these gaps. These are source-derived priorities; relative recovery rates and
 speedups are **unknown** until measured on protected fixtures.
+
+Subsequent fixture inspection: the user supplied a protected x86-64 macOS
+hello-world executable attributed to this source tree. Its original function
+bytes are absent from the static image and its section metadata matches the
+tree's packing path. See [VMP_HELLO_FIXTURE.md](VMP_HELLO_FIXTURE.md) for hashes,
+entry/initializer observations, assumptions, and benchmark implications. This
+does not retroactively change the source-only baseline below or establish VM
+coverage.
 
 This review assesses native binary analysis. No supplied VMP executable was
 run, no protected-binary recovery benchmark was performed, and no production
@@ -49,9 +57,9 @@ native mutation path. Chernobog's `handle_push_return` accepts only an immediate
 push; its indirect-branch handler explicitly excludes returns. This establishes
 a recognizer gap, but does not establish that every such sample fails in IDA:
 IDA's own analysis may recover some cases.
-[VMP emitter](/Users/int/Downloads/vmp/core/intel.cc:16360),
-[current recognizer](/Users/int/dev/chernobog/src/ida_analysis/native_engine.cpp:1225),
-[indirect handler](/Users/int/dev/chernobog/src/ida_analysis/native_engine.cpp:1442).
+VMP emitter (`vmp/core/intel.cc:16360`),
+[current recognizer](../src/ida_analysis/native_engine.cpp:1225),
+[indirect handler](../src/ida_analysis/native_engine.cpp:1442).
 
 Extend the portable classifier to describe a stack-mediated transfer, its
 operand width, stack delta, address dependencies, and supported execution mode.
@@ -72,7 +80,7 @@ address-materialization sequence. Its x64 operands use `cpu_address_size()`;
 `regEAX` is an internal register identifier, not evidence of an emitted
 32-bit `eax` operand. The existing mapping's x64 `push eax` example must be
 described with the actual 64-bit widths.
-[Emitter](/Users/int/Downloads/vmp/core/intel.cc:16218).
+Emitter (`vmp/core/intel.cc:16218`).
 
 **2. Per-flag analysis [A1–A3]**
 
@@ -81,15 +89,15 @@ passes a whitelist of flag-preserving instructions and recognizes `clc`/`stc`;
 those are not new features. However, `cmc` stops the scan, and the generic
 flag-writer barrier loses facts about individual preserved flags. The branch
 consumer accepts eight condition opcodes, with partial CF/ZF reasoning.
-[Flag state](/Users/int/dev/chernobog/src/ida_analysis/native_engine.cpp:65),
-[effects and scan](/Users/int/dev/chernobog/src/ida_analysis/native_engine.cpp:603),
-[consumer](/Users/int/dev/chernobog/src/ida_analysis/native_engine.cpp:1379).
+[Flag state](../src/ida_analysis/native_engine.cpp:65),
+[effects and scan](../src/ida_analysis/native_engine.cpp:603),
+[consumer](../src/ida_analysis/native_engine.cpp:1379).
 
 VMP's source tracks known flag masks and evaluates combined signed conditions;
 its random-command generator performs `30 + rand() % 10` iterations per call,
 meaning 30–39 iterations, not a fixed instruction count.
-[Flag evaluator](/Users/int/Downloads/vmp/core/intel.cc:16918),
-[generator](/Users/int/Downloads/vmp/core/intel.cc:17542).
+Flag evaluator (`vmp/core/intel.cc:16918`),
+generator (`vmp/core/intel.cc:17542`).
 
 An independent Chernobog implementation can represent CF/PF/AF/ZF/SF/OF as
 known-zero, known-one, or unknown, with separate instruction effects for
@@ -129,9 +137,9 @@ consensus explicitly filters out non-image memory. Consequently, this path
 cannot directly project those heap buffers, even if their execution and memory
 accesses are successfully observed. A prior call-boundary or missing-summary
 stop may prevent execution from reaching them at all.
-[String lifetime](/Users/int/Downloads/vmp/runtime/string_manager.cc:139),
-[final capture](/Users/int/dev/chernobog/src/hybrid/emu_driver.cpp:1699),
-[image-only projection](/Users/int/dev/chernobog/src/hybrid/evidence.cpp:293).
+String lifetime (`vmp/runtime/string_manager.cc:139`),
+[final capture](../src/hybrid/emu_driver.cpp:1699),
+[image-only projection](../src/hybrid/evidence.cpp:293).
 
 Introduce bounded use-site byte snapshots and an allocation identity with a
 lifetime generation. Key observations by semantic use, call context, object,
@@ -150,8 +158,8 @@ wide-loader transform. Any future static recognizer needs evidence for the
 specific routine, key, bounds, and unit width, followed by existing encoding
 validation. General constant-XOR support does not establish that such a loop
 will be recognized.
-[Loader overloads](/Users/int/Downloads/vmp/core/intel.cc:22388),
-[current static recovery](/Users/int/dev/chernobog/src/deobf/handlers/string_decrypt.cpp:296).
+Loader overloads (`vmp/core/intel.cc:22388`),
+[current static recovery](../src/deobf/handlers/string_decrypt.cpp:296).
 
 **4. MBA work: verify the missing shape [A1–A3]**
 
@@ -159,9 +167,9 @@ De Morgan rules already exist as `And_HackersDelightRule_3` and `Or_MbaRule_1`.
 The AST builder also represents stack/global operands. Their presence disproves
 an assumption that every NOR/NAND expression or stack operand requires a new
 rule; it does not prove cross-instruction simplification coverage.
-[AND rule](/Users/int/dev/chernobog/src/deobf/rules/rules_and.h:58),
-[OR rule](/Users/int/dev/chernobog/src/deobf/rules/rules_or.h:58),
-[operand builder](/Users/int/dev/chernobog/src/deobf/analysis/ast_builder.cpp:178).
+[AND rule](../src/deobf/rules/rules_and.h:58),
+[OR rule](../src/deobf/rules/rules_or.h:58),
+[operand builder](../src/deobf/analysis/ast_builder.cpp:178).
 
 Collect representative microcode and classify each miss as recognition,
 reaching-definition/aliasing, width conversion, rewrite ordering, or an actually
@@ -170,7 +178,7 @@ extension. A same-width proof does not justify a mixed-width rewrite; two
 syntactically equal memory locations are not necessarily the same value across
 an intervening write. New rules still use the production verifier, where
 unknown/unsupported proofs are rejected.
-[Verifier](/Users/int/dev/chernobog/src/deobf/rules/rule_verifier.cpp:9).
+[Verifier](../src/deobf/rules/rule_verifier.cpp:9).
 
 Two proposed identities in mapping §15.1 are false:
 
@@ -199,7 +207,7 @@ proof under the actual constraints.
 IP-advance, bytecode-read, and accumulator/threading checks. It is not a generic
 VMP devirtualizer. Relaxing only the name check would not supply the missing
 semantics.
-[Admission](/Users/int/dev/chernobog/src/deobf/handlers/vm_mba.cpp:449).
+[Admission](../src/deobf/handlers/vm_mba.cpp:449).
 
 The supplied VMP source includes randomized register roles, forward/backward
 bytecode reading, stateful decoding, multiple dispatch forms, and handler
@@ -207,24 +215,24 @@ cloning. These properties motivate a separate region descriptor and semantic
 summary model. A native address alone need not identify a unique logical VM
 state. Candidate summaries need an explicit input-state contract, memory and
 flag effects, and bounded transitions before they can support semantic lifting.
-[Direction](/Users/int/Downloads/vmp/core/intel.cc:27734),
-[read/dispatch construction](/Users/int/Downloads/vmp/core/intel.cc:27795),
-[register assignment](/Users/int/Downloads/vmp/core/intel.cc:28572),
-[cloning](/Users/int/Downloads/vmp/core/intel.cc:30169).
+Direction (`vmp/core/intel.cc:27734`),
+read/dispatch construction (`vmp/core/intel.cc:27795`),
+register assignment (`vmp/core/intel.cc:28572`),
+cloning (`vmp/core/intel.cc:30169`).
 
 The first milestone is recognition and visualization of region candidates,
 role hypotheses, and unresolved effects. The next is validation of isolated
 semantic summaries. Full bytecode lifting is a subsequent project. Existing
 function-boundary execution stops must remain visible; increasing the instruction
 budget alone does not solve region ownership or missing environment semantics.
-[Execution contract](/Users/int/dev/chernobog/RAX_HYBRID.md:3).
+[Execution contract](../RAX_HYBRID.md:3).
 
 For visualization, reuse ordered `ExecPoint`, `ExecEdge`, `DataAcc`, `StatePoint`,
 and evidence provenance. Show observed edges separately from statically proven
 edges, and display trace truncation, boundary stops, and counterexamples as
 first-class results. A synchronized CFG, memory-lifetime timeline, and proof
 detail pane would let an analyst inspect a simplification's basis.
-[Existing event types](/Users/int/dev/chernobog/src/hybrid/emu_driver.hpp:26).
+[Existing event types](../src/hybrid/emu_driver.hpp:26).
 
 **Validation and bounded expansion**
 
@@ -234,7 +242,7 @@ they are useful evidence of an oracle pattern, not exhaustive proofs, and the
 Windows allocation/inline-assembly setup is not directly portable to this host.
 An independent corpus can retain the same comparison principle with recorded
 seeds and architecture-specific runners.
-[Original helpers](/Users/int/Downloads/vmp/unit-tests/intel_tests.cc:1203).
+Original helpers (`vmp/unit-tests/intel_tests.cc:1203`).
 
 The minimum benchmark matrix separates mutation, virtualization, and combined
 protection; x86 and x64; deterministic corner cases and recorded random seeds;

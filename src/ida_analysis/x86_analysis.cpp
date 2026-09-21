@@ -318,10 +318,21 @@ std::vector<insn_t> prefix_before(const insn_t &insn, size_t depth)
 
 x86_abstract::Flags analyze_x86_flags_before(const insn_t &insn, size_t depth)
 {
+    return analyze_x86_flag_fact_before(insn, depth).flags;
+}
+
+X86FlagFact analyze_x86_flag_fact_before(const insn_t &insn, size_t depth)
+{
     const auto prefix = prefix_before(insn, depth);
     State state;
-    for ( auto it = prefix.rbegin(); it != prefix.rend(); ++it ) state.step(*it);
-    return state.flags;
+    X86FlagFact result;
+    for ( auto it = prefix.rbegin(); it != prefix.rend(); ++it )
+    {
+        state.step(*it);
+        result.support.push_back(it->ea);
+    }
+    result.flags = state.flags;
+    return result;
 }
 
 X86RegisterFact analyze_x86_register_before(const insn_t &insn, const op_t &operand, size_t depth)

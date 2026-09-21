@@ -9,6 +9,7 @@
 #include "deobf/analysis/switch_dispatch_classifier.hpp"
 #include "deobf/execution_policy.hpp"
 #include "ida_analysis/native_classifier.hpp"
+#include "ida_analysis/proof_receipt.hpp"
 
 #include <array>
 #include <cstdint>
@@ -27,6 +28,56 @@ void check(bool condition, const char *description)
         return;
     std::fprintf(stderr, "FAIL: %s\n", description);
     ++failures;
+}
+
+void test_native_proof_receipts()
+{
+    using namespace chernobog::ida_analysis::proof_receipt;
+    Receipt original{0x0123456789ABCDEFULL, 0xFEDCBA9876543210ULL,
+                     {{0x100000001ULL, 19, true}, {0x1010, 21, false}},
+                     "[chernobog][ida-analysis] test receipt"};
+    const auto bytes = encode(original);
+    check(bytes.has_value(), "ownership receipt encodes");
+    if ( !bytes ) return;
+    check((*bytes)[4] == 0xEF && (*bytes)[11] == 0x01,
+          "receipt IDs use explicit little-endian encoding");
+    const auto decoded = decode(bytes->data(), bytes->size());
+    check(decoded && decoded->source_node == original.source_node
+          && decoded->site_node == original.site_node
+          && decoded->edges.size() == 2
+          && decoded->edges[0].target_node == original.edges[0].target_node
+          && decoded->edges[0].type == 19 && decoded->edges[0].user
+          && decoded->edges[1].type == 21 && !decoded->edges[1].user
+          && decoded->comment == original.comment,
+          "ownership receipt preserves IDs, types, user bits, and exact comment");
+    for ( size_t size = 0; size < bytes->size(); ++size )
+        check(!decode(bytes->data(), size), "every truncated receipt is rejected");
+    auto altered = *bytes;
+    altered.push_back(0);
+    check(!decode(altered.data(), altered.size()), "receipt trailing data rejected");
+    altered = *bytes;
+    altered[3] = 2;
+    check(!decode(altered.data(), altered.size()), "unknown receipt schema rejected");
+    altered = *bytes;
+    altered[20] = 255;
+    check(!decode(altered.data(), altered.size()), "oversized edge count rejected");
+    altered = *bytes;
+    altered[30] = 2;
+    check(!decode(altered.data(), altered.size()), "invalid user bit rejected");
+    original.comment = std::string(maximum_comment, 'x');
+    original.edges.resize(maximum_edges);
+    const auto largest = encode(original);
+    check(largest && largest->size() == maximum_size
+          && decode(largest->data(), largest->size()), "maximum bounded receipt admitted");
+    original.edges.push_back({});
+    check(!encode(original), "too many owned edges rejected");
+    original.edges.clear();
+    original.comment += 'x';
+    check(!encode(original), "oversized ownership comment rejected");
+    original.comment = "a\nb";
+    check(!encode(original), "multi-line ownership comment rejected");
+    original.comment = std::string("a\0b", 3);
+    check(!encode(original), "embedded NUL ownership comment rejected");
 }
 
 void test_bitvectors()
@@ -859,6 +910,7 @@ void test_hikari_string_recovery()
 
 int main()
 {
+    test_native_proof_receipts();
     test_bitvectors();
     test_aarch64_address_origin();
     test_hexrays_merror_layout_compatibility();

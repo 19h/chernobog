@@ -12,6 +12,7 @@
 #include "get_pc_ida.hpp"
 #include "ida_sdk_compat.hpp"
 #include "x86_analysis.hpp"
+#include "proof_receipt.hpp"
 
 #include "../common/warn_off.h"
 #include <pro.h>
@@ -25,6 +26,7 @@
 #include <frame.hpp>
 #include <name.hpp>
 #include <nalt.hpp>
+#include <netnode.hpp>
 #include <auto.hpp>
 #include <range.hpp>
 #include <regfinder.hpp>
@@ -398,6 +400,62 @@ bool append_analysis_comment(ea_t address, const char *text)
   current.append(tagged);
   return set_cmt(address, current.c_str(), true);
 }
+
+// Remove only the exact line we inserted. User edits to that line, and all
+// other repeatable/non-repeatable annotations, remain user-owned.
+void remove_owned_comment(ea_t address, const std::string &line)
+{
+  if ( line.empty() ) return;
+  qstring current;
+  get_cmt(&current, address, true);
+  const std::string original(current.c_str());
+  std::string remaining;
+  bool removed = false;
+  bool have_line = false;
+  for ( size_t first = 0; first <= original.size(); )
+  {
+    const size_t end = original.find('\n', first);
+    const auto part = original.substr(first,
+        end == std::string::npos ? end : end - first);
+    if ( part == line && !removed ) removed = true;
+    else
+    {
+      if ( have_line ) remaining += '\n';
+      remaining += part;
+      have_line = true;
+    }
+    if ( end == std::string::npos ) break;
+    first = end + 1;
+  }
+  if ( removed ) set_cmt(address, remaining.c_str(), true);
+}
+
+struct NativeProofDependency
+{
+  ea_t first = BADADDR;
+  std::vector<uint8_t> bytes;
+  ea_t owner = BADADDR;
+  int permissions = 0;
+  int bitness = 0;
+  bool code = false;
+};
+
+struct NativeProof
+{
+  ea_t source = BADADDR; // PUSH or condition, used for bounded reanalysis
+  ea_t site = BADADDR;   // RET or condition, owns annotations/outgoing edges
+  std::optional<desired_code_edge_t> intended_edge;
+  std::vector<NativeProofDependency> dependencies;
+  std::vector<existing_code_edge_t> owned_edges;
+  std::string owned_comment;
+};
+
+struct NativeMutationGuard
+{
+  unsigned &depth;
+  explicit NativeMutationGuard(unsigned &value) : depth(value) { ++depth; }
+  ~NativeMutationGuard() { --depth; }
+};
 
 bool has_inbound_reference(
     ea_t address,
@@ -843,6 +901,18 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
   std::set<ea_t> observed_direct_call_targets;
   std::vector<std::pair<ea_t, ea_t>> pending_cfg_edges;
   std::set<ea_t> pending_flag_fallthroughs;
+  // Conclusions/dependencies are session-local. Persisted receipts authorize
+  // cleanup only; every reopen recomputes proofs from the current database.
+  static constexpr size_t maximum_native_proofs = 4096;
+  std::map<ea_t, NativeProof> native_proofs;
+  netnode ownership_node;
+  bool ownership_ready = false;
+  bool ownership_publication_disabled = false;
+  bool closing_database = false;
+  bool replaying_undo = false;
+  bool pending_ownership_recovery = false;
+  std::vector<ea_t> moving_proof_sources;
+  unsigned native_mutation_depth = 0;
   size_t reported_orphan_functions = 0;
   size_t reported_outlined_wrappers = 0;
   size_t reported_get_pc_tail_extensions = 0;
@@ -853,6 +923,9 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
       architecture = Architecture::X86;
     else if ( PH.id == PLFM_ARM )
       architecture = Architecture::Arm;
+    ownership_node.create("$ chernobog.native_proof_ownership.v1");
+    ownership_ready = ownership_node != BADNODE;
+    recover_ownership_receipts();
     if ( config.enabled && architecture != Architecture::Unsupported )
       hooked = hook_event_listener(HT_IDP, this, this);
     if ( config.enabled )
@@ -868,10 +941,17 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
   {
     if ( hooked )
       unhook_event_listener(HT_IDP, this);
+    if ( get_dbctx_id() == owner_database && !closing_database )
+    {
+      if ( pending_ownership_recovery ) recover_ownership_receipts();
+      invalidate_proofs(0, BADADDR);
+    }
   }
 
   void reset()
   {
+    if ( closing_database ) native_proofs.clear();
+    else invalidate_proofs(0, BADADDR);
     post_analysis_running = false;
     prefix_decode_probe = false;
     emulated.clear();
@@ -886,6 +966,347 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     reported_orphan_functions = 0;
     reported_outlined_wrappers = 0;
     reported_get_pc_tail_extensions = 0;
+  }
+
+  bool persist_ownership(const NativeProof &proof)
+  {
+    if ( !ownership_ready ) return false;
+    proof_receipt::Receipt receipt;
+    receipt.source_node = ea2node(proof.source);
+    receipt.site_node = ea2node(proof.site);
+    receipt.comment = proof.owned_comment;
+    for ( const auto &edge : proof.owned_edges )
+      receipt.edges.push_back({uint64_t(ea2node(edge.target)),
+                              uint8_t(edge.type), edge.user});
+    const auto encoded = proof_receipt::encode(receipt);
+    static_assert(proof_receipt::maximum_size <= MAXSPECSIZE);
+    return encoded && ownership_node.supset(nodeidx_t(receipt.source_node),
+                                           encoded->data(), encoded->size());
+  }
+
+  void recover_ownership_receipts(ea_t preserved_from = BADADDR,
+                                 ea_t preserved_to = BADADDR,
+                                 int preserved_type = -1)
+  {
+    pending_ownership_recovery = false;
+    if ( !ownership_ready ) return;
+    NativeMutationGuard guard(native_mutation_depth);
+    // Do not treat cached proof state as authoritative after reopen or undo.
+    native_proofs.clear();
+    pending_flag_fallthroughs.clear();
+    size_t recovered = 0;
+    nodeidx_t key = ownership_node.supfirst();
+    for ( ; key != BADNODE && recovered < maximum_native_proofs; ++recovered )
+    {
+      const nodeidx_t next = ownership_node.supnext(key);
+      std::array<uint8_t, proof_receipt::maximum_size> bytes{};
+      const ssize_t size = ownership_node.supval(key, bytes.data(), bytes.size());
+      const auto receipt = size >= 0 && size_t(size) <= bytes.size()
+          ? proof_receipt::decode(bytes.data(), size_t(size)) : std::nullopt;
+      bool valid = receipt && receipt->source_node == uint64_t(key)
+          && receipt->source_node != BADNODE && receipt->site_node != BADNODE
+          && (receipt->comment.empty()
+           || receipt->comment.find(kCommentPrefix) == 0);
+      NativeProof proof;
+      if ( valid )
+      {
+        proof.source = node2ea(nodeidx_t(receipt->source_node));
+        proof.site = node2ea(nodeidx_t(receipt->site_node));
+        proof.owned_comment = receipt->comment;
+        valid = proof.source != BADADDR && proof.site != BADADDR;
+        for ( const auto &edge : receipt->edges )
+        {
+          const ea_t target = node2ea(nodeidx_t(edge.target_node));
+          if ( target == BADADDR || (edge.type != fl_JN && edge.type != fl_F)
+            || (edge.type == fl_F && edge.user) ) valid = false;
+          if ( proof.site != preserved_from || target != preserved_to
+            || int(edge.type) != preserved_type )
+            proof.owned_edges.push_back({target, cref_t(edge.type), edge.user});
+        }
+      }
+      if ( !valid )
+      {
+        // Malformed receipts cannot establish ownership of arbitrary metadata.
+        // Retain the record for diagnosis and disable new proof publication.
+        ownership_ready = false;
+        msg("[chernobog][ida-analysis] invalid native ownership receipt; "
+            "new proof publication disabled\n");
+        return;
+      }
+      revoke_proof(std::move(proof), true);
+      key = next;
+    }
+    if ( key != BADNODE )
+    {
+      ownership_ready = false;
+      msg("[chernobog][ida-analysis] native ownership receipt limit exceeded; "
+          "new proof publication disabled\n");
+    }
+    if ( recovered != 0 )
+      msg("[chernobog][ida-analysis] recovered %zu native ownership receipts; "
+          "proofs queued for recomputation\n", recovered);
+  }
+
+  bool add_dependency(NativeProof &proof, ea_t address, size_t size, bool code)
+  {
+    if ( size == 0 || size > 16 || address > BADADDR - size ) return false;
+    const segment_t *segment = getseg(address);
+    if ( segment == nullptr || address + size > segment->end_ea ) return false;
+    NativeProofDependency dependency;
+    dependency.first = address;
+    dependency.bytes.resize(size);
+    dependency.code = code;
+    dependency.permissions = segment->perm;
+    dependency.bitness = segment->bitness;
+    const func_t *owner = get_func(address);
+    dependency.owner = owner != nullptr ? owner->start_ea : BADADDR;
+    for ( size_t i = 0; i < size; ++i )
+    {
+      if ( !is_loaded(address + i) ) return false;
+      dependency.bytes[i] = get_byte(address + i);
+    }
+    proof.dependencies.push_back(std::move(dependency));
+    return true;
+  }
+
+  bool add_instruction_dependency(NativeProof &proof, ea_t address)
+  {
+    insn_t decoded;
+    return decode_insn(&decoded, address) > 0
+        && add_dependency(proof, address, decoded.size, true);
+  }
+
+  bool proof_is_fresh(const NativeProof &proof) const
+  {
+    for ( const auto &dependency : proof.dependencies )
+    {
+      const segment_t *segment = getseg(dependency.first);
+      const func_t *owner = get_func(dependency.first);
+      if ( segment == nullptr || segment->perm != dependency.permissions
+        || segment->bitness != dependency.bitness
+        || dependency.first + dependency.bytes.size() > segment->end_ea
+        || (dependency.code
+         && (!is_code(get_flags(dependency.first))
+          || (owner != nullptr ? owner->start_ea : BADADDR) != dependency.owner)) )
+        return false;
+      for ( size_t i = 0; i < dependency.bytes.size(); ++i )
+        if ( !is_loaded(dependency.first + i)
+          || get_byte(dependency.first + i) != dependency.bytes[i] ) return false;
+    }
+    return true;
+  }
+
+  bool dependency_intersects(const NativeProof &proof, ea_t first, ea_t end) const
+  {
+    return std::any_of(proof.dependencies.begin(), proof.dependencies.end(),
+        [&](const NativeProofDependency &dependency) {
+          return dependency.first < end
+              && first < dependency.first + dependency.bytes.size();
+        });
+  }
+
+  void revoke_proof(NativeProof proof, bool schedule)
+  {
+    NativeMutationGuard guard(native_mutation_depth);
+    for ( const auto &owned : proof.owned_edges )
+      for ( const auto &current : collect_code_edges(proof.site) )
+        if ( current.target == owned.target && current.type == owned.type
+          && current.user == owned.user )
+        {
+          del_cref(proof.site, owned.target, false);
+          break;
+        }
+    remove_owned_comment(proof.site, proof.owned_comment);
+    if ( ownership_ready ) ownership_node.supdel(ea2node(proof.source));
+    pending_flag_fallthroughs.erase(proof.source);
+    emulated.sub(proof.source);
+    if ( schedule )
+    {
+      plan_ea(proof.source);
+      plan_ea(proof.site);
+    }
+  }
+
+  void invalidate_proofs(ea_t first, ea_t end, bool schedule = true)
+  {
+    for ( auto it = native_proofs.begin(); it != native_proofs.end(); )
+    {
+      if ( !dependency_intersects(it->second, first, end) ) { ++it; continue; }
+      NativeProof proof = std::move(it->second);
+      it = native_proofs.erase(it); // Remove before callbacks can reenter.
+      revoke_proof(std::move(proof), schedule);
+    }
+  }
+
+  void revalidate_proofs()
+  {
+    for ( auto it = native_proofs.begin(); it != native_proofs.end(); )
+    {
+      if ( proof_is_fresh(it->second) ) { ++it; continue; }
+      NativeProof proof = std::move(it->second);
+      it = native_proofs.erase(it);
+      revoke_proof(std::move(proof), true);
+    }
+  }
+
+  bool can_record_proof(ea_t source) const
+  {
+    return ownership_ready && !ownership_publication_disabled
+        && (native_proofs.count(source) != 0
+        || native_proofs.size() < maximum_native_proofs);
+  }
+
+  bool record_proof(NativeProof proof,
+                    const std::vector<existing_code_edge_t> &before,
+                    const char *comment)
+  {
+    const auto old = native_proofs.find(proof.source);
+    if ( old != native_proofs.end() )
+    {
+      proof.owned_edges = old->second.owned_edges;
+      proof.owned_comment = old->second.owned_comment;
+    }
+    if ( !proof.owned_comment.empty()
+      && proof.owned_comment != std::string(kCommentPrefix) + comment )
+    {
+      remove_owned_comment(proof.site, proof.owned_comment);
+      proof.owned_comment.clear();
+    }
+    for ( const auto &edge : collect_code_edges(proof.site) )
+    {
+      // Other listeners may create additional references during our callback.
+      // A before/after difference alone cannot assign those edges to us.
+      if ( !proof.intended_edge
+        || !edge_matches(edge.target, edge.type, *proof.intended_edge) ) continue;
+      const auto same = [&](const existing_code_edge_t &candidate) {
+        return candidate.target == edge.target && candidate.type == edge.type
+            && candidate.user == edge.user;
+      };
+      if ( std::none_of(before.begin(), before.end(), same)
+        && std::none_of(proof.owned_edges.begin(), proof.owned_edges.end(), same) )
+        proof.owned_edges.push_back(edge);
+    }
+    if ( append_analysis_comment(proof.site, comment) )
+      proof.owned_comment = std::string(kCommentPrefix) + comment;
+    if ( !persist_ownership(proof) )
+    {
+      // Do not create an infinite reanalysis/retry wave on storage failure.
+      // Existing ownership still needs cleanup, so keep the node accessible.
+      ownership_publication_disabled = true;
+      native_proofs.erase(proof.source);
+      revoke_proof(std::move(proof), true);
+      msg("[chernobog][ida-analysis] native ownership receipt write failed; "
+          "new proof publication disabled\n");
+      return false;
+    }
+    native_proofs[proof.source] = std::move(proof);
+    return true;
+  }
+
+  void on_database_event(int event, va_list arguments)
+  {
+    if ( get_dbctx_id() != owner_database || native_mutation_depth != 0
+      || replaying_undo ) return;
+    if ( pending_ownership_recovery
+      && (event == idb_event::byte_patched || event == idb_event::destroyed_items
+       || event == idb_event::deleting_segm
+       || event == idb_event::savebase || event == idb_event::segm_attrs_updated
+#if IDA_SDK_VERSION >= 940
+       || event == idb_event::segment_attrs_updated
+#endif
+         ) )
+      recover_ownership_receipts();
+    if ( event == idb_event::closebase )
+    {
+      closing_database = true;
+    }
+    else if ( event == idb_event::savebase )
+    {
+      revalidate_proofs();
+    }
+    else if ( event == idb_event::segm_moved )
+    {
+      const ea_t from = va_arg(arguments, ea_t);
+      const ea_t to = va_arg(arguments, ea_t);
+      const asize_t size = va_arg(arguments, asize_t);
+      for ( ea_t &source : moving_proof_sources )
+      {
+        if ( source >= from && source - from < size ) source = to + (source - from);
+        plan_ea(source);
+      }
+    }
+    else if ( event == idb_event::allsegs_moved )
+    {
+      for ( ea_t source : moving_proof_sources ) plan_ea(source);
+      moving_proof_sources.clear();
+    }
+    else if ( event == idb_event::byte_patched )
+    {
+      const ea_t address = va_arg(arguments, ea_t);
+      invalidate_proofs(address, address + 1);
+    }
+    else if ( event == idb_event::destroyed_items )
+    {
+      const ea_t first = va_arg(arguments, ea_t);
+      const ea_t end = va_arg(arguments, ea_t);
+      invalidate_proofs(first, end);
+    }
+    else if ( event == idb_event::segm_attrs_updated )
+    {
+      revalidate_proofs();
+    }
+#if IDA_SDK_VERSION >= 940
+    else if ( event == idb_event::segment_attrs_updated )
+    {
+      revalidate_proofs();
+    }
+#endif
+    else if ( event == idb_event::deleting_segm )
+    {
+      const segment_t *segment = getseg(va_arg(arguments, ea_t));
+      if ( segment != nullptr ) invalidate_proofs(segment->start_ea, segment->end_ea);
+    }
+  }
+
+  void on_reference_event(ssize_t event, va_list arguments)
+  {
+    if ( native_mutation_depth != 0 ) return;
+    const ea_t from = va_arg(arguments, ea_t);
+    const ea_t to = va_arg(arguments, ea_t);
+    const int type = va_arg(arguments, int);
+    if ( pending_ownership_recovery )
+    {
+      if ( event == processor_t::ev_add_cref && (type & XREF_USER) != 0 )
+        recover_ownership_receipts(from, to, type & XREF_MASK);
+      else recover_ownership_receipts();
+    }
+    if ( event == processor_t::ev_add_cref )
+    {
+      if ( (type & XREF_USER) != 0 )
+      {
+        // An explicit external reassertion transfers ownership to its author.
+        for ( auto &[source, proof] : native_proofs )
+        {
+          (void)source;
+          if ( proof.site != from ) continue;
+          auto &edges = proof.owned_edges;
+          edges.erase(std::remove_if(edges.begin(), edges.end(),
+              [&](const existing_code_edge_t &edge) {
+                return edge.target == to && int(edge.type) == (type & XREF_MASK);
+              }), edges.end());
+        }
+        invalidate_proofs(from, from + 1);
+      }
+      // Ordinary contiguous flow already belongs to the single-entry prefix.
+      if ( (type & XREF_MASK) == fl_F && get_item_end(from) == to ) return;
+      if ( exact_code_edge_exists(from,
+              desired_code_edge_t{to, cref_t(type & XREF_MASK), false}) ) return;
+      invalidate_proofs(to, to + 1);
+    }
+    else if ( (type & XREF_MASK) == dr_W )
+    {
+      invalidate_proofs(to, to + 1);
+    }
   }
 
   bool mark_once(int category, ea_t address)
@@ -1099,15 +1520,29 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     const auto transfer = classify_ida_push_return(instruction, config.register_scan_depth);
     if ( !transfer ) return false;
     const ea_t return_ea = ea_t(transfer->transfer);
+    if ( !can_record_proof(instruction.ea) ) return false;
+    NativeProof proof;
+    proof.source = instruction.ea;
+    proof.site = return_ea;
+    if ( !add_instruction_dependency(proof, instruction.ea)
+      || !add_instruction_dependency(proof, return_ea) ) return false;
+    for ( uint64_t address : transfer->target.definitions )
+      if ( !add_instruction_dependency(proof, ea_t(address)) ) return false;
+    for ( const auto &memory : transfer->target.memory )
+      if ( !add_dependency(proof, ea_t(memory.address), memory.bytes.size(), false) )
+        return false;
+    const auto before = collect_code_edges(return_ea);
     if ( !transfer->target.value )
     {
-      append_analysis_comment(return_ea,
+      record_proof(std::move(proof), before,
           "stack-mediated transfer candidate; unresolved target; stack write retained");
       return false;
     }
     const ea_t target = ea_t(*transfer->target.value);
     if ( !target_is_executable(target) )
       return false;
+    if ( !add_dependency(proof, target, 1, false) ) return false;
+    proof.intended_edge = desired_code_edge_t{target, fl_JN, true};
     // The RET may not yet be an instruction head during the PUSH callback.
     // Decode it without changing either instruction's native bytes or SP effect.
     if ( is_unknown(get_flags(return_ea)) ) create_insn(return_ea);
@@ -1123,7 +1558,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     comment.sprnt("exact push/return target %a; width=%u bits; net SP delta=0; "
                   "stack write=%u bytes retained", target,
                   transfer->width_bits, transfer->stack_write_bytes);
-    append_analysis_comment(return_ea, comment.c_str());
+    if ( !record_proof(std::move(proof), before, comment.c_str()) ) return false;
     if ( mark_once(2, return_ea) )
       ++statistics.push_return_targets;
     return true;
@@ -1259,12 +1694,20 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
       return false;
     const auto condition = x86_condition(instruction.itype);
     if ( !condition ) return false;
-    const auto flags = analyze_x86_flags_before(instruction, size_t(config.flag_scan_depth));
+    const auto fact = analyze_x86_flag_fact_before(instruction, size_t(config.flag_scan_depth));
+    const auto flags = fact.flags;
     const auto outcome = x86_abstract::evaluate(condition->condition, flags);
     if ( !outcome ) return false;
+    if ( !can_record_proof(instruction.ea) ) return false;
+    NativeProof proof;
+    proof.source = proof.site = instruction.ea;
+    if ( !add_instruction_dependency(proof, instruction.ea) ) return false;
+    for ( uint64_t address : fact.support )
+      if ( !add_instruction_dependency(proof, ea_t(address)) ) return false;
+    const auto before = collect_code_edges(instruction.ea);
     if ( condition->use != X86ConditionUse::branch )
     {
-      append_analysis_comment(instruction.ea,
+      record_proof(std::move(proof), before,
           condition->use == X86ConditionUse::set_byte
             ? (*outcome ? "SETcc byte result 1 (locally proven flags)"
                         : "SETcc byte result 0 (locally proven flags)")
@@ -1283,6 +1726,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                         ? target : fallthrough;
     const cref_t selected_type = decision == BranchDecision::Taken
                                ? fl_JN : fl_F;
+    if ( !add_dependency(proof, selected, 1, false) ) return false;
+    proof.intended_edge = desired_code_edge_t{selected, selected_type, selected_type != fl_F};
     if ( !replace_generated_code_edges(
             instruction.ea,
             { desired_code_edge_t{
@@ -1292,8 +1737,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     }
     if ( decision == BranchDecision::Taken )
     {
-      statistics.gaps_retyped += retype_gap_as_bytes(
-          fallthrough, target, config.maximum_gap, instruction.ea);
+      // Keep instruction/data ownership intact so revoking this proof needs
+      // no speculative reconstruction of the skipped interval.
       if ( is_unknown(get_flags(target)) )
         create_insn(target);
     }
@@ -1303,7 +1748,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
       // Normal flow cannot carry XREF_USER. The processor's initial analysis
       // can erase fl_F after our ev_emu_insn callback, just as with get-PC.
       // Revalidate the proof after that wave before restoring it once.
-      if ( !revisiting ) pending_flag_fallthroughs.insert(instruction.ea);
+      if ( !revisiting || native_proofs.count(instruction.ea) == 0 )
+        pending_flag_fallthroughs.insert(instruction.ea);
     }
     plan_ea(selected);
     qstring comment;
@@ -1311,7 +1757,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                   decision == BranchDecision::Taken
                     ? "always taken" : "never taken",
                   unsigned(flags.known), unsigned(flags.value));
-    append_analysis_comment(instruction.ea, comment.c_str());
+    if ( !record_proof(std::move(proof), before, comment.c_str()) ) return false;
     if ( mark_once(6, instruction.ea) )
       ++statistics.known_flag_branches;
     return true;
@@ -1383,6 +1829,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
 
   ssize_t handle_emulation(const insn_t &instruction)
   {
+    if ( pending_ownership_recovery ) recover_ownership_receipts();
+    NativeMutationGuard guard(native_mutation_depth);
     const bool revisiting = emulated.contains(instruction.ea);
     if ( !revisiting )
       emulated.add(instruction.ea, instruction.ea + instruction.size);
@@ -1411,6 +1859,47 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
   {
     if ( get_dbctx_id() != owner_database || !config.enabled )
       return 0;
+    if ( code == processor_t::ev_replaying_undo )
+    {
+      replaying_undo = true;
+      return 0;
+    }
+    if ( code == processor_t::ev_ending_undo )
+    {
+      replaying_undo = false;
+      // IDA is still replaying its internal transaction at this notification.
+      // Mutating xrefs/comments here can corrupt the undo event sequence.
+      // Reload receipts at the next ordinary analysis/database interaction.
+      native_proofs.clear();
+      pending_flag_fallthroughs.clear();
+      pending_ownership_recovery = true;
+      return 0;
+    }
+    if ( replaying_undo ) return 0;
+    if ( code == processor_t::ev_moving_segm
+#if IDA_SDK_VERSION >= 940
+      || code == processor_t::ev_moving_segment
+#endif
+       )
+    {
+      if ( pending_ownership_recovery ) recover_ownership_receipts();
+      for ( const auto &[source, proof] : native_proofs )
+      {
+        (void)proof;
+        if ( moving_proof_sources.size() < maximum_native_proofs
+          && std::find(moving_proof_sources.begin(), moving_proof_sources.end(), source)
+             == moving_proof_sources.end() ) moving_proof_sources.push_back(source);
+      }
+      // Revoke while EAs still identify the original metadata. A vetoed move
+      // merely causes recomputation at unchanged addresses.
+      invalidate_proofs(0, BADADDR);
+      return 0;
+    }
+    if ( code == processor_t::ev_add_cref || code == processor_t::ev_add_dref )
+    {
+      on_reference_event(code, arguments);
+      return 0;
+    }
     if ( code == processor_t::ev_ana_insn )
       return handle_analysis(*va_arg(arguments, insn_t *));
     if ( code == processor_t::ev_emu_insn )
@@ -1695,6 +2184,9 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     if ( get_dbctx_id() != owner_database
       || !config.enabled || post_analysis_running )
       return;
+    if ( pending_ownership_recovery ) recover_ownership_receipts();
+    revalidate_proofs();
+    NativeMutationGuard guard(native_mutation_depth);
     post_analysis_running = true;
     fix_pending_cfg_edges();
     (void)expand_get_pc_function_tails();
@@ -1762,6 +2254,12 @@ void NativeAnalysisEngine::on_autoanalysis_complete()
 {
   if ( impl_ != nullptr )
     impl_->on_autoanalysis_complete();
+}
+
+void NativeAnalysisEngine::on_database_event(int event, va_list arguments)
+{
+  if ( impl_ != nullptr )
+    impl_->on_database_event(event, arguments);
 }
 
 const NativeAnalysisStats &NativeAnalysisEngine::stats() const

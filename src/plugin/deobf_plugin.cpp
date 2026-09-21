@@ -1157,11 +1157,13 @@ static ssize_t idaapi ui_callback(void *ud, int event_id, va_list va)
     return 0;
 }
 
-static ssize_t idaapi idb_callback(void *ud, int event_id, va_list)
+static ssize_t idaapi idb_callback(void *ud, int event_id, va_list arguments)
 {
     chernobog_plugmod_t *self = static_cast<chernobog_plugmod_t *>(ud);
     if ( self != nullptr && get_dbctx_id() == self->database_id )
     {
+        if ( self->ida_analysis )
+            self->ida_analysis->on_database_event(event_id, arguments);
         if ( event_id == idb_event::closebase )
         {
             self->clear_processing_state();

@@ -99,9 +99,34 @@ class RunReportTests(unittest.TestCase):
         result, _ = self.run_fixture(write_log=False)
         self.assertEqual(result.returncode, 124)
 
+    def test_paths_are_redacted_without_changing_artifact_hashes(self):
+        result, report = self.run_fixture(
+            write_log=False,
+            after_probe=(
+                "text = str(probe) + '\\n' + str(pathlib.Path.home()) + '\\n'\n"
+                "print(text)\n"
+                "print(text, file=sys.stderr)\n"
+                "log.write_text(text)\n"
+            ),
+        )
+        self.assertEqual(result.returncode, 124)  # No fabricated PASS marker.
+        text = result.stdout + result.stderr + json.dumps(report)
+        text += (self.output / "ida.log").read_text()
+        self.assertNotIn(str(self.root), text)
+        self.assertNotIn(str(Path.home()), text)
+        self.assertTrue(report["local_paths_redacted"])
+        self.assertEqual(report["ida_path"], "<ida>/fake-ida")
+
     def test_process_failure_precedes_pass_marker(self):
         result, _ = self.run_fixture(exit_code=7)
         self.assertEqual(result.returncode, 7)
+
+    def test_internal_error_invalidates_a_pass_marker(self):
+        result, report = self.run_fixture(
+            after_probe="print('Bad event detected during undo: idx=0 event=65')")
+        self.assertTrue(report["expected_log_found"])
+        self.assertTrue(report["internal_error_found"])
+        self.assertEqual(result.returncode, 123)
 
     def test_inherited_options_are_removed_and_explicit_values_survive(self):
         self.probe.write_text(
