@@ -91,3 +91,5 @@ foo.c
 # Test binaries
 tests/string_obfuscation/test_strings
 *.dSYM/
+
+__pycache__

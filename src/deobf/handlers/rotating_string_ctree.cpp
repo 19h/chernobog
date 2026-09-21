@@ -37,9 +37,17 @@ uint8_t width(const cexpr_t *expression)
     return bytes == 1 || bytes == 2 || bytes == 4 || bytes == 8 ? uint8_t(bytes * 8) : 0;
 }
 
+uint8_t integer_width(const cexpr_t *expression)
+{
+    // Floating conversions and Boolean normalization are not bitvector casts.
+    return expression && expression->type.is_integral()
+        && !expression->type.is_bool() && !expression->type.is_enum()
+        && !expression->type.is_volatile() ? width(expression) : 0;
+}
+
 bool number(const cexpr_t *expression, uint64_t *value, unsigned depth = 0)
 {
-    if ( !expression || !value || !width(expression) || depth > 16 ) return false;
+    if ( !expression || !value || !integer_width(expression) || depth > 16 ) return false;
     if ( expression->op == cot_num )
     { *value = expression->numval() & rs::mask(width(expression)); return true; }
     if ( expression->op == cot_cast && number(expression->x, value, depth + 1) )
@@ -67,7 +75,7 @@ bool initialize(const cexpr_t *expression, std::map<int, Induction> &variables)
       || expression->x->op != cot_var || !expression->y || !width(expression->x) ) return false;
     const int variable = expression->x->v.idx;
     uint64_t value = 0;
-    if ( number(expression->y, &value) )
+    if ( integer_width(expression->x) && number(expression->y, &value) )
     {
         rs::SymbolicValue initial;
         initial.constant = value; initial.bits = width(expression->y);
@@ -86,7 +94,7 @@ bool initialize(const cexpr_t *expression, std::map<int, Induction> &variables)
 bool increment(const cexpr_t *expression, int *variable, uint64_t *step)
 {
     if ( !expression || !expression->x || expression->x->op != cot_var
-      || expression->x->type.is_ptr() || !width(expression->x) ) return false;
+      || !integer_width(expression->x) ) return false;
     if ( expression->op == cot_preinc || expression->op == cot_postinc ) *step = 1;
     else if ( expression->op != cot_asgadd || !number(expression->y, step) ) return false;
     *variable = expression->x->v.idx;
@@ -103,7 +111,7 @@ bool safe_add(uint64_t left, uint64_t right, uint64_t *result)
 bool scalar_address(const cexpr_t *expression, const std::map<int, Induction> &variables,
                      size_t count, Address *out, unsigned depth = 0)
 {
-    if ( !expression || depth > 12 || !width(expression) ) return false;
+    if ( !expression || depth > 12 || !integer_width(expression) ) return false;
     uint64_t value = 0;
     if ( number(expression, &value) ) { *out = {value, 0}; return true; }
     if ( expression->op == cot_var )
@@ -160,7 +168,7 @@ bool pointer_address(const cexpr_t *expression, const std::map<int, Induction> &
 bool memory_address(const cexpr_t *expression, const std::map<int, Induction> &variables,
                      size_t count, Address *out)
 {
-    if ( !expression || (width(expression) != 8 && width(expression) != 16) ) return false;
+    if ( !expression || (integer_width(expression) != 8 && integer_width(expression) != 16) ) return false;
     if ( expression->op == cot_ptr ) return pointer_address(expression->x, variables, count, out);
     if ( expression->op != cot_idx || !expression->x ) return false;
     Address base, offset;
@@ -199,7 +207,7 @@ struct Builder
     bool key_found = false;
     std::optional<size_t> expression(const cexpr_t *value, unsigned depth = 0)
     {
-        if ( !value || depth > 24 || !width(value) || value->type.is_volatile()
+        if ( !value || depth > 24 || !integer_width(value)
           || shape.program.nodes.size() >= rs::maximum_nodes ) return {};
         rs::Node node;
         node.bits = width(value);
@@ -297,7 +305,7 @@ std::optional<Shape> extract(cfunc_t *function)
     const int counter = condition.x->v.idx;
     const auto initial = variables.find(counter);
     if ( initial == variables.end() || initial->second.start != 0
-      || width(condition.x) != initial->second.bits ) return {};
+      || integer_width(condition.x) != initial->second.bits ) return {};
     std::map<int, uint64_t> increments;
     std::vector<cexpr_t *> definitions;
     cexpr_t *store = nullptr;
@@ -345,7 +353,7 @@ std::optional<Shape> extract(cfunc_t *function)
     {
         if ( variables.count(definition->x->v.idx) ) return {};
         const auto value = builder.expression(definition->y);
-        if ( !value || !width(definition->x) || shape.program.nodes.size() >= rs::maximum_nodes ) return {};
+        if ( !value || !integer_width(definition->x) || shape.program.nodes.size() >= rs::maximum_nodes ) return {};
         shape.program.nodes.push_back({rs::Operation::CAST, width(definition->x),
             definition->x->type.is_signed(), *value, 0, 0, 0});
         builder.temporaries[definition->x->v.idx] = shape.program.nodes.size() - 1;

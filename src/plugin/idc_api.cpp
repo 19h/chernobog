@@ -30,6 +30,7 @@
 #include "../deobf/handlers/hikari_cfg.h"
 #include "../deobf/handlers/native_opaque.h"
 #include "../deobf/rules/rule_registry.h"
+#include "../deobf/rules/rule_verifier.h"
 #include "../hybrid/evidence.hpp"
 #include "../hybrid/hybrid_config.hpp"
 #include "../hybrid/program_model.hpp"
@@ -1465,6 +1466,11 @@ error_t idaapi idc_rule_stats(idc_value_t *, idc_value_t *r)
     set_size(r, "rejected", registry.rejected_rule_count());
     set_size(r, "total_matches", registry.total_matches());
     set_size(r, "successful_matches", registry.successful_matches());
+    const auto instances = rules::instance_verification_stats();
+    set_size(r, "instance_verified", instances.verified);
+    set_size(r, "instance_disproved", instances.disproved);
+    set_size(r, "instance_unsupported", instances.unsupported);
+    set_size(r, "instance_unknown", instances.unknown);
     return eOk;
 }
 
@@ -1496,6 +1502,7 @@ error_t idaapi idc_rule_hits(idc_value_t *argv, idc_value_t *r)
 error_t idaapi idc_rule_reset_stats(idc_value_t *, idc_value_t *r)
 {
     rules::RuleRegistry::instance().clear_statistics();
+    rules::reset_instance_verification_stats();
     r->set_long(1);
     return eOk;
 }

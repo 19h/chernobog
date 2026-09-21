@@ -1,0 +1,554 @@
+{
+  "schema": 1,
+  "scope": "Bounded typed rotate/add/XOR expression proof and transient static text annotations; review 3c and complete review remain in progress",
+  "recorded_utc": "2026-09-21T15:57:16.573224+00:00",
+  "repository_head": "c4191bb998a8beb88a5e8d07cb70ea4650c21a1d",
+  "source_sha256": {
+    "CMakeLists.txt": "81af3c684e304f4c8ad706d2b38e753aaa214c8f48c8ddbb6f03ad0aeb62ebf0",
+    "src/common/rotating_string_transform.h": "cca44975bed9e72018e7875ab8535b7b5b055d60a059b1f6a584eb6730518ace",
+    "src/common/string_recovery.h": "9e6d4cc5a342abffc75ba49c8a8343524259a25d3957db889b0016a88a5def7e",
+    "src/deobf/handlers/rotating_string_ctree.cpp": "e3200934b5cdb91c1598c7c8c686d8cd9b97387da12fe4a34bf255817d7334bd",
+    "src/deobf/handlers/rotating_string_ctree.h": "b7b011c3fdd31f40559c4dcf12170829c5998d31280df45a70203765e5374554",
+    "src/plugin/deobf_plugin.cpp": "f888b53cdcf3bd061d10f048e5d919ef48ede6fc17542b2248e93c9e1d0e28b9",
+    "tests/rotating_string_tests.cpp": "466fc83ce2d9c3d826a611fd526657ff04223ba1e3524284fa82ec63cd8a0560",
+    "tests/vmp_native/string_transforms.c": "f126b53b54841167fdd9cdc4c9c02bf4d6a1da4b32c4106a47e4d36a27189781",
+    "tests/ida_string_transform_probe.py": "09a45e1e8ac0f77e2195f3995a85ca166e6ef1533f63c6d9464ceec8044b7109",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151"
+  },
+  "primary_external_source_sha256": {
+    "vmp/core/intel.cc": "ce0edd303f1b20d12affaf1bb4646b684a056babe724f36af24340fefe7cb17c",
+    "vmp/runtime/string_manager.cc": "ea4ec11e0317a6508c2d14c4032e368259c98b1955072987171c7306718e3c4d",
+    "vmp/runtime/crypto.h": "6045649c16e83bcdc055be19c383e6687cb192f8ce892fe309295e9b82afe03d",
+    "ida-sdk/include/hexrays.hpp": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff",
+    "ida-sdk/include/typeinf.hpp": "d91e8e6b7cc754d10cfd4a8fbd09981aa167e06eed044dc7941d495746f38e8f"
+  },
+  "artifact_sha256": {
+    "plugin": "9509dabeb6f268cb865ad7878f2bef0a20fdba1857bf0f32e45167035586e924",
+    "native_x64_fixture": "63950a1adfd4e40ee489c3ec4fe05cb2477fe6bb2e49ff16e76110ad8357d9da",
+    "linked_x86_fixture": "3851992688b404bc78186860824c186f05cad34c64325b12dfa0b0ca532cf162",
+    "portable_tests": "2351455fc7504f2c3dbc7e832b41b4040b48fa2bda189bc6154857efe545ec0f",
+    "sanitized_tests": "81ee3a1475a0228a133c4ccc46852908b3b5d768ea25a6c9ccef1a5fd3695931",
+    "sanitized_log": "9920f9072d30cb9333c621e10807dbabf97f075c14cc731b518aa2b3a0c2bce3",
+    "build_ctest_log": "c1b17fb7e405acdccf676657c0569126841b052b413c95b12214134c57012ae3"
+  },
+  "ctest": {
+    "passed": 13,
+    "failed": 0,
+    "wall_seconds": 8.01,
+    "artifact": "build/rotating-string-integer-validation.log"
+  },
+  "portable_oracle": {
+    "seed": "0x845719",
+    "keys": 64,
+    "unit_widths_bits": [
+      8,
+      16
+    ],
+    "indices_per_key_width": 257,
+    "schedule_comparisons": 32896,
+    "symbolic_byte_instantiations": 16640
+  },
+  "sanitizers": {
+    "address": true,
+    "undefined_behavior": true,
+    "return_code": 0,
+    "artifact": "build/rotating-string-sanitized-reviewed.log",
+    "initial_unconfigured_compiler_attempt": "Compile failed before execution; corrected invocation uses xcrun clang++ and the macOS SDK sysroot"
+  },
+  "native_oracle": {
+    "host_machine": "arm64",
+    "fixture_architecture": "x86_64",
+    "return_code": 0,
+    "stdout_bytes": 0,
+    "stderr_bytes": 0,
+    "positive_routines": 3,
+    "x86_native_execution": "not performed"
+  },
+  "production": [
+    {
+      "architecture": "x86_64",
+      "artifact_directory": "build/vmp-string-transforms-integer-reviewed",
+      "run_sha256": "61d5737e1e789ec821d7409a70ba85b2aa005777f041d849491f1950692f6359",
+      "probe_sha256": "6a42b6c6a9d956186b2d5bebcffed51879b996f40a7df09f7614f98761cddc61",
+      "input_sha256": "63950a1adfd4e40ee489c3ec4fe05cb2477fe6bb2e49ff16e76110ad8357d9da",
+      "plugin_sha256": "9509dabeb6f268cb865ad7878f2bef0a20fdba1857bf0f32e45167035586e924",
+      "probe_script_sha256": "09a45e1e8ac0f77e2195f3995a85ca166e6ef1533f63c6d9464ceec8044b7109",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "environment_sha256": "fb93950f8215621bb9ac789ad16a5a8037993c41a21071902c26fb773279be3f",
+      "process_elapsed_seconds": 2.873817667,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "internal_error_found": false,
+      "fixture_routines": 12,
+      "checks": [
+        {
+          "case": "transform_bytes proven unit/key/bound/encoding",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes cipher patch invalidates",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes exact cipher restoration",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes mutable source rejected",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes native patch invalidates",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes exact native restoration",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_words proven unit/key/bound/encoding",
+          "passed": true
+        },
+        {
+          "case": "transform_words cipher patch invalidates",
+          "passed": true
+        },
+        {
+          "case": "transform_words exact cipher restoration",
+          "passed": true
+        },
+        {
+          "case": "transform_words mutable source rejected",
+          "passed": true
+        },
+        {
+          "case": "transform_words native patch invalidates",
+          "passed": true
+        },
+        {
+          "case": "transform_words exact native restoration",
+          "passed": true
+        },
+        {
+          "case": "transform_words no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_words unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 proven unit/key/bound/encoding",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 cipher patch invalidates",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 exact cipher restoration",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 mutable source rejected",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 native patch invalidates",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 exact native restoration",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_wrong_rotate abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_wrong_rotate no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_wrong_rotate unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_wrong_index abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_wrong_index no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_wrong_index unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_unknown_key abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_unknown_key no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_unknown_key unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_missing_terminator abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_missing_terminator no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_missing_terminator unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_narrow_rotate abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_narrow_rotate no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_narrow_rotate unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_word_byte_index abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_word_byte_index no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_word_byte_index unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_mutable abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_mutable no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_mutable unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_alias abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_alias no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_alias unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_extra_write abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_extra_write no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_extra_write unchanged native bytes",
+          "passed": true
+        }
+      ],
+      "positives": [
+        {
+          "routine": "transform_bytes",
+          "annotation": "transform_bytes_output[v0] = transform_bytes_source[v0] ^ (v0 + __ROL4__(-1585563301, v0)); // rot32-xor[8-bit units, key=0xA17E395B, units=9]: UTF-8 candidate \"VMP byte\""
+        },
+        {
+          "routine": "transform_words",
+          "annotation": "*(_WORD *)((char *)&transform_words_output + v2) = *(_WORD *)((char *)&transform_words_source + v2) // rot32-xor[16-bit units, key=0xA17E395B, units=5]: UTF-16LE candidate \"VMPΩ\""
+        },
+        {
+          "routine": "transform_byte_utf16",
+          "annotation": "transform_byte_utf16_output[v0] = transform_byte_utf16_source[v0] ^ (v0 + __ROL4__(-1585563301, v0)); // rot32-xor[8-bit units, key=0xA17E395B, units=10]: UTF-16LE candidate \"Wide\""
+        }
+      ]
+    },
+    {
+      "architecture": "x86",
+      "artifact_directory": "build/vmp-string-transforms32-integer-reviewed",
+      "run_sha256": "753287c6d546af2d385658066e81fbb481087ffdd7b2d7cf64f4f51c000bf43a",
+      "probe_sha256": "4e2281713f839db51123f148eea4a18d2e7733f60e7adeb03e50a6fa25d36605",
+      "input_sha256": "3851992688b404bc78186860824c186f05cad34c64325b12dfa0b0ca532cf162",
+      "plugin_sha256": "9509dabeb6f268cb865ad7878f2bef0a20fdba1857bf0f32e45167035586e924",
+      "probe_script_sha256": "09a45e1e8ac0f77e2195f3995a85ca166e6ef1533f63c6d9464ceec8044b7109",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "environment_sha256": "fb93950f8215621bb9ac789ad16a5a8037993c41a21071902c26fb773279be3f",
+      "process_elapsed_seconds": 2.610135875,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "internal_error_found": false,
+      "fixture_routines": 12,
+      "checks": [
+        {
+          "case": "transform_bytes proven unit/key/bound/encoding",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes cipher patch invalidates",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes exact cipher restoration",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes mutable source rejected",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes native patch invalidates",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes exact native restoration",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_bytes unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_words proven unit/key/bound/encoding",
+          "passed": true
+        },
+        {
+          "case": "transform_words cipher patch invalidates",
+          "passed": true
+        },
+        {
+          "case": "transform_words exact cipher restoration",
+          "passed": true
+        },
+        {
+          "case": "transform_words mutable source rejected",
+          "passed": true
+        },
+        {
+          "case": "transform_words native patch invalidates",
+          "passed": true
+        },
+        {
+          "case": "transform_words exact native restoration",
+          "passed": true
+        },
+        {
+          "case": "transform_words no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_words unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 proven unit/key/bound/encoding",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 cipher patch invalidates",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 exact cipher restoration",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 mutable source rejected",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 native patch invalidates",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 exact native restoration",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_byte_utf16 unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_wrong_rotate abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_wrong_rotate no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_wrong_rotate unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_wrong_index abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_wrong_index no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_wrong_index unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_unknown_key abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_unknown_key no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_unknown_key unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_missing_terminator abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_missing_terminator no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_missing_terminator unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_narrow_rotate abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_narrow_rotate no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_narrow_rotate unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_word_byte_index abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_word_byte_index no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_word_byte_index unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_mutable abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_mutable no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_mutable unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_alias abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_alias no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_alias unchanged native bytes",
+          "passed": true
+        },
+        {
+          "case": "transform_extra_write abstains",
+          "passed": true
+        },
+        {
+          "case": "transform_extra_write no saved/saveable comments",
+          "passed": true
+        },
+        {
+          "case": "transform_extra_write unchanged native bytes",
+          "passed": true
+        }
+      ],
+      "positives": [
+        {
+          "routine": "transform_bytes",
+          "annotation": "transform_bytes_output[i] = result; // rot32-xor[8-bit units, key=0xA17E395B, units=9]: UTF-8 candidate \"VMP byte\""
+        },
+        {
+          "routine": "transform_words",
+          "annotation": "transform_words_output[i] = result; // rot32-xor[16-bit units, key=0xA17E395B, units=5]: UTF-16LE candidate \"VMPΩ\""
+        },
+        {
+          "routine": "transform_byte_utf16",
+          "annotation": "*((_BYTE *)&transform_byte_utf16_output + i) = result; // rot32-xor[8-bit units, key=0xA17E395B, units=10]: UTF-16LE candidate \"Wide\""
+        }
+      ]
+    }
+  ],
+  "remaining": [
+    "Protected-program and paired source-emitted corpus coverage",
+    "Dynamic keys and non-image destination provenance",
+    "Broader loop/optimization shapes",
+    "Complete reopen/rebase/undo/type-edit lifecycle matrix",
+    "Independent native x86 execution"
+  ],
+  "proof_dependencies": [
+    "Correct typed Hex-Rays ctree for the admitted entry/loop",
+    "Loaded source bytes are immutable under the stated IDB permission model",
+    "Current function owner, complete typed shape, native bytes and ciphertext match the receipt",
+    "Encoding validity is a candidate interpretation, not unique source-routine identity"
+  ]
+}

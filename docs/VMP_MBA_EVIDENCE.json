@@ -1,0 +1,305 @@
+{
+  "schema": 1,
+  "scope": "Review 4a/4b bounded typed MBA instance proofs, nested-recognition fix, and independent x64 native/microcode corpus; full review remains incomplete",
+  "recorded_utc": "2026-09-21T16:21:24.537249+00:00",
+  "repository_head": "c4191bb998a8beb88a5e8d07cb70ea4650c21a1d",
+  "source_sha256": {
+    "src/deobf/rules/rule_verifier.h": "fff508e9e73f0f2c861c74790eecb7e1a46712ae8090b2427e2559c6cc299513",
+    "src/deobf/rules/rule_verifier.cpp": "2e55ffbadf51a1dea84115f5d6e1b3af2e66d99aa65a3ebca1aa6eb16c7bcaac",
+    "src/deobf/rules/pattern_rule.cpp": "8b2adf34f5a6d10dff6ca4394341694018fdc0be2df1a7e57d1550997ec50d55",
+    "src/deobf/handlers/mba_simplify.h": "f66c209be7d0592eef7a5e390ce951779f980edacee6c72112b96664744f29c7",
+    "src/deobf/handlers/mba_simplify.cpp": "fa81b76a295db3b200ef1992a75d7890172227380b38d66ce737df335dabbc30",
+    "src/deobf/analysis/chain_simplify.cpp": "a85e9942b137a243e8f03028fa73e7ec454082f58dfb57e2096beb740ca21646",
+    "src/deobf/analysis/ast_builder.cpp": "0c0c1ab92477828500f28ceb4e7d03bacfdfb114ca0c7dca9a8e319c235ebac0",
+    "src/deobf/rules/rules_add.h": "0911587930d2a850edf3521cb159b1dc27db5931c097735ebeb89f51977fe093",
+    "src/deobf/rules/rules_and.h": "afaa5be4f53dd337a950712720b07ca6c0ca8bfcb5fa2111e538fb5909966351",
+    "src/deobf/rules/rules_or.h": "2195bf7f69a9a9048ceb0f71a03b5056ad8338135ca50ac6c426750d3f129d77",
+    "src/plugin/idc_api.cpp": "7a29722a4f86a33eab7d6ffde69e198f4a1c15b1b49df466185d21356ca1c3ca",
+    "tests/catalog_tests.cpp": "b5897bd44f52d8b299943e8b9385a172764b97b7d7f621260ff8e0294ab62db9",
+    "tests/ida_mba_shapes_probe.py": "07125ec9d5e4c327b0b94f98c04b4f784a576f013f5fc012f624e3a49cf0b0e1",
+    "tests/verify_mba_shapes.py": "dcff90a41cc73df9860a2de5595a772e1deeb6671d3d6f34803bd41fa31c280d",
+    "tests/vmp_native/mba_shapes.S": "8ef8debf6d566864f8c0c4481c10bd93ea74c87a6f1b795a87a1c122023b46aa",
+    "tests/vmp_native/mba_shapes_oracle.c": "275b59915f248f5afbdab8b969900ca06a75487f390a1caf9ada6a383355f03b",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151"
+  },
+  "primary_external_source_sha256": {
+    "vmp/core/intel.cc": "ce0edd303f1b20d12affaf1bb4646b684a056babe724f36af24340fefe7cb17c",
+    "ida-sdk/include/hexrays.hpp": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff"
+  },
+  "artifact_sha256": {
+    "plugin": "7949288bb871d5bac5faa329b79d670449a8cd3dc3e59e3a06c4aa6955ba21f9",
+    "native_fixture": "7d482c5cfca09308fd78a4aa8d546230f3682b86f06a2c6c3cfddfdfdf8c9bda",
+    "catalog_tests": "31a791df837ad51483bb0955b8f6d807e19d35bb57ac1e16d725232b263cdfc9",
+    "build_ctest_log": "6228c4ba8fe4d2a1f0cf1552b3c32e1e40d9d8639d9459eebbea98d030d14ba3",
+    "ctest_detailed_log": "01ef73732df76d7fd6d23e91ebb97500e90569ebd27f4d56d1ce51ce8ef9e92c"
+  },
+  "ctest": {
+    "passed": 13,
+    "failed": 0,
+    "wall_seconds": 8.4,
+    "artifact": "build/mba-reviewed-build-test.log",
+    "instance_controls": 25,
+    "catalog_rules_verified": 108,
+    "deliberate_false_rule_rejected": true
+  },
+  "native_oracle": {
+    "return_code": 0,
+    "host_machine": "arm64",
+    "fixture_architecture": "x86_64",
+    "comparisons": 70656,
+    "seeds": [
+      "0x390fe14891",
+      "0x9827136ab5"
+    ],
+    "exhaustive_byte_pairs": 65536,
+    "strictly_held_out_seeds": false
+  },
+  "microcode_oracle": {
+    "status": "PASS",
+    "comparisons_per_run": [
+      70656,
+      70656
+    ],
+    "compared_result_bits": 64,
+    "observable_memory_cell_bytes": 4,
+    "seeds": [
+      "0x390fe14891",
+      "0x9827136ab5"
+    ]
+  },
+  "oracle_corruption_controls": [
+    {
+      "change": "byte result zero-extension changed to sign-extension",
+      "rejected": true
+    },
+    {
+      "change": "intervening-write result replaced by zero",
+      "rejected": true
+    }
+  ],
+  "production": [
+    {
+      "kind": "baseline",
+      "artifact_directory": "build/vmp-mba-reviewed-baseline",
+      "run_sha256": "39ea42c3b43a8d7da9c182e5f872662d538d759424bec302bb3b50c57699a94b",
+      "probe_sha256": "1008f57d69cb3dd2d3193254429235b673fcc1bb1b5246d21dcb2069c4f7cb1e",
+      "input_sha256": "7d482c5cfca09308fd78a4aa8d546230f3682b86f06a2c6c3cfddfdfdf8c9bda",
+      "plugin_sha256": "7949288bb871d5bac5faa329b79d670449a8cd3dc3e59e3a06c4aa6955ba21f9",
+      "probe_script_sha256": "07125ec9d5e4c327b0b94f98c04b4f784a576f013f5fc012f624e3a49cf0b0e1",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "environment_sha256": "ed681407225d938bf5e7022549ffcadcd632b856eb82cfb55ad0a62c522cdbc7",
+      "elapsed_seconds": 1.3677345,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "checks_passed": 10,
+      "routine_statistics": {
+        "mba_demorgan32": {
+          "total_matches": 0,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_carry32": {
+          "total_matches": 0,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_carry64": {
+          "total_matches": 0,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_stack32": {
+          "total_matches": 0,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_truncate8": {
+          "total_matches": 0,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_extend_not": {
+          "total_matches": 0,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_not_extend": {
+          "total_matches": 0,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_alias_write": {
+          "total_matches": 0,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_alias_partial": {
+          "total_matches": 0,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_order32": {
+          "total_matches": 0,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        }
+      }
+    },
+    {
+      "kind": "enabled",
+      "artifact_directory": "build/vmp-mba-reviewed-enabled",
+      "run_sha256": "bf4f2da2728a9c92ce4b6eed33b594b4bd65dc171341cece467227c2bd3bb304",
+      "probe_sha256": "858dcde69e11cc4f143044254994769cd30a36db593488c5a6be6e021c5d6d13",
+      "input_sha256": "7d482c5cfca09308fd78a4aa8d546230f3682b86f06a2c6c3cfddfdfdf8c9bda",
+      "plugin_sha256": "7949288bb871d5bac5faa329b79d670449a8cd3dc3e59e3a06c4aa6955ba21f9",
+      "probe_script_sha256": "07125ec9d5e4c327b0b94f98c04b4f784a576f013f5fc012f624e3a49cf0b0e1",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "environment_sha256": "487d9ce83534f89e3bd97fc5560a2c5d68c1114779dd71e964eb5a860589e319",
+      "elapsed_seconds": 3.218351583,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "checks_passed": 15,
+      "routine_statistics": {
+        "mba_demorgan32": {
+          "total_matches": 504,
+          "successful_matches": 3,
+          "instance_verified": 3,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_carry32": {
+          "total_matches": 618,
+          "successful_matches": 2,
+          "instance_verified": 2,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_carry64": {
+          "total_matches": 485,
+          "successful_matches": 2,
+          "instance_verified": 2,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_stack32": {
+          "total_matches": 902,
+          "successful_matches": 12,
+          "instance_verified": 12,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_truncate8": {
+          "total_matches": 474,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_extend_not": {
+          "total_matches": 144,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_not_extend": {
+          "total_matches": 162,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_alias_write": {
+          "total_matches": 206,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_alias_partial": {
+          "total_matches": 206,
+          "successful_matches": 0,
+          "instance_verified": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        },
+        "mba_order32": {
+          "total_matches": 728,
+          "successful_matches": 3,
+          "instance_verified": 3,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0
+        }
+      }
+    },
+    {
+      "kind": "string_regression",
+      "artifact_directory": "build/vmp-mba-string-regression",
+      "run_sha256": "f74864c91c745c7ee315c3c3220c9da67c4bf7f5fd814f56209085b8ac54578f",
+      "probe_sha256": "6a42b6c6a9d956186b2d5bebcffed51879b996f40a7df09f7614f98761cddc61",
+      "input_sha256": "63950a1adfd4e40ee489c3ec4fe05cb2477fe6bb2e49ff16e76110ad8357d9da",
+      "plugin_sha256": "7949288bb871d5bac5faa329b79d670449a8cd3dc3e59e3a06c4aa6955ba21f9",
+      "probe_script_sha256": "09a45e1e8ac0f77e2195f3995a85ca166e6ef1533f63c6d9464ceec8044b7109",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "environment_sha256": "fb93950f8215621bb9ac789ad16a5a8037993c41a21071902c26fb773279be3f",
+      "elapsed_seconds": 2.913279292,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "checks_passed": 51
+    }
+  ],
+  "initial_observation": {
+    "artifact_directory": "build/vmp-mba-shapes-reviewed-enabled",
+    "plugin_sha256": "07f35fca85bc84f760aa980079464ea47a599007b2ed336f708a803b01cd1019",
+    "probe_sha256": "c0c1fcc09d5ecfbb93ba7cf13a5800322e5397309b9a1a6875dcd047be28b73a",
+    "finding": "32-bit carry identity beneath xdu remained unmatched at GLBOPT1; same-width 64-bit identity simplified"
+  },
+  "remaining": [
+    "Source-emitted protected and paired protection-mode corpus",
+    "Wider architecture and instruction coverage",
+    "Complete flags, stack, exceptions and volatile/concurrent-memory contracts",
+    "General cross-block reaching-definition and alias analysis",
+    "Function-wide latency and peak-memory benchmarks",
+    "Complete VMP review items outside this milestone"
+  ]
+}

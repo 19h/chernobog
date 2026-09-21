@@ -1,0 +1,11 @@
+.git
+.claude
+.xwin-cache
+artifacts
+build
+ida-sdk
+out
+release
+xwin
+*.dSYM
+.DS_Store

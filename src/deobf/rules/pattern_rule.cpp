@@ -1,4 +1,5 @@
 #include "pattern_rule.h"
+#include "rule_verifier.h"
 
 namespace chernobog {
 namespace rules {
@@ -21,7 +22,12 @@ minsn_t* PatternMatchingRule::apply_replacement(
         return nullptr;
     }
 
-    return build_replacement(replacement, bindings, blk, orig_ins->ea, orig_ins->d.size);
+    std::unique_ptr<minsn_t> proposed(build_replacement(
+        replacement, bindings, blk, orig_ins->ea, orig_ins->d.size));
+    RuleVerifier verifier;
+    if ( !proposed || !verifier.verify_instance(orig_ins, proposed.get()).verified() )
+        return nullptr;
+    return proposed.release();
 }
 
 minsn_t* PatternMatchingRule::build_replacement(

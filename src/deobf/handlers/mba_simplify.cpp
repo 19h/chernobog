@@ -5,6 +5,8 @@
 #include "../analysis/z3_solver.h"
 #include "../../common/bitvector.h"
 #include "../../common/z3_utils.h"
+#include "../rules/rule_verifier.h"
+#include <functional>
 
 // Include all rule headers to trigger registration
 #include "../rules/rules_add.h"
@@ -486,7 +488,14 @@ static int try_affine_bv_simplify(minsn_t *ins)
             return 0;
         }
 
-        bool rewritten = rewrite_as_affine(ins, vars, coeffs, at_zero);
+        minsn_t proposed(*ins);
+        bool rewritten = rewrite_as_affine(&proposed, vars, coeffs, at_zero);
+        if ( rewritten )
+        {
+            RuleVerifier verifier;
+            rewritten = verifier.verify_instance(ins, &proposed).verified();
+            if ( rewritten ) ins->swap(proposed);
+        }
         mba_affine_debug("[MBA affine] %s vars=%zu ops=%d op=%d ea=%llx\n",
                          rewritten ? "rewrote" : "rewrite failed",
                          vars.size(), op_count, ins->opcode, (unsigned long long)ins->ea);
@@ -662,6 +671,29 @@ int mba_simplify_handler_t::simplify_insn(mblock_t *blk, minsn_t *ins, deobf_ctx
 // Internal simplification
 //--------------------------------------------------------------------------
 int mba_simplify_handler_t::try_simplify_instruction(mblock_t *blk, minsn_t *ins) {
+    // Global optimization can expose a catalog identity below xdu/low/mov
+    // after the instruction callback has already processed the inner node.
+    // Walk the current value tree bottom-up, retaining explicit conversions.
+    // Collect first so a cycle/budget failure cannot leave a partial rewrite.
+    std::vector<minsn_t *> order;
+    std::set<const minsn_t *> seen;
+    std::function<bool(minsn_t *, unsigned)> collect = [&](minsn_t *node, unsigned depth) {
+        if ( !node || depth > 64 || seen.size() >= 256 || !seen.insert(node).second ) return false;
+        if ( node->is_fpinsn() || node->is_mbarrier() || node->is_persistent()
+          || node->is_assert() || !node->is_combinable() || !node->is_propagatable()
+          || (!is_mba_opcode(node->opcode) && node->opcode != m_mov) ) return true;
+        for ( auto *operand : {&node->l, &node->r} )
+            if ( operand->t == mop_d && !collect(operand->d, depth + 1) ) return false;
+        order.push_back(node);
+        return true;
+    };
+    if ( !blk || !collect(ins, 0) ) return 0;
+    int changes = 0;
+    for ( auto *node : order ) changes += try_simplify_node(blk, node);
+    return changes;
+}
+
+int mba_simplify_handler_t::try_simplify_node(mblock_t *blk, minsn_t *ins) {
     if ( !ins || ins->is_fpinsn() || !is_mba_opcode(ins->opcode) ) {
         return 0;
     }

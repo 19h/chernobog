@@ -32,6 +32,14 @@ struct RuleVerificationResult {
 
 const char* rule_verification_status_name(RuleVerificationStatus status);
 
+struct InstanceVerificationStats
+{
+    size_t verified = 0, disproved = 0, unsupported = 0, unknown = 0;
+};
+// Process-local diagnostic counters; they are not persistent proof receipts.
+InstanceVerificationStats instance_verification_stats();
+void reset_instance_verification_stats();
+
 // Proves bitvector equivalence of a pattern and replacement at all operand
 // widths accepted by the MBA rewriter (8, 16, 32, and 64 bits).
 class RuleVerifier {
@@ -43,7 +51,15 @@ public:
     RuleVerificationResult verify(const ast::AstPtr& pattern,
                                   const ast::AstPtr& replacement);
 
+    // Verify the instantiated, typed value trees at one program point. No
+    // reaching-definition substitution or equality across memory writes is
+    // inferred. Unsupported effects and widths reject the replacement.
+    RuleVerificationResult verify_instance(const minsn_t* original,
+                                           const minsn_t* replacement);
+
 private:
+    RuleVerificationResult verify_instance_impl(const minsn_t* original,
+                                                const minsn_t* replacement);
     using VariableMap = std::unordered_map<std::string, z3::expr>;
 
     std::optional<z3::expr> translate(const ast::AstBase* expression,

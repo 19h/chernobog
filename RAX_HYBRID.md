@@ -164,6 +164,14 @@ capture. Direct wide or big-endian read values are recorded as incomplete;
 the driver does not reread post-retirement memory to fabricate original bytes.
 See [temporal capture validation and limits](docs/VMP_TEMPORAL_STRINGS.md).
 
+The separate static `rot32-xor` annotation proves a bounded typed integer
+expression against a literal-key byte or word schedule, then validates the
+text encoding independently. It uses current ctree/native-origin and loaded
+image-byte checks, without rax execution or use-time lifetime evidence. Its
+label describes the transform parameters and an encoding candidate; it does
+not identify a unique vendor routine. See
+[static transform contracts and validation](docs/VMP_ROTATING_STRINGS.md).
+
 For a restricted AArch64 store pattern, a plain 64-bit numeric CFString address
 can become an explicitly cast address expression with the same integer type and
 address bits. Admission requires exact `ADRP; ADD; STR` construction, compatible

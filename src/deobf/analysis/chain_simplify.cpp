@@ -1,5 +1,6 @@
 #include "chain_simplify.h"
 #include "../../common/bitvector.h"
+#include "../rules/rule_verifier.h"
 
 namespace chernobog {
 namespace chain {
@@ -580,14 +581,24 @@ int ChainSimplifier::simplify_chain(mblock_t* blk, minsn_t* ins) {
     if (!result.simplified)
         return 0;
 
-    // Apply simplification
+    // Build off-tree. A same-width algebraic identity does not establish the
+    // semantics of the actual nested conversions or effectful operands.
+    minsn_t proposed(*ins);
+    minsn_t *original = ins;
+    ins = &proposed;
+    const auto commit = [&]() {
+        rules::RuleVerifier verifier;
+        if ( !verifier.verify_instance(original, &proposed).verified() ) return 0;
+        original->swap(proposed);
+        return 1;
+    };
     int size = ins->d.size;
 
     if (result.is_zero) {
         ins->opcode = m_mov;
         ins->l.make_number(0, size);
         ins->r.erase();
-        return 1;
+        return commit();
     }
 
     if (result.is_all_ones) {
@@ -595,28 +606,28 @@ int ChainSimplifier::simplify_chain(mblock_t* blk, minsn_t* ins) {
         ins->opcode = m_mov;
         ins->l.make_number(all_ones, size);
         ins->r.erase();
-        return 1;
+        return commit();
     }
 
     if (result.is_single_operand && !result.has_const) {
         ins->opcode = m_mov;
         ins->l = result.operands[0].mop;
         ins->r.erase();
-        return 1;
+        return commit();
     }
 
     if (result.operands.empty() && result.has_const) {
         ins->opcode = m_mov;
         ins->l.make_number(result.const_result, size);
         ins->r.erase();
-        return 1;
+        return commit();
     }
 
     // More complex simplification - rebuild instruction
     if (result.operands.size() == 1 && result.has_const) {
         ins->l = result.operands[0].mop;
         ins->r.make_number(result.const_result, size);
-        return 1;
+        return commit();
     }
 
     return 0;
