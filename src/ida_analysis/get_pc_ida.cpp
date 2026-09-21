@@ -1,4 +1,7 @@
 #include "get_pc_ida.hpp"
+#include "ida_sdk_compat.hpp"
+#include "x86_analysis.hpp"
+#include "../common/x86_abstract.h"
 
 #include "../common/warn_off.h"
 #include <bytes.hpp>
@@ -329,6 +332,114 @@ instruction_t translate_instruction(
 }
 
 } // namespace
+
+std::optional<classifier::stack_transfer_t> classify_ida_push_return(
+    const insn_t &push, int register_scan_depth)
+{
+  using namespace classifier;
+  if ( PH.id != PLFM_386 || push.itype != NN_push || push.size == 0
+    || (!mode32(push) && !mode64(push)) || !natad(push) ) return std::nullopt;
+  const unsigned mode = mode64(push) ? 64 : 32;
+  const unsigned push_width = op64(push) ? 64 : op16(push) ? 16 : 32;
+  if ( push_width != mode || push.ea > BADADDR - push.size ) return std::nullopt;
+  insn_t ret;
+  if ( decode_insn(&ret, push.ea + push.size) <= 0 || ret.itype != NN_retn
+    || mode64(ret) != mode64(push) || mode32(ret) != mode32(push)
+    || (mode == 64 ? !op64(ret) : !op32(ret))
+    || has_alternate_inbound_flow(ret.ea, push.ea)
+    || getseg(ret.ea) != getseg(push.ea)
+    || get_func(ret.ea) != get_func(push.ea) ) return std::nullopt;
+  instruction_t p, r;
+  p.address = push.ea; p.size = push.size; p.stack_width_bits = uint16_t(mode);
+  r.address = ret.ea; r.size = ret.size; r.stack_width_bits = uint16_t(mode);
+  r.kind = instruction_kind_t::return_instruction;
+  if ( ret.Op1.type != o_void && ret.Op1.type != o_imm ) return std::nullopt;
+  r.immediate = ret.Op1.type == o_imm ? ret.Op1.value : 0;
+  target_proof_t proof;
+  auto tracked = [&](const op_t &operand) -> std::optional<uint64_t>
+  {
+    const size_t bytes = get_dtype_size(operand.dtype);
+    if ( operand.type != o_reg || bytes != mode / 8 ) return std::nullopt;
+    // Independently replay a bounded, single-entry instruction prefix. This
+    // never converts initial writable-memory bytes into a register constant.
+    const auto fact = analyze_x86_register_before(push, operand,
+        register_scan_depth > 0 ? size_t(register_scan_depth) : size_t(64));
+    if ( !fact.value || fact.support.empty() ) return std::nullopt;
+    proof.definitions.insert(proof.definitions.end(), fact.support.begin(), fact.support.end());
+    proof.registers.push_back(slice_from_operand(operand));
+    return *fact.value & x86_abstract::mask(mode);
+  };
+  if ( push.Op1.type == o_imm )
+  {
+    p.kind = instruction_kind_t::push_immediate;
+    proof.kind = target_proof_kind_t::immediate;
+    // Architectural PUSH in 64-bit mode sign-extends its immediate encoding.
+    proof.value = mode == 64 ? uint64_t(int64_t(int32_t(push.Op1.value)))
+                            : uint64_t(uint32_t(push.Op1.value));
+  }
+  else if ( push.Op1.type == o_reg )
+  {
+    p.kind = instruction_kind_t::push_register;
+    p.source = slice_from_operand(push.Op1);
+    proof.value = tracked(push.Op1);
+    if ( proof.value ) proof.kind = target_proof_kind_t::register_definition;
+  }
+  else if ( push.Op1.type == o_mem || push.Op1.type == o_displ || push.Op1.type == o_phrase )
+  {
+    p.kind = instruction_kind_t::push_memory;
+    // Segment overrides require segment-base evidence, especially FS/GS.
+    if ( push.segpref != 0 ) return classify_push_return(p, r, mode, proof);
+    std::optional<uint64_t> address;
+    const op_t &mem = push.Op1;
+    if ( mem.type == o_mem && !mem.hasSIB ) address = mem.addr;
+    else
+    {
+      uint64_t a = mem.type == o_displ || mem.type == o_mem ? mem.addr : 0;
+      bool complete = true;
+      const int base = x86_base_reg(push, mem), index = x86_index_reg(push, mem);
+      for ( const auto &part : {std::make_pair(base, 0), std::make_pair(index, x86_scale(mem))} )
+      {
+        if ( part.first == R_none ) continue;
+        op_t reg;
+        reg.type = o_reg; reg.reg = uint16_t(part.first);
+        reg.dtype = mode == 64 ? dt_qword : dt_dword;
+        const auto value = tracked(reg);
+        if ( !value || part.second < 0 || part.second > 3 ) { complete = false; break; }
+        a += *value << unsigned(part.second);
+      }
+      if ( complete ) address = a & x86_abstract::mask(mode);
+    }
+    if ( address && *address <= BADADDR - mode / 8 )
+    {
+      const segment_t *segment = getseg(ea_t(*address));
+      const ea_t end = ea_t(*address + mode / 8 - 1);
+      bool immutable = segment && getseg(end) == segment && segment->type != SEG_XTRN
+          && (segment->perm & SEGPERM_READ) && !(segment->perm & SEGPERM_WRITE);
+      memory_dependency_t memory;
+      memory.address = *address;
+      uint64_t value = 0;
+      for ( unsigned i = 0; immutable && i < mode / 8; ++i )
+      {
+        const ea_t at = ea_t(*address + i);
+        if ( !is_loaded(at) ) { immutable = false; break; }
+        xrefblk_t xref;
+        for ( bool ok = xref.first_to(at, XREF_DATA); ok; ok = xref.next_to() )
+          if ( (xref.type & XREF_MASK) == dr_W ) immutable = false;
+        const uint8_t byte = get_byte(at);
+        memory.bytes.push_back(byte);
+        value |= uint64_t(byte) << (8 * i);
+      }
+      if ( immutable )
+      {
+        proof.value = value;
+        proof.kind = target_proof_kind_t::immutable_memory;
+        proof.memory.push_back(std::move(memory));
+      }
+    }
+  }
+  else return std::nullopt;
+  return classify_push_return(p, r, mode, proof);
+}
 
 std::optional<classifier::get_pc_candidate_t> classify_ida_get_pc_call(
     const insn_t &call,

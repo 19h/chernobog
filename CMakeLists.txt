@@ -392,6 +392,7 @@ ida_add_plugin(chernobog
     src/plugin/idc_api.cpp
     src/ida_analysis/analysis_config.cpp
     src/ida_analysis/native_classifier.cpp
+    src/ida_analysis/x86_analysis.cpp
     src/ida_analysis/get_pc_ida.cpp
     src/ida_analysis/native_engine.cpp
     src/ida_analysis/early_hexrays.cpp
@@ -510,6 +511,11 @@ endif()
 # the AST matcher.
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(chernobog_x86_abstract_tests tests/x86_abstract_tests.cpp)
+    target_include_directories(chernobog_x86_abstract_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_features(chernobog_x86_abstract_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.x86_abstract COMMAND chernobog_x86_abstract_tests)
     if(UNIX)
         find_package(Python3 QUIET COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)

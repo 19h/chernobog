@@ -52,6 +52,7 @@ bool is_control_transfer(instruction_kind_t kind)
 bool is_unmodeled_stack_mutation(instruction_kind_t kind)
 {
   return kind == instruction_kind_t::push_immediate
+      || kind == instruction_kind_t::push_memory
       || kind == instruction_kind_t::pop_register
       || kind == instruction_kind_t::add_stack_top_immediate
       || kind == instruction_kind_t::adjust_stack_pointer_immediate
@@ -85,6 +86,55 @@ uint64_t instruction_t::end() const
     return k_bad_address;
   }
   return address + size;
+}
+
+std::optional<stack_transfer_t> classify_push_return(
+    const instruction_t &push, const instruction_t &ret,
+    unsigned mode, const target_proof_t &target)
+{
+  if ( (mode != 32 && mode != 64) || push.stack_width_bits != mode
+    || ret.stack_width_bits != mode || ret.kind != instruction_kind_t::return_instruction
+    || ret.far_transfer || ret.immediate != 0 || ret.alternate_predecessor
+    || push.end() == k_bad_address || push.end() != ret.address
+    || ret.end() == k_bad_address
+    || (push.kind != instruction_kind_t::push_immediate
+     && push.kind != instruction_kind_t::push_register
+     && push.kind != instruction_kind_t::push_memory) )
+    return std::nullopt;
+  if ( push.kind == instruction_kind_t::push_register
+    && (!push.source.valid() || push.source.bit_width != mode
+     || push.source.bit_offset != 0) )
+    return std::nullopt;
+  if ( target.value.has_value() != (target.kind != target_proof_kind_t::unresolved) )
+    return std::nullopt;
+  if ( target.value && (mode == 32 && *target.value > UINT32_MAX) )
+    return std::nullopt;
+  if ( target.kind == target_proof_kind_t::immediate
+    && push.kind != instruction_kind_t::push_immediate ) return std::nullopt;
+  if ( target.kind == target_proof_kind_t::register_definition
+    && (push.kind != instruction_kind_t::push_register || target.definitions.empty()
+     || target.registers.empty()) ) return std::nullopt;
+  if ( target.kind == target_proof_kind_t::immutable_memory
+    && (push.kind != instruction_kind_t::push_memory || target.memory.size() != 1
+     || target.memory.front().bytes.size() != mode / 8
+     || target.memory.front().address == k_bad_address
+     || target.memory.front().address > k_bad_address - mode / 8) )
+    return std::nullopt;
+  if ( target.kind == target_proof_kind_t::immutable_memory )
+  {
+    uint64_t decoded = 0;
+    for ( unsigned i = 0; i < mode / 8; ++i )
+      decoded |= uint64_t(target.memory.front().bytes[i]) << (i * 8);
+    if ( decoded != *target.value ) return std::nullopt;
+  }
+  stack_transfer_t result;
+  result.push = push.address;
+  result.transfer = ret.address;
+  result.width_bits = mode;
+  result.stack_write_bytes = mode / 8;
+  result.stack_write_offset_bytes = -int(mode / 8);
+  result.target = target;
+  return result;
 }
 
 std::optional<get_pc_candidate_t> classify_get_pc_gadget(

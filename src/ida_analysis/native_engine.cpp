@@ -11,6 +11,7 @@
 #include "analysis_config.hpp"
 #include "get_pc_ida.hpp"
 #include "ida_sdk_compat.hpp"
+#include "x86_analysis.hpp"
 
 #include "../common/warn_off.h"
 #include <pro.h>
@@ -61,27 +62,6 @@ enum class BranchDecision : uint8_t
   Unknown = 0,
   Taken,
   NotTaken,
-};
-
-enum class FlagEffect : uint8_t
-{
-  None = 0,
-  Set,
-  Clear,
-  Flip,
-};
-
-enum class FlagValue : int8_t
-{
-  Unknown = -1,
-  Clear = 0,
-  Set = 1,
-};
-
-struct FlagEffects
-{
-  FlagEffect carry = FlagEffect::None;
-  FlagEffect zero = FlagEffect::None;
 };
 
 ea_t branch_target(const insn_t &instruction)
@@ -615,121 +595,6 @@ bool instruction_modifies_x86_flags(uint16_t type)
       && opposite_x86_condition(type) == 0;
 }
 
-bool same_register_operands(const insn_t &instruction)
-{
-  return instruction.Op1.type == o_reg && instruction.Op2.type == o_reg
-      && instruction.Op1.reg == instruction.Op2.reg;
-}
-
-FlagEffects x86_flag_effects(const insn_t &instruction)
-{
-  FlagEffects result;
-  switch ( instruction.itype )
-  {
-    case NN_stc:
-      result.carry = FlagEffect::Set;
-      break;
-    case NN_clc:
-      result.carry = FlagEffect::Clear;
-      break;
-    case NN_cmc:
-      result.carry = FlagEffect::Flip;
-      break;
-    case NN_and:
-    case NN_or:
-    case NN_test:
-      result.carry = FlagEffect::Clear;
-      break;
-    case NN_xor:
-      result.carry = FlagEffect::Clear;
-      if ( same_register_operands(instruction) )
-        result.zero = FlagEffect::Set;
-      break;
-    case NN_sub:
-      if ( same_register_operands(instruction) )
-        result.zero = FlagEffect::Set;
-      break;
-    case NN_cmp:
-      if ( same_register_operands(instruction) )
-      {
-        result.carry = FlagEffect::Clear;
-        result.zero = FlagEffect::Set;
-      }
-      break;
-    default:
-      break;
-  }
-  return result;
-}
-
-template <typename Effect>
-FlagValue scan_x86_flag(ea_t from, int depth, Effect effect)
-{
-  ea_t scan = from;
-  for ( int count = 0; count < depth; )
-  {
-    const ea_t previous = prev_head(scan, 0);
-    if ( previous == BADADDR )
-      break;
-    if ( !is_code(get_flags(previous)) )
-    {
-      scan = previous;
-      continue;
-    }
-    if ( has_xref(get_flags(scan))
-      && flow_xref_exists(scan, false, previous) )
-    {
-      break;
-    }
-    insn_t instruction;
-    if ( decode_insn(&instruction, previous) <= 0 )
-      break;
-    ++count;
-    const FlagEffect current = effect(x86_flag_effects(instruction));
-    if ( current == FlagEffect::Set ) return FlagValue::Set;
-    if ( current == FlagEffect::Clear ) return FlagValue::Clear;
-    if ( current == FlagEffect::Flip
-      || instruction_modifies_x86_flags(instruction.itype) )
-    {
-      // A CALL transfers through code that may change arithmetic flags. Even a
-      // proved get-PC gadget can contain INC/DEC/ADD/SUB, so flags never cross
-      // the call boundary without a separate complete effect summary.
-      break;
-    }
-    scan = previous;
-  }
-  return FlagValue::Unknown;
-}
-
-BranchDecision decision_for_x86_flag(uint16_t type, bool carry,
-                                     FlagValue value)
-{
-  if ( value == FlagValue::Unknown )
-    return BranchDecision::Unknown;
-  const bool set = value == FlagValue::Set;
-  if ( carry )
-  {
-    if ( type == NN_jb ) return set ? BranchDecision::Taken
-                                    : BranchDecision::NotTaken;
-    if ( type == NN_jnb ) return set ? BranchDecision::NotTaken
-                                     : BranchDecision::Taken;
-    if ( type == NN_jbe && set ) return BranchDecision::Taken;
-    if ( type == NN_ja && set ) return BranchDecision::NotTaken;
-  }
-  else
-  {
-    if ( type == NN_jz ) return set ? BranchDecision::Taken
-                                    : BranchDecision::NotTaken;
-    if ( type == NN_jnz ) return set ? BranchDecision::NotTaken
-                                     : BranchDecision::Taken;
-    if ( (type == NN_jbe || type == NN_jle) && set )
-      return BranchDecision::Taken;
-    if ( (type == NN_ja || type == NN_jnle) && set )
-      return BranchDecision::NotTaken;
-  }
-  return BranchDecision::Unknown;
-}
-
 bool zero_register_operand(const op_t &operand)
 {
   if ( operand.type != o_reg )
@@ -977,6 +842,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
   std::set<ea_t> get_pc_function_roots;
   std::set<ea_t> observed_direct_call_targets;
   std::vector<std::pair<ea_t, ea_t>> pending_cfg_edges;
+  std::set<ea_t> pending_flag_fallthroughs;
   size_t reported_orphan_functions = 0;
   size_t reported_outlined_wrappers = 0;
   size_t reported_get_pc_tail_extensions = 0;
@@ -1014,6 +880,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     get_pc_function_roots.clear();
     observed_direct_call_targets.clear();
     pending_cfg_edges.clear();
+    pending_flag_fallthroughs.clear();
     statistics = NativeAnalysisStats{};
     post_metadata_scanned = false;
     reported_orphan_functions = 0;
@@ -1225,29 +1092,39 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
   bool handle_push_return(const insn_t &instruction)
   {
     if ( architecture != Architecture::X86 || !config.push_return
-      || instruction.itype != NN_push || instruction.Op1.type != o_imm )
+      || instruction.itype != NN_push )
     {
       return false;
     }
-    insn_t ret;
-    if ( decode_insn(&ret, instruction.ea + instruction.size) <= 0
-      || !is_ret_insn(ret) )
+    const auto transfer = classify_ida_push_return(instruction, config.register_scan_depth);
+    if ( !transfer ) return false;
+    const ea_t return_ea = ea_t(transfer->transfer);
+    if ( !transfer->target.value )
     {
+      append_analysis_comment(return_ea,
+          "stack-mediated transfer candidate; unresolved target; stack write retained");
       return false;
     }
-    ea_t target = ea_t(instruction.Op1.value);
-    if ( inf_is_64bit() )
-      target = ea_t(int64_t(int32_t(instruction.Op1.value)));
+    const ea_t target = ea_t(*transfer->target.value);
     if ( !target_is_executable(target) )
       return false;
-    add_user_cref(ret.ea, target, fl_JN);
+    // The RET may not yet be an instruction head during the PUSH callback.
+    // Decode it without changing either instruction's native bytes or SP effect.
+    if ( is_unknown(get_flags(return_ea)) ) create_insn(return_ea);
+    if ( !add_user_cref(return_ea, target, fl_JN)
+      && !exact_code_edge_exists(return_ea, desired_code_edge_t{target, fl_JN, true}) )
+      return false;
     if ( is_unknown(get_flags(target)) )
     {
       auto_make_code(target);
       plan_ea(target);
     }
-    append_analysis_comment(ret.ea, "constant push/return target");
-    if ( mark_once(2, ret.ea) )
+    qstring comment;
+    comment.sprnt("exact push/return target %a; width=%u bits; net SP delta=0; "
+                  "stack write=%u bytes retained", target,
+                  transfer->width_bits, transfer->stack_write_bytes);
+    append_analysis_comment(return_ea, comment.c_str());
+    if ( mark_once(2, return_ea) )
       ++statistics.push_return_targets;
     return true;
   }
@@ -1380,29 +1257,24 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
   {
     if ( architecture != Architecture::X86 || !config.known_x86_flags )
       return false;
-    if ( instruction.itype != NN_jb && instruction.itype != NN_jnb
-      && instruction.itype != NN_jbe && instruction.itype != NN_ja
-      && instruction.itype != NN_jz && instruction.itype != NN_jnz
-      && instruction.itype != NN_jle && instruction.itype != NN_jnle )
+    const auto condition = x86_condition(instruction.itype);
+    if ( !condition ) return false;
+    const auto flags = analyze_x86_flags_before(instruction, size_t(config.flag_scan_depth));
+    const auto outcome = x86_abstract::evaluate(condition->condition, flags);
+    if ( !outcome ) return false;
+    if ( condition->use != X86ConditionUse::branch )
     {
+      append_analysis_comment(instruction.ea,
+          condition->use == X86ConditionUse::set_byte
+            ? (*outcome ? "SETcc byte result 1 (locally proven flags)"
+                        : "SETcc byte result 0 (locally proven flags)")
+            : (*outcome ? "CMOVcc condition true (locally proven flags)"
+                        : "CMOVcc condition false (locally proven flags)"));
+      // Facts alone do not authorize deletion of memory access, partial
+      // register writes, or the processor module's normal emulation.
       return false;
     }
-    BranchDecision decision = BranchDecision::Unknown;
-    const FlagValue carry = scan_x86_flag(
-        instruction.ea, config.flag_scan_depth,
-        [](const FlagEffects &effects) { return effects.carry; });
-    decision = decision_for_x86_flag(instruction.itype, true, carry);
-    const char *flag_name = "CF";
-    if ( decision == BranchDecision::Unknown )
-    {
-      const FlagValue zero = scan_x86_flag(
-          instruction.ea, config.flag_scan_depth,
-          [](const FlagEffects &effects) { return effects.zero; });
-      decision = decision_for_x86_flag(instruction.itype, false, zero);
-      flag_name = "ZF";
-    }
-    if ( decision == BranchDecision::Unknown )
-      return false;
+    const BranchDecision decision = *outcome ? BranchDecision::Taken : BranchDecision::NotTaken;
     const ea_t target = branch_target(instruction);
     if ( target == BADADDR )
       return false;
@@ -1426,13 +1298,19 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         create_insn(target);
     }
     else
+    {
       auto_make_code(fallthrough);
+      // Normal flow cannot carry XREF_USER. The processor's initial analysis
+      // can erase fl_F after our ev_emu_insn callback, just as with get-PC.
+      // Revalidate the proof after that wave before restoring it once.
+      if ( !revisiting ) pending_flag_fallthroughs.insert(instruction.ea);
+    }
     plan_ea(selected);
     qstring comment;
-    comment.sprnt("%s (locally known %s)",
+    comment.sprnt("%s (locally proven x86 flags; known=%02X value=%02X)",
                   decision == BranchDecision::Taken
                     ? "always taken" : "never taken",
-                  flag_name);
+                  unsigned(flags.known), unsigned(flags.value));
     append_analysis_comment(instruction.ea, comment.c_str());
     if ( mark_once(6, instruction.ea) )
       ++statistics.known_flag_branches;
@@ -1563,6 +1441,27 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
       }
     }
     pending_cfg_edges.clear();
+    const auto pending_flags = std::move(pending_flag_fallthroughs);
+    pending_flag_fallthroughs.clear();
+    for ( ea_t address : pending_flags )
+    {
+      insn_t instruction;
+      if ( !is_code(get_flags(address)) || decode_insn(&instruction, address) <= 0 )
+        continue;
+      const auto condition = x86_condition(instruction.itype);
+      if ( !condition || condition->use != X86ConditionUse::branch ) continue;
+      const auto flags = analyze_x86_flags_before(instruction, size_t(config.flag_scan_depth));
+      const auto outcome = x86_abstract::evaluate(condition->condition, flags);
+      if ( !outcome || *outcome ) continue;
+      const ea_t continuation = instruction.ea + instruction.size;
+      if ( is_unknown(get_flags(continuation)) ) create_insn(continuation);
+      if ( replace_generated_code_edges(address,
+              {desired_code_edge_t{continuation, fl_F, false}}) )
+      {
+        auto_make_code(continuation);
+        plan_ea(continuation);
+      }
+    }
   }
 
   size_t expand_get_pc_function_tails()

@@ -40,6 +40,7 @@ enum class instruction_kind_t : uint8_t
   pop_register,
   push_register,
   push_immediate,
+  push_memory,
   read_stack_top,
   add_stack_top_immediate,
   adjust_stack_pointer_immediate,
@@ -60,6 +61,7 @@ struct instruction_t
   uint64_t target = k_bad_address;
   uint16_t stack_width_bits = 0;
   bool alternate_predecessor = false;
+  bool far_transfer = false;
 
   uint64_t end() const;
 };
@@ -94,5 +96,42 @@ std::optional<get_pc_candidate_t> classify_get_pc_gadget(
     const std::vector<instruction_t> &gadget,
     bool other_callers,
     size_t maximum_depth);
+
+enum class target_proof_kind_t : uint8_t
+{
+  unresolved, immediate, register_definition, immutable_memory,
+};
+
+struct memory_dependency_t
+{
+  uint64_t address = k_bad_address;
+  std::vector<uint8_t> bytes;
+};
+
+struct target_proof_t
+{
+  target_proof_kind_t kind = target_proof_kind_t::unresolved;
+  std::optional<uint64_t> value;
+  std::vector<uint64_t> definitions;
+  std::vector<register_slice_t> registers;
+  std::vector<memory_dependency_t> memory;
+};
+
+struct stack_transfer_t
+{
+  uint64_t push = k_bad_address;
+  uint64_t transfer = k_bad_address;
+  unsigned width_bits = 0;
+  int stack_delta_bytes = 0;
+  int stack_write_offset_bytes = 0;
+  unsigned stack_write_bytes = 0;
+  target_proof_t target;
+};
+
+// Metadata summary only: a zero net SP delta does not remove the stack write.
+// The caller proves target facts and memory dependencies before supplying them.
+std::optional<stack_transfer_t> classify_push_return(
+    const instruction_t &push, const instruction_t &ret,
+    unsigned execution_mode_bits, const target_proof_t &target);
 
 } // namespace chernobog::ida_analysis::classifier

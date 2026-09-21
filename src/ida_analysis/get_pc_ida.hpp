@@ -17,4 +17,7 @@ std::optional<classifier::get_pc_candidate_t> classify_ida_get_pc_call(
     size_t maximum_depth,
     bool reject_other_entries = true);
 
+std::optional<classifier::stack_transfer_t> classify_ida_push_return(
+    const insn_t &push, int register_scan_depth);
+
 } // namespace chernobog::ida_analysis

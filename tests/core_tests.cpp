@@ -224,6 +224,81 @@ void test_deobfuscation_execution_policy()
           "clearing database state removes explicit requests");
 }
 
+void test_stack_transfer_classifier()
+{
+    using namespace chernobog::ida_analysis::classifier;
+    for ( const unsigned mode : {32u, 64u} )
+    {
+        instruction_t push, ret;
+        push.address = 0x1000; push.size = 1;
+        push.kind = instruction_kind_t::push_register;
+        push.stack_width_bits = uint16_t(mode);
+        push.source = {0, 0, uint16_t(mode)};
+        ret.address = 0x1001; ret.size = 1;
+        ret.kind = instruction_kind_t::return_instruction;
+        ret.stack_width_bits = uint16_t(mode);
+        target_proof_t proof;
+        auto result = classify_push_return(push, ret, mode, proof);
+        check(result && !result->target.value && result->stack_delta_bytes == 0
+              && result->stack_write_bytes == mode / 8
+              && result->stack_write_offset_bytes == -int(mode / 8),
+              "unresolved push/return retains stack write and exact width");
+        proof.kind = target_proof_kind_t::register_definition;
+        proof.value = 0x2000;
+        proof.definitions = {0xFF0};
+        proof.registers = {push.source};
+        result = classify_push_return(push, ret, mode, proof);
+        check(result && result->target.value == 0x2000, "register definition target");
+        ret.alternate_predecessor = true;
+        check(!classify_push_return(push, ret, mode, proof), "alternate entry into RET rejected");
+        ret.alternate_predecessor = false;
+        ret.immediate = 8;
+        check(!classify_push_return(push, ret, mode, proof), "RET with stack adjustment rejected");
+        ret.immediate = 0;
+        ret.far_transfer = true;
+        check(!classify_push_return(push, ret, mode, proof), "far return rejected");
+        ret.far_transfer = false;
+        ret.stack_width_bits = 16;
+        check(!classify_push_return(push, ret, mode, proof), "mismatched return width rejected");
+        ret.stack_width_bits = uint16_t(mode);
+        push.stack_width_bits = 16;
+        check(!classify_push_return(push, ret, mode, proof), "operand-size override rejected");
+        push.stack_width_bits = uint16_t(mode);
+        push.source.bit_offset = 8;
+        check(!classify_push_return(push, ret, mode, proof), "partial push source rejected");
+        push.source.bit_offset = 0;
+        ret.address++;
+        check(!classify_push_return(push, ret, mode, proof), "nonadjacent return rejected");
+        ret.address--;
+        proof.definitions.clear();
+        check(!classify_push_return(push, ret, mode, proof), "register target needs definitions");
+
+        push.kind = instruction_kind_t::push_memory;
+        proof = {};
+        proof.kind = target_proof_kind_t::immutable_memory;
+        proof.value = 0x2000;
+        memory_dependency_t memory;
+        memory.address = 0x3000;
+        memory.bytes.resize(mode / 8);
+        memory.bytes[1] = 0x20;
+        proof.memory.push_back(memory);
+        result = classify_push_return(push, ret, mode, proof);
+        check(result && result->target.memory.front().address == 0x3000,
+              "memory target retains exact consumed bytes");
+        proof.memory.front().bytes[0] = 1;
+        check(!classify_push_return(push, ret, mode, proof), "target must match dependency bytes");
+        proof.memory.front().bytes.pop_back();
+        check(!classify_push_return(push, ret, mode, proof), "truncated pointer rejected");
+        proof = {};
+        proof.value = 0x2000;
+        check(!classify_push_return(push, ret, mode, proof), "unproven supplied value rejected");
+        proof = {};
+        check(!classify_push_return(push, ret, 16, proof), "unsupported 16-bit execution rejected");
+        ret.address = k_bad_address;
+        check(!classify_push_return(push, ret, mode, proof), "invalid address rejected");
+    }
+}
+
 void test_get_pc_classifier()
 {
     using namespace chernobog::ida_analysis::classifier;
@@ -790,6 +865,7 @@ int main()
     test_deobfuscation_execution_policy();
     test_dependency_liveness();
     test_get_pc_classifier();
+    test_stack_transfer_classifier();
     test_switch_dispatch_classifier();
     test_arm64_direct_branch_encoding();
     test_arm64_predicates();
