@@ -397,6 +397,12 @@ ida_add_plugin(chernobog
     src/ida_analysis/native_engine.cpp
     src/ida_analysis/early_hexrays.cpp
     src/ida_analysis/evidence_apply.cpp
+    src/vm/region.cpp
+    src/vm/semantics.cpp
+    src/vm/summary_view.cpp
+    src/vm/observations.cpp
+    src/vm/transition.cpp
+    src/vm/ida_regions.cpp
     src/deobf/deobf_main.cpp
     src/deobf/deobf_utils.cpp
 
@@ -473,6 +479,7 @@ ida_add_plugin(chernobog
     src/hybrid/static_analysis.cpp
     src/hybrid/evidence.cpp
     src/hybrid/z3_bridge.cpp
+    src/hybrid/solver_inspection.cpp
     src/hybrid/session.cpp
 )
 
@@ -481,6 +488,14 @@ target_include_directories(chernobog SYSTEM PRIVATE
     "${_chernobog_rax_capi}/include")
 target_link_libraries(chernobog PRIVATE
     libz3 chernobog::rax ${_chernobog_thread_libraries})
+
+# IDA's Python companion provides the linked evidence inspection workspace.
+set_property(TARGET chernobog APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/python/chernobog_evidence.py")
+add_custom_command(TARGET chernobog POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/python/chernobog_evidence.py"
+        "$<TARGET_FILE_DIR:chernobog>/chernobog_evidence.py")
 
 # Keep the embedded C ABI private. This prevents symbol interposition if viy
 # and Chernobog, each with a potentially different pinned rax, are loaded into
@@ -512,6 +527,28 @@ endif()
 # the AST matcher.
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(chernobog_vm_region_tests tests/vm_region_tests.cpp src/vm/region.cpp)
+    target_include_directories(chernobog_vm_region_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_features(chernobog_vm_region_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.vm_regions COMMAND chernobog_vm_region_tests)
+    add_executable(chernobog_vm_semantics_tests tests/vm_semantics_tests.cpp src/vm/region.cpp src/vm/semantics.cpp src/vm/summary_view.cpp)
+    target_include_directories(chernobog_vm_semantics_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_include_directories(chernobog_vm_semantics_tests SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
+    target_link_libraries(chernobog_vm_semantics_tests PRIVATE libz3)
+    target_compile_features(chernobog_vm_semantics_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.vm_semantics COMMAND chernobog_vm_semantics_tests)
+    add_executable(chernobog_vm_observation_tests tests/vm_observation_tests.cpp src/vm/region.cpp src/vm/observations.cpp src/vm/semantics.cpp src/vm/transition.cpp)
+    target_include_directories(chernobog_vm_observation_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${_chernobog_rax_capi}/include")
+    target_compile_features(chernobog_vm_observation_tests PRIVATE cxx_std_17)
+    target_include_directories(chernobog_vm_observation_tests SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
+    target_link_libraries(chernobog_vm_observation_tests PRIVATE libz3)
+    add_test(NAME chernobog.vm_observations COMMAND chernobog_vm_observation_tests)
+    add_executable(chernobog_vm_transition_tests tests/vm_transition_tests.cpp src/vm/region.cpp src/vm/semantics.cpp src/vm/transition.cpp)
+    target_include_directories(chernobog_vm_transition_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${_chernobog_rax_capi}/include")
+    target_include_directories(chernobog_vm_transition_tests SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
+    target_link_libraries(chernobog_vm_transition_tests PRIVATE libz3)
+    target_compile_features(chernobog_vm_transition_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.vm_transitions COMMAND chernobog_vm_transition_tests)
     add_executable(chernobog_x86_abstract_tests tests/x86_abstract_tests.cpp)
     target_include_directories(chernobog_x86_abstract_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src")

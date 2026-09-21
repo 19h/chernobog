@@ -4,8 +4,23 @@
 #include <cstddef>
 #include <cstdarg>
 #include <memory>
+#include <cstdint>
+#include <map>
+#include <string>
+#include <vector>
 
 namespace chernobog::ida_analysis {
+
+// Read-only projection of live conclusions, never persisted ownership receipts.
+struct NativeInspection
+{
+  static constexpr size_t proof_limit = 128, dependency_limit = 64;
+  bool available = false;
+  int64_t database = -1;
+  uint64_t function = 0;
+  size_t omitted = 0;
+  std::vector<std::map<std::string, std::string>> records;
+};
 
 struct NativeAnalysisStats
 {
@@ -40,6 +55,7 @@ public:
   void on_autoanalysis_complete();
   void on_database_event(int event, va_list arguments);
   const NativeAnalysisStats &stats() const;
+  NativeInspection inspect(uint64_t function_start) const;
 
 private:
   struct Impl;

@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "checkpoint": "actual-scoped-SMT-query-inspection",
+  "requirement": "5",
+  "status": "in-progress",
+  "git_head": "17a920a6fc4af2d6c158268eac2270936693b7a0",
+  "source_sha256": {
+    "CMakeLists.txt": "bd157bff6b19403480ce7ea4ccf527673207290a87eb5dc3222d36209b91f4d8",
+    "src/common/solver_evidence.hpp": "ca61ecd2462c8185c355a8158ad2d23f2f4be2dd1c408f8e20a6d6cec225ee22",
+    "src/common/inspection_json.hpp": "a08aaabbbb82ae5ef7e9f9ef9f894874f812385d1c691dff80c38f6cfd45e649",
+    "src/common/z3_utils.h": "f3fd90bd95ce5be309298a7c64ee150b74cd314d757b5a215264d08c06794cd7",
+    "src/hybrid/solver_inspection.hpp": "a95e69b593ef176dce407c794632b28de564d9df21eb734783da9064757037e1",
+    "src/hybrid/solver_inspection.cpp": "03820d9f6b323d5a466c1c5f061156b421cb81e858b7586ca4d732a589a07f68",
+    "src/deobf/deobf_main.cpp": "09e8bfe45d45d9287751042888f4985c1f817d439436dfd2914af7f058de388e",
+    "src/plugin/deobf_plugin.cpp": "b91b15066f50822e8d77564ef7f030397f1a3b80997496762b4f7f5f032a3157",
+    "src/plugin/idc_api.cpp": "77c8002742a30bcf3ee5f27a947e86a709d5920fc77301eb7f4c7c99630138ff",
+    "src/deobf/analysis/z3_solver.cpp": "b42081a6c4606900be923b95b99ef97fc37d56b541fa6cbca52cb72ce2ac76cc",
+    "src/deobf/rules/rule_verifier.cpp": "6ffd80c7ad12b31721d54297d76b7f33d57076c9e2d393516ba657e0480243cc",
+    "src/deobf/handlers/mba_simplify.cpp": "b7fd9320144476dd1c8058d088ac5d520b8753182027329f015864997ec7468b",
+    "src/deobf/handlers/vm_mba.cpp": "8a003d55fc4141ffcfb453506efa86d1ad558e12d797c6da23712c1f3e16ca0e",
+    "python/chernobog_evidence.py": "ae93f783200306a591f88b15eaa48724afe52b2d8ea00ca82dd488b9225c48a1",
+    "tests/z3_tests.cpp": "cf330dfdcfdb2369d4e22b5f7825f07d164f03d2f1006db4d9727752e76453f9",
+    "tests/ida_solver_evidence_probe.py": "e243feb31a8983765feb59ccdd2b2912fad516a62aa289f22d2d0a0945683791",
+    "tests/verify_solver_evidence.py": "4fe8ba85576a1cd4d28bdb4dc74ad7e00691a8d1299897fe4b15060a3abbf9d3",
+    "tests/ida_native_evidence_probe.py": "aaaa5ca51c01442216da728bf1fc3742f7bcfd1c6166555e9d56eae91cc6d95a",
+    "tests/ida_evidence_view_probe.py": "db0b9bccf960f38a62efa11e6d76967ff78e8fc266155df8be01b5f8ef5e7102",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151",
+    "tests/vmp_native/solver_queries.c": "0205f642f7d656bae691335e65db78bf4d176eb78335116794b7a4feb5ef72f7",
+    "docs/VMP_SOLVER_EVIDENCE_VIEW.md": "866d46a9e963be4e171e994ad9a6c63f39a25dbeef3822fb49d697ac00179eec",
+    "docs/VMP_NATIVE_EVIDENCE_VIEW.md": "88d9087442930f2039cfe3b9c624f1a1afb6daaae502725dece0439d9802368b",
+    "docs/VMP_IMPLEMENTATION.md": "998c9afe2e8a0d6abf2e4f309f1d3bd72a2977e6d1d0bd555627b857ebc64a72",
+    "RAX_HYBRID.md": "49ba4fb123f9cb84bfa4bb6261c8c4db8c823e4d75ab0423db8bfe0fc587f8dd"
+  },
+  "artifact_sha256": {
+    "build/solver-evidence-final-build.log": "cf37a34e00d828e8aa22962cceb6985a7fec423dd3507b10a3adc92ddd66f3a8",
+    "build/solver-evidence-ui-build.log": "a7ffa03c72221de8abbf5c19acc1e4f27560ba4d385bdd576a743b077b38f823",
+    "build/vmp-solver-queries": "bcc38a1c824817e86842f48b145a64504914e78de8b825ca8342b16f960f7576",
+    "build/solver-fixture-rebuild/vmp-solver-queries": "bcc38a1c824817e86842f48b145a64504914e78de8b825ca8342b16f960f7576",
+    "build/vmp-solver-evidence-reviewed-terminal/run.json": "e00c46f2dcd7156184ca7d3e605d51c34f1d282b7651203f3b9be51547ffd2b7",
+    "build/vmp-solver-evidence-reviewed-terminal/solver_evidence.json": "3c977597a76922ed20ec4e782687088dc64d2893e7c9fd9d814d769d30dba188",
+    "build/vmp-solver-evidence-reviewed-terminal/replay.json": "40206c8702f1e0c72473bd2888972aa29ae91308789a7e5d24410ac7350dadca",
+    "build/vmp-solver-evidence-reviewed-gui/run.json": "553ffb992b31103c2614a33429df6c603fb700c3a292ccf7e650a87f29b6b7e9",
+    "build/vmp-solver-evidence-reviewed-gui/solver_evidence.json": "a1fab37244c50e958d5e8f8fd9b3caa3a08d930718f94458ec6db6160e10fa74",
+    "build/vmp-solver-evidence-reviewed-gui/replay.json": "f942b80d15dec0e89dcb0fe029999ef3fb0956550430ab43915a1d5d98061bc5",
+    "build/vmp-solver-evidence-reviewed-gui/solver_evidence.png": "7081ce78281ca6846363c9cfbaa94956db995172cd60e3c791cdc47ba3dabe9f",
+    "build/vmp-solver-evidence-reviewed-native-gui/run.json": "d44863f02864b32d20b4f3a40297ce272bb2cb024089f6abb89534d39deffb0d",
+    "build/vmp-solver-evidence-reviewed-native-gui/native_evidence.json": "04d6a3cb6f505ca329543708cf952b30e7abc319bca4ee005afb73bf03a0323b",
+    "build/vmp-solver-evidence-reviewed-native-gui/native_evidence.png": "6262491dd6961913455700b520c26d410a93cb2b85b5a8ec446fe926b6047926",
+    "build/vmp-solver-evidence-reviewed-temporal-gui/run.json": "4c67554291ee3d120d1faf109b976e2257fa655bb13e7e7c0ca71dafe41f6e62",
+    "build/vmp-solver-evidence-reviewed-temporal-gui/evidence_view.json": "9e3ff5c863d80e4609eb4e96d1e3a0f184babf7ca42b0a08ae3e2e681bb9eff2",
+    "build/vmp-solver-evidence-reviewed-temporal-gui/evidence_view.png": "dfc1a90514c46f4ab6698317913003fd6e52c071828f90bb5060a558fddef0db"
+  },
+  "installed_companion_matches_source": true,
+  "installed_companion_sha256": "ae93f783200306a591f88b15eaa48724afe52b2d8ea00ca82dd488b9225c48a1",
+  "ctest": {
+    "passed": 13,
+    "failed": 0,
+    "reported_elapsed_s": 13.88,
+    "log": "build/solver-evidence-final-build.log",
+    "performance_claim": false,
+    "scope": "final C++ source; later companion-only layout changes verified by production GUI probes"
+  },
+  "fixture": {
+    "sha256": "bcc38a1c824817e86842f48b145a64504914e78de8b825ca8342b16f960f7576",
+    "same_basename_rebuild_exact_match": true,
+    "compiler_options": [
+      "-arch",
+      "x86_64",
+      "-O1",
+      "-g0",
+      "-isysroot",
+      "<macOS SDK>"
+    ],
+    "native_fixed_input_checks": 2,
+    "native_oracle_exit_code": 0
+  },
+  "runs": {
+    "terminal": {
+      "report": "build/vmp-solver-evidence-reviewed-terminal/run.json",
+      "checks": 21,
+      "plugin_sha256": "e737cf8db662163b2aa60508d6796396cb5778564090ed9a7fb94da00b8e86ec",
+      "input_sha256": "bcc38a1c824817e86842f48b145a64504914e78de8b825ca8342b16f960f7576",
+      "script_sha256": "e243feb31a8983765feb59ccdd2b2912fad516a62aa289f22d2d0a0945683791",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "enable_rax": false,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 3229892917,
+      "replay": {
+        "report_sha256": "3c977597a76922ed20ec4e782687088dc64d2893e7c9fd9d814d769d30dba188",
+        "solver_sha256": "edae32f9e37ea4b5bb35310d72f0e352d0dc07626cac4e9e30bc1ea9a5bc8efb",
+        "solver_version": "Z3 version 4.16.0 - 64 bit",
+        "formula_checks": 26,
+        "model_checks": 25,
+        "skipped_incomplete_or_unknown": 0,
+        "counterexample_queries": [
+          "0x7",
+          "0xb",
+          "0xf",
+          "0x13",
+          "0x17",
+          "0x1b"
+        ],
+        "corrupted_assignment_rejected": true
+      }
+    },
+    "gui": {
+      "report": "build/vmp-solver-evidence-reviewed-gui/run.json",
+      "checks": 28,
+      "plugin_sha256": "e737cf8db662163b2aa60508d6796396cb5778564090ed9a7fb94da00b8e86ec",
+      "input_sha256": "bcc38a1c824817e86842f48b145a64504914e78de8b825ca8342b16f960f7576",
+      "script_sha256": "e243feb31a8983765feb59ccdd2b2912fad516a62aa289f22d2d0a0945683791",
+      "ida_sha256": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b",
+      "enable_rax": false,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 4224184333,
+      "replay": {
+        "report_sha256": "a1fab37244c50e958d5e8f8fd9b3caa3a08d930718f94458ec6db6160e10fa74",
+        "solver_sha256": "edae32f9e37ea4b5bb35310d72f0e352d0dc07626cac4e9e30bc1ea9a5bc8efb",
+        "solver_version": "Z3 version 4.16.0 - 64 bit",
+        "formula_checks": 26,
+        "model_checks": 25,
+        "skipped_incomplete_or_unknown": 0,
+        "counterexample_queries": [
+          "0x7",
+          "0xb",
+          "0xf",
+          "0x13",
+          "0x17",
+          "0x1b"
+        ],
+        "corrupted_assignment_rejected": true
+      }
+    },
+    "native-gui": {
+      "report": "build/vmp-solver-evidence-reviewed-native-gui/run.json",
+      "checks": 47,
+      "plugin_sha256": "e737cf8db662163b2aa60508d6796396cb5778564090ed9a7fb94da00b8e86ec",
+      "input_sha256": "ed640fa99e8fff94418e6ed5bd70f69175047f8c2bf4249627fec06d646c0b78",
+      "script_sha256": "aaaa5ca51c01442216da728bf1fc3742f7bcfd1c6166555e9d56eae91cc6d95a",
+      "ida_sha256": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b",
+      "enable_rax": false,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 3835155375
+    },
+    "temporal-gui": {
+      "report": "build/vmp-solver-evidence-reviewed-temporal-gui/run.json",
+      "checks": 31,
+      "plugin_sha256": "e737cf8db662163b2aa60508d6796396cb5778564090ed9a7fb94da00b8e86ec",
+      "input_sha256": "507889b18d3dba93ad87ce0bf149bec0802a94a427b522371bc6869927777644",
+      "script_sha256": "db0b9bccf960f38a62efa11e6d76967ff78e8fc266155df8be01b5f8ef5e7102",
+      "ida_sha256": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b",
+      "enable_rax": true,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 4042566792
+    }
+  },
+  "verified_counts": {
+    "query_production_checks": 49,
+    "native_GUI_regression_checks": 47,
+    "temporal_GUI_regression_checks": 31,
+    "formulas_per_query_run": 26,
+    "SAT_assignments_per_query_run": 25,
+    "SAT_mismatch_counterexamples_per_query_run": 6,
+    "UNSAT_per_query_run": 1,
+    "corrupted_assignment_rejected": true,
+    "distinct_query_corpus_runs": 1
+  },
+  "visual_review": {
+    "artifact": "build/vmp-solver-evidence-reviewed-gui/solver_evidence.png",
+    "surface": "feature form only",
+    "observation": "SAT mismatch role, historical applicability, exact typed assignments and multiline formula visible before generic metadata; independent source guard visible"
+  },
+  "scope_limits": [
+    "No current-IR applicability or native-input interpretation inferred from a recorded model",
+    "Source navigation guards check instruction bytes/owner only",
+    "Instrumentation requires an active callback scope; unscoped queries and solver.check exceptions are not retained",
+    "Caps are per database and key/value text payload, not total heap memory",
+    "Database function/record/payload saturation matrix not yet executed",
+    "Complete formula and complete SAT assignment replay only; truncated and UNKNOWN queries skipped by standalone verifier",
+    "Independent Z3 process/build, not independent solver family",
+    "UNKNOWN observer path unit tested; no separate production predicate-UNKNOWN classification fixture",
+    "Plugin unload/reload, multi-database, rebase/undo and full GUI lifecycle matrix incomplete",
+    "Independent x64 fixtures; no supplied protected hello-world recovery claim",
+    "Maximum-size latency and total peak memory unmeasured",
+    "Full VMP review objective remains incomplete"
+  ],
+  "privacy": {
+    "paths": "repository-relative or logical artifact names only"
+  }
+}

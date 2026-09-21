@@ -35,6 +35,8 @@ struct Registry
 {
   std::mutex mutex;
   std::map<int64_t, std::shared_ptr<const TargetEvidence>> evidence;
+  std::map<int64_t, uint64_t> inspection_revisions;
+  uint64_t next_inspection_revision = 0;
   std::map<int64_t, std::shared_ptr<const DeobfuscationProjection>>
       deobfuscation_projections;
   std::map<int64_t, std::deque<Z3ModelReplayRequest>> replays;
@@ -390,9 +392,17 @@ bool hybrid_publish_evidence(
   std::lock_guard<std::mutex> lock(state.mutex);
   state.deobfuscation_projections.erase(database_id);
   if ( evidence && valid )
+  {
     state.evidence[database_id] = std::move(evidence);
+    // Exhaustion disables current-view admission rather than recycling a token.
+    state.inspection_revisions[database_id] = state.next_inspection_revision == UINT64_MAX
+        ? 0 : ++state.next_inspection_revision;
+  }
   else
+  {
     state.evidence.erase(database_id);
+    state.inspection_revisions.erase(database_id);
+  }
   return valid;
 }
 
@@ -401,6 +411,7 @@ void hybrid_clear_evidence(int64_t database_id)
   Registry &state = registry();
   std::lock_guard<std::mutex> lock(state.mutex);
   state.evidence.erase(database_id);
+  state.inspection_revisions.erase(database_id);
   state.deobfuscation_projections.erase(database_id);
   state.replays.erase(database_id);
 }
@@ -411,6 +422,24 @@ bool hybrid_current_evidence_is_fresh(uint64_t function_start)
       registry_evidence(int64_t(get_dbctx_id()));
   return evidence && evidence->scope.function_start == function_start
       && current_identity_matches(*evidence);
+}
+
+bool hybrid_evidence_snapshot_is_fresh(const std::shared_ptr<const TargetEvidence> &snapshot)
+{
+  const int64_t database = int64_t(get_dbctx_id());
+  return snapshot && registry_evidence(database) == snapshot
+      && current_identity_matches(*snapshot) && registry_evidence(database) == snapshot;
+}
+
+uint64_t hybrid_evidence_snapshot_revision(const std::shared_ptr<const TargetEvidence> &snapshot)
+{
+  const int64_t database = int64_t(get_dbctx_id());
+  Registry &state = registry();
+  std::lock_guard<std::mutex> lock(state.mutex);
+  const auto source = state.evidence.find(database);
+  const auto revision = state.inspection_revisions.find(database);
+  return snapshot && source != state.evidence.end() && source->second == snapshot
+      && revision != state.inspection_revisions.end() ? revision->second : 0;
 }
 
 bool hybrid_begin_deobfuscation_projection(uint64_t function_start)

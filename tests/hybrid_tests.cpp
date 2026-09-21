@@ -544,6 +544,38 @@ void test_byte_search_scope_transitions(const RaxApi *api)
   }
 }
 
+void test_data_trace_completeness(const RaxApi *api)
+{
+  auto image=branch_image();
+  std::vector<uint8_t> code{0x50}; // push rax
+  for(unsigned i=0;i<10;++i)code.insert(code.end(),{0x48,0xFF,0x04,0x24}); // inc qword [rsp]
+  code.insert(code.end(),{0x58,0xC3}); // pop rax; ret
+  std::copy(code.begin(),code.end(),image.segs[0].bytes.begin());
+  image.entries[0].end=image.lo+code.size();image.entries[0].chunks={{image.lo,image.entries[0].end}};
+  image.entries[0].byte_hash=hybrid_function_byte_hash(image,image.entries[0]);
+  image.content_hash=hybrid_program_content_hash(image);
+  EmuDriver driver(api,image,true);
+  auto cfg=short_run_config();cfg.max_insns=128;
+  EmuEvents complete;EmuOutcome outcome;
+  check(driver.emulate_from(image.lo,image.entries[0].end,cfg,complete,&outcome),"RMW complete trace runs");
+  check(outcome.returned && outcome.data_trace_complete && complete.data.size()>13,"RMW read/write trace is complete");
+  cfg.max_insns=13;EmuEvents capped;
+  check(driver.emulate_from(image.lo,image.entries[0].end,cfg,capped,&outcome),"RMW capped trace runs");
+  check(capped.data.size()==13 && outcome.data_trace_truncated && !outcome.data_trace_complete,
+        "data quota exhaustion cannot masquerade as a complete trace");
+  // A non-strict run can read zero-filled mapped page padding outside the image
+  // and synthetic arenas. Such filtered events must prevent completeness.
+  image=branch_image();code={0x48,0x8B,0x05,0x00,0x01,0x00,0x00,0xC3};
+  image.segs[0].bytes=code;image.segs[0].mask.assign(1,0xff);
+  image.hi=image.segs[0].end=image.lo+code.size();
+  image.entries[0].end=image.hi;image.entries[0].chunks={{image.lo,image.hi}};
+  image.entries[0].byte_hash=hybrid_function_byte_hash(image,image.entries[0]);
+  image.content_hash=hybrid_program_content_hash(image);
+  EmuDriver padding(api,image,false);EmuEvents filtered;cfg.max_insns=128;
+  check(padding.emulate_from(image.lo,image.hi,cfg,filtered,&outcome),"padding read runs");
+  check(outcome.data_trace_filtered && !outcome.data_trace_complete,"filtered data events cannot yield completeness");
+}
+
 void test_arm64_memory_and_accounting(const RaxApi *api)
 {
   // mov x0,#0x1122; str x0,[sp]; ldr x1,[sp]; ret
@@ -563,6 +595,8 @@ void test_arm64_memory_and_accounting(const RaxApi *api)
         "ARM64 memory-hook capability must be reported explicitly");
   check(outcome.consumed_context_complete,
         "ARM64 run with working memory hooks must be context-complete");
+  check(outcome.data_trace_complete && !outcome.data_trace_truncated && !outcome.data_trace_filtered,
+        "complete direct data trace must be reported separately from dependencies");
   check(events.execution.size() == 4,
         "ARM64 code hook must report four physical instructions");
   for ( const ExecPoint &point : events.execution )
@@ -1467,6 +1501,7 @@ int main()
     test_worker_and_evidence(api, std::move(image));
     test_x86_tls_environment_boundary(api);
     test_arm64_memory_and_accounting(api);
+    test_data_trace_completeness(api);
     test_arm64_external_boundaries(api);
     test_bounded_byte_search_summaries(api);
     test_byte_search_scope_transitions(api);

@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "checkpoint": "local-normal-completion-VM-effects-and-proof-gated-reference-reuse",
+  "requirements": [
+    "6b",
+    "6c"
+  ],
+  "status": "in-progress",
+  "git_head": "17a920a6fc4af2d6c158268eac2270936693b7a0",
+  "source_sha256": {
+    "CMakeLists.txt": "5e86d722c9dfc3405632128fe995793ca0cdc56696620f938f5e76c26d82b2a5",
+    "src/vm/region.hpp": "45cd076b1db4f542510a8d2cae4b2880f17f2756df5572e686ba91eaf3c426b0",
+    "src/vm/region.cpp": "dd5d0fb34e5d25e5030b038a2b1ab0363fbd6ea5a69b2d0608587fc5bb9d47e9",
+    "src/vm/semantics.hpp": "76f4ebf7f030ae5b68057a2b95980a148c78cadb1cb60d37f38cb6d4f5e45cc7",
+    "src/vm/semantics.cpp": "b0298fa976242889ba41d459293b7513f5cdc483e4c0f732ee30cd8348fcee6d",
+    "src/vm/summary_view.hpp": "ba06e0d03abc617d75192c23e6ad8a16a818a57f11a3423f3d1b5cf26c33712a",
+    "src/vm/summary_view.cpp": "2367059a196c4c344a2882df6da12e91076f39df158cd0354707225bcd91e9fc",
+    "src/vm/ida_regions.hpp": "024c79c5be4f19ec8b158eb6fde715f96fb4d0a52fc6910111824f55ac9a125d",
+    "src/vm/ida_regions.cpp": "a2fc455a02914f91c6db869e6ca6e6a5150aba0447e4ee80823ded001b12d346",
+    "src/common/solver_evidence.hpp": "ca61ecd2462c8185c355a8158ad2d23f2f4be2dd1c408f8e20a6d6cec225ee22",
+    "src/common/x86_abstract.h": "8304773b77b444ad689c6fa14c0b32930ceff0f5e7660791a3421bb87ad8701b",
+    "src/plugin/idc_api.cpp": "f4a6ff8de942b84f2eb77ec3037501822d66793d6b14514fe5ecca5aaf487dcc",
+    "python/chernobog_evidence.py": "6fcebdde0a990ae79a57cf60968eb999ffe6a479f47d4985f60ff0228168af3f",
+    "tests/vm_semantics_tests.cpp": "8ff7fa328c0247dbc2124ed061949bdbbf8cbc46bbe3492cd648e3eb65fa17e6",
+    "tests/vm_test_candidates.hpp": "1d3a8242ea92fd8ac5f5809ac2b3788960ae657229e3c87ff2f1c5bff402f5e3",
+    "tests/ida_vm_regions_probe.py": "ed718eaedae6084ffdfbed051ff6be3e148c0efe6523de8b9f57e4b53b629dae",
+    "tests/vmp_native/vm_regions.S": "75438d060c32bb43c3815a6df384816e2d9754895f70ae30f5e081558350ebde",
+    "tests/vmp_native/vm_regions32.S": "8fe8f408f456d593d0178b1afc7e48178e7ad4edf8cf1b31ea6b115070bdeb8c",
+    "tests/vmp_native/vm_semantics_oracle.c": "055527b945669b7b20a53cfa9683484ce68cfa079d64636ea758ce679a08cea3",
+    "tests/vmp_native/vm_semantics_oracle.S": "2a264b99513485f76fb26ff6c012a9916fddaa97e17d7bf0490c7f63b266614d",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151",
+    "tests/ida_solver_evidence_probe.py": "e243feb31a8983765feb59ccdd2b2912fad516a62aa289f22d2d0a0945683791",
+    "tests/ida_native_evidence_probe.py": "aaaa5ca51c01442216da728bf1fc3742f7bcfd1c6166555e9d56eae91cc6d95a",
+    "tests/ida_evidence_view_probe.py": "db0b9bccf960f38a62efa11e6d76967ff78e8fc266155df8be01b5f8ef5e7102",
+    "docs/VMP_VM_SEMANTICS.md": "e465af1c12769ab64171723fd1be02f821472c2caa6fed82ad613be776a4073a",
+    "docs/VMP_VM_REGIONS.md": "5eda24bd4281d962b61e17e86677603c7d534d1c0f282b9561d3e7ec74904deb",
+    "docs/VMP_IMPLEMENTATION.md": "ab6070ee722dfd07c55b053ca5bfbd30304bdb538d1d09f0d053f3fe11557586",
+    "RAX_HYBRID.md": "a7989d04d13fa8155be77fb4e7fc48936e146485d5aeed95bb5876e891776eb2"
+  },
+  "reference_source_sha256": {
+    "vmp/core/intel.cc": "ce0edd303f1b20d12affaf1bb4646b684a056babe724f36af24340fefe7cb17c",
+    "vmp/core/processors.cc": "a312d1e5b815cfca4da509056a65ea5f35df6d2bf5e7e358207cf8e32d7c793c"
+  },
+  "artifact_sha256": {
+    "build/vm-semantics-release-validation.log": "327c8e4fbedab8ab7ee029fbf56d62935079ee91f4f6ded170608a8170ab23ff",
+    "build/vmp-vm-regions": "3f9afd4da65cee422a78c729f7e3a93bb83b9af0a134944555de79045498bf0f",
+    "build/vmp-vm-regions32": "95d0ded566be0d84f0cf907a7e6e36ee48a5c905844ee4c0cd4c796b9b69e42d",
+    "build/chernobog_vm_semantics_tests": "8f86b8ddd819f4cb21a4249f3db556077f5c99d0ab8f83dff984a00ed45f25de",
+    "build/vm-semantics-native-oracle": "153f0d79cfafeb495400b8588486a8f7cfb9c988808682e7ca13fd7688cdf357",
+    "build/vm-semantics-native-final.txt": "5790054aa0194b217c232af6b630e503715be58481beb7cbc46e7419d3e834c3",
+    "build/vmp-vm-semantics-release-x64-terminal/run.json": "60a9fadca6456974ec38c5c511b326046152af564aeb1ea00fe06fe511f4ddb0",
+    "build/vmp-vm-semantics-release-x64-terminal/vm_regions.json": "4b6d43f86e75f6407656c8aa64f006ec9eb765a670fe41c1a02cf2dc71dff153",
+    "build/vmp-vm-semantics-release-x86-terminal/run.json": "a10da621f85887a98e7798f325cbd2fbf6a5cf0eac011db4a81ebfc6cc3c3257",
+    "build/vmp-vm-semantics-release-x86-terminal/vm_regions.json": "eb96821e87a98cc774f71748364a31b49b0572d6768666541c639cde8a5c6445",
+    "build/vmp-vm-semantics-release-x64-gui/run.json": "0da1ef1ed61479eebb797d65d5fc092011bd8b1f8bc24bb87eb6bad9c35a4fa2",
+    "build/vmp-vm-semantics-release-x64-gui/vm_regions.json": "66a33e4ba3a7e6e291967bca303780908ac9fc0bf25ecf2df35dcc17ad66ddc5",
+    "build/vmp-vm-semantics-release-x64-gui/vm_regions.png": "a7dae5320893361e5e213eca8b18fb23f2ea76c5e31cd01743ee5c808f1ca93b",
+    "build/vmp-vm-semantics-release-x64-gui/vm_summaries.png": "90375425c9d4156c911c71fa10882aa0d582af8e0624934438d40eaea1804dcc",
+    "build/vmp-vm-semantics-release-solver-gui/run.json": "12c1897646b21c7c16259f267c8e2be217c63b712aeea506aac7f681894214e9",
+    "build/vmp-vm-semantics-release-solver-gui/solver_evidence.json": "4c90c1680d7fd787e2bf54e938caf94d0020e6794fa08519f9cf6689732b72b3",
+    "build/vmp-vm-semantics-release-solver-gui/solver_evidence.png": "9469c214bee6574b277de79be44201e0493f67a88ac9409f3fffc3fa8715e65c",
+    "build/vmp-vm-semantics-release-native-gui/run.json": "cd36892636a51554f5f824cc4357d944070952d5201f74a78f2499560116936f",
+    "build/vmp-vm-semantics-release-native-gui/native_evidence.json": "04d6a3cb6f505ca329543708cf952b30e7abc319bca4ee005afb73bf03a0323b",
+    "build/vmp-vm-semantics-release-native-gui/native_evidence.png": "9040d72214b96b9026bda5a36460c723b068d98358de194986bbb9a184ac5ce1",
+    "build/vmp-vm-semantics-release-temporal-gui/run.json": "a4a8b94d37d0fcf820252542b3d5201381768f7fa7b7bb3f2cd44d1f360ac6e0",
+    "build/vmp-vm-semantics-release-temporal-gui/evidence_view.json": "9e3ff5c863d80e4609eb4e96d1e3a0f184babf7ca42b0a08ae3e2e681bb9eff2",
+    "build/vmp-vm-semantics-release-temporal-gui/evidence_view.png": "eedcbfb73c08663725aa744c5efc74d4324df35b5d301cfe64a6c6a6d539fe19"
+  },
+  "installed_companion_matches_source": true,
+  "installed_companion_sha256": "6fcebdde0a990ae79a57cf60968eb999ffe6a479f47d4985f60ff0228168af3f",
+  "ctest": {
+    "passed": 15,
+    "failed": 0,
+    "reported_elapsed_s": 8.81,
+    "log": "build/vm-semantics-release-validation.log",
+    "performance_claim": false
+  },
+  "semantic_tests": {
+    "portable_assertions": 4220,
+    "executed_x64_cases": 416,
+    "assertions_including_executed_oracle": 18158,
+    "native_fixed_corner_cases": 160,
+    "native_seeded_cases": 256,
+    "native_seed": "0xd1b54a32d192ed03",
+    "resource_exhaustion": "UNKNOWN with nonempty reason; reuse rejected"
+  },
+  "oracle": {
+    "executable_architecture": "x86_64",
+    "host_architecture": "arm64",
+    "execution_path": "macOS x86-64 compatibility on arm64; inferred from executed Mach-O architecture and host architecture",
+    "compiler_sha256": "5922f5f7843fee699497c45cc98134b6686e0a5e2fa8a5866ab74c5482fa87a5",
+    "compiler_version": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "sdk_version": "27.0",
+    "compiler_options": [
+      "-arch",
+      "x86_64",
+      "-O2",
+      "-g0",
+      "-isysroot",
+      "<macOS SDK>"
+    ],
+    "capture": "build/vm-semantics-native-final.txt",
+    "checked_observations": [
+      "VIP",
+      "decoded value",
+      "key",
+      "dispatch base",
+      "SP",
+      "defined final arithmetic flags",
+      "retained stack bytes",
+      "actual reached target"
+    ],
+    "not_exhaustive": [
+      "remaining GPRs checked symbolically",
+      "native executed transform vocabulary is XOR/ROL/ADD; others have portable controls",
+      "no x86-32 execution oracle",
+      "only observed data-read contents constrained; not complete native memory snapshot"
+    ]
+  },
+  "runs": {
+    "x64-terminal": {
+      "report": "build/vmp-vm-semantics-release-x64-terminal/run.json",
+      "checks": 72,
+      "plugin_sha256": "47d1e210229c2dc002403b2ed48ceff5aa37f6efa13beda9578187849d1defb3",
+      "input_sha256": "3f9afd4da65cee422a78c729f7e3a93bb83b9af0a134944555de79045498bf0f",
+      "script_sha256": "ed718eaedae6084ffdfbed051ff6be3e148c0efe6523de8b9f57e4b53b629dae",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "enable_rax": false,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 3198055542,
+      "summary_group": {
+        "references": 2,
+        "bindings": [
+          "reference",
+          "reused after UNSAT",
+          "reused after UNSAT",
+          "reference"
+        ],
+        "comparison_attempts": 3
+      },
+      "quota": {
+        "summary_bindings": 16,
+        "omitted_in_scanned_prefix": 54,
+        "comparison_attempts": 15
+      }
+    },
+    "x86-terminal": {
+      "report": "build/vmp-vm-semantics-release-x86-terminal/run.json",
+      "checks": 72,
+      "plugin_sha256": "47d1e210229c2dc002403b2ed48ceff5aa37f6efa13beda9578187849d1defb3",
+      "input_sha256": "95d0ded566be0d84f0cf907a7e6e36ee48a5c905844ee4c0cd4c796b9b69e42d",
+      "script_sha256": "ed718eaedae6084ffdfbed051ff6be3e148c0efe6523de8b9f57e4b53b629dae",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "enable_rax": false,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 3050780750,
+      "summary_group": {
+        "references": 2,
+        "bindings": [
+          "reference",
+          "reused after UNSAT",
+          "reused after UNSAT",
+          "reference"
+        ],
+        "comparison_attempts": 3
+      },
+      "quota": {
+        "summary_bindings": 16,
+        "omitted_in_scanned_prefix": 54,
+        "comparison_attempts": 15
+      }
+    },
+    "x64-gui": {
+      "report": "build/vmp-vm-semantics-release-x64-gui/run.json",
+      "checks": 83,
+      "plugin_sha256": "47d1e210229c2dc002403b2ed48ceff5aa37f6efa13beda9578187849d1defb3",
+      "input_sha256": "3f9afd4da65cee422a78c729f7e3a93bb83b9af0a134944555de79045498bf0f",
+      "script_sha256": "ed718eaedae6084ffdfbed051ff6be3e148c0efe6523de8b9f57e4b53b629dae",
+      "ida_sha256": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b",
+      "enable_rax": false,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 4517040459,
+      "summary_group": {
+        "references": 2,
+        "bindings": [
+          "reference",
+          "reused after UNSAT",
+          "reused after UNSAT",
+          "reference"
+        ],
+        "comparison_attempts": 3
+      },
+      "quota": {
+        "summary_bindings": 16,
+        "omitted_in_scanned_prefix": 54,
+        "comparison_attempts": 15
+      }
+    },
+    "solver-gui": {
+      "report": "build/vmp-vm-semantics-release-solver-gui/run.json",
+      "checks": 28,
+      "plugin_sha256": "47d1e210229c2dc002403b2ed48ceff5aa37f6efa13beda9578187849d1defb3",
+      "input_sha256": "bcc38a1c824817e86842f48b145a64504914e78de8b825ca8342b16f960f7576",
+      "script_sha256": "e243feb31a8983765feb59ccdd2b2912fad516a62aa289f22d2d0a0945683791",
+      "ida_sha256": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b",
+      "enable_rax": false,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 4867028916
+    },
+    "native-gui": {
+      "report": "build/vmp-vm-semantics-release-native-gui/run.json",
+      "checks": 47,
+      "plugin_sha256": "47d1e210229c2dc002403b2ed48ceff5aa37f6efa13beda9578187849d1defb3",
+      "input_sha256": "ed640fa99e8fff94418e6ed5bd70f69175047f8c2bf4249627fec06d646c0b78",
+      "script_sha256": "aaaa5ca51c01442216da728bf1fc3742f7bcfd1c6166555e9d56eae91cc6d95a",
+      "ida_sha256": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b",
+      "enable_rax": false,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 4666045208
+    },
+    "temporal-gui": {
+      "report": "build/vmp-vm-semantics-release-temporal-gui/run.json",
+      "checks": 31,
+      "plugin_sha256": "47d1e210229c2dc002403b2ed48ceff5aa37f6efa13beda9578187849d1defb3",
+      "input_sha256": "507889b18d3dba93ad87ce0bf149bec0802a94a427b522371bc6869927777644",
+      "script_sha256": "db0b9bccf960f38a62efa11e6d76967ff78e8fc266155df8be01b5f8ef5e7102",
+      "ida_sha256": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b",
+      "enable_rax": true,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 4772938292
+    }
+  },
+  "verified_counts": {
+    "local_candidate_summary_IDA_checks": 227,
+    "existing_GUI_regression_checks": 106,
+    "summary_candidate_limit": 16,
+    "comparison_attempt_limit": 32,
+    "reference_payload_limit_bytes": 32768,
+    "expression_prefix_limit_bytes": 2048,
+    "production_summary_references": 2,
+    "production_summary_bindings": 4,
+    "production_query_results": [
+      "unsat",
+      "unsat",
+      "sat"
+    ]
+  },
+  "visual_review": {
+    "artifact": "build/vmp-vm-semantics-release-x64-gui/vm_summaries.png",
+    "surface": "feature form only",
+    "observation": "syntax grouping and proved local-effect reuse separately labeled; UNSAT reference binding, normal-completion contract, source mapping and summary omissions visible"
+  },
+  "scope_limits": [
+    "Summary is local read/decode/dispatch scaffold, not full VM handler semantics",
+    "Flat little-endian modular-address memory, normal completion, all modeled accesses valid and unchanged instruction stream",
+    "No intermediate exception, self-modifying-code, concurrent/device or segment-base effects",
+    "Arbitrary modeled data aliasing retained; final outputs and ordered accesses compared",
+    "No native target enumeration, VM execution-region admission or bytecode lifting",
+    "Reference reuse deduplicates current inspection semantic representation, not an execution cache",
+    "Display expression truncation does not truncate the internal equivalence query",
+    "SMT transcript may omit array-bearing formulas under its existing serializer budget",
+    "Full VM logical-state/context recovery, cross-function region ownership and persistent-cache lifecycle remain incomplete",
+    "Model-version migration and full unload/reopen/multi-database/rebase/undo UI matrix incomplete",
+    "Maximum-size latency and total process peak memory unmeasured",
+    "Protected emitted-fixture equivalence and protected-corpus recovery gains unknown",
+    "Full VMP review objective remains incomplete"
+  ],
+  "privacy": {
+    "paths": "repository-relative or logical artifact names only"
+  }
+}

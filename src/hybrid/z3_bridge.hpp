@@ -34,6 +34,11 @@ void hybrid_clear_evidence(int64_t database_id);
 // only; false also covers missing evidence and a database-context mismatch.
 bool hybrid_current_evidence_is_fresh(uint64_t function_start);
 
+// Inspection retains an immutable historical snapshot but never promotes it
+// when another generation has replaced the registry entry.
+bool hybrid_evidence_snapshot_is_fresh(const std::shared_ptr<const TargetEvidence> &snapshot);
+uint64_t hybrid_evidence_snapshot_revision(const std::shared_ptr<const TargetEvidence> &snapshot);
+
 // Start a display-only projection immediately before Chernobog mutates the
 // explored function, seal intermediate trusted mutations, then finish it at
 // CMAT_FINAL. The source evidence remains stale for proof consumers; only

@@ -43,6 +43,7 @@
 #include <cctype>
 #include <map>
 #include <set>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -442,13 +443,22 @@ struct NativeProofDependency
 
 struct NativeProof
 {
+  enum class Kind { Unknown, Call, Return, Materialization, StackTransfer, Condition };
+  Kind kind = Kind::Unknown;
+  uint64_t publication = 0;
+  ea_t context_call = BADADDR;
+  std::optional<uint64_t> value;
   ea_t source = BADADDR; // PUSH or condition, used for bounded reanalysis
   ea_t site = BADADDR;   // RET or condition, owns annotations/outgoing edges
   std::optional<desired_code_edge_t> intended_edge;
   std::vector<NativeProofDependency> dependencies;
   std::vector<existing_code_edge_t> owned_edges;
   std::string owned_comment;
+  std::string conclusion;
 };
+
+// Main-thread publication identity across all engines in this loaded plugin.
+uint64_t native_inspection_publication = 0;
 
 struct NativeMutationGuard
 {
@@ -1098,6 +1108,144 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     return true;
   }
 
+  NativeInspection inspect(uint64_t function_start) const
+  {
+    NativeInspection result;
+    result.database = int64_t(get_dbctx_id());
+    result.function = function_start;
+    func_t *function = get_func(ea_t(function_start));
+    if ( result.database != owner_database || closing_database || replaying_undo
+      || pending_ownership_recovery || native_mutation_depth != 0
+      || !config.enabled || function == nullptr || function->start_ea != function_start )
+      return result;
+    result.available = true;
+    const auto hex = [](uint64_t value) {
+      std::ostringstream out; out << "0x" << std::hex << value; return out.str();
+    };
+    for ( const auto &[source, proof] : native_proofs )
+    {
+      if ( !func_contains(function, source) && !func_contains(function, proof.site)
+        && (proof.context_call == BADADDR || !func_contains(function, proof.context_call)) ) continue;
+      if ( result.records.size() >= NativeInspection::proof_limit ) { ++result.omitted; continue; }
+      std::map<std::string, std::string> row{
+          {"publication", hex(proof.publication)}, {"source", hex(source)},
+          {"site", hex(proof.site)}, {"truth", "native-proof"},
+          {"conclusion", proof.conclusion}, {"kind", "unknown"},
+          {"edge", proof.intended_edge ? "true" : "false"},
+          {"assumption", "bounded local x86 model; native memory/stack effects retained; not whole-program reachability"}};
+      if ( proof.intended_edge ) row["target"] = hex(proof.intended_edge->target);
+      bool current = proof.publication != 0 && proof_is_fresh(proof);
+      const bool dependencies_current = current;
+      insn_t instruction;
+      const ea_t root = proof.kind == NativeProof::Kind::Return ? proof.context_call : source;
+      current = current && decode_insn(&instruction, root) > 0;
+      // Re-run the read-only recognizer as well as checking stored bytes. This
+      // covers current entry topology and alias/write-reference restrictions.
+      if ( current ) switch ( proof.kind )
+      {
+        case NativeProof::Kind::StackTransfer:
+        {
+          row["kind"] = "stack-transfer";
+          const auto candidate = classify_ida_push_return(instruction, config.register_scan_depth);
+          current = candidate && candidate->transfer == proof.site;
+          if ( !current ) break;
+          current = proof.intended_edge
+              ? candidate->target.value && *candidate->target.value == proof.intended_edge->target
+              : !candidate->target.value;
+          row["width_bits"] = std::to_string(candidate->width_bits);
+          row["stack_delta_bytes"] = std::to_string(candidate->stack_delta_bytes);
+          row["stack_write_bytes"] = std::to_string(candidate->stack_write_bytes);
+          switch ( candidate->target.kind )
+          {
+            case classifier::target_proof_kind_t::immediate: row["target_basis"] = "immediate"; break;
+            case classifier::target_proof_kind_t::register_definition: row["target_basis"] = "register-definition"; break;
+            case classifier::target_proof_kind_t::immutable_memory: row["target_basis"] = "immutable-memory"; break;
+            default: row["target_basis"] = "unresolved"; break;
+          }
+          row["register_scan_depth"] = std::to_string(config.register_scan_depth);
+          row["memory_model"] = "IDA loaded immutable bytes and current write-reference checks; external runtime mutations unmodeled";
+          if ( !proof.intended_edge ) row["truth"] = "candidate";
+          break;
+        }
+        case NativeProof::Kind::Call:
+        case NativeProof::Kind::Return:
+        {
+          const bool returning = proof.kind == NativeProof::Kind::Return;
+          row["kind"] = returning ? "call-context-return" : "get-pc-call";
+          const auto candidate = classify_ida_get_pc_call(instruction, size_t(config.pop_ret_depth), true);
+          current = candidate && proof.intended_edge;
+          if ( !current ) break;
+          current = returning
+              ? candidate->return_instruction == proof.site && candidate->resumed_at
+                && *candidate->resumed_at == proof.intended_edge->target
+              : candidate->gadget == proof.intended_edge->target;
+          row["context_call"] = hex(candidate->call);
+          row["scan_depth"] = std::to_string(config.pop_ret_depth);
+          row["width_bits"] = std::to_string(candidate->width_bits);
+          row["stack_delta_bytes"] = std::to_string(candidate->stack_delta_bytes);
+          row["stack_access_count"] = std::to_string(candidate->stack_accesses.size());
+          row["effect_scope"] = "complete recognized CALL sequence; not the isolated edge";
+          if ( returning ) row["assumption"] = "recognized CALL entry context and return-address provenance; native stack accesses retained";
+          break;
+        }
+        case NativeProof::Kind::Materialization:
+        {
+          row["kind"] = "stack-address-materialization";
+          const auto candidate = classify_ida_push_get_pc(instruction);
+          current = candidate && proof.value && candidate->address_value == *proof.value;
+          if ( !current ) break;
+          row["value"] = hex(candidate->address_value);
+          row["width_bits"] = std::to_string(candidate->width_bits);
+          row["stack_delta_bytes"] = std::to_string(candidate->stack_delta_bytes);
+          row["stack_access_count"] = std::to_string(candidate->stack_accesses.size());
+          row["flags_preserved"] = candidate->flags_preserved ? "true" : "false";
+          break;
+        }
+        case NativeProof::Kind::Condition:
+        {
+          const auto condition = x86_condition(instruction.itype);
+          current = condition.has_value();
+          if ( !current ) break;
+          const auto fact = analyze_x86_flag_fact_before(instruction, size_t(config.flag_scan_depth));
+          const auto outcome = x86_abstract::evaluate(condition->condition, fact.flags);
+          current = outcome && proof.value && uint64_t(*outcome ? 1 : 0) == *proof.value;
+          row["kind"] = condition->use == X86ConditionUse::branch ? "local-flag-branch"
+              : condition->use == X86ConditionUse::set_byte ? "setcc-value" : "cmov-condition";
+          if ( !current ) break;
+          row["condition_value"] = *outcome ? "true" : "false";
+          row["scan_depth"] = std::to_string(config.flag_scan_depth);
+          if ( condition->use == X86ConditionUse::branch )
+            current = proof.intended_edge && proof.intended_edge->target ==
+                (*outcome ? branch_target(instruction) : instruction.ea + instruction.size);
+          if ( condition->use == X86ConditionUse::set_byte )
+          { row["value"] = *outcome ? "0x1" : "0x0"; row["width_bits"] = "8"; }
+          row["assumption"] = "bounded single-entry flag analysis; SETcc byte writes and CMOV memory/partial-register effects retained";
+          break;
+        }
+        default: current = false; break;
+      }
+      row["fresh"] = current ? "true" : "false";
+      row["validation"] = current ? "current" : dependencies_current
+          ? "current-recognizer-rejected" : "stored-dependency-or-publication-invalid";
+      row["dependency_count"] = std::to_string(proof.dependencies.size());
+      row["dependencies_omitted"] = std::to_string(proof.dependencies.size()
+          > NativeInspection::dependency_limit ? proof.dependencies.size() - NativeInspection::dependency_limit : 0);
+      static const char digits[] = "0123456789abcdef";
+      for ( size_t i = 0; i < std::min(proof.dependencies.size(), NativeInspection::dependency_limit); ++i )
+      {
+        const auto &dependency = proof.dependencies[i];
+        std::string bytes;
+        for ( uint8_t value : dependency.bytes ) { bytes += digits[value >> 4]; bytes += digits[value & 15]; }
+        row["dependency_" + std::to_string(i)] = hex(dependency.first) + ":" + bytes
+            + (dependency.code ? ";code" : ";data") + ";owner=" + hex(dependency.owner)
+            + ";permissions=" + std::to_string(dependency.permissions)
+            + ";segment_bitness=" + std::to_string(dependency.bitness);
+      }
+      result.records.push_back(std::move(row));
+    }
+    return result;
+  }
+
   bool dependency_intersects(const NativeProof &proof, ea_t first, ea_t end) const
   {
     return std::any_of(proof.dependencies.begin(), proof.dependencies.end(),
@@ -1201,6 +1349,9 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
           "new proof publication disabled\n");
       return false;
     }
+    proof.conclusion = comment;
+    proof.publication = native_inspection_publication == UINT64_MAX
+        ? 0 : ++native_inspection_publication;
     native_proofs[proof.source] = std::move(proof);
     return true;
   }
@@ -1408,6 +1559,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
       return false;
     if ( !can_record_proof(instruction.ea) ) return false;
     NativeProof call_proof;
+    call_proof.kind = NativeProof::Kind::Call;
     call_proof.source = call_proof.site = instruction.ea;
     call_proof.intended_edge = desired_code_edge_t{target, fl_JN, true};
     for ( uint64_t address : gadget->support )
@@ -1517,6 +1669,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     if ( !can_record_proof(site) || !target_is_proven_code_candidate(site, target) ) return;
     NativeProof proof;
     proof.source = proof.site = site;
+    proof.kind = NativeProof::Kind::Return;
+    proof.context_call = ea_t(gadget.call);
     for ( uint64_t address : gadget.support )
       if ( !add_instruction_dependency(proof, ea_t(address)) ) return;
     if ( !add_dependency(proof, target, 1, false) ) return;
@@ -1544,6 +1698,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     if ( !materialization ) return false;
     NativeProof proof;
     proof.source = proof.site = instruction.ea;
+    proof.kind = NativeProof::Kind::Materialization;
+    proof.value = materialization->address_value;
     for ( uint64_t address : materialization->support )
       if ( !add_instruction_dependency(proof, ea_t(address)) ) return false;
     const auto before = collect_code_edges(instruction.ea);
@@ -1572,6 +1728,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     NativeProof proof;
     proof.source = instruction.ea;
     proof.site = return_ea;
+    proof.kind = NativeProof::Kind::StackTransfer;
     if ( !add_instruction_dependency(proof, instruction.ea)
       || !add_instruction_dependency(proof, return_ea) ) return false;
     for ( uint64_t address : transfer->target.definitions )
@@ -1749,6 +1906,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     if ( !can_record_proof(instruction.ea) ) return false;
     NativeProof proof;
     proof.source = proof.site = instruction.ea;
+    proof.kind = NativeProof::Kind::Condition;
+    proof.value = *outcome ? 1 : 0;
     if ( !add_instruction_dependency(proof, instruction.ea) ) return false;
     for ( uint64_t address : fact.support )
       if ( !add_instruction_dependency(proof, ea_t(address)) ) return false;
@@ -2329,6 +2488,11 @@ const NativeAnalysisStats &NativeAnalysisEngine::stats() const
 {
   static const NativeAnalysisStats empty;
   return impl_ != nullptr ? impl_->statistics : empty;
+}
+
+NativeInspection NativeAnalysisEngine::inspect(uint64_t function_start) const
+{
+  return impl_ != nullptr ? impl_->inspect(function_start) : NativeInspection{};
 }
 
 } // namespace chernobog::ida_analysis

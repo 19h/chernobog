@@ -225,7 +225,7 @@ static bool z3_eval_with_model(z3_solver::z3_context_t &zctx,
         zctx.solver().add(vars[i] == zctx.ctx().bv_val(value, bits));
     }
 
-    if ( zctx.solver().check() != z3::sat )
+    if ( chernobog::solver_evidence::check(zctx.solver(), "MBA coefficient sample") != z3::sat )
         return false;
 
     z3::expr val = zctx.solver().get_model().eval(expr, true);

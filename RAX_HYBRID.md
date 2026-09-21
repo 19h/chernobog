@@ -284,9 +284,13 @@ an eligible concrete counterexample is falsification of the universal claim.
   performs the bounded one-function prerequisite when no exact fresh evidence
   exists. This includes decompile-all and cached pseudocode navigation.
 - `Ctrl+Shift+E`: explore the displayed function.
-- `Show current-function rax evidence`: print the typed summary and bounded
-  detail (runs, decoder differences, branches, indirect targets, runtime
-  strings) to the Output window.
+- `Show current-function rax evidence`: open the linked evidence workspace when
+  the IDAPython/PySide6 companion is registered; otherwise print the typed
+  summary and bounded detail to the Output window. The workspace is also under
+  **View > Open subviews > Chernobog evidence**. It links decoded/observed
+  instruction edges, event order, allocation lifetimes, run stops, and branch
+  checks, with explicit historical state after invalidation. See
+  [inspection contracts and limits](docs/VMP_EVIDENCE_VIEW.md).
 - `Cancel current-function rax exploration`: cancel queued runs; a rax call
   already in progress stops cooperatively at its next instruction boundary.
 - With `CHERNOBOG_AUTO=1`, automatic batch decompilation needs no target
@@ -318,10 +322,44 @@ and returns a code that `chernobog_rax_result_name()` renders as
 | `chernobog_rax_target_count(ea, insn)` / `chernobog_rax_target(ea, insn, i)` | Observed indirect targets |
 | `chernobog_rax_branch(ea, insn, taken)` | Branch-claim cross-check, including `veto` |
 | `chernobog_rax_show()` | Print the report described above |
+| `chernobog_evidence_view(ea)` | Bounded JSON inspection string; historical captures remain available with `fresh=false` |
+| `chernobog_evidence_state(ea)` | JSON availability, freshness, database, generation and publication revision without reconstructing the projection |
+| `chernobog_native_evidence(ea)` | Read-only JSON native conclusions, supporting bytes and current dependency/recognizer checks; independent of rax capture |
+| `chernobog_solver_evidence(ea)` | Bounded actual SMT transcript: formula, result, typed SAT assignment, UNKNOWN reason and source provenance |
+| `chernobog_solver_state(ea)` | Compact query identities and instruction-byte/owner navigation guards; does not validate current IR applicability |
+| `chernobog_vm_regions(ea)` | Read-only local VM-region candidates with register roles, support bytes and unresolved effects; no execution admission or semantic reuse |
+| `chernobog_vm_summaries(ea)` | Explicit bounded normal-completion local-effect summaries; shared references require UNSAT over registers, defined flags, memory and ordered accesses |
+| `chernobog_vm_states(ea)` | Fresh captured registers associated with current VM-candidate role hypotheses; repeated visits, partial state, ordered captured accesses and function-boundary exits remain inspectable without admitting execution or merging states |
+| `chernobog_vm_transitions(ea)` | Explicit checks of at most 16 complete captured local transitions against symbolic summaries; SAT input consistency precedes output-mismatch checking, and query identities link to capture/run/sequence |
 | `chernobog_rax_cancel()` / `chernobog_rax_clear()` | Cancel queued runs / discard the session |
 
 These are also the entry points to use from IDAPython, by evaluating the IDC
 expression; [`LLM_ORCHESTRATION.md`](LLM_ORCHESTRATION.md) documents that route.
+
+The workspace's **Native proofs** tab and green edges use the native inspector,
+with per-record freshness independent of the execution capture. Unresolved
+native candidates carry no target edge. Persisted ownership receipts and
+annotation text never supply proof records. See
+[native inspection contracts](docs/VMP_NATIVE_EVIDENCE_VIEW.md).
+
+The **SMT queries** tab exposes actual solver checks under the captured
+microcode scope. It displays readable SMT-LIB, typed assignments, query roles
+and omission counts. These historical formulas do not assert current IR
+applicability or constitute native ABI inputs. Navigation checks are independent
+of rax capture and native proof freshness. See
+[solver inspection contracts](docs/VMP_SOLVER_EVIDENCE_VIEW.md).
+
+The **VM candidates** tab inspects a separate bounded native read/decode/dispatch
+model. It recognizes role permutations, forward/backward reads and table/relative
+dispatch scaffolds. Exact recomputation guards navigation; candidates add no
+proof edge and do not widen the current-function execution boundary. See
+[VM candidate contracts](docs/VMP_VM_REGIONS.md).
+
+Opening or reloading that workspace also requests local-effect summaries.
+Their references are distinct from syntax groups and require an actual
+equivalence query. The GUI checks both candidate and reference source records;
+polling reruns recognition only. These summaries admit no VM execution region
+or whole-handler rewrite. See [local effect contracts](docs/VMP_VM_SEMANTICS.md).
 
 Evidence strength is unchanged by the interface: `chernobog_rax_summary()`
 reports `available` only for the function the session currently owns, and

@@ -23,6 +23,7 @@
 #include "rules/rule_registry.h"
 #include "../hybrid/session.hpp"
 #include "../hybrid/z3_bridge.hpp"
+#include "../hybrid/solver_inspection.hpp"
 
 // Forward declaration
 static int run_deobfuscation_passes(
@@ -125,6 +126,7 @@ void chernobog_begin_mba_tracking(mbl_array_t *mba)
             ++it;
     }
     state->mba_generations[mba] = ++state->next_mba_generation;
+    chernobog::hybrid::solver_inspection_begin(uint64_t(mba->entry_ea));
 }
 
 bool chernobog_function_requires_deobfuscation(ea_t func_ea)
@@ -218,6 +220,8 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
 
     mbl_array_t *mba = blk->mba;
     ea_t func_ea = mba->entry_ea;
+    chernobog::solver_evidence::Scope query_scope({int64_t(get_dbctx_id()),
+        uint64_t(func_ea), UINT64_MAX, int(mba->maturity), "optblock"});
     // maturity already declared above
 
     if ( maturity != MMAT_LOCOPT && maturity != MMAT_CALLS &&
@@ -453,6 +457,9 @@ int idaapi chernobog_t::func(mblock_t *blk, minsn_t *ins, int optflags)
     {
         return 0;
     }
+
+    chernobog::solver_evidence::Scope query_scope({int64_t(get_dbctx_id()),
+        uint64_t(blk->mba->entry_ea), uint64_t(ins->ea), int(blk->mba->maturity), "optinsn"});
 
     // Debug: log ldx instructions (opcode 14)
     if ( ins->opcode == m_ldx )

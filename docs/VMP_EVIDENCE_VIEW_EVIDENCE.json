@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "checkpoint": "bounded-linked-evidence-inspection",
+  "requirement": "5",
+  "status": "in-progress",
+  "git_head": "17a920a6fc4af2d6c158268eac2270936693b7a0",
+  "source_sha256": {
+    "CMakeLists.txt": "edf142cfc4c9432885bd2c64665e6a5babe43c38a47ebb1cb144722f15c4bdac",
+    "src/hybrid/evidence_view.hpp": "c83b900bff5c4d6b58d98a17f4d149ec905625ed3ddd82cb3b4eb7ed3e8e4edf",
+    "src/hybrid/evidence.hpp": "33ab1f2ff8dffc8daf7341d62a8a5d7b6b551d74eb7fc76a2a9c856d3d2841d5",
+    "src/hybrid/evidence.cpp": "05a77d12fed0a6c53f60bd5b028e99c1a2ed3c4ac45e90f31a638912dffab66f",
+    "src/hybrid/z3_bridge.hpp": "c65664710e70cfe474df2847a0694dd0b2d220c00659eba8a520dd122790cadb",
+    "src/hybrid/z3_bridge.cpp": "3b0ff31584549509fd59bd0a8ee9cd8d4f2a49eade8a5b3ce26d2c7872e0190a",
+    "src/hybrid/emu_driver.hpp": "0ba665a9257d92512af648aae6c62e630491d0ceed5a56a3437b691008cbeb76",
+    "src/hybrid/emu_driver.cpp": "18110be6390646b9e51b7a3db7e6d1c2633eaee898f8ec18bb9313204cb77f06",
+    "src/hybrid/session.cpp": "6b535ce77617adc84d55d45885a29e0afa37edf4aa7b708b566cf56540bbb666",
+    "src/plugin/idc_api.cpp": "a6f97044e846a018893856273768a6ce7eadbd4bbdc42ef295ba8280595a35e7",
+    "python/chernobog_evidence.py": "40a44397cfb20c337211b1e3e3d9589d87db48013ae34360fc4618190057d09c",
+    "tests/evidence_tests.cpp": "4fd898a42d6a31dc85ddbdf3bc696fa021c503fa9b6e724058e110ec68faae85",
+    "tests/ida_evidence_view_probe.py": "db0b9bccf960f38a62efa11e6d76967ff78e8fc266155df8be01b5f8ef5e7102",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151",
+    "docs/VMP_EVIDENCE_VIEW.md": "51358ce89ab3fb068a820e9854cb9cf6ad281bb2a62c4db3b6b2c24835422593",
+    "docs/VMP_IMPLEMENTATION.md": "ec42c4fcbceaad400956704aaab5ae303a4624af1ead6f6a134c706fd89475a7",
+    "RAX_HYBRID.md": "2c78d28ef3715a10e9321de2d232015674f67183538d814882f05c0f636477c9"
+  },
+  "artifact_sha256": {
+    "build/evidence-view-complete-validation.log": "1e088e7aca913ca03dadfe223b458c2528b8fa17d47cd27293931daf111654ad",
+    "build/evidence-view-companion-install.log": "8c6acfc095864976e35cbad4937fad460b0d991e4bb9371ac6de35964f30bd01",
+    "build/vmp-evidence-view-release-gui/run.json": "aabaa8d000531165265011a69b2123062ac3fa346f942d4f4e7242bde8a7a6f8",
+    "build/vmp-evidence-view-release-gui/evidence_view.json": "9e3ff5c863d80e4609eb4e96d1e3a0f184babf7ca42b0a08ae3e2e681bb9eff2",
+    "build/vmp-evidence-view-release-gui/evidence_snapshot.json": "4beea341e64569f08e6b7052b0180b60983de069c827df961bcda779eb1a3fc8",
+    "build/vmp-evidence-view-release-gui/evidence_view.png": "c8f8e9016196d766355394e5bede5d7d28a56443ee5eb4b289e83c5e20a7cb0d",
+    "build/vmp-evidence-view-release-terminal/run.json": "812e38e588efe7d0cccfc05ed442c276db0d81e6971902fc84cc4de15ac6e659",
+    "build/vmp-evidence-view-release-terminal/evidence_view.json": "0955af3e09203f8b17c1f01f27ed31e8366172bb9b5058366f084ae8cc4c5c65",
+    "build/vmp-evidence-view-release-terminal/evidence_snapshot.json": "4beea341e64569f08e6b7052b0180b60983de069c827df961bcda779eb1a3fc8"
+  },
+  "external_sha256": {
+    "ida/python/ida_kernwin.py": "232662b1def3fed57b4c5f377f4c4dbbbb4af54dd16c78ae58f0e5a331a32c86"
+  },
+  "installed_companion_matches_source": true,
+  "installed_companion_sha256": "40a44397cfb20c337211b1e3e3d9589d87db48013ae34360fc4618190057d09c",
+  "ctest": {
+    "passed": 13,
+    "failed": 0,
+    "reported_elapsed_s": 9.71,
+    "log": "build/evidence-view-complete-validation.log"
+  },
+  "runs": {
+    "gui": {
+      "checks": 31,
+      "passed": 31,
+      "errors": [],
+      "report": "build/vmp-evidence-view-release-gui/run.json",
+      "runner_return_code": 0,
+      "process_elapsed_ns": 4039268250,
+      "plugin_sha256": "1b65c6d10f14ddfac143b1fc9859f092e784d4dff290e6e60d4829a6a5f8f110",
+      "input_sha256": "507889b18d3dba93ad87ce0bf149bec0802a94a427b522371bc6869927777644",
+      "script_sha256": "db0b9bccf960f38a62efa11e6d76967ff78e8fc266155df8be01b5f8ef5e7102",
+      "ida_sha256": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b",
+      "artifacts_unchanged": true,
+      "internal_error_found": false
+    },
+    "terminal": {
+      "checks": 17,
+      "passed": 17,
+      "errors": [],
+      "report": "build/vmp-evidence-view-release-terminal/run.json",
+      "runner_return_code": 0,
+      "process_elapsed_ns": 2745747958,
+      "plugin_sha256": "1b65c6d10f14ddfac143b1fc9859f092e784d4dff290e6e60d4829a6a5f8f110",
+      "input_sha256": "507889b18d3dba93ad87ce0bf149bec0802a94a427b522371bc6869927777644",
+      "script_sha256": "db0b9bccf960f38a62efa11e6d76967ff78e8fc266155df8be01b5f8ef5e7102",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "artifacts_unchanged": true,
+      "internal_error_found": false
+    }
+  },
+  "scope_limits": [
+    "No native statically proven-edge or SMT-model import",
+    "Instruction-address layout, not a basic-block CFG recovery claim",
+    "Branch counterexample and boundary projection controls are portable synthetic tests; temporal native fixture has no conditional branches",
+    "Provided protected hello-world coverage unknown",
+    "Publication revision scoped to loaded C++ plugin instance",
+    "Full unload/reload, save/reopen, rebase, undo and multi-database UI matrix unverified",
+    "Maximum-size capture latency and peak memory unmeasured",
+    "IDA companion autoload packaging not separately exercised; action registration and dispatch are exercised"
+  ],
+  "visual_review": {
+    "artifact": "build/vmp-evidence-view-release-gui/evidence_view.png",
+    "result": "Readable controls, event table, source nodes and scope detail; graph pans beyond viewport",
+    "surface": "feature form only"
+  },
+  "privacy": {
+    "paths": "repository-relative or logical artifact names; no personal filesystem prefixes"
+  }
+}

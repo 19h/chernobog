@@ -1070,7 +1070,8 @@ symbolic_executor_t::query_feasibility(const z3::expr* extra_condition) {
             m_ctx.solver().add(condition);
         if ( extra_condition != nullptr )
             m_ctx.solver().add(*extra_condition);
-        const z3::check_result result = m_ctx.solver().check();
+        const z3::check_result result = chernobog::solver_evidence::check(m_ctx.solver(),
+            extra_condition ? "path plus temporary condition" : "path feasibility");
         if ( result == z3::sat ) {
             // A model satisfying the path plus an extra condition also
             // satisfies the path alone. Keep it as a candidate witness;
@@ -1840,6 +1841,7 @@ opaque_predicate_solver_t::opaque_predicate_solver_t(z3_context_t& ctx)
 
 opaque_predicate_solver_t::predicate_result_t
 opaque_predicate_solver_t::analyze_condition(const minsn_t* cond) {
+    chernobog::solver_evidence::SiteScope query_site(cond ? uint64_t(cond->ea) : UINT64_MAX);
     if (!cond)
         return PRED_UNKNOWN;
 
@@ -1856,19 +1858,20 @@ opaque_predicate_solver_t::analyze_condition(const minsn_t* cond) {
         // Check if condition is always true (negation is unsatisfiable)
         m_ctx.solver().reset();
         m_ctx.solver().add(!condition);
-        if (m_ctx.solver().check() == z3::unsat) {
+        const auto negated = chernobog::solver_evidence::check(m_ctx.solver(), "predicate negation feasibility");
+        if (negated == z3::unsat) {
             return PRED_ALWAYS_TRUE;
         }
 
         // Check if condition is always false (condition itself is unsatisfiable)
         m_ctx.solver().reset();
         m_ctx.solver().add(condition);
-        if (m_ctx.solver().check() == z3::unsat) {
+        const auto positive = chernobog::solver_evidence::check(m_ctx.solver(), "predicate feasibility");
+        if (positive == z3::unsat) {
             return PRED_ALWAYS_FALSE;
         }
 
-        // Both are satisfiable - condition depends on input
-        return PRED_DEPENDS_ON_INPUT;
+        return negated == z3::sat && positive == z3::sat ? PRED_DEPENDS_ON_INPUT : PRED_UNKNOWN;
 
     } catch (z3::exception& e) {
         deobf::log_verbose("[z3] Exception in analyze_condition: %s\n", e.msg());
@@ -1951,6 +1954,7 @@ std::optional<bool> predicate_simplifier_t::check_comparison_constant(
 }
 
 int predicate_simplifier_t::simplify_jcc(const minsn_t* jcc) {
+    chernobog::solver_evidence::SiteScope query_site(jcc ? uint64_t(jcc->ea) : UINT64_MAX);
     if (!jcc || !is_mcode_jcond(jcc->opcode))
         return -1;
 
@@ -1960,14 +1964,14 @@ int predicate_simplifier_t::simplify_jcc(const minsn_t* jcc) {
         // Check if always true
         m_ctx.solver().reset();
         m_ctx.solver().add(!cond);
-        if (m_ctx.solver().check() == z3::unsat) {
+        if (chernobog::solver_evidence::check(m_ctx.solver(), "Jcc negation feasibility") == z3::unsat) {
             return 1;  // Always taken
         }
 
         // Check if always false
         m_ctx.solver().reset();
         m_ctx.solver().add(cond);
-        if (m_ctx.solver().check() == z3::unsat) {
+        if (chernobog::solver_evidence::check(m_ctx.solver(), "Jcc feasibility") == z3::unsat) {
             return 0;  // Never taken
         }
 

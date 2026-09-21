@@ -1715,7 +1715,7 @@ static bool z3_eval_uint64(z3_solver::z3_context_t &ctx,
 {
     ctx.solver().reset();
     ctx.solver().add(var == ctx.ctx().bv_val(value, var.get_sort().bv_size()));
-    if ( ctx.solver().check() != z3::sat )
+    if ( chernobog::solver_evidence::check(ctx.solver(), "VM-MBA expression sample") != z3::sat )
         return false;
     z3::expr val = ctx.solver().get_model().eval(expr, true);
     if ( !val.is_numeral() )
@@ -1788,7 +1788,7 @@ int vm_mba_handler_t::simplify_hikari_pair_mba(minsn_t *ins)
             zctx.solver().reset();
             zctx.solver().add(zx == zero);
             zctx.solver().add(zy == zero);
-            if ( zctx.solver().check() != z3::sat )
+            if ( chernobog::solver_evidence::check(zctx.solver(), "VM-MBA candidate sample") != z3::sat )
                 return false;
             z3::expr val = zctx.solver().get_model().eval(candidate, true);
             return Z3_get_numeral_uint64(zctx.ctx(), val, out);

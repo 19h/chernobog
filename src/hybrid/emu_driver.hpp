@@ -210,6 +210,12 @@ struct EmuOutcome
   // count is interpretable only when available is true.
   bool     memory_observation_requested = false;
   bool     memory_observation_available = false;
+  // Complete ordered data-event prefix for directly executed instructions.
+  // Distinct from dependency completeness. Values wider than 8 bytes remain
+  // partial, and this does not assert execution beyond a function-boundary stop.
+  bool     data_trace_complete = false;
+  bool     data_trace_truncated = false;
+  bool     data_trace_filtered = false;
   // True only when code and image-data dependencies were observed without a
   // backend-capability gap or trace truncation. Universal-claim vetoes require
   // this; ordinary exploratory observations do not.
@@ -228,9 +234,41 @@ struct EmuOutcome
   bool conclusive() const { return returned || definitive_terminal(); }
 };
 
-const char *hybrid_rax_stop_reason_name(int reason);
+inline const char *hybrid_rax_stop_reason_name(int reason)
+{
+  switch ( reason )
+  {
+    case RAX_STOP_NONE: return "none";
+    case RAX_STOP_COUNT: return "instruction-budget";
+    case RAX_STOP_UNTIL: return "return-sentinel";
+    case RAX_STOP_TIMEOUT: return "timeout";
+    case RAX_STOP_STOPPED: return "host-stop";
+    case RAX_STOP_HLT: return "halt";
+    case RAX_STOP_IO_IN: return "io-read";
+    case RAX_STOP_IO_OUT: return "io-write";
+    case RAX_STOP_MMIO_READ: return "mmio-read";
+    case RAX_STOP_MMIO_WRITE: return "mmio-write";
+    case RAX_STOP_EXCEPTION: return "exception";
+    case RAX_STOP_INTERRUPT: return "interrupt";
+    case RAX_STOP_SHUTDOWN: return "shutdown";
+    case RAX_STOP_DEBUG: return "debug";
+    case RAX_STOP_ERROR: return "engine-error";
+    default: return "unknown";
+  }
+}
 const char *hybrid_rax_status_name(int status);
-const char *hybrid_emu_outcome_name(const EmuOutcome &outcome);
+inline const char *hybrid_emu_outcome_name(const EmuOutcome &outcome)
+{
+  if ( outcome.returned ) return "returned";
+  if ( outcome.cancelled ) return "cancelled";
+  if ( outcome.unmodeled_external ) return "unmodeled-external";
+  if ( outcome.environment_model_failure ) return "environment-model-failure";
+  if ( outcome.function_boundary ) return "function-boundary";
+  if ( outcome.escaped_image ) return "escaped-image-or-exception";
+  if ( outcome.permission_violation ) return "permission-violation";
+  if ( outcome.terminated_process ) return "modeled-process-termination";
+  return hybrid_rax_stop_reason_name(outcome.stop_reason);
+}
 
 class EmuDriver
 {

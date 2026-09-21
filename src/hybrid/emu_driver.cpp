@@ -158,6 +158,7 @@ struct HookCtx
   bool       permission_violation = false;
   bool       cancellation_requested = false;
   bool       execution_truncated = false;
+  bool       data_truncated = false, data_filtered = false;
   bool       dependency_truncated = false;
   bool       terminated_process = false;
   bool       escaped_image = false;
@@ -364,7 +365,7 @@ void record_summary_access(HookCtx *c, int kind, uint64_t address,
   bool recordable = false;
   const DataScope scope = access_scope(c, address, size, &recordable);
   if ( !recordable || !hook_in_function(c, c->summary_source) )
-    return;
+  { c->data_filtered = true; return; }
   if ( kind == RAX_MEM_READ && scope == DataScope::IMAGE )
   {
     if ( c->out->consumed_image_reads.size() >= c->dependency_cap )
@@ -374,7 +375,7 @@ void record_summary_access(HookCtx *c, int kind, uint64_t address,
           address, size, c->run_id, c->seed });
   }
   if ( c->out->data.size() >= c->data_cap )
-    return;
+  { c->data_truncated = true; return; }
   DataAcc a;
   a.from = c->summary_source;
   a.addr = address;
@@ -1071,6 +1072,11 @@ void mem_tr(rax_engine *engine, int kind, uint64_t addr, uint32_t size,
   // trust accesses whose source is inside the function being emulated.
   bool recordable = false;
   const DataScope scope = access_scope(c, addr, size, &recordable);
+  if (!recordable || !hook_in_function(c, c->last_pc)
+      || (kind != RAX_MEM_READ && kind != RAX_MEM_WRITE) || size == 0)
+    c->data_filtered = true;
+  if (recordable && hook_in_function(c, c->last_pc) && c->out->data.size() >= c->data_cap)
+    c->data_truncated = true;
   if ( kind == RAX_MEM_READ && hook_in_function(c, c->last_pc)
     && c->temporal.enabled )
   {
@@ -1187,29 +1193,6 @@ bool arch_params(HybridArch a, bool big_endian, HybridEntryMode entry_mode,
 
 } // namespace
 
-const char *hybrid_rax_stop_reason_name(int reason)
-{
-  switch ( reason )
-  {
-    case RAX_STOP_NONE: return "none";
-    case RAX_STOP_COUNT: return "instruction-budget";
-    case RAX_STOP_UNTIL: return "return-sentinel";
-    case RAX_STOP_TIMEOUT: return "timeout";
-    case RAX_STOP_STOPPED: return "host-stop";
-    case RAX_STOP_HLT: return "halt";
-    case RAX_STOP_IO_IN: return "io-read";
-    case RAX_STOP_IO_OUT: return "io-write";
-    case RAX_STOP_MMIO_READ: return "mmio-read";
-    case RAX_STOP_MMIO_WRITE: return "mmio-write";
-    case RAX_STOP_EXCEPTION: return "exception";
-    case RAX_STOP_INTERRUPT: return "interrupt";
-    case RAX_STOP_SHUTDOWN: return "shutdown";
-    case RAX_STOP_DEBUG: return "debug";
-    case RAX_STOP_ERROR: return "engine-error";
-    default: return "unknown";
-  }
-}
-
 const char *hybrid_rax_status_name(int status)
 {
   switch ( status )
@@ -1234,19 +1217,6 @@ const char *hybrid_rax_status_name(int status)
     case RAX_ERR_INTERNAL: return "internal-error";
     default: return "unknown";
   }
-}
-
-const char *hybrid_emu_outcome_name(const EmuOutcome &outcome)
-{
-  if ( outcome.returned ) return "returned";
-  if ( outcome.cancelled ) return "cancelled";
-  if ( outcome.unmodeled_external ) return "unmodeled-external";
-  if ( outcome.environment_model_failure ) return "environment-model-failure";
-  if ( outcome.function_boundary ) return "function-boundary";
-  if ( outcome.escaped_image ) return "escaped-image-or-exception";
-  if ( outcome.permission_violation ) return "permission-violation";
-  if ( outcome.terminated_process ) return "modeled-process-termination";
-  return hybrid_rax_stop_reason_name(outcome.stop_reason);
 }
 
 void EmuEvents::merge_from(const EmuEvents &other)
@@ -2073,6 +2043,14 @@ bool EmuDriver::emulate_from(uint64_t entry, uint64_t func_end, const HybridConf
     outcome->synthetic_entry_context = synthetic_entry_context;
     outcome->memory_observation_requested = ctx.record_memory;
     outcome->memory_observation_available = ctx.record_memory && mem_ok;
+    outcome->data_trace_truncated = ctx.data_truncated;
+    outcome->data_trace_filtered = ctx.data_filtered;
+    outcome->data_trace_complete = ctx.record_memory && mem_ok && code_ok
+        && outcome->stop_valid && stop_preserves_observed_context(outcome->stop_reason)
+        && !ctx.data_truncated && !ctx.data_filtered && !ctx.execution_truncated
+        && !ctx.permission_violation && !ctx.cancellation_requested && !ctx.escaped_image
+        && !ctx.unmodeled_external && !ctx.environment_model_failure
+        && ctx.summarized_calls == 0 && !synthetic_entry_context;
     outcome->consumed_context_complete = ctx.record_memory && mem_ok
                                        && outcome->stop_valid
                                        && stop_preserves_observed_context(

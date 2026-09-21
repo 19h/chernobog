@@ -32,11 +32,14 @@
 #include "../deobf/rules/rule_registry.h"
 #include "../deobf/rules/rule_verifier.h"
 #include "../hybrid/evidence.hpp"
+#include "../hybrid/evidence_view.hpp"
 #include "../hybrid/hybrid_config.hpp"
 #include "../hybrid/program_model.hpp"
 #include "../hybrid/rax_loader.hpp"
 #include "../hybrid/session.hpp"
 #include "../hybrid/z3_bridge.hpp"
+#include "../hybrid/solver_inspection.hpp"
+#include "../vm/ida_regions.hpp"
 #include "../ida_analysis/early_hexrays.hpp"
 #include "../ida_analysis/native_engine.hpp"
 
@@ -1159,6 +1162,111 @@ error_t idaapi idc_rax_show(idc_value_t *, idc_value_t *r)
     return eOk;
 }
 
+error_t idaapi idc_evidence_view(idc_value_t *argv, idc_value_t *r)
+{
+    const ea_t function_ea = resolve_function(argv[0]);
+    hybrid::Session *session = current_session();
+    const auto source = session ? session->evidence() : nullptr;
+    if ( !source || function_ea == BADADDR || source->scope.function_start != uint64_t(function_ea) )
+    {
+        r->set_string("{\"schema\":1,\"available\":false,\"fresh\":false}");
+        return eOk;
+    }
+    const auto view = hybrid::project_evidence_view(*source);
+    const auto revision = hybrid::hybrid_evidence_snapshot_revision(source);
+    const auto json = hybrid::evidence_view_json(*source, view,
+        revision != 0 && hybrid::hybrid_evidence_snapshot_is_fresh(source), int64_t(get_dbctx_id()), revision);
+    r->set_string(json.c_str());
+    return eOk;
+}
+
+error_t idaapi idc_solver_evidence(idc_value_t *argv, idc_value_t *r)
+{
+    const auto json = hybrid::solver_inspection_json(uint64_t(resolve_function(argv[0])));
+    r->set_string(json.c_str());
+    return eOk;
+}
+
+error_t idaapi idc_vm_regions(idc_value_t *argv, idc_value_t *r)
+{
+    const auto json = vm::inspect_regions(uint64_t(resolve_function(argv[0])));
+    r->set_string(json.c_str());
+    return eOk;
+}
+
+error_t idaapi idc_vm_summaries(idc_value_t *argv, idc_value_t *r)
+{
+    const auto json = vm::inspect_regions(uint64_t(resolve_function(argv[0])), true);
+    r->set_string(json.c_str());
+    return eOk;
+}
+
+error_t idc_vm_observations(idc_value_t *argv, idc_value_t *r, bool validate)
+{
+    const auto function = uint64_t(resolve_function(argv[0]));
+    hybrid::Session *session = current_session();
+    const auto source = session ? session->evidence() : nullptr;
+    if (!source || source->scope.function_start != function)
+    {
+        r->set_string("{\"schema\":1,\"available\":false,\"states_available\":false,\"states\":[],\"states_reason\":\"no capture for selected function\"}");
+        return eOk;
+    }
+    const auto revision = hybrid::hybrid_evidence_snapshot_revision(source);
+    const auto json = vm::inspect_regions(function, false, source.get(), revision,
+        revision != 0 && hybrid::hybrid_evidence_snapshot_is_fresh(source), validate);
+    r->set_string(json.c_str());
+    return eOk;
+}
+
+error_t idaapi idc_vm_states(idc_value_t *argv, idc_value_t *r)
+{ return idc_vm_observations(argv, r, false); }
+
+error_t idaapi idc_vm_transitions(idc_value_t *argv, idc_value_t *r)
+{ return idc_vm_observations(argv, r, true); }
+
+error_t idaapi idc_solver_state(idc_value_t *argv, idc_value_t *r)
+{
+    const auto json = hybrid::solver_inspection_json(uint64_t(resolve_function(argv[0])), true);
+    r->set_string(json.c_str());
+    return eOk;
+}
+
+error_t idaapi idc_native_evidence(idc_value_t *argv, idc_value_t *r)
+{
+    const ea_t function = resolve_function(argv[0]);
+    Host *host = current_host();
+    const auto *engine = host ? host->native_analysis_engine() : nullptr;
+    const auto view = engine && function != BADADDR
+        ? engine->inspect(uint64_t(function)) : ida_analysis::NativeInspection{};
+    std::ostringstream out;
+    out << "{\"schema\":1,\"available\":" << (view.available ? "true" : "false")
+        << ",\"database\":" << inspection_json_quote(std::to_string(view.database))
+        << ",\"function\":" << inspection_json_quote(hybrid::view_hex(view.function))
+        << ",\"omitted\":" << view.omitted;
+    inspection_json_rows(out, "records", view.records);
+    out << '}';
+    r->set_string(out.str().c_str());
+    return eOk;
+}
+
+error_t idaapi idc_evidence_state(idc_value_t *argv, idc_value_t *r)
+{
+    const ea_t function_ea = resolve_function(argv[0]);
+    hybrid::Session *session = current_session();
+    const auto source = session ? session->evidence() : nullptr;
+    const bool available = source && function_ea != BADADDR
+        && source->scope.function_start == uint64_t(function_ea);
+    const auto revision = available ? hybrid::hybrid_evidence_snapshot_revision(source) : 0;
+    std::ostringstream out;
+    out << "{\"database\":\"" << int64_t(get_dbctx_id()) << "\",\"available\":"
+        << (available ? "true" : "false") << ",\"fresh\":"
+        << (available && revision != 0 && hybrid::hybrid_evidence_snapshot_is_fresh(source) ? "true" : "false")
+        << ",\"revision\":\"" << hybrid::view_hex(revision) << "\""
+        << ",\"generation\":\"" << hybrid::view_hex(available ? source->scope.generation : 0) << "\"}";
+    r->set_string(out.str().c_str());
+    return eOk;
+}
+
 //--------------------------------------------------------------------------
 // chernobog_rax_cancel() -> long
 //--------------------------------------------------------------------------
@@ -1638,6 +1746,33 @@ const idc_entry_t idc_entries[] = {
     { "chernobog_rax_show", idc_rax_show, args_none,
       "chernobog_rax_show()",
       "Print the last evidence report" },
+    { "chernobog_evidence_view", idc_evidence_view, args_ea,
+      "chernobog_evidence_view(ea)",
+      "Bounded JSON inspection snapshot, retaining explicitly stale observations" },
+    { "chernobog_evidence_state", idc_evidence_state, args_ea,
+      "chernobog_evidence_state(ea)",
+      "Inspection identity and exact freshness without rebuilding the view" },
+    { "chernobog_native_evidence", idc_native_evidence, args_ea,
+      "chernobog_native_evidence(ea)",
+      "Read-only native conclusions with current dependency and recognizer checks" },
+    { "chernobog_solver_evidence", idc_solver_evidence, args_ea,
+      "chernobog_solver_evidence(ea)",
+      "Actual bounded SMT queries/models; current IR applicability is not inferred" },
+    { "chernobog_vm_regions", idc_vm_regions, args_ea,
+      "chernobog_vm_regions(ea)",
+      "Read-only local VM-region candidates; does not admit execution or semantic reuse" },
+    { "chernobog_vm_summaries", idc_vm_summaries, args_ea,
+      "chernobog_vm_summaries(ea)",
+      "Explicit bounded normal-completion effect summaries; reuse requires UNSAT" },
+    { "chernobog_vm_states", idc_vm_states, args_ea,
+      "chernobog_vm_states(ea)",
+      "Fresh captured VM-role observations; partial states remain distinct, no execution admission" },
+    { "chernobog_vm_transitions", idc_vm_transitions, args_ea,
+      "chernobog_vm_transitions(ea)",
+      "Explicit bounded local-model checks against complete captured transitions" },
+    { "chernobog_solver_state", idc_solver_state, args_ea,
+      "chernobog_solver_state(ea)",
+      "Query identity and source-navigation state without formula/model copying" },
     { "chernobog_rax_cancel", idc_rax_cancel, args_none,
       "chernobog_rax_cancel()",
       "Stop queued runs at the next instruction boundary" },
@@ -1747,7 +1882,11 @@ bool install(Host *host)
     // report failure and keep whatever did register for diagnosis.
     if ( registered_functions != qnumber(idc_entries) )
         return false;
+    const auto previous = hosts().find(host->database_context());
+    if (previous == hosts().end() || previous->second != host)
+        hybrid::solver_inspection_remove(host->database_context());
     hosts()[host->database_context()] = host;
+    hybrid::solver_inspection_install(host->database_context());
     return true;
 }
 
@@ -1759,7 +1898,10 @@ void uninstall(Host *host)
     // A database context can be reused after close/open; only remove the
     // binding when it still points at this host.
     if ( found != hosts().end() && found->second == host )
+    {
+        hybrid::solver_inspection_remove(host->database_context());
         hosts().erase(found);
+    }
     if ( hosts().empty() )
         unregister_functions();
 }

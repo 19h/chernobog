@@ -1,6 +1,7 @@
 #pragma once
 
 #include <z3++.h>
+#include "solver_evidence.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -30,7 +31,8 @@ inline bool prove_bv_equivalent(const z3::expr &left,
             proof.set(parameters);
         }
         proof.add(left != right);
-        return proof.check() == z3::unsat;
+        const std::string parameters = "timeout_ms=" + std::to_string(timeout_ms);
+        return solver_evidence::check(proof, "bitvector-equivalence mismatch", parameters.c_str()) == z3::unsat;
     }
     catch ( ... )
     {
@@ -48,7 +50,7 @@ inline std::optional<uint64_t> solve_unique_bv(z3::solver &solver,
     if ( !expr.is_bv() || expr.get_sort().bv_size() > 64U )
         return std::nullopt;
 
-    if ( solver.check() != z3::sat )
+    if ( solver_evidence::check(solver, "unique-value candidate existence") != z3::sat )
         return std::nullopt;
 
     const z3::expr value = solver.get_model().eval(expr, true);
@@ -62,7 +64,7 @@ inline std::optional<uint64_t> solve_unique_bv(z3::solver &solver,
     solver.push();
     solver.add(expr != expr.ctx().bv_val(concrete,
                                          expr.get_sort().bv_size()));
-    const z3::check_result alternative = solver.check();
+    const z3::check_result alternative = solver_evidence::check(solver, "unique-value alternative exclusion");
     solver.pop();
 
     return alternative == z3::unsat

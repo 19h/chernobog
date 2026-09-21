@@ -1,5 +1,6 @@
 #include "rule_verifier.h"
 #include "../../common/bitvector.h"
+#include "../../common/solver_evidence.hpp"
 #include <array>
 #include <atomic>
 #include <utility>
@@ -146,6 +147,7 @@ RuleVerificationResult RuleVerifier::verify_instance(const minsn_t *original,
 RuleVerificationResult RuleVerifier::verify_instance_impl(const minsn_t *original,
                                                           const minsn_t *replacement)
 {
+    solver_evidence::SiteScope query_site(original ? uint64_t(original->ea) : UINT64_MAX);
     if ( !original || !replacement || original->d.size != replacement->d.size )
         return {RuleVerificationStatus::UNSUPPORTED, 0, "missing tree or unequal output widths"};
     const unsigned bits = bitvector::valid_byte_width(original->d.size)
@@ -166,7 +168,9 @@ RuleVerificationResult RuleVerifier::verify_instance_impl(const minsn_t *origina
         if ( resource_limit_ != 0 ) parameters.set("rlimit", resource_limit_);
         solver_.set(parameters);
         solver_.add(!equality);
-        const auto result = solver_.check();
+        const std::string parameters_text = "timeout_ms=" + std::to_string(timeout_ms_)
+            + ";rlimit=" + std::to_string(resource_limit_);
+        const auto result = solver_evidence::check(solver_, "typed-MBA replacement mismatch", parameters_text.c_str());
         if ( result == z3::unsat )
             return {RuleVerificationStatus::VERIFIED, bits, "typed instance mismatch unsatisfiable"};
         if ( result == z3::sat )
@@ -341,7 +345,7 @@ RuleVerificationResult RuleVerifier::verify(const AstPtr& pattern,
         solver_.set(parameters);
         solver_.add(z3::mk_or(disjunction));
 
-        z3::check_result result = solver_.check();
+        z3::check_result result = solver_evidence::check(solver_, "catalog identity mismatch");
         if ( result == z3::sat )
         {
             const z3::model model = solver_.get_model();

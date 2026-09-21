@@ -1011,7 +1011,10 @@ struct hybrid_action_handler_t : public action_handler_t
         return session->explore(
             view, context_address == BADADDR
                 ? UINT64_MAX : uint64_t(context_address)) ? 1 : 0;
-      case Kind::Show: session->show_last(view); return 1;
+      case Kind::Show:
+        if (is_idaq() && process_ui_action("chernobog:evidence_view")) return 1;
+        session->show_last(view);
+        return 1;
       case Kind::Cancel: session->cancel(); return 1;
     }
     return 0;

@@ -23,6 +23,7 @@
 #include "../hybrid/z3_bridge.hpp"
 #include "../ida_analysis/early_hexrays.hpp"
 #include "../ida_analysis/native_engine.hpp"
+#include "../hybrid/solver_inspection.hpp"
 
 #include <map>
 #include <set>
@@ -639,6 +640,9 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     else if ( event == hxe_preoptimized )
     {
         mba_t *mba = va_arg(va, mba_t *);
+        chernobog::solver_evidence::Scope query_scope({int64_t(get_dbctx_id()),
+            mba ? uint64_t(mba->entry_ea) : UINT64_MAX, UINT64_MAX,
+            mba ? int(mba->maturity) : -1, "preoptimized"});
         const int changes = self->early_hexrays != nullptr
                           ? self->early_hexrays->on_preoptimized(mba) : 0;
         if ( changes > 0 )
@@ -656,6 +660,9 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     else if ( event == hxe_glbopt )
     {
         mbl_array_t *mba = va_arg(va, mbl_array_t *);
+        chernobog::solver_evidence::Scope query_scope({int64_t(get_dbctx_id()),
+            mba ? uint64_t(mba->entry_ea) : UINT64_MAX, UINT64_MAX,
+            mba ? int(mba->maturity) : -1, "global-optimization"});
         if ( mba
           && chernobog_function_deobfuscation_enabled(mba->entry_ea)
           && !is_disabled_mode_enabled() )

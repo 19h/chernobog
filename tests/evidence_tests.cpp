@@ -1,4 +1,5 @@
 #include "hybrid/evidence.hpp"
+#include "hybrid/evidence_view.hpp"
 #include "common/string_recovery.h"
 
 #include <algorithm>
@@ -575,8 +576,97 @@ void temporal_memory_regressions()
 }
 } // namespace
 
+void evidence_view_regressions()
+{
+  TargetEvidence source;
+  source.scope.function_start = 0x1000;
+  source.scope.generation = UINT64_MAX;
+  source.events.execution = {{0x1002, 1, 9, 2, 7}, {0x1001, 1, 3, 1, 8}};
+  AllocationLifetime allocation;
+  allocation.id = 1; allocation.generation = 2; allocation.address = 0x8000;
+  allocation.size = 16; allocation.site = 0x1010; allocation.allocated = 2;
+  allocation.released = 8; allocation.live = false; allocation.run_id = 1; allocation.seed = 8;
+  source.events.allocations.push_back(allocation);
+  UseSnapshot use;
+  use.allocation_id = 1; use.generation = 2; use.sequence = 5; use.site = 0x1020;
+  use.run_id = 1; use.seed = 8; use.producer = UseProducer::MODELED_ARGUMENT;
+  use.bytes.assign(80, 0xA5);
+  source.events.uses.push_back(use);
+  BranchObservation branch;
+  branch.instruction = 0x1030; branch.sequence = 6; branch.provenance.run_id = 1;
+  branch.provenance.seed = 8; branch.disposition = BranchDisposition::FALLTHROUGH;
+  branch.consumed_context_complete = true;
+  source.branches.push_back(branch);
+  auto view = project_evidence_view(source);
+  check(view.events.size() == 6 && view.events[0].at("kind") == "allocate"
+        && view.events[4].at("kind") == "release" && view.events[5].at("run") == "0x2",
+        "inspection orders within run/seed and retains branch/allocate/use/release events");
+  check(view.events[2].at("bytes_hex").size() == 128
+        && view.events[2].at("display_truncated") == "true",
+        "inspection caps byte display without claiming the snapshot itself is incomplete");
+  check(view.events[4].at("site") == "0x0" && view.events[4].at("allocation_site") == "0x1010",
+        "release order must not fabricate a freeing callsite");
+  check(view.claims.size() == 2 && view.claims[1].at("falsifies_claim") == "true",
+        "inspection exposes context-complete opposing branch observations");
+  auto json = evidence_view_json(source, view, false, 17);
+  check(json.find("\"fresh\":false") != std::string::npos
+        && json.find("0xffffffffffffffff") != std::string::npos,
+        "stale state and full 64-bit generation remain exact in JSON");
+  source.events.execution.clear();
+  for (size_t i = 0; i < 2000; ++i)
+    source.events.execution.push_back({0x1000, 1, 2000 - i, uint32_t(i % 2), 8});
+  for (size_t i = 0; i < 129; ++i)
+  {
+    source.events.edges.push_back({0x1000 + i, 0x2000 + i, 1, 8, ExecEdge::Kind::Jump, i});
+    StaticInstructionEvidence item;
+    item.address = 0x1000 + i; item.ida.valid = true;
+    item.ida.has_target = true; item.ida.target = 0x2000 + i;
+    source.static_analysis.instructions.push_back(item);
+  }
+  view = project_evidence_view(source);
+  check(view.events.size() == EvidenceView::event_limit && view.omitted.at("events") == 1109,
+        "inspection caps retained events and counts every omitted event");
+  check(view.edges.size() == EvidenceView::edge_limit
+        && view.omitted.at("encoded_edges") == 1 && view.omitted.at("observed_edges") == 1,
+        "encoded and observed edges have separate retention allowances");
+  check(view.edges.front().at("truth") == "encoding" && view.edges.back().at("truth") == "witness",
+        "observations cannot acquire a static-proof label");
+  source = TargetEvidence{};
+  RunObservation stopped;
+  stopped.ran = true;
+  stopped.outcome.function_boundary = true;
+  stopped.outcome.function_boundary_source = 0x1100;
+  stopped.outcome.function_boundary_target = 0x2100;
+  stopped.outcome.temporal_capture_truncated = true;
+  source.runs.push_back(stopped);
+  StatePoint state;
+  state.sequence = 1;
+  state.regs.resize(34);
+  source.events.states.push_back(state);
+  for (size_t i = 0; i < 129; ++i)
+  {
+    source.events.allocations.push_back(allocation);
+    source.runs.push_back(stopped);
+    branch.instruction = 0x1000 + i;
+    source.branches.push_back(branch);
+  }
+  view = project_evidence_view(source);
+  check(view.runs.size() == 128 && view.omitted.at("runs") == 2
+        && view.lifetimes.size() == 128 && view.omitted.at("lifetimes") == 1
+        && view.claims.size() == 128 && view.omitted.at("claims") == 130,
+        "run/lifetime/claim bounds report omitted records exactly");
+  check(view.runs[0].at("kind") == "function-boundary"
+        && view.runs[0].at("boundary_source") == "0x1100"
+        && view.runs[0].at("boundary_target") == "0x2100"
+        && view.runs[0].at("temporal_truncated") == "true",
+        "boundary stops and truncation survive inspection projection");
+  check(view.events[0].at("kind") == "state" && view.events[0].at("registers_omitted") == "2",
+        "register-state inspection reports its independent register cap");
+}
+
 int main(int argc, char **argv)
 {
+  evidence_view_regressions();
   regressions();
   comparison_regressions();
   temporal_memory_regressions();

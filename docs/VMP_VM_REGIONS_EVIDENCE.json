@@ -1,0 +1,200 @@
+{
+  "schema_version": 1,
+  "checkpoint": "separate-local-VM-region-candidate-model",
+  "requirements": [
+    "6a",
+    "6b"
+  ],
+  "status": "in-progress",
+  "git_head": "17a920a6fc4af2d6c158268eac2270936693b7a0",
+  "source_sha256": {
+    "CMakeLists.txt": "3ec5499040222a4290ffe782cdad3a86e1ca4ccba655d2c1da03fbf775f36e71",
+    "src/vm/region.hpp": "45cd076b1db4f542510a8d2cae4b2880f17f2756df5572e686ba91eaf3c426b0",
+    "src/vm/region.cpp": "dd5d0fb34e5d25e5030b038a2b1ab0363fbd6ea5a69b2d0608587fc5bb9d47e9",
+    "src/vm/ida_regions.hpp": "1bf14b87e359472427dc002caa7a62984e5ef2a8ec1d8c9ba932a0aa0c0ec125",
+    "src/vm/ida_regions.cpp": "1f8885133fe50f4f52f71f3fa889a5ab68f384fa6906327a60682a965e34950e",
+    "src/plugin/idc_api.cpp": "d86ff6283ab6b1482ed2f118b569790b93ca531b8b7f164f04a03d94a51168d8",
+    "python/chernobog_evidence.py": "c4d911603417957fcd542166a038712d4c7b36527b18086276750ba681d39ac3",
+    "tests/vm_region_tests.cpp": "3987860c0c51b7b4361dcb4a0ff9f7124f89ded46b591e688de11b4bebc94ba1",
+    "tests/ida_vm_regions_probe.py": "7b251f0746eac7de18fedba1a106b2423c9ceee264bfec129a49061ad1e0cc17",
+    "tests/vmp_native/vm_regions.S": "635fafb5864aaf1db68d62d801ef37053306a9d164e54d3e9693752ade19f111",
+    "tests/vmp_native/vm_regions32.S": "4cf7fb5475aff608c2815f7b616aecd6107f5365a3d45378bc6a90e1b6092b72",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151",
+    "tests/ida_solver_evidence_probe.py": "e243feb31a8983765feb59ccdd2b2912fad516a62aa289f22d2d0a0945683791",
+    "tests/ida_native_evidence_probe.py": "aaaa5ca51c01442216da728bf1fc3742f7bcfd1c6166555e9d56eae91cc6d95a",
+    "tests/ida_evidence_view_probe.py": "db0b9bccf960f38a62efa11e6d76967ff78e8fc266155df8be01b5f8ef5e7102",
+    "docs/VMP_VM_REGIONS.md": "01920a7fefedefc768639f39387aa1b63cf6eaf97e52ef16f9adae7a79b082e4",
+    "docs/VMP_IMPLEMENTATION.md": "242c4ef19930cc11ea85ada6f3080fde24e14d6cbe880403c6be6dd1b9038b7f",
+    "RAX_HYBRID.md": "8860d5d7b8d9faedad997b73fb07d39b0356ef9a9e4f1cffd278d80bbeee78d4"
+  },
+  "reference_source_sha256": {
+    "vmp/core/intel.cc": "ce0edd303f1b20d12affaf1bb4646b684a056babe724f36af24340fefe7cb17c",
+    "vmp/core/processors.cc": "a312d1e5b815cfca4da509056a65ea5f35df6d2bf5e7e358207cf8e32d7c793c"
+  },
+  "artifact_sha256": {
+    "build/vm-regions-final-build.log": "a2dbeaccc85bb31e4d7806e230127f6ecdd6ea8fa130171a42feb6740af4cf9e",
+    "build/vmp-vm-regions": "d3b2e85f338d456947e3440cc8861ae974548f58b51547ddaefb73a988095dc3",
+    "build/vmp-vm-regions32": "4bb034d4475c0460170efa4e8924563305587b0a55a4c054e6388d2b52bc75ea",
+    "build/vmp-vm-regions-final-x64-terminal/run.json": "4f1e5cbe8f8451335368be617ee8eb8b06e2a63e4178b56e2bb5988c7740510c",
+    "build/vmp-vm-regions-final-x64-terminal/vm_regions.json": "060b642bfdc012d95a3361f5d5cf8442f7d48e2ae9a366989102b9280a5f3f9b",
+    "build/vmp-vm-regions-final-x86-terminal/run.json": "8a5d3af37a78725515a7d5f743e8f9c6f4a2bd73a38a12b2533bae5c482487df",
+    "build/vmp-vm-regions-final-x86-terminal/vm_regions.json": "5db1d770ed6f863c373e96647a34240015fcea022cbb970b85854e93f4609f44",
+    "build/vmp-vm-regions-final-x64-gui/run.json": "76aa32bb65a7b8168ad00566ab12062b7157b371842b9c73e55729c2e46ce7aa",
+    "build/vmp-vm-regions-final-x64-gui/vm_regions.json": "03f3230957585bb5162b2d731013fcad1d266e1478aed322a44c6e73ea5ab76c",
+    "build/vmp-vm-regions-final-x64-gui/vm_regions.png": "5254068df39def0c652ddfcce805dacb6d90cbf39de8260ea77585135ffef229",
+    "build/vmp-vm-regions-final-solver-gui/run.json": "47cfa64af7c56916ee10462113887ab164fb636069d3d3e764cbd70a0f3f8026",
+    "build/vmp-vm-regions-final-solver-gui/solver_evidence.json": "49e95f24023b555b7c48010bea0b0baf11073f1af9d2aa943e9af2da3004e4fd",
+    "build/vmp-vm-regions-final-solver-gui/solver_evidence.png": "d3f1a4aba00559ebd74f68730bd5ba00dbffe7050cd951a3f40f4cbfcfa1515c",
+    "build/vmp-vm-regions-final-native-gui/run.json": "90c1afec62f9e6f82521fd2aa1c6ac0799099e65aa9005f21b1227f5dd9241be",
+    "build/vmp-vm-regions-final-native-gui/native_evidence.json": "04d6a3cb6f505ca329543708cf952b30e7abc319bca4ee005afb73bf03a0323b",
+    "build/vmp-vm-regions-final-native-gui/native_evidence.png": "8b14fa1e6b1e61b75a493386776ecde6ec1f843be82b5e995f65567fafa7015c",
+    "build/vmp-vm-regions-final-temporal-gui/run.json": "24166be973d9a3d9c34f0f8d384d8ae05f30a612d45bd71de11a46620a54f03d",
+    "build/vmp-vm-regions-final-temporal-gui/evidence_view.json": "9e3ff5c863d80e4609eb4e96d1e3a0f184babf7ca42b0a08ae3e2e681bb9eff2",
+    "build/vmp-vm-regions-final-temporal-gui/evidence_view.png": "751f048219bb42dd6f53a7814e9cf808f393ea6eb12da9f5f94591e3a1ff1740"
+  },
+  "installed_companion_matches_source": true,
+  "installed_companion_sha256": "c4d911603417957fcd542166a038712d4c7b36527b18086276750ba681d39ac3",
+  "ctest": {
+    "passed": 14,
+    "failed": 0,
+    "reported_elapsed_s": 8.23,
+    "log": "build/vm-regions-final-build.log",
+    "performance_claim": false
+  },
+  "portable_VM_checks": 347,
+  "runs": {
+    "x64-terminal": {
+      "report": "build/vmp-vm-regions-final-x64-terminal/run.json",
+      "checks": 41,
+      "plugin_sha256": "b03df81f8974f959b8825a6012c9b5253138f55e64ff85802a5ba8ef1bf284b5",
+      "input_sha256": "d3b2e85f338d456947e3440cc8861ae974548f58b51547ddaefb73a988095dc3",
+      "script_sha256": "7b251f0746eac7de18fedba1a106b2423c9ceee264bfec129a49061ad1e0cc17",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "enable_rax": false,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 2829745750,
+      "quota": {
+        "retained": 64,
+        "omitted": 6,
+        "scan_heads": 1024,
+        "scan_truncated": true
+      }
+    },
+    "x86-terminal": {
+      "report": "build/vmp-vm-regions-final-x86-terminal/run.json",
+      "checks": 41,
+      "plugin_sha256": "b03df81f8974f959b8825a6012c9b5253138f55e64ff85802a5ba8ef1bf284b5",
+      "input_sha256": "4bb034d4475c0460170efa4e8924563305587b0a55a4c054e6388d2b52bc75ea",
+      "script_sha256": "7b251f0746eac7de18fedba1a106b2423c9ceee264bfec129a49061ad1e0cc17",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "enable_rax": false,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 2646852584,
+      "quota": {
+        "retained": 64,
+        "omitted": 6,
+        "scan_heads": 1024,
+        "scan_truncated": true
+      }
+    },
+    "x64-gui": {
+      "report": "build/vmp-vm-regions-final-x64-gui/run.json",
+      "checks": 47,
+      "plugin_sha256": "b03df81f8974f959b8825a6012c9b5253138f55e64ff85802a5ba8ef1bf284b5",
+      "input_sha256": "d3b2e85f338d456947e3440cc8861ae974548f58b51547ddaefb73a988095dc3",
+      "script_sha256": "7b251f0746eac7de18fedba1a106b2423c9ceee264bfec129a49061ad1e0cc17",
+      "ida_sha256": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b",
+      "enable_rax": false,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 4008590334,
+      "quota": {
+        "retained": 64,
+        "omitted": 6,
+        "scan_heads": 1024,
+        "scan_truncated": true
+      }
+    },
+    "solver-gui": {
+      "report": "build/vmp-vm-regions-final-solver-gui/run.json",
+      "checks": 28,
+      "plugin_sha256": "b03df81f8974f959b8825a6012c9b5253138f55e64ff85802a5ba8ef1bf284b5",
+      "input_sha256": "bcc38a1c824817e86842f48b145a64504914e78de8b825ca8342b16f960f7576",
+      "script_sha256": "e243feb31a8983765feb59ccdd2b2912fad516a62aa289f22d2d0a0945683791",
+      "ida_sha256": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b",
+      "enable_rax": false,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 4290561542
+    },
+    "native-gui": {
+      "report": "build/vmp-vm-regions-final-native-gui/run.json",
+      "checks": 47,
+      "plugin_sha256": "b03df81f8974f959b8825a6012c9b5253138f55e64ff85802a5ba8ef1bf284b5",
+      "input_sha256": "ed640fa99e8fff94418e6ed5bd70f69175047f8c2bf4249627fec06d646c0b78",
+      "script_sha256": "aaaa5ca51c01442216da728bf1fc3742f7bcfd1c6166555e9d56eae91cc6d95a",
+      "ida_sha256": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b",
+      "enable_rax": false,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 4001769541
+    },
+    "temporal-gui": {
+      "report": "build/vmp-vm-regions-final-temporal-gui/run.json",
+      "checks": 31,
+      "plugin_sha256": "b03df81f8974f959b8825a6012c9b5253138f55e64ff85802a5ba8ef1bf284b5",
+      "input_sha256": "507889b18d3dba93ad87ce0bf149bec0802a94a427b522371bc6869927777644",
+      "script_sha256": "db0b9bccf960f38a62efa11e6d76967ff78e8fc266155df8be01b5f8ef5e7102",
+      "ida_sha256": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b",
+      "enable_rax": true,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "source_script_unchanged": true,
+      "internal_error_found": false,
+      "process_elapsed_ns": 4160458834
+    }
+  },
+  "verified_counts": {
+    "VM_production_checks": 129,
+    "existing_workspace_regression_checks": 106,
+    "candidate_limit": 64,
+    "candidates_in_quota_fixture": 70,
+    "exact_omissions": 6,
+    "instruction_scan_limit": 1024,
+    "window_limit": 128,
+    "tested_source_transform_limit": 101
+  },
+  "visual_review": {
+    "artifact": "build/vmp-vm-regions-final-x64-gui/vm_regions.png",
+    "surface": "feature form only",
+    "observation": "candidate tab, current local recognition, separate source nodes, unresolved effects and unproved summary reuse visible; no invented dispatch edge"
+  },
+  "scope_limits": [
+    "Local read/decode/dispatch candidates; not vendor identity, VM identity or whole-interpreter recognition",
+    "Independent x64 Mach-O and x86 ELF fixtures inspected, not executed",
+    "No supplied protected hello-world recovery or source-emitted fixture equivalence established",
+    "LogicalState comparison is portable tested contract; production logical-state recovery and epoch/publication integration pending",
+    "No cross-function VM execution region admission; existing execution boundaries retained",
+    "No validated full register/flag/memory/exception semantic summary or proof-based summary reuse",
+    "Normalized syntax equality supports inspection only",
+    "Unsupported prefixes, high-byte aliases, address-size overrides, alternate entries and extra effects reject",
+    "Omission counts refer only to scanned prefix; scan truncation does not imply absence beyond limit",
+    "Full database reuse/unload/rebase/undo UI lifecycle matrix and maximum-size performance incomplete",
+    "Full review objective remains incomplete"
+  ],
+  "privacy": {
+    "paths": "repository-relative or logical reference names only"
+  }
+}
