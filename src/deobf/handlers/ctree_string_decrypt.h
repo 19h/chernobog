@@ -43,6 +43,9 @@ public:
     // The AST keeps the exact CFString address; observations describe final
     // emulator bytes, not the object's value when the assignment executes.
     static int annotate_runtime_cfstring_addresses(cfunc_t *cfunc);
+    // Transient text at an exact modeled call/argument use. No literal rewrite,
+    // saved comment, or global heap-address mapping; revalidate on each print.
+    static int annotate_runtime_use_strings(cfunc_t *cfunc);
     
     // Detection - check if function likely has string obfuscation
     static bool detect(cfunc_t *cfunc);

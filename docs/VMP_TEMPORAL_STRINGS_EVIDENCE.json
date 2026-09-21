@@ -1,0 +1,292 @@
+{
+  "schema": 1,
+  "scope": "Bounded temporal memory capture, use-string consensus, current IDC API and transient modeled-call display; full VMP review remains incomplete",
+  "recorded_utc": "2026-09-21T15:07:33.166651+00:00",
+  "repository_head": "d6db598335e3a6b211dd3d0ee4b5160670f167f9",
+  "source_sha256": {
+    "src/hybrid/temporal_memory.hpp": "94fb380f74d78c018c0f3217acb1e926f339b5394ec7f0a91cb2b7a0bbfa6c46",
+    "src/hybrid/emu_driver.hpp": "288e0d3ff07255ff7b2df2130ca92651357b2f5643cf066cdb7467145c1d34d9",
+    "src/hybrid/emu_driver.cpp": "2da7c05df70f61881f062b897e5155c7aeeab8612c682b544533cb2e7e45f652",
+    "src/hybrid/evidence.hpp": "33ab1f2ff8dffc8daf7341d62a8a5d7b6b551d74eb7fc76a2a9c856d3d2841d5",
+    "src/hybrid/evidence.cpp": "05a77d12fed0a6c53f60bd5b028e99c1a2ed3c4ac45e90f31a638912dffab66f",
+    "src/hybrid/z3_bridge.hpp": "0e3aeedc44ed5bb3505002282855847be03f4a0c4a77d34e3da65f21bffd8ffe",
+    "src/hybrid/z3_bridge.cpp": "36c8bff5eaf8998aab180f45eb00cb8aaae9a9d0a08a29301d1d95608d988da8",
+    "src/plugin/idc_api.cpp": "8c1c360d04a10dcec513223ecf6fe3f237af4b94dbea3515a8be882e50b07f91",
+    "src/plugin/deobf_plugin.cpp": "f1129d1f4ea60dfd96c45fe4a085854ed26447164cf655be2f8cb3c56dccd1de",
+    "src/deobf/handlers/ctree_string_decrypt.h": "802d405ffba22af360ce3ebfbccf17dea60f4732773615822897c4e0429b876b",
+    "src/deobf/handlers/ctree_string_decrypt.cpp": "3062824d5d446404b1b640cad1f91e3d966dddbfa369f395a6adf59df14a0a9b",
+    "tests/hybrid_tests.cpp": "4efc6dc26d7e56b6619fdc7c35f94b97829bb29d0a6d035b90290043bda9cd36",
+    "tests/evidence_tests.cpp": "122ffbcc9258209278e0e170b16a234d0fd6cb9c7a8043eb68ef17938bbcc51e",
+    "tests/ida_temporal_string_smoke.py": "efd2acccfad2731d6c0a68ab5e592ec77419ff1cac69d1d85569f2c209ed23b1",
+    "tests/vmp_native/temporal_strings.S": "6f5584c7dafa7d45cb0db961a7facecba86158cf2baf4e569a2ddb3a0303c063",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151"
+  },
+  "primary_external_source_sha256": {
+    "vmp/runtime/string_manager.cc": "ea4ec11e0317a6508c2d14c4032e368259c98b1955072987171c7306718e3c4d",
+    "ida-sdk/include/hexrays.hpp": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff"
+  },
+  "artifact_sha256": {
+    "native_fixture": "507889b18d3dba93ad87ce0bf149bec0802a94a427b522371bc6869927777644",
+    "hybrid_tests": "16d380260550820c6e51e37c9db50fa809c697084a548c9b62c4baccab0847ea",
+    "evidence_tests": "5d1c2139911c8ce4c08d946aa8b9f5a14d5d87a2ea262f0184fa79a0dd891537",
+    "plugin": "2628214c8532356610e7d03a5769c2eca11113657031bacfef76ad96f0ba4260",
+    "build_and_ctest_log": "ac5f33b3be56fd30a0dcb2924147bac6be8882ab8c7b72e2f1a63f1145e588de",
+    "production_run": "815639023dc769b49f1116d80ee0115ac73cc388706d7348f8a0909a8f93be30",
+    "production_probe": "e80f4252f539b6a85441d30539ac476245e830e62bdb574b1cfc95a29f811137"
+  },
+  "ctest": {
+    "passed": 12,
+    "failed": 0,
+    "wall_seconds": 8.39,
+    "artifact": "build/temporal-final-build-test.log"
+  },
+  "native_oracle": {
+    "host_machine": "arm64",
+    "fixture_architecture": "x86_64",
+    "expected_strlen_sum": 14,
+    "return_code": 0,
+    "stdout_bytes": 0,
+    "stderr_bytes": 0
+  },
+  "production": {
+    "artifact_directory": "build/vmp-temporal-ordered-reviewed",
+    "run": {
+      "schema_version": 2,
+      "input_sha256": "507889b18d3dba93ad87ce0bf149bec0802a94a427b522371bc6869927777644",
+      "source_input_sha256": "507889b18d3dba93ad87ce0bf149bec0802a94a427b522371bc6869927777644",
+      "plugin_sha256": "2628214c8532356610e7d03a5769c2eca11113657031bacfef76ad96f0ba4260",
+      "plugin_unchanged": true,
+      "script_sha256": "efd2acccfad2731d6c0a68ab5e592ec77419ff1cac69d1d85569f2c209ed23b1",
+      "script_unchanged": true,
+      "source_script_sha256": "efd2acccfad2731d6c0a68ab5e592ec77419ff1cac69d1d85569f2c209ed23b1",
+      "source_script_unchanged": true,
+      "source_input_unchanged": true,
+      "input_copy_matches_source": true,
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "ida_sha256_after": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "ida_unchanged": true,
+      "artifacts_unchanged": true,
+      "chernobog_environment_sha256": "72e7501a68e8c2806cca377777700c3ecccd875b6a71c72b4c56e72d3fad8be6",
+      "enable_rax": true,
+      "process_elapsed_ns": 2935395250,
+      "process_return_code": 0,
+      "expected_log_found": true,
+      "internal_error_found": false,
+      "runner_return_code": 0
+    },
+    "probe": {
+      "records": [
+        {
+          "case": "completed publication",
+          "passed": true,
+          "result": 1,
+          "summary": {
+            "fresh": 1,
+            "runs": 4,
+            "returned_runs": 4,
+            "allocation_lifetimes": 8,
+            "use_snapshots": 36,
+            "temporal_observation_available_runs": 4,
+            "temporal_capture_complete_runs": 4,
+            "temporal_capture_truncated_runs": 0,
+            "environment_model_failure_runs": 0
+          }
+        },
+        {
+          "case": "two temporal candidates",
+          "passed": true,
+          "count": 2
+        },
+        {
+          "case": "modeled use provenance",
+          "passed": true,
+          "candidate": {
+            "ok": 1,
+            "value": "secret!",
+            "site": 4294968401,
+            "callee": 4294968570,
+            "occurrence": 1,
+            "argument": 0,
+            "producer": "modeled-argument",
+            "model_kind": 6,
+            "object_site": 4294968367,
+            "object_size": 16,
+            "observations": 4,
+            "eligible_runs": 4
+          }
+        },
+        {
+          "case": "modeled use provenance",
+          "passed": true,
+          "candidate": {
+            "ok": 1,
+            "value": "second!",
+            "site": 4294968471,
+            "callee": 4294968570,
+            "occurrence": 1,
+            "argument": 0,
+            "producer": "modeled-argument",
+            "model_kind": 6,
+            "object_site": 4294968437,
+            "object_size": 16,
+            "observations": 4,
+            "eligible_runs": 4
+          }
+        },
+        {
+          "case": "use-specific plaintext",
+          "passed": true,
+          "values": [
+            "secret!",
+            "second!"
+          ]
+        },
+        {
+          "case": "no final image projection",
+          "passed": true
+        },
+        {
+          "case": "invalid index",
+          "passed": true
+        },
+        {
+          "case": "transient use display",
+          "passed": true,
+          "lines": [
+            "  v1 = strlen(__s: v0); // rax-use(modeled strlen,arg=0,use=1,runs=4): \"secret!\" [alloc 0x10000042F#1, offset 0]",
+            "  v3 = strlen(__s: v2) + v1; // rax-use(modeled strlen,arg=0,use=1,runs=4): \"second!\" [alloc 0x100000475#1, offset 0]"
+          ]
+        },
+        {
+          "case": "repeat display is stable",
+          "passed": true
+        },
+        {
+          "case": "no saved or saveable use comments",
+          "passed": true
+        },
+        {
+          "case": "display preserves function bytes",
+          "passed": true
+        },
+        {
+          "case": "sealed profile lease still checks consumed key",
+          "passed": true
+        },
+        {
+          "case": "sealed profile lease restores only exact bytes",
+          "passed": true
+        },
+        {
+          "case": "later profile edit invalidates sealed display",
+          "passed": true
+        },
+        {
+          "case": "completed publication",
+          "passed": true,
+          "result": 1,
+          "summary": {
+            "fresh": 1,
+            "runs": 4,
+            "returned_runs": 4,
+            "allocation_lifetimes": 8,
+            "use_snapshots": 36,
+            "temporal_observation_available_runs": 4,
+            "temporal_capture_complete_runs": 4,
+            "temporal_capture_truncated_runs": 0,
+            "environment_model_failure_runs": 0
+          }
+        },
+        {
+          "case": "strict use API fresh before data patch",
+          "passed": true
+        },
+        {
+          "case": "consumed key patch invalidates uses",
+          "passed": true
+        },
+        {
+          "case": "stale use text removed on reprint",
+          "passed": true
+        },
+        {
+          "case": "completed publication",
+          "passed": true,
+          "result": 0,
+          "summary": {
+            "fresh": 1,
+            "runs": 4,
+            "returned_runs": 4,
+            "allocation_lifetimes": 8,
+            "use_snapshots": 36,
+            "temporal_observation_available_runs": 4,
+            "temporal_capture_complete_runs": 4,
+            "temporal_capture_truncated_runs": 0,
+            "environment_model_failure_runs": 0
+          }
+        },
+        {
+          "case": "restored key revalidates exact evidence",
+          "passed": true
+        },
+        {
+          "case": "restored exact evidence displays again",
+          "passed": true
+        },
+        {
+          "case": "function patch invalidates uses",
+          "passed": true
+        }
+      ],
+      "errors": []
+    }
+  },
+  "retained_intermediate_runs": [
+    {
+      "artifact_directory": "build/vmp-temporal-reviewed",
+      "run_sha256": "05b412208d74939bd2a0817b76538e94eddefcafb206a9fb9ef71a368a128cd9",
+      "probe_sha256": "f6e9c575a079039409b510a2d795acaae23c3386b7fd6147f728aee4e2322937",
+      "plugin_sha256": "e1fa112efaae982698f716b03679d9b827c08d4840370237e783b8bb1808e2ac",
+      "runner_return_code": 0,
+      "checks": 11,
+      "errors": []
+    },
+    {
+      "artifact_directory": "build/vmp-temporal-display-reviewed",
+      "run_sha256": "fc159079168197cda9e1506781edb197d755a32944caf04ceda1d8a1d5405327",
+      "probe_sha256": "924fddb0bd9dde6da0c7ad3652bff6f46984c5c1b93b80c17e8b8272ee1d2f63",
+      "plugin_sha256": "6df72cefe1009785dd611eb116a87c1e51d3f673a13b037f63c9ba501e20272d",
+      "runner_return_code": 2,
+      "checks": 17,
+      "errors": [
+        "transient use display"
+      ]
+    },
+    {
+      "artifact_directory": "build/vmp-temporal-profile-reviewed",
+      "run_sha256": "53379f9f044003a16cbf2681e522b5ccef1add863ceb35637a1067a8bd5aa246",
+      "probe_sha256": "f5415c42f81d524a0bc361711e21e5cc5e4921d71fe4289f6f9d13f1d8d4b748",
+      "plugin_sha256": "fb94e8e70c51dddbf3bc65a1b73024ecb4ee1c2286b059da79d0088be0f25760",
+      "runner_return_code": 0,
+      "checks": 19,
+      "errors": []
+    },
+    {
+      "artifact_directory": "build/vmp-temporal-final-reviewed",
+      "run_sha256": "788acfc53b3793004ffb092314d10ddce821b48d6fed8cd007b15e46844aebec",
+      "probe_sha256": "e80f4252f539b6a85441d30539ac476245e830e62bdb574b1cfc95a29f811137",
+      "plugin_sha256": "13277c2a00d3cbe90342b8b6c7a9263da66b15e5d004e518d964fdc2d5a3ed85",
+      "runner_return_code": 0,
+      "checks": 22,
+      "errors": []
+    }
+  ],
+  "limitations": [
+    "Independent fixtures, not protector output",
+    "No protected hello-world execution or recovery claim",
+    "Little-endian direct read values up to eight bytes; other original read values incomplete",
+    "No native byte-loop string aggregation, indirect-call annotation, or nested native-call execution",
+    "No generic native allocator or library-model equivalence claim",
+    "Broader architecture/lifecycle/protected corpus remains incomplete"
+  ]
+}

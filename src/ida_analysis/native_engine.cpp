@@ -900,6 +900,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
   std::set<ea_t> get_pc_function_roots;
   std::set<ea_t> observed_direct_call_targets;
   std::vector<std::pair<ea_t, ea_t>> pending_cfg_edges;
+  std::set<ea_t> pending_call_returns;
   std::set<ea_t> pending_flag_fallthroughs;
   // Conclusions/dependencies are session-local. Persisted receipts authorize
   // cleanup only; every reopen recomputes proofs from the current database.
@@ -960,6 +961,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     get_pc_function_roots.clear();
     observed_direct_call_targets.clear();
     pending_cfg_edges.clear();
+    pending_call_returns.clear();
     pending_flag_fallthroughs.clear();
     statistics = NativeAnalysisStats{};
     post_metadata_scanned = false;
@@ -1404,6 +1406,13 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         instruction, size_t(config.pop_ret_depth), true);
     if ( !gadget )
       return false;
+    if ( !can_record_proof(instruction.ea) ) return false;
+    NativeProof call_proof;
+    call_proof.source = call_proof.site = instruction.ea;
+    call_proof.intended_edge = desired_code_edge_t{target, fl_JN, true};
+    for ( uint64_t address : gadget->support )
+      if ( !add_instruction_dependency(call_proof, ea_t(address)) ) return false;
+    const auto before_call = collect_code_edges(instruction.ea);
     qstring trace;
     if ( qgetenv("CHERNOBOG_IDA_GET_PC_TRACE", &trace)
       && !trace.empty() && trace[0] != '0' )
@@ -1446,12 +1455,16 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     }
     statistics.gaps_retyped += retype_gap_as_bytes(
         call_end, target, config.maximum_gap, instruction.ea);
-    add_user_stkpnt(target, -effective_address_size_compat());
+    add_user_stkpnt(target, -sval_t(gadget->width_bits / 8));
 
-    append_analysis_comment(
-        instruction.ea,
+    qstring summary;
+    summary.sprnt("%s; summary end=%a; width=%u bits; net SP delta=%lld bytes; "
+                  "%zu modeled stack accesses retained; flags %s",
         gadget->mode == classifier::get_pc_mode_t::discard_return_address
-          ? "call+discard get-PC idiom" : "call+pop get-PC idiom");
+          ? "call+discard get-PC idiom" : "call+pop get-PC idiom",
+        ea_t(gadget->summary_end), gadget->width_bits,
+        static_cast<long long>(gadget->stack_delta_bytes), gadget->stack_accesses.size(),
+        gadget->flags_preserved ? "preserved" : "effects retained");
     if ( gadget->resumed_at.has_value() )
     {
       const ea_t resumed = ea_t(*gadget->resumed_at);
@@ -1481,33 +1494,68 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 "resumed=%a appended=%d\n", owner->start_ea, resumed,
                 appended ? 1 : 0);
         }
-        if ( gadget->return_instruction != classifier::k_bad_address )
-        {
-          // Queue the newly-proven continuation immediately. IDA may remove
-          // this fallthrough while its first autoanalysis wave is still
-          // classifying the return, so retain the deferred copy below too.
-          // The deferred HS_FUNC_DONE-equivalent repair is authoritative.
-          const ea_t return_ea = ea_t(gadget->return_instruction);
-          if ( is_code(get_flags(return_ea))
-            && get_item_end(return_ea) == resumed )
-          {
-            add_user_cref(return_ea, resumed, fl_F);
-            auto_make_code(resumed);
-            plan_ea(return_ea);
-            plan_ea(resumed);
-          }
-          const auto edge = std::make_pair(return_ea, resumed);
-          if ( std::find(pending_cfg_edges.begin(), pending_cfg_edges.end(), edge)
-            == pending_cfg_edges.end() )
-          {
-            pending_cfg_edges.push_back(edge);
-          }
-        }
       }
     }
+    // Function-tail admission above can change the owner of supporting code.
+    // It does not change these bytes or their instruction-level effects.
+    for ( auto &dependency : call_proof.dependencies )
+    {
+      const func_t *owner = get_func(dependency.first);
+      dependency.owner = owner != nullptr ? owner->start_ea : BADADDR;
+    }
+    if ( !record_proof(std::move(call_proof), before_call, summary.c_str()) ) return false;
+    if ( gadget->return_instruction != classifier::k_bad_address && gadget->resumed_at )
+      install_call_return_fact(*gadget);
     if ( mark_once(1, instruction.ea) )
       ++statistics.get_pc_gadgets;
     return true;
+  }
+
+  void install_call_return_fact(const classifier::get_pc_candidate_t &gadget, bool defer = true)
+  {
+    const ea_t site = ea_t(gadget.return_instruction), target = ea_t(*gadget.resumed_at);
+    if ( !can_record_proof(site) || !target_is_proven_code_candidate(site, target) ) return;
+    NativeProof proof;
+    proof.source = proof.site = site;
+    for ( uint64_t address : gadget.support )
+      if ( !add_instruction_dependency(proof, ea_t(address)) ) return;
+    if ( !add_dependency(proof, target, 1, false) ) return;
+    if ( is_unknown(get_flags(site)) ) create_insn(site);
+    const auto before = collect_code_edges(site);
+    const cref_t type = get_item_end(site) == target ? fl_F : fl_JN;
+    proof.intended_edge = desired_code_edge_t{target, type, type != fl_F};
+    if ( !replace_generated_code_edges(site, {*proof.intended_edge}) ) return;
+    qstring comment;
+    comment.sprnt("exact call-context return target %a; CALL at %a; net SP delta=%lld bytes; "
+                  "native stack accesses retained", target, ea_t(gadget.call),
+                  static_cast<long long>(gadget.stack_delta_bytes));
+    if ( record_proof(std::move(proof), before, comment.c_str()) )
+    {
+      plan_ea(target);
+      if ( defer && type == fl_F ) pending_call_returns.insert(ea_t(gadget.call));
+    }
+  }
+
+  bool handle_push_get_pc(const insn_t &instruction)
+  {
+    if ( architecture != Architecture::X86 || !config.call_pop_get_pc
+      || instruction.itype != NN_push || !can_record_proof(instruction.ea) ) return false;
+    const auto materialization = classify_ida_push_get_pc(instruction);
+    if ( !materialization ) return false;
+    NativeProof proof;
+    proof.source = proof.site = instruction.ea;
+    for ( uint64_t address : materialization->support )
+      if ( !add_instruction_dependency(proof, ea_t(address)) ) return false;
+    const auto before = collect_code_edges(instruction.ea);
+    qstring comment;
+    comment.sprnt("stack address materialization %a; width=%u bits; net SP delta=%lld bytes; "
+                  "flags preserved; %s", ea_t(materialization->address_value),
+                  materialization->width_bits,
+                  static_cast<long long>(materialization->stack_delta_bytes),
+                  materialization->restored_register.valid()
+                    ? "saved register restored; both stack writes and locked XCHG retained"
+                    : "stack write retained");
+    return record_proof(std::move(proof), before, comment.c_str());
   }
 
   bool handle_push_return(const insn_t &instruction)
@@ -1845,7 +1893,9 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     // Additive mutations must not claim ev_emu_insn: returning 1 suppresses
     // the processor module's normal emulation. Only handlers that installed a
     // complete exclusive edge set own the event.
-    (void)handle_push_return(instruction);
+    // A PUSH-next/RET pair has a control-transfer fact at RET. Do not replace
+    // its ownership record with the less specific address-materialization fact.
+    if ( !handle_push_return(instruction) ) (void)handle_push_get_pc(instruction);
     const bool zero_register = handle_zero_register(instruction);
     (void)handle_opposite_pair(instruction, revisiting);
     (void)handle_entry_predicate(instruction);
@@ -1911,6 +1961,19 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
 
   void fix_pending_cfg_edges()
   {
+    // A queued CALL-context return must be rederived from current instructions;
+    // a stale (RET,target) pair cannot justify reinstating an edge after edits.
+    const auto pending_calls = std::move(pending_call_returns);
+    pending_call_returns.clear();
+    for ( ea_t source : pending_calls )
+    {
+      insn_t call;
+      if ( !is_code(get_flags(source)) || decode_insn(&call, source) <= 0 ) continue;
+      const auto gadget = classify_ida_get_pc_call(call, size_t(config.pop_ret_depth), true);
+      if ( gadget && gadget->resumed_at
+        && gadget->return_instruction != classifier::k_bad_address )
+        install_call_return_fact(*gadget, false);
+    }
     for ( const auto &edge : pending_cfg_edges )
     {
       if ( is_code(get_flags(edge.first))

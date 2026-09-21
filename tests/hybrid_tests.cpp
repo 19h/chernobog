@@ -928,6 +928,211 @@ void add_memory_run(TargetEvidence *evidence, uint32_t run_id, uint64_t seed,
   evidence->runs.push_back(run);
 }
 
+void test_temporal_heap_uses(const RaxApi *api)
+{
+  // Executed x86-64: allocate a seed-dependent padding block, allocate a
+  // buffer, decrypt/use/erase/free, then allocate/use/erase/free at reused VA.
+  // The return-address and RMW reads are real backend events, not fake hooks.
+  std::vector<uint8_t> code{0x53}; // push rbx
+  auto emit = [&](std::initializer_list<uint8_t> bytes)
+  { code.insert(code.end(), bytes.begin(), bytes.end()); };
+  auto scalar = [&](uint64_t value, size_t width)
+  { for ( size_t i = 0; i < width; ++i ) code.push_back(uint8_t(value >> (8 * i))); };
+  auto call = [&](uint64_t target)
+  {
+    const uint64_t site = 0x1000 + code.size();
+    emit({0xE8}); scalar(uint32_t(target - (site + 5)), 4);
+    return site;
+  };
+  call(0x2000); // padding allocation: size comes from input RDI
+  std::vector<uint64_t> use_sites, rmw_sites;
+  const uint64_t key = UINT64_C(0x5A5A5A5A5A5A5A5A);
+  for ( uint64_t plaintext : {UINT64_C(0x0021746572636573), // "secret!\0"
+                              UINT64_C(0x0021646E6F636573)} ) // "second!\0"
+  {
+    emit({0xBF, 16, 0, 0, 0}); call(0x2000); // malloc(16)
+    emit({0x48, 0x89, 0xC3}); // mov rbx,rax
+    emit({0x48, 0xBA}); scalar(plaintext ^ key, 8);
+    emit({0x48, 0x89, 0x13}); // mov [rbx],rdx
+    emit({0x48, 0xBA}); scalar(key, 8);
+    rmw_sites.push_back(0x1000 + code.size());
+    emit({0x48, 0x31, 0x13}); // xor qword [rbx],rdx
+    emit({0x48, 0x89, 0xDF}); // mov rdi,rbx
+    use_sites.push_back(call(0x2010)); // strlen
+    emit({0x48, 0x89, 0xDF, 0x31, 0xF6, 0xBA, 16, 0, 0, 0});
+    call(0x2030); // memset(buffer,0,16)
+    emit({0x48, 0x89, 0xDF}); call(0x2020); // free
+  }
+  emit({0x5B, 0xC3}); // pop rbx; ret
+  ProgramImage image = arm64_image(code, {}, true);
+  image.arch = HybridArch::X86_64;
+  image.hi = image.segs.back().end = 0x2040;
+  image.segs.back().bytes.assign(0x40, 0);
+  image.segs.back().mask.assign(8, 0xFF);
+  image.content_hash = hybrid_program_content_hash(image);
+  const std::vector<EmuCallSummary> summaries{
+      {0x2000, EmuSummaryKind::ALLOCATE, "malloc"},
+      {0x2010, EmuSummaryKind::STRLEN, "strlen"},
+      {0x2020, EmuSummaryKind::DEALLOCATE, "free"},
+      {0x2030, EmuSummaryKind::MEMSET, "memset"}};
+  EmuDriver driver(api, image, true, false, summaries);
+  check(driver.can_discover(), "temporal fixture backend must initialize");
+  TargetEvidence evidence;
+  std::vector<uint64_t> addresses;
+  for ( uint32_t run_id = 0; run_id < 3; ++run_id )
+  {
+    EmuInput input;
+    input.run_id = run_id;
+    input.seed = 0x93 + run_id;
+    input.args = {uint64_t(16u << run_id)};
+    HybridConfig cfg = short_run_config();
+    cfg.max_insns = 256;
+    EmuEvents events;
+    RunObservation run;
+    run.ran = driver.emulate_from(0x1000, image.entries[0].end, cfg, events,
+        &run.outcome, true, input.seed, run_id, &input);
+    run.provenance.run_id = run_id;
+    run.provenance.seed = input.seed;
+    check(run.ran && run.outcome.returned && run.outcome.temporal_capture_complete
+          && run.outcome.external_model_used && !run.outcome.consumed_context_complete,
+          "modeled temporal fixture must complete without acquiring universal-proof status");
+    check(events.allocations.size() == 3, "all allocations must retain their lifetimes");
+    if ( events.allocations.size() == 3 )
+    {
+      const auto &first = events.allocations[1];
+      const auto &second = events.allocations[2];
+      addresses.push_back(first.address);
+      check(first.address == second.address && first.id != second.id
+            && first.generation == 1 && second.generation == 2
+            && !first.live && !second.live && first.released < second.allocated,
+            "freed storage must be reused with distinct ordered allocation generations");
+      bool erased = false;
+      for ( const auto &written : events.final_writes )
+        if ( written.addr == first.address && written.bytes.size() >= 8 )
+          erased = std::all_of(written.bytes.begin(), written.bytes.begin() + 8,
+                               [](uint8_t byte) { return byte == 0; });
+      check(erased, "the final heap bytes must be erased despite retained use values");
+    }
+    size_t modeled = 0, rmw = 0;
+    for ( const auto &use : events.uses )
+    {
+      if ( use.callee == 0x2010 )
+      {
+        ++modeled;
+        check(use.status == UseCaptureStatus::EXACT && use.bytes.size() == 8
+              && use.producer == UseProducer::MODELED_ARGUMENT && use.argument == 0
+              && use.model_kind == uint8_t(EmuSummaryKind::STRLEN),
+              "strlen must capture the exact consumed NUL-terminated argument");
+      }
+      const auto found = std::find(rmw_sites.begin(), rmw_sites.end(), use.site);
+      if ( found != rmw_sites.end() )
+      {
+        ++rmw;
+        const uint64_t plain = found == rmw_sites.begin()
+            ? UINT64_C(0x0021746572636573) : UINT64_C(0x0021646E6F636573);
+        uint64_t observed = 0;
+        for ( size_t i = 0; i < use.bytes.size() && i < 8; ++i )
+          observed |= uint64_t(use.bytes[i]) << (8 * i);
+        check(use.producer == UseProducer::EXECUTED_READ && observed == (plain ^ key),
+              "RMW read snapshots must retain pre-write ciphertext, not post-write plaintext");
+      }
+    }
+    check(modeled == 2 && rmw == 2, "fixture must observe both modeled uses and executed RMW reads");
+    evidence.runs.push_back(run);
+    evidence.events.merge_from(events);
+  }
+  check(addresses.size() == 3 && addresses[0] != addresses[1] && addresses[1] != addresses[2],
+        "padding inputs must change actual heap addresses across runs");
+  evidence.events.normalize();
+  check(std::is_sorted(evidence.events.uses.begin(), evidence.events.uses.end(),
+        [](const auto &left, const auto &right) {
+          return std::tie(left.run_id, left.seed, left.sequence)
+               < std::tie(right.run_id, right.seed, right.sequence);
+        }), "normalized snapshots must retain per-run chronological order");
+  const auto candidates = hybrid_consensus_use_strings(evidence);
+  check(candidates.size() == 2, "both erased heap strings must survive semantic-use consensus");
+  for ( size_t i = 0; i < candidates.size() && i < 2; ++i )
+    check(candidates[i].value == (i == 0 ? "secret!" : "second!")
+          && candidates[i].use.site == use_sites[i]
+          && candidates[i].witnesses.size() == 3 && candidates[i].eligible_runs == 3,
+          "use consensus must preserve site, plaintext and all address-independent witnesses");
+  check(hybrid_consensus_runtime_strings(evidence).empty(),
+        "temporal heap values must not become final image literals");
+
+  const size_t before = evidence.events.uses.size();
+  evidence.events.merge_from(evidence.events);
+  evidence.events.normalize();
+  check(evidence.events.uses.size() == before && hybrid_consensus_use_strings(evidence).size() == 2,
+        "normalization must remove exact duplicates without losing use order or generations");
+  auto missing = evidence;
+  missing.runs[2].outcome.temporal_observation_available = false;
+  check(hybrid_consensus_use_strings(missing).empty(), "an unavailable run must not disappear from the corpus");
+
+  HybridConfig limited = short_run_config();
+  limited.max_insns = 256;
+  limited.max_runtime_bytes = 1;
+  EmuInput input;
+  input.args = {16};
+  EmuEvents events;
+  EmuOutcome outcome;
+  check(driver.emulate_from(0x1000, image.entries[0].end, limited, events,
+                            &outcome, true, 0, 0, &input)
+        && outcome.returned && outcome.temporal_capture_truncated
+        && !outcome.temporal_capture_complete,
+        "capture byte exhaustion must leave execution intact and report incomplete evidence");
+  size_t retained = 0;
+  for ( const auto &use : events.uses ) retained += use.bytes.size();
+  check(retained <= 1, "the temporal byte cap must be independent of the final-write cap");
+
+  // An invalid modeled operation must stop before a fabricated return, even
+  // when runtime-string recording is disabled. Reuse the final freed pointer.
+  code.resize(code.size() - 2);
+  const size_t prefix_size = code.size();
+  for ( uint64_t target : {uint64_t(0x2010), uint64_t(0x2020)} )
+  {
+    code.resize(prefix_size);
+    call(target);
+    emit({0x5B, 0xC3});
+    auto invalid_image = image;
+    invalid_image.segs[0].bytes = code;
+    invalid_image.segs[0].end = 0x1000 + code.size();
+    invalid_image.segs[0].mask.assign((code.size() + 7) / 8, 0xFF);
+    invalid_image.entries[0].end = invalid_image.segs[0].end;
+    invalid_image.entries[0].chunks[0].end = invalid_image.segs[0].end;
+    EmuDriver invalid_driver(api, invalid_image, true, false, summaries);
+    auto cfg = limited;
+    cfg.want_runtime_strings = false;
+    EmuEvents invalid_events;
+    EmuOutcome invalid_outcome;
+    check(invalid_driver.emulate_from(0x1000, invalid_image.entries[0].end,
+        cfg, invalid_events, &invalid_outcome, true, 0, 0, &input)
+        && invalid_outcome.environment_model_failure && !invalid_outcome.returned
+        && !invalid_outcome.temporal_capture_complete && invalid_events.uses.empty(),
+        "use-after-free and double-free summaries must stop independently of capture settings");
+  }
+  const std::vector<uint8_t> overlap_bytes{'s', 'e', 'c', 'r', 'e', 't', '!', 0, 'X'};
+  const auto overlap_image = byte_search_image(HybridArch::X86_64, overlap_bytes,
+      uint32_t(HybridSegPerm::READ) | uint32_t(HybridSegPerm::WRITE));
+  EmuDriver overlap_driver(api, overlap_image, true, false,
+      {{0x2000, EmuSummaryKind::MEMMOVE, "memmove"}});
+  EmuInput overlap_input;
+  overlap_input.args = {0x3001, 0x3000, 8};
+  EmuEvents overlap_events;
+  EmuOutcome overlap_outcome;
+  check(overlap_driver.emulate_from(0x1000, overlap_image.entries[0].end,
+      short_run_config(), overlap_events, &overlap_outcome, true, 0, 0, &overlap_input)
+      && overlap_outcome.returned && overlap_outcome.temporal_capture_complete,
+      "overlapping modeled copy must execute with complete temporal evidence");
+  const auto source_use = std::find_if(overlap_events.uses.begin(), overlap_events.uses.end(),
+      [](const auto &use) { return use.callee == 0x2000; });
+  const auto destination_write = std::find_if(overlap_events.data.begin(), overlap_events.data.end(),
+      [](const auto &access) { return access.kind == RAX_MEM_WRITE && access.addr == 0x3001; });
+  check(source_use != overlap_events.uses.end() && destination_write != overlap_events.data.end()
+        && source_use->argument == 1 && source_use->sequence < destination_write->sequence
+        && source_use->bytes == std::vector<uint8_t>(overlap_bytes.begin(), overlap_bytes.begin() + 8),
+        "copy-source use must retain pre-overlap bytes and precede the destination write");
+}
+
 void test_runtime_string_consensus()
 {
   TargetEvidence evidence;
@@ -1268,6 +1473,7 @@ int main()
     test_arm64_application_boundary(api);
     test_arm64_function_boundary(api);
     test_objc_entry_abi(api);
+    test_temporal_heap_uses(api);
   }
   if ( failures != 0 )
   {

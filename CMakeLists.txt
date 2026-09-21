@@ -454,6 +454,7 @@ ida_add_plugin(chernobog
     src/deobf/handlers/ctree_switch_fold.cpp
     src/deobf/handlers/ctree_indirect_call.cpp
     src/deobf/handlers/ctree_string_decrypt.cpp
+    src/deobf/handlers/rotating_string_ctree.cpp
 
     # Current-function rax hybrid analysis (never a database sweep)
     src/hybrid/rax_loader.cpp
@@ -559,6 +560,11 @@ if(BUILD_TESTING)
         "${_chernobog_rax_capi}/include")
     target_compile_features(chernobog_evidence_tests PRIVATE cxx_std_17)
     add_test(NAME chernobog.evidence COMMAND chernobog_evidence_tests)
+
+    add_executable(chernobog_rotating_string_tests tests/rotating_string_tests.cpp)
+    target_include_directories(chernobog_rotating_string_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_features(chernobog_rotating_string_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.rotating_strings COMMAND chernobog_rotating_string_tests)
 
     add_executable(chernobog_hybrid_tests
         tests/hybrid_tests.cpp

@@ -167,6 +167,11 @@ struct EvidenceSummary
   size_t memory_observation_requested_runs = 0;
   size_t memory_observation_available_runs = 0;
   size_t context_incomplete_runs = 0;
+  size_t allocation_lifetimes = 0;
+  size_t use_snapshots = 0;
+  size_t temporal_observation_available_runs = 0;
+  size_t temporal_capture_complete_runs = 0;
+  size_t temporal_capture_truncated_runs = 0;
 };
 
 enum class IdentityMismatchKind : uint8_t
@@ -257,6 +262,21 @@ struct RuntimeStringCandidate
 // bytes. ASCII/C1 controls, malformed encoding, conflicting/invalid duplicates,
 // and missing per-run values fail closed. No Unicode normalization is applied.
 std::vector<RuntimeStringCandidate> hybrid_consensus_runtime_strings(
+    const TargetEvidence &evidence, size_t minimum_length = 4,
+    size_t maximum_length = 4096);
+
+// A value at one dynamic semantic use, corroborated by every scheduled run.
+// Witness addresses, allocation generations, sequences and model provenance
+// remain available; the value is never a global pointer-to-literal mapping.
+struct RuntimeUseStringCandidate
+{
+  UseSnapshot use;
+  std::string value;
+  std::vector<UseSnapshot> witnesses;
+  size_t eligible_runs = 0;
+};
+
+std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(
     const TargetEvidence &evidence, size_t minimum_length = 4,
     size_t maximum_length = 4096);
 

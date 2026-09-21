@@ -425,12 +425,161 @@ void runtime_string_regressions()
         "Unicode equivalence must not replace byte-exact runtime agreement");
 }
 #endif
+void temporal_memory_regressions()
+{
+  const uint8_t value[]{'s', 'e', 'c', 'r', 'e', 't', 0};
+  TargetEvidence evidence;
+  for ( uint32_t run_id = 0; run_id < 2; ++run_id )
+  {
+    TemporalMemory memory;
+    memory.enabled = true;
+    memory.context = 0x1000;
+    memory.heap_begin = 0x8000 + run_id * 0x1000;
+    memory.heap_end = memory.heap_begin + 0x1000;
+    memory.run_id = run_id;
+    memory.seed = 11 + run_id;
+    const auto address = memory.allocate(16, 0x1100, 0x2000, 1);
+    check(address == memory.heap_begin, "heap fixture must use its configured base");
+    check(memory.identify(address, 16) == UseCaptureStatus::EXACT
+          && memory.identify(address + 15, 2) == UseCaptureStatus::OBJECT_BOUNDARY,
+          "allocation bounds must use requested object size");
+    memory.capture(0x1200, 0x2010, 0, UseProducer::MODELED_ARGUMENT,
+        DataScope::HEAP, address, value, sizeof(value), sizeof(value), 2);
+    check(!memory.release(address + 1, 3) && memory.release(0, 3)
+          && memory.release(address, 3) && !memory.release(address, 4),
+          "NULL free, interior free, and double free must have distinct outcomes");
+    check(memory.identify(address, 1) == UseCaptureStatus::OUTSIDE_LIFETIME,
+          "released storage must not retain a live allocation identity");
+    const auto reused = memory.allocate(8, 0x1100, 0x2000, 5);
+    check(reused == address && memory.allocations.back().generation == 2
+          && memory.allocations.back().occurrence == 2,
+          "reuse must change generation and per-origin allocation occurrence");
+    memory.capture(0x1200, 0x2010, 0, UseProducer::MODELED_ARGUMENT,
+        DataScope::HEAP, reused, value, sizeof(value), sizeof(value), 6);
+    check(memory.uses.back().occurrence == 2 && memory.uses.front().occurrence == 1,
+          "repeated calls at one site must remain distinct dynamic uses");
+    RunObservation run;
+    run.ran = true;
+    run.provenance.run_id = run_id;
+    run.provenance.seed = memory.seed;
+    run.outcome.temporal_observation_available = true;
+    run.outcome.temporal_capture_complete = true;
+    evidence.runs.push_back(run);
+    evidence.events.allocations.insert(evidence.events.allocations.end(),
+        memory.allocations.begin(), memory.allocations.end());
+    evidence.events.uses.insert(evidence.events.uses.end(), memory.uses.begin(), memory.uses.end());
+  }
+  check(hybrid_consensus_use_strings(evidence).size() == 2,
+        "released first generation and live second generation must both retain use values");
+  auto different_generations = evidence;
+  for ( auto &allocation : different_generations.events.allocations )
+    if ( allocation.run_id == 1 ) allocation.generation += 4;
+  for ( auto &use : different_generations.events.uses )
+    if ( use.run_id == 1 ) use.generation += 4;
+  check(hybrid_consensus_use_strings(different_generations).size() == 2,
+        "physical generations are per-run lifetime guards, not cross-run object identity");
+  for ( unsigned negative = 0; negative < 13; ++negative )
+  {
+    auto changed = evidence;
+    switch ( negative )
+    {
+      case 0: changed.events.uses.erase(changed.events.uses.begin()); break;
+      case 1: changed.events.uses[0].bytes[0] = 'X'; break;
+      case 2: changed.events.uses[0].bytes.back() = 'X'; break;
+      case 3: changed.events.uses[0].status = UseCaptureStatus::BYTE_LIMIT; break;
+      case 4: changed.events.uses[0].generation = 2; break;
+      case 5: changed.events.uses[0].sequence = 3; break; // free boundary
+      case 6: changed.events.uses[0].sequence = 1; break; // allocation boundary
+      case 7: changed.events.uses[0].offset = 15; break;
+      case 8: changed.events.uses[0].bytes[1] = 0xFF; break;
+      case 9:
+        changed.events.uses.push_back(changed.events.uses[0]);
+        changed.events.uses.back().address += 1;
+        break;
+      case 10:
+        changed.events.allocations.push_back(changed.events.allocations[0]);
+        changed.events.allocations.back().released = 2;
+        break;
+      case 11: changed.events.uses[0].object_site += 1; break;
+      case 12: changed.events.uses[0].producer = UseProducer::EXECUTED_READ; break;
+    }
+    const auto candidates = hybrid_consensus_use_strings(changed);
+    check(candidates.size() == 1 && candidates[0].use.occurrence == 2,
+          "missing/conflicting/invalid first-use evidence must fail closed independently");
+  }
+  for ( unsigned negative = 0; negative < 4; ++negative )
+  {
+    auto changed = evidence;
+    switch ( negative )
+    {
+      case 0: changed.runs[0].ran = false; break;
+      case 1: changed.runs[0].outcome.temporal_capture_complete = false; break;
+      case 2: changed.runs[0].outcome.temporal_observation_available = false; break;
+      case 3: changed.runs[0].outcome.temporal_capture_truncated = true; break;
+    }
+    check(hybrid_consensus_use_strings(changed).empty(),
+          "failed or incomplete scheduled runs must never be removed to create agreement");
+  }
+  TemporalMemory bounded;
+  bounded.heap_begin = 0x1000;
+  bounded.heap_end = 0x100000;
+  for ( size_t i = 0; i < TemporalMemory::allocation_limit; ++i )
+    check(bounded.allocate(1, i, 0x2000, i) != 0, "allocation cap admits its bounded prefix");
+  check(bounded.allocate(1, 0, 0x2000, 9999) == 0 && bounded.allocation_exhausted,
+        "allocation ledger exhaustion must be explicit");
+  bounded.enabled = true;
+  bounded.byte_budget = 1;
+  bounded.capture(0x10, 0, -1, UseProducer::EXECUTED_READ, DataScope::IMAGE,
+      0x20, value, sizeof(value), sizeof(value), 0);
+  check(bounded.truncated && bounded.uses[0].bytes.size() == 1
+        && bounded.uses[0].status == UseCaptureStatus::BYTE_LIMIT,
+        "byte truncation must retain status rather than inventing a terminated value");
+  for ( size_t i = 1; i <= TemporalMemory::use_limit; ++i )
+    bounded.capture(i, 0, -1, UseProducer::EXECUTED_READ, DataScope::IMAGE,
+        0x20, value, 1, 1, i);
+  check(bounded.uses.size() == TemporalMemory::use_limit && bounded.truncated,
+        "event and occurrence bookkeeping must remain bounded after byte exhaustion");
+  TemporalMemory occurrences;
+  occurrences.heap_begin = 0x8000;
+  occurrences.heap_end = 0x9000;
+  occurrences.enabled = true;
+  check(occurrences.allocate(0, 0x10, 0x20, 0) == 0, "zero-size allocation follows explicit failure model");
+  const auto object = occurrences.allocate(8, 0x10, 0x20, 1);
+  check(occurrences.allocations.back().occurrence == 2,
+        "failed allocations must retain their place in semantic origin occurrence counts");
+  occurrences.capture(0x30, 0x40, 1, UseProducer::MODELED_ARGUMENT,
+      DataScope::HEAP, object, nullptr, 0, 0, 2);
+  occurrences.capture(0x30, 0x40, 1, UseProducer::MODELED_ARGUMENT,
+      DataScope::HEAP, object, value, sizeof(value), sizeof(value), 3);
+  check(occurrences.uses.size() == 1 && occurrences.uses[0].occurrence == 2,
+        "zero-byte calls must not collapse dynamic use occurrence identities");
+  TemporalMemory wide;
+  wide.enabled = true;
+  std::vector<uint8_t> long_bytes(8192, 'a');
+  long_bytes.back() = 0;
+  wide.capture(1, 2, 0, UseProducer::MODELED_ARGUMENT, DataScope::IMAGE,
+      0x1000, long_bytes.data(), long_bytes.size(), long_bytes.size(), 0);
+  check(wide.uses[0].bytes.size() == TemporalMemory::snapshot_limit
+        && wide.uses[0].status == UseCaptureStatus::BYTE_LIMIT && wide.truncated,
+        "a single snapshot must respect its cap even with remaining total budget");
+  wide.capture(2, 0, -1, UseProducer::EXECUTED_READ, DataScope::IMAGE,
+      0x1000, nullptr, 0, 16, 1);
+  check(wide.uses.back().status == UseCaptureStatus::INCOMPLETE_VALUE
+        && wide.uses.back().bytes.empty(),
+        "missing original wide-read bytes must never be reconstructed after retirement");
+  occurrences.capture(0x60, 0, -1, UseProducer::EXECUTED_READ, DataScope::STACK,
+      occurrences.heap_begin - 1, value, 2, 2, 4);
+  check(occurrences.uses.back().scope == DataScope::HEAP
+        && occurrences.uses.back().status != UseCaptureStatus::EXACT,
+        "a heap-boundary crossing must not acquire stack-frame identity");
+}
 } // namespace
 
 int main(int argc, char **argv)
 {
   regressions();
   comparison_regressions();
+  temporal_memory_regressions();
 #ifndef CHERNOBOG_LEGACY_EVIDENCE
   runtime_string_regressions();
 #endif

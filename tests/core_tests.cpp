@@ -370,6 +370,7 @@ void test_get_pc_classifier()
     pop.size = 1;
     pop.kind = instruction_kind_t::pop_register;
     pop.destination = rax;
+    pop.stack_width_bits = 64;
     instruction_t add;
     add.address = 0x1011;
     add.size = 1;
@@ -382,16 +383,44 @@ void test_get_pc_classifier()
     push.size = 1;
     push.kind = instruction_kind_t::push_register;
     push.source = rax;
+    push.stack_width_bits = 64;
     instruction_t ret;
     ret.address = 0x1013;
     ret.size = 1;
     ret.kind = instruction_kind_t::return_instruction;
+    ret.stack_width_bits = 64;
 
     auto result = classify_get_pc_gadget(
         call, {pop, add, push, ret}, false, 8);
     check(result && result->resumed_at == 0x100C
-          && result->return_instruction == 0x1013,
+          && result->return_instruction == 0x1013
+          && result->summary_end == 0x1014 && result->stack_delta_bytes == 0
+          && result->stack_accesses.size() == 4
+          && result->stack_accesses[0].value_after == 0x1005
+          && result->stack_accesses[2].value_after == 0x100C
+          && !result->flags_preserved,
           "exact get-PC pop/add/push/ret classification");
+
+    auto invalid_ret = ret;
+    invalid_ret.far_transfer = true;
+    check(!classify_get_pc_gadget(call, {pop, add, push, invalid_ret}, false, 8),
+          "far return cannot use a near return-address summary");
+    invalid_ret = ret;
+    invalid_ret.immediate = 8;
+    check(!classify_get_pc_gadget(call, {pop, add, push, invalid_ret}, false, 8),
+          "extra return adjustment is not silently omitted");
+    invalid_ret = ret;
+    invalid_ret.stack_width_bits = 16;
+    check(!classify_get_pc_gadget(call, {pop, add, push, invalid_ret}, false, 8),
+          "return operand width must match the pushed return address");
+    auto invalid_pop = pop;
+    invalid_pop.destination_is_stack_pointer = true;
+    check(!classify_get_pc_gadget(call, {invalid_pop, add, push, ret}, false, 8),
+          "POP SP is not ordinary return-address capture");
+    auto far_call = call;
+    far_call.far_transfer = true;
+    check(!classify_get_pc_gadget(far_call, {pop, add, push, ret}, false, 8),
+          "far CALL changes the return-stack contract");
 
     instruction_t alias_write = add;
     alias_write.kind = instruction_kind_t::register_write;
@@ -433,7 +462,9 @@ void test_get_pc_classifier()
     check(!classify_get_pc_gadget(
               call, {pop, discontinuous, push, ret}, false, 8),
           "noncontiguous gadget instructions reject proof");
-    check(!classify_get_pc_gadget(call, {pop, ret}, false, 8),
+    auto unrelated_ret = ret;
+    unrelated_ret.address = pop.end();
+    check(!classify_get_pc_gadget(call, {pop, unrelated_ret}, false, 8),
           "pop followed by unrelated return is rejected");
 
     instruction_t adjust;
@@ -446,6 +477,12 @@ void test_get_pc_classifier()
     result = classify_get_pc_gadget(call, {adjust, ret}, false, 8);
     check(result && result->resumed_at == 0x1009,
           "stack-top adjustment produces exact resumed address");
+    check(result && result->stack_delta_bytes == 0
+          && result->stack_accesses.size() == 3
+          && result->stack_accesses[1].kind == stack_access_kind_t::read_modify_write
+          && result->stack_accesses[1].value_before == 0x1005
+          && result->stack_accesses[1].value_after == 0x1009,
+          "call/stack-adjust/return preserves the ordered stack-memory effects");
 
     instruction_t discard = adjust;
     discard.kind = instruction_kind_t::adjust_stack_pointer_immediate;
@@ -454,6 +491,9 @@ void test_get_pc_classifier()
     check(result && result->mode == get_pc_mode_t::discard_return_address
           && result->resumed_at == 0x1011,
           "return-address discard has an exact inline continuation");
+    check(result && result->stack_delta_bytes == 0 && result->summary_end == discard.end()
+          && result->stack_accesses.size() == 1 && !result->flags_preserved,
+          "discard retains the CALL write and ADD flag effects");
 
     instruction_t later_branch;
     later_branch.address = 0x1011;
@@ -500,6 +540,99 @@ void test_get_pc_classifier()
           && result->resumed_at == 0x1011
           && result->register_value_at_return == 0x1005,
           "inline call/pop proof stops at the next control transfer");
+    check(result && result->summary_end == pop.end() && result->support.size() == 2
+          && result->stack_delta_bytes == 0 && result->flags_preserved,
+          "inline summary effects stop at the capture boundary, not the later branch");
+
+    auto adjacent_call = call;
+    adjacent_call.target = call.end();
+    auto adjacent_pop = pop;
+    adjacent_pop.address = call.end();
+    result = classify_get_pc_gadget(adjacent_call, {adjacent_pop}, false, 4);
+    check(result && result->register_value_at_return == call.end()
+          && result->resumed_at == adjacent_pop.end(), "CALL-next/POP is admitted");
+
+    auto read = pop;
+    read.kind = instruction_kind_t::read_stack_top;
+    push.address = read.end();
+    ret.address = push.end();
+    result = classify_get_pc_gadget(call, {read, push, ret}, false, 8);
+    check(result && result->stack_delta_bytes == -8
+          && result->resumed_at == call.end() && result->stack_accesses.size() == 4,
+          "read/push/RET retains the original CALL slot below its returned copy");
+    auto second_push = push;
+    second_push.address = push.end();
+    ret.address = second_push.end();
+    result = classify_get_pc_gadget(call, {pop, push, second_push, ret}, false, 8);
+    check(result && result->stack_delta_bytes == -8 && result->stack_accesses.size() == 5,
+          "multiple pushes do not silently become a zero-delta summary");
+    second_push.stack_width_bits = 16;
+    check(!classify_get_pc_gadget(call, {pop, push, second_push, ret}, false, 8),
+          "a partial push cannot supply a natural-width return target");
+    pop.stack_width_bits = 16;
+    check(!classify_get_pc_gadget(call, {pop}, false, 8),
+          "POP width is checked independently from a supplied register slice");
+
+    call.address = 0xfffffff0; call.target = 0x1010; call.stack_width_bits = 32;
+    pop.stack_width_bits = 32; pop.destination = eax;
+    add.destination = add.source = eax; add.immediate = 20;
+    push.address = add.end(); push.stack_width_bits = 32; push.source = eax;
+    ret.address = push.end(); ret.stack_width_bits = 32;
+    result = classify_get_pc_gadget(call, {pop, add, push, ret}, false, 8);
+    check(result && result->resumed_at == 9 && result->stack_delta_bytes == 0
+          && result->stack_accesses.front().offset_bytes == -4
+          && result->stack_accesses.front().width_bits == 32,
+          "32-bit captured-PC arithmetic uses modular 32-bit addresses and four-byte slots");
+    call.target = pop.address = 0xffffffff;
+    check(!classify_get_pc_gadget(call, {pop}, false, 8),
+          "32-bit instruction crossing its address domain is rejected conservatively");
+}
+
+void test_push_get_pc_classifier()
+{
+    using namespace chernobog::ida_analysis::classifier;
+    instruction_t push;
+    push.address = 0x401000; push.size = 5; push.stack_width_bits = 32;
+    push.kind = instruction_kind_t::push_immediate; push.immediate = push.end();
+    auto result = classify_push_get_pc({push}, 32);
+    check(result && result->address_value == push.end() && result->stack_delta_bytes == -4
+          && result->stack_accesses.size() == 1 && result->flags_preserved,
+          "32-bit push-next materializes a PC value with its stack write retained");
+    ++push.immediate;
+    check(!classify_push_get_pc({push}, 32), "arbitrary immediate is not push-next");
+    --push.immediate;
+    push.stack_width_bits = 16;
+    check(!classify_push_get_pc({push}, 32), "16-bit PUSH does not materialize a 32-bit PC");
+    push.address = 0x100001000; push.size = 1; push.stack_width_bits = 64;
+    push.kind = instruction_kind_t::push_register; push.source = {0, 0, 64};
+    instruction_t lea, exchange;
+    lea.address = push.end(); lea.size = 7; lea.stack_width_bits = 64;
+    lea.kind = instruction_kind_t::load_pc_relative_address;
+    lea.destination = push.source; lea.target = 0x100002000;
+    exchange.address = lea.end(); exchange.size = 4; exchange.stack_width_bits = 64;
+    exchange.kind = instruction_kind_t::exchange_stack_top_register;
+    exchange.source = push.source;
+    result = classify_push_get_pc({push, lea, exchange}, 64);
+    check(result && result->address_value == lea.target && result->stack_delta_bytes == -8
+          && result->restored_register.same(push.source) && result->support.size() == 3
+          && result->stack_accesses.size() == 2
+          && result->stack_accesses[1].kind == stack_access_kind_t::read_modify_write
+          && result->stack_accesses[1].implicit_lock
+          && result->stack_accesses[1].value_after == lea.target,
+          "64-bit push/LEA/XCHG restores its register and retains the locked stack exchange");
+    auto bad = exchange;
+    bad.source.reg = 1;
+    check(!classify_push_get_pc({push, lea, bad}, 64), "exchange must restore the saved register");
+    bad = exchange;
+    bad.alternate_predecessor = true;
+    check(!classify_push_get_pc({push, lea, bad}, 64), "entry into the exchange rejects the summary");
+    bad = exchange;
+    bad.stack_width_bits = 32;
+    check(!classify_push_get_pc({push, lea, bad}, 64), "partial stack exchange is not a full PC write");
+    auto bad_push = push;
+    bad_push.source_is_stack_pointer = true;
+    check(!classify_push_get_pc({bad_push, lea, exchange}, 64), "SP cannot serve as the scratch register");
+    check(!classify_push_get_pc({push, lea}, 64), "an unfinished save/address sequence has no restoration proof");
 }
 
 void test_switch_dispatch_classifier()
@@ -917,6 +1050,7 @@ int main()
     test_deobfuscation_execution_policy();
     test_dependency_liveness();
     test_get_pc_classifier();
+    test_push_get_pc_classifier();
     test_stack_transfer_classifier();
     test_switch_dispatch_classifier();
     test_arm64_direct_branch_encoding();

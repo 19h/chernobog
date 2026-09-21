@@ -15,6 +15,7 @@
 #include "../deobf/handlers/ctree_switch_fold.h"
 #include "../deobf/handlers/ctree_indirect_call.h"
 #include "../deobf/handlers/ctree_string_decrypt.h"
+#include "../deobf/handlers/rotating_string_ctree.h"
 #include "../deobf/handlers/hikari_cfg.h"
 #include "../deobf/handlers/jump_optimizer.h"
 #include "../deobf/handlers/native_opaque.h"
@@ -421,7 +422,12 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     {
         cfunc_t *cfunc = va_arg(va, cfunc_t *);
         if ( cfunc != nullptr && !is_disabled_mode_enabled() )
+        {
             ctree_string_decrypt_handler_t::annotate_runtime_cfstring_addresses(cfunc);
+            ctree_string_decrypt_handler_t::annotate_runtime_use_strings(cfunc);
+            if ( chernobog_function_deobfuscation_enabled(cfunc->entry_ea) )
+                annotate_rotating_string_facts(cfunc);
+        }
         return 0;
     }
 
@@ -770,6 +776,9 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         }
         if ( cfunc != nullptr && maturity == CMAT_FINAL )
         {
+            if ( !is_disabled_mode_enabled()
+              && chernobog_function_deobfuscation_enabled(cfunc->entry_ea) )
+                capture_rotating_string_facts(cfunc);
             chernobog::hybrid::hybrid_finish_deobfuscation_projection(
                 uint64_t(cfunc->entry_ea));
             if ( self->rax_pipeline_target == cfunc->entry_ea )
@@ -792,6 +801,7 @@ static bool is_hexrays_plugin(const plugin_t *entry)
 
 void chernobog_plugmod_t::clear_processing_state()
 {
+    clear_rotating_string_facts(database_id);
     rax_pipeline_target = BADADDR;
     rax_completed_functions.clear();
     ctree_const_folded.clear();

@@ -29,6 +29,7 @@ using classifier::register_slice_t;
 
 bool stack_pointer_deref(const insn_t &instruction, const op_t &operand)
 {
+  if ( !natad(instruction) || instruction.segpref != 0 ) return false;
   if ( operand.type != o_phrase && operand.type != o_displ )
     return false;
   if ( operand.type == o_displ && operand.addr != 0 )
@@ -178,10 +179,17 @@ instruction_t translate_instruction(
   result.address = instruction.ea;
   result.size = instruction.size;
   result.target = classifier::k_bad_address;
+  result.stack_width_bits = op64(instruction) ? 64 : op32(instruction) ? 32 : 16;
+  result.preserves_flags = instruction.itype == NN_mov || instruction.itype == NN_movzx
+      || instruction.itype == NN_movsx || instruction.itype == NN_movsxd
+      || instruction.itype == NN_lea || instruction.itype == NN_xchg
+      || instruction.itype == NN_nop || instruction.itype == NN_bswap;
 
   if ( is_ret_insn(instruction) )
   {
     result.kind = instruction_kind_t::return_instruction;
+    result.far_transfer = instruction.itype != NN_retn;
+    result.immediate = instruction.Op1.type == o_imm ? instruction.Op1.value : 0;
     return result;
   }
   if ( is_call_insn(instruction) )
@@ -192,6 +200,7 @@ instruction_t translate_instruction(
                          : instruction_kind_t::indirect_call;
     if ( direct )
       result.target = instruction.Op1.addr;
+    result.far_transfer = instruction.Op1.type == o_far;
     return result;
   }
   if ( instruction.itype == NN_jmp )
@@ -223,6 +232,7 @@ instruction_t translate_instruction(
   {
     result.kind = instruction_kind_t::pop_register;
     result.destination = slice_from_operand(instruction.Op1);
+    result.destination_is_stack_pointer = is_stack_pointer_register(result.destination);
     return result;
   }
   if ( instruction.itype == NN_push )
@@ -232,10 +242,11 @@ instruction_t translate_instruction(
       result.kind = instruction_kind_t::push_register;
       result.source = slice_from_operand(instruction.Op1);
     }
-    else
+    else if ( instruction.Op1.type == o_imm )
     {
       result.kind = instruction_kind_t::push_immediate;
     }
+    else result.kind = instruction_kind_t::push_memory;
     return result;
   }
   if ( instruction.itype == NN_mov && instruction.Op1.type == o_reg
@@ -243,6 +254,7 @@ instruction_t translate_instruction(
   {
     result.kind = instruction_kind_t::read_stack_top;
     result.destination = slice_from_operand(instruction.Op1);
+    result.destination_is_stack_pointer = is_stack_pointer_register(result.destination);
     return result;
   }
   if ( instruction.itype == NN_add
@@ -263,6 +275,40 @@ instruction_t translate_instruction(
     result.stack_width_bits = static_cast<uint16_t>(
         get_dtype_size(instruction.Op1.dtype) * 8);
     return result;
+  }
+
+  // Unknown aliases can modify an outstanding return slot even when the
+  // addressing expression does not spell SP. Account for these before tracked
+  // register writes (e.g. XCHG RAX,RSP writes both).
+  if ( writes_stack_pointer(instruction) )
+  {
+    result.kind = instruction_kind_t::stack_mutation;
+    return result;
+  }
+  const uint32_t features = instruction.get_canon_feature(PH);
+  for ( int index = 0; index < UA_MAXOP; ++index )
+  {
+    const auto type = instruction.ops[index].type;
+    if ( has_cf_chg(features, index)
+      && (type == o_mem || type == o_displ || type == o_phrase) )
+    {
+      result.kind = instruction_kind_t::stack_mutation;
+      return result;
+    }
+  }
+
+  switch ( instruction.itype )
+  {
+    case NN_nop: case NN_mov: case NN_movzx: case NN_movsx: case NN_movsxd:
+    case NN_lea: case NN_xchg: case NN_bswap:
+    case NN_add: case NN_sub: case NN_adc: case NN_sbb: case NN_inc: case NN_dec:
+    case NN_and: case NN_or: case NN_xor: case NN_not: case NN_neg:
+    case NN_cmp: case NN_test: case NN_shl: case NN_shr: case NN_sar:
+    case NN_rol: case NN_ror: case NN_clc: case NN_stc: case NN_cmc:
+      break;
+    default:
+      result.kind = instruction_kind_t::stack_mutation;
+      return result;
   }
 
   register_slice_t destination;
@@ -323,15 +369,56 @@ instruction_t translate_instruction(
     return result;
   }
 
-  if ( writes_stack_pointer(instruction) )
-  {
-    result.kind = instruction_kind_t::stack_mutation;
-    return result;
-  }
   return result;
 }
 
 } // namespace
+
+std::optional<classifier::push_get_pc_t> classify_ida_push_get_pc(const insn_t &push)
+{
+  using namespace classifier;
+  if ( PH.id != PLFM_386 || push.itype != NN_push || push.size == 0
+    || (!mode32(push) && !mode64(push)) || !natad(push) ) return std::nullopt;
+  const unsigned mode = mode64(push) ? 64 : 32;
+  instruction_t first = translate_instruction(push, {});
+  if ( first.stack_width_bits != mode ) return std::nullopt;
+  if ( mode == 32 )
+  {
+    if ( push.Op1.type != o_imm ) return std::nullopt;
+    first.immediate = uint32_t(push.Op1.value);
+    return classify_push_get_pc({first}, mode);
+  }
+  if ( push.Op1.type != o_reg ) return std::nullopt;
+  first.source_is_stack_pointer = is_stack_pointer_register(first.source);
+  const auto *owner = get_func(push.ea);
+  const auto *segment = getseg(push.ea);
+  insn_t lea, exchange;
+  if ( first.end() == k_bad_address || decode_insn(&lea, ea_t(first.end())) <= 0
+    || lea.itype != NN_lea || !mode64(lea) || !op64(lea) || !natad(lea)
+    || lea.Op1.type != o_reg || lea.Op2.type != o_mem || lea.Op2.hasSIB
+    || !same_owner_and_segment(lea.ea, owner, segment)
+    || has_alternate_inbound_flow(lea.ea, push.ea)
+    || lea.ea > BADADDR - lea.size ) return std::nullopt;
+  if ( decode_insn(&exchange, lea.ea + lea.size) <= 0 || exchange.itype != NN_xchg
+    || !mode64(exchange) || !op64(exchange) || !natad(exchange)
+    || !same_owner_and_segment(exchange.ea, owner, segment)
+    || has_alternate_inbound_flow(exchange.ea, lea.ea) ) return std::nullopt;
+  const op_t *reg = nullptr, *memory = nullptr;
+  if ( exchange.Op1.type == o_reg ) { reg = &exchange.Op1; memory = &exchange.Op2; }
+  else if ( exchange.Op2.type == o_reg ) { reg = &exchange.Op2; memory = &exchange.Op1; }
+  if ( reg == nullptr || !stack_pointer_deref(exchange, *memory)
+    || get_dtype_size(memory->dtype) != 8 ) return std::nullopt;
+  instruction_t address, swap;
+  address.address = lea.ea; address.size = lea.size; address.stack_width_bits = 64;
+  address.kind = instruction_kind_t::load_pc_relative_address;
+  address.destination = slice_from_operand(lea.Op1);
+  address.destination_is_stack_pointer = is_stack_pointer_register(address.destination);
+  address.target = lea.Op2.addr;
+  swap.address = exchange.ea; swap.size = exchange.size; swap.stack_width_bits = 64;
+  swap.kind = instruction_kind_t::exchange_stack_top_register;
+  swap.source = slice_from_operand(*reg);
+  return classify_push_get_pc({first, address, swap}, mode);
+}
 
 std::optional<classifier::stack_transfer_t> classify_ida_push_return(
     const insn_t &push, int register_scan_depth)
@@ -364,8 +451,10 @@ std::optional<classifier::stack_transfer_t> classify_ida_push_return(
     // never converts initial writable-memory bytes into a register constant.
     const auto fact = analyze_x86_register_before(push, operand,
         register_scan_depth > 0 ? size_t(register_scan_depth) : size_t(64));
-    if ( !fact.value || fact.support.empty() ) return std::nullopt;
+    // An unresolved value still depends on the inspected prefix. Retain that
+    // dependency so restoring a defining instruction requeues this consumer.
     proof.definitions.insert(proof.definitions.end(), fact.support.begin(), fact.support.end());
+    if ( !fact.value || fact.support.empty() ) return std::nullopt;
     proof.registers.push_back(slice_from_operand(operand));
     return *fact.value & x86_abstract::mask(mode);
   };
@@ -448,12 +537,14 @@ std::optional<classifier::get_pc_candidate_t> classify_ida_get_pc_call(
 {
   if ( PH.id != PLFM_386 || maximum_depth == 0
     || call.itype != NN_call || call.Op1.type != o_near
-    || call.size == 0 )
+    || call.size == 0 || (!mode32(call) && !mode64(call)) || !natad(call)
+    || (mode64(call) ? !op64(call) : !op32(call))
+    || call.ea > BADADDR - call.size )
   {
     return std::nullopt;
   }
   const ea_t target = call.Op1.addr;
-  if ( target == BADADDR || target == call.ea + call.size )
+  if ( target == BADADDR )
     return std::nullopt;
   const segment_t *segment = getseg(target);
   const func_t *owner = get_func(target);
@@ -472,6 +563,8 @@ std::optional<classifier::get_pc_candidate_t> classify_ida_get_pc_call(
     insn_t decoded;
     if ( decode_insn(&decoded, cursor) <= 0 || decoded.size == 0 )
       break;
+    if ( mode64(decoded) != mode64(call) || mode32(decoded) != mode32(call)
+      || !natad(decoded) ) return std::nullopt;
     instruction_t translated = translate_instruction(decoded, tracked);
     translated.alternate_predecessor = index != 0
         && has_alternate_inbound_flow(cursor, previous);
@@ -488,7 +581,12 @@ std::optional<classifier::get_pc_candidate_t> classify_ida_get_pc_call(
     if ( cursor > BADADDR - decoded.size )
       break;
     cursor += decoded.size;
-    if ( translated.kind == instruction_kind_t::return_instruction )
+    if ( translated.kind == instruction_kind_t::return_instruction
+      || translated.kind == instruction_kind_t::direct_jump
+      || translated.kind == instruction_kind_t::indirect_jump
+      || translated.kind == instruction_kind_t::conditional_branch
+      || translated.kind == instruction_kind_t::direct_call
+      || translated.kind == instruction_kind_t::indirect_call )
       break;
   }
 
@@ -497,8 +595,7 @@ std::optional<classifier::get_pc_candidate_t> classify_ida_get_pc_call(
   core_call.size = call.size;
   core_call.kind = instruction_kind_t::direct_call;
   core_call.target = target;
-  core_call.stack_width_bits = inf_is_64bit() ? 64
-                             : inf_is_32bit_exactly() ? 32 : 16;
+  core_call.stack_width_bits = mode64(call) ? 64 : 32;
   const bool other_entries = reject_other_entries
       && has_other_entry(target, call.ea);
   const auto result = classifier::classify_get_pc_gadget(

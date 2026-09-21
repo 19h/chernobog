@@ -20,4 +20,6 @@ std::optional<classifier::get_pc_candidate_t> classify_ida_get_pc_call(
 std::optional<classifier::stack_transfer_t> classify_ida_push_return(
     const insn_t &push, int register_scan_depth);
 
+std::optional<classifier::push_get_pc_t> classify_ida_push_get_pc(const insn_t &push);
+
 } // namespace chernobog::ida_analysis

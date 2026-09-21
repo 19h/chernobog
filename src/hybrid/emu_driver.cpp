@@ -137,7 +137,8 @@ struct HookCtx
   uint64_t   flo = 0, fhi = 0;    // current function bounds; only in-function sources are trusted
   const FuncRange *func = nullptr; // complete chunk topology when available
   uint64_t   stack_lo = 0, stack_hi = 0;
-  uint64_t   heap_lo = 0, heap_cursor = 0, heap_hi = 0;
+  uint64_t   heap_lo = 0, heap_hi = 0;
+  TemporalMemory temporal;
   uint64_t   prev_pc = 0, last_pc = 0;
   uint64_t   summary_source = 0;
   uint32_t   prev_size = 0;
@@ -219,6 +220,16 @@ bool summary_access_allowed(HookCtx *c, rax_engine *engine,
      && !image_access_allowed(c, address, uint32_t(size), required)) )
   {
     c->permission_violation = true;
+    c->api->emu_stop(engine);
+    return false;
+  }
+  uint64_t end = 0;
+  if ( size != 0
+    && (!checked_add(address, size, &end)
+      || (address < c->temporal.heap_end && end > c->temporal.heap_begin
+        && c->temporal.identify(address, size) != UseCaptureStatus::EXACT)) )
+  {
+    c->environment_model_failure = true;
     c->api->emu_stop(engine);
     return false;
   }
@@ -389,6 +400,19 @@ uint64_t scalar_from_memory(const HookCtx *c, const uint8_t *bytes, size_t size)
   return value;
 }
 
+void capture_summary_use(HookCtx *c, const EmuCallSummary &summary,
+                         int argument, uint64_t address,
+                         const uint8_t *bytes, size_t size)
+{
+  if ( !c->temporal.enabled || !hook_in_function(c, c->summary_source) ) return;
+  bool recordable = false;
+  const DataScope scope = size <= std::numeric_limits<uint32_t>::max()
+      ? access_scope(c, address, uint32_t(size), &recordable) : DataScope::OTHER;
+  c->temporal.capture(c->summary_source, summary.address, argument,
+      UseProducer::MODELED_ARGUMENT, scope, address, bytes, size, size,
+      c->sequence++, uint8_t(summary.kind));
+}
+
 bool read_c_string(HookCtx *c, rax_engine *engine, uint64_t address,
                    std::vector<uint8_t> &out, size_t limit = 65536)
 {
@@ -470,6 +494,7 @@ bool apply_summary(HookCtx *c, rax_engine *engine, const EmuCallSummary &summary
       if ( !args(1) || !read_c_string(c, engine, a0, bytes) )
         return false;
       result = bytes.size() - 1;
+      capture_summary_use(c, summary, 0, a0, bytes.data(), bytes.size());
       record_summary_access(c, RAX_MEM_READ, a0,
                             scalar_from_memory(c, bytes.data(), bytes.size()),
                             uint32_t(bytes.size()));
@@ -537,6 +562,7 @@ bool apply_summary(HookCtx *c, rax_engine *engine, const EmuCallSummary &summary
             preview[consumed] = byte;
           ++consumed;
         }
+        bytes.push_back(byte);
         if ( byte == needle )
         {
           result = is_memchr ? source : offset;
@@ -544,6 +570,7 @@ bool apply_summary(HookCtx *c, rax_engine *engine, const EmuCallSummary &summary
         }
       }
       record_prefix();
+      capture_summary_use(c, summary, 0, a0, bytes.data(), bytes.size());
       // Retain the successfully observed prefix even if its next byte fails.
       // The caller classifies this boundary as an environment-model failure.
       if ( !readable )
@@ -560,6 +587,8 @@ bool apply_summary(HookCtx *c, rax_engine *engine, const EmuCallSummary &summary
       int cmp = std::memcmp(bytes.data(), rhs.data(), n);
       if ( cmp == 0 ) cmp = bytes.size() < rhs.size() ? -1 : bytes.size() > rhs.size() ? 1 : 0;
       result = uint64_t(int64_t(cmp));
+      capture_summary_use(c, summary, 0, a0, bytes.data(), bytes.size());
+      capture_summary_use(c, summary, 1, a1, rhs.data(), rhs.size());
       record_summary_access(c, RAX_MEM_READ, a0,
                             scalar_from_memory(c, bytes.data(), bytes.size()),
                             uint32_t(bytes.size()));
@@ -577,16 +606,19 @@ bool apply_summary(HookCtx *c, rax_engine *engine, const EmuCallSummary &summary
         return false;
       const size_t n = size_t(a2);
       bytes.resize(n);
+      if ( n == 0 ) capture_summary_use(c, summary, 1, a1, nullptr, 0);
       if ( n != 0 )
       {
         if ( !summary_access_allowed(c, engine, a1, n, HybridSegPerm::READ)
           || !summary_access_allowed(c, engine, a0, n, HybridSegPerm::WRITE)
           || c->api->mem_read == nullptr
-          || c->api->mem_read(engine, a1, bytes.data(), n) != RAX_OK
-          || c->api->mem_write(engine, a0, bytes.data(), n) != RAX_OK )
+          || c->api->mem_read(engine, a1, bytes.data(), n) != RAX_OK )
           return false;
         const uint64_t value = scalar_from_memory(c, bytes.data(), n);
+        capture_summary_use(c, summary, 1, a1, bytes.data(), n);
         record_summary_access(c, RAX_MEM_READ, a1, value, uint32_t(n));
+        if ( c->api->mem_write(engine, a0, bytes.data(), n) != RAX_OK )
+          return false;
         record_summary_access(c, RAX_MEM_WRITE, a0, value, uint32_t(n));
       }
       result = a0;
@@ -614,12 +646,14 @@ bool apply_summary(HookCtx *c, rax_engine *engine, const EmuCallSummary &summary
     case EmuSummaryKind::STRCPY:
       if ( !args(2) || !read_c_string(c, engine, a1, bytes)
         || !summary_access_allowed(
-             c, engine, a0, bytes.size(), HybridSegPerm::WRITE)
-        || c->api->mem_write(engine, a0, bytes.data(), bytes.size()) != RAX_OK )
+             c, engine, a0, bytes.size(), HybridSegPerm::WRITE) )
         return false;
+      capture_summary_use(c, summary, 1, a1, bytes.data(), bytes.size());
       record_summary_access(c, RAX_MEM_READ, a1,
                             scalar_from_memory(c, bytes.data(), bytes.size()),
                             uint32_t(bytes.size()));
+      if ( c->api->mem_write(engine, a0, bytes.data(), bytes.size()) != RAX_OK )
+        return false;
       record_summary_access(c, RAX_MEM_WRITE, a0,
                             scalar_from_memory(c, bytes.data(), bytes.size()),
                             uint32_t(bytes.size()));
@@ -649,12 +683,15 @@ bool apply_summary(HookCtx *c, rax_engine *engine, const EmuCallSummary &summary
         ++read_count;
         terminated = bytes[i] == 0;
       }
-      if ( n != 0 && c->api->mem_write(engine, a0, bytes.data(), n) != RAX_OK )
-        return false;
+      capture_summary_use(c, summary, 1, a1, bytes.data(), read_count);
       if ( read_count != 0 )
+      {
         record_summary_access(c, RAX_MEM_READ, a1,
                               scalar_from_memory(c, bytes.data(), read_count),
                               uint32_t(read_count));
+      }
+      if ( n != 0 && c->api->mem_write(engine, a0, bytes.data(), n) != RAX_OK )
+        return false;
       if ( n != 0 )
         record_summary_access(c, RAX_MEM_WRITE, a0,
                               scalar_from_memory(c, bytes.data(), n), uint32_t(n));
@@ -678,10 +715,11 @@ bool apply_summary(HookCtx *c, rax_engine *engine, const EmuCallSummary &summary
       // allocation failure instead of fabricating a smaller valid object.
       if ( n > kMaxModelBytes )
         n = 0;
-      const uint64_t aligned = (n + 15) & ~15ull;
-      if ( n != 0 && c->heap_cursor <= c->heap_hi && aligned <= c->heap_hi - c->heap_cursor )
+      result = c->temporal.allocate(n, c->summary_source, summary.address,
+                                    c->sequence++);
+      if ( c->temporal.allocation_exhausted ) return false;
+      if ( result != 0 )
       {
-        result = c->heap_cursor;
         if ( summary.kind == EmuSummaryKind::CALLOCATE )
         {
           bytes.assign(size_t(n), 0);
@@ -691,13 +729,13 @@ bool apply_summary(HookCtx *c, rax_engine *engine, const EmuCallSummary &summary
             return false;
           record_summary_access(c, RAX_MEM_WRITE, result, 0, uint32_t(n));
         }
-        c->heap_cursor += aligned;
       }
       break;
     }
     case EmuSummaryKind::DEALLOCATE:
       if ( !args(1) )
         return false;
+      if ( !c->temporal.release(a0, c->sequence++) ) return false;
       result = 0;
       break;
     case EmuSummaryKind::RETURN_ARG0:
@@ -729,15 +767,15 @@ bool apply_summary(HookCtx *c, rax_engine *engine, const EmuCallSummary &summary
     case EmuSummaryKind::ALLOCATE_OBJECT:
     {
       constexpr uint64_t object_size = 256;
-      const uint64_t aligned = (object_size + 15) & ~15ull;
-      if ( c->heap_cursor <= c->heap_hi && aligned <= c->heap_hi - c->heap_cursor )
+      result = c->temporal.allocate(object_size, c->summary_source,
+                                    summary.address, c->sequence++);
+      if ( c->temporal.allocation_exhausted ) return false;
+      if ( result != 0 )
       {
-        result = c->heap_cursor;
         bytes.assign(size_t(object_size), 0);
         if ( c->api->mem_write(engine, result, bytes.data(), bytes.size()) != RAX_OK )
           return false;
         record_summary_access(c, RAX_MEM_WRITE, result, 0, uint32_t(object_size));
-        c->heap_cursor += aligned;
       }
       break;
     }
@@ -1033,6 +1071,18 @@ void mem_tr(rax_engine *engine, int kind, uint64_t addr, uint32_t size,
   // trust accesses whose source is inside the function being emulated.
   bool recordable = false;
   const DataScope scope = access_scope(c, addr, size, &recordable);
+  if ( kind == RAX_MEM_READ && hook_in_function(c, c->last_pc)
+    && c->temporal.enabled )
+  {
+    // Hooks run after retirement. Reading guest memory here could see the
+    // written half of a read-modify-write, so use only the supplied read value.
+    // The low-eight-byte contract is not a complete wide/big-endian snapshot.
+    uint8_t observed[8] = {};
+    const size_t available = !c->big_endian && size <= 8 ? size : 0;
+    for ( size_t i = 0; i < available; ++i ) observed[i] = uint8_t(value >> (8 * i));
+    c->temporal.capture(c->last_pc, 0, -1, UseProducer::EXECUTED_READ,
+        scope, addr, observed, available, size, c->sequence++);
+  }
   if ( kind == RAX_MEM_READ && recordable && scope == DataScope::IMAGE )
   {
     if ( c->out->consumed_image_reads.size() >= c->dependency_cap )
@@ -1212,6 +1262,8 @@ void EmuEvents::merge_from(const EmuEvents &other)
   data.insert(data.end(), other.data.begin(), other.data.end());
   states.insert(states.end(), other.states.begin(), other.states.end());
   final_writes.insert(final_writes.end(), other.final_writes.begin(), other.final_writes.end());
+  allocations.insert(allocations.end(), other.allocations.begin(), other.allocations.end());
+  uses.insert(uses.end(), other.uses.begin(), other.uses.end());
   consumed_image_reads.insert(consumed_image_reads.end(),
                               other.consumed_image_reads.begin(),
                               other.consumed_image_reads.end());
@@ -1220,6 +1272,16 @@ void EmuEvents::merge_from(const EmuEvents &other)
 
 void EmuEvents::normalize()
 {
+  std::sort(allocations.begin(), allocations.end(), [](const auto &a, const auto &b)
+  { return a.key() < b.key(); });
+  allocations.erase(std::unique(allocations.begin(), allocations.end(),
+      [](const auto &a, const auto &b) { return a.key() == b.key(); }), allocations.end());
+  const auto use_key = [](const UseSnapshot &use)
+  { return std::make_tuple(use.witness_key(), use.semantic_key()); };
+  std::sort(uses.begin(), uses.end(), [&](const auto &a, const auto &b)
+  { return use_key(a) < use_key(b); });
+  uses.erase(std::unique(uses.begin(), uses.end(), [&](const auto &a, const auto &b)
+  { return use_key(a) == use_key(b); }), uses.end());
   std::sort(edges.begin(), edges.end(), [](const ExecEdge &a, const ExecEdge &b)
   {
     return std::tie(a.run_id, a.seed, a.sequence, a.from, a.to, a.kind)
@@ -1864,8 +1926,16 @@ bool EmuDriver::emulate_from(uint64_t entry, uint64_t func_end, const HybridConf
   ctx.stack_lo = stack_base_;
   ctx.stack_hi = stack_base_ + stack_size_;
   ctx.heap_lo = stack_base_ + 0x10000;
-  ctx.heap_cursor = ctx.heap_lo + 0x1000; // reserve Objective-C entry artifacts
   ctx.heap_hi = stack_base_ + stack_size_ / 2;
+  ctx.temporal.context = entry;
+  ctx.temporal.entry_sp = sp_entry;
+  ctx.temporal.heap_begin = ctx.heap_lo + 0x1000; // reserve Objective-C entry artifacts
+  ctx.temporal.heap_end = ctx.heap_hi;
+  ctx.temporal.run_id = effective_run;
+  ctx.temporal.seed = effective_seed;
+  ctx.temporal.enabled = cfg.want_runtime_strings;
+  ctx.temporal.byte_budget = size_t(std::min<uint64_t>(
+      cfg.max_runtime_bytes, TemporalMemory::total_byte_limit));
   ctx.sp_reg = sp_reg_;
   ctx.lr_reg = lr_reg_;
   ctx.pc_reg = pc_reg_;
@@ -2018,6 +2088,16 @@ bool EmuDriver::emulate_from(uint64_t entry, uint64_t func_end, const HybridConf
                                        && ctx.summarized_calls == 0
                                        && !synthetic_entry_context;
     outcome->summarized_calls = ctx.summarized_calls;
+    outcome->temporal_observation_available = ctx.temporal.enabled && mem_ok;
+    outcome->temporal_capture_truncated = ctx.temporal.truncated
+                                        || ctx.temporal.allocation_exhausted;
+    outcome->temporal_capture_complete = outcome->temporal_observation_available
+        && outcome->conclusive() && !outcome->temporal_capture_truncated
+        && !ctx.execution_truncated && !ctx.dependency_truncated
+        && !ctx.permission_violation && !ctx.cancellation_requested
+        && !ctx.escaped_image && !ctx.function_boundary
+        && !ctx.unmodeled_external && !ctx.environment_model_failure
+        && !synthetic_entry_context;
     if ( outcome->returned && sp_reg_ >= 0 )
     {
       uint64_t sp_final = 0;
@@ -2043,6 +2123,9 @@ bool EmuDriver::emulate_from(uint64_t entry, uint64_t func_end, const HybridConf
 
   if ( code_ok )
     capture_final_writes(out, cfg, effective_run, effective_seed, data_begin);
+  out.allocations.insert(out.allocations.end(), ctx.temporal.allocations.begin(),
+                          ctx.temporal.allocations.end());
+  out.uses.insert(out.uses.end(), ctx.temporal.uses.begin(), ctx.temporal.uses.end());
 
   return code_ok;
 }

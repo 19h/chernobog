@@ -85,19 +85,22 @@ bool is_marked_get_pc_call(ea_t address)
   return false;
 }
 
-// Resolve a push/return get-PC gadget only when all marked callers imply one
-// target. Ambiguous shared gadgets remain indirect instead of inheriting an
-// arbitrary xref iteration order.
-ea_t resolve_gadget_return(ea_t return_ea, int scan_depth)
+// Only a uniquely entered, current CALL context contained in this function
+// justifies replacing a return's control target. Cross-function metadata does
+// not by itself admit the missing body into the decompiler's execution region.
+std::optional<classifier::get_pc_candidate_t> resolve_gadget_return_summary(
+    ea_t return_ea, int scan_depth)
 {
   if ( !is_x86_database() || !executable_code(return_ea) )
-    return BADADDR;
+    return std::nullopt;
 
   const segment_t *segment = getseg(return_ea);
-  const func_t *function = get_func(return_ea);
-  const ea_t lower_bound = function != nullptr
-                         ? function->start_ea
-                         : (segment != nullptr ? segment->start_ea : 0);
+  func_t *function = get_func(return_ea);
+  if ( function == nullptr ) return std::nullopt;
+  // A function tail can precede its entry address. The classifier below checks
+  // actual containment and sequence topology; the entry EA is not a lower
+  // bound on all instructions owned by the function.
+  const ea_t lower_bound = segment != nullptr ? segment->start_ea : 0;
   ea_t cursor = return_ea;
   for ( int index = 0; index < scan_depth; ++index )
   {
@@ -106,40 +109,45 @@ ea_t resolve_gadget_return(ea_t return_ea, int scan_depth)
       break;
     cursor = previous;
 
-    ea_t consensus = BADADDR;
-    bool found = false;
+    std::optional<classifier::get_pc_candidate_t> found;
+    size_t references = 0;
     xrefblk_t xref;
     for ( bool ok = xref.first_to(previous, XREF_FLOW);
           ok; ok = xref.next_to() )
     {
+      if ( ++references > 64 ) return std::nullopt;
       if ( (int(xref.type) & XREF_MASK) != fl_JN )
         continue;
       insn_t call;
       if ( decode_insn(&call, xref.from) <= 0
         || call.itype != NN_call || call.Op1.type != o_near
-        || call.Op1.addr != previous )
+        || call.Op1.addr != previous || !func_contains(function, call.ea) )
       {
         continue;
       }
       const auto candidate = classify_ida_get_pc_call(
-          call, size_t(scan_depth), false);
+          call, size_t(scan_depth), true);
       if ( !candidate || !candidate->resumed_at.has_value()
         || candidate->return_instruction != uint64_t(return_ea) )
       {
         continue;
       }
       const ea_t target = ea_t(*candidate->resumed_at);
-      if ( !executable_code(target) )
+      if ( !executable_code(target) || !func_contains(function, target) )
         continue;
-      if ( found && target != consensus )
-        return BADADDR;
-      consensus = target;
-      found = true;
+      if ( found ) return std::nullopt;
+      found = candidate;
     }
     if ( found )
-      return consensus;
+      return found;
   }
-  return BADADDR;
+  return std::nullopt;
+}
+
+ea_t resolve_gadget_return(ea_t return_ea, int scan_depth)
+{
+  const auto summary = resolve_gadget_return_summary(return_ea, scan_depth);
+  return summary ? ea_t(*summary->resumed_at) : BADADDR;
 }
 
 template <class Flowchart>
@@ -235,7 +243,7 @@ int repair_flowchart(
         && decode_insn(&call, address) > 0 )
       {
         const auto gadget = classify_ida_get_pc_call(
-            call, size_t(config.gadget_scan_depth), false);
+            call, size_t(config.gadget_scan_depth), true);
         if ( gadget && gadget->resumed_at.has_value()
           && gadget->return_instruction != classifier::k_bad_address )
         {
@@ -321,9 +329,10 @@ int convert_resolved_returns(
   for ( int index = 0; index < mba.qty; ++index )
   {
     mblock_t *block = mba.get_mblock(index);
-    if ( block->tail == nullptr
-      || (block->tail->opcode != m_ijmp
-       && block->tail->opcode != m_ret) )
+    // An initial indirect jump has explicit preceding stack effects from the
+    // standard generator. A high-level m_ret can encode an implicit function
+    // return contract; replacing that opcode alone would discard the contract.
+    if ( block->tail == nullptr || block->tail->opcode != m_ijmp )
     {
       continue;
     }
@@ -332,10 +341,9 @@ int convert_resolved_returns(
     if ( target == BADADDR )
       continue;
 
-    auto found = blocks_by_start.upper_bound(target);
-    if ( found == blocks_by_start.begin() )
+    const auto found = blocks_by_start.find(target);
+    if ( found == blocks_by_start.end() )
       continue;
-    --found;
     const int target_block = found->second;
     const mblock_t *target_range = mba.get_mblock(target_block);
     if ( target < target_range->start || target >= target_range->end
@@ -1342,21 +1350,24 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
   {
     if ( get_dbctx_id() != owner_database )
       return MERR_INSN;
-    const ea_t target = resolve_gadget_return(
+    const auto summary = resolve_gadget_return_summary(
         codegen.insn.ea, config.gadget_scan_depth);
-    if ( target == BADADDR )
+    if ( !summary || codegen.mba == nullptr
+      || (summary->width_bits != 32 && summary->width_bits != 64) )
       return MERR_INSN;
-
-    // Re-present the native return as a direct jump to Hex-Rays' standard
-    // microcode generator. This happens before an MBA exists.
-    codegen.insn.itype = NN_jmp;
-    codegen.insn.Op1.type = o_near;
-    codegen.insn.Op1.addr = target;
-    codegen.insn.Op1.dtype = dt_code;
-    for ( int index = 1; index < UA_MAXOP; ++index )
-      codegen.insn.ops[index].type = o_void;
+    const int width = int(summary->width_bits / 8);
+    const mreg_t captured = codegen.mba->alloc_kreg(size_t(width));
+    if ( captured == mr_none ) return MERR_INSN;
+    // RET consumes one natural-width stack word before transferring control.
+    // m_pop retains the standard generator's memory/SP semantics; only its
+    // proven control target is substituted. Do not retype the decoded RET as
+    // a JMP, which would suppress the POP and reuse unrelated operand fields.
+    mop_t popped;
+    popped.make_reg(captured, width);
+    codegen.emit(m_pop, nullptr, nullptr, &popped);
+    codegen.emit(m_goto, 0, ea_t(*summary->resumed_at), 0, 0, 0);
     ++statistics.codegen_returns;
-    return MERR_INSN;
+    return MERR_OK;
   }
 
   bool install_filter()

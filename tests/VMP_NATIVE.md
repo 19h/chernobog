@@ -5,6 +5,10 @@ is [VMP_IMPLEMENTATION.md](../docs/VMP_IMPLEMENTATION.md). This report verifies
 the changes below; it does not imply protected-binary corpus coverage or full
 VM recovery.
 
+The subsequent get-PC and linked ELF32 checkpoint is documented in
+[VMP_GET_PC.md](../docs/VMP_GET_PC.md), with separate artifact hashes and scoped
+results. Historical hashes and run outcomes below remain unchanged.
+
 The production plugin now uses a portable x86 flag model and a bounded,
 single-entry instruction replay. It models all six arithmetic status flags,
 all sixteen condition codes (including IDA mnemonic aliases), register slices,

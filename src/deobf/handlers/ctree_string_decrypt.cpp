@@ -2318,6 +2318,102 @@ static qstring bounded_runtime_cfstring_text(
     return text;
 }
 
+static const char *runtime_use_model_name(uint8_t kind)
+{
+    using chernobog::hybrid::EmuSummaryKind;
+    switch ( EmuSummaryKind(kind) ) {
+        case EmuSummaryKind::STRLEN: return "strlen";
+        case EmuSummaryKind::STRNLEN: return "strnlen";
+        case EmuSummaryKind::STRCMP: return "strcmp";
+        case EmuSummaryKind::STRCPY: return "strcpy";
+        case EmuSummaryKind::STRNCPY: return "strncpy";
+        case EmuSummaryKind::MEMCPY: return "memcpy";
+        case EmuSummaryKind::MEMMOVE: return "memmove";
+        case EmuSummaryKind::MEMCHR: return "memchr";
+        default: return "read";
+    }
+}
+
+int ctree_string_decrypt_handler_t::annotate_runtime_use_strings(cfunc_t *cfunc)
+{
+    if ( cfunc == nullptr || cfunc->maturity != CMAT_FINAL || cfunc->sv.empty() )
+        return 0;
+    const auto candidates = chernobog::hybrid::hybrid_current_use_strings_for_decompilation(
+        uint64_t(cfunc->entry_ea));
+    if ( candidates.empty() ) return 0;
+    using candidate_t = chernobog::hybrid::RuntimeUseStringCandidate;
+    std::map<uint64_t, std::vector<const candidate_t *>> sites;
+    for ( const auto &candidate : candidates )
+        if ( candidate.use.producer == chernobog::hybrid::UseProducer::MODELED_ARGUMENT
+          && candidate.use.context == uint64_t(cfunc->entry_ea) )
+            sites[candidate.use.site].push_back(&candidate);
+
+    struct annotator_t : public ctree_visitor_t
+    {
+        cfunc_t *function;
+        const std::map<uint64_t, std::vector<const candidate_t *>> &sites;
+        std::map<int, std::set<qstring>> lines;
+        std::set<int> omitted;
+        annotator_t(cfunc_t *cf,
+            const std::map<uint64_t, std::vector<const candidate_t *>> &values)
+            : ctree_visitor_t(CV_FAST), function(cf), sites(values) {}
+
+        int idaapi visit_expr(cexpr_t *call) override
+        {
+            if ( call->op != cot_call || call->a == nullptr || call->x == nullptr
+              || call->x->op != cot_obj ) return 0;
+            const auto found = sites.find(uint64_t(call->ea));
+            if ( found == sites.end() ) return 0;
+            for ( const auto *candidate : found->second ) {
+                const auto &use = candidate->use;
+                if ( use.callee != uint64_t(call->x->obj_ea) || use.argument < 0
+                  || size_t(use.argument) >= call->a->size() ) continue;
+                int x = -1, y = -1;
+                if ( !function->find_item_coords(&(*call->a)[size_t(use.argument)], &x, &y)
+                  && !function->find_item_coords(call, &x, &y) ) continue;
+                if ( y < 0 || size_t(y) >= function->sv.size() ) continue;
+                if ( lines.count(y) == 0 && lines.size() >= 64 ) continue;
+                if ( lines[y].size() >= 2 ) { omitted.insert(y); continue; }
+                qstring text;
+                text.sprnt("rax-use(modeled %s,arg=%d,use=%llu,runs=%zu): \"",
+                    runtime_use_model_name(use.model_kind), use.argument,
+                    (unsigned long long)use.occurrence, candidate->eligible_runs);
+                size_t shown = std::min<size_t>(candidate->value.size(), 128);
+                // Do not cut a UTF-8 scalar in the bounded display prefix.
+                while ( shown < candidate->value.size() && shown > 0
+                  && (uint8_t(candidate->value[shown]) & 0xC0) == 0x80 ) --shown;
+                for ( size_t index = 0; index < shown; ++index ) {
+                    const char byte = candidate->value[index];
+                    if ( byte == '\\' || byte == '"' ) text.append('\\');
+                    text.append(byte);
+                }
+                text.append('"');
+                if ( shown < candidate->value.size() ) text.append(" [display truncated]");
+                if ( use.scope == chernobog::hybrid::DataScope::HEAP )
+                    text.cat_sprnt(" [alloc 0x%llX#%llu, offset %lld]",
+                        (unsigned long long)use.object_site,
+                        (unsigned long long)use.object_occurrence, (long long)use.offset);
+                lines[y].insert(text);
+            }
+            return 0;
+        }
+    } annotator(cfunc, sites);
+    annotator.apply_to(&cfunc->body, nullptr);
+    int count = 0;
+    for ( const auto &line : annotator.lines ) {
+        auto &rendered = cfunc->sv[size_t(line.first)].line;
+        for ( const auto &text : line.second ) {
+            if ( rendered.find(text) != qstring::npos ) continue;
+            rendered.append(" " SCOLOR_ON SCOLOR_AUTOCMT "// ");
+            rendered.append(text);
+            if ( annotator.omitted.count(line.first) ) rendered.append(" [additional uses omitted]");
+            rendered.append(SCOLOR_OFF SCOLOR_AUTOCMT);
+            ++count;
+        }
+    }
+    return count;
+}
+
 int ctree_string_decrypt_handler_t::annotate_runtime_cfstring_addresses(
     cfunc_t *cfunc)
 {

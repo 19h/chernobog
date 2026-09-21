@@ -18,6 +18,7 @@
 #include "abi_policy.hpp"
 #include "program_model.hpp"
 #include "hybrid_config.hpp"
+#include "temporal_memory.hpp"
 
 struct rax_engine; // opaque
 
@@ -52,14 +53,6 @@ struct ExecPoint
   uint64_t sequence = 0;
   uint32_t run_id = 0;
   uint64_t seed = 0;
-};
-
-enum class DataScope : uint8_t
-{
-  IMAGE = 0,
-  STACK,
-  HEAP,
-  OTHER,
 };
 
 enum class EmuSummaryKind : uint8_t
@@ -167,6 +160,8 @@ struct EmuEvents
   std::vector<StatePoint> states;
   std::vector<MemoryBytes> final_writes;
   std::vector<ConsumedImageRange> consumed_image_reads;
+  std::vector<AllocationLifetime> allocations;
+  std::vector<UseSnapshot> uses;
   // Distinct instruction addresses executed this run (populated only when the
   // caller asks for it — see EmuDriver::emulate_from `record_pcs`). Used for
   // opaque-predicate / dead-branch analysis (which successors were reachable).
@@ -219,6 +214,11 @@ struct EmuOutcome
   // backend-capability gap or trace truncation. Universal-claim vetoes require
   // this; ordinary exploratory observations do not.
   bool     consumed_context_complete = false;
+  // Bounded use evidence may depend on explicit call models. This flag does
+  // not grant the model-free universal-claim contract above.
+  bool     temporal_observation_available = false;
+  bool     temporal_capture_complete = false;
+  bool     temporal_capture_truncated = false;
   uint32_t summarized_calls = 0;
 
   bool definitive_terminal() const

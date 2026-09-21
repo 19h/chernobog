@@ -374,6 +374,94 @@ std::vector<RuntimeStringCandidate> hybrid_consensus_runtime_strings(
   return result;
 }
 
+std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(
+    const TargetEvidence &evidence, size_t minimum_length, size_t maximum_length)
+{
+  std::vector<RuntimeUseStringCandidate> result;
+  if ( minimum_length == 0 || maximum_length < minimum_length ) return result;
+  using RunKey = std::pair<uint32_t, uint64_t>;
+  using ObjectKey = std::tuple<uint32_t, uint64_t, uint64_t>;
+  using UseKey = decltype(UseSnapshot{}.semantic_key());
+  std::set<RunKey> eligible;
+  for ( const auto &run : evidence.runs )
+  {
+    // Never shrink the corpus to its successful/observable subset.
+    if ( !run.ran || !run.outcome.temporal_observation_available
+      || !run.outcome.temporal_capture_complete
+      || run.outcome.temporal_capture_truncated ) return result;
+    eligible.emplace(run.provenance.run_id, run.provenance.seed);
+  }
+  if ( eligible.empty() ) return result;
+  std::map<ObjectKey, const AllocationLifetime *> objects;
+  std::set<ObjectKey> conflicting_objects;
+  for ( const auto &allocation : evidence.events.allocations )
+  {
+    const ObjectKey key{allocation.run_id, allocation.seed, allocation.id};
+    const auto inserted = objects.emplace(key, &allocation);
+    if ( !inserted.second && inserted.first->second->key() != allocation.key() )
+      conflicting_objects.insert(key);
+  }
+  std::map<UseKey, std::map<RunKey, const UseSnapshot *>> values;
+  std::set<UseKey> ambiguous;
+  for ( const auto &use : evidence.events.uses )
+  {
+    const RunKey run{use.run_id, use.seed};
+    if ( eligible.count(run) == 0 ) continue;
+    const auto key = use.semantic_key();
+    bool valid = use.status == UseCaptureStatus::EXACT
+              && use.bytes.size() == use.observed_size;
+    if ( use.scope == DataScope::HEAP )
+    {
+      const ObjectKey object{use.run_id, use.seed, use.allocation_id};
+      const auto found = objects.find(object);
+      if ( found == objects.end() || conflicting_objects.count(object) ) valid = false;
+      else
+      {
+        const auto &a = *found->second;
+        valid = valid && a.id != 0 && a.generation == use.generation
+            && a.context == use.context && a.site == use.object_site
+            && a.callee == use.object_callee && a.occurrence == use.object_occurrence
+            && a.size == use.object_size && use.address >= a.address
+            && use.address - a.address <= a.size && use.offset >= 0
+            && uint64_t(use.offset) == use.address - a.address
+            && use.observed_size <= a.size - (use.address - a.address)
+            && use.sequence > a.allocated
+            && (a.live ? a.released == 0 : use.sequence < a.released);
+      }
+    }
+    else if ( use.scope != DataScope::IMAGE && use.scope != DataScope::STACK ) valid = false;
+    const auto decoded = string_recovery::recover_runtime_utf8_prefix(
+        use.bytes, minimum_length, maximum_length);
+    if ( !valid || !decoded ) { ambiguous.insert(key); continue; }
+    auto &per_run = values[key];
+    const auto inserted = per_run.emplace(run, &use);
+    // Even equal text at different addresses/sequences is a conflicting
+    // duplicate of the same occurrence, not an extra agreeing witness.
+    if ( !inserted.second && inserted.first->second->witness_key() != use.witness_key() )
+      ambiguous.insert(key);
+  }
+  for ( const auto &entry : values )
+  {
+    if ( ambiguous.count(entry.first) || entry.second.size() != eligible.size() ) continue;
+    RuntimeUseStringCandidate candidate;
+    candidate.use = *entry.second.begin()->second;
+    candidate.value = string_recovery::recover_runtime_utf8_prefix(
+        candidate.use.bytes, minimum_length, maximum_length)->utf8;
+    candidate.eligible_runs = eligible.size();
+    bool same = true;
+    for ( const auto &run : entry.second )
+    {
+      const auto &use = *run.second;
+      const auto decoded = string_recovery::recover_runtime_utf8_prefix(
+          use.bytes, minimum_length, maximum_length);
+      if ( !decoded || decoded->utf8 != candidate.value ) { same = false; break; }
+      candidate.witnesses.push_back(use);
+    }
+    if ( same ) result.push_back(std::move(candidate));
+  }
+  return result;
+}
+
 BranchClaimCheck TargetEvidence::check_branch_claim(
     uint64_t instruction, bool expected_taken) const
 {
@@ -505,6 +593,12 @@ TargetEvidence hybrid_build_target_evidence(
       ++result.summary.memory_observation_available_runs;
     if ( run.ran && !run.outcome.consumed_context_complete )
       ++result.summary.context_incomplete_runs;
+    if ( run.ran && run.outcome.temporal_observation_available )
+      ++result.summary.temporal_observation_available_runs;
+    if ( run.ran && run.outcome.temporal_capture_complete )
+      ++result.summary.temporal_capture_complete_runs;
+    if ( run.ran && run.outcome.temporal_capture_truncated )
+      ++result.summary.temporal_capture_truncated_runs;
   }
 
   // Preserve exact context actually consumed by the concrete traces. Code-hook
@@ -686,6 +780,8 @@ TargetEvidence hybrid_build_target_evidence(
       }
     }
   }
+  result.summary.allocation_lifetimes = result.events.allocations.size();
+  result.summary.use_snapshots = result.events.uses.size();
   for ( const MemoryBytes &bytes : result.events.final_writes )
   {
     if ( bytes.scope == DataScope::IMAGE )

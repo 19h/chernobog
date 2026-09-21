@@ -48,6 +48,8 @@ enum class instruction_kind_t : uint8_t
   sub_register_immediate,
   register_write,
   stack_mutation,
+  load_pc_relative_address,
+  exchange_stack_top_register,
 };
 
 struct instruction_t
@@ -62,6 +64,9 @@ struct instruction_t
   uint16_t stack_width_bits = 0;
   bool alternate_predecessor = false;
   bool far_transfer = false;
+  bool destination_is_stack_pointer = false;
+  bool source_is_stack_pointer = false;
+  bool preserves_flags = false;
 
   uint64_t end() const;
 };
@@ -72,6 +77,18 @@ enum class get_pc_mode_t : uint8_t
   read_return_address,
   adjust_return_address,
   discard_return_address,
+};
+
+enum class stack_access_kind_t : uint8_t { read, write, read_modify_write };
+struct stack_access_t
+{
+  uint64_t instruction = k_bad_address;
+  int64_t offset_bytes = 0; // Relative to SP before the CALL/PUSH sequence.
+  unsigned width_bits = 0;
+  stack_access_kind_t kind = stack_access_kind_t::read;
+  std::optional<uint64_t> value_before;
+  std::optional<uint64_t> value_after;
+  bool implicit_lock = false;
 };
 
 struct get_pc_candidate_t
@@ -86,7 +103,30 @@ struct get_pc_candidate_t
   int64_t delta = 0;
   get_pc_mode_t mode = get_pc_mode_t::pop_return_address;
   std::vector<uint64_t> support;
+  uint64_t summary_end = k_bad_address;
+  unsigned width_bits = 0;
+  int64_t stack_delta_bytes = 0;
+  bool flags_preserved = false;
+  std::vector<stack_access_t> stack_accesses;
 };
+
+struct push_get_pc_t
+{
+  uint64_t start = k_bad_address;
+  uint64_t end = k_bad_address;
+  uint64_t address_value = k_bad_address;
+  unsigned width_bits = 0;
+  int64_t stack_delta_bytes = 0;
+  register_slice_t restored_register;
+  bool flags_preserved = true;
+  std::vector<uint64_t> support;
+  std::vector<stack_access_t> stack_accesses;
+};
+
+// Exact metadata summaries. The x64 form retains both stack writes and the
+// implicit lock on XCHG; it does not authorize replacing the native sequence.
+std::optional<push_get_pc_t> classify_push_get_pc(
+    const std::vector<instruction_t> &sequence, unsigned execution_mode_bits);
 
 // The gadget vector starts at the direct call target and is in exact physical
 // address order. `other_callers` includes any alternate control-flow entry to

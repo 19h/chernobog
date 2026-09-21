@@ -723,6 +723,42 @@ hybrid_current_runtime_strings_for_decompilation(uint64_t function_start)
   return projection->runtime_strings;
 }
 
+std::vector<RuntimeUseStringCandidate> hybrid_current_use_strings(
+    uint64_t function_start)
+{
+  const auto evidence = registry_evidence(int64_t(get_dbctx_id()));
+  if ( !evidence || evidence->scope.function_start != function_start
+    || !current_identity_matches(*evidence) ) return {};
+  return hybrid_consensus_use_strings(*evidence);
+}
+
+std::vector<RuntimeUseStringCandidate> hybrid_current_use_strings_for_decompilation(
+    uint64_t function_start)
+{
+  std::shared_ptr<const TargetEvidence> evidence;
+  std::shared_ptr<const DeobfuscationProjection> projection;
+  {
+    Registry &state = registry();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    const int64_t database_id = int64_t(get_dbctx_id());
+    const auto current = state.evidence.find(database_id);
+    if ( current != state.evidence.end() ) evidence = current->second;
+    const auto display = state.deobfuscation_projections.find(database_id);
+    if ( display != state.deobfuscation_projections.end() ) projection = display->second;
+  }
+  if ( !evidence || evidence->scope.function_start != function_start ) return {};
+  if ( current_identity_matches(*evidence) ) return hybrid_consensus_use_strings(*evidence);
+  if ( !projection || projection->source != evidence || projection->sealing_open
+    || !current_function_identity_matches(*evidence, evidence->function_identity,
+          projection->function_profile, EntryProfilePolicy::REQUIRE_EXACT) ) return {};
+  // A prior use cannot inherit the final-write display exception for modified
+  // function/data bytes. Only the sealed profile refinement is admitted.
+  for ( size_t index = 0; index < evidence->context_identity.size(); ++index )
+    if ( !byte_identity_matches(evidence->context_identity[index],
+                                "consumed use context", index, nullptr) ) return {};
+  return hybrid_consensus_use_strings(*evidence);
+}
+
 HybridBranchCheck hybrid_check_current_branch_claim(
     uint64_t function_start, uint64_t branch_instruction,
     bool expected_taken)

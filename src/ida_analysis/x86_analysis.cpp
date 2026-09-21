@@ -134,6 +134,26 @@ struct State
 {
     Flags flags;
     std::array<Word, 16> regs{};
+    // Only words established by this single-entry replay are retained. No
+    // initial stack memory or absolute stack address is assumed known.
+    std::vector<std::optional<uint64_t>> stack;
+
+    static bool stack_top(const insn_t &insn, const op_t &operand)
+    {
+        return natad(insn) && insn.segpref == 0
+            && (operand.type == o_phrase || (operand.type == o_displ && operand.addr == 0))
+            && get_dtype_size(operand.dtype) == (mode64(insn) ? 8 : 4)
+            && x86_base_reg(insn, operand) == R_sp
+            && x86_index_reg(insn, operand) == R_none;
+    }
+
+    void adjust_sp(int64_t delta, bool is64)
+    {
+        const unsigned bits = is64 ? 64 : 32;
+        auto value = regs[4].read(bits, 0);
+        if ( value ) *value = (*value + uint64_t(delta)) & mask(bits);
+        regs[4].write(bits, 0, value, is64);
+    }
 
     std::optional<uint64_t> read(const op_t &operand, unsigned target_width = 0) const
     {
@@ -155,13 +175,38 @@ struct State
     void write(const op_t &operand, std::optional<uint64_t> value, bool mode64)
     {
         const Slice s = register_slice(operand);
-        if ( s.reg >= 0 ) regs[size_t(s.reg)].write(s.width, s.offset, value, mode64);
+        if ( s.reg >= 0 )
+        {
+            if ( s.reg == 4 ) stack.clear();
+            regs[size_t(s.reg)].write(s.width, s.offset, value, mode64);
+        }
     }
 
     void step(const insn_t &insn)
     {
         const bool is64 = mode64(insn);
         const unsigned width = unsigned(get_dtype_size(insn.Op1.dtype) * 8);
+        const unsigned word_bits = is64 ? 64 : 32;
+        const op_t *exchange_reg = nullptr;
+        if ( insn.itype == NN_xchg )
+        {
+            if ( insn.Op1.type == o_reg && stack_top(insn, insn.Op2) ) exchange_reg = &insn.Op1;
+            if ( insn.Op2.type == o_reg && stack_top(insn, insn.Op1) ) exchange_reg = &insn.Op2;
+            if ( exchange_reg != nullptr )
+            {
+                const auto slice = register_slice(*exchange_reg);
+                if ( slice.reg < 0 || slice.reg == 4 || slice.width != word_bits ) exchange_reg = nullptr;
+            }
+        }
+        const uint32_t features = insn.get_canon_feature(PH);
+        for ( int index = 0; index < UA_MAXOP; ++index )
+        {
+            const auto type = insn.ops[index].type;
+            if ( has_cf_chg(features, index) && type == o_reg
+              && register_slice(insn.ops[index]).reg < 0 ) stack.clear();
+            if ( exchange_reg == nullptr && has_cf_chg(features, index)
+                 && (type == o_mem || type == o_displ || type == o_phrase) ) stack.clear();
+        }
         const auto cond = x86_condition(insn.itype);
         if ( cond && cond->use != X86ConditionUse::branch )
         {
@@ -181,7 +226,9 @@ struct State
         switch ( insn.itype )
         {
             case NN_mov:
-                write(insn.Op1, read(insn.Op2, width), is64);
+                write(insn.Op1, stack_top(insn, insn.Op2)
+                      ? (stack.empty() ? std::nullopt : stack.back())
+                      : read(insn.Op2, width), is64);
                 return;
             case NN_movzx: case NN_movsx: case NN_movsxd:
             {
@@ -228,18 +275,57 @@ struct State
             }
             case NN_xchg:
             {
+                if ( exchange_reg != nullptr )
+                {
+                    const auto value = read(*exchange_reg);
+                    const auto old_top = stack.empty() ? std::nullopt : stack.back();
+                    if ( stack.empty() ) stack.push_back(value);
+                    else stack.back() = value;
+                    write(*exchange_reg, old_top, is64);
+                    return;
+                }
                 const auto a = read(insn.Op1), b = read(insn.Op2);
                 write(insn.Op1, b, is64);
                 write(insn.Op2, a, is64);
                 return;
             }
-            case NN_push: case NN_pushf: case NN_pushfd: case NN_pushfq:
+            case NN_push:
+            {
+                if ( !natad(insn) || (is64 ? !op64(insn) : !op32(insn)) )
+                {
+                    stack.clear(); regs[4] = {}; return;
+                }
+                auto value = stack_top(insn, insn.Op1)
+                           ? (stack.empty() ? std::nullopt : stack.back())
+                           : read(insn.Op1, word_bits);
+                // A long-mode PUSH has no imm64 encoding. Normalize the
+                // decoder's immediate representation to its signed imm32
+                // architectural value after any imm8 extension in read().
+                if ( value && is64 && insn.Op1.type == o_imm )
+                    *value = uint64_t(int64_t(int32_t(*value)));
+                if ( value ) *value &= mask(word_bits);
+                if ( stack.size() == 64 ) stack.erase(stack.begin());
+                stack.push_back(value);
+                adjust_sp(-int64_t(word_bits / 8), is64);
+                return;
+            }
+            case NN_pushf: case NN_pushfd: case NN_pushfq:
+                stack.clear();
                 regs[4] = {};
                 return;
             case NN_pop:
-                write(insn.Op1, std::nullopt, is64);
-                regs[4] = {};
+            {
+                if ( insn.Op1.type != o_reg || !natad(insn)
+                  || (is64 ? !op64(insn) : !op32(insn)) )
+                {
+                    stack.clear(); write(insn.Op1, std::nullopt, is64); regs[4] = {}; return;
+                }
+                const auto value = stack.empty() ? std::nullopt : stack.back();
+                if ( !stack.empty() ) stack.pop_back();
+                adjust_sp(int64_t(word_bits / 8), is64);
+                write(insn.Op1, value, is64);
                 return;
+            }
             case NN_nop:
                 return;
             case NN_bswap:
@@ -257,6 +343,7 @@ struct State
                 return;
             }
             case NN_pusha: case NN_popa:
+                stack.clear();
                 regs = {};
                 return;
             default:
@@ -289,6 +376,20 @@ bool alternative_entry(ea_t address, ea_t previous)
             return true;
     return false;
 }
+
+bool only_fallthrough(ea_t source, ea_t target)
+{
+    bool found = false;
+    xrefblk_t xref;
+    for ( bool ok = xref.first_from(source, XREF_ALL); ok; ok = xref.next_from() )
+    {
+        if ( !xref.iscode ) continue;
+        if ( xref.to != target || (xref.type & XREF_MASK) != fl_F ) return false;
+        found = true;
+    }
+    return found;
+}
+
 std::vector<insn_t> prefix_before(const insn_t &insn, size_t depth)
 {
     if ( PH.id != PLFM_386 || (!mode32(insn) && !mode64(insn)) ) return {};
@@ -307,9 +408,18 @@ std::vector<insn_t> prefix_before(const insn_t &insn, size_t depth)
         insn_t decoded;
         if ( decode_insn(&decoded, previous) <= 0 || decoded.size == 0
              || previous > BADADDR - decoded.size || previous + decoded.size != cursor
-             || is_call_insn(decoded) || is_basic_block_end(decoded, false)
+             || is_call_insn(decoded)
              || mode64(decoded) != mode64(insn) || mode32(decoded) != mode32(insn) ) break;
+        // IDA marks PUSH-next as a block end in 32-bit code even when its sole
+        // code edge is ordinary fallthrough. Include this architectural PUSH
+        // as the first replayed instruction, without scanning across the
+        // marked boundary or admitting a second outgoing edge.
+        const bool boundary = is_basic_block_end(decoded, false);
+        if ( boundary && (decoded.itype != NN_push || !natad(decoded)
+          || (mode64(decoded) ? !op64(decoded) : !op32(decoded))
+          || !only_fallthrough(previous, cursor)) ) break;
         prefix.push_back(decoded);
+        if ( boundary ) break;
         cursor = previous;
     }
     return prefix;

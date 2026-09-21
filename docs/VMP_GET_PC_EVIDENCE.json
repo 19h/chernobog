@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "scope": "Bounded native get-PC checkpoint; full VMP review remains incomplete",
+  "repository_revision": "d6db598335e3a6b211dd3d0ee4b5160670f167f9",
+  "worktree_changes_included": true,
+  "source_sha256": {
+    "src/ida_analysis/native_classifier.hpp": "72a84d5f6fff3f3ea409e074532a876832e07657daeb7a2bc9776740dd395b5c",
+    "src/ida_analysis/native_classifier.cpp": "244b39fd2dd5afca491d84e1024982071671b2b6bc92c9853f68f374de12009f",
+    "src/ida_analysis/get_pc_ida.hpp": "c2d1ac09770d435b8ee2287f36ba2cc0f7394d0b658025c39c09129721fef6b5",
+    "src/ida_analysis/get_pc_ida.cpp": "0769abb401c3850263f5397c658b7fbaa11026b47742b1db0a6bc25c4ff23a7a",
+    "src/ida_analysis/native_engine.cpp": "bb91826159aec24b47931d5b27319536c7a4c497f6e38b179404e33f6a480f63",
+    "src/ida_analysis/x86_analysis.cpp": "1b5dccb7144b307bae19669fbfc9b347260d5cd2edb88e8e9d39273540d106c2",
+    "src/common/x86_abstract.h": "8304773b77b444ad689c6fa14c0b32930ceff0f5e7660791a3421bb87ad8701b",
+    "tests/core_tests.cpp": "887400c89b6fc75206f79098b76e9bb67d628aa868f61cc3966344f79257e4c7",
+    "tests/vmp_native/get_pc.S": "2282769d574999164c426fc0371e19f66934f4bbe837f1bc3605135b101202a9",
+    "tests/vmp_native/get_pc32.S": "7b9d8fa8f6cd20f079257228c0e1275c599f7cf80843d039ac009af50af67646",
+    "tests/ida_get_pc_smoke.py": "0ce1cb1a9b36ee21c87b3ab562e854338c949c35dee22b9617b91a5cfee04868",
+    "tests/ida_get_pc32_smoke.py": "8f60306fc4adc0b13adc19177653f228b943fffb038c2ca6312543410fe12db1",
+    "tests/verify_get_pc32_baseline.py": "ecf97c989c269ccf7f75ed3721add7cf4a215dceaddaa31c3cf5b40d3a790f31",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151"
+  },
+  "vmp_source": {
+    "logical_path": "vmp/core/intel.cc",
+    "sha256": "ce0edd303f1b20d12affaf1bb4646b684a056babe724f36af24340fefe7cb17c",
+    "emitter_lines": [
+      16218,
+      16248
+    ]
+  },
+  "plugin_sha256": "3d850f341057e622ab2e7117812f0214fe6c8d1759e138de5588f538d4afa322",
+  "x64_execution": {
+    "fixture_sha256": "1142cf1154e97106fca4b43e9f5e6dc626943599e3c97fcc70f5485e003065b6",
+    "exit_code": 0,
+    "host_architecture": "arm64",
+    "x86_64_process_translation": "1",
+    "physical_x86_execution_verified": false
+  },
+  "elf32_execution": "not performed; IDA decode/analysis only",
+  "ctest": {
+    "log": "build/get-pc-release-ctest.log",
+    "sha256": "af44e1dfa22c9c8e48420af4e7513d6326186b160df16a1d330470c351b6d426",
+    "passed": 12,
+    "failed": 0,
+    "reported_elapsed_seconds": 8.22
+  },
+  "baseline_comparison": {
+    "return_code": 0,
+    "result": "[chernobog][get-pc32-baseline] PASS rejected_controls=4"
+  },
+  "ida_runs": [
+    {
+      "directory": "build/vmp-get-pc-release-get-pc",
+      "input_sha256": "1142cf1154e97106fca4b43e9f5e6dc626943599e3c97fcc70f5485e003065b6",
+      "plugin_sha256": "3d850f341057e622ab2e7117812f0214fe6c8d1759e138de5588f538d4afa322",
+      "script_sha256": "0ce1cb1a9b36ee21c87b3ab562e854338c949c35dee22b9617b91a5cfee04868",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "process_elapsed_ns": 2825405083,
+      "artifacts_unchanged": true,
+      "internal_error_found": false,
+      "pass_markers": [
+        "[chernobog][get-pc] PASS assertions=53"
+      ],
+      "run_report_sha256": "9ddacb9fa2aed26ff9f2f649e09feae909a5367e201c3ee86ab6811fa6624310",
+      "ida_log_sha256": "6698f67ad5a4a812d227edf7f6d93a009cc88bf4cd2b93adc4f6f85aaf703fc2",
+      "probe_reports": {
+        "get_pc.json": "9343cc356e72300ca2495434522a98e4589965f80c53915feefe20247728402b"
+      }
+    },
+    {
+      "directory": "build/vmp-get-pc-release-get-pc32",
+      "input_sha256": "9e2452212adb306096a7951de8923219f43be33ba4b6e5d70f2f20e89cdb33df",
+      "plugin_sha256": "3d850f341057e622ab2e7117812f0214fe6c8d1759e138de5588f538d4afa322",
+      "script_sha256": "8f60306fc4adc0b13adc19177653f228b943fffb038c2ca6312543410fe12db1",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "process_elapsed_ns": 2646890209,
+      "artifacts_unchanged": true,
+      "internal_error_found": false,
+      "pass_markers": [
+        "[chernobog][get-pc32] PASS assertions=16"
+      ],
+      "run_report_sha256": "e76a067756f247cce4d996f5eb0b57e9f230fc4e8c0244679db8d543bec3ca07",
+      "ida_log_sha256": "9bf1a5dba60df0a2f8efd1d4136bc40cd59b17eeb0e9c1738e7064ad0e638458",
+      "probe_reports": {
+        "get_pc32.json": "8ab6ae940eaf03a93b092687c8128576dce83bbc5cc01792a48001f3fe124deb"
+      }
+    },
+    {
+      "directory": "build/vmp-get-pc-release-get-pc32-baseline",
+      "input_sha256": "9e2452212adb306096a7951de8923219f43be33ba4b6e5d70f2f20e89cdb33df",
+      "plugin_sha256": "3d850f341057e622ab2e7117812f0214fe6c8d1759e138de5588f538d4afa322",
+      "script_sha256": "8f60306fc4adc0b13adc19177653f228b943fffb038c2ca6312543410fe12db1",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "process_elapsed_ns": 2649219667,
+      "artifacts_unchanged": true,
+      "internal_error_found": false,
+      "pass_markers": [
+        "[chernobog][get-pc32] PASS assertions=6"
+      ],
+      "run_report_sha256": "875c2a05be14cecbe5aa842e5aa14254aa6c24bdd6166e0a2474bd628a604aee",
+      "ida_log_sha256": "0794869f25ae3db347f069fced02c2704fb095ed2f4eee93bf574152ca4cf88d",
+      "probe_reports": {
+        "get_pc32.json": "9ac3f028e7c01236b47802526e3bed271566722e942ded32ee1651d29fa26b73"
+      }
+    },
+    {
+      "directory": "build/vmp-get-pc-release-flags",
+      "input_sha256": "1b373e56a065623afa09ce84af11ae524b4bf801aa37cb3ef03eb83986e9492c",
+      "plugin_sha256": "3d850f341057e622ab2e7117812f0214fe6c8d1759e138de5588f538d4afa322",
+      "script_sha256": "6b8620d8ebeb7cb3ddb580c7d59d165fafa05a7d85e0021074aa8a30a8b42657",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "process_elapsed_ns": 2759131875,
+      "artifacts_unchanged": true,
+      "internal_error_found": false,
+      "pass_markers": [
+        "[chernobog][x86-flags] PASS cases=33"
+      ],
+      "run_report_sha256": "d1a4095b2ab857782239aef5fb03132c9be9a198a46b880ef93e3916ce7703f3",
+      "ida_log_sha256": "963aa52f5b81ab9475a72d511d48c8294afe25b924554227b404fe92ef68e719",
+      "probe_reports": {
+        "x86_flags.json": "0b12df711fb7090004b7dd2371ca18b17361ae78746202952e94f1b49d83c47c"
+      }
+    },
+    {
+      "directory": "build/vmp-get-pc-release-stack",
+      "input_sha256": "ed640fa99e8fff94418e6ed5bd70f69175047f8c2bf4249627fec06d646c0b78",
+      "plugin_sha256": "3d850f341057e622ab2e7117812f0214fe6c8d1759e138de5588f538d4afa322",
+      "script_sha256": "fab975eeebdc102748462c2db12b922ed99179d6d406d1c2f6d1aa1c664af9cb",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "process_elapsed_ns": 2765870875,
+      "artifacts_unchanged": true,
+      "internal_error_found": false,
+      "pass_markers": [
+        "[chernobog][stack-transfer] PASS cases=12"
+      ],
+      "run_report_sha256": "182e0c947210a2e06da0127f175af8e9338767581521bb690ee23eeedb88f459",
+      "ida_log_sha256": "9c0b141a933a87e518fe44fda54d25913c0226e27b2324aa928e31aeb8ae62ad",
+      "probe_reports": {
+        "stack_transfer.json": "ca1d825b1e37892d783ccef312a46703517c474052ac5c992c092e35077236ea"
+      }
+    },
+    {
+      "directory": "build/vmp-get-pc-release-flags-lifecycle",
+      "input_sha256": "1b373e56a065623afa09ce84af11ae524b4bf801aa37cb3ef03eb83986e9492c",
+      "plugin_sha256": "3d850f341057e622ab2e7117812f0214fe6c8d1759e138de5588f538d4afa322",
+      "script_sha256": "26a479fe373b5d0af966b62c96ded9d8649b2c5dfe9a4f507e37ebc67576abdb",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "process_elapsed_ns": 2773984083,
+      "artifacts_unchanged": true,
+      "internal_error_found": false,
+      "pass_markers": [
+        "[chernobog][native-proof-lifecycle] PASS"
+      ],
+      "run_report_sha256": "93f5030675efdff17117306a21f8498f35f1a869d82623ac07b080324473dadf",
+      "ida_log_sha256": "bc6c275f912a1e605a8513d80e7e6e120690c6835dbb2ba674251c876962db25",
+      "probe_reports": {
+        "native_proof_lifecycle.json": "d7552524e8a713a805e44183e91a683de0af3ff649c6ef3dc9898658e4dbbd03"
+      }
+    },
+    {
+      "directory": "build/vmp-get-pc-release-stack-lifecycle",
+      "input_sha256": "ed640fa99e8fff94418e6ed5bd70f69175047f8c2bf4249627fec06d646c0b78",
+      "plugin_sha256": "3d850f341057e622ab2e7117812f0214fe6c8d1759e138de5588f538d4afa322",
+      "script_sha256": "26a479fe373b5d0af966b62c96ded9d8649b2c5dfe9a4f507e37ebc67576abdb",
+      "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+      "process_elapsed_ns": 2767726167,
+      "artifacts_unchanged": true,
+      "internal_error_found": false,
+      "pass_markers": [
+        "[chernobog][native-proof-lifecycle] PASS"
+      ],
+      "run_report_sha256": "ae3d397289053daf8c795ead36880bcba3da6b85c0814c1cf334e61232b5f545",
+      "ida_log_sha256": "b456e35e5ddadb03ae2f5c1df2ce2a107672a21dbe350237d2fa160e2ccb1cdc",
+      "probe_reports": {
+        "native_proof_lifecycle.json": "cc91e98cde9eeb30c731d8315c43b4d6d268ad3cace9c5c4908869aec5a2d98a"
+      }
+    }
+  ],
+  "remaining": [
+    "paired protected corpus and coverage/performance metrics",
+    "native 32-bit execution oracle",
+    "legacy CALL structural mutation rollback",
+    "get-PC save/reopen/rebase/undo matrix",
+    "legacy RET-to-JMP microcode stack-load/SP effects",
+    "other incomplete rows in VMP_IMPLEMENTATION.md"
+  ]
+}

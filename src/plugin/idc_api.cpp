@@ -1237,7 +1237,12 @@ error_t idaapi idc_rax_clear(idc_value_t *, idc_value_t *r)
     X(permission_violating_runs)                       \
     X(memory_observation_requested_runs)               \
     X(memory_observation_available_runs)               \
-    X(context_incomplete_runs)
+    X(context_incomplete_runs)                         \
+    X(allocation_lifetimes)                            \
+    X(use_snapshots)                                   \
+    X(temporal_observation_available_runs)             \
+    X(temporal_capture_complete_runs)                  \
+    X(temporal_capture_truncated_runs)
 
 error_t idaapi idc_rax_summary(idc_value_t *argv, idc_value_t *r)
 {
@@ -1321,6 +1326,50 @@ error_t idaapi idc_rax_string(idc_value_t *argv, idc_value_t *r)
     set_str(r, "value", candidate.value.c_str());
     set_size(r, "length", candidate.value.size());
     set_size(r, "observations", candidate.observations);
+    set_size(r, "eligible_runs", candidate.eligible_runs);
+    return eOk;
+}
+
+//--------------------------------------------------------------------------
+// chernobog_rax_use_string_count(ea) / chernobog_rax_use_string(ea, index)
+// Exact-current use witnesses. Heap addresses are run-specific evidence only.
+//--------------------------------------------------------------------------
+error_t idaapi idc_rax_use_string_count(idc_value_t *argv, idc_value_t *r)
+{
+    const ea_t function_ea = resolve_function(argv[0]);
+    r->set_long(function_ea == BADADDR ? 0 : sval_t(
+        hybrid::hybrid_current_use_strings(uint64_t(function_ea)).size()));
+    return eOk;
+}
+
+error_t idaapi idc_rax_use_string(idc_value_t *argv, idc_value_t *r)
+{
+    const ea_t function_ea = resolve_function(argv[0]);
+    const auto candidates = function_ea == BADADDR
+        ? std::vector<hybrid::RuntimeUseStringCandidate>{}
+        : hybrid::hybrid_current_use_strings(uint64_t(function_ea));
+    const sval_t index = argv[1].num;
+    const bool valid = index >= 0 && size_t(index) < candidates.size();
+    const hybrid::RuntimeUseStringCandidate fallback;
+    const auto &candidate = valid ? candidates[size_t(index)] : fallback;
+    const auto &use = candidate.use;
+    make_object(r);
+    set_bool(r, "ok", valid);
+    set_str(r, "value", candidate.value.c_str());
+    set_u64(r, "context", use.context);
+    set_u64(r, "site", use.site);
+    set_u64(r, "callee", use.callee);
+    set_u64(r, "occurrence", use.occurrence);
+    set_u64(r, "argument", uint64_t(int64_t(use.argument)));
+    set_str(r, "producer", use.producer == hybrid::UseProducer::MODELED_ARGUMENT
+        ? "modeled-argument" : "executed-read");
+    set_u64(r, "model_kind", use.model_kind);
+    set_u64(r, "object_site", use.object_site);
+    set_u64(r, "object_callee", use.object_callee);
+    set_u64(r, "object_occurrence", use.object_occurrence);
+    set_u64(r, "object_size", use.object_size);
+    set_u64(r, "offset", uint64_t(use.offset));
+    set_size(r, "observations", candidate.witnesses.size());
     set_size(r, "eligible_runs", candidate.eligible_runs);
     return eOk;
 }
@@ -1597,6 +1646,12 @@ const idc_entry_t idc_entries[] = {
     { "chernobog_rax_string", idc_rax_string, args_ea_long,
       "chernobog_rax_string(ea, index)",
       "One runtime string witness by index" },
+    { "chernobog_rax_use_string_count", idc_rax_use_string_count, args_ea,
+      "chernobog_rax_use_string_count(ea)",
+      "Number of current use-specific runtime string witnesses" },
+    { "chernobog_rax_use_string", idc_rax_use_string, args_ea_long,
+      "chernobog_rax_use_string(ea, index)",
+      "One use-specific string with model and object provenance" },
     { "chernobog_rax_target_count", idc_rax_target_count, args_ea_ea,
       "chernobog_rax_target_count(ea, insn_ea)",
       "Number of observed targets for an indirect call/jump" },

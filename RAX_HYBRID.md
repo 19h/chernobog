@@ -133,6 +133,37 @@ The display projection is sealed before the final ctree lookup so late prototype
 refinement does not suppress first-view literals. See the
 [runtime UTF-8 validation](tests/RUNTIME_UTF8.md).
 
+Use-time strings are a separate evidence stream. The driver retains bounded
+bytes consumed by executed scalar reads and supported modeled memory/string
+calls, together with their event order, argument index, root-function context,
+and allocation lifetime. The modeled heap uses bounded first-fit reuse; each
+allocation has a distinct ID and storage generation. Corresponding heap uses
+are compared by allocation origin/occurrence and offset, without requiring the
+same heap address or generation across runs. Failed allocation attempts and
+zero-byte modeled calls retain their places in occurrence counting.
+
+Every scheduled run must have complete temporal capture for use-string
+consensus. Missing, conflicting, invalid-lifetime, truncated, or unterminated
+use observations reject the corresponding candidate. The values remain
+observations under the recorded execution and call models. They are never
+global heap-address facts or universal value proofs.
+
+The `hxe_func_printed` consumer adds transient `rax-use(modeled strlen,...)`
+text only at an exact direct call target, call EA, and argument index. It keeps
+distinct dynamic use occurrences, including values from storage later erased
+or reused. It changes neither ctree arguments nor saved comments. Function
+and consumed-image bytes are checked again on printing. A finished owned
+display lease may admit Hex-Rays prototype refinement, but cannot admit changed
+function/data bytes or a later entry-profile edit. Native-read candidates and
+unmatched/indirect ctree calls remain available as evidence without annotation.
+
+Per run, capture admits at most 4,096 allocation attempts, 4,096 use attempts,
+4,096 bytes per snapshot, and `min(CHERNOBOG_RAX_MAX_RUNTIME_BYTES, 1,048,576)`
+retained snapshot bytes. This byte allowance is separate from final-write
+capture. Direct wide or big-endian read values are recorded as incomplete;
+the driver does not reread post-retirement memory to fabricate original bytes.
+See [temporal capture validation and limits](docs/VMP_TEMPORAL_STRINGS.md).
+
 For a restricted AArch64 store pattern, a plain 64-bit numeric CFString address
 can become an explicitly cast address expression with the same integer type and
 address bits. Admission requires exact `ADRP; ADD; STR` construction, compatible
@@ -275,6 +306,7 @@ and returns a code that `chernobog_rax_result_name()` renders as
 | `chernobog_rax_fresh(ea)` | `1` when exact evidence is still current |
 | `chernobog_rax_summary(ea)` | Scope, provenance, and every counter in `EvidenceSummary` |
 | `chernobog_rax_string_count(ea)` / `chernobog_rax_string(ea, i)` | Consensus runtime string witnesses |
+| `chernobog_rax_use_string_count(ea)` / `chernobog_rax_use_string(ea, i)` | Exact-current use-specific strings, call/argument and allocation-origin provenance; model kind is an `EmuSummaryKind` value |
 | `chernobog_rax_target_count(ea, insn)` / `chernobog_rax_target(ea, insn, i)` | Observed indirect targets |
 | `chernobog_rax_branch(ea, insn, taken)` | Branch-claim cross-check, including `veto` |
 | `chernobog_rax_show()` | Print the report described above |

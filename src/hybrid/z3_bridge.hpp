@@ -57,6 +57,16 @@ bool hybrid_finish_deobfuscation_projection(uint64_t function_start);
 std::vector<RuntimeStringCandidate> hybrid_current_runtime_strings(
     uint64_t function_start);
 
+// Exact live function AND consumed-image freshness, including model inputs.
+// No address-only or post-materialization projection is admitted here.
+std::vector<RuntimeUseStringCandidate> hybrid_current_use_strings(
+    uint64_t function_start);
+
+// Print-only: a finished owned display lease may admit Hex-Rays entry-profile
+// refinement. Original function bytes and ALL consumed bytes must still match.
+std::vector<RuntimeUseStringCandidate> hybrid_current_use_strings_for_decompilation(
+    uint64_t function_start);
+
 // Display-only projection for the ctree produced from the explored function.
 // It accepts either the original exact function identity or the post-pass
 // identity sealed by the begin/seal window above. It intentionally does not
