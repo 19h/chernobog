@@ -12,7 +12,4 @@ __attribute__((noinline)) uint32_t query_linear(uint32_t x, uint32_t y)
     return (x ^ y) + 2u * (x & y);
 }
 
-int main(void)
-{
-    return query_nonlinear(2, 5) != 13u || query_linear(0xffffffffu, 7u) != 6u;
-}
+int main(void) { return query_nonlinear(2, 5) != 13u || query_linear(0xffffffffu, 7u) != 6u; }

@@ -27,7 +27,12 @@ DECLARE(vc_cm_mem16_false)
 DECLARE(vc_cm_mem32_true)
 DECLARE(vc_cm_mem32_false)
 extern word_t vc_invoke(function_t, word_t, word_t, uint64_t *, uint64_t *);
-static const struct { const char *name; function_t function; unsigned width; } cases[] = {
+static const struct
+{
+    const char *name;
+    function_t function;
+    unsigned width;
+} cases[] = {
     {"vc_cm_mem_true", vc_cm_mem_true, sizeof(word_t)},
     {"vc_cm_mem_false", vc_cm_mem_false, sizeof(word_t)},
     {"vc_cm_mem16_true", vc_cm_mem16_true, 2},
@@ -62,24 +67,29 @@ static void fault_handler(int signal, siginfo_t *info, void *context)
 int main(void)
 {
     struct rlimit no_core = {0, 0};
-    if (setrlimit(RLIMIT_CORE, &no_core) != 0) return 2;
+    if (setrlimit(RLIMIT_CORE, &no_core) != 0)
+        return 2;
     struct sigaction action;
     memset(&action, 0, sizeof(action));
     action.sa_sigaction = fault_handler;
     action.sa_flags = SA_SIGINFO;
     sigemptyset(&action.sa_mask);
-    if (sigaction(SIGSEGV, &action, NULL) || sigaction(SIGBUS, &action, NULL)) return 3;
+    if (sigaction(SIGSEGV, &action, NULL) || sigaction(SIGBUS, &action, NULL))
+        return 3;
     const long page = sysconf(_SC_PAGESIZE);
-    if (page < 8) return 4;
-    unsigned char *memory = mmap(NULL, (size_t)page * 2, PROT_READ | PROT_WRITE,
-                                MAP_PRIVATE | MAP_ANON, -1, 0);
-    if (memory == MAP_FAILED) return 5;
+    if (page < 8)
+        return 4;
+    unsigned char *memory =
+        mmap(NULL, (size_t)page * 2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (memory == MAP_FAILED)
+        return 5;
     memset(memory, 0xA7, (size_t)page);
-    if (mprotect(memory + page, (size_t)page, PROT_NONE)) return 6;
+    if (mprotect(memory + page, (size_t)page, PROT_NONE))
+        return 6;
     for (unsigned seed = 0; seed < 8; ++seed)
     {
-        word_t destination = (word_t)(UINT64_C(0xFEDCBA9876543210) ^
-                                     UINT64_C(0x9E3779B97F4A7C15) * seed);
+        word_t destination =
+            (word_t)(UINT64_C(0xFEDCBA9876543210) ^ UINT64_C(0x9E3779B97F4A7C15) * seed);
         for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i)
         {
             for (unsigned mode = 0; mode < 3; ++mode)
@@ -89,7 +99,8 @@ int main(void)
                 uint64_t result = 0, flags = 0;
                 observed_signal = 0;
                 if (sigsetjmp(recovery, 1) == 0)
-                    result = vc_invoke(cases[i].function, destination, 0, (uint64_t *)source, &flags);
+                    result =
+                        vc_invoke(cases[i].function, destination, 0, (uint64_t *)source, &flags);
                 else
                 {
                     result = observed_ax;
@@ -97,14 +108,16 @@ int main(void)
                 }
                 printf("{\"name\":\"%s\",\"seed\":%u,\"available_bytes\":%u,\"width_bytes\":%u,"
                        "\"destination\":%" PRIu64 ",\"result\":%" PRIu64 ",\"flags\":%" PRIu64
-                       ",\"signal\":%d,\"fault_byte_offset\":%" PRIuPTR ",\"fault_instruction_offset\":%" PRIuPTR "}\n",
-                       cases[i].name, seed, available, cases[i].width, (uint64_t)destination, result,
-                       flags & UINT64_C(0x8C5), (int)observed_signal,
+                       ",\"signal\":%d,\"fault_byte_offset\":%" PRIuPTR
+                       ",\"fault_instruction_offset\":%" PRIuPTR "}\n",
+                       cases[i].name, seed, available, cases[i].width, (uint64_t)destination,
+                       result, flags & UINT64_C(0x8C5), (int)observed_signal,
                        observed_signal ? fault_address - (uintptr_t)source : 0,
                        observed_signal ? fault_pc - (uintptr_t)cases[i].function : 0);
             }
         }
     }
-    if (munmap(memory, (size_t)page * 2)) return 7;
+    if (munmap(memory, (size_t)page * 2))
+        return 7;
     return 0;
 }

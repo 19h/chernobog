@@ -36,16 +36,11 @@ _Static_assert(sizeof(uintptr_t) == 8, "Fixture requires 64-bit pointers");
 static int check_stores(void)
 {
     const uintptr_t expected[] = {
-        (uintptr_t)cf_projection_good_one,
-        (uintptr_t)cf_projection_good_two,
-        (uintptr_t)cf_projection_bad_flags,
-        (uintptr_t)cf_projection_bad_length,
-        (uintptr_t)cf_projection_bad_class,
-        (uintptr_t)cf_projection_no_fact,
-        (uintptr_t)cf_projection_good_one,
-        (uintptr_t)cf_projection_good_one + cf_projection_delta,
-        (uintptr_t)cf_projection_good_one,
-        (uint32_t)(uintptr_t)cf_projection_good_one,
+        (uintptr_t)cf_projection_good_one,  (uintptr_t)cf_projection_good_two,
+        (uintptr_t)cf_projection_bad_flags, (uintptr_t)cf_projection_bad_length,
+        (uintptr_t)cf_projection_bad_class, (uintptr_t)cf_projection_no_fact,
+        (uintptr_t)cf_projection_good_one,  (uintptr_t)cf_projection_good_one + cf_projection_delta,
+        (uintptr_t)cf_projection_good_one,  (uint32_t)(uintptr_t)cf_projection_good_one,
     };
     for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i)
         if (cf_projection_stores[i] != expected[i])

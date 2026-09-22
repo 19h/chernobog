@@ -12,12 +12,15 @@
 #endif
 
 __asm__(".text\n"
-        ".globl " SYMBOL(budget_fixture) "\n"
-        SYMBOL(budget_fixture) ":\n"
-        ".rept 65536\n"
-        "nop\n"
-        ".endr\n"
-        "ret\n");
+        ".globl " SYMBOL(budget_fixture) "\n" SYMBOL(budget_fixture) ":\n"
+                                                                     ".rept 65536\n"
+                                                                     "nop\n"
+                                                                     ".endr\n"
+                                                                     "ret\n");
 
 extern void budget_fixture(void);
-int main(void) { budget_fixture(); return 0; }
+int main(void)
+{
+    budget_fixture();
+    return 0;
+}

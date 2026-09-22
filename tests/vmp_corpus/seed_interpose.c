@@ -15,12 +15,14 @@ static void corpus_srand(unsigned requested)
     // dyld excludes bindings in the interposer image from its own replacement.
     srand((unsigned)parsed);
     char line[128];
-    int size = snprintf(line, sizeof(line), "CHERNOBOG_CORPUS_SRAND=%u requested=%u\n", (unsigned)parsed, requested);
+    int size = snprintf(line, sizeof(line), "CHERNOBOG_CORPUS_SRAND=%u requested=%u\n",
+                        (unsigned)parsed, requested);
     if (size <= 0 || size >= (int)sizeof(line) || write(STDERR_FILENO, line, (size_t)size) != size)
         _exit(122);
 }
 
-__attribute__((used, section("__DATA,__interpose")))
-static struct { const void *replacement; const void *original; } corpus_interpose = {
-    (const void *)(uintptr_t)&corpus_srand, (const void *)(uintptr_t)&srand
-};
+__attribute__((used, section("__DATA,__interpose"))) static struct
+{
+    const void *replacement;
+    const void *original;
+} corpus_interpose = {(const void *)(uintptr_t)&corpus_srand, (const void *)(uintptr_t)&srand};

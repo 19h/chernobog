@@ -29,15 +29,14 @@ extern volatile uint32_t rg_guard_hits;
 
 static uint32_t encode(uint32_t value)
 {
-    return ((value ^ UINT32_C(0x2468ace0)) - UINT32_C(0x13579bdf))
-           ^ UINT32_C(0x9e3779b9);
+    return ((value ^ UINT32_C(0x2468ace0)) - UINT32_C(0x13579bdf)) ^ UINT32_C(0x9e3779b9);
 }
 
-static void require_result(const char *name, fixture_fn function,
-                           uint32_t argument, int expected)
+static void require_result(const char *name, fixture_fn function, uint32_t argument, int expected)
 {
     int observed = function(argument);
-    if (observed != expected) {
+    if (observed != expected)
+    {
         fprintf(stderr, "%s: observed %d, expected %d\n", name, observed, expected);
         exit(1);
     }
@@ -48,23 +47,28 @@ static void require_loop(const char *name, fixture_fn function, uint32_t argumen
 {
     fflush(NULL);
     pid_t child = fork();
-    if (child < 0) {
+    if (child < 0)
+    {
         perror("fork");
         exit(2);
     }
-    if (child == 0) {
+    if (child == 0)
+    {
         alarm(1);
         (void)function(argument);
         _exit(3);
     }
     int status;
-    while (waitpid(child, &status, 0) < 0) {
-        if (errno != EINTR) {
+    while (waitpid(child, &status, 0) < 0)
+    {
+        if (errno != EINTR)
+        {
             perror("waitpid");
             exit(4);
         }
     }
-    if (!WIFSIGNALED(status) || WTERMSIG(status) != SIGALRM) {
+    if (!WIFSIGNALED(status) || WTERMSIG(status) != SIGALRM)
+    {
         fprintf(stderr, "%s: expected SIGALRM, wait status=%d\n", name, status);
         exit(5);
     }
