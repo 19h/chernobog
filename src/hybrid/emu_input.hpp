@@ -12,6 +12,15 @@ namespace chernobog::hybrid {
 // values are absent the deterministic seed corpus remains the fallback.
 struct EmuInput
 {
+  // Explicit native-region scratch objects. Ordinary function execution rejects
+  // these; no pointer inference, image patching, or allocator model is implied.
+  struct NativeObject
+  {
+    uint32_t argument = 0;
+    uint32_t offset = 0;
+    std::vector<uint8_t> bytes;
+  };
+  std::vector<NativeObject> native_objects;
   struct ArgOverride
   {
     uint32_t index = 0;

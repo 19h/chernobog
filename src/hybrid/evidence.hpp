@@ -273,10 +273,18 @@ struct RuntimeUseStringCandidate
   UseSnapshot use;
   std::string value;
   std::vector<UseSnapshot> witnesses;
+  // For a derived native stream, one ordered vector of original scalar-read
+  // witnesses per agreeing run. `use` describes the concatenated interval;
+  // it is never inserted into the raw event ledger as a single memory read.
+  std::vector<std::vector<UseSnapshot>> read_fragments;
   size_t eligible_runs = 0;
 };
 
 std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(
+    const TargetEvidence &evidence, size_t minimum_length = 4,
+    size_t maximum_length = 4096);
+
+std::vector<RuntimeUseStringCandidate> hybrid_consensus_native_read_strings(
     const TargetEvidence &evidence, size_t minimum_length = 4,
     size_t maximum_length = 4096);
 

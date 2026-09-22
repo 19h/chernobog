@@ -398,6 +398,10 @@ ida_add_plugin(chernobog
     src/ida_analysis/early_hexrays.cpp
     src/ida_analysis/evidence_apply.cpp
     src/vm/region.cpp
+    src/vm/boundary.cpp
+    src/vm/native_region.cpp
+    src/vm/native_observations.cpp
+    src/vm/ida_native_trace.cpp
     src/vm/semantics.cpp
     src/vm/summary_view.cpp
     src/vm/observations.cpp
@@ -478,6 +482,7 @@ ida_add_plugin(chernobog
     src/hybrid/smir_analysis.cpp
     src/hybrid/static_analysis.cpp
     src/hybrid/evidence.cpp
+    src/hybrid/native_read_strings.cpp
     src/hybrid/z3_bridge.cpp
     src/hybrid/solver_inspection.cpp
     src/hybrid/session.cpp
@@ -527,6 +532,10 @@ endif()
 # the AST matcher.
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(chernobog_vm_boundary_tests tests/vm_boundary_tests.cpp src/vm/boundary.cpp)
+    target_include_directories(chernobog_vm_boundary_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_features(chernobog_vm_boundary_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.vm_boundaries COMMAND chernobog_vm_boundary_tests)
     add_executable(chernobog_vm_region_tests tests/vm_region_tests.cpp src/vm/region.cpp)
     target_include_directories(chernobog_vm_region_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_compile_features(chernobog_vm_region_tests PRIVATE cxx_std_17)
@@ -543,6 +552,15 @@ if(BUILD_TESTING)
     target_include_directories(chernobog_vm_observation_tests SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
     target_link_libraries(chernobog_vm_observation_tests PRIVATE libz3)
     add_test(NAME chernobog.vm_observations COMMAND chernobog_vm_observation_tests)
+    add_executable(chernobog_vm_native_observation_tests tests/vm_native_observation_tests.cpp
+        src/vm/region.cpp src/vm/native_region.cpp src/vm/native_observations.cpp
+        src/vm/semantics.cpp src/vm/transition.cpp src/hybrid/program_model_core.cpp)
+    target_include_directories(chernobog_vm_native_observation_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src" "${_chernobog_rax_capi}/include")
+    target_include_directories(chernobog_vm_native_observation_tests SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
+    target_link_libraries(chernobog_vm_native_observation_tests PRIVATE libz3)
+    target_compile_features(chernobog_vm_native_observation_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.vm_native_observations COMMAND chernobog_vm_native_observation_tests)
     add_executable(chernobog_vm_transition_tests tests/vm_transition_tests.cpp src/vm/region.cpp src/vm/semantics.cpp src/vm/transition.cpp)
     target_include_directories(chernobog_vm_transition_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${_chernobog_rax_capi}/include")
     target_include_directories(chernobog_vm_transition_tests SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
@@ -557,6 +575,9 @@ if(BUILD_TESTING)
     if(UNIX)
         find_package(Python3 QUIET COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)
+            add_test(NAME chernobog.vmp_corpus
+                COMMAND "${Python3_EXECUTABLE}" -B
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/vmp_corpus_tests.py")
             add_test(NAME chernobog.ida_runner
                 COMMAND "${Python3_EXECUTABLE}"
                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_run_ida_smoke.py")
@@ -591,6 +612,7 @@ if(BUILD_TESTING)
     add_executable(chernobog_evidence_tests
         tests/evidence_tests.cpp
         src/hybrid/evidence.cpp
+        src/hybrid/native_read_strings.cpp
         src/hybrid/program_model_core.cpp)
     target_include_directories(chernobog_evidence_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -613,9 +635,11 @@ if(BUILD_TESTING)
         src/hybrid/decoder_core.cpp
         src/hybrid/smir_analysis.cpp
         src/hybrid/emu_driver.cpp
+        src/vm/native_region.cpp
         src/hybrid/emulation_workers.cpp
         src/hybrid/emulation_rax_executor.cpp
-        src/hybrid/evidence.cpp)
+        src/hybrid/evidence.cpp
+        src/hybrid/native_read_strings.cpp)
     target_include_directories(chernobog_hybrid_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
         "${_chernobog_rax_capi}/include")

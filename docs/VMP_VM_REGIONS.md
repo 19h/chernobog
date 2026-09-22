@@ -1,5 +1,10 @@
 # Separate VM-region candidate analysis
 
+This checkpoint's contiguous, function-owned scope is extended by
+[VMP_VM_PATHS.md](VMP_VM_PATHS.md): bounded existing-xref paths can include
+ownerless code, with retained instruction spans and no VM execution admission.
+The results below describe the original checkpoint.
+
 `src/vm` introduces a separate analysis family for bounded native read/decode/
 dispatch candidates. It does not depend on `prog_bb_*` names or the `vm_mba`
 handler's admission rules. `chernobog_vm_regions(ea)` inspects the selected

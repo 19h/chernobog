@@ -13,7 +13,9 @@ struct EvidenceView
 {
   static constexpr size_t edge_limit = 256, event_limit = 1024;
   static constexpr size_t lifetime_limit = 128, run_limit = 128, claim_limit = 128;
+  static constexpr size_t read_stream_limit = 128;
   std::vector<EvidenceViewRow> edges, events, lifetimes, runs, claims;
+  std::vector<EvidenceViewRow> read_streams;
   std::map<std::string, size_t> omitted;
 };
 
@@ -93,10 +95,35 @@ inline EvidenceView project_evidence_view(const TargetEvidence &source)
          {"callee", view_hex(item.callee)}, {"occurrence", view_hex(item.occurrence)},
          {"argument", std::to_string(item.argument)}, {"scope", view_hex(uint8_t(item.scope))},
          {"offset", std::to_string(item.offset)}, {"status", view_hex(uint8_t(item.status))},
-         {"producer", item.producer == UseProducer::MODELED_ARGUMENT ? "modeled-argument" : "executed-read"},
+         {"producer", use_producer_name(item.producer)},
          {"model_kind", view_hex(item.model_kind)}, {"observed_size", view_hex(item.observed_size)},
          {"captured_size", view_hex(item.bytes.size())}, {"bytes_hex", view_bytes(item.bytes)},
          {"display_truncated", item.bytes.size() > 64 ? "true" : "false"}});
+  for(const auto &candidate:hybrid_consensus_native_read_strings(source))
+    for(size_t run=0;run<candidate.read_fragments.size();++run)
+    {
+      const auto &parts=candidate.read_fragments[run];
+      if(parts.empty())continue;
+      const auto &first=parts.front();const auto &last=parts.back();
+      std::string fragments;
+      for(size_t i=0;i<std::min<size_t>(parts.size(),16);++i)
+        fragments+=view_hex(parts[i].site)+":"+view_hex(parts[i].sequence)+":"
+            +std::to_string(parts[i].observed_size)+";";
+      const auto &use=candidate.witnesses[run];
+      EvidenceViewRow row{{"producer","executed-read-stream"},{"truth","observation"},
+           {"assumption","contiguous recorded reads; no other memory access, call or lifetime boundary between fragments; completed temporal model"},
+           {"first_sequence",view_hex(first.sequence)},{"last_sequence",view_hex(last.sequence)},
+           {"address",view_hex(first.address)},{"allocation",view_hex(first.allocation_id)},
+           {"generation",view_hex(first.generation)},{"read_count",std::to_string(parts.size())},
+           {"eligible_runs",std::to_string(candidate.eligible_runs)},
+           {"bytes_hex",view_bytes(use.bytes)},{"captured_size",std::to_string(use.bytes.size())},
+           {"display_truncated",use.bytes.size()>64?"true":"false"},
+           {"fragments",fragments},{"fragments_omitted",std::to_string(parts.size()>16?parts.size()-16:0)}};
+      event("read-stream",first.run_id,first.seed,last.sequence,first.site,row);
+      row.insert({{"kind","read-stream"},{"run",view_hex(first.run_id)},{"seed",view_hex(first.seed)},
+          {"sequence",view_hex(last.sequence)},{"site",view_hex(first.site)}});
+      bounded(view.read_streams,EvidenceView::read_stream_limit,"read_streams",std::move(row));
+    }
   for (const auto &item : source.events.data)
     event("memory", item.run_id, item.seed, item.sequence, item.from,
         {{"address", view_hex(item.addr)}, {"size", view_hex(item.size)},
@@ -194,6 +221,7 @@ inline std::string evidence_view_json(const TargetEvidence &source, const Eviden
   };
   rows("edges", view.edges); rows("events", view.events); rows("lifetimes", view.lifetimes);
   rows("runs", view.runs); rows("claims", view.claims);
+  rows("read_streams",view.read_streams);
   out << ",\"omitted\":{";
   bool first = true;
   for (const auto &item : view.omitted)

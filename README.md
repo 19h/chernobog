@@ -391,6 +391,7 @@ without applying any deobfuscation.
 | `CHERNOBOG_IDA_EARLY_HEXRAYS=0` | Disable all flowchart/codegen/generated/preoptimized analysis-quality passes while retaining later Chernobog deobfuscation |
 | `CHERNOBOG_IDA_CALL_POP_FLOWCHART=0` | Disable call/pop CFG repair at `hxe_flowchart` |
 | `CHERNOBOG_IDA_CALL_POP_CODEGEN=0` | Disable return-to-direct-jump repair in the pre-MBA microcode filter |
+| `CHERNOBOG_IDA_CONDITION_CODEGEN=0` | Disable local SETcc/CMOV microcode folding; memory-source CMOV otherwise retains an explicit typed read intrinsic under the flat-memory contract in `docs/VMP_CMOV_MEMORY.md` |
 | `CHERNOBOG_IDA_GENERATED_GOTOS=0` | Disable the generated-MBA return/indirect-jump fallback |
 | `CHERNOBOG_IDA_EARLY_CONSTANTS=0` | Disable constant folding at `hxe_preoptimized` |
 | `CHERNOBOG_IDA_FORCE_CHAR_STRINGS=0` | Disable character numforms for reconstructed string stores at `hxe_preoptimized` |
@@ -398,6 +399,8 @@ without applying any deobfuscation.
 | `CHERNOBOG_IDA_EARLY_MAX_BLOCKS=<n>` | Bound each early Hex-Rays pass (default 100000; range 1..1000000 blocks) |
 | `CHERNOBOG_IDA_EARLY_MAX_INSNS=<n>` | Bound each early Hex-Rays pass (default 1000000; range 1..100000000 microinstructions/native heads) |
 | `CHERNOBOG_IDA_POST_SCAN_HEADS=<n>` | Bound the one-shot native orphan-call scan to `n` heads in executable segments (default 1000000; hard range 1..100000000) |
+| `CHERNOBOG_IDA_DIRECT_JUMP_DECODE=0` | Disable decoding at existing exact near-jump targets in executable segments classified as data |
+| `CHERNOBOG_IDA_DIRECT_JUMP_TARGETS=<n>` | Bound target-validation attempts per native-engine reset (default 256; hard maximum 4096; 0 admits none) |
 | `CHERNOBOG_IDA_POST_SCAN_FUNCTIONS=<n>` | Bound the one-shot wrapper scan to `n` IDA functions (default 100000; hard range 1..10000000) |
 | `CHERNOBOG_IDA_POP_RET_DEPTH=<n>` | Bound call/pop-return get-PC gadget scans (default 4; range 1..64) |
 | `CHERNOBOG_IDA_FLAG_SCAN_DEPTH=<n>` | Bound x86 flag-predicate back-scans (default 8; range 1..64) |
@@ -443,8 +446,18 @@ leaving the rest of the enrichment engine active: `CHERNOBOG_IDA_REDUNDANT_PREFI
 `CHERNOBOG_IDA_PUSH_RET`, `CHERNOBOG_IDA_ZERO_REGISTER`,
 `CHERNOBOG_IDA_OPPOSITE_BRANCHES`, `CHERNOBOG_IDA_ENTRY_PREDICATES`,
 `CHERNOBOG_IDA_KNOWN_FLAGS`, `CHERNOBOG_IDA_INDIRECT_BRANCHES`,
-`CHERNOBOG_IDA_JUMP_GAPS`, `CHERNOBOG_IDA_ORPHAN_FUNCTIONS`, and
+`CHERNOBOG_IDA_JUMP_GAPS`, `CHERNOBOG_IDA_DIRECT_JUMP_DECODE`, `CHERNOBOG_IDA_ORPHAN_FUNCTIONS`, and
 `CHERNOBOG_IDA_OUTLINE_WRAPPERS`.
+
+Direct-jump decoding uses current instruction bytes and an existing exact jump
+reference. The destination must be unknown, initialized, explicitly executable,
+and in the same 32/64-bit mode. Defined items and interior labels are preserved;
+an existing label at the target remains intact. This handles sectionless Mach-O
+code that IDA classifies as data without changing segment permissions or adding
+proof edges. IDA controls subsequent decoding and function-tail assignment.
+`chernobog_native_analysis()` reports `direct_jump_decode_attempts`,
+`direct_jump_targets_decoded`, and `direct_jump_decode_truncated`; the budget
+bounds Chernobog's seed attempts, not all work subsequently scheduled by IDA.
 
 The current-function rax evidence consumer (`CHERNOBOG_RAX_APPLY_ANALYSIS`)
 similarly exposes per-category toggles — code and data references, code

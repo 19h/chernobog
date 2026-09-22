@@ -82,6 +82,8 @@ NativeAnalysisConfig load_native_analysis_config()
       "CHERNOBOG_IDA_INDIRECT_BRANCHES", config.indirect_branches);
   config.jump_gaps = env_bool(
       "CHERNOBOG_IDA_JUMP_GAPS", config.jump_gaps);
+  config.direct_jump_decode = env_bool(
+      "CHERNOBOG_IDA_DIRECT_JUMP_DECODE", config.direct_jump_decode);
   config.orphan_functions = env_bool(
       "CHERNOBOG_IDA_ORPHAN_FUNCTIONS", config.orphan_functions);
   config.outline_wrappers = env_bool(
@@ -101,6 +103,8 @@ NativeAnalysisConfig load_native_analysis_config()
       "CHERNOBOG_IDA_ORPHAN_SCAN_INSNS", config.orphan_scan_instructions);
   config.maximum_post_scan_heads = env_size(
       "CHERNOBOG_IDA_POST_SCAN_HEADS", config.maximum_post_scan_heads);
+  config.maximum_direct_jump_targets = env_size(
+      "CHERNOBOG_IDA_DIRECT_JUMP_TARGETS", config.maximum_direct_jump_targets);
   config.maximum_post_scan_functions = env_size(
       "CHERNOBOG_IDA_POST_SCAN_FUNCTIONS",
       config.maximum_post_scan_functions);
@@ -196,6 +200,10 @@ EarlyHexRaysConfig load_early_hexrays_config()
       "CHERNOBOG_IDA_CALL_POP_FLOWCHART", config.call_pop_flowchart);
   config.call_pop_codegen = env_bool(
       "CHERNOBOG_IDA_CALL_POP_CODEGEN", config.call_pop_codegen);
+  config.condition_codegen = env_bool(
+      "CHERNOBOG_IDA_CONDITION_CODEGEN", config.condition_codegen);
+  config.condition_scan_depth = env_int(
+      "CHERNOBOG_IDA_FLAG_SCAN_DEPTH", config.condition_scan_depth);
   config.generated_gotos = env_bool(
       "CHERNOBOG_IDA_GENERATED_GOTOS", config.generated_gotos);
   config.constant_folding = env_bool(
@@ -210,6 +218,8 @@ EarlyHexRaysConfig load_early_hexrays_config()
       "CHERNOBOG_IDA_EARLY_MAX_INSNS", config.maximum_instructions);
 
   if ( config.gadget_scan_depth < 1 ) config.gadget_scan_depth = 1;
+  if ( config.condition_scan_depth < 1 ) config.condition_scan_depth = 1;
+  if ( config.condition_scan_depth > 64 ) config.condition_scan_depth = 64;
   if ( config.gadget_scan_depth > 64 ) config.gadget_scan_depth = 64;
   if ( config.maximum_blocks < 1 ) config.maximum_blocks = 1;
   if ( config.maximum_blocks > 1000000 )

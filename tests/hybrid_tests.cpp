@@ -8,6 +8,7 @@
 #include "hybrid/program_model.hpp"
 #include "hybrid/rax_loader.hpp"
 #include "hybrid/smir_analysis.hpp"
+#include "vm/native_region.hpp"
 
 #include <chrono>
 #include <algorithm>
@@ -181,6 +182,431 @@ HybridConfig short_run_config()
   config.want_runtime_strings = true;
   config.want_smc_evidence = true;
   return config;
+}
+
+void test_native_regions(const RaxApi *api)
+{
+  using chernobog::vm::plan_native_region;
+  for(bool is64:{false,true})
+  {
+    // Fixture decoder: the fixed streams below use encodings with identical
+    // lengths/control flow in both modes, except the explicitly handled legacy
+    // INC/DEC range. General 32-bit decode coverage is supplied by the IDA probe.
+    const chernobog::vm::NativeDecoder fixture_decoder=[&](uint64_t ea,const uint8_t *data,size_t count,rax_decoded &out)
+    {
+      if(!is64 && count && data[0]>=0x40 && data[0]<=0x4f)
+      {out={};out.valid=1;out.size=1;out.flow=RAX_FLOW_FALLTHROUGH;return true;}
+      if(!is64 && count>=2 && data[0]==0x66 && data[1]>=0x40 && data[1]<=0x4f)
+      {out={};out.valid=1;out.size=2;out.flow=RAX_FLOW_FALLTHROUGH;return true;}
+      return api->decode(RAX_ARCH_X86,RAX_MODE_64,ea,data,count,&out)==RAX_OK;
+    };
+    auto plan_native_region=[&](const ProgramImage &candidate,const RaxApi *decoder_api,
+        uint64_t entry,size_t limit=4096)
+    {
+      chernobog::vm::NativeDecoder decode;
+      if(decoder_api && decoder_api->decode)
+        decode=fixture_decoder;
+      return chernobog::vm::plan_native_region(candidate,decoder_api,entry,limit,decode);
+    };
+    auto image=branch_image();
+    image.arch=is64?HybridArch::X86_64:HybridArch::X86_32;
+    image.segs[0].bitness=is64?2:1;
+    auto &bytes=image.segs[0].bytes;
+    std::fill(bytes.begin(),bytes.end(),0xcc);
+    auto put=[&](size_t at,std::initializer_list<uint8_t> data)
+    {std::copy(data.begin(),data.end(),bytes.data()+at);};
+    put(0,{0xe9,0xfb,0,0,0}); // root jumps to ownerless entry prefix
+    put(0x100,{0x68,0xef,0xff,0xff,0xff,0xe8,0xf6,0,0,0}); // push -17; call callee
+    if(is64)put(0x10a,{0x48,0x83,0xc4,8,0xc3});
+    else put(0x10a,{0x83,0xc4,4,0xc3});
+    put(0x200,{0x8b,0x04,0x24,0xc3}); // mov eax,[sp]; ret
+    image.entries[0].end=image.lo+5;
+    image.entries[0].chunks={{image.lo,image.lo+5}};
+    image.entries[0].byte_hash=hybrid_function_byte_hash(image,image.entries[0]);
+    FuncRange callee;callee.start=image.lo+0x200;callee.end=callee.start+4;
+    callee.chunks={{callee.start,callee.end}};image.entries.push_back(callee);
+    image.content_hash=hybrid_program_content_hash(image);
+    const auto original_chunks=image.entries[0].chunks;
+    const auto region=plan_native_region(image,api,image.lo);
+    check(region.available() && !region.truncated() && region.heads().size()==7,
+          "native region spans ownerless prefix and separately owned callee");
+    check(region.matches(image) && region.identity()!=0,"native region binds immutable image");
+    EmuDriver driver(api,image,true);
+    EmuEvents ordinary;EmuOutcome stopped;
+    check(driver.emulate_from(image.lo,image.entries[0].end,short_run_config(),ordinary,&stopped)
+          && stopped.function_boundary && ordinary.execution.size()==1,
+          "ordinary function boundary remains unchanged with native regions available");
+    EmuEvents events;EmuOutcome outcome;
+    check(driver.emulate_region(region,short_run_config(),events,outcome) && outcome.native_region
+          && outcome.returned && !outcome.conclusive() && !outcome.function_boundary
+          && !outcome.region_boundary && !outcome.consumed_context_complete,
+          "native region executes call and return without producing function conclusions");
+    check(outcome.sp_valid && outcome.sp_delta==(is64?8:4),"native region balances seed and call stack");
+    check(events.execution.size()==7 && events.states.front().kind==StatePoint::Kind::RegionEntry,
+          "native region records complete instruction path and entry state");
+    const unsigned width=is64?8:4;
+    const uint64_t pushed=is64?UINT64_C(0xffffffffffffffef):UINT64_C(0xffffffef);
+    bool seed_write=false,call_write=false,callee_input=false,return_value=false;
+    for(const auto &access:events.data)
+    {
+      if(access.kind!=RAX_MEM_WRITE)continue;
+      if(access.from==image.lo+0x100)seed_write=access.addr==outcome.entry_sp-width
+          && access.size==width && access.value==pushed;
+      if(access.from==image.lo+0x105)call_write=access.addr==outcome.entry_sp-2*width
+          && access.size==width && access.value==image.lo+0x10a;
+    }
+    for(const auto &state:events.states)for(const auto &reg:state.regs)
+    {
+      if(state.pc==callee.start && reg.reg==(is64?RAX_X86_REG_RSP:RAX_X86_REG_ESP))
+        callee_input=reg.value==outcome.entry_sp-2*width;
+      if(state.pc==image.lo+0x10a && reg.reg==(is64?RAX_X86_REG_RAX:RAX_X86_REG_EAX))
+        return_value=reg.value==image.lo+0x10a;
+    }
+    check(seed_write && call_write && callee_input && return_value,
+          "independent push sign-extension and call return-address oracle");
+    check(outcome.data_trace_complete && !outcome.external_model_used,
+          "native region uses actual instruction accesses, no callee summaries");
+    EmulationJobResult mixed;EmulationRunResult region_run;
+    region_run.ran=true;region_run.outcome=outcome;region_run.events=events;
+    mixed.runs.push_back(region_run);mixed.merged=events;
+    const auto refused=hybrid_build_target_evidence(image,image.entries[0],image.lo,{}, {},mixed);
+    check(refused.runs.empty() && refused.events.execution.empty() && refused.function_identity.empty()
+          && refused.diagnostic=="native-region observations require separate publication",
+          "ordinary evidence builder rejects region and mixed-scope publications");
+    check(image.entries[0].chunks.size()==original_chunks.size()
+          && image.entries[0].chunks[0].end==original_chunks[0].end,
+          "region capture preserves function topology");
+    check(!driver.emulate_region(region,short_run_config(),events,outcome),
+          "region capture rejects an occupied ordinary or region event sink");
+    EmuEvents repeat;EmuOutcome repeated;
+    check(driver.emulate_region(region,short_run_config(),repeat,repeated)
+          && repeated.entry_sp==stopped.entry_sp && repeat.data.size()==events.data.size(),
+          "region run restores baseline after previous run");
+    auto limited=plan_native_region(image,api,image.lo,1);
+    EmuEvents boundary;EmuOutcome boundary_out;
+    check(limited.truncated() && driver.emulate_region(limited,short_run_config(),boundary,boundary_out)
+          && boundary_out.region_boundary && boundary.execution.size()==1
+          && boundary_out.region_boundary_target==image.lo+0x100,
+          "region quota is an execution boundary before target instruction");
+    auto changed=image;changed.generation++;
+    check(!region.matches(changed),"region generation identity rejects stale plan");
+    changed=image;changed.segs[0].bytes[0x200]^=1;
+    check(!region.matches(changed),"region remote code patch invalidates plan");
+    changed=image;changed.segs[0].perm=0;
+    check(!plan_native_region(changed,api,image.lo).available(),"unknown permissions do not admit region");
+    changed=image;changed.segs[0].mask[0]=0;
+    check(!plan_native_region(changed,api,image.lo).available(),"unloaded entry does not admit region");
+    changed=image;changed.segs[0].bitness=is64?1:2;
+    check(!plan_native_region(changed,api,image.lo).available(),"mixed mode rejected");
+    changed=image;changed.segs[0].kind=HybridSegmentKind::EXTERNAL;
+    check(!plan_native_region(changed,api,image.lo).available(),"external entry rejected");
+    check(!plan_native_region(image,api,image.lo,0).available(),"zero native-region quota");
+    check(!plan_native_region(image,nullptr,image.lo).available(),"missing decoder rejects region");
+    if(!is64)
+    {
+      check(!chernobog::vm::plan_native_region(image,api,image.lo).available(),
+            "32-bit region requires a mode-aware decoder instead of 64-bit SMIR oracle");
+      auto legacy=image;
+      std::fill(legacy.segs[0].bytes.begin(),legacy.segs[0].bytes.end(),0xcc);
+      const uint8_t stream[]={0x4a,0x33,0xda,0xc3};
+      std::copy(std::begin(stream),std::end(stream),legacy.segs[0].bytes.begin());
+      legacy.content_hash=hybrid_program_content_hash(legacy);
+      const auto legacy_plan=plan_native_region(legacy,api,legacy.lo);
+      EmuDriver legacy_driver(api,legacy,true);EmuEvents legacy_events;EmuOutcome legacy_out;
+      check(legacy_plan.heads().size()==3 && legacy_plan.at(legacy.lo)->bytes.size()==1
+            && legacy_driver.emulate_region(legacy_plan,short_run_config(),legacy_events,legacy_out)
+            && legacy_out.returned && legacy_events.execution.size()==3
+            && legacy_events.execution[0].size==1 && legacy_events.execution[1].pc==legacy.lo+1,
+            "region capture uses 32-bit INC/DEC boundaries through runtime hooks");
+      for(bool word:{false,true})for(bool decrement:{false,true})for(bool carry:{false,true})
+      for(uint32_t value:{0u,0x7fffu,0x8000u,0xffffu,0x7fffffffu,0x80000000u,0xffffffffu})
+      {
+        // Materialized CF deliberately differs from the pending arithmetic CF.
+        // INC/DEC must preserve the latter in both legacy operand widths.
+        auto pending=image;auto &code=pending.segs[0].bytes;
+        std::fill(code.begin(),code.end(),0xcc);
+        std::vector<uint8_t> stream{uint8_t(carry?0xf8:0xf9),0xb9,0,0,0,0};
+        if(carry)stream.insert(stream.end(),{0x83,0xe9,1});
+        else stream.insert(stream.end(),{0x31,0xc9});
+        stream.push_back(0xba);
+        for(unsigned byte=0;byte<4;++byte)stream.push_back(uint8_t(value>>(8*byte)));
+        if(word)stream.push_back(0x66);
+        stream.push_back(decrement?0x4a:0x42);stream.push_back(0xc3);
+        std::copy(stream.begin(),stream.end(),code.begin());
+        pending.content_hash=hybrid_program_content_hash(pending);
+        auto plan=plan_native_region(pending,api,pending.lo);
+        EmuDriver run(api,pending,true);EmuEvents captured;EmuOutcome out;
+        const bool ran=run.emulate_region_walk(plan,short_run_config(),captured,out,fixture_decoder,64,nullptr,true);
+        uint64_t flags=UINT64_MAX,edx=UINT64_MAX;
+        for(const auto &state:captured.states)
+          if(state.kind==StatePoint::Kind::NativeInstructionEntry && state.pc==pending.lo+stream.size()-1)
+            for(const auto &reg:state.regs)
+            {
+              if(reg.reg==RAX_X86_REG_EFLAGS)flags=reg.value;
+              if(reg.reg==RAX_X86_GPR32(2))edx=reg.value;
+            }
+        const uint32_t result=decrement?value-1:value+1;
+        const uint32_t expected=word?(value&0xffff0000u)|(result&0xffffu):result;
+        check(ran && out.returned && out.native_state_capture_complete && flags!=UINT64_MAX
+              && (flags&1)==uint64_t(carry) && edx==expected,
+              "legacy INC/DEC preserves pending carry across 16/32-bit boundaries");
+        EmuEvents unsampled;EmuOutcome unsampled_out;
+        const bool again=run.emulate_region(plan,short_run_config(),unsampled,unsampled_out);
+        uint64_t final_flags=UINT64_MAX,final_edx=UINT64_MAX;
+        for(const auto &reg:unsampled_out.native_final_registers)
+        {
+          if(reg.reg==RAX_X86_REG_EFLAGS)final_flags=reg.value;
+          if(reg.reg==RAX_X86_GPR32(2))final_edx=reg.value;
+        }
+        check(again && unsampled_out.returned && unsampled_out.native_final_registers_complete
+              && final_flags==flags && final_edx==expected,
+              "legacy carry materialization does not depend on instruction-state sampling");
+      }
+    }
+    EmuDriver permissive(api,image,false);EmuEvents rejected;EmuOutcome rejected_out;
+    {
+      auto object_image=image;
+      auto &code=object_image.segs[0].bytes;
+      std::fill(code.begin(),code.end(),0xcc);
+      const std::vector<uint8_t> prefix=is64?std::vector<uint8_t>{0x48,0x89,0xd1}
+          :std::vector<uint8_t>{0x8b,0x4c,0x24,0x0c}; // pointer argument 2 -> [r/e]cx
+      const std::vector<uint8_t> body={0x8b,0x01,0x83,0xc0,1,0x89,0x01,0xc3};
+      std::copy(prefix.begin(),prefix.end(),code.begin());
+      std::copy(body.begin(),body.end(),code.begin()+static_cast<std::ptrdiff_t>(prefix.size()));
+      object_image.content_hash=hybrid_program_content_hash(object_image);
+      auto object_region=plan_native_region(object_image,api,object_image.lo);
+      EmuDriver object_driver(api,object_image,true);
+      EmuInput supplied;supplied.args={0,0,0};
+      supplied.native_objects.push_back({2,4,{0xa5,0xa5,0xa5,0xa5,0xff,0xff,0xff,0xff,0x5a,0x5a,0x5a,0x5a}});
+      auto capture=[&](const EmuInput &value,EmuOutcome &result)
+      {EmuEvents sink;return object_driver.emulate_region(object_region,short_run_config(),sink,result,&value);};
+      EmuOutcome result;
+      check(capture(supplied,result) && result.returned && result.native_final_registers_complete
+            && result.sp_valid && result.sp_delta==(is64?8:4),"explicit object ABI placement and final register capture");
+      const std::vector<uint8_t> expected={0xa5,0xa5,0xa5,0xa5,0,0,0,0,0x5a,0x5a,0x5a,0x5a};
+      check(result.native_objects.size()==1 && result.native_objects[0].readable
+            && result.native_objects[0].initial==supplied.native_objects[0].bytes
+            && result.native_objects[0].final==expected,"explicit object captures mutated value and both unchanged guards");
+      bool result_ok=false,flags_ok=false;
+      for(const auto &reg:result.native_final_registers)
+      {
+        if(reg.reg==(is64?RAX_X86_REG_RAX:RAX_X86_REG_EAX))result_ok=reg.value==0;
+        if(reg.reg==(is64?RAX_X86_REG_RFLAGS:RAX_X86_REG_EFLAGS))flags_ok=(reg.value&0x8d5)==0x55;
+      }
+      check(result_ok && flags_ok,"explicit object result and defined ADD flags agree with independent arithmetic");
+      check(capture(supplied,result) && result.native_objects[0].final==expected,
+            "explicit object reinitializes after prior write");
+      EmuEvents ordinary_objects;
+      check(!object_driver.emulate_from(object_image.lo,object_image.entries[0].end,short_run_config(),
+            ordinary_objects,&result,true,0,0,&supplied) && ordinary_objects.execution.empty(),
+            "ordinary execution rejects native input objects");
+      auto bad=supplied;bad.native_objects[0].offset=12;
+      check(!capture(bad,result),"one-past object pointer rejected");
+      bad=supplied;bad.native_objects[0].bytes.clear();
+      check(!capture(bad,result),"empty object rejected");
+      bad=supplied;bad.native_objects[0].bytes.resize(4097);
+      check(!capture(bad,result),"object byte quota rejected");
+      bad=supplied;bad.native_objects.push_back(bad.native_objects.front());
+      check(!capture(bad,result),"duplicate object argument rejected");
+      bad=supplied;bad.args[2]=1;
+      check(!capture(bad,result),"conflicting scalar pointer rejected");
+      bad=supplied;bad.register_overrides.push_back({RAX_X86_REG_EAX,0});
+      check(!capture(bad,result),"custom register override cannot bypass object ABI contract");
+      bad=supplied;bad.native_objects[0].argument=3;
+      check(!capture(bad,result),"absent object argument rejected");
+      bad=supplied;bad.native_objects.resize(17);
+      check(!capture(bad,result),"object count quota rejected");
+      bad=supplied;bad.args.resize(33);
+      check(!capture(bad,result),"object argument count quota rejected");
+    }
+    auto zero=short_run_config();zero.max_insns=0;
+    check(!driver.emulate_region(region,zero,rejected,rejected_out),"zero region step budget cannot reuse old exit metadata");
+    zero=short_run_config();zero.timeout_ms=0;
+    check(!driver.emulate_region(region,zero,rejected,rejected_out),"zero region time budget cannot reuse old exit metadata");
+    check(!permissive.emulate_region(region,short_run_config(),rejected,rejected_out)
+          && rejected.execution.empty(),"region execution requires strict permissions");
+    changed=image;changed.segs[0].bytes[0x200]^=1;
+    EmuDriver stale_driver(api,changed,true);
+    check(!stale_driver.emulate_region(region,short_run_config(),rejected,rejected_out)
+          && rejected.execution.empty(),"stale plan cannot start execution");
+    changed=image;std::fill(changed.segs[0].bytes.begin(),changed.segs[0].bytes.end(),0xcc);
+    const uint8_t indirect_code[]={0xb8,0,1,0x10,0,0xff,0xd0,0xc3};
+    std::copy(std::begin(indirect_code),std::end(indirect_code),changed.segs[0].bytes.begin());
+    changed.segs[0].bytes[0x100]=0xc3;
+    changed.content_hash=hybrid_program_content_hash(changed);
+    const auto indirect_region=plan_native_region(changed,api,changed.lo);
+    EmuDriver indirect_driver(api,changed,true);EmuEvents indirect_events;EmuOutcome indirect_out;
+    check(indirect_driver.emulate_region(indirect_region,short_run_config(),indirect_events,indirect_out)
+          && indirect_out.region_boundary && indirect_events.execution.size()==2
+          && indirect_out.region_boundary_target==changed.lo+0x100
+          && indirect_events.edges.back().kind==ExecEdge::Kind::Call,
+          "unknown indirect callee stops after retaining native call effects");
+    {
+      auto walked=indirect_region;EmuEvents walked_events;EmuOutcome walked_out;
+      check(indirect_driver.emulate_region_walk(walked,short_run_config(),walked_events,walked_out,fixture_decoder)
+            && walked_out.native_walk && walked_out.returned && !walked_out.conclusive()
+            && walked_out.native_admissions.size()==1 && walked_out.native_admissions[0].admitted
+            && walked_out.sp_valid && walked_out.sp_delta==(is64?8:4),
+            "native walk resumes actual indirect-call machine state and returns");
+      check(walked_events.execution.size()==4 && walked_events.edges.size()==2
+            && walked_events.data.size()==3 && walked_events.execution[2].pc==changed.lo+0x100
+            && walked_events.execution[2].sequence==walked_events.edges[0].sequence
+            && walked_events.states[1].sequence==walked_events.edges[0].sequence,
+            "native walk retains one call transfer and target sample without duplicate events");
+      check(walked_out.data_trace_complete && !walked_out.consumed_context_complete
+            && walked_out.region_identity==walked.identity() && walked.identity()!=indirect_region.identity(),
+            "native walk labels final plan while excluding universal function evidence");
+      auto sampled_plan=indirect_region;EmuEvents sampled_events;EmuOutcome sampled_out;
+      check(indirect_driver.emulate_region_walk(sampled_plan,short_run_config(),sampled_events,sampled_out,
+            fixture_decoder,64,nullptr,true) && sampled_out.returned && sampled_out.native_state_capture_requested
+            && sampled_out.native_state_capture_complete,"native instruction sampling is explicit and complete");
+      size_t sampled=0;bool initial_before=false,callee_before=false;
+      for(const auto &state:sampled_events.states)if(state.kind==StatePoint::Kind::NativeInstructionEntry)
+      {
+        if(sampled<sampled_events.execution.size())
+          check(state.pc==sampled_events.execution[sampled].pc && state.sequence==sampled_events.execution[sampled].sequence,
+                "instruction-entry state shares exact execution sequence");
+        for(const auto &reg:state.regs)
+        {
+          if(state.pc==changed.lo && reg.reg==(is64?RAX_X86_REG_RAX:RAX_X86_REG_EAX))initial_before=reg.value==0;
+          if(state.pc==changed.lo+0x100 && reg.reg==(is64?RAX_X86_REG_RSP:RAX_X86_REG_ESP))
+            callee_before=reg.value==sampled_out.entry_sp-(is64?8:4);
+        }
+        ++sampled;
+      }
+      check(sampled==sampled_events.execution.size() && initial_before && callee_before,
+            "native samples precede each instruction and retain the actual call stack");
+      auto too_small=short_run_config();too_small.max_insns=3;
+      auto limited_walk=indirect_region;EmuEvents limited_events;EmuOutcome limited_out;
+      check(indirect_driver.emulate_region_walk(limited_walk,too_small,limited_events,limited_out,fixture_decoder)
+            && !limited_out.returned && limited_events.execution.size()<=3 && limited_out.instruction_count<=3,
+            "native walk shares instruction quota across resumptions");
+      const chernobog::vm::NativeDecoder delayed=[&](uint64_t ea,const uint8_t *data,size_t count,rax_decoded &decoded)
+      {
+        if(ea==changed.lo+0x100)std::this_thread::sleep_for(std::chrono::milliseconds(60));
+        return fixture_decoder(ea,data,count,decoded);
+      };
+      auto short_time=short_run_config();short_time.timeout_ms=25;
+      auto timed_plan=indirect_region;EmuEvents timed_events;EmuOutcome timed_out;
+      check(indirect_driver.emulate_region_walk(timed_plan,short_time,timed_events,timed_out,delayed)
+            && !timed_out.returned && timed_out.region_boundary && timed_events.execution.size()==2
+            && timed_out.native_admissions.size()==1 && timed_out.native_admissions[0].admitted
+            && timed_out.native_walk_stop=="time_budget",
+            "native walk includes extension planning in shared wall-time budget before resuming");
+      auto invalid_walk=indirect_region;EmuEvents invalid_events;EmuOutcome invalid_out;
+      check(!indirect_driver.emulate_region_walk(invalid_walk,short_run_config(),invalid_events,invalid_out,fixture_decoder,0)
+            && !indirect_driver.emulate_region_walk(invalid_walk,short_run_config(),invalid_events,invalid_out,fixture_decoder,65)
+            && !indirect_driver.emulate_region_walk(invalid_walk,short_run_config(),invalid_events,invalid_out,{},1)
+            && invalid_events.execution.empty(),"native walk rejects unbounded or undecodable requests");
+      const auto extension=chernobog::vm::extend_native_region(indirect_region,changed,api,
+          changed.lo+5,changed.lo+0x100,4096,fixture_decoder);
+      check(extension.admitted && extension.added_heads==1 && extension.region.entry()==indirect_region.entry()
+            && extension.region.at(changed.lo) && extension.region.at(changed.lo+0x100)
+            && !indirect_region.at(changed.lo+0x100),"native extension preserves root and immutable previous plan");
+      check(!chernobog::vm::extend_native_region(indirect_region,changed,api,changed.lo,
+            changed.lo+0x100,4096,fixture_decoder).admitted,"fallthrough source cannot authorize observed-target extension");
+      check(!chernobog::vm::extend_native_region(indirect_region,changed,api,changed.lo+5,
+            changed.lo,4096,fixture_decoder).admitted,"already admitted target cannot extend native plan");
+      check(!chernobog::vm::extend_native_region(indirect_region,changed,api,changed.lo+5,
+            changed.lo+0x100,indirect_region.heads().size(),fixture_decoder).admitted,"native extension head quota enforced");
+      auto stale=changed;stale.generation++;
+      check(!chernobog::vm::extend_native_region(indirect_region,stale,api,changed.lo+5,
+            changed.lo+0x100,4096,fixture_decoder).admitted,"native extension rejects stale generation");
+      const auto overlap=chernobog::vm::extend_native_region(indirect_region,changed,api,changed.lo+5,
+          changed.lo+1,4096,fixture_decoder);
+      check(!overlap.admitted && overlap.reason=="overlapping_decode","native extension rejects interior instruction target");
+      const chernobog::vm::NativeDecoder rejecting=[&](uint64_t ea,const uint8_t *data,size_t count,rax_decoded &decoded)
+      {return ea!=changed.lo+0x100 && fixture_decoder(ea,data,count,decoded);};
+      auto refused_walk=indirect_region;EmuEvents refused_events;EmuOutcome refused_out;
+      check(indirect_driver.emulate_region_walk(refused_walk,short_run_config(),refused_events,refused_out,rejecting)
+            && refused_out.region_boundary && refused_events.execution.size()==2
+            && refused_out.native_admissions.size()==1 && !refused_out.native_admissions[0].admitted
+            && refused_out.native_walk_stop=="invalid_decode" && refused_walk.identity()==indirect_region.identity(),
+            "native walk retains rejected decode as boundary without executing destination");
+      // Two computed jumps require two explicit admissions; no register reseeding
+      // or baseline restoration may occur between those admissions.
+      auto chain=changed;auto &chain_bytes=chain.segs[0].bytes;
+      std::fill(chain_bytes.begin(),chain_bytes.end(),0xcc);
+      const uint8_t first[]={0xb8,0,1,0x10,0,0xff,0xe0};
+      const uint8_t second[]={0xb8,0,2,0x10,0,0xff,0xe0};
+      const uint8_t last[]={0xb8,42,0,0,0,0xc3};
+      std::copy(std::begin(first),std::end(first),chain_bytes.begin());
+      std::copy(std::begin(second),std::end(second),chain_bytes.begin()+0x100);
+      std::copy(std::begin(last),std::end(last),chain_bytes.begin()+0x200);
+      chain.content_hash=hybrid_program_content_hash(chain);
+      EmuDriver chain_driver(api,chain,true);auto chain_plan=plan_native_region(chain,api,chain.lo);
+      EmuEvents chain_events;EmuOutcome chain_out;
+      check(chain_driver.emulate_region_walk(chain_plan,short_run_config(),chain_events,chain_out,fixture_decoder,1)
+            && !chain_out.returned && chain_out.native_walk_stop=="extension_limit"
+            && chain_out.native_admissions.size()==1 && chain_events.execution.size()==4,
+            "native walk extension limit stops before second computed destination");
+      chain_plan=plan_native_region(chain,api,chain.lo);chain_events={};chain_out={};
+      check(chain_driver.emulate_region_walk(chain_plan,short_run_config(),chain_events,chain_out,fixture_decoder,2)
+            && chain_out.returned && chain_out.native_admissions.size()==2 && chain_events.execution.size()==6
+            && chain_events.edges.size()==2 && chain_out.sp_delta==(is64?8:4),
+            "native walk admits observed jump chain without duplicated transfers");
+      bool exact_result=false;
+      for(const auto &reg:chain_out.native_final_registers)
+        if(reg.reg==(is64?RAX_X86_REG_RAX:RAX_X86_REG_EAX))exact_result=reg.value==42;
+      check(exact_result,"native walk preserves computed chain result");
+      {
+        auto loop=chain;auto &stream=loop.segs[0].bytes;std::fill(stream.begin(),stream.end(),0xcc);
+        stream[0]=0xf9;stream[1]=0x72;stream[2]=0xfe;stream[3]=0xc3; // stc; jb self; ret
+        loop.content_hash=hybrid_program_content_hash(loop);
+        auto loop_plan=plan_native_region(loop,api,loop.lo);EmuDriver loop_driver(api,loop,true);
+        auto budget=short_run_config();budget.max_insns=65536;budget.timeout_ms=1000;
+        EmuEvents loop_events;EmuOutcome loop_out;
+        check(loop_driver.emulate_region_walk(loop_plan,budget,loop_events,loop_out,fixture_decoder,64,nullptr,true)
+              && !loop_out.returned && loop_events.execution.size()==4096 && loop_events.states.size()<=12289
+              && loop_out.native_state_capture_complete,"native sample mode clamps instructions and accommodates branch/transfer snapshots");
+      }
+      // PUSH/RET carries an observable stack write before the target is admitted.
+      const uint8_t ret_transfer[]={0x68,0,2,0x10,0,0xc3};
+      std::fill(chain_bytes.begin(),chain_bytes.end(),0xcc);
+      std::copy(std::begin(ret_transfer),std::end(ret_transfer),chain_bytes.begin());
+      std::copy(std::begin(last),std::end(last),chain_bytes.begin()+0x200);
+      chain.content_hash=hybrid_program_content_hash(chain);
+      EmuDriver return_driver(api,chain,true);auto return_plan=plan_native_region(chain,api,chain.lo);
+      EmuEvents return_events;EmuOutcome return_out;
+      check(return_driver.emulate_region_walk(return_plan,short_run_config(),return_events,return_out,fixture_decoder)
+            && return_out.returned && return_out.native_admissions.size()==1 && return_events.execution.size()==4
+            && return_events.edges.size()==1 && return_events.edges[0].kind==ExecEdge::Kind::Return
+            && return_events.data.size()==3 && return_events.data[0].kind==RAX_MEM_WRITE
+            && return_out.sp_valid && return_out.sp_delta==(is64?8:4),
+            "native walk follows stack-mediated transfer with actual stack effects");
+    }
+    // Writable code is captured exactly; a changed future instruction must not
+    // execute under its original plan even if the new encoding is also valid.
+    changed=image;changed.segs[0].perm|=uint32_t(HybridSegPerm::WRITE);
+    auto &smc=changed.segs[0].bytes;std::fill(smc.begin(),smc.end(),0xcc);
+    if(is64)
+    {const uint8_t code[]={0xc6,0x05,0xf9,0,0,0,0x90,0xe9,0xf4,0,0,0};std::copy(std::begin(code),std::end(code),smc.begin());}
+    else
+    {const uint8_t code[]={0xc6,0x05,0,1,0x10,0,0x90,0xe9,0xf4,0,0,0};std::copy(std::begin(code),std::end(code),smc.begin());}
+    smc[0x100]=0xc3;changed.content_hash=hybrid_program_content_hash(changed);
+    const auto smc_region=plan_native_region(changed,api,changed.lo);
+    EmuDriver smc_driver(api,changed,true);EmuEvents smc_events;EmuOutcome smc_out;
+    check(smc_driver.emulate_region(smc_region,short_run_config(),smc_events,smc_out)
+          && smc_out.region_code_changed && smc_events.execution.size()==2 && !smc_out.data_trace_complete,
+          "runtime code change stops before modified instruction");
+    {
+      auto changed_plan=smc_region;EmuEvents changed_events;EmuOutcome changed_out;
+      check(smc_driver.emulate_region_walk(changed_plan,short_run_config(),changed_events,changed_out,fixture_decoder)
+            && changed_out.region_code_changed && changed_out.native_admissions.empty()
+            && changed_events.execution.size()==2,"native walk cannot override existing runtime byte guard");
+      const uint8_t tail[]={0xb8,0,1,0x10,0,0xff,0xe0};
+      std::fill(smc.begin()+7,smc.end(),0xcc);
+      std::copy(std::begin(tail),std::end(tail),smc.begin()+7);smc[0x100]=0xc3;
+      changed.content_hash=hybrid_program_content_hash(changed);
+      auto unknown_plan=plan_native_region(changed,api,changed.lo);
+      EmuDriver unknown_driver(api,changed,true);EmuEvents unknown_events;EmuOutcome unknown_out;
+      check(unknown_driver.emulate_region_walk(unknown_plan,short_run_config(),unknown_events,unknown_out,fixture_decoder)
+            && unknown_out.region_code_changed && unknown_out.native_admissions.size()==1
+            && unknown_out.native_admissions[0].admitted && unknown_events.execution.size()==3
+            && !unknown_out.data_trace_complete,
+            "newly admitted destination still requires exact runtime instruction bytes before entry");
+    }
+  }
 }
 
 bool run_direct(const RaxApi *api, const ProgramImage &image,
@@ -1509,6 +1935,7 @@ int main()
     test_arm64_function_boundary(api);
     test_objc_entry_abi(api);
     test_temporal_heap_uses(api);
+    test_native_regions(api);
   }
   if ( failures != 0 )
   {

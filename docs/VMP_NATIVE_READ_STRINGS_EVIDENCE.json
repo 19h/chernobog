@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "scope": "bounded native read-stream derivation and exact ctree/Qt observation display; protected corpus and full review completion unproved",
+  "source_sha256": {
+    "CMakeLists.txt": "ab2184c977ed444bfd85b514f9d405e2cb5e4bdd71035d4c3bbbb2bb90c11b52",
+    "src/hybrid/native_read_strings.cpp": "b3c9d10ea24b16ce62869cca892ef5a91cd4a52c9730b63ed1584c41cc505990",
+    "src/hybrid/temporal_memory.hpp": "96d13dbad0767fa4abfbf5a04d182a86864684f8ddf780ff02234f4263b0bed6",
+    "src/hybrid/evidence.hpp": "7839ee8587b666632b2229c638b09f24fb6f4fef1af5b57f0c30fbaf1375833f",
+    "src/hybrid/evidence.cpp": "cdb7a5815572f29d6ec54d6f8c49185e51e0c12e0e6a66e36e247f86a244bad9",
+    "src/hybrid/evidence_view.hpp": "02a4698992ae7a82beda64ca0e5e03ff3fead00401916a7ea2b1522d530abf65",
+    "src/hybrid/emu_driver.cpp": "359a0741dbfa4398ab938bf3f91747a5a34cf3113928f0b9a2e1a6b8ebd2a801",
+    "src/hybrid/emu_driver.hpp": "b46b3660956f07d63d56dc383d02ce6f38f604e105c09e0c8f38c8ffc4ae5fc4",
+    "src/hybrid/z3_bridge.cpp": "3b0ff31584549509fd59bd0a8ee9cd8d4f2a49eade8a5b3ce26d2c7872e0190a",
+    "src/deobf/handlers/ctree_string_decrypt.cpp": "d6d76017d892ebc5bb6b7d0fe8bd0bea59be19825feb78959136dc19c2973caa",
+    "src/plugin/idc_api.cpp": "d20144b4f9f118a689bf9750c54559d4dae8413cb89e52a6d2e1b0b9a4cf564d",
+    "python/chernobog_evidence.py": "fb5fb23d8080e8c2ef464627491dd4ab9965a6d0013bcb0b12f1c5df6320d0b6",
+    "tests/evidence_tests.cpp": "2de0bfc028c17af6050c51d51b4470d8f54f774f3ce055ca29f33141e2fb2c59",
+    "tests/hybrid_tests.cpp": "1ffee62d56969ea070af34051484186e1a111d353db30b4f969716822d1c515f",
+    "tests/ida_native_read_strings_probe.py": "1fedaf7fc1e92ddf35989b4c55aefe01baebd4dde3928625c603e3fee5bbe774",
+    "tests/ida_temporal_string_smoke.py": "efd2acccfad2731d6c0a68ab5e592ec77419ff1cac69d1d85569f2c209ed23b1",
+    "tests/vmp_native/native_read_strings.S": "064d1c77f0eb036417ed81c565a5b24903616984b559be0b8cb23e2775cc77b9",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151",
+    "src/common/string_recovery.h": "9e6d4cc5a342abffc75ba49c8a8343524259a25d3957db889b0016a88a5def7e",
+    "docs/VMP_NATIVE_READ_STRINGS.md": "21d007aae938a1d4ea33feebbfdc24d4278cc0d87c03c2118517c0d8dbf5a9ab",
+    "docs/VMP_IMPLEMENTATION.md": "01f3168d630bc9a9dd47dd49156bcb994aa1b12582bd88202bbc0d1e166e9dd7"
+  },
+  "primary_reference_sha256": {
+    "vmp/runtime/string_manager.cc": "ea4ec11e0317a6508c2d14c4032e368259c98b1955072987171c7306718e3c4d"
+  },
+  "runtime_sha256": {
+    "plugin": "45199f0e0d94dc26ca61270c6593eab44437525f135026c3817f994eaafbef3f",
+    "ida_console": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+    "ida_gui": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b"
+  },
+  "accepted_artifact_sha256": {
+    "build/vmp-native-read-strings-release-console/native_read_strings.json": "ecac302ff10b004a9e9090a43fc60f3223c075e42b11ecdd6f7c2f204ecf721e",
+    "build/vmp-native-read-strings-release-console/run.json": "8e70df05efccbe82a7810b735e10823c11e8a8bf048d6534029602186a2473b1",
+    "build/vmp-native-read-strings-release-gui/native_read_strings.json": "6cf6d4a9c91d981871b5ca1c8aea3df680e6534b77d54a9134386ce29ed117a5",
+    "build/vmp-native-read-strings-release-gui/run.json": "45712d5dc351cff72e116be081d4fb8fda58e70530a76860d668afbb506ef8cb",
+    "build/vmp-native-read-strings-release-gui/native_read_streams.png": "59cd3d66cf64941ddb174a55e09a81a855c85d7817ce15f51fed0ccedacc71a4",
+    "build/vmp-native-read-strings-release-modeled/temporal_strings.json": "e80f4252f539b6a85441d30539ac476245e830e62bdb574b1cfc95a29f811137",
+    "build/vmp-native-read-strings-release-modeled/run.json": "35ad5c519cf3b289472169694b61e2eeb245f1b58ee7882122255d0da72cb6f1",
+    "build/vmp-native-strings-release-build.log": "8f04d818ff533fc727b769e022eb45e4b8d3942708879c604f2e5ff14ee210ad",
+    "build/vmp-native-strings-release-ctest.log": "09cef8e32d2752c1f9e24b70d57304c430cfa244a9ed5234a7073248a5ab56a9",
+    "build/vmp-native-read-strings-native-oracle.json": "3f4f423e12724a722c43b6dc9700d03571e2693717c28df1c284b3e99e3de5d5",
+    "build/vmp-native-read-strings-exact": "0e5c40f0c96fe882a40fc7bc500895d5d089b37f775f0b14c0a9ba94aa61ec55"
+  },
+  "historical_failed_probe_sha256": {
+    "build/vmp-native-read-strings-first/native_read_strings.json": "fe9dadd1063b46d85fb991b44b7b5e559e680c348a629ec69822abfce68a6736",
+    "build/vmp-native-read-strings-first/run.json": "b0748201b6868b510af3c208919985fc7458e1c29fe51801c83bf0f22484cb29",
+    "build/vmp-native-read-strings-final/native_read_strings.json": "1328ba1ecf098883703a88455a21e8eb3c05dc54c685c33856a5e156c3541076",
+    "build/vmp-native-read-strings-final/run.json": "5b09af76c95e32dfff73c3683f10f1f4f05eaca06d222a1e1fe83ac46976b1e7"
+  },
+  "accepted_results": {
+    "native_oracle_exit": 0,
+    "plaintext_absent_from_binary": true,
+    "recovered_values": [
+      "secret!",
+      "second!"
+    ],
+    "scheduled_runs_per_use": 4,
+    "scalar_reads_per_use": 8,
+    "dedicated_stream_witnesses": 8,
+    "console_checks": 24,
+    "gui_checks": 29,
+    "modeled_regression_checks": 22,
+    "ctest_suites": 20,
+    "ctest_failures": 0,
+    "ctest_elapsed_seconds": 15.99,
+    "general_timeline_omitted_events": 240,
+    "stream_table_omitted_witnesses": 0,
+    "visual_inspection_passed": true
+  },
+  "limitations": [
+    "independent x64 fixture, not protector output",
+    "other memory accesses interrupt streams",
+    "native display requires surviving pointer/index expression at exact EA",
+    "model-free proof admission unchanged",
+    "full implementation goal remains active"
+  ]
+}

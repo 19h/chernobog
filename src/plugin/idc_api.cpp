@@ -40,6 +40,7 @@
 #include "../hybrid/z3_bridge.hpp"
 #include "../hybrid/solver_inspection.hpp"
 #include "../vm/ida_regions.hpp"
+#include "../vm/ida_native_trace.hpp"
 #include "../ida_analysis/early_hexrays.hpp"
 #include "../ida_analysis/native_engine.hpp"
 
@@ -1022,6 +1023,9 @@ error_t idaapi idc_native_analysis(idc_value_t *, idc_value_t *r)
     set_size(r, "post_scan_heads", stats.post_scan_heads);
     set_size(r, "post_scan_functions", stats.post_scan_functions);
     set_bool(r, "post_scan_truncated", stats.post_scan_truncated);
+    set_size(r, "direct_jump_decode_attempts", stats.direct_jump_decode_attempts);
+    set_size(r, "direct_jump_targets_decoded", stats.direct_jump_targets_decoded);
+    set_bool(r, "direct_jump_decode_truncated", stats.direct_jump_decode_truncated);
     return eOk;
 }
 
@@ -1042,6 +1046,9 @@ error_t idaapi idc_early_stats(idc_value_t *, idc_value_t *r)
     set_bool(r, "enabled", early != nullptr && early->enabled());
     set_size(r, "flowchart_edges", stats.flowchart_edges);
     set_size(r, "codegen_returns", stats.codegen_returns);
+    set_size(r, "codegen_setcc", stats.codegen_setcc);
+    set_size(r, "codegen_cmov", stats.codegen_cmov);
+    set_size(r, "codegen_cmov_memory", stats.codegen_cmov_memory);
     set_size(r, "generated_gotos", stats.generated_gotos);
     set_size(r, "folded_instructions", stats.folded_instructions);
     set_size(r, "character_operands", stats.character_operands);
@@ -1197,6 +1204,40 @@ error_t idaapi idc_vm_regions(idc_value_t *argv, idc_value_t *r)
 error_t idaapi idc_vm_summaries(idc_value_t *argv, idc_value_t *r)
 {
     const auto json = vm::inspect_regions(uint64_t(resolve_function(argv[0])), true);
+    r->set_string(json.c_str());
+    return eOk;
+}
+
+error_t idaapi idc_vm_trace(idc_value_t *argv,idc_value_t *r)
+{
+    const auto json=vm::trace_native_region(uint64_t(resolve_function(argv[0])),uint64_t(argv[1].num));
+    r->set_string(json.c_str());
+    return eOk;
+}
+
+error_t idaapi idc_vm_trace_input(idc_value_t *argv,idc_value_t *r)
+{
+    const auto request=arg_string(argv[2]);
+    const auto json=vm::trace_native_region_input(uint64_t(resolve_function(argv[0])),
+        uint64_t(argv[1].num),std::string(request.c_str(),request.length()));
+    r->set_string(json.c_str());
+    return eOk;
+}
+
+error_t idaapi idc_vm_trace_walk(idc_value_t *argv,idc_value_t *r)
+{
+    const auto request=arg_string(argv[2]);
+    const auto json=vm::trace_native_region_walk(uint64_t(resolve_function(argv[0])),
+        uint64_t(argv[1].num),std::string(request.c_str(),request.length()));
+    r->set_string(json.c_str());
+    return eOk;
+}
+
+error_t idaapi idc_vm_trace_check(idc_value_t *argv,idc_value_t *r)
+{
+    const auto request=arg_string(argv[2]);
+    const auto json=vm::trace_native_region_check(uint64_t(resolve_function(argv[0])),
+        uint64_t(argv[1].num),std::string(request.c_str(),request.length()));
     r->set_string(json.c_str());
     return eOk;
 }
@@ -1470,8 +1511,12 @@ error_t idaapi idc_rax_use_string(idc_value_t *argv, idc_value_t *r)
     set_u64(r, "callee", use.callee);
     set_u64(r, "occurrence", use.occurrence);
     set_u64(r, "argument", uint64_t(int64_t(use.argument)));
-    set_str(r, "producer", use.producer == hybrid::UseProducer::MODELED_ARGUMENT
-        ? "modeled-argument" : "executed-read");
+    set_str(r, "producer", hybrid::use_producer_name(use.producer));
+    set_u64(r, "first_sequence", use.sequence);
+    set_u64(r, "last_sequence", candidate.read_fragments.empty()?use.sequence:
+        candidate.read_fragments.front().back().sequence);
+    set_size(r, "read_count", candidate.read_fragments.empty()?1:candidate.read_fragments.front().size());
+    set_u64(r, "observed_bytes", use.observed_size);
     set_u64(r, "model_kind", use.model_kind);
     set_u64(r, "object_site", use.object_site);
     set_u64(r, "object_callee", use.object_callee);
@@ -1631,6 +1676,7 @@ const char args_str[] = { VT_STR, 0 };
 const char args_str_value[] = { VT_STR, VT_WILD, 0 };
 const char args_ea_ea[] = { VT_LONG, VT_LONG, 0 };
 const char args_ea_long[] = { VT_LONG, VT_LONG, 0 };
+const char args_ea_long_str[] = { VT_LONG, VT_LONG, VT_STR, 0 };
 const char args_ea_ea_long[] = { VT_LONG, VT_LONG, VT_LONG, 0 };
 
 struct idc_entry_t
@@ -1764,6 +1810,18 @@ const idc_entry_t idc_entries[] = {
     { "chernobog_vm_summaries", idc_vm_summaries, args_ea,
       "chernobog_vm_summaries(ea)",
       "Explicit bounded normal-completion effect summaries; reuse requires UNSAT" },
+    { "chernobog_vm_trace", idc_vm_trace, args_ea_long,
+      "chernobog_vm_trace(ea, seed)",
+      "Explicit bounded native-region capture across function owners; no function evidence publication" },
+    { "chernobog_vm_trace_input", idc_vm_trace_input, args_ea_long_str,
+      "chernobog_vm_trace_input(ea, seed, input_json)",
+      "Native-region capture with explicit scalar arguments and bounded initialized scratch objects" },
+    { "chernobog_vm_trace_walk", idc_vm_trace_walk, args_ea_long_str,
+      "chernobog_vm_trace_walk(ea, seed, input_json)",
+      "Opt-in bounded continuation of observed native transfers; shared budgets, no logical VM ownership claim" },
+    { "chernobog_vm_trace_check", idc_vm_trace_check, args_ea_long_str,
+      "chernobog_vm_trace_check(ea, seed, input_json)",
+      "Explicit native walk, instruction-entry samples and bounded local VM transition checks; separate capture scope" },
     { "chernobog_vm_states", idc_vm_states, args_ea,
       "chernobog_vm_states(ea)",
       "Fresh captured VM-role observations; partial states remain distinct, no execution admission" },

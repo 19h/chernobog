@@ -1,0 +1,366 @@
+{
+  "schema_version": 1,
+  "checkpoint": "paired-elf32-execution-and-analysis",
+  "status": "in-progress",
+  "requirements": [
+    "0b",
+    "V",
+    "6a",
+    "6b"
+  ],
+  "git_head": "a82bfef4d91847bcd9e67c0d5a229d43f7744a47",
+  "source_sha256": {
+    "CMakeLists.txt": "0ff95dbd5ed85c60748de0900173923a65335672f130d3f7481d97bced44278a",
+    "docs/VMP_ELF32_CORPUS.md": "9b5a2643ffdcba464207ed54f9985d9473e6d1f7345ad150638990977975a5f5",
+    "docs/VMP_IMPLEMENTATION.md": "0563788dcb4811c9b5fae2a2505d777d16eafecc62e2c719d65c056b59cb7cbc",
+    "tests/ida_vmp_corpus_probe.py": "8d5784dc6a1457e9ad492203fe1272c17c25d6f7a45ecce425a80927ab1ec397",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151",
+    "tests/run_vmp_analysis.py": "57b2a904633f8da92d34ff915b4b105a5a1832e28cbf7a2b80faf1a88dc87781",
+    "tests/run_vmp_corpus.py": "b8adfe9ce39e643b551c1e4d29f64cf023914bb0d6cf1516c0e3971a5fdc376a",
+    "tests/vmp_corpus/linux32.Dockerfile": "6696a2c4c4b1d9b657f40d856a2cf24af845689d732e3a6762436400a0ebb85d",
+    "tests/vmp_corpus/linux32.py": "bcac8227eff4012ff02d6fdb52a4824e38c8ba5642f9559dfd7322d13f71a63c",
+    "tests/vmp_corpus/linux32_exec.py": "62f8d55441b5c008f262b23382150806fa61a10e6001af17e85b63f33bd12737",
+    "tests/vmp_corpus/pair.S": "51bbc98ac8ad35be87b03e3d9217fb3152015babf2e47aa05be003b977b72e3b",
+    "tests/vmp_corpus/pair.c": "af8979d047dc107b8f22f4b24a88e229ca393dabbd8d48a6df7df793e7118488",
+    "tests/vmp_corpus/pair32.S": "64e98a13ef4af322bf94aeefc4ca7ed3c899e5530c08dee282d5baba154fa973",
+    "tests/vmp_corpus/seed.lua": "12c4eeb95ff1a5fcc7bc495df963836f27553002965a0681812594baed4f2fee",
+    "tests/vmp_corpus/seed_interpose.c": "355c82a92fb5594040d4d0da9f3b96fc0d3448e0c61ca7f9133cfb76268b5d87",
+    "tests/vmp_corpus/seed_probe.c": "484c25f8dda5c8932a1c7d8fa622c7f6aace7f5b7aa95d8f034a8d91ea34a375",
+    "tests/vmp_corpus_tests.py": "0cbcf753172f61e5d878ac60499b88861afbb234369a1b936b2b247abfe3d9d4"
+  },
+  "reference_source_sha256": {
+    "vmp/core/core.cc": "cd97023bcdcc9f24d238bdd325362817212e512d461264a225b94f7ee5e2510e",
+    "vmp/core/core.h": "057457cc7503c1a1982d78601cd38caf11cd798fd5b5a46df293ffb5f0535b61",
+    "vmp/core/files.cc": "86d9f237a7befcf299b3f4605a694736e75a61716504054af261b4708ce8d2b8",
+    "vmp/core/files.h": "3f706eef4914c0b84650b23543df6898da3fedfb9d4cb734b3b19babebefcc72",
+    "vmp/core/intel.cc": "ce0edd303f1b20d12affaf1bb4646b684a056babe724f36af24340fefe7cb17c",
+    "vmp/core/macfile.cc": "dbb12f7ccb34000734f552e8f917612674df04ba15f1d0923a6afd61c199d7e6",
+    "vmp/core/elffile.cc": "9b4dedd0f7ccb50b669c7f2ebf04344042a7409200d88b7f9600dece9d9b2224",
+    "vmp/core/script.cc": "284c671019c30bb982534a8bb9b7fa4b46c60f4e50fbbddbe9f326dd46ad7313",
+    "vmp/third-party/lua/lmathlib.c": "a9bf0747cfd9653b9e48e9b50a697bb7bf3db1e7d4f6117fe27d7b3bb6c64769"
+  },
+  "artifact_sha256": {
+    "build/vmp-corpus-release/corpus.json": "09185dc4767915721d400ee779caf349610917b22306fc063a3b94cd8c540a28",
+    "build/vmp-corpus-release/observations/original-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/vmp-corpus-release/observations/original-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/vmp-corpus-release/observations/original-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/vmp-elf32-accepted-ctest.log": "edbccbcb5cd33eee0d44fc4d4246ea274978be9387db406060e5daf4ce953cde",
+    "build/vmp-elf32-analysis/analysis.json": "a12f6f7936f13c49e1acc03646be1d16396be69affccf9a5fd7a483d176ce241",
+    "build/vmp-elf32-analysis/combined-0-disabled/corpus_inspection.json": "830dfb1800c28784837c3c24a595f17ad00be06eb5b566a33ac04b11cfd9b07d",
+    "build/vmp-elf32-analysis/combined-0-disabled/run.json": "f7d11758a3aed6e9909bde6865c22e7d4998c8ba396af58f49257dccdd7ed9c0",
+    "build/vmp-elf32-analysis/combined-0-enabled/corpus_inspection.json": "0b47481d4ae548cabc8690b390d131a67985bb1bd66ff7b071c3917434dd920b",
+    "build/vmp-elf32-analysis/combined-0-enabled/run.json": "5282f55b1b2ac89c8779f0998225765fb4f9195c090f7ae19de836119a0ce951",
+    "build/vmp-elf32-analysis/combined-1-disabled/corpus_inspection.json": "2d95547a7e21590c8e22145383ef626325cc30f6ed2b334aca5a2a0ffba42b13",
+    "build/vmp-elf32-analysis/combined-1-disabled/run.json": "05e195f71652f69f868e568253404cd243643c925928c981b3b4ddd2da5e3229",
+    "build/vmp-elf32-analysis/combined-1-enabled/corpus_inspection.json": "ccf173878f3b15fcd36567ae9a98868cee5f80a3b95422300d06fd6e33e1eade",
+    "build/vmp-elf32-analysis/combined-1-enabled/run.json": "979874af6dd4bf018fd8500d2cc125c7b796531b60970cf5cb04c1a65370ace1",
+    "build/vmp-elf32-analysis/combined-12648430-disabled/corpus_inspection.json": "d75c2051bc276118b13ab15e34bde931824ec3a9f24ee7192d6c99a48cb57423",
+    "build/vmp-elf32-analysis/combined-12648430-disabled/run.json": "45f63835f366dcd43c6e821caeabacea9d9fc78dcc7eb444059be1f7b1a7c0b9",
+    "build/vmp-elf32-analysis/combined-12648430-enabled/corpus_inspection.json": "b1f3b503b12eec7900416b2c9322ee020dbba88d4cfb0559218f9ef57697a96d",
+    "build/vmp-elf32-analysis/combined-12648430-enabled/run.json": "580fee4a3d0c1335caa6732105e99445b68ab662a2d73924faa150768cfad589",
+    "build/vmp-elf32-analysis/mutation-0-disabled/corpus_inspection.json": "15855747a6fca530a3b2f7ee216d8d4f3937bc7fb047ddfe79e731a5b3854960",
+    "build/vmp-elf32-analysis/mutation-0-disabled/run.json": "e4659dbe95dc22bb75ed778fa7698baa5836fa5c510a474e3a48f26dfe1e940c",
+    "build/vmp-elf32-analysis/mutation-0-enabled/corpus_inspection.json": "4582dceeed9c14e22b73bb86b78cd009ac631a835d4c617e930c3313bd721e5b",
+    "build/vmp-elf32-analysis/mutation-0-enabled/run.json": "44329e48e4a1c9f34b376bc0d203e896141fb3f83f79816fab55b7aa2dcc5cbb",
+    "build/vmp-elf32-analysis/mutation-1-disabled/corpus_inspection.json": "749c2aac6eb58aef375dacb685cdad83dbb4ff4268453eb37d25eae39918ad25",
+    "build/vmp-elf32-analysis/mutation-1-disabled/run.json": "8009d36c36f668a95a2c566bf412e07a321e42b742a4a783100cc885fe3cada4",
+    "build/vmp-elf32-analysis/mutation-1-enabled/corpus_inspection.json": "e9cffbbbb0ddd37b5963722a909ac59d969afbbae2fb4dd71d696884f3f1c1b1",
+    "build/vmp-elf32-analysis/mutation-1-enabled/run.json": "6c7ac4ceb7295946430cd5b2d6059b8ed4a9d13cd2324ff7a9226604f403ab79",
+    "build/vmp-elf32-analysis/mutation-12648430-disabled/corpus_inspection.json": "2086b4fcb9eeea18feb6b9ed917c53943500fa7c3212f7de1f832873a34f5d65",
+    "build/vmp-elf32-analysis/mutation-12648430-disabled/run.json": "12651deb8017c5ccfa5db4e5f2d75d012193b505d8657df0e4cc95fd749076c0",
+    "build/vmp-elf32-analysis/mutation-12648430-enabled/corpus_inspection.json": "08ea5a0eecaeecb1b22d07fa8ac2cd210b66e261e8ab2a321988e198fe835f1e",
+    "build/vmp-elf32-analysis/mutation-12648430-enabled/run.json": "61de43d61a97cf1ceb0e628500e594143ca64b51d9c187b09143f664c8de3c1d",
+    "build/vmp-elf32-analysis/original-disabled/corpus_inspection.json": "b6c0449a29833c1bb946c67281f2e87fa9dff52942d77a4f2a19f04ef7a7c697",
+    "build/vmp-elf32-analysis/original-disabled/run.json": "93dcd343c4ad867f9304987759d5c15817d98b9f6f93e54d18d6ad02255d2822",
+    "build/vmp-elf32-analysis/original-enabled/corpus_inspection.json": "5a050d143693763599cb55f32cf660b1aa8956e64140a50e14fdce8b1ea3ffc3",
+    "build/vmp-elf32-analysis/original-enabled/run.json": "b33d3be1c4d09b96234417bdbba89fc0b7492af87f1d4f35eed915514d52ee10",
+    "build/vmp-elf32-analysis/virtualization-0-disabled/corpus_inspection.json": "86c46a72ff2457b71b573ff67e13e6fc9fdbe6414d18a93cfce2b41707d58d62",
+    "build/vmp-elf32-analysis/virtualization-0-disabled/run.json": "d986bd8d0eaeed26a48c5bb25abf9b3035fde281c33c3a1d94cb02dac46f444e",
+    "build/vmp-elf32-analysis/virtualization-0-enabled/corpus_inspection.json": "2fb612d39f2a61950032da21d6fb07cd9eca4e0dd9cd7aa8a4ceab4572c27b02",
+    "build/vmp-elf32-analysis/virtualization-0-enabled/run.json": "17b19d972f9f926b82b35262a6489dd7ed2b750c17278c62de0243fe0702b35a",
+    "build/vmp-elf32-analysis/virtualization-1-disabled/corpus_inspection.json": "252c9a748d0a1b983700d6cae30b2459669971ebc0244d76a139ec95034ed3b3",
+    "build/vmp-elf32-analysis/virtualization-1-disabled/run.json": "818e7b623df96d09eb0d0e34876d14b67deb70d522b161e14e86da9bba91ff84",
+    "build/vmp-elf32-analysis/virtualization-1-enabled/corpus_inspection.json": "074b49af20a07cd1bb27ddc65922c3ca04f0bb53e2940668415670f9775e94dd",
+    "build/vmp-elf32-analysis/virtualization-1-enabled/run.json": "e6e19fad737e765dcaffdfc8254760adcd1029e381ccf362ec8dbff06ec55bea",
+    "build/vmp-elf32-analysis/virtualization-12648430-disabled/corpus_inspection.json": "dceea6fb619970c36ffadc4d7486011a006e4259d578ba1b6057026c2e0809c3",
+    "build/vmp-elf32-analysis/virtualization-12648430-disabled/run.json": "0275d7c7aafe8a67ccec78d6c44ea483545af57b552f83d68639c84a4ca67d10",
+    "build/vmp-elf32-analysis/virtualization-12648430-enabled/corpus_inspection.json": "1f02e175e10c28ee851b19e246c291be392e14144b9d72c5c173f3c5d5a553bc",
+    "build/vmp-elf32-analysis/virtualization-12648430-enabled/run.json": "04bf69004d4f98bb92a36c5616a5bbed1eb6d68439e9214283c305245db2b244",
+    "build/vmp-elf32-corpus/corpus.json": "398d6dc8a41c523cedd30e514d6f0d7c479301ca33e805f7ba30c5ab9a291efd",
+    "build/vmp-elf32-macho-final/corpus.json": "cdbbe02dcc319257532d4de7645d5b15a46ffd2ee4cc0ebb72f077bc9a371da6",
+    "build/vmp-elf32-macho-final/mutation-0": "2cf00e7a5327257d98d18af8f5a35d0b0921b135d2a37a2ec9628e6d997e9a07",
+    "build/vmp-elf32-macho-final/observations/mutation-0-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/vmp-elf32-macho-final/observations/original-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/vmp-elf32-macho-final/original": "1245a1ce3259f68fa020924aaf35fd78734ca1594f9ffe1f4d99215753256e7b",
+    "build/vmp-elf32-release/combined-0": "a8e474f0033524bde7d5d4090d0e1fb2f8451f2ae55f59c33cc55de1c44b6d42",
+    "build/vmp-elf32-release/combined-1": "6f63fc2c8746f561716cdf004b62447afe3c2681210fd6ef33e53ce319411ac8",
+    "build/vmp-elf32-release/combined-12648430": "28afeb8f97e7bcd765f60daffbe10719b57caf9c005cc42fdfc883d43a23d5f5",
+    "build/vmp-elf32-release/combined.vmp": "734bed8c60e21478d639c70419f7d50a574aa7071d7f6919f350de319645308a",
+    "build/vmp-elf32-release/corpus.json": "aa06ba041560b70a8cc57502f0442bcd8e5f9ae363fcc29a2519d76666fcbe4b",
+    "build/vmp-elf32-release/guest-runs/combined-0-2654435769.json": "27ad988eb089f3b5ac9fe19d5807650999ddf73839178abc0ad5c094ce08a538",
+    "build/vmp-elf32-release/guest-runs/combined-0-3518319157.json": "c42d76a770e786acf85c1c5b73b8083140e565e91c8b30718315526ad43ed342",
+    "build/vmp-elf32-release/guest-runs/combined-0-826366246.json": "9f81721ca071c16f8a461df6a849f8653469021203bb31b726bee2806238ef13",
+    "build/vmp-elf32-release/guest-runs/combined-1-2654435769.json": "0c05753e401d6ba1c4d95099ffd211ebdf62a349b2078557917e6462f6c55aec",
+    "build/vmp-elf32-release/guest-runs/combined-1-3518319157.json": "4828b487ee4bc9401906cf38853b761b12577547755b7503471488a536d619a5",
+    "build/vmp-elf32-release/guest-runs/combined-1-826366246.json": "73d3a7cb0374bc47fcc3c6027f8322b8931e22651f7d3b56176e11dac91caebd",
+    "build/vmp-elf32-release/guest-runs/combined-12648430-2654435769.json": "dd7e4cd0597b9b6eccdf9412efc09419cdd9a0720d16e0c9f050275440608c8f",
+    "build/vmp-elf32-release/guest-runs/combined-12648430-3518319157.json": "d9c61d1c1e6124c1ce5332953ccbdca4cb2fd90855011020d486e8145af0812d",
+    "build/vmp-elf32-release/guest-runs/combined-12648430-826366246.json": "82ce3f9653955e5ab2f380d28c89c69c300e87c20d8124cf931264a535a82f5e",
+    "build/vmp-elf32-release/guest-runs/mutation-0-2654435769.json": "470381a4c42be58dceb8d2b8b1aef50690c4d78ce77aee34f70fbf5e8ce8d533",
+    "build/vmp-elf32-release/guest-runs/mutation-0-3518319157.json": "e40947522ea42d4677a3fc662da517b4f72af22b61f1dafe06e3cd6f16758a2a",
+    "build/vmp-elf32-release/guest-runs/mutation-0-826366246.json": "3ec7b73e213a91f883a1272cb2d50dab93a0e0c9ee88600dfd5ac32f76fc74fe",
+    "build/vmp-elf32-release/guest-runs/mutation-1-2654435769.json": "e0a2a3178be50771585ccf33e0750856699c8845930bdb691afd1e03a692593f",
+    "build/vmp-elf32-release/guest-runs/mutation-1-3518319157.json": "5ef90e4ae352b5c1d3862cb929235e5e51d7024075db2665f5a36331ed207632",
+    "build/vmp-elf32-release/guest-runs/mutation-1-826366246.json": "9663e6762737fbab63e1ab4d8ec788e4687f4b50c76e68dfacca08ac1e9da732",
+    "build/vmp-elf32-release/guest-runs/mutation-12648430-2654435769.json": "0522f36fe60eb588e08e298ca1f29bbbfe838b405edca4941013f63fb83f18bc",
+    "build/vmp-elf32-release/guest-runs/mutation-12648430-3518319157.json": "bfa8a1d68e1a26af9968e73fe0421d0980d5eb9c466439d85ed4fabee76bba3c",
+    "build/vmp-elf32-release/guest-runs/mutation-12648430-826366246.json": "9c833af7af51ebe9935c509daf9e1fbf58d6df6521daf78ad322bde00e6049a1",
+    "build/vmp-elf32-release/guest-runs/original-2654435769.json": "c3e88f9f05804600535ee06697df986448a27e44b8b0a2021669f728212bedcd",
+    "build/vmp-elf32-release/guest-runs/original-3518319157.json": "432856f0540cdb8a99e72657355c6348c33dbf061653ca395e1a711782c786f6",
+    "build/vmp-elf32-release/guest-runs/original-826366246.json": "72a22c55c6b717b5ae46ec804b327218dee43b41bff576ddfef863e2f954576e",
+    "build/vmp-elf32-release/guest-runs/virtualization-0-2654435769.json": "f243ee9c0e683f2f10e61ebe75779a3c88fad1fa1804daa8d46725b1d351da65",
+    "build/vmp-elf32-release/guest-runs/virtualization-0-3518319157.json": "64d3728bdc4679b0acf4333a6c1073a9c0f20afed9caaa1a7d73492217f3f39d",
+    "build/vmp-elf32-release/guest-runs/virtualization-0-826366246.json": "97066f5631701a9737bd70a29bfb444725429a79c5cb1ff6d6433e210126a6dc",
+    "build/vmp-elf32-release/guest-runs/virtualization-1-2654435769.json": "669dd410f25bba2bfec96667acabce4ae4e22dd93e9fbb7702477f9f3507fe96",
+    "build/vmp-elf32-release/guest-runs/virtualization-1-3518319157.json": "e91f027148a1e0cdb3aeab4f788f1146cc9ba76298391124806e655d894eb2e4",
+    "build/vmp-elf32-release/guest-runs/virtualization-1-826366246.json": "d95301b9b4675afdff10c90f46f72f6928a2b4d50d39388db88da1fc5edee37a",
+    "build/vmp-elf32-release/guest-runs/virtualization-12648430-2654435769.json": "b3eeac297d5c57900f46ffb07b0844961aed9faf9f2c61e16c141c9970f88eb2",
+    "build/vmp-elf32-release/guest-runs/virtualization-12648430-3518319157.json": "f89a7be3a67be8ac8bc152bded2a2ac6ff20098e980a22cdcb7ae99ada525b46",
+    "build/vmp-elf32-release/guest-runs/virtualization-12648430-826366246.json": "00541e78344579d3df04a8ded1e78b663d0adf6e665425629b4b70918367da32",
+    "build/vmp-elf32-release/mutation-0": "dc99df7a6da7a4c65e648d8db9ea841925b4c1b835765e28f50818d83454bfe4",
+    "build/vmp-elf32-release/mutation-1": "06607a588e0cc22c61ed4142702fdac1f2f32a7d3c2657e60eccdc04be954f5f",
+    "build/vmp-elf32-release/mutation-12648430": "1c32a35c36cd78ca750fccb9516a0887246a6dcb5ecf0594b7650b92cd0d83ed",
+    "build/vmp-elf32-release/mutation.vmp": "c6b9b3526a5942f5fc9873fea6b9d5c8d712ccb2ff8c34c405f47f397ef3d130",
+    "build/vmp-elf32-release/observations/combined-0-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/vmp-elf32-release/observations/combined-0-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/vmp-elf32-release/observations/combined-0-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/vmp-elf32-release/observations/combined-1-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/vmp-elf32-release/observations/combined-1-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/vmp-elf32-release/observations/combined-1-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/vmp-elf32-release/observations/combined-12648430-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/vmp-elf32-release/observations/combined-12648430-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/vmp-elf32-release/observations/combined-12648430-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/vmp-elf32-release/observations/mutation-0-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/vmp-elf32-release/observations/mutation-0-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/vmp-elf32-release/observations/mutation-0-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/vmp-elf32-release/observations/mutation-1-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/vmp-elf32-release/observations/mutation-1-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/vmp-elf32-release/observations/mutation-1-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/vmp-elf32-release/observations/mutation-12648430-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/vmp-elf32-release/observations/mutation-12648430-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/vmp-elf32-release/observations/mutation-12648430-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/vmp-elf32-release/observations/original-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/vmp-elf32-release/observations/original-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/vmp-elf32-release/observations/original-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/vmp-elf32-release/observations/virtualization-0-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/vmp-elf32-release/observations/virtualization-0-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/vmp-elf32-release/observations/virtualization-0-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/vmp-elf32-release/observations/virtualization-1-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/vmp-elf32-release/observations/virtualization-1-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/vmp-elf32-release/observations/virtualization-1-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/vmp-elf32-release/observations/virtualization-12648430-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/vmp-elf32-release/observations/virtualization-12648430-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/vmp-elf32-release/observations/virtualization-12648430-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/vmp-elf32-release/original": "94d2c90bf7020c7dd506c4e3ed7dee9bffbd6832a4c512e6e310f1f02485e39a",
+    "build/vmp-elf32-release/repeats/combined-0": "a8e474f0033524bde7d5d4090d0e1fb2f8451f2ae55f59c33cc55de1c44b6d42",
+    "build/vmp-elf32-release/repeats/combined-1": "6f63fc2c8746f561716cdf004b62447afe3c2681210fd6ef33e53ce319411ac8",
+    "build/vmp-elf32-release/repeats/combined-12648430": "28afeb8f97e7bcd765f60daffbe10719b57caf9c005cc42fdfc883d43a23d5f5",
+    "build/vmp-elf32-release/repeats/mutation-0": "dc99df7a6da7a4c65e648d8db9ea841925b4c1b835765e28f50818d83454bfe4",
+    "build/vmp-elf32-release/repeats/mutation-1": "06607a588e0cc22c61ed4142702fdac1f2f32a7d3c2657e60eccdc04be954f5f",
+    "build/vmp-elf32-release/repeats/mutation-12648430": "1c32a35c36cd78ca750fccb9516a0887246a6dcb5ecf0594b7650b92cd0d83ed",
+    "build/vmp-elf32-release/repeats/virtualization-0": "0da574daf01766471ae23496582be42945ed77dec97726de080f68feba45f2d6",
+    "build/vmp-elf32-release/repeats/virtualization-1": "881c7912465a839b58344d4c8d260dc991013382b3f6881ddac2d19c7d703d33",
+    "build/vmp-elf32-release/repeats/virtualization-12648430": "d804f18b479c2cd2a66b076eda094e2fb67eb0c0dad750efaf6254d887b8ffdb",
+    "build/vmp-elf32-release/seed-probe": "394b9ddc7487fa542987f81764cf5a50bac6f63f51b1e57859e729d55500bd01",
+    "build/vmp-elf32-release/seed.dylib": "30b9d9462cf11fe8389e371ae2ce9dc1a36ce962574cb3b69d2cef8f11975e2e",
+    "build/vmp-elf32-release/virtualization-0": "0da574daf01766471ae23496582be42945ed77dec97726de080f68feba45f2d6",
+    "build/vmp-elf32-release/virtualization-1": "881c7912465a839b58344d4c8d260dc991013382b3f6881ddac2d19c7d703d33",
+    "build/vmp-elf32-release/virtualization-12648430": "d804f18b479c2cd2a66b076eda094e2fb67eb0c0dad750efaf6254d887b8ffdb",
+    "build/vmp-elf32-release/virtualization.vmp": "867316af6f3b7239956c0aefa34910f8f983ea943d0e84be35819b0f1f174f30",
+    "build/vmp-elf32-summary-combined-1/corpus_inspection.json": "de199b9e2e5e26378c907ec599235c4be54066b642d0d62d71e9d48b2fa072db",
+    "build/vmp-elf32-summary-combined-1/run.json": "57bf3d002c8d27b79d2385c83bae4fd0d3be1ba123326925a320b54fd356bb68",
+    "build/vmp-elf32-summary-combined-12648430/corpus_inspection.json": "d9d08ee50c6d26b45fb1731966b9c560dd48ea5da86ed2fcbc2aa1d9a7e2e666",
+    "build/vmp-elf32-summary-combined-12648430/run.json": "f1d5abb2f5dda2812cb44ee0398098cf76da10761cb11adbd6f9c3d0d53eaf9a",
+    "build/vmp-linux32-image.log": "3c1beacd6f302499f2a830688061f8109a16202c83216354cdb28307ed362e26"
+  },
+  "protector_sha256": "3fe722d21d5c8d9661f12b3b04f5863c4d9b93557692c1318dbf8f1c45c23568",
+  "protector_sdk_sha256": "92c6d56dc8d6092233ffd1d56d1969e272528dfeb98b9f0e1a27067883e74381",
+  "plugin_sha256": "55b5bfc1878cdb105bcd4f6ede390f73cd46630e9f4ed25133b742106970cd46",
+  "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+  "linux32_environment": {
+    "image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+    "container_architecture": "arm64",
+    "execution": "qemu-i386 user-mode translation in Linux container",
+    "sha256": {
+      "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+      "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+      "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+      "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+      "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+    },
+    "packages": [
+      "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+      "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+      "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+      "libc6-i386-cross\t2.39-0ubuntu8cross1",
+      "python3\t3.12.3-0ubuntu2.1",
+      "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+    ]
+  },
+  "protector_seeds": [
+    0,
+    1,
+    12648430
+  ],
+  "input_seeds": [
+    826366246,
+    2654435769,
+    3518319157
+  ],
+  "held_out_protector_seed": 12648430,
+  "held_out_input_seed": 3518319157,
+  "results": {
+    "protected_variants": 9,
+    "repeat_identical_variants": 9,
+    "behavior_runs": 30,
+    "behavior_rows": 16800,
+    "unique_function_input_tuples_per_binary": 816,
+    "cross_architecture_original_records_identical": 1680,
+    "combined_architecture_primary_records": 33600,
+    "combined_architecture_protected_variants": 18,
+    "matched_ida_runs": 20,
+    "summary_inspections": 2,
+    "harness_unit_tests": 10,
+    "ctest_passed": 18,
+    "ctest_failed": 0,
+    "ctest_elapsed_seconds": 11.19,
+    "macho_regression_behavior_runs": 2,
+    "macho_regression_rows": 1120
+  },
+  "analysis_join": {
+    "analysis_corpus_report": "build/vmp-elf32-corpus/corpus.json",
+    "final_corpus_report": "build/vmp-elf32-release/corpus.json",
+    "all_ten_binary_hashes_match": true,
+    "decoder_profiles_have_identical_inventories": true,
+    "entry_decode_attempts_all_zero": true,
+    "plugin_and_vm_sources_unchanged_since": "VMP_VM_STACK_DISPATCH_EVIDENCE.json"
+  },
+  "enabled_analysis_counts": {
+    "original": {
+      "native_candidates": 0,
+      "vm_candidates": 0
+    },
+    "mutation-0": {
+      "native_candidates": 0,
+      "vm_candidates": 0
+    },
+    "mutation-1": {
+      "native_candidates": 0,
+      "vm_candidates": 0
+    },
+    "mutation-12648430": {
+      "native_candidates": 0,
+      "vm_candidates": 0
+    },
+    "virtualization-0": {
+      "native_candidates": 1,
+      "vm_candidates": 0
+    },
+    "virtualization-1": {
+      "native_candidates": 1,
+      "vm_candidates": 0
+    },
+    "virtualization-12648430": {
+      "native_candidates": 2,
+      "vm_candidates": 0
+    },
+    "combined-0": {
+      "native_candidates": 2,
+      "vm_candidates": 0
+    },
+    "combined-1": {
+      "native_candidates": 0,
+      "vm_candidates": 1
+    },
+    "combined-12648430": {
+      "native_candidates": 2,
+      "vm_candidates": 1
+    }
+  },
+  "protected_local_summaries": {
+    "combined-1": [
+      {
+        "site": "0x80d03d4",
+        "dispatch": "0x8050aaf",
+        "address_bits": "32",
+        "read_bits": "32",
+        "direction": "backward",
+        "transfer_kind": "indirect jump",
+        "instructions": 20,
+        "ordered_accesses": 1
+      }
+    ],
+    "combined-12648430": [
+      {
+        "site": "0x80b8743",
+        "dispatch": "0x808530d",
+        "address_bits": "32",
+        "read_bits": "32",
+        "direction": "forward",
+        "transfer_kind": "push/near-return",
+        "instructions": 17,
+        "ordered_accesses": 3
+      }
+    ]
+  },
+  "guest_resource_ranges": {
+    "original": {
+      "runs": 3,
+      "elapsed_ns_min": 21920770,
+      "elapsed_ns_max": 25070820,
+      "peak_resident_bytes_min": 18620416,
+      "peak_resident_bytes_max": 18808832
+    },
+    "mutation": {
+      "runs": 9,
+      "elapsed_ns_min": 21672894,
+      "elapsed_ns_max": 24542278,
+      "peak_resident_bytes_min": 18657280,
+      "peak_resident_bytes_max": 18784256
+    },
+    "virtualization": {
+      "runs": 9,
+      "elapsed_ns_min": 25748323,
+      "elapsed_ns_max": 49109722,
+      "peak_resident_bytes_min": 19275776,
+      "peak_resident_bytes_max": 19361792
+    },
+    "combined": {
+      "runs": 9,
+      "elapsed_ns_min": 43649790,
+      "elapsed_ns_max": 64928100,
+      "peak_resident_bytes_min": 19300352,
+      "peak_resident_bytes_max": 19365888
+    }
+  },
+  "accounting": {
+    "elapsed_unit": "ns",
+    "peak_resident_unit": "bytes",
+    "measurement_scope": "Linux wait4 of qemu-i386 including translated guest; Docker client measured separately",
+    "poll_interval_seconds": 0.02,
+    "physical_x86_performance": "not measured",
+    "native_hardware_execution": "not performed; user-mode translation on Linux arm64"
+  },
+  "limitations": [
+    "Two small arithmetic functions; wider CFG and temporal string fixtures remain.",
+    "Exact source-to-console build attestation and implicit license-dependent flags remain unknown.",
+    "Native records are unresolved candidates, not recovered target edges.",
+    "Two static VM prefixes have complete local models; protected runtime transitions and VM state remain uncorroborated.",
+    "Complete oracle-edge/error rates, literal accuracy and overall review completion remain unknown.",
+    "Container recipe may resolve newer packages on rebuild; recorded image/tool identities identify this run."
+  ],
+  "primary_references": [
+    "https://gabi.xinuos.com/elf/02-eheader.html",
+    "https://www.qemu.org/docs/master/user/main.html"
+  ]
+}

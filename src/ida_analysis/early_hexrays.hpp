@@ -20,6 +20,9 @@ struct EarlyHexRaysStats
 {
   size_t flowchart_edges = 0;
   size_t codegen_returns = 0;
+  size_t codegen_setcc = 0;
+  size_t codegen_cmov = 0;
+  size_t codegen_cmov_memory = 0;
   size_t generated_gotos = 0;
   size_t folded_instructions = 0;
   size_t character_operands = 0;

@@ -43,6 +43,17 @@ int main()
 {
   try
   {
+    {
+      const auto c=vm_test::path_candidate(64,true);auto e=fixture(c);
+      auto v=project(c,e);check(v.records.size()==3,"discontiguous observations retained");
+      check(v.records.front().at("path")=="sampled local address/size path","ordered discontiguous support observed");
+      e.events.data.push_back({0x900,c.support.back().address,0,1,RAX_MEM_WRITE,hybrid::DataScope::IMAGE,5,1,9});
+      v=project(c,e);
+      check(v.records.front().at("runtime_code_identity").find("recorded write overlaps")!=std::string::npos,"write to lower-address path segment invalidates code identity");
+      e.events.data.back().addr=0x7800;
+      v=project(c,e);
+      check(v.records.front().at("runtime_code_identity").find("recorded write overlaps")==std::string::npos,"unvisited address gap is not candidate code");
+    }
     for(unsigned mode:{32u,64u})
     {
       const auto c=vm_test::candidate(mode,false,false,true);auto e=fixture(c);auto v=project(c,e);

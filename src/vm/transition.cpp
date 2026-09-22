@@ -39,7 +39,9 @@ TransitionCheck check_transition(const Candidate &candidate,const hybrid::StateP
   if(entry.regs.size()>64 || output.regs.size()>64 || data.size()>64)
     return reject(Result::unsupported,"transition input budget exceeded");
   if(entry.run_id!=output.run_id || entry.seed!=output.seed || entry.sequence>=output.sequence
-      || entry.kind!=hybrid::StatePoint::Kind::TransferTarget || output.kind!=hybrid::StatePoint::Kind::TransferTarget)
+      || (entry.kind!=hybrid::StatePoint::Kind::TransferTarget
+          && entry.kind!=hybrid::StatePoint::Kind::NativeInstructionEntry)
+      || output.kind!=hybrid::StatePoint::Kind::TransferTarget)
     return reject(Result::unsupported,"entry/output identity or order differs");
   try
   {

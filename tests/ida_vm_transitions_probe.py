@@ -17,6 +17,7 @@ import ida_ua
 
 sys.dont_write_bytecode = True
 checks, errors, captures = [], [], {}
+stack_dispatch = os.environ.get("CHERNOBOG_VM_STACK_DISPATCH") == "1"
 
 
 def check(name, condition):
@@ -86,12 +87,23 @@ try:
         raw = api("chernobog_evidence_view", target)
         check(suffix + " run completeness visible", all(r["data_trace_complete"] == "true"
               and r["data_trace_truncated"] == r["data_trace_filtered"] == "false" for r in raw["runs"]))
+        if stack_dispatch:
+            check(suffix + " return contract visible", all("CET shadow stack disabled" in r["transition_contract"]
+                  for r in checked["states"]))
+            check(suffix + " target push and return read captured", all(
+                  r["accesses_captured"] == ("7" if suffix == "_relative" else "4")
+                  and r[f"access_{int(r['accesses_captured'])-2}_kind"] == "write"
+                  and r[f"access_{int(r['accesses_captured'])-1}_kind"] == "read"
+                  and r[f"access_{int(r['accesses_captured'])-2}_value_low64"] == r["target"]
+                  and r[f"access_{int(r['accesses_captured'])-1}_value_low64"] == r["target"]
+                  for r in checked["states"]))
         if suffix == "_boundary":
             check("boundary preserved after corroboration", all(r["exit"].startswith("function-boundary") for r in checked["states"])
                   and all(r["boundary"] == "true" and r["context_complete"] == "false" for r in raw["runs"]))
         if suffix == "_relative":
-            check("stack effects retain five ordered accesses", all(r["accesses_captured"] == "5"
-                  and [r[f"access_{i}_kind"] for i in range(5)] == ["read", "write", "read", "write", "read"] for r in checked["states"]))
+            kinds = ["read", "write", "read", "write", "read"] + (["write", "read"] if stack_dispatch else [])
+            check("stack effects retain all ordered accesses", all(r["accesses_captured"] == str(len(kinds))
+                  and [r[f"access_{i}_kind"] for i in range(len(kinds))] == kinds for r in checked["states"]))
             check("relative signed value and key feedback", all(r["output_decoded_register"] == "0xffffffffffffffe0"
                   and r["output_key"] == "0x11223344aa9988ba" and r["output_native_sp"] == r["entry_native_sp"] for r in checked["states"]))
             source = address("_relative_dispatch")

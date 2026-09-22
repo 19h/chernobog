@@ -1,0 +1,194 @@
+{
+  "schema": 1,
+  "source_sha256": {
+    "src/ida_analysis/early_hexrays.cpp": "f71f1aa048f61671d62ffaa7b48a8eb6c454aa496acf429d461d2039d64c59d5",
+    "src/ida_analysis/early_hexrays.hpp": "a938964ad82de810db82d92ecea39fb405cf9851e86c2865cd86921db6cd6dd6",
+    "src/ida_analysis/analysis_config.cpp": "930ac2ba4a30b06f60b12be6cbdeaaffe881e5d6f4b79c98bf34ad03298c6de0",
+    "src/ida_analysis/analysis_config.hpp": "b27caa8058c8f5004f524a38fe3c8b18f1b13bf258708e34284be16b043dfcd9",
+    "src/ida_analysis/x86_analysis.cpp": "1b5dccb7144b307bae19669fbfc9b347260d5cd2edb88e8e9d39273540d106c2",
+    "src/ida_analysis/x86_analysis.hpp": "dcb85bdb39f5b3fbe91781233eb4a2bc82ba4f85d00fdb8fe68843752dda1fe9",
+    "src/common/x86_abstract.h": "8304773b77b444ad689c6fa14c0b32930ceff0f5e7660791a3421bb87ad8701b",
+    "src/plugin/idc_api.cpp": "d81f0725d240593cde4673bb4bae4dc96c5595ef9e376762bb91929c3457715f",
+    "tests/ida_conditions_microcode_probe.py": "7e80352229eea2b739ab4093eb3083ba13224fb3428af831b51b2b032ceb3274",
+    "tests/verify_conditions_microcode.py": "9849c6ae5b8443ac937187e0aeceb0797fa38a24a1abc9bdde3baa7651aef1c8",
+    "tests/run_conditions_microcode.py": "c171bc42da4a56fedead9f22dfa17c0541c14ca47d66cab01a3fff2ab4a7b1af",
+    "tests/vmp_native/conditions.S": "10ee2a56cd0654adde7b4ae6ea5aebb97b06acb484bbc4b6fd2000c2e8df4bf2",
+    "tests/vmp_native/conditions32.S": "0cc9da9f9bed1676feca855eb616e13d2b8e7b8381a8dad7a2dce06049fa1da2",
+    "tests/vmp_native/conditions_main.c": "cc1b3ed3bbe9bd86700110380eb9f4ef59e9e5a7b06cb91001e408aae4c9a144",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151",
+    "tests/run_vmp_corpus.py": "b8adfe9ce39e643b551c1e4d29f64cf023914bb0d6cf1516c0e3971a5fdc376a",
+    "tests/vmp_corpus/linux32.py": "bcac8227eff4012ff02d6fdb52a4824e38c8ba5642f9559dfd7322d13f71a63c",
+    "tests/vmp_corpus/linux32_exec.py": "62f8d55441b5c008f262b23382150806fa61a10e6001af17e85b63f33bd12737",
+    "tests/vmp_corpus/linux32.Dockerfile": "6696a2c4c4b1d9b657f40d856a2cf24af845689d732e3a6762436400a0ebb85d"
+  },
+  "plugin_sha256": "d80637d859d4144dddce0023b6fa4aa98f68edb3a2f4456f01f84f428c496239",
+  "host_architecture": "arm64",
+  "sdk_sha256": {
+    "hexrays.hpp": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff",
+    "intel.hpp": "75a83474f0fc3d87a2c1edd7e7dc15915e0a0fedbb1bb1015d7b55a87066caee",
+    "ua.hpp": "b81e3c348421075f1f678276186262ce7b2c0c3902d4ed484c474701ce3dd174"
+  },
+  "architectures": {
+    "x86_64": {
+      "compile": {
+        "exit_code": 0,
+        "elapsed_ns": 74307250,
+        "peak_resident_bytes": 37928960,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "execute": {
+        "exit_code": 0,
+        "elapsed_ns": 119300708,
+        "peak_resident_bytes": 3399680,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "cb7839b0f3bfbf3dccba06945bd02512cf008610865936093b891c61ea9cfe27",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "runtime": "macOS x86-64 execution; translated on arm64 hosts",
+      "input_sha256": "5eb0fdc79e08c55681a66a9c48ccd4902e9134cf3a190015e2a30fa1177d90f4",
+      "off": {
+        "exit_code": 0,
+        "elapsed_ns": 3019970500,
+        "peak_resident_bytes": 191528960,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "4e003c760c3839c8503a892bf135a777c10c8000bf2e3f5a02bd69b92732ed25",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "on": {
+        "exit_code": 0,
+        "elapsed_ns": 2983303417,
+        "peak_resident_bytes": 191660032,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "533003b9654d1c8eda72bb4c3321458dcbd07f938f8fa24b50514bd1050e72b5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "verification": {
+        "captures_per_mode": 50,
+        "accepted_functions": 40,
+        "native_records": 5760,
+        "effect_comparisons": 5120,
+        "mutation_controls": 3,
+        "word_bytes": 8
+      }
+    },
+    "i386": {
+      "runtime": {
+        "image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+        "container_architecture": "arm64",
+        "execution": "qemu-i386 user-mode translation in Linux container",
+        "sha256": {
+          "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+          "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+          "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+          "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+          "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+        },
+        "packages": [
+          "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+          "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+          "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+          "libc6-i386-cross\t2.39-0ubuntu8cross1",
+          "python3\t3.12.3-0ubuntu2.1",
+          "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+        ]
+      },
+      "compile": {
+        "exit_code": 0,
+        "elapsed_ns": 208057334,
+        "peak_resident_bytes": 47202304,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "execute": {
+        "exit_code": 0,
+        "elapsed_ns": 47249725,
+        "peak_resident_bytes": 18771968,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "2c732d58b9d52b8f0ac08008ccbf4533f522a95305a5f627bc279fb3b0cd6611",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "binary_sha256": "4e10c45f2cd9952c486987670cc2451cc3efd9115ecd3bedfb354f596093d497",
+        "binary_unchanged": true,
+        "accounting_scope": "Linux wait4 of qemu-i386 process, including translated guest execution",
+        "runtime_sha256": {
+          "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+          "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+          "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+        },
+        "launcher": {
+          "exit_code": 0,
+          "elapsed_ns": 260849333,
+          "peak_resident_bytes": 47382528,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "guest_report": "guest-runs/conditions-0.json"
+      },
+      "input_sha256": "4e10c45f2cd9952c486987670cc2451cc3efd9115ecd3bedfb354f596093d497",
+      "off": {
+        "exit_code": 0,
+        "elapsed_ns": 3060742875,
+        "peak_resident_bytes": 159006720,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "c761336ee32c40d2da0cfaf09c9bc56988bb362b3d1546ae695ddc63a6b14233",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "on": {
+        "exit_code": 0,
+        "elapsed_ns": 2883688125,
+        "peak_resident_bytes": 159006720,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "c9b38e861c07ea315a609b7139cee3bf051665f4b0bea55ba4dafd95f9012c56",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "verification": {
+        "captures_per_mode": 50,
+        "accepted_functions": 40,
+        "native_records": 5760,
+        "effect_comparisons": 5120,
+        "mutation_controls": 2,
+        "word_bytes": 4
+      }
+    }
+  },
+  "artifacts": {
+    "i386/conditions": "4e10c45f2cd9952c486987670cc2451cc3efd9115ecd3bedfb354f596093d497",
+    "i386/guest-runs/conditions-0.json": "7522095d7960e74f1c9d6ea3b417b8aa979dfcfe50a5824da776c5b98f3c0877",
+    "i386/guest-runs/conditions-0.txt": "2c732d58b9d52b8f0ac08008ccbf4533f522a95305a5f627bc279fb3b0cd6611",
+    "i386/native.jsonl": "2c732d58b9d52b8f0ac08008ccbf4533f522a95305a5f627bc279fb3b0cd6611",
+    "i386/off/conditions": "4e10c45f2cd9952c486987670cc2451cc3efd9115ecd3bedfb354f596093d497",
+    "i386/off/conditions_microcode.json": "6c1de1b9eacf2508d50ce4cff5f1fa8757a33021d5db621a2f81771fd327367f",
+    "i386/off/run.json": "882ef9f45dd6923994c741e8a6e1afe66bd2b290c3bd0ee7bf75402ef7ced24f",
+    "i386/on/conditions": "4e10c45f2cd9952c486987670cc2451cc3efd9115ecd3bedfb354f596093d497",
+    "i386/on/conditions_microcode.json": "476850bd479a5b0e46e48408ade46f3f5f0820cc970adf2bba32a58b17acd7b8",
+    "i386/on/run.json": "89f89ff5a6bae62b878d12486b75cf12a9d1621180b2b4bc74c1104c74e442ea",
+    "x86_64/conditions": "5eb0fdc79e08c55681a66a9c48ccd4902e9134cf3a190015e2a30fa1177d90f4",
+    "x86_64/native.jsonl": "cb7839b0f3bfbf3dccba06945bd02512cf008610865936093b891c61ea9cfe27",
+    "x86_64/off/conditions": "5eb0fdc79e08c55681a66a9c48ccd4902e9134cf3a190015e2a30fa1177d90f4",
+    "x86_64/off/conditions_microcode.json": "54affd890c190e12eb6a7018621551fff567546913bbb1a54a99e2bc04795036",
+    "x86_64/off/run.json": "e2df0c4726de895d89df5f904aaa78d17ba33f93406f3e6cc279b55005869371",
+    "x86_64/on/conditions": "5eb0fdc79e08c55681a66a9c48ccd4902e9134cf3a190015e2a30fa1177d90f4",
+    "x86_64/on/conditions_microcode.json": "df29c26302ff73f9f7d5aacefc5ae267929e3431b6d5e07ac94b10619bdcaade",
+    "x86_64/on/run.json": "ae3d585b2c22cdec29b88438ddc588fa3f50606419f689ac9accb9e893e8a453"
+  },
+  "artifact_root": "build/vmp-conditions-final",
+  "generated_manifest_sha256": "68f48f678f56065b06ef5a993e225d3c87ec27debae34e496fb443065feb8807",
+  "ctest": {
+    "path": "build/vmp-conditions-final-ctest.log",
+    "sha256": "4f0d96e2203f924842cb12ae14b350730acfe98ec47c27d5234124e06b916580",
+    "passed": 18,
+    "failed": 0
+  }
+}

@@ -1,10 +1,11 @@
 #include "region.hpp"
 #include <sstream>
+#include <algorithm>
 
 namespace chernobog::vm {
 namespace {
 bool reg(const Operand &o, int r, unsigned bits)
-{ return o.kind == Kind::reg && o.reg == r && o.bits == bits; }
+{ return o.kind == Kind::reg && o.reg == r && o.bits == bits && o.bit_offset == 0; }
 bool valid_reg(int r, unsigned mode) { return r >= 0 && r < (mode == 64 ? 16 : 8) && r != 4; }
 bool arithmetic(Op op) { return op == Op::add || op == Op::sub || op == Op::bit_xor; }
 bool memory(const Operand &o, int base, unsigned bits, unsigned mode)
@@ -14,13 +15,12 @@ bool advance(const Instruction &i, int vip, unsigned bits, unsigned mode, Op op)
 { return i.op == op && reg(i.dst, vip, mode) && i.src.kind == Kind::immediate && i.src.value == bits / 8; }
 } // namespace
 
-std::optional<Candidate> recognize(const std::vector<Instruction> &code, unsigned mode)
+static std::optional<Candidate> recognize_core(const std::vector<Instruction> &code, unsigned mode)
 {
   if ((mode != 32 && mode != 64) || code.size() < 3 || code.size() > 128) return {};
   for (size_t i = 0; i < code.size(); ++i)
     if (code[i].address == bad_address || !code[i].size || code[i].size > 15
-        || code[i].address > UINT64_MAX - code[i].size
-        || (i && (code[i].alternate_entry || code[i-1].address + code[i-1].size != code[i].address))) return {};
+        || code[i].address > UINT64_MAX - code[i].size) return {};
   const bool backwards = code[0].op == Op::sub;
   const auto &load = code[backwards ? 1 : 0];
   if (load.op != Op::load || load.dst.kind != Kind::reg || load.src.kind != Kind::memory
@@ -104,6 +104,127 @@ std::optional<Candidate> recognize(const std::vector<Instruction> &code, unsigne
   c.support = code; return c;
 }
 
+namespace {
+bool register_operand(const Operand &o, unsigned mode)
+{
+  return o.kind == Kind::reg && o.reg >= 0 && o.reg < (mode == 64 ? 16 : 8)
+      && !(mode == 32 && o.bits == 8 && o.reg >= 4)
+      && (o.bits == 8 || o.bits == 16 || o.bits == 32 || (mode == 64 && o.bits == 64))
+      && (o.bit_offset == 0 || (o.bit_offset == 8 && o.bits == 8 && o.reg < 4));
+}
+bool register_effect(const Instruction &i, unsigned mode)
+{
+  if (!register_operand(i.dst, mode) || i.dst.reg == 4) return false;
+  const bool source = i.src.kind == Kind::immediate
+      || (register_operand(i.src, mode) && i.src.bits == i.dst.bits);
+  if (arithmetic(i.op)) return source;
+  if (i.op == Op::rotate_left || i.op == Op::rotate_right)
+    return i.src.kind == Kind::immediate;
+  if (i.op == Op::negate || i.op == Op::bit_not || i.op == Op::increment || i.op == Op::decrement)
+    return i.src.kind == Kind::none;
+  if (i.op == Op::byte_swap) return i.dst.bits == 32 && i.src.kind == Kind::none;
+  if (i.op == Op::load || i.op == Op::sign_extend)
+    return register_operand(i.src, mode) && i.src.bits <= i.dst.bits;
+  return i.op == Op::scan_forward && i.dst.bits >= 16
+      && register_operand(i.src, mode) && i.src.bits == i.dst.bits;
+}
+bool flag_effect(const Instruction &i, unsigned mode)
+{
+  if (i.op == Op::carry_set || i.op == Op::carry_clear || i.op == Op::carry_toggle)
+    return i.dst.kind == Kind::none && i.src.kind == Kind::none;
+  return (i.op == Op::compare || i.op == Op::test) && register_operand(i.dst, mode)
+      && (i.src.kind == Kind::immediate || (register_operand(i.src, mode) && i.src.bits == i.dst.bits));
+}
+}
+
+std::optional<Candidate> recognize(const std::vector<Instruction> &code, unsigned mode)
+{
+  if ((mode != 32 && mode != 64) || code.size() < 3 || code.size() > 128
+      || (code.back().op != Op::jump && code.back().op != Op::near_return)) return {};
+  for (size_t i = 0; i < code.size(); ++i)
+  {
+    const auto &current = code[i];
+    if (current.address == bad_address || current.size == 0 || current.size > 15
+        || current.address > UINT64_MAX - current.size) return {};
+    for (const auto &operand : {current.dst,current.src})
+      if ((operand.kind == Kind::reg && !register_operand(operand,mode))
+          || (operand.kind != Kind::reg && operand.bit_offset != 0)) return {};
+    if (i)
+    {
+      const auto &previous = code[i-1];
+      const uint64_t next = previous.op == Op::direct_jump ? previous.dst.value : previous.address + previous.size;
+      if (current.alternate_entry || current.address != next) return {};
+    }
+    for (size_t j = 0; j < i; ++j)
+      if (current.address < code[j].address + code[j].size
+          && code[j].address < current.address + current.size) return {};
+  }
+  std::vector<Instruction> core;
+  for (size_t index = 0; index < code.size(); ++index)
+  {
+    const auto &i = code[index];
+    if (i.op == Op::direct_jump)
+    {
+      if (index + 1 == code.size() || i.dst.kind != Kind::immediate
+          || i.dst.bits != mode || i.src.kind != Kind::none) return {};
+      continue;
+    }
+    if (flag_effect(i, mode)) continue;
+    core.push_back(i);
+  }
+  // Pre-read writes to the subsequently zero-extended value register remain
+  // fully modeled, but do not prevent recognizing a backward VIP advance.
+  if (core.size() > 2 && core.front().op == Op::sub)
+  {
+    size_t load = 1;
+    while (load < core.size() && register_effect(core[load], mode)) ++load;
+    if (load < core.size() && core[load].op == Op::load && core[load].src.kind == Kind::memory)
+    {
+      for (size_t i = 1; i < load; ++i)
+        if (core[i].dst.reg != core[load].dst.reg) return {};
+      core.erase(core.begin()+1, core.begin()+load);
+    }
+  }
+  // Scratch writes to a saved key cannot change its restored value. Preserve
+  // those writes in support and summarize them, including partial registers.
+  for (size_t at = 0; at < core.size(); ++at)
+  {
+    if (core[at].op != Op::push || core[at].dst.kind != Kind::reg) continue;
+    const int key = core[at].dst.reg;
+    size_t end = at+1;
+    for (; end < core.size() && core[end].op != Op::pop; ++end) {}
+    if (end == core.size() || core[end].dst.kind != Kind::reg || core[end].dst.reg != key) continue;
+    for (size_t i = at+1; i < end;)
+    {
+      if (register_effect(core[i], mode) && core[i].dst.reg == key)
+      { core.erase(core.begin()+i); --end; }
+      else ++i;
+    }
+    at = end;
+  }
+  const bool stack_dispatch = !core.empty() && core.back().op == Op::near_return;
+  if (stack_dispatch)
+  {
+    const auto &ret = core.back();
+    if (core.size() < 2 || ret.stack_bits != mode
+        || ret.dst.kind != Kind::none || ret.src.kind != Kind::none) return {};
+    const auto &push = core[core.size()-2];
+    if (push.op != Op::push || push.dst.bits != mode || push.src.kind != Kind::none) return {};
+    // Pattern selection uses the original target operand. Evaluation retains
+    // both instructions and their ordered stack accesses in the full support.
+    core.pop_back();
+    core.back().op = Op::jump;
+  }
+  auto result = recognize_core(core, mode);
+  if (!result) return {};
+  result->start = code.front().address;
+  result->end = code.back().address + code.back().size;
+  result->dispatch = code.back().address;
+  result->stack_dispatch = stack_dispatch;
+  result->support = code;
+  return result;
+}
+
 bool same_logical_state(const LogicalState &a, const LogicalState &b, bool stateful)
 {
   return a.publication != 0 && a.publication == b.publication && a.native != bad_address
@@ -121,10 +242,11 @@ std::string normalized_shape(const Candidate &c)
       : r == c.key ? 2 : r == c.dispatch_base ? 3 : r == 4 ? 4 : 5 + r; };
   for (const auto &i : c.support)
   {
-    out << ';' << int(i.op);
+    if (i.op == Op::direct_jump) { out << ";direct-next"; continue; }
+    out << ';' << int(i.op) << ':' << i.stack_bits;
     for (const auto &o : {i.dst, i.src}) out << ',' << int(o.kind) << '/' << role(o.reg)
       << '/' << role(o.base) << '/' << role(o.index) << '/' << o.bits << '/' << o.address_bits
-      << '/' << o.scale << '/' << o.value;
+      << '/' << o.scale << '/' << o.value << '/' << o.bit_offset;
   }
   return out.str();
 }

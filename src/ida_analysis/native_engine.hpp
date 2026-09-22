@@ -38,6 +38,9 @@ struct NativeAnalysisStats
   size_t outlined_wrappers = 0;
   size_t post_scan_heads = 0;
   size_t post_scan_functions = 0;
+  size_t direct_jump_decode_attempts = 0;
+  size_t direct_jump_targets_decoded = 0;
+  bool direct_jump_decode_truncated = false;
   bool post_scan_truncated = false;
 };
 

@@ -12,6 +12,7 @@ struct TransitionCheck
 // Caller must establish current candidate bytes/roles, the complete local
 // execution path and complete captured access interval. This checks one
 // normal-completion model against a concrete observation, never all VM inputs.
+// For near-return dispatch, the model requires CET shadow stacks disabled.
 // All GPRs, defined arithmetic flags, target and ordered accesses are checked.
 // Read constraints describe observed initial memory; earlier observed writes
 // are respected. Input satisfiability is checked before output mismatch.

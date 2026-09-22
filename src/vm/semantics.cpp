@@ -51,7 +51,8 @@ class Evaluator
   }
   z3::expr read(const Operand &o, unsigned bits)
   {
-    if(o.kind==Kind::reg)return resize(out.registers.at(size_t(o.reg)),bits);
+    if(o.kind==Kind::reg)
+      return resize(out.registers.at(size_t(o.reg)).extract(o.bit_offset+o.bits-1,o.bit_offset),bits);
     if(o.kind==Kind::immediate)return bv(ctx,o.value,bits);
     if(o.kind==Kind::memory)return resize(read_memory(address(o),o.bits),bits);
     throw std::runtime_error("missing operand");
@@ -62,6 +63,11 @@ class Evaluator
     if(o.kind==Kind::memory) { write_memory(address(o),value); return; }
     if(o.kind!=Kind::reg)throw std::runtime_error("invalid destination");
     auto &destination=out.registers.at(size_t(o.reg));
+    if(o.bit_offset)
+    {
+      destination=z3::concat(destination.extract(mode-1,16),z3::concat(value,destination.extract(7,0)));
+      return;
+    }
     if(o.bits==mode || (mode==64 && o.bits==32))destination=resize(value,mode);
     else destination=z3::concat(destination.extract(mode-1,o.bits),value);
   }
@@ -86,6 +92,25 @@ public:
   void step(const Instruction &i)
   {
     site=i.address;
+    if(i.op==Op::direct_jump)return; // validated next support instruction
+    if(i.op==Op::carry_set || i.op==Op::carry_clear)
+    {out.flags[0]=ctx.bool_val(i.op==Op::carry_set);out.defined[0]=true;return;}
+    if(i.op==Op::carry_toggle){out.flags[0]=!out.flags[0];return;}
+    if(i.op==Op::compare || i.op==Op::test)
+    {
+      const auto a=read(i.dst,i.dst.bits),b=read(i.src,i.dst.bits);
+      const bool logical=i.op==Op::test;
+      arithmetic_flags(a,b,logical?(a&b):(a-b),!logical,logical,false);return;
+    }
+    if(i.op==Op::scan_forward)
+    {
+      const auto input=read(i.src,i.src.bits);
+      auto index=ctx.bv_const(("undefined_bsf_"+std::to_string(site)).c_str(),i.dst.bits);
+      for(unsigned bit=i.src.bits;bit-->0;)
+        index=z3::ite(input.extract(bit,bit)==bv(ctx,1,1),bv(ctx,bit,i.dst.bits),index);
+      write(i.dst,index);out.defined.fill(false);
+      out.flags[3]=input==bv(ctx,0,i.src.bits);out.defined[3]=true;return;
+    }
     if(i.op==Op::load) { write(i.dst,read(i.src,i.src.bits)); return; }
     if(i.op==Op::sign_extend) { write(i.dst,resize(read(i.src,i.src.bits),i.dst.bits,true));return; }
     if(i.op==Op::push)
@@ -100,6 +125,11 @@ public:
       out.registers[4]=out.registers[4]+bv(ctx,mode/8,mode);return;
     }
     if(i.op==Op::jump) { out.next_pc=read(i.dst,mode);return; }
+    if(i.op==Op::near_return)
+    {
+      out.next_pc=read_memory(out.registers[4],mode);
+      out.registers[4]=out.registers[4]+bv(ctx,mode/8,mode);return;
+    }
     const auto bits=i.dst.bits;
     auto a=read(i.dst,bits), b=bv(ctx,0,bits), result=a;
     if(i.op==Op::bit_not) result=~a;

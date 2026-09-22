@@ -22,6 +22,8 @@ SummaryRow describe(const Summary &s,size_t reference)
     {"memory","ordered data reads/writes and final byte-addressed array; arbitrary data aliasing retained"},
     {"transition","one local dispatch; target execution and VM-region ownership not admitted"},
     {"flags","final CF/PF/AF/ZF/SF/OF; architecturally undefined outputs excluded only when both contracts agree"}};
+  if(s.candidate.stack_dispatch)
+    row["contract"] += "; near-return stack width equals address width; CET shadow stack disabled";
   size_t payload=0,omitted=0;
   for(const auto &field:row)payload+=field.first.size()+field.second.size();
   auto expression=[&](const std::string &name,const z3::expr &value)

@@ -909,6 +909,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
   std::set<std::pair<int, ea_t>> findings_seen;
   std::set<ea_t> get_pc_function_roots;
   std::set<ea_t> observed_direct_call_targets;
+  std::set<std::pair<ea_t, ea_t>> pending_direct_jump_decodes;
   std::vector<std::pair<ea_t, ea_t>> pending_cfg_edges;
   std::set<ea_t> pending_call_returns;
   std::set<ea_t> pending_flag_fallthroughs;
@@ -970,6 +971,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     findings_seen.clear();
     get_pc_function_roots.clear();
     observed_direct_call_targets.clear();
+    pending_direct_jump_decodes.clear();
     pending_cfg_edges.clear();
     pending_call_returns.clear();
     pending_flag_fallthroughs.clear();
@@ -2042,6 +2044,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     if ( !revisiting )
       emulated.add(instruction.ea, instruction.ea + instruction.size);
     const bool call_pop = handle_call_pop(instruction, revisiting);
+    remember_direct_jump_decode(instruction);
     if ( !call_pop && config.orphan_functions && is_call_insn(instruction)
       && direct_transfer(instruction) )
     {
@@ -2262,9 +2265,88 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     return appended_count;
   }
 
+  size_t direct_jump_decode_limit() const
+  {
+    return std::min<size_t>(config.maximum_direct_jump_targets, 4096);
+  }
+
+  void remember_direct_jump_decode(const insn_t &instruction)
+  {
+    if ( !config.direct_jump_decode || architecture != Architecture::X86
+      || instruction.itype != NN_jmp || instruction.Op1.type != o_near )
+      return;
+    const ea_t target = instruction.Op1.addr;
+    const segment_t *segment = getseg(target);
+    // Sectionless executable Mach-O segments can be classified SEG_DATA by
+    // the loader. Follow an existing exact jump without retyping that segment.
+    if ( segment == nullptr || segment->type != SEG_DATA
+      || (segment->perm & SEGPERM_EXEC) == 0
+      || !is_unknown(get_flags(target)) )
+      return;
+    const std::pair<ea_t, ea_t> edge{instruction.ea, target};
+    if ( pending_direct_jump_decodes.count(edge) != 0 ) return;
+    if ( statistics.direct_jump_decode_attempts
+          + pending_direct_jump_decodes.size() >= direct_jump_decode_limit() )
+    {
+      statistics.direct_jump_decode_truncated = true;
+      return;
+    }
+    pending_direct_jump_decodes.insert(edge);
+  }
+
+  void decode_pending_direct_jump_targets()
+  {
+    auto pending = std::move(pending_direct_jump_decodes);
+    pending_direct_jump_decodes.clear();
+    for ( const auto &edge : pending )
+    {
+      if ( statistics.direct_jump_decode_attempts >= direct_jump_decode_limit() )
+      {
+        statistics.direct_jump_decode_truncated = true;
+        break;
+      }
+      ++statistics.direct_jump_decode_attempts;
+      const ea_t source = edge.first, target = edge.second;
+      const segment_t *source_segment = getseg(source);
+      const segment_t *target_segment = getseg(target);
+      insn_t jump, decoded;
+      if ( !is_code(get_flags(source)) || !is_head(get_flags(source))
+        || decode_insn(&jump, source) <= 0 || jump.itype != NN_jmp
+        || jump.Op1.type != o_near || jump.Op1.addr != target
+        || !exact_code_edge_exists(source, {target, fl_JN, false})
+        || source_segment == nullptr || target_segment == nullptr
+        || source_segment->bitness == 0
+        || source_segment->bitness != target_segment->bitness
+        || target_segment->type != SEG_DATA
+        || (target_segment->perm & SEGPERM_EXEC) == 0
+        || !is_unknown(get_flags(target)) || get_func(target) != nullptr
+        || decode_insn(&decoded, target) <= 0
+        || target_segment->end_ea - target < ea_t(decoded.size) )
+        continue;
+      bool admissible = true;
+      for ( ea_t byte = target; byte < target + decoded.size; ++byte )
+      {
+        const flags64_t flags = get_flags(byte);
+        // Never overwrite defined data/tails, interior labels, or unloaded
+        // storage. A label at the exact jump target is retained by create_insn;
+        // relocated symbol names are common on these protected entry points.
+        if ( !is_unknown(flags) || !is_loaded(byte)
+          || (byte != target && has_user_name(flags)) )
+        {
+          admissible = false;
+          break;
+        }
+      }
+      if ( admissible && create_insn(target) > 0 )
+        ++statistics.direct_jump_targets_decoded;
+      // IDA owns subsequent ordinary decoding and function-tail decisions.
+      // No bytes, permissions, user xrefs, or inferred proof edges are changed.
+    }
+  }
+
   size_t recover_orphan_functions(bool discover_database_targets)
   {
-    if ( !config.orphan_functions )
+    if ( !config.orphan_functions && !config.direct_jump_decode )
       return 0;
     size_t scanned_heads = 0;
     bool limit_hit = false;
@@ -2290,12 +2372,16 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
           if ( is_code(get_flags(address)) && is_head(get_flags(address)) )
           {
             insn_t instruction;
-            if ( decode_insn(&instruction, address) > 0
-              && is_call_insn(instruction) && direct_transfer(instruction) )
+            if ( decode_insn(&instruction, address) > 0 )
             {
-              const ea_t target = branch_target(instruction);
-              remember_direct_call_target(
-                  target, instruction.ea + instruction.size);
+              remember_direct_jump_decode(instruction);
+              if ( config.orphan_functions && is_call_insn(instruction)
+                && direct_transfer(instruction) )
+              {
+                const ea_t target = branch_target(instruction);
+                remember_direct_call_target(
+                    target, instruction.ea + instruction.size);
+              }
             }
           }
           const ea_t next = next_head(address, segment->end_ea);
@@ -2308,6 +2394,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
       statistics.post_scan_truncated |= limit_hit;
     }
 
+    if ( !config.orphan_functions ) return 0;
     size_t promoted = 0;
     for ( auto iterator = observed_direct_call_targets.begin();
           iterator != observed_direct_call_targets.end(); )
@@ -2427,6 +2514,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     {
       promoted = recover_orphan_functions(false);
     }
+    decode_pending_direct_jump_targets();
     if ( initial_metadata_scan || promoted > 0 )
     {
       outline_wrapper_functions();

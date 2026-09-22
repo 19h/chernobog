@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "checkpoint": "protected-direct-entry-decoder-admission",
+  "requirements": [
+    "1-native-CFG",
+    "0b",
+    "V"
+  ],
+  "status": "in-progress",
+  "git_head": "a82bfef4d91847bcd9e67c0d5a229d43f7744a47",
+  "source_sha256": {
+    "src/ida_analysis/analysis_config.hpp": "eb39fdbb19b09cbef9d0a9d90bb5219d4e5504279b07140e20ecc26a6a0d74ad",
+    "src/ida_analysis/analysis_config.cpp": "840228412e69e3c6b26768e8a6fc52029e92161639fe459b22b1fb1e69f58052",
+    "src/ida_analysis/native_engine.hpp": "9736b0bc598a2b32b70e3e6aaa59e455d01ecbbc2b686406e670715601cac131",
+    "src/ida_analysis/native_engine.cpp": "97f35501bd32680345eb12127892277efe519af0b802afa454e0cb408ef68c8e",
+    "src/plugin/idc_api.cpp": "52b43f988006613bd1abc8d90de5e61b8f78af96baf1ada2a538e0e9b5f04e28",
+    "tests/ida_direct_jump_decode_probe.py": "243efe2c95bc7c54a3cf45cf1f13920a5cd6380405994900451f37a66fd8f093",
+    "README.md": "0d3713329c2bee7b5b3f4286dcf9935825da8d1ed3b0d0010f88a5439952b6ee",
+    "docs/VMP_DIRECT_JUMP_DECODE.md": "bd84e8d58a5c7db206c20ae0df919ef6aa0d1a150db3ed6718ae79ad4ef5735c",
+    "docs/VMP_IMPLEMENTATION.md": "490fd97cb0467aa2f4ca9207ef9f411a830a2318f9e86148741f98316f600e37",
+    "tests/run_vmp_analysis.py": "57b2a904633f8da92d34ff915b4b105a5a1832e28cbf7a2b80faf1a88dc87781",
+    "tests/ida_vmp_corpus_probe.py": "1d551f3ff085f6097c80dd0ead48d6408086d52fd043cbaa54c9d5d01ca163ac",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151",
+    "tests/run_vmp_corpus.py": "4874515fd8f0fa457eeba5fd90ae0a6f077928346307b82c82618c1b80023025"
+  },
+  "artifact_sha256": {
+    "build/vmp-analysis-release/analysis.json": "99cc5e52c1e82a9c41d0cac431e60209f4904cf198a85fd8ed7646722663e331",
+    "build/vmp-direct-target-ctest.log": "0dc15e4700c990099afb908b9715c6474b550c228ff99686b1006aa7a2fa4ebd",
+    "docs/VMP_PAIRED_CORPUS_EVIDENCE.json": "be3474b54529e2e58509faaeca15099d54097af8c892c652aac1819e2e91f524",
+    "build/vmp-analysis-release/original-disabled/run.json": "af123d36a21381b65a73c86341925cc2ecc680dcdd2a3fe237d67234297da8de",
+    "build/vmp-analysis-release/original-disabled/corpus_inspection.json": "d29a136581cd81e546fe8dddce0a4e24631c558abd81144949d03ef1ff20c447",
+    "build/vmp-analysis-release/original-enabled/run.json": "6fb806350dac7540f1e31353a9abaa98fa6e36a195cd537bbca6d05633471a60",
+    "build/vmp-analysis-release/original-enabled/corpus_inspection.json": "22bfc7c5631e1db2275976ed4cea0d1c7bd47a4da1f7232da472b16d131e53bb",
+    "build/vmp-analysis-release/mutation-0-disabled/run.json": "09b1a939ccf05c700891cccfc793f0033d0435f031323f6228abdd96200d76ca",
+    "build/vmp-analysis-release/mutation-0-disabled/corpus_inspection.json": "22499e0305a389652f06178b95ce61fed559d00246a5078696ffc571cd2463de",
+    "build/vmp-analysis-release/mutation-0-enabled/run.json": "26a2b7bd752020782d7a73a5e9c0a49047983a2438c727d0e506bedc3ff3c05f",
+    "build/vmp-analysis-release/mutation-0-enabled/corpus_inspection.json": "2d41dbf3ba772f0563175bb6137706f421f35e83c4bf6f9bab9e54b8bbd44741",
+    "build/vmp-analysis-release/mutation-1-disabled/run.json": "8f3d43818366ba520d088520a67f241124f31be3051d5c1a926beac2146fa131",
+    "build/vmp-analysis-release/mutation-1-disabled/corpus_inspection.json": "195cf268272e1bf9e413276b48829883f8e3b7cf9dd1b921e41777ceb33d892d",
+    "build/vmp-analysis-release/mutation-1-enabled/run.json": "adbf8585eda3347644f030e6eb27a86aefc89a54cd0cfa68d460574043e14df8",
+    "build/vmp-analysis-release/mutation-1-enabled/corpus_inspection.json": "54cac8f43a98d3c35683d6cdcaa0293c2cc7dfb4212e7bd3eec5db4000a10442",
+    "build/vmp-analysis-release/mutation-12648430-disabled/run.json": "1fccc953f49e90b93c6298d4eaa949c108f499626d33c1dfe87c3291e6dce2c1",
+    "build/vmp-analysis-release/mutation-12648430-disabled/corpus_inspection.json": "01577c5078f53ac25fff14c64b4a28c68d82b9baa3e3d418661238daa8e5ba93",
+    "build/vmp-analysis-release/mutation-12648430-enabled/run.json": "eef054fa0258a6527873671501e0590cf5f0369e8c9617a92c88458c950e1a59",
+    "build/vmp-analysis-release/mutation-12648430-enabled/corpus_inspection.json": "b5e5ac02a0a49658987de09e797ceb43ae8a8aa55bb6df22f1f80fdcef4caa95",
+    "build/vmp-analysis-release/virtualization-0-disabled/run.json": "77ed7446d4f7739c2febf1325613fb6bab51526ef2843a2ae3eb99b1516e5715",
+    "build/vmp-analysis-release/virtualization-0-disabled/corpus_inspection.json": "d7e4f4074179616e8f341dcfef7801740acbad1caddcf549e4a276eb65b4b00f",
+    "build/vmp-analysis-release/virtualization-0-enabled/run.json": "f21ac7cd3d580d9767a8a77dd556861b020ee78c40544069b30902973cfed9eb",
+    "build/vmp-analysis-release/virtualization-0-enabled/corpus_inspection.json": "d4ac0601e985bc8eb7073c1d25059291b9326f4cbe9f4dc0d1d363e9793da025",
+    "build/vmp-analysis-release/virtualization-1-disabled/run.json": "c6d35f72a7d7e159c29a999d6a3ec2a408b15a9b75836907ab65cb57dde09b76",
+    "build/vmp-analysis-release/virtualization-1-disabled/corpus_inspection.json": "0737054fd9b4f68c6cc8e2961065e62a208bcd0e16fe10c67afa482ccbfb6fea",
+    "build/vmp-analysis-release/virtualization-1-enabled/run.json": "944d9e067893487e25efdd3c5a991523315686c81515427de1bac12f08e7a0aa",
+    "build/vmp-analysis-release/virtualization-1-enabled/corpus_inspection.json": "befa50690bb00fea3cc2022ba773245eb3c09aea0203a89010dcb1dd642429f6",
+    "build/vmp-analysis-release/virtualization-12648430-disabled/run.json": "6a606d6a905b011a6053ee32faa294d36f8e361a9a854a7c7f2dde2480671b0d",
+    "build/vmp-analysis-release/virtualization-12648430-disabled/corpus_inspection.json": "1895246d66509eaa1e3f1128d6f372f974b85acfe0b45c51193fe79b78c75d38",
+    "build/vmp-analysis-release/virtualization-12648430-enabled/run.json": "b8ae12312a1f5b9028f856d61c849d67ea1e6d1a2ff177e1b062a05389a9bf0d",
+    "build/vmp-analysis-release/virtualization-12648430-enabled/corpus_inspection.json": "8406824e1f8f5238644836a76055450a8fd6b2fa48e050275ee843945860e504",
+    "build/vmp-analysis-release/combined-0-disabled/run.json": "6b93fd36895134795b32d0daeb907e6c7287ee220c10c1a6ebeb296d93ece3a7",
+    "build/vmp-analysis-release/combined-0-disabled/corpus_inspection.json": "778adaebad6ee4f9fb7ce3eb79c74cbef8739bc8e7aef4ea76421d444a4645dd",
+    "build/vmp-analysis-release/combined-0-enabled/run.json": "632efdd5dae14555b66b01536fb6c9aef3d6a13ef8620a1d801a5c84e9b59a4a",
+    "build/vmp-analysis-release/combined-0-enabled/corpus_inspection.json": "75ed86130605188762eb459959f58b55f40952e71faa7a5c3271f9184c743c78",
+    "build/vmp-analysis-release/combined-1-disabled/run.json": "16556be73ee06a5ac5a32d0f84b565c01fd491f19ff310d75586ef3f67446272",
+    "build/vmp-analysis-release/combined-1-disabled/corpus_inspection.json": "946d6420ff1a546be66ba6121fad7fc9bcaba98c4a32e3b2d5f505b5869c89ac",
+    "build/vmp-analysis-release/combined-1-enabled/run.json": "48f2044bb1e75f85e1c7d21421bd32894cda957716436563f7f307ef1378510f",
+    "build/vmp-analysis-release/combined-1-enabled/corpus_inspection.json": "1a52f672ff6e5ba000786a0348d6331cd3003234c2e188dacfa5f49dd0d02dd1",
+    "build/vmp-analysis-release/combined-12648430-disabled/run.json": "d2aa6d01de13a993f7bd9131c4cdb422e8bba996b0442818bace2ad5a197f90c",
+    "build/vmp-analysis-release/combined-12648430-disabled/corpus_inspection.json": "4c367108e310db8c9c77f66d3e7268c1947a30b19ccf12bc540ff913b8fb1dff",
+    "build/vmp-analysis-release/combined-12648430-enabled/run.json": "436702123964474201f6b6ea2d90d0341392eb2a5d17eb4abdb2d96301d04525",
+    "build/vmp-analysis-release/combined-12648430-enabled/corpus_inspection.json": "3332c5fdcce43419040ccda2967d46b61f9c1c0aac1f28191dd3e27003c06753",
+    "build/vmp-direct-target-controls-enabled/run.json": "15946c013d37c521c359393fe21b6185a3a8256ce7c11b090ac0a742eb6da074",
+    "build/vmp-direct-target-controls-enabled/direct_jump_decode.json": "d2bc344fbf5b382bf315578cfc89846cdf0dcbe6216f2ba64df1613ab1f21e65",
+    "build/vmp-direct-target-controls-disabled/run.json": "f611d02a7d78887f25311281084f2eb07b36f9331e7c424b1993ee59af018b50",
+    "build/vmp-direct-target-controls-disabled/direct_jump_decode.json": "97e87550ae3dbe9482cb830b3a7e7fc239f27f274db4c9a2ee10959d9596dfe4",
+    "build/vmp-direct-target-controls-zero/run.json": "c6a1b9215d8ee5ed50432d605faebc7b8e870cda6bfa266a6deaaa02207b0737",
+    "build/vmp-direct-target-controls-zero/direct_jump_decode.json": "7739500377db9e58d79f41e114009386afa5dfd6ae778930f7e6fe89f6fc02c4",
+    "build/vmp-direct-target-controls-one/run.json": "3a74f69bc5ecf4a463060854a79ef035a5cdf07f2f3a9f443394e5e81438d1bb",
+    "build/vmp-direct-target-controls-one/direct_jump_decode.json": "a531e49c783e8a7ba1cda026b82b3b2da4aeace5d5026250dfb7e64e019b7e68",
+    "build/vmp-direct-target-native-regression/run.json": "21426d09634b93575ef7653a1c4002d37ea0553a2bd8cbb82fffff1b40bc9a10",
+    "build/vmp-direct-target-native-regression/native_evidence.json": "5cfabe6b40a735660276bf7a1e1d2a571a090531e4c2b9671a10064c0b6de55c",
+    "build/vmp-analysis-release/original-enabled/idauser/plugins/chernobog.dylib": "2feb91c18bdaaad8bbdf0eab95f337da6bb38a16063fc485f2f5594fdae1a5fa"
+  },
+  "plugin_sha256": "2feb91c18bdaaad8bbdf0eab95f337da6bb38a16063fc485f2f5594fdae1a5fa",
+  "ida_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+  "corpus_report_sha256": "09185dc4767915721d400ee779caf349610917b22306fc063a3b94cd8c540a28",
+  "results": {
+    "matched_runs": 20,
+    "protected_entries": 18,
+    "undefined_entry_targets_before": 18,
+    "undefined_entry_targets_after": 0,
+    "original_head_counts_before_and_after": [
+      6,
+      11
+    ],
+    "admission_controls": {
+      "enabled": {
+        "checks": 49,
+        "report": "build/vmp-direct-target-controls-enabled/direct_jump_decode.json"
+      },
+      "disabled": {
+        "checks": 51,
+        "report": "build/vmp-direct-target-controls-disabled/direct_jump_decode.json"
+      },
+      "zero": {
+        "checks": 53,
+        "report": "build/vmp-direct-target-controls-zero/direct_jump_decode.json"
+      },
+      "one": {
+        "checks": 52,
+        "report": "build/vmp-direct-target-controls-one/direct_jump_decode.json"
+      }
+    },
+    "admission_checks": 205,
+    "native_evidence_regression_checks": 38,
+    "ctest_passed": 18,
+    "ctest_failed": 0,
+    "ctest_elapsed_seconds": 11.54
+  },
+  "limitations": [
+    "Complete protected-edge oracle, false-edge rate, literals, solver rejection distribution and VM lifting remain unknown.",
+    "Inventories follow existing jumps/fallthroughs and stop at unresolved transfers; calls are recorded but not traversed.",
+    "No VM candidates or native proof/solver records were observed in the selected prefixes.",
+    "RAX execution is disabled in both compared profiles.",
+    "Only seed-validation attempts are bounded by the new budget; IDA schedules subsequent autoanalysis independently.",
+    "Code items are ordinary IDA metadata, not revocable semantic-proof receipts.",
+    "32-bit protected corpus execution and hardware-independent x64 behavior remain incomplete."
+  ],
+  "independently_checked_entry_edges": [
+    {
+      "artifact": "combined-0",
+      "function": "corpus_branch",
+      "source": 4294985922,
+      "target": 4295669356,
+      "entry_bytes": "e9a56d0a00"
+    },
+    {
+      "artifact": "combined-0",
+      "function": "corpus_transform",
+      "source": 4294985909,
+      "target": 4295077658,
+      "entry_bytes": "e960660100"
+    },
+    {
+      "artifact": "combined-1",
+      "function": "corpus_branch",
+      "source": 4294985922,
+      "target": 4295561653,
+      "entry_bytes": "e9eec80800"
+    },
+    {
+      "artifact": "combined-1",
+      "function": "corpus_transform",
+      "source": 4294985909,
+      "target": 4295993651,
+      "entry_bytes": "e979600f00"
+    },
+    {
+      "artifact": "combined-12648430",
+      "function": "corpus_branch",
+      "source": 4294985922,
+      "target": 4295564374,
+      "entry_bytes": "e98fd30800"
+    },
+    {
+      "artifact": "combined-12648430",
+      "function": "corpus_transform",
+      "source": 4294985909,
+      "target": 4295992521,
+      "entry_bytes": "e90f5c0f00"
+    },
+    {
+      "artifact": "mutation-0",
+      "function": "corpus_branch",
+      "source": 4294985922,
+      "target": 4296307838,
+      "entry_bytes": "e9b72b1400"
+    },
+    {
+      "artifact": "mutation-0",
+      "function": "corpus_transform",
+      "source": 4294985909,
+      "target": 4296307807,
+      "entry_bytes": "e9a52b1400"
+    },
+    {
+      "artifact": "mutation-1",
+      "function": "corpus_branch",
+      "source": 4294985922,
+      "target": 4296311333,
+      "entry_bytes": "e95e391400"
+    },
+    {
+      "artifact": "mutation-1",
+      "function": "corpus_transform",
+      "source": 4294985909,
+      "target": 4296311306,
+      "entry_bytes": "e950391400"
+    },
+    {
+      "artifact": "mutation-12648430",
+      "function": "corpus_branch",
+      "source": 4294985922,
+      "target": 4296305936,
+      "entry_bytes": "e949241400"
+    },
+    {
+      "artifact": "mutation-12648430",
+      "function": "corpus_transform",
+      "source": 4294985909,
+      "target": 4296305904,
+      "entry_bytes": "e936241400"
+    },
+    {
+      "artifact": "virtualization-0",
+      "function": "corpus_branch",
+      "source": 4294985922,
+      "target": 4295802637,
+      "entry_bytes": "e946760c00"
+    },
+    {
+      "artifact": "virtualization-0",
+      "function": "corpus_transform",
+      "source": 4294985909,
+      "target": 4295346672,
+      "entry_bytes": "e936810500"
+    },
+    {
+      "artifact": "virtualization-1",
+      "function": "corpus_branch",
+      "source": 4294985922,
+      "target": 4295481064,
+      "entry_bytes": "e9218e0700"
+    },
+    {
+      "artifact": "virtualization-1",
+      "function": "corpus_transform",
+      "source": 4294985909,
+      "target": 4296204469,
+      "entry_bytes": "e9fb971200"
+    },
+    {
+      "artifact": "virtualization-12648430",
+      "function": "corpus_branch",
+      "source": 4294985922,
+      "target": 4295974611,
+      "entry_bytes": "e90c160f00"
+    },
+    {
+      "artifact": "virtualization-12648430",
+      "function": "corpus_transform",
+      "source": 4294985909,
+      "target": 4295494559,
+      "entry_bytes": "e9e5c20700"
+    }
+  ]
+}

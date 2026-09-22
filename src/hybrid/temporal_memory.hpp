@@ -15,7 +15,18 @@
 namespace chernobog::hybrid {
 
 enum class DataScope : uint8_t { IMAGE = 0, STACK, HEAP, OTHER };
-enum class UseProducer : uint8_t { EXECUTED_READ = 0, MODELED_ARGUMENT };
+enum class UseProducer : uint8_t { EXECUTED_READ = 0, MODELED_ARGUMENT, EXECUTED_READ_STREAM };
+
+inline const char *use_producer_name(UseProducer producer)
+{
+  switch(producer)
+  {
+    case UseProducer::EXECUTED_READ:return "executed-read";
+    case UseProducer::MODELED_ARGUMENT:return "modeled-argument";
+    case UseProducer::EXECUTED_READ_STREAM:return "executed-read-stream";
+  }
+  return "unknown";
+}
 enum class UseCaptureStatus : uint8_t
 {
   EXACT = 0, UNKNOWN_OBJECT, OUTSIDE_LIFETIME, OBJECT_BOUNDARY,

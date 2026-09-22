@@ -99,7 +99,7 @@ void concrete(unsigned mode,bool back,bool relative,bool keyed,uint32_t encoded,
   }
 }
 }
-void native_oracle(const char *path)
+void native_oracle(const char *path,bool noisy=false,bool stack=false)
 {
   std::ifstream input(path);require(bool(input),"native oracle report readable");
   size_t cases=0;
@@ -111,7 +111,9 @@ void native_oracle(const char *path)
     std::string extra;require(!(fields>>extra),"no extra native capture fields");
     const bool relative=(x[0]&2)!=0,back=(x[0]&1)!=0;const unsigned bits=relative?32:8;
     require(x[0]<4,"native scenario range");
-    z3::context ctx;auto s=summarize(ctx,vm_test::candidate(64,back,relative,true));
+    auto candidate=noisy && relative?vm_test::path_candidate(64,back):vm_test::candidate(64,back,relative,true);
+    if(stack)candidate=vm_test::stack_candidate(candidate);
+    z3::context ctx;auto s=summarize(ctx,candidate);
     require(bool(s),"native oracle summary available");z3::solver solver(ctx);
     for(const auto &role:s->roles)
     {
@@ -134,7 +136,7 @@ void native_oracle(const char *path)
     const unsigned flag_bit[]={0,2,4,6,7,11};
     for(unsigned i=0;i<6;++i)if(s->defined[i])
       require(m.eval(s->flags[i],true).is_true()==bool(x[11]&(uint64_t{1}<<flag_bit[i])),"native defined arithmetic flag");
-    if(relative)for(unsigned i=0;i<8;++i)
+    if(relative || stack)for(unsigned i=0;i<8;++i)
       require(number(m,z3::select(s->memory,ctx.bv_val(x[5]-8+i,64)))==((x[12]>>(8*i))&255),"native retained stack byte");
     ++cases;
   }
@@ -143,6 +145,109 @@ void native_oracle(const char *path)
 }
 int main(int argc,char **argv)
 {
+  for(unsigned mode:{32u,64u})for(bool back:{false,true})for(bool relative:{false,true})for(bool keyed:{false,true})
+  {
+    z3::context ctx;
+    const auto direct=vm_test::candidate(mode,back,relative,keyed);
+    const auto stack=vm_test::stack_candidate(direct,true);
+    auto a=summarize(ctx,direct),b=summarize(ctx,stack);
+    require(bool(a)&&bool(b)&&stack.stack_dispatch,"push/return local model available");
+    require(stack.dispatch==stack.support.back().address && stack.support.back().op==Op::near_return,"return is the dispatch site");
+    require(b->accesses.size()==a->accesses.size()+2,"return dispatch retains two extra stack accesses");
+    require(compare(*a,*b).result==Equivalence::incompatible,"jump and push/return never share a full effect reference");
+    const auto sp=ctx.bv_const("input_sp",mode),slot=sp-ctx.bv_val(mode/8,mode);
+    auto memory=a->memory;
+    for(unsigned byte=0;byte<mode/8;++byte)
+      memory=z3::store(memory,slot+ctx.bv_val(byte,mode),a->next_pc.extract(8*byte+7,8*byte));
+    auto mismatch=b->next_pc!=a->next_pc || b->memory!=memory || b->registers[4]!=sp;
+    for(size_t i=0;i<a->registers.size();++i)mismatch=mismatch || a->registers[i]!=b->registers[i];
+    require(a->defined==b->defined,"near return preserves defined flags");
+    for(unsigned i=0;i<6;++i)if(a->defined[i])mismatch=mismatch || a->flags[i]!=b->flags[i];
+    for(size_t i=0;i<a->accesses.size();++i)
+      mismatch=mismatch || a->accesses[i].address!=b->accesses[i].address || a->accesses[i].value!=b->accesses[i].value;
+    for(size_t i=a->accesses.size();i<b->accesses.size();++i)
+    {
+      require(b->accesses[i].bits==mode && b->accesses[i].write==(i==a->accesses.size()),"stack dispatch access widths/order");
+      mismatch=mismatch || b->accesses[i].address!=slot || b->accesses[i].value!=a->next_pc;
+    }
+    z3::solver solver(ctx);solver.add(mismatch);
+    require(solver.check()==z3::unsat,"all inputs preserve outputs and exactly retain target stack bytes");
+    const auto renamed=vm_test::stack_candidate(vm_test::candidate(mode,back,relative,keyed,5,2,1,mode==64?11:6));
+    auto other=summarize(ctx,renamed);
+    require(bool(other)&&compare(*b,*other).result==Equivalence::equivalent,"renamed and split return paths share effects only after UNSAT");
+    for(unsigned width:{0u,16u,mode==64?32u:64u})
+    {auto bad=stack.support;bad.back().stack_bits=width;require(!recognize(bad,mode),"mismatched return width rejected");}
+    for(unsigned adjustment:{0u,8u})
+    {auto bad=stack.support;bad.back().dst=vm_test::imm(adjustment);require(!recognize(bad,mode),"immediate return variants rejected");}
+    auto bad=stack.support;bad.back().alternate_entry=true;
+    require(!recognize(bad,mode),"external return entry rejected");
+    bad=stack.support;bad.back().op=Op::unsupported;
+    require(!recognize(bad,mode),"far or unsupported return rejected");
+    bad=stack.support;bad[bad.size()-3].dst.bits=16;
+    require(!recognize(bad,mode),"partial-width dispatch push rejected");
+    bad=stack.support;bad[bad.size()-3].op=Op::nop;
+    require(!recognize(bad,mode),"return without matching target push rejected");
+    bad=stack.support;bad.push_back({bad.back().address+bad.back().size,1,Op::carry_clear,{},{},false});
+    require(!recognize(bad,mode),"effects after return rejected");
+  }
+  for(unsigned mode:{32u,64u})for(bool backward:{false,true})
+  {
+    z3::context context;
+    const auto path=vm_test::path_candidate(mode,backward);
+    auto summary=summarize(context,path);
+    auto plain=summarize(context,vm_test::candidate(mode,backward,true,true));
+    require(bool(summary)&&bool(plain),"discontiguous path summaries");
+    require(compare(*summary,*plain).result==Equivalence::equivalent,"all noisy path effects match plain core under UNSAT");
+    const auto renamed=vm_test::path_candidate(mode,backward,5,2,1,7);
+    auto renamed_summary=summarize(context,renamed);
+    require(bool(renamed_summary)&&compare(*summary,*renamed_summary).result==Equivalence::equivalent,"renamed noisy paths preserve all modeled effects");
+    auto clone=path.support;
+    for(auto &i:clone){i.address+=0x10000;if(i.op==Op::direct_jump)i.dst.value+=0x10000;}
+    const auto copied=recognize(clone,mode);
+    require(bool(copied)&&normalized_shape(*copied)==normalized_shape(path),"path clone preserves linked syntax");
+    require(path.end<path.start,"backward physical links are not a bounding interval");
+    auto after_jump=path.support;
+    after_jump.push_back({after_jump.back().address+after_jump.back().size,1,Op::carry_clear,{},{},false});
+    require(!recognize(after_jump,mode),"effects after terminal transfer rejected");
+    for(size_t index=1;index<path.support.size();++index)
+    {auto bad=path.support;bad[index].alternate_entry=true;require(!recognize(bad,mode),"alternate path entry rejected");}
+    auto bad=path.support;
+    for(auto &i:bad)if(i.op==Op::direct_jump){++i.dst.value;break;}
+    require(!recognize(bad,mode),"unverified path link rejected");
+    bad=path.support;bad[1].address=bad[0].address;
+    require(!recognize(bad,mode),"overlapping path instruction rejected");
+    bad=path.support;
+    for(auto &i:bad)if(i.op==Op::compare){i.dst.bit_offset=16;break;}
+    require(!recognize(bad,mode),"invalid high alias rejected");
+    bad=path.support;
+    for(auto &i:bad)if(i.op==Op::compare){i.dst=vm_test::mem(2,8,mode);break;}
+    require(!recognize(bad,mode),"faulting memory compare is not register noise");
+    if(mode==64)
+    {
+      bad=path.support;
+      for(auto &i:bad)if(i.op==Op::load && i.src.kind==Kind::reg){i.dst.reg=2;break;}
+      require(!recognize(bad,mode),"unrestored scratch register write rejected");
+    }
+    auto changed=path.support;
+    changed.insert(changed.end()-1,{0,4,Op::carry_toggle,{},{},false});vm_test::layout_path(changed);
+    const auto altered=recognize(changed,mode);require(bool(altered),"observable final flag change recognized");
+    auto different=summarize(context,*altered);
+    require(bool(different)&&compare(*summary,*different).result==Equivalence::different,"final carry effect is retained and SAT");
+    auto high=vm_test::reg(0,8);high.bit_offset=8;
+    changed=path.support;changed.insert(changed.end()-1,{0,4,Op::compare,high,vm_test::imm(0),false});
+    vm_test::layout_path(changed);
+    const auto high_candidate=recognize(changed,mode);require(bool(high_candidate),"final high-byte compare recognized");
+    auto high_summary=summarize(context,*high_candidate);require(bool(high_summary),"high-byte summary available");
+    z3::solver solver(context);
+    for(const auto &role:high_summary->roles)
+      solver.add(context.bv_const(("input_"+role).c_str(),mode)==context.bv_val(role=="vip"?0x2000:role=="sp"?0x3000:0,mode));
+    auto memory=z3::const_array(context.bv_sort(mode),context.bv_val(0,8));
+    solver.add(context.constant("input_memory",memory.get_sort())==memory);
+    require(solver.check()==z3::sat,"manual high-byte oracle inputs consistent");auto model=solver.get_model();
+    require(number(model,high_summary->registers[0])==7,"manual oracle produces AL=7 and AH=0");
+    for(unsigned flag=0;flag<6;++flag)
+      require(high_summary->defined[flag] && model.eval(high_summary->flags[flag],true).is_true()==(flag==1 || flag==3),"CMP AH,0 independent flag constants");
+  }
   for(unsigned mode:{32u,64u})for(bool back:{false,true})for(bool relative:{false,true})for(bool keyed:{false,true})
   {
     z3::context ctx;
@@ -199,6 +304,11 @@ int main(int argc,char **argv)
   require(view.queries==32 && view.references.size()==16,"comparison budget never implies reuse");
   for(const auto &row:view.references)
   {size_t bytes=0;for(const auto &field:row)bytes+=field.first.size()+field.second.size();require(bytes<=32768,"summary text payload cap");}
-  if(argc==2)native_oracle(argv[1]);
+  if(argc==2 || argc==3)
+  {
+    const std::string option=argc==3?argv[2]:"";
+    require(option.empty() || option=="--path" || option=="--stack" || option=="--path-stack","native oracle option");
+    native_oracle(argv[1],option=="--path" || option=="--path-stack",option=="--stack" || option=="--path-stack");
+  }
   std::cout<<"VM semantics checks="<<checks<<'\n';
 }

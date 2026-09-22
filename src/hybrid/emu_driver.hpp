@@ -19,6 +19,7 @@
 #include "program_model.hpp"
 #include "hybrid_config.hpp"
 #include "temporal_memory.hpp"
+#include "../vm/native_region.hpp"
 
 struct rax_engine; // opaque
 
@@ -119,6 +120,8 @@ struct StatePoint
   {
     TransferTarget = 0,
     PredicateInput,
+    RegionEntry,
+    NativeInstructionEntry,
   } kind = Kind::TransferTarget;
   uint64_t source = 0;
   uint64_t pc = 0;
@@ -177,6 +180,31 @@ struct EmuEvents
 // Post-run summary of a single emulation, for the function-level analyses.
 struct EmuOutcome
 {
+  struct NativeAdmission
+  {
+    uint64_t source=0,target=0,sequence=0,before_identity=0,after_identity=0;
+    size_t added_heads=0;
+    bool admitted=false;
+    std::string reason;
+  };
+  bool native_walk=false;
+  bool native_state_capture_requested=false,native_state_capture_complete=false;
+  std::string native_walk_stop;
+  std::vector<NativeAdmission> native_admissions;
+  struct NativeObjectState
+  {
+    uint32_t argument = 0, offset = 0;
+    uint64_t address = 0;
+    std::vector<uint8_t> initial, final;
+    bool readable = false;
+  };
+  std::vector<NativeObjectState> native_objects;
+  std::vector<RegisterValue> native_final_registers;
+  bool native_final_registers_complete = false;
+  // Separate native-region observations never establish function-level facts.
+  bool     native_region = false, region_boundary = false, region_code_changed = false;
+  uint64_t region_identity = 0, region_boundary_source = 0, region_boundary_target = 0;
+  uint64_t entry_sp = 0;
   int      stop_reason = 0;    // RAX_STOP_* from rax_emu_last_exit
   int      stop_status = 0;    // rax_status when stop_reason == RAX_STOP_ERROR
   uint64_t stop_pc = 0;        // PC at stop
@@ -229,9 +257,9 @@ struct EmuOutcome
 
   bool definitive_terminal() const
   {
-    return terminated_process || stop_reason == RAX_STOP_HLT || stop_reason == RAX_STOP_SHUTDOWN;
+    return !native_region && (terminated_process || stop_reason == RAX_STOP_HLT || stop_reason == RAX_STOP_SHUTDOWN);
   }
-  bool conclusive() const { return returned || definitive_terminal(); }
+  bool conclusive() const { return !native_region && (returned || definitive_terminal()); }
 };
 
 inline const char *hybrid_rax_stop_reason_name(int reason)
@@ -259,6 +287,9 @@ inline const char *hybrid_rax_stop_reason_name(int reason)
 const char *hybrid_rax_status_name(int status);
 inline const char *hybrid_emu_outcome_name(const EmuOutcome &outcome)
 {
+  if ( outcome.region_code_changed ) return "region-code-changed";
+  if ( outcome.region_boundary ) return "native-region-boundary";
+  if ( outcome.native_region && outcome.returned ) return "region-return-sentinel";
   if ( outcome.returned ) return "returned";
   if ( outcome.cancelled ) return "cancelled";
   if ( outcome.unmodeled_external ) return "unmodeled-external";
@@ -301,7 +332,28 @@ public:
                     bool (*cancelled)(const void *) = nullptr,
                     const void *cancellation_user = nullptr);
 
+  // Explicit, separately identified native-region capture. The immutable plan
+  // may span IDA functions; exact runtime instruction bytes gate execution.
+  // No environment summaries or function-level conclusions. Requires an empty
+  // event sink; caps at 65536 instructions and 1000 ms even for larger config.
+  bool emulate_region(const vm::NativeRegion &, const HybridConfig &, EmuEvents &,
+      EmuOutcome &, const EmuInput *input=nullptr);
+
+  // Opt-in observed-native continuation with one shared execution/time budget.
+  // Extends the caller's plan between emulator slices, retaining machine state.
+  // At most 64 extensions; no ordinary function or logical VM admission.
+  bool emulate_region_walk(vm::NativeRegion &,const HybridConfig &,EmuEvents &,
+      EmuOutcome &,const vm::NativeDecoder &,size_t maximum_extensions=64,const EmuInput *input=nullptr,
+      bool sample_native_instructions=false);
+
 private:
+  bool emulate_region_impl(const vm::NativeRegion &,const HybridConfig &,EmuEvents &,
+      EmuOutcome &,const EmuInput *,vm::NativeRegion *,const vm::NativeDecoder *,size_t,bool sample_native_instructions=false);
+  bool emulate_scope(uint64_t entry,uint64_t func_end,const HybridConfig &,EmuEvents &,
+      EmuOutcome *,bool record_pcs,uint64_t seed,uint32_t run_id,const EmuInput *,
+      bool (*cancelled)(const void *),const void *cancellation_user,const vm::NativeRegion *,
+      vm::NativeRegion *expanding=nullptr,const vm::NativeDecoder *decoder=nullptr,size_t maximum_extensions=0,
+      bool sample_native_instructions=false);
   bool map_image();
   bool map_stack();
   bool load_image_bytes();
@@ -338,6 +390,7 @@ private:
 
   std::vector<uint8_t> baseline_; // rax context snapshot (image+regs) for reuse
   bool baseline_ok_ = false;
+  uint64_t baseline_image_hash_ = 0;
 };
 
 } // namespace chernobog::hybrid

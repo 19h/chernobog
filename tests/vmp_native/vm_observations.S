@@ -22,7 +22,12 @@ _vm_observe_dispatch:
     rolb $3, %al
     addb $7, %al
     xorb %al, %bl
+#ifdef CHERNOBOG_VM_STACK_ORACLE
+    pushq (%rdi,%rax,8)
+    retq
+#else
     jmpq *(%rdi,%rax,8)
+#endif
     nop
 Lagain:
     incq %rdx
@@ -50,7 +55,12 @@ _vm_observe_boundary_dispatch:
     rolb $3, %al
     addb $7, %al
     xorb %al, %bl
+#ifdef CHERNOBOG_VM_STACK_ORACLE
+    pushq (%rdi,%rax,8)
+    retq
+#else
     jmpq *(%rdi,%rax,8)
+#endif
 _vm_observe_boundary_end:
     nop
 .globl _vm_observe_outside, _vm_observe_outside_end
@@ -80,7 +90,12 @@ _vm_observe_relative_dispatch:
     popq %rbx
     movslq %eax, %rax
     addq %rax, %rdi
+#ifdef CHERNOBOG_VM_STACK_ORACLE
+    pushq %rdi
+    retq
+#else
     jmpq *%rdi
+#endif
     nop
 Lrelative_done:
     popq %rbx

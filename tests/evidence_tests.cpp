@@ -664,12 +664,195 @@ void evidence_view_regressions()
         "register-state inspection reports its independent register cap");
 }
 
+void native_read_stream_regressions()
+{
+  TargetEvidence source;
+  source.scope.function_start=0x1000;
+  const uint8_t text[]{'s','e','c','r','e','t','!',0};
+  for(uint32_t id=1;id<=2;++id)
+  {
+    TemporalMemory memory;memory.enabled=true;memory.context=0x1000;
+    memory.heap_begin=0x8000+id*0x1000;memory.heap_end=memory.heap_begin+0x1000;
+    memory.run_id=id;memory.seed=id+10;
+    for(unsigned lifetime=0;lifetime<2;++lifetime)
+    {
+      const uint64_t epoch=50*lifetime;
+      const uint64_t address=memory.allocate(16,0x1100,0x2000,epoch+1);
+      for(size_t i=0;i<sizeof(text);++i)
+      {
+        const uint64_t sequence=epoch+10+4*i;
+        memory.capture(0x1200,0,-1,UseProducer::EXECUTED_READ,DataScope::HEAP,
+            address+i,text+i,1,1,sequence);
+        source.events.data.push_back({0x1200,address+i,text[i],1,RAX_MEM_READ,
+            DataScope::HEAP,sequence+1,id,memory.seed});
+      }
+      check(memory.release(address,epoch+45),"native stream fixture releases exact allocation");
+    }
+    RunObservation run;run.ran=true;run.provenance.run_id=id;run.provenance.seed=memory.seed;
+    run.outcome.temporal_observation_available=true;run.outcome.temporal_capture_complete=true;
+    run.outcome.memory_observation_available=true;source.runs.push_back(run);
+    source.events.uses.insert(source.events.uses.end(),memory.uses.begin(),memory.uses.end());
+    source.events.allocations.insert(source.events.allocations.end(),memory.allocations.begin(),memory.allocations.end());
+  }
+  const auto result=hybrid_consensus_use_strings(source);
+  check(result.size()==2,"scalar byte reads form two distinct lifetime-specific strings");
+  for(const auto &candidate:result)
+    check(candidate.value=="secret!" && candidate.use.producer==UseProducer::EXECUTED_READ_STREAM
+          && candidate.read_fragments.size()==2 && candidate.read_fragments.front().size()==8
+          && candidate.read_fragments[0][0].address!=candidate.read_fragments[1][0].address
+          && candidate.use.bytes.size()==8 && candidate.eligible_runs==2,
+          "derived streams preserve every original read and cross-address provenance");
+  const auto view=project_evidence_view(source);
+  size_t displayed=0;
+  for(const auto &event:view.events)if(event.at("kind")=="read-stream")
+  {
+    ++displayed;
+    check(event.at("truth")=="observation" && event.at("read_count")=="8"
+          && event.at("fragments_omitted")=="0" && event.at("bytes_hex")=="7365637265742100"
+          && event.at("first_sequence")!=event.at("last_sequence"),
+          "stream timeline exposes the exact read interval and immutable bytes");
+  }
+  check(displayed==4,"timeline retains one derived stream per use and agreeing run");
+  check(view.read_streams.size()==4,"dedicated stream table retains all four witnesses");
+  for(size_t width:{size_t(1),size_t(2),size_t(4)})
+  {
+    auto unicode=source;unicode.events.uses.clear();unicode.events.data.clear();
+    const uint8_t encoded[]{'s',0xc3,0xa9,'c','r','e','t',0};
+    for(size_t start=0;start<source.events.uses.size();start+=8)
+      for(size_t i=0;i<8;i+=width)
+      {
+        auto use=source.events.uses[start+i];
+        use.bytes.assign(encoded+i,encoded+i+width);use.observed_size=width;
+        unicode.events.uses.push_back(use);uint64_t scalar=0;
+        for(size_t byte=0;byte<width;++byte)scalar|=uint64_t(encoded[i+byte])<<(8*byte);
+        unicode.events.data.push_back({use.site,use.address,scalar,uint32_t(width),RAX_MEM_READ,
+            use.scope,use.sequence+1,use.run_id,use.seed});
+      }
+    const auto streams=hybrid_consensus_native_read_strings(unicode);
+    check(streams.size()==2 && streams[0].value==std::string("s\xc3\xa9" "cret")
+          && streams[0].read_fragments[0].size()==8/width,
+          "UTF-8 scalars can cross byte/word/dword read boundaries");
+    check(hybrid_consensus_native_read_strings(unicode,7).empty()
+          && hybrid_consensus_native_read_strings(unicode,4,6).empty(),
+          "stream minimum counts Unicode scalars while maximum counts payload bytes");
+  }
+  for(auto scope:{DataScope::IMAGE,DataScope::STACK})
+  {
+    auto relocated=source;relocated.events.allocations.clear();
+    for(size_t i=0;i<relocated.events.uses.size();++i)
+    {
+      auto &use=relocated.events.uses[i];auto &data=relocated.events.data[i];
+      use.scope=scope;use.address=0x4000+i%8+(scope==DataScope::STACK?0x1000*use.run_id:0);
+      use.object_site=scope==DataScope::STACK?use.context:use.address;
+      use.offset=scope==DataScope::STACK?int64_t(i%8):0;
+      use.object_callee=use.object_occurrence=use.object_size=use.allocation_id=use.generation=0;
+      data.addr=use.address;data.scope=scope;
+    }
+    check(hybrid_consensus_native_read_strings(relocated).size()==2,
+          "image addresses and relative frame offsets retain their separate stream identities");
+  }
+  for(unsigned failure=0;failure<21;++failure)
+  {
+    auto changed=source;
+    switch(failure)
+    {
+      case 0:changed.events.uses[0].bytes[0]='X';break;
+      case 1:changed.events.data[0].value='X';break;
+      case 2:changed.events.data[0].sequence+=1;break;
+      case 3:changed.events.uses[0].status=UseCaptureStatus::INCOMPLETE_VALUE;break;
+      case 4:changed.events.uses[0].generation+=1;break;
+      case 5:changed.events.allocations[0].released=12;break;
+      case 6:changed.events.data.erase(changed.events.data.begin());break;
+      case 7:changed.events.uses[0].producer=UseProducer::EXECUTED_READ_STREAM;break;
+      case 8:changed.events.uses[0].offset+=1;break;
+      case 9:changed.events.uses[0].object_callee+=1;break;
+      case 10:changed.events.uses[0].sequence=UINT64_MAX;break;
+      case 11:changed.events.uses[0].observed_size=9;break;
+      case 12:changed.events.data[0].scope=DataScope::OTHER;break;
+      case 13:changed.events.uses[7].bytes[0]='x';changed.events.data[7].value='x';break;
+      case 14:changed.events.data.push_back({0x1300,0x5000,0,1,RAX_MEM_WRITE,DataScope::IMAGE,12,1,11});break;
+      case 15:changed.events.data.push_back({0x1300,0x5000,0,1,RAX_MEM_READ,DataScope::IMAGE,12,1,11});break;
+      case 16:changed.events.edges.push_back({0x1300,0x2000,1,11,ExecEdge::Kind::Call,12});break;
+      case 17:changed.events.edges.push_back({0x1300,0x2000,1,11,ExecEdge::Kind::Unknown,12});break;
+      case 18:changed.events.uses[1].site+=1;changed.events.data[1].from+=1;break;
+      case 19:changed.events.uses[0].occurrence+=1;break;
+      case 20:changed.events.uses[0].context+=1;break;
+    }
+    const auto rejected=hybrid_consensus_native_read_strings(changed);
+    check(rejected.size()==1 && rejected[0].use.object_occurrence==2,
+          "invalid first-stream witness must not suppress unrelated second lifetime or gain consensus");
+  }
+  for(unsigned failure=0;failure<7;++failure)
+  {
+    auto changed=source;
+    switch(failure)
+    {
+      case 0:changed.runs[0].outcome.memory_observation_available=false;break;
+      case 1:changed.runs[0].outcome.temporal_capture_truncated=true;break;
+      case 2:changed.runs[0].ran=false;break;
+      case 3:changed.events.data.push_back(changed.events.data[0]);break;
+      case 4:changed.events.uses.push_back(changed.events.uses[0]);break;
+      case 5:changed.events.allocations.push_back(changed.events.allocations[0]);break;
+      case 6:changed.runs[0].outcome.data_trace_filtered=true;break;
+    }
+    check(hybrid_consensus_native_read_strings(changed).empty(),
+          "incomplete corpus or duplicate sequence/object disables derived stream consensus");
+  }
+  std::reverse(source.events.uses.begin(),source.events.uses.end());
+  std::reverse(source.events.data.begin(),source.events.data.end());
+  check(hybrid_consensus_native_read_strings(source).size()==2,
+        "normalization storage order does not replace event sequence order");
+  for(size_t length:{size_t(20),size_t(1040),size_t(4096),size_t(4097)})
+  {
+    TargetEvidence bounded;bounded.runs.push_back(source.runs[0]);
+    bounded.scope.function_start=source.scope.function_start;
+    for(size_t i=0;i<length;++i)
+    {
+      UseSnapshot use;use.context=0x1000;use.site=0x1200;use.occurrence=i+1;
+      use.scope=DataScope::IMAGE;use.address=use.object_site=0x4000+i;
+      use.sequence=10+4*i;use.observed_size=1;use.run_id=1;use.seed=11;
+      use.status=UseCaptureStatus::EXACT;
+      use.bytes={uint8_t((length==1040?i%8==7:i+1==length)?0:'a')};
+      bounded.events.uses.push_back(use);
+      bounded.events.data.push_back({use.site,use.address,use.bytes[0],1,RAX_MEM_READ,
+          use.scope,use.sequence+1,1,11});
+    }
+    const auto streams=hybrid_consensus_native_read_strings(bounded);
+    check(length==1040?streams.size()==130 && streams[0].value.size()==7:
+          length<=4096?streams.size()==1 && streams[0].value.size()==length-1:streams.empty(),
+          "derived stream read/byte limits reject oversized evidence without silent truncation");
+    if(length==20)
+    {
+      const auto timeline=project_evidence_view(bounded);
+      const auto item=std::find_if(timeline.events.begin(),timeline.events.end(),[](const auto &row)
+          {return row.at("kind")=="read-stream";});
+      check(item!=timeline.events.end() && item->at("fragments_omitted")=="4",
+            "stream timeline marks omitted fragment references exactly");
+    }
+    if(length==4096)
+    {
+      const auto timeline=project_evidence_view(bounded);
+      check(timeline.omitted.at("events")>0 && timeline.read_streams.size()==1
+            && timeline.read_streams[0].at("read_count")=="4096"
+            && timeline.read_streams[0].at("fragments_omitted")=="4080",
+            "dedicated stream evidence survives general timeline truncation with explicit fragment limits");
+    }
+    if(length==1040)
+    {
+      const auto timeline=project_evidence_view(bounded);
+      check(timeline.read_streams.size()==128 && timeline.omitted.at("read_streams")==2,
+            "dedicated stream row quota reports exactly two omitted witnesses");
+    }
+  }
+}
+
 int main(int argc, char **argv)
 {
   evidence_view_regressions();
   regressions();
   comparison_regressions();
   temporal_memory_regressions();
+  native_read_stream_regressions();
 #ifndef CHERNOBOG_LEGACY_EVIDENCE
   runtime_string_regressions();
 #endif

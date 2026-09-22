@@ -1,5 +1,9 @@
 # Local VM dispatch effects and proof-gated reuse
 
+Subsequent extension: [VMP_VM_PATHS.md](VMP_VM_PATHS.md) adds modeled flag and
+overwritten-register effects across bounded native blocks, including two real
+protected paths. The results below describe the original local-scaffold checkpoint.
+
 `src/vm/semantics.cpp` now summarizes the admitted local read/decode/dispatch
 sequences. `chernobog_vm_summaries(ea)` explicitly builds bounded summaries and
 shares a normalized reference only after a fresh UNSAT effect-mismatch query.

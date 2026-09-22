@@ -1,0 +1,352 @@
+{
+  "schema": 1,
+  "source_sha256": {
+    "src/ida_analysis/early_hexrays.cpp": "5516d8947695256384ac29498b4232d6d242d65c109c765ea5261078c398fea0",
+    "src/ida_analysis/early_hexrays.hpp": "f40a4a5d8fa6e17d9f46f21efe827aa5282ddc5630288715fa399083958caa06",
+    "src/ida_analysis/analysis_config.cpp": "930ac2ba4a30b06f60b12be6cbdeaaffe881e5d6f4b79c98bf34ad03298c6de0",
+    "src/ida_analysis/analysis_config.hpp": "b27caa8058c8f5004f524a38fe3c8b18f1b13bf258708e34284be16b043dfcd9",
+    "src/ida_analysis/x86_analysis.cpp": "1b5dccb7144b307bae19669fbfc9b347260d5cd2edb88e8e9d39273540d106c2",
+    "src/ida_analysis/x86_analysis.hpp": "dcb85bdb39f5b3fbe91781233eb4a2bc82ba4f85d00fdb8fe68843752dda1fe9",
+    "src/common/x86_abstract.h": "8304773b77b444ad689c6fa14c0b32930ceff0f5e7660791a3421bb87ad8701b",
+    "src/plugin/idc_api.cpp": "e3d57913473900f964822f92bacb22777b88418f41a7b097a2dca998614c5c9c",
+    "tests/ida_conditions_microcode_probe.py": "389d49e68665721907893d3f17ad938674fba305405bb6d223549903ce86e71a",
+    "tests/verify_conditions_microcode.py": "530254435ac100d65c174498c26ac40cd3c99e5bee0f3c348387e56b9530edcf",
+    "tests/run_conditions_microcode.py": "9f5c09729513ceb61e4a01d808de90a45e93692a6c4e360c0ce92c46f7cc83fc",
+    "tests/vmp_native/conditions.S": "7e235096fe9063c345b845db056a5b8e24716ece08ef35b5b678d6ccb3eccded",
+    "tests/vmp_native/conditions32.S": "4f768c03b79c11f98f57fbad3971607906ff84d2ebb612dc98051eb356885c1b",
+    "tests/vmp_native/conditions_main.c": "1efdb204488405ad4eb3d5a879cc81448e1cf50bb39d437cf28899b2022d6c61",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151",
+    "tests/vmp_native/conditions_faults.c": "924dc285c974882fbf5652ce8f6e55627294bd58be0dcf5b8ce312c98db2fd34",
+    "tests/run_vmp_corpus.py": "b8adfe9ce39e643b551c1e4d29f64cf023914bb0d6cf1516c0e3971a5fdc376a",
+    "tests/vmp_corpus/linux32.py": "bcac8227eff4012ff02d6fdb52a4824e38c8ba5642f9559dfd7322d13f71a63c",
+    "tests/vmp_corpus/linux32_exec.py": "62f8d55441b5c008f262b23382150806fa61a10e6001af17e85b63f33bd12737",
+    "tests/vmp_corpus/linux32.Dockerfile": "6696a2c4c4b1d9b657f40d856a2cf24af845689d732e3a6762436400a0ebb85d"
+  },
+  "plugin_sha256": "dede584aa37f068f3b74fc5f284cf116163e61310c52c2294d56acc0933a3e92",
+  "host_architecture": "arm64",
+  "sdk_sha256": {
+    "hexrays.hpp": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff",
+    "intel.hpp": "75a83474f0fc3d87a2c1edd7e7dc15915e0a0fedbb1bb1015d7b55a87066caee",
+    "ua.hpp": "b81e3c348421075f1f678276186262ce7b2c0c3902d4ed484c474701ce3dd174",
+    "typeinf.hpp": "d91e8e6b7cc754d10cfd4a8fbd09981aa167e06eed044dc7941d495746f38e8f"
+  },
+  "architectures": {
+    "x86_64": {
+      "compile": {
+        "exit_code": 0,
+        "elapsed_ns": 75404333,
+        "peak_resident_bytes": 38191104,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "execute": {
+        "exit_code": 0,
+        "elapsed_ns": 116747916,
+        "peak_resident_bytes": 3399680,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "b6feb940ca7670ee96c5b949e72c481455ad4faa6e05f30f898b5a40ef16589c",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fault_compile": {
+        "exit_code": 0,
+        "elapsed_ns": 93427167,
+        "peak_resident_bytes": 40042496,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fault_execute": {
+        "exit_code": 0,
+        "elapsed_ns": 122486125,
+        "peak_resident_bytes": 3883008,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "6b8e3dc52d1834d6aa7b6229f9fc555a6ce31d34249dd6ffc1e99b5607f4c0db",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "runtime": "macOS x86-64 execution; translated on arm64 hosts",
+      "input_sha256": "868f48b8a4510d20a708df0e5f246e819b55a9ae493061635c4aa192960f24d3",
+      "off": {
+        "exit_code": 0,
+        "elapsed_ns": 3511593833,
+        "peak_resident_bytes": 192741376,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "08bd69e72e66381b1db4aa26c5025f4815280d48fdac35f605125921a1b1921c",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "on": {
+        "exit_code": 0,
+        "elapsed_ns": 6179806667,
+        "peak_resident_bytes": 194330624,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "08988d3ff95b39279e5a4d255896e1422581ed6828326b9564a50f304edf616d",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "verification": {
+        "captures_per_mode": 58,
+        "accepted_functions": 48,
+        "native_records": 6528,
+        "effect_comparisons": 6144,
+        "mutation_controls": 7,
+        "word_bytes": 8
+      },
+      "fault_verification": {
+        "observations": 144,
+        "faults": 96,
+        "successful_boundary_reads": 48,
+        "mutation_controls": 2
+      },
+      "optimized": [
+        {
+          "run": {
+            "exit_code": 0,
+            "elapsed_ns": 6372130166,
+            "peak_resident_bytes": 193101824,
+            "timed_out": false,
+            "output_exceeded": false,
+            "stdout_sha256": "0aa21dcccdea7ac72d3df10e98c21ffad5ff5b06c8b46b495263266ea7d38f7a",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "verification": {
+            "maturity": "MMAT_PREOPTIMIZED",
+            "preserved_reads": 8
+          }
+        },
+        {
+          "run": {
+            "exit_code": 0,
+            "elapsed_ns": 6711334666,
+            "peak_resident_bytes": 193871872,
+            "timed_out": false,
+            "output_exceeded": false,
+            "stdout_sha256": "026055a1389198f8c3a08b2aa3cdbdbde19db141f00c8c3778a666139a1565ce",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "verification": {
+            "maturity": "MMAT_GLBOPT3",
+            "preserved_reads": 8
+          }
+        }
+      ]
+    },
+    "i386": {
+      "runtime": {
+        "image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+        "container_architecture": "arm64",
+        "execution": "qemu-i386 user-mode translation in Linux container",
+        "sha256": {
+          "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+          "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+          "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+          "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+          "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+        },
+        "packages": [
+          "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+          "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+          "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+          "libc6-i386-cross\t2.39-0ubuntu8cross1",
+          "python3\t3.12.3-0ubuntu2.1",
+          "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+        ]
+      },
+      "compile": {
+        "exit_code": 0,
+        "elapsed_ns": 403323500,
+        "peak_resident_bytes": 46727168,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "execute": {
+        "exit_code": 0,
+        "elapsed_ns": 69528071,
+        "peak_resident_bytes": 18771968,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "da9f86eef159cbab9fe575d4536dbd3af4e35e1dac7c217a183464f27263c9d7",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "binary_sha256": "36ef07505308aa89a8a822b2f5f8fc256ee52057af98688f1793f6ce2efebd5b",
+        "binary_unchanged": true,
+        "accounting_scope": "Linux wait4 of qemu-i386 process, including translated guest execution",
+        "runtime_sha256": {
+          "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+          "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+          "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+        },
+        "launcher": {
+          "exit_code": 0,
+          "elapsed_ns": 470704167,
+          "peak_resident_bytes": 47185920,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "guest_report": "guest-runs/conditions-0.json"
+      },
+      "fault_compile": {
+        "exit_code": 0,
+        "elapsed_ns": 529553834,
+        "peak_resident_bytes": 47251456,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fault_execute": {
+        "exit_code": 0,
+        "elapsed_ns": 24902794,
+        "peak_resident_bytes": 18681856,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "fd401114da7c73291a12ab76d3b76b04dd9cee0e44f7b044c740355bbb67734c",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "binary_sha256": "9c03107023dae7e2d6e3aba31d5cd4f3cf9a7b6416cde21d82466fbfff2fda12",
+        "binary_unchanged": true,
+        "accounting_scope": "Linux wait4 of qemu-i386 process, including translated guest execution",
+        "runtime_sha256": {
+          "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+          "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+          "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+        },
+        "launcher": {
+          "exit_code": 0,
+          "elapsed_ns": 650647792,
+          "peak_resident_bytes": 47480832,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "guest_report": "guest-runs/conditions-faults-0.json"
+      },
+      "input_sha256": "36ef07505308aa89a8a822b2f5f8fc256ee52057af98688f1793f6ce2efebd5b",
+      "off": {
+        "exit_code": 0,
+        "elapsed_ns": 6372571583,
+        "peak_resident_bytes": 161595392,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "5f7905de30ed2c33fb249636b15b9500caf93f1ac81eb52e79fc34092c0fc190",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "on": {
+        "exit_code": 0,
+        "elapsed_ns": 6034353708,
+        "peak_resident_bytes": 163774464,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "d202cf25dccd3193fde64f9e5f1f2af63841446639fc6631a42bab28929a4893",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "verification": {
+        "captures_per_mode": 58,
+        "accepted_functions": 48,
+        "native_records": 6528,
+        "effect_comparisons": 6144,
+        "mutation_controls": 6,
+        "word_bytes": 4
+      },
+      "fault_verification": {
+        "observations": 144,
+        "faults": 96,
+        "successful_boundary_reads": 48,
+        "mutation_controls": 2
+      },
+      "optimized": [
+        {
+          "run": {
+            "exit_code": 0,
+            "elapsed_ns": 7030811875,
+            "peak_resident_bytes": 158826496,
+            "timed_out": false,
+            "output_exceeded": false,
+            "stdout_sha256": "7f9a32d4e2f9d5aa520ea739a239c3646d518539881c9b23ca713a27fe25dab1",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "verification": {
+            "maturity": "MMAT_PREOPTIMIZED",
+            "preserved_reads": 8
+          }
+        },
+        {
+          "run": {
+            "exit_code": 0,
+            "elapsed_ns": 7924074916,
+            "peak_resident_bytes": 158646272,
+            "timed_out": false,
+            "output_exceeded": false,
+            "stdout_sha256": "7befc1cb4e234a9a8a9da476eb4db1d011e59fd290575a4970c33fdc5a0f19e6",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "verification": {
+            "maturity": "MMAT_GLBOPT3",
+            "preserved_reads": 8
+          }
+        }
+      ]
+    }
+  },
+  "artifacts": {
+    "i386/MMAT_GLBOPT3/conditions": "36ef07505308aa89a8a822b2f5f8fc256ee52057af98688f1793f6ce2efebd5b",
+    "i386/MMAT_GLBOPT3/conditions_microcode.json": "811ee6480a42caa573088ffb699818d9b75bf203218b81c8b0489bb737cea592",
+    "i386/MMAT_GLBOPT3/run.json": "d94ba39521347cf9d6684a1c86d2d2f9ef898eeedaff187668f92627ec512d32",
+    "i386/MMAT_PREOPTIMIZED/conditions": "36ef07505308aa89a8a822b2f5f8fc256ee52057af98688f1793f6ce2efebd5b",
+    "i386/MMAT_PREOPTIMIZED/conditions_microcode.json": "8c6b3fea3cb64be2e4d1cd36010489135731b05d1ef037b701c6bda36a74c5e0",
+    "i386/MMAT_PREOPTIMIZED/run.json": "0972b2350ce59a0f602d20cf5d1d5a5c285ce8538869306e7d592f3571600fbb",
+    "i386/conditions": "36ef07505308aa89a8a822b2f5f8fc256ee52057af98688f1793f6ce2efebd5b",
+    "i386/conditions-faults": "9c03107023dae7e2d6e3aba31d5cd4f3cf9a7b6416cde21d82466fbfff2fda12",
+    "i386/faults.jsonl": "fd401114da7c73291a12ab76d3b76b04dd9cee0e44f7b044c740355bbb67734c",
+    "i386/guest-runs/conditions-0.json": "3766cd16448e6f5b5068d240ace4ace6c4886c25ddf7db587df83e68fc01a9f2",
+    "i386/guest-runs/conditions-0.txt": "da9f86eef159cbab9fe575d4536dbd3af4e35e1dac7c217a183464f27263c9d7",
+    "i386/guest-runs/conditions-faults-0.json": "96459d0f74225700d04027f8579eae118ff1e5280a47656245d53ae031451d57",
+    "i386/guest-runs/conditions-faults-0.txt": "fd401114da7c73291a12ab76d3b76b04dd9cee0e44f7b044c740355bbb67734c",
+    "i386/native.jsonl": "da9f86eef159cbab9fe575d4536dbd3af4e35e1dac7c217a183464f27263c9d7",
+    "i386/off/conditions": "36ef07505308aa89a8a822b2f5f8fc256ee52057af98688f1793f6ce2efebd5b",
+    "i386/off/conditions_microcode.json": "29709ac11b76b5c4094c245f5bc746d3211aae2b2e63dad40cb769db0915cadf",
+    "i386/off/run.json": "956e7cc6da8863eb3a7ce9f1fbad4104fcc86666f8ac88dee11c4de4a58882ff",
+    "i386/on/conditions": "36ef07505308aa89a8a822b2f5f8fc256ee52057af98688f1793f6ce2efebd5b",
+    "i386/on/conditions_microcode.json": "d611a96a03fa0edbdf9c10da7d05094ebce5249de813e8d60d5dccd29d657c8e",
+    "i386/on/run.json": "91705b6821eb3505e4a23f83f3e38f693e458c89a4b001130ab0dc68a468c87e",
+    "x86_64/MMAT_GLBOPT3/conditions": "868f48b8a4510d20a708df0e5f246e819b55a9ae493061635c4aa192960f24d3",
+    "x86_64/MMAT_GLBOPT3/conditions_microcode.json": "483666b3d2d2876638f302d3599d7a97158b14bc648c1e195e007c48070c262b",
+    "x86_64/MMAT_GLBOPT3/run.json": "3c245ff19092a31e558da76b1e2e141a136c1fbb2e671dc03edf3039f624a28c",
+    "x86_64/MMAT_PREOPTIMIZED/conditions": "868f48b8a4510d20a708df0e5f246e819b55a9ae493061635c4aa192960f24d3",
+    "x86_64/MMAT_PREOPTIMIZED/conditions_microcode.json": "a70016640b5aba082dd3f1fed01430fd56dba852afaf4eaa423a6e81c2ce7bf4",
+    "x86_64/MMAT_PREOPTIMIZED/run.json": "1d4ac3e8668fc0fab6e0ba03087604c63ff0ab681be121fccf97fb7d6922f7c4",
+    "x86_64/conditions": "868f48b8a4510d20a708df0e5f246e819b55a9ae493061635c4aa192960f24d3",
+    "x86_64/conditions-faults": "bf7064e8cd43478ea7e8896b7f9f1caa5baea0266e702bc299ef9323b599621d",
+    "x86_64/faults.jsonl": "6b8e3dc52d1834d6aa7b6229f9fc555a6ce31d34249dd6ffc1e99b5607f4c0db",
+    "x86_64/native.jsonl": "b6feb940ca7670ee96c5b949e72c481455ad4faa6e05f30f898b5a40ef16589c",
+    "x86_64/off/conditions": "868f48b8a4510d20a708df0e5f246e819b55a9ae493061635c4aa192960f24d3",
+    "x86_64/off/conditions_microcode.json": "e4da88515e3f837b47707873fafa43a5c8029f0fc8c67de95d2c129b91c0b5d5",
+    "x86_64/off/run.json": "70993b4ca531984151bafa1f61965f689d33b5a1d3b9659207b157e77050b2ff",
+    "x86_64/on/conditions": "868f48b8a4510d20a708df0e5f246e819b55a9ae493061635c4aa192960f24d3",
+    "x86_64/on/conditions_microcode.json": "dc9d0d82cf8bec66a165807c4e9871942dd18a5c8107a78e083bae36b023b37d",
+    "x86_64/on/run.json": "f56b7d06691791148d0b6ce57d758cc63d550c09627f4d648489a672e20d300c"
+  },
+  "artifact_root": "build/vmp-cmov-memory-accepted",
+  "generated_manifest_sha256": "86c1cb153af45ee67e598763353e0be79b08aad00aa82a3f11ce0fcb5e071e31",
+  "ctest": {
+    "path": "build/vmp-cmov-memory-ctest.log",
+    "sha256": "c860cbde775e37beae7f4d96d03a3793c6d8a5f8f422244f256a08e981ff120d",
+    "passed": 18,
+    "failed": 0
+  },
+  "rejected_persistent_load_experiment": {
+    "artifact_sha256": {
+      "build/vmp-cmov-memory-persist-MMAT_GENERATED/conditions_microcode.json": "20e9c38e6ac9e218118b1c81a1f68b63baf8de3b6eec34276ca27f8c055b5f13",
+      "build/vmp-cmov-memory-persist-MMAT_GENERATED/run.json": "bc243ac6bd8fb1d2648f94e91a06f700050cce5af37c86776c27de6ed44f028c",
+      "build/vmp-cmov-memory-persist-MMAT_GLBOPT3/conditions_microcode.json": "261c61273d7b86143f4a5c5c95617993f9a9dd9b4def69d0c23ea81039ce4748",
+      "build/vmp-cmov-memory-persist-MMAT_GLBOPT3/run.json": "de10113cc6a52fd52f66506fcc52a4e1bcca099cacf5a1feadb032e76bdfe454"
+    }
+  }
+}

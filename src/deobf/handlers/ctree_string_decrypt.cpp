@@ -2344,8 +2344,7 @@ int ctree_string_decrypt_handler_t::annotate_runtime_use_strings(cfunc_t *cfunc)
     using candidate_t = chernobog::hybrid::RuntimeUseStringCandidate;
     std::map<uint64_t, std::vector<const candidate_t *>> sites;
     for ( const auto &candidate : candidates )
-        if ( candidate.use.producer == chernobog::hybrid::UseProducer::MODELED_ARGUMENT
-          && candidate.use.context == uint64_t(cfunc->entry_ea) )
+        if ( candidate.use.context == uint64_t(cfunc->entry_ea) )
             sites[candidate.use.site].push_back(&candidate);
 
     struct annotator_t : public ctree_visitor_t
@@ -2360,24 +2359,37 @@ int ctree_string_decrypt_handler_t::annotate_runtime_use_strings(cfunc_t *cfunc)
 
         int idaapi visit_expr(cexpr_t *call) override
         {
-            if ( call->op != cot_call || call->a == nullptr || call->x == nullptr
-              || call->x->op != cot_obj ) return 0;
             const auto found = sites.find(uint64_t(call->ea));
             if ( found == sites.end() ) return 0;
             for ( const auto *candidate : found->second ) {
                 const auto &use = candidate->use;
-                if ( use.callee != uint64_t(call->x->obj_ea) || use.argument < 0
-                  || size_t(use.argument) >= call->a->size() ) continue;
+                const bool native=use.producer==chernobog::hybrid::UseProducer::EXECUTED_READ
+                    || use.producer==chernobog::hybrid::UseProducer::EXECUTED_READ_STREAM;
+                if(native)
+                {
+                    // Exact expression EA only: never assign a stream to an
+                    // arbitrary nearby line when Hex-Rays eliminated its read.
+                    if(call->op!=cot_ptr && call->op!=cot_idx)continue;
+                }
+                else if(call->op!=cot_call || call->a==nullptr || call->x==nullptr
+                    || call->x->op!=cot_obj || use.callee!=uint64_t(call->x->obj_ea)
+                    || use.argument<0 || size_t(use.argument)>=call->a->size())continue;
                 int x = -1, y = -1;
-                if ( !function->find_item_coords(&(*call->a)[size_t(use.argument)], &x, &y)
+                if ( (native || !function->find_item_coords(&(*call->a)[size_t(use.argument)], &x, &y))
                   && !function->find_item_coords(call, &x, &y) ) continue;
                 if ( y < 0 || size_t(y) >= function->sv.size() ) continue;
                 if ( lines.count(y) == 0 && lines.size() >= 64 ) continue;
                 if ( lines[y].size() >= 2 ) { omitted.insert(y); continue; }
                 qstring text;
-                text.sprnt("rax-use(modeled %s,arg=%d,use=%llu,runs=%zu): \"",
-                    runtime_use_model_name(use.model_kind), use.argument,
-                    (unsigned long long)use.occurrence, candidate->eligible_runs);
+                if(native)
+                    text.sprnt("rax-use(%s,reads=%zu,use=%llu,runs=%zu): \"",
+                        chernobog::hybrid::use_producer_name(use.producer),
+                        candidate->read_fragments.empty()?size_t(1):candidate->read_fragments.front().size(),
+                        (unsigned long long)use.occurrence,candidate->eligible_runs);
+                else
+                    text.sprnt("rax-use(modeled %s,arg=%d,use=%llu,runs=%zu): \"",
+                        runtime_use_model_name(use.model_kind), use.argument,
+                        (unsigned long long)use.occurrence, candidate->eligible_runs);
                 size_t shown = std::min<size_t>(candidate->value.size(), 128);
                 // Do not cut a UTF-8 scalar in the bounded display prefix.
                 while ( shown < candidate->value.size() && shown > 0

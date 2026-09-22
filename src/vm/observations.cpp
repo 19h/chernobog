@@ -172,12 +172,14 @@ ObservationView project_observations(const std::vector<Candidate> &input,
       const uint64_t until=output && output->source==c.dispatch?output->sequence:entry.sequence;
       bool code_write=false;
       for(auto p=t.data.begin(),end=at(t.data,until);p!=end;++p)
-        if((*p)->kind==RAX_MEM_WRITE && overlap((*p)->addr,(*p)->size,c.start,c.end))
+        if((*p)->kind==RAX_MEM_WRITE && std::any_of(c.support.begin(),c.support.end(),[&](const auto &i)
+            {return overlap((*p)->addr,(*p)->size,i.address,i.address+i.size);}))
         {code_write=true;row["runtime_code_identity"]="recorded write overlaps candidate; IDB roles unverified at runtime";break;}
       if(validate_transitions)
       {
         row["semantic_validation"]="transition not checked";
         row["transition_contract"]="one captured normal-completion transition; current snapshot instruction bytes; flat little-endian memory; no concurrency/devices/segment-base/exception effects; target execution not admitted";
+        if(c.stack_dispatch)row["transition_contract"] += "; CET shadow stack disabled";
         if(code_write)row["transition_reason"]="recorded candidate code write";
         else if(!valid_run || !r->outcome.data_trace_complete)row["transition_reason"]="complete direct data trace required";
         else if(row["path"]!="sampled local address/size path")row["transition_reason"]="complete local path required";

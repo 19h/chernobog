@@ -3,14 +3,15 @@
 #include "analysis_config.hpp"
 #include "get_pc_ida.hpp"
 #include "ida_sdk_compat.hpp"
+#include "x86_analysis.hpp"
 
 #include "../common/warn_off.h"
-#include <allins.hpp>
 #include <bytes.hpp>
 #include <funcs.hpp>
 #include <gdl.hpp>
 #include <hexrays.hpp>
 #include <idp.hpp>
+#include <intel.hpp>
 #include <kernwin.hpp>
 #include <nalt.hpp>
 #include <segment.hpp>
@@ -1336,20 +1337,169 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
   EarlyHexRaysStats statistics;
   bool installed = false;
 
+  std::optional<bool> known_condition(const codegen_t &codegen) const
+  {
+    if ( !config.condition_codegen || codegen.mba == nullptr || codegen.mb == nullptr
+      || codegen.mba->is_snippet()
+      || !executable_code(codegen.insn.ea) ) return std::nullopt;
+    const auto condition = x86_condition(codegen.insn.itype);
+    if ( !condition || condition->use == X86ConditionUse::branch
+      || (!mode32(codegen.insn) && !mode64(codegen.insn))
+      || (codegen.insn.auxpref & (aux_lock | aux_rep | aux_repne)) != 0 )
+      return std::nullopt;
+    const auto *owner = get_func(codegen.insn.ea);
+    if ( owner == nullptr || owner->start_ea != codegen.mba->entry_ea )
+      return std::nullopt;
+    const auto &destination = codegen.insn.Op1;
+    if ( condition->use == X86ConditionUse::set_byte )
+    {
+      if ( get_dtype_size(destination.dtype) != 1
+        || !natad(codegen.insn) || codegen.insn.segpref != 0
+        || (destination.type != o_reg && destination.type != o_mem
+         && destination.type != o_phrase && destination.type != o_displ) )
+        return std::nullopt;
+    }
+    else
+    {
+      const auto &source = codegen.insn.Op2;
+      const size_t width = get_dtype_size(destination.dtype);
+      const bool memory = source.type == o_phrase || source.type == o_displ
+                       || source.type == o_mem;
+      if ( destination.type != o_reg || (source.type != o_reg && !memory)
+        || (memory && (!natad(codegen.insn) || codegen.insn.segpref != 0))
+        || (width != 2 && width != 4 && width != 8)
+        || (width == 8 && !mode64(codegen.insn))
+        || get_dtype_size(source.dtype) != width ) return std::nullopt;
+    }
+    // Recompute from the current IDB on every generation. Persisted comments
+    // and value facts are neither an authority nor a cache for this filter.
+    const auto fact = analyze_x86_flag_fact_before(
+        codegen.insn, config.condition_scan_depth);
+    for ( const auto address : fact.support )
+    {
+      insn_t supporting;
+      if ( !executable_code(ea_t(address))
+        || decode_insn(&supporting, ea_t(address)) <= 0
+        || !codegen.mba->range_contains(supporting.ea)
+        || !codegen.mba->range_contains(supporting.ea + supporting.size - 1)
+        || (supporting.auxpref & (aux_lock | aux_rep | aux_repne)) != 0 )
+        return std::nullopt;
+    }
+    return x86_abstract::evaluate(condition->condition, fact.flags);
+  }
+
+  merror_t apply_condition(codegen_t &codegen, bool value)
+  {
+    // MERR_INSN requests standard generation. Do not leave a partial custom
+    // operand load/store in the block when an SDK operation declines.
+    struct Emission
+    {
+      mblock_t *block;
+      minsn_t *before;
+      bool committed = false;
+      ~Emission()
+      {
+        if ( committed ) return;
+        auto *instruction = before != nullptr ? before->next : block->head;
+        while ( instruction != nullptr )
+        {
+          auto *next = instruction->next;
+          block->remove_from_block(instruction);
+          delete instruction;
+          instruction = next;
+        }
+      }
+    } emission{codegen.mb, codegen.mb->tail};
+    const auto condition = x86_condition(codegen.insn.itype);
+    if ( !condition ) return MERR_INSN;
+    mop_t result;
+    if ( condition->use == X86ConditionUse::set_byte )
+    {
+      result.make_number(value ? 1 : 0, 1, codegen.insn.ea);
+      if ( !codegen.store_operand(0, result) ) return MERR_INSN;
+      ++statistics.codegen_setcc;
+    }
+    else
+    {
+      const int width = int(get_dtype_size(codegen.insn.Op1.dtype));
+      const bool memory = codegen.insn.Op2.type != o_reg;
+      mreg_t input = mr_none;
+      if ( memory )
+      {
+        const int address_width = mode64(codegen.insn) ? 8 : 4;
+        const mreg_t address = codegen.load_effective_address(1);
+        if ( address == mr_none ) return MERR_INSN;
+        input = codegen.mba->alloc_kreg(size_t(width));
+        if ( input == mr_none ) return MERR_INSN;
+        const type_t type = width == 2 ? BTF_UINT16 : width == 4 ? BTF_UINT32 : BTF_UINT64;
+        tinfo_t return_type(type), pointee(type), pointer;
+        pointee.set_const();
+        pointee.set_volatile();
+        if ( !pointer.create_ptr(pointee) ) return MERR_INSN;
+        mcallargs_t arguments;
+        arguments.resize(1);
+        arguments[0].set_regarg(address, address_width, pointer);
+        mop_t loaded;
+        loaded.make_reg(input, width);
+        const char *helper = width == 2 ? "__chernobog_read_u16"
+                           : width == 4 ? "__chernobog_read_u32" : "__chernobog_read_u64";
+        std::unique_ptr<minsn_t> read(codegen.mba->create_helper_call(
+            codegen.insn.ea, helper, &return_type, &arguments, &loaded));
+        if ( read == nullptr ) return MERR_INSN;
+        minsn_t *call = read->find_call(true);
+        if ( call == nullptr || call->d.t != mop_f || call->d.f == nullptr )
+          return MERR_INSN;
+        // Flat-memory contract: one little-endian read of WIDTH bytes; an
+        // inaccessible source faults before any architectural destination
+        // write. This intrinsic is not an ABI call, and spoils no registers.
+        // Its observable read survives when false CMOV discards the result.
+        call->d.f->flags &= ~(FCI_PURE | FCI_NOSIDE);
+        call->d.f->flags |= FCI_FINAL | FCI_SPLOK;
+        call->d.f->spoiled.clear();
+        // The address is generally symbolic. Conservatively declare all
+        // memory visible so a preceding possibly-aliased store stays live.
+        call->d.f->visible_memory.set_all_values();
+        call->set_mbarrier();
+        read->set_mbarrier();
+        codegen.mb->insert_into_block(read.release(), codegen.mb->tail);
+        if ( !value ) input = codegen.load_operand(0);
+      }
+      else input = codegen.load_operand(value ? 1 : 0);
+      if ( input == mr_none ) return MERR_INSN;
+      const mreg_t temporary = codegen.mba->alloc_kreg(size_t(width));
+      if ( temporary == mr_none ) return MERR_INSN;
+      mop_t source;
+      source.make_reg(input, width);
+      result.make_reg(temporary, width);
+      codegen.emit(m_mov, &source, nullptr, &result);
+      // Use the native operand writer, including architectural zero extension
+      // for 32-bit destinations in 64-bit mode. Even a false CMOV writes its
+      // old destination value at the instruction's width.
+      if ( !codegen.store_operand(0, result) ) return MERR_INSN;
+      ++statistics.codegen_cmov;
+      if ( memory ) ++statistics.codegen_cmov_memory;
+    }
+    emission.committed = true;
+    return MERR_OK;
+  }
+
   bool match(codegen_t &codegen) override
   {
     return get_dbctx_id() == owner_database
-        && config.enabled && config.call_pop_codegen
+        && config.enabled
         && is_x86_database()
-        && is_return_instruction(codegen.insn)
-        && resolve_gadget_return(
-            codegen.insn.ea, config.gadget_scan_depth) != BADADDR;
+        && (known_condition(codegen).has_value()
+          || (config.call_pop_codegen && is_return_instruction(codegen.insn)
+            && resolve_gadget_return(
+                codegen.insn.ea, config.gadget_scan_depth) != BADADDR));
   }
 
   merror_t apply(codegen_t &codegen) override
   {
     if ( get_dbctx_id() != owner_database )
       return MERR_INSN;
+    if ( const auto condition = known_condition(codegen) )
+      return apply_condition(codegen, *condition);
     const auto summary = resolve_gadget_return_summary(
         codegen.insn.ea, config.gadget_scan_depth);
     if ( !summary || codegen.mba == nullptr
@@ -1372,7 +1522,8 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
 
   bool install_filter()
   {
-    if ( installed || !config.enabled || !config.call_pop_codegen )
+    if ( installed || !config.enabled
+      || (!config.call_pop_codegen && !config.condition_codegen) )
       return true;
     installed = install_microcode_filter(this, true);
     return installed;

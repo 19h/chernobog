@@ -409,7 +409,8 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(
     if ( eligible.count(run) == 0 ) continue;
     const auto key = use.semantic_key();
     bool valid = use.status == UseCaptureStatus::EXACT
-              && use.bytes.size() == use.observed_size;
+              && use.bytes.size() == use.observed_size
+              && (use.producer==UseProducer::EXECUTED_READ || use.producer==UseProducer::MODELED_ARGUMENT);
     if ( use.scope == DataScope::HEAP )
     {
       const ObjectKey object{use.run_id, use.seed, use.allocation_id};
@@ -459,6 +460,8 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(
     }
     if ( same ) result.push_back(std::move(candidate));
   }
+  auto native=hybrid_consensus_native_read_strings(evidence,minimum_length,maximum_length);
+  result.insert(result.end(),std::make_move_iterator(native.begin()),std::make_move_iterator(native.end()));
   return result;
 }
 
@@ -510,6 +513,14 @@ TargetEvidence hybrid_build_target_evidence(
     const EmulationJobResult &emulation)
 {
   TargetEvidence result;
+  if(std::any_of(emulation.runs.begin(),emulation.runs.end(),
+      [](const EmulationRunResult &run){return run.outcome.native_region;}))
+  {
+    // The merged stream cannot be safely attributed to a function when even
+    // one run used a separate region scope. Reject the whole mixed publication.
+    result.diagnostic="native-region observations require separate publication";
+    return result;
+  }
   result.scope = provenance_for(
       image, function, focus_address, emulation.ticket, 0, 0);
   result.scope.proof = ProofCharacter::CROSS_CHECK;
