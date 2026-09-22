@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Replay complete recorded formulas and SAT assignments in a standalone Z3."""
+
 import argparse
 import hashlib
 import json
@@ -15,11 +16,18 @@ def solve(solver, formula, bindings=""):
     if re.search(r"\((?:include|set-option|eval|echo|reset|push|pop)\b", formula):
         raise AssertionError("unsupported replay command")
     body = re.sub(r"(?m)^\s*\(check-sat\)\s*$", "", formula)
-    result = subprocess.run([solver, "-in", "-smt2", "-T:5"],
-                            input=body + "\n" + bindings + "\n(check-sat)\n",
-                            text=True, capture_output=True, timeout=10)
-    replies = [line.strip() for line in result.stdout.splitlines()
-               if line.strip() in ("sat", "unsat", "unknown")]
+    result = subprocess.run(
+        [solver, "-in", "-smt2", "-T:5"],
+        input=body + "\n" + bindings + "\n(check-sat)\n",
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+    replies = [
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip() in ("sat", "unsat", "unknown")
+    ]
     if result.returncode or len(replies) != 1 or "(error" in result.stdout:
         raise AssertionError("standalone solver did not return one result")
     return replies[0]
@@ -63,24 +71,37 @@ def main():
         if row.get("formula_complete") != "true" or row["result"] == "unknown":
             skipped += 1
             continue
-        assert solve(args.solver, row["formula"]) == row["result"], "recorded solver result did not replay"
+        assert (
+            solve(args.solver, row["formula"]) == row["result"]
+        ), "recorded solver result did not replay"
         formula_checks += 1
         if row["result"] == "sat" and row.get("model_complete") == "true":
-            assert solve(args.solver, row["formula"], assignment(row)) == "sat", "recorded model is not satisfying"
+            assert (
+                solve(args.solver, row["formula"], assignment(row)) == "sat"
+            ), "recorded model is not satisfying"
             model_checks += 1
             if row["role"] == "bitvector-equivalence mismatch":
                 counterexamples.append(row["query_id"])
-            if (not corruption_checked and row["role"] == "MBA coefficient sample"
-                    and int(row["model_constants"]) > 0):
-                assert solve(args.solver, row["formula"], assignment(row, True)) == "unsat", "corrupted model was accepted"
+            if (
+                not corruption_checked
+                and row["role"] == "MBA coefficient sample"
+                and int(row["model_constants"]) > 0
+            ):
+                assert (
+                    solve(args.solver, row["formula"], assignment(row, True)) == "unsat"
+                ), "corrupted model was accepted"
                 corruption_checked = True
     assert formula_checks and model_checks and counterexamples and corruption_checked
     result = {
         "report_sha256": hashlib.sha256(args.report.read_bytes()).hexdigest(),
         "solver_sha256": hashlib.sha256(Path(args.solver).read_bytes()).hexdigest(),
-        "solver_version": subprocess.run([args.solver, "-version"], capture_output=True, text=True, check=True).stdout.strip(),
-        "formula_checks": formula_checks, "model_checks": model_checks,
-        "skipped_incomplete_or_unknown": skipped, "counterexample_queries": counterexamples,
+        "solver_version": subprocess.run(
+            [args.solver, "-version"], capture_output=True, text=True, check=True
+        ).stdout.strip(),
+        "formula_checks": formula_checks,
+        "model_checks": model_checks,
+        "skipped_incomplete_or_unknown": skipped,
+        "counterexample_queries": counterexamples,
         "corrupted_assignment_rejected": corruption_checked,
     }
     args.output.write_text(json.dumps(result, indent=2) + "\n")

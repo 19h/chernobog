@@ -1,4 +1,5 @@
 """Independent decode and scalar/stack checks for recorded native admissions."""
+
 import argparse
 from collections import Counter
 import copy
@@ -22,11 +23,21 @@ def verify_transfer(trace, step):
     encoded = bytes.fromhex(heads[source]["bytes"])
     insn = next(decoder.disasm(encoded, source))
     assert insn.size == len(encoded)
-    states = [s for s in trace["states"] if int(s["sequence"]) == sequence
-              and s["kind"] == "transfer target" and int(s["site"], 0) == target
-              and int(s["source"], 0) == source]
-    edges = [e for e in trace["edges"] if int(e["sequence"]) == sequence
-             and int(e["source"], 0) == source and int(e["target"], 0) == target]
+    states = [
+        s
+        for s in trace["states"]
+        if int(s["sequence"]) == sequence
+        and s["kind"] == "transfer target"
+        and int(s["site"], 0) == target
+        and int(s["source"], 0) == source
+    ]
+    edges = [
+        e
+        for e in trace["edges"]
+        if int(e["sequence"]) == sequence
+        and int(e["source"], 0) == source
+        and int(e["target"], 0) == target
+    ]
     assert len(states) == len(edges) == 1
     registers = {}
     for item in states[0]["registers"].split(";"):
@@ -51,8 +62,11 @@ def verify_transfer(trace, step):
     assert insn.mnemonic in {"jmp", "call"} and len(insn.operands) == 1
     operand = insn.operands[0]
     assert operand.type == CS_OP_REG and operand.size == width
-    names = (["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi"] + [f"r{i}" for i in range(8, 16)]
-             if mode == 64 else ["eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi"])
+    names = (
+        ["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi"] + [f"r{i}" for i in range(8, 16)]
+        if mode == 64
+        else ["eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi"]
+    )
     reg = (0x100 if mode == 64 else 0x200) + names.index(insn.reg_name(operand.reg))
     assert registers[reg][0] == width
     value = registers[reg][1]
@@ -79,10 +93,19 @@ def main():
     digest = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
     report = json.loads(args.report.read_text())
     assert report["passed"] and report["native_walk"]
-    result = {"schema": 1, "passed": False, "source_sha256": digest(__file__),
-              "report_sha256": digest(args.report), "capstone_version": capstone.__version__,
-              "capture_sha256": {}, "transfers": {}, "admitted": 0, "rejected": 0,
-              "separate_run_prefix_differences": {}, "negative_controls": 0}
+    result = {
+        "schema": 1,
+        "passed": False,
+        "source_sha256": digest(__file__),
+        "report_sha256": digest(args.report),
+        "capstone_version": capstone.__version__,
+        "capture_sha256": {},
+        "transfers": {},
+        "admitted": 0,
+        "rejected": 0,
+        "separate_run_prefix_differences": {},
+        "negative_controls": 0,
+    }
     counts, differences, examples = Counter(), Counter(), {}
     for run in report["runs"]:
         path = args.report.parent / run["label"] / "vm_native_inputs.json"

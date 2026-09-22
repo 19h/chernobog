@@ -4,22 +4,47 @@ The interpreter admits MOV, zero extension, byte-addressed stores, the typed
 read intrinsics and NOP. Unsupported microcode fails the audit. Initial states are at the SETcc
 or CMOV boundary after the fixture's XOR; no production evaluator is imported.
 """
+
 import argparse
 import json
 from pathlib import Path
 
-
-CC = dict(zip(("o", "no", "b", "ae", "e", "ne", "be", "a", "s", "ns",
-               "p", "np", "l", "ge", "le", "g"),
-              (0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0)))
+CC = dict(
+    zip(
+        ("o", "no", "b", "ae", "e", "ne", "be", "a", "s", "ns", "p", "np", "l", "ge", "le", "g"),
+        (0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0),
+    )
+)
 NEGATIVE = {"vc_cm_segment", "vc_cm_address", "vc_unknown", "vc_depth", "vc_alternate"}
 DECODE_ONLY = {"vc_cm_segment", "vc_cm_address"}
-MEMORY = {"vc_cm_mem_true", "vc_cm_mem_false", "vc_cm_mem16_true", "vc_cm_mem16_false",
-          "vc_cm_mem32_true", "vc_cm_mem32_false"}
+MEMORY = {
+    "vc_cm_mem_true",
+    "vc_cm_mem_false",
+    "vc_cm_mem16_true",
+    "vc_cm_mem16_false",
+    "vc_cm_mem32_true",
+    "vc_cm_mem32_false",
+}
 ORDER = {"vc_cm_order_true", "vc_cm_order_false"}
 READS = MEMORY | ORDER
-GPRS = ("rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
-        "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15")
+GPRS = (
+    "rax",
+    "rcx",
+    "rdx",
+    "rbx",
+    "rsp",
+    "rbp",
+    "rsi",
+    "rdi",
+    "r8",
+    "r9",
+    "r10",
+    "r11",
+    "r12",
+    "r13",
+    "r14",
+    "r15",
+)
 
 
 def memory_width(name, word):
@@ -37,7 +62,9 @@ def expected(row, word=8):
         return source if CC[suffix[3:]] else destination, memory
     value = name.endswith("_true")
     if name in ORDER:
-        return (0x11223344 if value else destination & 0xFFFFFFFF), (memory & ~0xFFFFFFFF) | 0x55667788
+        return (0x11223344 if value else destination & 0xFFFFFFFF), (
+            memory & ~0xFFFFFFFF
+        ) | 0x55667788
     if name in MEMORY:
         width = memory_width(name, word)
         mask = (1 << (8 * width)) - 1
@@ -84,11 +111,26 @@ class Machine:
         for i in range(8):
             self.memory[self.pointer + i] = (row["memory_before"] >> (8 * i)) & 255
         for i, name in enumerate(self.gprs):
-            self.write(registers[name], word, (0x1728394050607080 * (i + 1) + row["seed"]) & ((1 << 64) - 1))
-        inputs = {"rax": row["destination"], "rcx": 0, "rsi": row["source"],
-                  "rdi": row["destination"], "rdx": self.pointer} if word == 8 else {
-                      "rax": row["destination"], "rcx": self.pointer if "mem" in row["name"] or row["name"] in ORDER else 0,
-                      "rdx": row["source"]}
+            self.write(
+                registers[name],
+                word,
+                (0x1728394050607080 * (i + 1) + row["seed"]) & ((1 << 64) - 1),
+            )
+        inputs = (
+            {
+                "rax": row["destination"],
+                "rcx": 0,
+                "rsi": row["source"],
+                "rdi": row["destination"],
+                "rdx": self.pointer,
+            }
+            if word == 8
+            else {
+                "rax": row["destination"],
+                "rcx": self.pointer if "mem" in row["name"] or row["name"] in ORDER else 0,
+                "rdx": row["source"],
+            }
+        )
         for name, value in inputs.items():
             self.write(registers[name], word, value)
         self.write(registers["ds"], 2, 0)
@@ -132,7 +174,9 @@ class Machine:
     def execute(self, instructions):
         assert instructions, "empty replacement"
         for insn in instructions:
-            code, left, right, destination = (insn[key] for key in ("opcode", "left", "right", "destination"))
+            code, left, right, destination = (
+                insn[key] for key in ("opcode", "left", "right", "destination")
+            )
             if code == self.opcodes["m_nop"]:
                 continue
             if code == self.opcodes["m_call"]:
@@ -164,9 +208,13 @@ class Machine:
         for name in self.gprs[1:] + ("cf", "zf", "sf", "of", "pf", "ds"):
             width = self.word if name in self.gprs else 2 if name == "ds" else 1
             register = self.registers[name]
-            assert all(self.regs[register + i] == self.initial[register + i] for i in range(width)), name
+            assert all(
+                self.regs[register + i] == self.initial[register + i] for i in range(width)
+            ), name
         assert row["flags"] == 0x44, (row["name"], row["seed"], "native status flags")
-        wanted_reads = [(self.pointer, memory_width(row["name"], self.word))] if row["name"] in READS else []
+        wanted_reads = (
+            [(self.pointer, memory_width(row["name"], self.word))] if row["name"] in READS else []
+        )
         assert self.reads == wanted_reads, "unconditional read count/width/address"
 
 
@@ -185,16 +233,27 @@ def verify(on, off, rows):
         baseline = disabled[key]
         assert record["native"] == baseline["native"], "native byte mutation"
         assert not any(baseline["delta"].values()), "disabled filter consumed instruction"
-        should_fold = record["name"] not in NEGATIVE and record["phase"] not in ("patched_unknown", "alternate_entry", "snippet")
+        should_fold = record["name"] not in NEGATIVE and record["phase"] not in (
+            "patched_unknown",
+            "alternate_entry",
+            "snippet",
+        )
         counter = "codegen_cmov" if record["name"].startswith("vc_cm") else "codegen_setcc"
-        assert record["delta"] == {k: int(should_fold and (k == counter or
-                (k == "codegen_cmov_memory" and record["name"] in READS))) for k in baseline["delta"]}, key
+        assert record["delta"] == {
+            k: int(
+                should_fold
+                and (k == counter or (k == "codegen_cmov_memory" and record["name"] in READS))
+            )
+            for k in baseline["delta"]
+        }, key
         if should_fold:
             assert record["snippet"] != baseline["snippet"], "no IR substitution"
             if record["phase"] == "initial":
                 accepted[record["name"]] = record
             else:
-                assert record["snippet"] == enabled[record["name"], "initial"]["snippet"], "restored IR differs"
+                assert (
+                    record["snippet"] == enabled[record["name"], "initial"]["snippet"]
+                ), "restored IR differs"
         else:
             assert record["blocks"] == baseline["blocks"], "rejected case changed IR"
     assert len(accepted) == 48
@@ -206,16 +265,24 @@ def verify(on, off, rows):
     for name, record in accepted.items():
         for seed in range(128):
             row = native[name, seed]
-            assert expected(row, word) == (row["result"], row["memory_after"]), (name, seed, "native oracle")
+            assert expected(row, word) == (row["result"], row["memory_after"]), (
+                name,
+                seed,
+                "native oracle",
+            )
             machine = Machine(row, on["registers"], on["opcodes"], word)
             machine.execute(record["snippet"])
             machine.verify(row)
             comparisons += 1
     # Falsification probes must fail independently of the production filter.
     import copy
+
     mutations = [("vc_ne", "constant"), ("vc_ah_true", "alias")]
     mutations.append(("vc_cm_mem_false", "missing_read"))
-    mutations.extend(("vc_cm_mem_false", effect) for effect in ("pure_read", "invisible_memory", "wrong_read_width"))
+    mutations.extend(
+        ("vc_cm_mem_false", effect)
+        for effect in ("pure_read", "invisible_memory", "wrong_read_width")
+    )
     if word == 8:
         mutations.append(("vc_cm32_false", "upper"))
     for name, mutation in mutations:
@@ -225,7 +292,11 @@ def verify(on, off, rows):
         elif mutation == "upper":
             snippet = [i for i in snippet if i["opcode"] != on["opcodes"]["m_xdu"]]
         elif mutation == "missing_read":
-            snippet = [i for i in snippet if not any(n["opcode"] == on["opcodes"]["m_call"] for n in walk([i]))]
+            snippet = [
+                i
+                for i in snippet
+                if not any(n["opcode"] == on["opcodes"]["m_call"] for n in walk([i]))
+            ]
         elif mutation in ("pure_read", "invisible_memory", "wrong_read_width"):
             call = next(i for i in walk(snippet) if "helper" in i["left"])
             if mutation == "pure_read":
@@ -245,9 +316,14 @@ def verify(on, off, rows):
         except AssertionError:
             caught = True
         assert caught, "audit failed to detect " + mutation
-    return {"captures_per_mode": len(enabled), "accepted_functions": len(accepted),
-            "native_records": len(rows), "effect_comparisons": comparisons, "mutation_controls": len(mutations),
-            "word_bytes": word}
+    return {
+        "captures_per_mode": len(enabled),
+        "accepted_functions": len(accepted),
+        "native_records": len(rows),
+        "effect_comparisons": comparisons,
+        "mutation_controls": len(mutations),
+        "word_bytes": word,
+    }
 
 
 def verify_optimized(report):
@@ -256,8 +332,12 @@ def verify_optimized(report):
     for record in report["records"]:
         if record["phase"] != "initial" or record["name"] not in READS:
             continue
-        calls = [i for b in record["blocks"] for i in walk(b["instructions"])
-                 if i["left"].get("helper", "").startswith("__chernobog_read_")]
+        calls = [
+            i
+            for b in record["blocks"]
+            for i in walk(b["instructions"])
+            if i["left"].get("helper", "").startswith("__chernobog_read_")
+        ]
         width = memory_width(record["name"], word)
         assert len(calls) == 1, "optimized read missing or duplicated"
         call = calls[0]
@@ -290,8 +370,12 @@ def verify_faults(report, rows, _mutation_tests=True):
     assert len(rows) == 144
     keys = {(r["name"], r["seed"], r["available_bytes"]) for r in rows}
     word = report["word_bytes"]
-    assert keys == {(name, seed, available) for name in MEMORY for seed in range(8)
-                    for available in (0, memory_width(name, word) - 1, memory_width(name, word))}
+    assert keys == {
+        (name, seed, available)
+        for name in MEMORY
+        for seed in range(8)
+        for available in (0, memory_width(name, word) - 1, memory_width(name, word))
+    }
     faults = 0
     for row in rows:
         width = memory_width(row["name"], word)
@@ -323,22 +407,35 @@ def verify_faults(report, rows, _mutation_tests=True):
         for name in machine.gprs[1:] + ("cf", "zf", "sf", "of", "pf"):
             size = word if name in machine.gprs else 1
             register = report["registers"][name]
-            assert all(machine.regs[register + i] == machine.initial[register + i] for i in range(size))
+            assert all(
+                machine.regs[register + i] == machine.initial[register + i] for i in range(size)
+            )
     assert faults == 96
     if _mutation_tests:
         import copy
+
         for mutation in ("missing_read", "early_destination_write"):
             altered = copy.deepcopy(report)
-            record = next(r for r in altered["records"] if r["name"] == "vc_cm_mem_false" and r["phase"] == "initial")
+            record = next(
+                r
+                for r in altered["records"]
+                if r["name"] == "vc_cm_mem_false" and r["phase"] == "initial"
+            )
             if mutation == "missing_read":
-                record["snippet"] = [i for i in record["snippet"] if not any(
-                    n["opcode"] == report["opcodes"]["m_call"] for n in walk([i]))]
+                record["snippet"] = [
+                    i
+                    for i in record["snippet"]
+                    if not any(n["opcode"] == report["opcodes"]["m_call"] for n in walk([i]))
+                ]
             else:
                 early = copy.deepcopy(record["snippet"][0])
                 early["opcode"] = report["opcodes"]["m_mov"]
                 early["left"] = {"size": word, "value": 0, "text": "mutation: zero"}
-                early["destination"] = {"size": word, "register": report["registers"]["rax"],
-                                        "text": "mutation: architectural destination"}
+                early["destination"] = {
+                    "size": word,
+                    "register": report["registers"]["rax"],
+                    "text": "mutation: architectural destination",
+                }
                 record["snippet"].insert(0, early)
             caught = False
             try:
@@ -346,8 +443,12 @@ def verify_faults(report, rows, _mutation_tests=True):
             except AssertionError:
                 caught = True
             assert caught, "fault audit failed to detect " + mutation
-    return {"observations": len(rows), "faults": faults, "successful_boundary_reads": len(rows) - faults,
-            "mutation_controls": 2 if _mutation_tests else 0}
+    return {
+        "observations": len(rows),
+        "faults": faults,
+        "successful_boundary_reads": len(rows) - faults,
+        "mutation_controls": 2 if _mutation_tests else 0,
+    }
 
 
 def main():
@@ -356,8 +457,11 @@ def main():
     parser.add_argument("disabled", type=Path)
     parser.add_argument("native", type=Path)
     args = parser.parse_args()
-    result = verify(json.loads(args.enabled.read_text()), json.loads(args.disabled.read_text()),
-                    [json.loads(line) for line in args.native.read_text().splitlines()])
+    result = verify(
+        json.loads(args.enabled.read_text()),
+        json.loads(args.disabled.read_text()),
+        [json.loads(line) for line in args.native.read_text().splitlines()],
+    )
     print(json.dumps({"status": "pass", **result}, sort_keys=True))
 
 

@@ -18,7 +18,6 @@ import ida_loader
 import ida_pro
 import ida_segment
 
-
 EXPECTED_LITERALS = (
     '"WARNING"',
     '"frida"',
@@ -127,16 +126,13 @@ def lifecycle_tick():
             ida_kernwin.jumpto(function_ea)
             state["view"] = ida_hexrays.open_pseudocode(function_ea, 0)
             if state["view"] is None or state["view"].cfunc is None:
-                return finish(
-                    4, "first pseudocode view failed at 0x%X" % function_ea
-                )
+                return finish(4, "first pseudocode view failed at 0x%X" % function_ea)
             state["widget"] = state["view"].ct
             first_missing = missing_literals(state["view"])
             if first_missing:
                 return finish(
                     5,
-                    "runtime literals absent from first view: %s"
-                    % first_missing,
+                    "runtime literals absent from first view: %s" % first_missing,
                 )
             state["baseline"] = image_digest()
             state["idb_hooks"] = MutationHooks()
@@ -172,8 +168,7 @@ def lifecycle_tick():
             if idb_hooks.byte_patches != 0:
                 return finish(
                     10,
-                    "observed %d post-view byte patch notifications"
-                    % idb_hooks.byte_patches,
+                    "observed %d post-view byte patch notifications" % idb_hooks.byte_patches,
                 )
             if idb_hooks.comments != 0 or ctree_hooks.comments != 0:
                 return finish(

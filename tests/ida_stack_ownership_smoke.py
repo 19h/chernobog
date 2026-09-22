@@ -1,4 +1,5 @@
 """Save/reopen ownership for a stack transfer with an immutable pointer."""
+
 import json
 import os
 from pathlib import Path
@@ -57,7 +58,10 @@ try:
     check("exact memory transfer", outgoing(site) == {target})
     if stage == "write":
         ida_bytes.set_cmt(site, (ida_bytes.get_cmt(site, True) or "") + "\n" + user_line, True)
-        check("stack checkpoint saved", ida_loader.save_database(str(run_dir / "stack_ownership.i64"), 0))
+        check(
+            "stack checkpoint saved",
+            ida_loader.save_database(str(run_dir / "stack_ownership.i64"), 0),
+        )
     else:
         log = (run_dir / "ida.log").read_text(errors="replace")
         check("stack receipts recovered", "native ownership receipts;" in log)
@@ -68,14 +72,18 @@ try:
         ida_auto.plan_range(push.ea, site + 1)
         ida_auto.auto_wait()
         check("new immutable target recovered", outgoing(site) == {replacement})
-        check("new proof and user annotation coexist", "exact push/return" in (ida_bytes.get_cmt(site, True) or "")
-              and user_line in (ida_bytes.get_cmt(site, True) or ""))
+        check(
+            "new proof and user annotation coexist",
+            "exact push/return" in (ida_bytes.get_cmt(site, True) or "")
+            and user_line in (ida_bytes.get_cmt(site, True) or ""),
+        )
     status, exit_code = "PASS", 0
 except Exception as error:
     status, exit_code = "FAIL " + repr(error), 2
 
 (run_dir / "stack_ownership.json").write_text(
-    json.dumps({"stage": stage, "records": records, "status": status}, indent=2) + "\n")
+    json.dumps({"stage": stage, "records": records, "status": status}, indent=2) + "\n"
+)
 line = "[chernobog][stack-ownership] " + status
 print(line, flush=True)
 ida_kernwin.msg("%s\n" % line)

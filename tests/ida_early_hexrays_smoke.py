@@ -50,8 +50,7 @@ try:
         if "[chernobog][ida-analysis] call+pop" not in comment:
             finish(
                 5,
-                "native call/pop marker absent at 0x%X: %r"
-                % (call_ea, comment),
+                "native call/pop marker absent at 0x%X: %r" % (call_ea, comment),
             )
 
     marked_gadget = False
@@ -60,10 +59,7 @@ try:
     valid = xref.first_from(0x403002, ida_xref.XREF_ALL)
     while valid:
         observed_xrefs.append((xref.to, xref.type, xref.iscode))
-        if (
-            xref.to == 0x40300A
-            and (xref.type & ida_xref.XREF_MASK) == ida_xref.fl_JN
-        ):
+        if xref.to == 0x40300A and (xref.type & ida_xref.XREF_MASK) == ida_xref.fl_JN:
             marked_gadget = True
             break
         valid = xref.next_from()
@@ -91,10 +87,7 @@ try:
     xref = ida_xref.xrefblk_t()
     valid = xref.first_from(0x40300E, ida_xref.XREF_ALL)
     while valid:
-        if (
-            xref.to == 0x403014
-            and (xref.type & ida_xref.XREF_MASK) == ida_xref.fl_JN
-        ):
+        if xref.to == 0x403014 and (xref.type & ida_xref.XREF_MASK) == ida_xref.fl_JN:
             second_jump = True
             break
         valid = xref.next_from()
@@ -104,23 +97,18 @@ try:
         if not ida_funcs.function_contains(function.start_ea, address):
             finish(6, "0x%X is outside function 0x%X" % (address, function.start_ea))
 
-    cfunc = ida_hexrays.decompile(
-        function.start_ea, None, ida_hexrays.DECOMP_NO_CACHE
-    )
+    cfunc = ida_hexrays.decompile(function.start_ea, None, ida_hexrays.DECOMP_NO_CACHE)
     if cfunc is None:
         finish(7, "decompilation failed")
     first = str(cfunc)
 
-    second_cfunc = ida_hexrays.decompile(
-        function.start_ea, None, ida_hexrays.DECOMP_NO_CACHE
-    )
+    second_cfunc = ida_hexrays.decompile(function.start_ea, None, ida_hexrays.DECOMP_NO_CACHE)
     if second_cfunc is None or str(second_cfunc) != first:
         finish(8, "no-cache decompilation was not stable")
 
     finish(
         0,
-        "PASS function=0x%X pseudocode_chars=%d"
-        % (function.start_ea, len(first)),
+        "PASS function=0x%X pseudocode_chars=%d" % (function.start_ea, len(first)),
     )
 except BaseException as error:
     finish(9, "exception: %r" % (error,))

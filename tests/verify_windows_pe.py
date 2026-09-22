@@ -6,7 +6,6 @@ import struct
 import sys
 from pathlib import Path
 
-
 MACHINES = {
     "amd64": 0x8664,
     "arm64": 0xAA64,
@@ -44,7 +43,7 @@ class PEImage:
             raise PEError("missing DOS header")
 
         self.pe_offset = unpack_from("<I", self.image, 0x3C)[0]
-        if self.image[self.pe_offset:self.pe_offset + 4] != b"PE\0\0":
+        if self.image[self.pe_offset : self.pe_offset + 4] != b"PE\0\0":
             raise PEError("missing PE signature")
 
         coff = self.pe_offset + 4
@@ -65,23 +64,20 @@ class PEImage:
         else:
             raise PEError("unsupported optional-header magic 0x%X" % magic)
 
-        directory_count = unpack_from(
-            "<I", self.image, directory_count_offset)[0]
+        directory_count = unpack_from("<I", self.image, directory_count_offset)[0]
         if directory_count < 2:
             raise PEError("PE has no import directory")
-        self.export_rva, self.export_size = unpack_from(
-            "<II", self.image, directory_offset)
-        self.import_rva, self.import_size = unpack_from(
-            "<II", self.image, directory_offset + 8)
-        self.size_of_headers = unpack_from(
-            "<I", self.image, self.optional_offset + 60)[0]
+        self.export_rva, self.export_size = unpack_from("<II", self.image, directory_offset)
+        self.import_rva, self.import_size = unpack_from("<II", self.image, directory_offset + 8)
+        self.size_of_headers = unpack_from("<I", self.image, self.optional_offset + 60)[0]
 
         section_offset = self.optional_offset + self.optional_size
         self.sections = []
         for index in range(self.section_count):
             current = section_offset + index * 40
             virtual_size, virtual_address, raw_size, raw_offset = unpack_from(
-                "<IIII", self.image, current + 8)
+                "<IIII", self.image, current + 8
+            )
             self.sections.append(
                 (virtual_address, max(virtual_size, raw_size), raw_offset, raw_size)
             )
@@ -104,7 +100,8 @@ class PEImage:
         descriptor = self.rva_offset(self.import_rva)
         while True:
             original_thunk, timestamp, forwarder, name_rva, first_thunk = unpack_from(
-                "<IIIII", self.image, descriptor)
+                "<IIIII", self.image, descriptor
+            )
             if not any((original_thunk, timestamp, forwarder, name_rva, first_thunk)):
                 break
             dll = c_string(self.image, self.rva_offset(name_rva)).lower()
@@ -153,10 +150,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("image", type=Path)
     parser.add_argument("--machine", choices=sorted(MACHINES), required=True)
-    parser.add_argument("--require-import", action="append", type=import_spec,
-                        default=[])
-    parser.add_argument("--forbid-import", action="append", type=import_spec,
-                        default=[])
+    parser.add_argument("--require-import", action="append", type=import_spec, default=[])
+    parser.add_argument("--forbid-import", action="append", type=import_spec, default=[])
     parser.add_argument("--require-export", action="append", default=[])
     arguments = parser.parse_args()
 

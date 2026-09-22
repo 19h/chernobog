@@ -37,14 +37,11 @@ try:
             )
             if cfunc is None:
                 description = failure.desc()
-                record = (
-                    "0x%X(code=%d,ea=0x%X,%s)"
-                    % (
-                        function_ea,
-                        failure.code,
-                        failure.errea,
-                        description,
-                    )
+                record = "0x%X(code=%d,ea=0x%X,%s)" % (
+                    function_ea,
+                    failure.code,
+                    failure.errea,
+                    description,
                 )
                 failures.append(record)
                 normalized = description.upper()

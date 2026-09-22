@@ -22,7 +22,6 @@ import ida_nalt
 import ida_pro
 import ida_xref
 
-
 TARGET_EA = int(os.environ.get("CHERNOBOG_SMOKE_EA", "0x82AF0"), 0)
 DISPATCH_EA = int(os.environ.get("CHERNOBOG_DISPATCH_EA", "0x82C65"), 0)
 
@@ -42,15 +41,20 @@ def block_record(block):
     instructions = []
     instruction = block.head
     while instruction is not None:
-        instructions.append({
-            "ea": instruction.ea,
-            "opcode": instruction.opcode,
-            "text": instruction.dstr(),
-        })
+        instructions.append(
+            {
+                "ea": instruction.ea,
+                "opcode": instruction.opcode,
+                "text": instruction.dstr(),
+            }
+        )
         instruction = instruction.next
     return {
-        "serial": block.serial, "start": block.start, "end": block.end,
-        "type": block.type, "pred": list(block.predset),
+        "serial": block.serial,
+        "start": block.start,
+        "end": block.end,
+        "type": block.type,
+        "pred": list(block.predset),
         "succ": [block.succ(index) for index in range(block.nsucc())],
         "instructions": instructions,
     }
@@ -70,8 +74,11 @@ try:
     for label, maturity in maturities:
         failure = ida_hexrays.hexrays_failure_t()
         mba = ida_hexrays.gen_microcode(
-            ida_hexrays.mba_ranges_t(function), failure, None,
-            ida_hexrays.DECOMP_NO_CACHE, maturity,
+            ida_hexrays.mba_ranges_t(function),
+            failure,
+            None,
+            ida_hexrays.DECOMP_NO_CACHE,
+            maturity,
         )
         if mba is None:
             finish(4, "%s generation failed: %s" % (label, failure.desc()))
@@ -95,34 +102,56 @@ try:
         if metadata is not None:
             decoded = ida_xref.calc_switch_cases(switch.tail.ea, metadata)
             native_cases = [
-                {"values": [int(value) for value in decoded.cases[index]],
-                 "target": int(target)}
+                {"values": [int(value) for value in decoded.cases[index]], "target": int(target)}
                 for index, target in enumerate(decoded.targets)
             ]
         record = {
-            "maturity": label, "qty": mba.qty,
-            "dispatcher": dispatch.serial, "switch": switch.serial,
+            "maturity": label,
+            "qty": mba.qty,
+            "dispatcher": dispatch.serial,
+            "switch": switch.serial,
             "tail_is_jtbl": switch.tail.opcode == ida_hexrays.m_jtbl,
             "tail_is_ijmp": switch.tail.opcode == ida_hexrays.m_ijmp,
             "native_cases": native_cases,
             "native_lowcase": int(metadata.get_lowcase()) if metadata is not None else None,
-            "micro_cases": [
-                {"values": [int(value) for value in switch.tail.r.c.values[index]],
-                 "target_block": int(target)}
-                for index, target in enumerate(switch.tail.r.c.targets)
-            ] if switch.tail.opcode == ida_hexrays.m_jtbl else [],
-            "blocks": [block_record(mba.get_mblock(index)) for index in sorted(
-                set(range(mba.qty if os.environ.get("CHERNOBOG_CFF_DUMP_ALL") == "1"
-                          else min(16, mba.qty)))
-                | {dispatch.serial, switch.serial}
-                | set(dispatch.succ(index) for index in range(dispatch.nsucc()))
-            )],
+            "micro_cases": (
+                [
+                    {
+                        "values": [int(value) for value in switch.tail.r.c.values[index]],
+                        "target_block": int(target),
+                    }
+                    for index, target in enumerate(switch.tail.r.c.targets)
+                ]
+                if switch.tail.opcode == ida_hexrays.m_jtbl
+                else []
+            ),
+            "blocks": [
+                block_record(mba.get_mblock(index))
+                for index in sorted(
+                    set(
+                        range(
+                            mba.qty
+                            if os.environ.get("CHERNOBOG_CFF_DUMP_ALL") == "1"
+                            else min(16, mba.qty)
+                        )
+                    )
+                    | {dispatch.serial, switch.serial}
+                    | set(dispatch.succ(index) for index in range(dispatch.nsucc()))
+                )
+            ],
         }
         records.append(record)
-        emit("maturity=%s qty=%d dispatch=%d switch=%d successors=%r switch_tail=%s"
-             % (label, mba.qty, dispatch.serial, switch.serial,
+        emit(
+            "maturity=%s qty=%d dispatch=%d switch=%d successors=%r switch_tail=%s"
+            % (
+                label,
+                mba.qty,
+                dispatch.serial,
+                switch.serial,
                 [dispatch.succ(index) for index in range(dispatch.nsucc())],
-                switch.tail.dstr()))
+                switch.tail.dstr(),
+            )
+        )
     destination = Path(os.environ["IDAUSR"]).parent / "cff_dispatcher.json"
     destination.write_text(json.dumps(records, indent=2) + "\n", encoding="utf-8")
     if os.environ.get("CHERNOBOG_CFF_REQUIRE_SWITCH") == "1":
@@ -136,19 +165,21 @@ try:
         mask = (1 << (8 * switch.tail.l.size)) - 1
         native_mapping = {
             (value - original["native_lowcase"]) & mask: case["target"]
-            for case in original["native_cases"] for value in case["values"]
+            for case in original["native_cases"]
+            for value in case["values"]
         }
         micro_mapping = {
             value & mask: case["target_block"]
-            for case in original["micro_cases"] for value in case["values"]
+            for case in original["micro_cases"]
+            for value in case["values"]
         }
         if set(native_mapping) != set(micro_mapping):
             finish(8, "native/microcode switch case keys differ")
         for value, target_ea in native_mapping.items():
             target = mba.get_mblock(micro_mapping[value])
-            if (not target.start <= target_ea < target.end
-                    or micro_mapping[value] not in [switch.succ(index)
-                                                   for index in range(switch.nsucc())]):
+            if not target.start <= target_ea < target.end or micro_mapping[value] not in [
+                switch.succ(index) for index in range(switch.nsucc())
+            ]:
                 finish(9, "native/microcode target differs for case %s" % value)
     finish(0, "PASS output=%s" % destination)
 except BaseException as error:

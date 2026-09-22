@@ -15,7 +15,6 @@ import ida_nalt
 import ida_pro
 import ida_xref
 
-
 TARGET_EA = int(os.environ.get("CHERNOBOG_SMOKE_EA", "0x82AF0"), 0)
 DISPATCH_EA = int(os.environ.get("CHERNOBOG_DISPATCH_EA", "0x82C65"), 0)
 
@@ -80,8 +79,7 @@ try:
     cases_and_targets = ida_xref.calc_switch_cases(switch_ea, switch_info)
     emit(
         "mba=%d dispatcher=blk%d switch=blk%d switch_ea=%X api_type=%s"
-        % (mba.qty, dispatch.serial, switch.serial, switch_ea,
-           type(cases_and_targets).__name__)
+        % (mba.qty, dispatch.serial, switch.serial, switch_ea, type(cases_and_targets).__name__)
     )
     emit("api_repr=%r" % (cases_and_targets,))
     emit("api_dir=%r" % (dir(cases_and_targets),))
@@ -103,8 +101,12 @@ try:
                 break
         emit(
             "case index=%d values=%s target_ea=%X target=blk%d"
-            % (index, ",".join("0x%X" % (value & 0xFFFFFFFFFFFFFFFF) for value in values),
-               target_ea, target_block)
+            % (
+                index,
+                ",".join("0x%X" % (value & 0xFFFFFFFFFFFFFFFF) for value in values),
+                target_ea,
+                target_block,
+            )
         )
 
     # Shortest-path provenance from every decoded switch target to the
@@ -224,9 +226,7 @@ try:
                 if successor == dispatch.serial:
                     completed += 1
                     continue
-                if successor == switch.serial or (
-                    successor in target_set and successor != origin
-                ):
+                if successor == switch.serial or (successor in target_set and successor != origin):
                     continue
                 if successor in route:
                     truncated = True
@@ -240,7 +240,12 @@ try:
         % (
             sum(path_counts.values()),
             max(path_counts.values()) if path_counts else 0,
-            sorted({count: list(path_counts.values()).count(count) for count in set(path_counts.values())}.items()),
+            sorted(
+                {
+                    count: list(path_counts.values()).count(count)
+                    for count in set(path_counts.values())
+                }.items()
+            ),
             ",".join("blk%d" % origin for origin in truncated_origins),
         )
     )

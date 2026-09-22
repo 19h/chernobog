@@ -18,7 +18,6 @@ import ida_lines
 import ida_pro
 import idautils
 
-
 TARGET_EA = 0x82AF0
 DECOMPILE_RUNS = 3
 
@@ -33,9 +32,7 @@ def finish(code, message):
 def decompile_no_cache():
     started = time.monotonic()
     failure = ida_hexrays.hexrays_failure_t()
-    cfunc = ida_hexrays.decompile_function(
-        TARGET_EA, failure, ida_hexrays.DECOMP_NO_CACHE
-    )
+    cfunc = ida_hexrays.decompile_function(TARGET_EA, failure, ida_hexrays.DECOMP_NO_CACHE)
     elapsed = time.monotonic() - started
     if cfunc is None:
         finish(
@@ -43,9 +40,7 @@ def decompile_no_cache():
             "decompilation failed after %.3f s: code=%s description=%s"
             % (elapsed, failure.code, failure.desc()),
         )
-    pseudocode = "\n".join(
-        ida_lines.tag_remove(line.line) for line in cfunc.get_pseudocode()
-    )
+    pseudocode = "\n".join(ida_lines.tag_remove(line.line) for line in cfunc.get_pseudocode())
     return elapsed, pseudocode
 
 
@@ -55,8 +50,9 @@ def native_identity():
         contents = ida_bytes.get_bytes(first, last - first)
         if contents is None or len(contents) != last - first:
             finish(3, "native function chunk is not fully readable")
-        records.append({"start": int(first), "end": int(last),
-                        "sha256": hashlib.sha256(contents).hexdigest()})
+        records.append(
+            {"start": int(first), "end": int(last), "sha256": hashlib.sha256(contents).hexdigest()}
+        )
     if not records:
         finish(3, "native function has no chunks")
     return records
@@ -80,8 +76,7 @@ try:
 
     pseudocode = pseudocode_runs[-1]
     native_after = native_identity()
-    run_directory = (Path(os.environ["IDAUSR"]).parent
-                     if "IDAUSR" in os.environ else Path.cwd())
+    run_directory = Path(os.environ["IDAUSR"]).parent if "IDAUSR" in os.environ else Path.cwd()
     output_path = os.environ.get(
         "CHERNOBOG_PSEUDOCODE_OUT", str(run_directory / "cff_pseudocode.txt")
     )
@@ -94,16 +89,20 @@ try:
     # Retain all observations before assertions, including rejected baseline
     # runs. These intervals measure decompilation, not native execution.
     (run_directory / "cff_decompilation.json").write_text(
-        json.dumps({
-            "function_ea": TARGET_EA,
-            "elapsed_seconds": elapsed_runs,
-            "pseudocode_lines": [len(text.splitlines())
-                                 for text in pseudocode_runs],
-            "case_labels": [text.count("case ") for text in pseudocode_runs],
-            "native_before": native_before,
-            "native_after": native_after,
-            "native_unchanged": native_before == native_after,
-        }, indent=2) + "\n", encoding="utf-8"
+        json.dumps(
+            {
+                "function_ea": TARGET_EA,
+                "elapsed_seconds": elapsed_runs,
+                "pseudocode_lines": [len(text.splitlines()) for text in pseudocode_runs],
+                "case_labels": [text.count("case ") for text in pseudocode_runs],
+                "native_before": native_before,
+                "native_after": native_after,
+                "native_unchanged": native_before == native_after,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
     )
     if native_before != native_after:
         finish(8, "native function bytes changed during decompilation")
@@ -114,10 +113,7 @@ try:
     run_metrics = []
     for run_index, run_pseudocode in enumerate(pseudocode_runs, 1):
         case_labels = run_pseudocode.count("case ")
-        surviving_markers = [
-            marker for marker in dispatcher_markers
-            if marker in run_pseudocode
-        ]
+        surviving_markers = [marker for marker in dispatcher_markers if marker in run_pseudocode]
         if surviving_markers or case_labels >= 200:
             finish(
                 5,
@@ -135,9 +131,7 @@ try:
             run_pseudocode,
             flags=re.DOTALL,
         )
-        non_neutralized = [
-            call for call in resolver_calls if "a2: 0" not in call
-        ]
+        non_neutralized = [call for call in resolver_calls if "a2: 0" not in call]
         if len(resolver_calls) >= 8 and non_neutralized:
             finish(
                 6,
@@ -172,7 +166,8 @@ try:
         )
         first_difference = next(
             (
-                line for line in differences
+                line
+                for line in differences
                 if (line.startswith("+") or line.startswith("-"))
                 and not line.startswith("+++")
                 and not line.startswith("---")

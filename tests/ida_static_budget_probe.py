@@ -53,13 +53,20 @@ try:
         if not ok:
             finish(6, "exploration invocation failed")
     output = Path(os.environ["IDAUSR"]).parent / "static_budget.json"
-    output.write_text(json.dumps({
-        "schema_version": 1,
-        "function_start": address,
-        "fixture_heads": heads,
-        "exploration_elapsed_ns": durations,
-        "static_limit": int(os.environ["CHERNOBOG_RAX_MAX_STATIC_INSNS"], 0),
-    }, indent=2) + "\n", encoding="utf-8")
+    output.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "function_start": address,
+                "fixture_heads": heads,
+                "exploration_elapsed_ns": durations,
+                "static_limit": int(os.environ["CHERNOBOG_RAX_MAX_STATIC_INSNS"], 0),
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     finish(0, "PASS heads=%d elapsed_ns=%r" % (heads, durations))
 except BaseException as error:
     finish(99, "exception: %r" % error)

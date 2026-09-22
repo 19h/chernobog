@@ -1,4 +1,5 @@
 """Compare captured native instruction spans with Capstone and file-backed bytes."""
+
 import argparse
 import hashlib
 import json
@@ -28,7 +29,9 @@ def segments(data):
         size, count = struct.unpack_from("<HH", data, 42)
         assert size >= 32
         for index in range(count):
-            kind, file_offset, va, _, file_size = struct.unpack_from("<IIIII", data, offset + index * size)
+            kind, file_offset, va, _, file_size = struct.unpack_from(
+                "<IIIII", data, offset + index * size
+            )
             if kind == 1:
                 result.append((va, file_offset, file_size))
     assert all(file_offset + size <= len(data) for _, file_offset, size in result)
@@ -41,18 +44,33 @@ def main():
     parser.add_argument("--corpus-report", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--expect-size-mismatches", type=int, default=0)
-    parser.add_argument("--capture-artifact", choices=("vm_native_traces.json", "vm_native_inputs.json", "region_temporal.json"),
-                        default="vm_native_traces.json")
+    parser.add_argument(
+        "--capture-artifact",
+        choices=("vm_native_traces.json", "vm_native_inputs.json", "region_temporal.json"),
+        default="vm_native_traces.json",
+    )
     args = parser.parse_args()
     report = json.loads(args.report.read_text())
     corpus = json.loads(args.corpus_report.read_text())
     digest = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
     assert report["passed"] and report["corpus_report_sha256"] == digest(args.corpus_report)
-    result = {"schema": 1, "capstone_version": capstone.__version__, "report_sha256": digest(args.report),
-              "source_sha256": digest(__file__), "instruction_records": 0, "size_mismatches": [],
-              "linear_successor_mismatches": [], "byte_mismatches": [], "undefined_bswap16_frontiers": 0,
-              "capture_sha256": {}, "passed": False}
-    expected_inputs = {"original": corpus["original_sha256"], **{p["label"]: p["sha256"] for p in corpus["protection"]}}
+    result = {
+        "schema": 1,
+        "capstone_version": capstone.__version__,
+        "report_sha256": digest(args.report),
+        "source_sha256": digest(__file__),
+        "instruction_records": 0,
+        "size_mismatches": [],
+        "linear_successor_mismatches": [],
+        "byte_mismatches": [],
+        "undefined_bswap16_frontiers": 0,
+        "capture_sha256": {},
+        "passed": False,
+    }
+    expected_inputs = {
+        "original": corpus["original_sha256"],
+        **{p["label"]: p["sha256"] for p in corpus["protection"]},
+    }
     for run in report["runs"]:
         label = run["label"]
         binary = args.corpus_report.parent / label
@@ -61,8 +79,11 @@ def main():
         spans = segments(raw)
 
         def at(address, count):
-            matches = [raw[offset + address - va:offset + address - va + count]
-                       for va, offset, size in spans if va <= address and address + count <= va + size]
+            matches = [
+                raw[offset + address - va : offset + address - va + count]
+                for va, offset, size in spans
+                if va <= address and address + count <= va + size
+            ]
             assert len(matches) == 1
             return matches[0]
 
@@ -73,7 +94,9 @@ def main():
         if args.capture_artifact == "region_temporal.json":
             traces = [(str(index), trace) for index, trace in enumerate(capture["traces"])]
         elif args.capture_artifact == "vm_native_inputs.json":
-            traces = [(row["name"] + ":" + str(row["case"]), row["trace"]) for row in capture["captures"]]
+            traces = [
+                (row["name"] + ":" + str(row["case"]), row["trace"]) for row in capture["captures"]
+            ]
         else:
             traces = [(name, trace) for name, trace in capture["captures"].items() if ":" in name]
         for name, trace in traces:
@@ -88,28 +111,76 @@ def main():
                     result["byte_mismatches"].append({"case": case, "site": hex(ea)})
                 instruction = next(cs.disasm(encoded, ea), None)
                 if instruction is None or instruction.size != size or len(encoded) != size:
-                    result["size_mismatches"].append({"case": case, "site": hex(ea), "bytes": encoded.hex(),
-                        "captured_size": size, "oracle_size": None if instruction is None else instruction.size})
-            successors = [(int(a["site"], 0), int(b["site"], 0))
-                          for a, b in zip(trace["execution"], trace["execution"][1:])]
+                    result["size_mismatches"].append(
+                        {
+                            "case": case,
+                            "site": hex(ea),
+                            "bytes": encoded.hex(),
+                            "captured_size": size,
+                            "oracle_size": None if instruction is None else instruction.size,
+                        }
+                    )
+            successors = [
+                (int(a["site"], 0), int(b["site"], 0))
+                for a, b in zip(trace["execution"], trace["execution"][1:])
+            ]
             if trace["region_boundary"]:
-                successors.append((int(trace["boundary_source"], 0), int(trace["boundary_target"], 0)))
+                successors.append(
+                    (int(trace["boundary_source"], 0), int(trace["boundary_target"], 0))
+                )
                 source = heads.get(int(trace["boundary_source"], 0))
                 if source and int(source["flow"]) == 0:
                     target = int(trace["boundary_target"], 0)
                     instruction = next(cs.disasm(at(target, 15), target), None)
-                    if instruction and instruction.mnemonic == "bswap" and instruction.op_str in {
-                            "ax", "cx", "dx", "bx", "sp", "bp", "si", "di", *[f"r{i}w" for i in range(8, 16)]}:
+                    if (
+                        instruction
+                        and instruction.mnemonic == "bswap"
+                        and instruction.op_str
+                        in {
+                            "ax",
+                            "cx",
+                            "dx",
+                            "bx",
+                            "sp",
+                            "bp",
+                            "si",
+                            "di",
+                            *[f"r{i}w" for i in range(8, 16)],
+                        }
+                    ):
                         result["undefined_bswap16_frontiers"] += 1
             for source, target in successors:
-                if source in heads and int(heads[source]["flow"]) == 0 and target != source + int(heads[source]["size"]):
-                    result["linear_successor_mismatches"].append({"case": case, "source": hex(source), "target": hex(target)})
-    result["passed"] = (not result["byte_mismatches"] and result["instruction_records"] > 0
-                        and len(result["size_mismatches"]) == args.expect_size_mismatches
-                        and len(result["linear_successor_mismatches"]) == args.expect_size_mismatches)
+                if (
+                    source in heads
+                    and int(heads[source]["flow"]) == 0
+                    and target != source + int(heads[source]["size"])
+                ):
+                    result["linear_successor_mismatches"].append(
+                        {"case": case, "source": hex(source), "target": hex(target)}
+                    )
+    result["passed"] = (
+        not result["byte_mismatches"]
+        and result["instruction_records"] > 0
+        and len(result["size_mismatches"]) == args.expect_size_mismatches
+        and len(result["linear_successor_mismatches"]) == args.expect_size_mismatches
+    )
     args.output.write_text(json.dumps(result, indent=2) + "\n")
-    print(json.dumps({k: v for k, v in result.items() if k not in {
-        "capture_sha256", "size_mismatches", "linear_successor_mismatches", "byte_mismatches"}}, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                k: v
+                for k, v in result.items()
+                if k
+                not in {
+                    "capture_sha256",
+                    "size_mismatches",
+                    "linear_successor_mismatches",
+                    "byte_mismatches",
+                }
+            },
+            sort_keys=True,
+        )
+    )
     return 0 if result["passed"] else 1
 
 

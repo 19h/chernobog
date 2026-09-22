@@ -1,4 +1,5 @@
 """Live IDA invalidation controls for native flag and stack-transfer evidence."""
+
 import json
 import os
 from pathlib import Path
@@ -81,8 +82,10 @@ def flag_checks():
     source = address("vf_unknown_input")
     ida_xref.add_cref(source, site, ida_xref.fl_JN | ida_xref.XREF_USER)
     settle(site)
-    check("alternate entry revokes proof", outgoing(site) == {target, fall}
-          and "locally proven" not in comment(site))
+    check(
+        "alternate entry revokes proof",
+        outgoing(site) == {target, fall} and "locally proven" not in comment(site),
+    )
     ida_xref.del_cref(source, site, False)
     settle(site)
     check("removed alternate entry permits proof", outgoing(site) == {target})
@@ -92,15 +95,19 @@ def flag_checks():
     ida_bytes.patch_byte(root, 0x85)
     check("externally reasserted edge preserved", target in outgoing(site))
     settle(root, site)
-    check("user edge survives unknown proof", outgoing(site) == {target, fall}
-          and comment(site) == user_line)
+    check(
+        "user edge survives unknown proof",
+        outgoing(site) == {target, fall} and comment(site) == user_line,
+    )
     ida_bytes.patch_bytes(root, original)
     settle(root, site)
     owned_line = next(line for line in comment(site).splitlines() if "locally proven" in line)
     ida_bytes.set_cmt(site, comment(site) + "\n\n" + owned_line, True)
     ida_bytes.patch_byte(root, 0x85)
-    check("one user copy of an identical comment survives",
-          comment(site).splitlines().count(owned_line) == 1 and user_line in comment(site))
+    check(
+        "one user copy of an identical comment survives",
+        comment(site).splitlines().count(owned_line) == 1 and user_line in comment(site),
+    )
 
 
 def stack_checks():
@@ -127,8 +134,10 @@ def stack_checks():
     ida_bytes.patch_qword(pointer, replacement)
     check("pointer edit revokes old edge synchronously", target not in outgoing(site))
     settle(push.ea, site)
-    check("new pointer and independent provider coexist", other.added
-          and outgoing(site) == {replacement, external_target})
+    check(
+        "new pointer and independent provider coexist",
+        other.added and outgoing(site) == {replacement, external_target},
+    )
     other.unhook()
     ida_bytes.patch_bytes(pointer, original)
     check("other provider edge survives revocation", external_target in outgoing(site))
@@ -142,8 +151,10 @@ def stack_checks():
     ida_segment.update_segm(segment)
     check("writable pointer revokes proof synchronously", target not in outgoing(site))
     settle(push.ea, site)
-    check("writable memory remains unresolved", not outgoing(site)
-          and "exact push/return" not in comment(site))
+    check(
+        "writable memory remains unresolved",
+        not outgoing(site) and "exact push/return" not in comment(site),
+    )
     segment.perm = original_permissions
     ida_segment.update_segm(segment)
     settle(push.ea, site)
@@ -152,8 +163,10 @@ def stack_checks():
     source = address("vt_unknown_reg")
     ida_xref.add_dref(source, pointer, ida_xref.dr_W | ida_xref.XREF_USER)
     settle(push.ea, site)
-    check("write reference invalidates immutable proof", not outgoing(site)
-          and "exact push/return" not in comment(site))
+    check(
+        "write reference invalidates immutable proof",
+        not outgoing(site) and "exact push/return" not in comment(site),
+    )
 
 
 try:
@@ -168,7 +181,8 @@ except Exception as error:
     status, exit_code = "FAIL " + repr(error), 2
 
 (Path(os.environ["IDAUSR"]).parent / "native_proof_lifecycle.json").write_text(
-    json.dumps({"records": records, "status": status}, indent=2) + "\n")
+    json.dumps({"records": records, "status": status}, indent=2) + "\n"
+)
 line = "[chernobog][native-proof-lifecycle] " + status
 print(line, flush=True)
 ida_kernwin.msg("%s\n" % line)

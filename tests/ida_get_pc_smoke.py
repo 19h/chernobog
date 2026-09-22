@@ -1,4 +1,5 @@
 """Decode, consume and invalidate bounded native get-PC facts in IDA."""
+
 import json
 import os
 from pathlib import Path
@@ -91,12 +92,26 @@ def check(label, condition, **evidence):
 
 def annotation(name, expected):
     text = comment(address(name))
-    check(name + " materialization", ("stack address materialization" in text) == expected,
-          comment=text)
+    check(
+        name + " materialization",
+        ("stack address materialization" in text) == expected,
+        comment=text,
+    )
     if expected:
-        check(name + " retained effects", all(token in text for token in (
-            "width=64 bits", "net SP delta=-8 bytes", "flags preserved",
-            "saved register restored", "locked XCHG retained")), comment=text)
+        check(
+            name + " retained effects",
+            all(
+                token in text
+                for token in (
+                    "width=64 bits",
+                    "net SP delta=-8 bytes",
+                    "flags preserved",
+                    "saved register restored",
+                    "locked XCHG retained",
+                )
+            ),
+            comment=text,
+        )
 
 
 try:
@@ -105,31 +120,65 @@ try:
     for name in ("gp_sign8", "gp_sign32"):
         text = comment(address(name + "_set"))
         check(name + " sign extension reaches SETcc", "SETcc byte result 1" in text, comment=text)
-    for name in ("gp_materialize", "gp_renamed", "gp_restore_push", "gp_read",
-                 "gp_alias", "gp_spwrite"):
+    for name in (
+        "gp_materialize",
+        "gp_renamed",
+        "gp_restore_push",
+        "gp_read",
+        "gp_alias",
+        "gp_spwrite",
+    ):
         annotation(name, True)
-    for name in ("gp_wrongreg", "gp_offset", "gp_indexed", "gp_segment",
-                 "gp_width", "gp_partial", "gp_stackreg"):
+    for name in (
+        "gp_wrongreg",
+        "gp_offset",
+        "gp_indexed",
+        "gp_segment",
+        "gp_width",
+        "gp_partial",
+        "gp_stackreg",
+    ):
         annotation(name, False)
     for name in ("gp_materialize", "gp_renamed", "gp_restore", "gp_read"):
         site = address(name + "_ret")
-        check(name + " consumer target", jumps(site) == {target}, targets=sorted(jumps(site)),
-              comment=comment(site))
+        check(
+            name + " consumer target",
+            jumps(site) == {target},
+            targets=sorted(jumps(site)),
+            comment=comment(site),
+        )
     for name in ("gp_alias", "gp_spwrite"):
         site = address(name + "_ret")
-        check(name + " consumer unknown", not jumps(site) and "unresolved target" in comment(site),
-              targets=sorted(jumps(site)), comment=comment(site))
+        check(
+            name + " consumer unknown",
+            not jumps(site) and "unresolved target" in comment(site),
+            targets=sorted(jumps(site)),
+            comment=comment(site),
+        )
     for name in ("gp_call", "gp_adjust", "gp_next"):
         site = address(name)
         check(name + " call-context fact", "get-PC idiom" in comment(site), comment=comment(site))
-        check(name + " exact entry", jumps(site) == {address(name + "_entry")},
-              targets=sorted(jumps(site)))
+        check(
+            name + " exact entry",
+            jumps(site) == {address(name + "_entry")},
+            targets=sorted(jumps(site)),
+        )
     for name in ("gp_call", "gp_adjust"):
         site = address(name + "_ret")
-        check(name + " exact return", jumps(site) == {address(name + "_resume")},
-              targets=sorted(jumps(site)), comment=comment(site))
-    for name in ("gp_ret_extra", "gp_ret_far", "gp_ret_width", "gp_popsp",
-                 "gp_call_alias", "gp_call_xchgsp"):
+        check(
+            name + " exact return",
+            jumps(site) == {address(name + "_resume")},
+            targets=sorted(jumps(site)),
+            comment=comment(site),
+        )
+    for name in (
+        "gp_ret_extra",
+        "gp_ret_far",
+        "gp_ret_width",
+        "gp_popsp",
+        "gp_call_alias",
+        "gp_call_xchgsp",
+    ):
         text = comment(address(name))
         check(name + " rejected", "get-PC idiom" not in text, comment=text)
     check("target function retained", ida_funcs.get_func_start(target) == target)
@@ -139,13 +188,23 @@ try:
     original = ida_bytes.get_bytes(swap, 4)
     check("fixture exchange bytes", original == b"\x48\x87\x04\x24")
     ida_bytes.patch_bytes(swap, b"\x48\x87\x0c\x24")  # RCX replaces RAX.
-    check("support edit revokes annotation synchronously", "stack address materialization" not in comment(root))
+    check(
+        "support edit revokes annotation synchronously",
+        "stack address materialization" not in comment(root),
+    )
     settle(root, swap, site)
-    check("changed stack value removes consumer target", not jumps(site), targets=sorted(jumps(site)))
+    check(
+        "changed stack value removes consumer target", not jumps(site), targets=sorted(jumps(site))
+    )
     ida_bytes.patch_bytes(swap, original)
     settle(root, swap, site)
-    check("restored materialization", "stack address materialization" in comment(root) and jumps(site) == {target},
-          root_comment=comment(root), return_comment=comment(site), targets=sorted(jumps(site)))
+    check(
+        "restored materialization",
+        "stack address materialization" in comment(root) and jumps(site) == {target},
+        root_comment=comment(root),
+        return_comment=comment(site),
+        targets=sorted(jumps(site)),
+    )
     other = address("gp_wrongreg")
     lea = address("gp_materialize_lea")
     ida_xref.add_cref(other, lea, ida_xref.fl_JN | ida_xref.XREF_USER)
@@ -153,26 +212,43 @@ try:
     check("alternate entry rejects sequence", "stack address materialization" not in comment(root))
     ida_xref.del_cref(other, lea, False)
     settle(root, lea)
-    check("removed alternate entry restores sequence", "stack address materialization" in comment(root))
+    check(
+        "removed alternate entry restores sequence",
+        "stack address materialization" in comment(root),
+    )
     root, entry, site = address("gp_adjust"), address("gp_adjust_entry"), address("gp_adjust_ret")
     original = ida_bytes.get_bytes(entry, 5)
     check("fixture stack adjustment bytes", original == b"\x48\x83\x04\x24\x03")
-    ida_bytes.patch_byte(entry + 2, 0x2c)  # SUB [RSP],3 is outside this recognizer.
-    check("CALL and RET annotations revoked synchronously",
-          "get-PC idiom" not in comment(root) and "exact call-context" not in comment(site))
-    check("CALL-context return edge revoked synchronously", not jumps(site), targets=sorted(jumps(site)))
+    ida_bytes.patch_byte(entry + 2, 0x2C)  # SUB [RSP],3 is outside this recognizer.
+    check(
+        "CALL and RET annotations revoked synchronously",
+        "get-PC idiom" not in comment(root) and "exact call-context" not in comment(site),
+    )
+    check(
+        "CALL-context return edge revoked synchronously",
+        not jumps(site),
+        targets=sorted(jumps(site)),
+    )
     settle(root, entry, site)
-    check("unsupported stack transform stays unresolved",
-          "get-PC idiom" not in comment(root) and not jumps(site), targets=sorted(jumps(site)))
+    check(
+        "unsupported stack transform stays unresolved",
+        "get-PC idiom" not in comment(root) and not jumps(site),
+        targets=sorted(jumps(site)),
+    )
     ida_bytes.patch_bytes(entry, original)
     settle(root, entry, site)
-    check("restored call context", "get-PC idiom" in comment(root)
-          and jumps(site) == {address("gp_adjust_resume")}, comment=comment(root), targets=sorted(jumps(site)))
+    check(
+        "restored call context",
+        "get-PC idiom" in comment(root) and jumps(site) == {address("gp_adjust_resume")},
+        comment=comment(root),
+        targets=sorted(jumps(site)),
+    )
 except BaseException as error:
     errors.append(type(error).__name__ + ": " + str(error))
 
 (Path(os.environ["IDAUSR"]).parent / "get_pc.json").write_text(
-    json.dumps({"records": records, "errors": errors}, indent=2) + "\n")
+    json.dumps({"records": records, "errors": errors}, indent=2) + "\n"
+)
 message = "FAIL " + "; ".join(errors) if errors else "PASS assertions=%d" % len(records)
 line = "[chernobog][get-pc] " + message
 print(line, flush=True)

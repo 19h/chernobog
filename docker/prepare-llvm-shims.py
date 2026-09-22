@@ -12,11 +12,7 @@ def pick(*patterns: str) -> str | None:
     for pattern in patterns:
         matches.extend(glob.glob(pattern))
     matches = sorted(
-        {
-            match
-            for match in matches
-            if os.path.isfile(match) and os.access(match, os.X_OK)
-        }
+        {match for match in matches if os.path.isfile(match) and os.access(match, os.X_OK)}
     )
     return matches[-1] if matches else None
 
@@ -39,28 +35,18 @@ def write_wrapper(path: str, command: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Create unversioned LLVM shim binaries"
-    )
-    parser.add_argument(
-        "output_dir", help="Directory where wrapper binaries should be written"
-    )
+    parser = argparse.ArgumentParser(description="Create unversioned LLVM shim binaries")
+    parser.add_argument("output_dir", help="Directory where wrapper binaries should be written")
     args = parser.parse_args()
 
     out_dir = os.path.abspath(args.output_dir)
     os.makedirs(out_dir, exist_ok=True)
 
     clang = pick("/usr/bin/clang", "/usr/bin/clang-*", "/usr/lib/llvm-*/bin/clang")
-    lld_link = pick(
-        "/usr/bin/lld-link", "/usr/bin/lld-link-*", "/usr/lib/llvm-*/bin/lld-link"
-    )
+    lld_link = pick("/usr/bin/lld-link", "/usr/bin/lld-link-*", "/usr/lib/llvm-*/bin/lld-link")
     ld_lld = pick("/usr/bin/ld.lld", "/usr/bin/ld.lld-*", "/usr/lib/llvm-*/bin/ld.lld")
-    llvm_lib = pick(
-        "/usr/bin/llvm-lib", "/usr/bin/llvm-lib-*", "/usr/lib/llvm-*/bin/llvm-lib"
-    )
-    llvm_rc = pick(
-        "/usr/bin/llvm-rc", "/usr/bin/llvm-rc-*", "/usr/lib/llvm-*/bin/llvm-rc"
-    )
+    llvm_lib = pick("/usr/bin/llvm-lib", "/usr/bin/llvm-lib-*", "/usr/lib/llvm-*/bin/llvm-lib")
+    llvm_rc = pick("/usr/bin/llvm-rc", "/usr/bin/llvm-rc-*", "/usr/lib/llvm-*/bin/llvm-rc")
 
     missing = []
     if not clang:

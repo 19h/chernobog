@@ -4,6 +4,7 @@ Only the explicitly handled straight-line IR is accepted. This finite oracle
 checks result and the fixture's observable memory cell; it is not a general IR
 interpreter or a proof of all ISA flags/exceptions.
 """
+
 import json
 import sys
 from pathlib import Path
@@ -63,9 +64,14 @@ class Machine:
             result = self.read(self.memory, self.operand(insn["right"]), size)
         else:
             right = self.operand(insn["right"])
-            operations = {"m_add": lambda: left + right, "m_sub": lambda: left - right,
-                          "m_mul": lambda: left * right, "m_and": lambda: left & right,
-                          "m_or": lambda: left | right, "m_xor": lambda: left ^ right}
+            operations = {
+                "m_add": lambda: left + right,
+                "m_sub": lambda: left - right,
+                "m_mul": lambda: left * right,
+                "m_and": lambda: left & right,
+                "m_or": lambda: left | right,
+                "m_xor": lambda: left ^ right,
+            }
             assert op in operations, "unsupported opcode: " + op
             result = operations[op]()
         return result & mask(size)
@@ -73,8 +79,12 @@ class Machine:
     def execute(self, insn):
         if insn["opcode"] == "m_stx":
             assert self.operand(insn["right"]) == 0, "fixture requires a flat segment"
-            self.write(self.memory, self.operand(insn["destination"]), insn["left"]["bytes"],
-                       self.operand(insn["left"]))
+            self.write(
+                self.memory,
+                self.operand(insn["destination"]),
+                insn["left"]["bytes"],
+                self.operand(insn["left"]),
+            )
             return
         value = self.expression(insn)
         dest = insn["destination"]
@@ -113,30 +123,49 @@ def check_capture(report):
             cases += [(x, y, 0) for x in range(256) for y in range(256)]
         for x, y, z in cases:
             machine = Machine()
-            for register, value in {"rdi": 0x10000 if name.startswith("mba_alias_") else x,
-                                    "rsi": y, "rdx": z, "rsp": 0x20000, "ds": 0}.items():
-                machine.write(machine.registers, report["abi"][register], 2 if register == "ds" else 8, value)
+            for register, value in {
+                "rdi": 0x10000 if name.startswith("mba_alias_") else x,
+                "rsi": y,
+                "rdx": z,
+                "rsp": 0x20000,
+                "ds": 0,
+            }.items():
+                machine.write(
+                    machine.registers, report["abi"][register], 2 if register == "ds" else 8, value
+                )
             machine.write(machine.memory, 0x10000, 4, x)
             for block in capture["blocks"]:
                 for insn in block["instructions"]:
                     machine.execute(insn)
             a, b = x & mask(4), y & mask(4)
             memory_expected = a
-            if name == "mba_demorgan32": expected = a & b
-            elif name == "mba_carry64": expected = (x + y) & mask(8)
-            elif name in ("mba_carry32", "mba_stack32", "mba_order32"): expected = (a + b) & mask(4)
-            elif name == "mba_truncate8": expected = (a + b) & 255
-            elif name == "mba_extend_not": expected = (~a) & 255
-            elif name == "mba_not_extend": expected = (~(a & 255)) & mask(4)
+            if name == "mba_demorgan32":
+                expected = a & b
+            elif name == "mba_carry64":
+                expected = (x + y) & mask(8)
+            elif name in ("mba_carry32", "mba_stack32", "mba_order32"):
+                expected = (a + b) & mask(4)
+            elif name == "mba_truncate8":
+                expected = (a + b) & 255
+            elif name == "mba_extend_not":
+                expected = (~a) & 255
+            elif name == "mba_not_extend":
+                expected = (~(a & 255)) & mask(4)
             elif name == "mba_alias_write":
                 expected, memory_expected = a ^ b, b
             elif name == "mba_alias_partial":
                 memory_expected = (a & 0xFFFF0000) | (b & 65535)
                 expected = a ^ memory_expected
-            else: raise AssertionError("unclassified fixture")
+            else:
+                raise AssertionError("unclassified fixture")
             actual = machine.read(machine.registers, report["abi"]["rax"], 8)
             assert actual == expected, (name, "result", x, y, actual, expected)
-            assert machine.read(machine.memory, 0x10000, 4) == memory_expected, (name, "memory", x, y)
+            assert machine.read(machine.memory, 0x10000, 4) == memory_expected, (
+                name,
+                "memory",
+                x,
+                y,
+            )
             comparisons += 1
     return comparisons
 
@@ -160,11 +189,25 @@ def main():
     for record in reports[0]["records"]:
         assert record["statistics"]["instance_verified"] == 0, "baseline used plugin proofs"
     for record in reports[1]["records"]:
-        if record["name"] in ("mba_demorgan32", "mba_carry32", "mba_carry64", "mba_stack32", "mba_order32"):
+        if record["name"] in (
+            "mba_demorgan32",
+            "mba_carry32",
+            "mba_carry64",
+            "mba_stack32",
+            "mba_order32",
+        ):
             assert record["statistics"]["instance_verified"] > 0, "missing production proof"
-    print(json.dumps({"status": "PASS", "comparisons_per_run": counts,
-                      "compared_result_bits": 64, "observable_memory_cell_bytes": 4,
-                      "seeds": ["0x390fe14891", "0x9827136ab5"]}))
+    print(
+        json.dumps(
+            {
+                "status": "PASS",
+                "comparisons_per_run": counts,
+                "compared_result_bits": 64,
+                "observable_memory_cell_bytes": 4,
+                "seeds": ["0x390fe14891", "0x9827136ab5"],
+            }
+        )
+    )
 
 
 if __name__ == "__main__":

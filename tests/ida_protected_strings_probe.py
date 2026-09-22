@@ -1,4 +1,5 @@
 """Measure use-string yield without forcing ownership or completing stopped runs."""
+
 import json
 import os
 from pathlib import Path
@@ -41,14 +42,32 @@ try:
     report["explore_result"] = int(evaluate(f"chernobog_rax_explore({target})"))
     report["explore_elapsed_ns"] = time.perf_counter_ns() - started
     view = json.loads(evaluate(f"chernobog_evidence_view({target})"))
-    report["view"] = {key: value for key, value in view.items() if key not in ("events", "edges", "claims")}
+    report["view"] = {
+        key: value for key, value in view.items() if key not in ("events", "edges", "claims")
+    }
     count = int(evaluate(f"chernobog_rax_use_string_count({target})"))
     assert 0 <= count <= 128, "candidate quota exceeded"
     for index in range(count):
         expression = f"chernobog_rax_use_string({target}, {index})"
-        report["candidates"].append({field: evaluate(expression + "." + field) for field in
-            ("ok", "value", "site", "occurrence", "producer", "model_kind", "read_count",
-             "first_sequence", "last_sequence", "observed_bytes", "observations", "eligible_runs")})
+        report["candidates"].append(
+            {
+                field: evaluate(expression + "." + field)
+                for field in (
+                    "ok",
+                    "value",
+                    "site",
+                    "occurrence",
+                    "producer",
+                    "model_kind",
+                    "read_count",
+                    "first_sequence",
+                    "last_sequence",
+                    "observed_bytes",
+                    "observations",
+                    "eligible_runs",
+                )
+            }
+        )
     # Decode the reported stop only; do not create code or extend any function.
     report["stops"] = []
     for run in view.get("runs", []):
@@ -56,10 +75,16 @@ try:
         instruction = ida_ua.insn_t()
         size = ida_ua.decode_insn(instruction, site) if site else 0
         owner = ida_funcs.get_func(site) if site else None
-        report["stops"].append({"run": run["run"], "seed": run["seed"], "site": hex(site),
-            "owner": hex(owner.start_ea) if owner else None,
-            "bytes": (ida_bytes.get_bytes(site, size) or b"").hex() if size > 0 else "",
-            "mnemonic": instruction.get_canon_mnem() if size > 0 else ""})
+        report["stops"].append(
+            {
+                "run": run["run"],
+                "seed": run["seed"],
+                "site": hex(site),
+                "owner": hex(owner.start_ea) if owner else None,
+                "bytes": (ida_bytes.get_bytes(site, size) or b"").hex() if size > 0 else "",
+                "mnemonic": instruction.get_canon_mnem() if size > 0 else "",
+            }
+        )
     report["display"] = {"status": "unavailable", "annotations": []}
     if function and function.start_ea == target:
         failure = ida_hexrays.hexrays_failure_t()
@@ -67,9 +92,14 @@ try:
         cfunc = ida_hexrays.decompile(target, failure, ida_hexrays.DECOMP_NO_CACHE)
         report["display"]["elapsed_ns"] = time.perf_counter_ns() - started
         if cfunc:
-            report["display"].update(status="decompiled", annotations=[
-                ida_lines.tag_remove(line.line) for line in cfunc.get_pseudocode()
-                if "rax-use(" in ida_lines.tag_remove(line.line)])
+            report["display"].update(
+                status="decompiled",
+                annotations=[
+                    ida_lines.tag_remove(line.line)
+                    for line in cfunc.get_pseudocode()
+                    if "rax-use(" in ida_lines.tag_remove(line.line)
+                ],
+            )
         else:
             report["display"].update(status="failed", failure_code=int(failure.code))
     report["passed"] = True
@@ -77,7 +107,9 @@ except BaseException as error:
     # Host exception messages may contain identifying installation paths.
     report["errors"].append(type(error).__name__)
 
-(Path(os.environ["IDAUSR"]).parent / "protected_strings.json").write_text(json.dumps(report, indent=2) + "\n")
+(Path(os.environ["IDAUSR"]).parent / "protected_strings.json").write_text(
+    json.dumps(report, indent=2) + "\n"
+)
 line = "[chernobog][protected-strings] " + ("PASS" if report["passed"] else "FAIL")
 print(line, flush=True)
 ida_kernwin.msg("%s\n" % line)

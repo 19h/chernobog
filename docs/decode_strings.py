@@ -29,11 +29,13 @@ from dataclasses import dataclass
 try:
     from Crypto.Cipher import AES
     from Crypto.Util.Padding import unpad
+
     HAS_CRYPTO = True
 except ImportError:
     try:
         from Cryptodome.Cipher import AES
         from Cryptodome.Util.Padding import unpad
+
         HAS_CRYPTO = True
     except ImportError:
         HAS_CRYPTO = False
@@ -42,6 +44,7 @@ except ImportError:
 @dataclass
 class EncodedString:
     """Represents an encoded string found in the dump"""
+
     name: str
     encoded_bytes: bytes
     decoded_string: Optional[str] = None
@@ -58,45 +61,45 @@ def parse_hex_string(hex_str: str) -> bytes:
     result = bytearray()
     i = 0
     while i < len(hex_str):
-        if hex_str[i] == '\\' and i + 1 < len(hex_str):
+        if hex_str[i] == "\\" and i + 1 < len(hex_str):
             next_char = hex_str[i + 1]
-            if next_char == 'x' and i + 3 < len(hex_str):
+            if next_char == "x" and i + 3 < len(hex_str):
                 # Hex escape \xNN
                 try:
-                    hex_val = hex_str[i+2:i+4]
+                    hex_val = hex_str[i + 2 : i + 4]
                     result.append(int(hex_val, 16))
                     i += 4
                     continue
                 except ValueError:
                     pass
-            elif next_char == 'u' and i + 5 < len(hex_str):
+            elif next_char == "u" and i + 5 < len(hex_str):
                 # Unicode escape \uNNNN
                 try:
-                    hex_val = hex_str[i+2:i+6]
+                    hex_val = hex_str[i + 2 : i + 6]
                     code_point = int(hex_val, 16)
-                    result.extend(chr(code_point).encode('utf-8', errors='replace'))
+                    result.extend(chr(code_point).encode("utf-8", errors="replace"))
                     i += 6
                     continue
                 except ValueError:
                     pass
-            elif next_char == 'n':
-                result.append(ord('\n'))
+            elif next_char == "n":
+                result.append(ord("\n"))
                 i += 2
                 continue
-            elif next_char == 't':
-                result.append(ord('\t'))
+            elif next_char == "t":
+                result.append(ord("\t"))
                 i += 2
                 continue
-            elif next_char == 'r':
-                result.append(ord('\r'))
+            elif next_char == "r":
+                result.append(ord("\r"))
                 i += 2
                 continue
-            elif next_char == '0':
+            elif next_char == "0":
                 result.append(0)
                 i += 2
                 continue
-            elif next_char == '\\':
-                result.append(ord('\\'))
+            elif next_char == "\\":
+                result.append(ord("\\"))
                 i += 2
                 continue
             elif next_char == '"':
@@ -116,11 +119,11 @@ def is_base64(s: str) -> bool:
     if len(s) < 4:
         return False
     # Base64 pattern: alphanumeric, +, /, =
-    base64_pattern = re.compile(r'^[A-Za-z0-9+/]+=*$')
+    base64_pattern = re.compile(r"^[A-Za-z0-9+/]+=*$")
     if not base64_pattern.match(s):
         return False
     # Check length is valid for base64
-    return len(s) % 4 == 0 or s.endswith('=')
+    return len(s) % 4 == 0 or s.endswith("=")
 
 
 def try_base64_decode(s: str) -> Optional[bytes]:
@@ -129,7 +132,7 @@ def try_base64_decode(s: str) -> Optional[bytes]:
         # Handle potential padding issues
         padding = 4 - len(s) % 4
         if padding != 4:
-            s += '=' * padding
+            s += "=" * padding
         return base64.b64decode(s)
     except Exception:
         return None
@@ -142,7 +145,7 @@ def aes256_decrypt(data: bytes, key: bytes) -> Optional[bytes]:
     try:
         # Pad key to 32 bytes if needed
         if len(key) < 32:
-            key = key.ljust(32, b'\x00')
+            key = key.ljust(32, b"\x00")
         elif len(key) > 32:
             key = key[:32]
 
@@ -156,14 +159,14 @@ def aes256_decrypt(data: bytes, key: bytes) -> Optional[bytes]:
 
         # Check if result is printable
         try:
-            result = decrypted.decode('utf-8', errors='strict')
-            if result.isprintable() or '\n' in result or '\t' in result:
+            result = decrypted.decode("utf-8", errors="strict")
+            if result.isprintable() or "\n" in result or "\t" in result:
                 return decrypted
         except UnicodeDecodeError:
             pass
 
         # Try CBC mode with zero IV
-        iv = b'\x00' * 16
+        iv = b"\x00" * 16
         cipher = AES.new(key, AES.MODE_CBC, iv)
         decrypted = cipher.decrypt(data)
         try:
@@ -172,8 +175,8 @@ def aes256_decrypt(data: bytes, key: bytes) -> Optional[bytes]:
             pass
 
         try:
-            result = decrypted.decode('utf-8', errors='strict')
-            if result.isprintable() or '\n' in result or '\t' in result:
+            result = decrypted.decode("utf-8", errors="strict")
+            if result.isprintable() or "\n" in result or "\t" in result:
                 return decrypted
         except UnicodeDecodeError:
             pass
@@ -195,14 +198,14 @@ def extract_encryption_keys(content: str) -> Dict[str, str]:
         if is_base64(b64_key):
             decoded = try_base64_decode(b64_key)
             if decoded:
-                keys[b64_key] = decoded.decode('utf-8', errors='replace')
+                keys[b64_key] = decoded.decode("utf-8", errors="replace")
 
     # Look for qmemcpy with potential keys
     pattern2 = r'qmemcpy\(\w+,\s*"([^"]{8,32})",\s*\d+\)'
     for match in re.finditer(pattern2, content):
         potential_key = match.group(1)
         if potential_key.isascii() and len(potential_key) in [16, 24, 32]:
-            keys[f'aes_key_{len(potential_key)}'] = potential_key
+            keys[f"aes_key_{len(potential_key)}"] = potential_key
 
     return keys
 
@@ -221,11 +224,9 @@ def extract_encoded_strings(content: str) -> List[EncodedString]:
         raw_str = match.group(3)
         try:
             encoded = parse_hex_string(raw_str)
-            strings.append(EncodedString(
-                name=name,
-                encoded_bytes=encoded,
-                encoding_type="hex_array"
-            ))
+            strings.append(
+                EncodedString(name=name, encoded_bytes=encoded, encoding_type="hex_array")
+            )
         except Exception:
             pass
 
@@ -235,18 +236,18 @@ def extract_encoded_strings(content: str) -> List[EncodedString]:
     cfstr_strings = set()
     for match in re.finditer(pattern2, content):
         raw_str = match.group(1)
-        if any(c in raw_str for c in ['\\x', '\\X']):
+        if any(c in raw_str for c in ["\\x", "\\X"]):
             try:
                 encoded = parse_hex_string(raw_str)
                 # Use first 8 bytes as identifier
                 key = encoded[:8].hex() if len(encoded) >= 8 else encoded.hex()
                 if key not in cfstr_strings:
                     cfstr_strings.add(key)
-                    strings.append(EncodedString(
-                        name=f"CFSTR_{key}",
-                        encoded_bytes=encoded,
-                        encoding_type="cfstr_hex"
-                    ))
+                    strings.append(
+                        EncodedString(
+                            name=f"CFSTR_{key}", encoded_bytes=encoded, encoding_type="cfstr_hex"
+                        )
+                    )
             except Exception:
                 pass
 
@@ -257,23 +258,27 @@ def extract_encoded_strings(content: str) -> List[EncodedString]:
         try:
             encoded = parse_hex_string(raw_str)
             key = encoded[:8].hex() if len(encoded) >= 8 else encoded.hex()
-            strings.append(EncodedString(
-                name=f"StringDecrypt_{key}",
-                encoded_bytes=encoded,
-                encoding_type="string_decrypt"
-            ))
+            strings.append(
+                EncodedString(
+                    name=f"StringDecrypt_{key}",
+                    encoded_bytes=encoded,
+                    encoding_type="string_decrypt",
+                )
+            )
         except Exception:
             pass
 
     # Pattern for Resource_Link, Api_Link, V_Link type variables
-    pattern4 = r'StringDecrypt\((Resource_Link|Api_Link|V_Link|[A-Za-z_]+_Link)\)'
+    pattern4 = r"StringDecrypt\((Resource_Link|Api_Link|V_Link|[A-Za-z_]+_Link)\)"
     for match in re.finditer(pattern4, content):
         var_name = match.group(1)
-        strings.append(EncodedString(
-            name=f"StringDecrypt_var_{var_name}",
-            encoded_bytes=b'',
-            encoding_type="string_decrypt_var"
-        ))
+        strings.append(
+            EncodedString(
+                name=f"StringDecrypt_var_{var_name}",
+                encoded_bytes=b"",
+                encoding_type="string_decrypt_var",
+            )
+        )
 
     return strings
 
@@ -281,8 +286,8 @@ def extract_encoded_strings(content: str) -> List[EncodedString]:
 def extract_byte_definitions(content: str) -> Dict[str, int]:
     """
     Extract byte variable definitions like:
-    char byte_10002D100 = '\xA5'; // weak
-    char byte_10002D101 = '\xC9'; // weak
+    char byte_10002D100 = '\xa5'; // weak
+    char byte_10002D101 = '\xc9'; // weak
     """
     byte_vars = {}
 
@@ -302,7 +307,7 @@ def extract_byte_definitions(content: str) -> Dict[str, int]:
 
     # Pattern for escaped chars like '\t', '\n', '\\', etc.
     pattern_escaped = r"char\s+(byte_[0-9A-Fa-f]+)\s*=\s*'\\([nrtv0\\\"'])';"
-    escape_map = {'n': 10, 'r': 13, 't': 9, 'v': 11, '0': 0, '\\': 92, '"': 34, "'": 39}
+    escape_map = {"n": 10, "r": 13, "t": 9, "v": 11, "0": 0, "\\": 92, '"': 34, "'": 39}
     for match in re.finditer(pattern_escaped, content):
         var_name = match.group(1)
         escape_char = match.group(2)
@@ -337,7 +342,9 @@ def extract_qword_definitions(content: str) -> Dict[str, int]:
     return qword_vars
 
 
-def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_vars: Dict[str, int] = None) -> Dict[str, str]:
+def extract_xor_decoded_strings(
+    content: str, byte_vars: Dict[str, int], qword_vars: Dict[str, int] = None
+) -> Dict[str, str]:
     """
     Extract strings decoded via XOR operations like:
     asc_10002D10E[0] = byte_10002D100 ^ 0xF0;
@@ -355,7 +362,7 @@ def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_v
     char_arrays = {}
 
     # Pattern 1: array[N] = byte_XXX ^ 0xHH;
-    xor_pattern = r'(\w+)\[(\d+)\]\s*=\s*(byte_[0-9A-Fa-f]+)\s*\^\s*0x([0-9A-Fa-f]+);'
+    xor_pattern = r"(\w+)\[(\d+)\]\s*=\s*(byte_[0-9A-Fa-f]+)\s*\^\s*0x([0-9A-Fa-f]+);"
     for match in re.finditer(xor_pattern, content):
         array_name = match.group(1)
         index = int(match.group(2))
@@ -369,7 +376,7 @@ def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_v
             char_arrays[array_name][index] = decrypted_byte & 0xFF
 
     # Pattern 1b: array[N] = byte_XXX ^ N; (decimal XOR key)
-    xor_decimal_pattern = r'(\w+)\[(\d+)\]\s*=\s*(byte_[0-9A-Fa-f]+)\s*\^\s*(\d+);'
+    xor_decimal_pattern = r"(\w+)\[(\d+)\]\s*=\s*(byte_[0-9A-Fa-f]+)\s*\^\s*(\d+);"
     for match in re.finditer(xor_decimal_pattern, content):
         array_name = match.group(1)
         index = int(match.group(2))
@@ -385,7 +392,7 @@ def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_v
 
     # Pattern 2: array[N] = byte_XXX - ((2 * byte_XXX) & 0xHH) + N;
     # This is an obfuscated transformation
-    arith_add_pattern = r'(\w+)\[(\d+)\]\s*=\s*(byte_[0-9A-Fa-f]+)\s*-\s*\(\(2\s*\*\s*\3\)\s*&\s*0x([0-9A-Fa-f]+)\)\s*\+\s*(\d+);'
+    arith_add_pattern = r"(\w+)\[(\d+)\]\s*=\s*(byte_[0-9A-Fa-f]+)\s*-\s*\(\(2\s*\*\s*\3\)\s*&\s*0x([0-9A-Fa-f]+)\)\s*\+\s*(\d+);"
     for match in re.finditer(arith_add_pattern, content):
         array_name = match.group(1)
         index = int(match.group(2))
@@ -405,7 +412,7 @@ def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_v
                 char_arrays[array_name][index] = result
 
     # Pattern 3: array[N] = byte_XXX - ((2 * byte_XXX) & 0xHH) - N;
-    arith_sub_pattern = r'(\w+)\[(\d+)\]\s*=\s*(byte_[0-9A-Fa-f]+)\s*-\s*\(\(2\s*\*\s*\3\)\s*&\s*0x([0-9A-Fa-f]+)\)\s*-\s*(\d+);'
+    arith_sub_pattern = r"(\w+)\[(\d+)\]\s*=\s*(byte_[0-9A-Fa-f]+)\s*-\s*\(\(2\s*\*\s*\3\)\s*&\s*0x([0-9A-Fa-f]+)\)\s*-\s*(\d+);"
     for match in re.finditer(arith_sub_pattern, content):
         array_name = match.group(1)
         index = int(match.group(2))
@@ -425,7 +432,7 @@ def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_v
                 char_arrays[array_name][index] = result
 
     # Pattern 4: array[N] = ~((byte_XXX | 0xHH) & (~byte_XXX | 0xHH));
-    bitwise_pattern = r'(\w+)\[(\d+)\]\s*=\s*~\(\((byte_[0-9A-Fa-f]+)\s*\|\s*0x([0-9A-Fa-f]+)\)\s*&\s*\(~\3\s*\|\s*0x([0-9A-Fa-f]+)\)\);'
+    bitwise_pattern = r"(\w+)\[(\d+)\]\s*=\s*~\(\((byte_[0-9A-Fa-f]+)\s*\|\s*0x([0-9A-Fa-f]+)\)\s*&\s*\(~\3\s*\|\s*0x([0-9A-Fa-f]+)\)\);"
     for match in re.finditer(bitwise_pattern, content):
         array_name = match.group(1)
         index = int(match.group(2))
@@ -446,7 +453,7 @@ def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_v
                 char_arrays[array_name][index] = result
 
     # Pattern 5: array[N] = byte_XXX + ((2 * byte_XXX) & 0xHH) + N; (less common variant)
-    arith_add2_pattern = r'(\w+)\[(\d+)\]\s*=\s*(byte_[0-9A-Fa-f]+)\s*\+\s*\(\(2\s*\*\s*\3\)\s*&\s*0x([0-9A-Fa-f]+)\)\s*\+\s*(\d+);'
+    arith_add2_pattern = r"(\w+)\[(\d+)\]\s*=\s*(byte_[0-9A-Fa-f]+)\s*\+\s*\(\(2\s*\*\s*\3\)\s*&\s*0x([0-9A-Fa-f]+)\)\s*\+\s*(\d+);"
     for match in re.finditer(arith_add2_pattern, content):
         array_name = match.group(1)
         index = int(match.group(2))
@@ -467,7 +474,7 @@ def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_v
     # Pattern 6: Variable indirection - vN = byte_XXX; ... array[i] = vN ^ 0xHH;
     # First, build a map of simple variable assignments: vN = byte_XXX
     var_to_byte = {}
-    var_assign_pattern = r'(v\d+)\s*=\s*(byte_[0-9A-Fa-f]+);'
+    var_assign_pattern = r"(v\d+)\s*=\s*(byte_[0-9A-Fa-f]+);"
     for match in re.finditer(var_assign_pattern, content):
         var_name = match.group(1)
         byte_var = match.group(2)
@@ -475,7 +482,7 @@ def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_v
             var_to_byte[var_name] = byte_vars[byte_var]
 
     # Now find array[N] = vN ^ 0xHH; patterns
-    var_xor_pattern = r'(\w+)\[(\d+)\]\s*=\s*(v\d+)\s*\^\s*0x([0-9A-Fa-f]+);'
+    var_xor_pattern = r"(\w+)\[(\d+)\]\s*=\s*(v\d+)\s*\^\s*0x([0-9A-Fa-f]+);"
     for match in re.finditer(var_xor_pattern, content):
         array_name = match.group(1)
         index = int(match.group(2))
@@ -491,7 +498,7 @@ def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_v
 
     # Pattern 7: SIMD vector XOR - veor_s8
     # *(int8x8_t *)&array[N] = veor_s8((int8x8_t)qword_XXX, (int8x8_t)0xHHHHLL);
-    simd_pattern = r'\*\(int8x8_t \*\)&(\w+)\[(\d+)\]\s*=\s*veor_s8\(\(int8x8_t\)(qword_[0-9A-Fa-f]+),\s*\(int8x8_t\)0x([0-9A-Fa-f]+)LL\);'
+    simd_pattern = r"\*\(int8x8_t \*\)&(\w+)\[(\d+)\]\s*=\s*veor_s8\(\(int8x8_t\)(qword_[0-9A-Fa-f]+),\s*\(int8x8_t\)0x([0-9A-Fa-f]+)LL\);"
     for match in re.finditer(simd_pattern, content):
         array_name = match.group(1)
         start_index = int(match.group(2))
@@ -502,7 +509,7 @@ def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_v
             qword_val = qword_vars[qword_var]
             # XOR the qword values and extract 8 bytes (little-endian)
             result = qword_val ^ xor_key
-            result_bytes = struct.pack('<Q', result & 0xFFFFFFFFFFFFFFFF)
+            result_bytes = struct.pack("<Q", result & 0xFFFFFFFFFFFFFFFF)
             if array_name not in char_arrays:
                 char_arrays[array_name] = {}
             for i, b in enumerate(result_bytes):
@@ -510,7 +517,7 @@ def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_v
                     char_arrays[array_name][start_index + i] = b
 
     # Also handle variant: *(int8x8_t *)array = veor_s8(...)
-    simd_pattern2 = r'\*\(int8x8_t \*\)(\w+)\s*=\s*veor_s8\(\(int8x8_t\)(qword_[0-9A-Fa-f]+),\s*\(int8x8_t\)0x([0-9A-Fa-f]+)LL\);'
+    simd_pattern2 = r"\*\(int8x8_t \*\)(\w+)\s*=\s*veor_s8\(\(int8x8_t\)(qword_[0-9A-Fa-f]+),\s*\(int8x8_t\)0x([0-9A-Fa-f]+)LL\);"
     for match in re.finditer(simd_pattern2, content):
         array_name = match.group(1)
         qword_var = match.group(2)
@@ -519,7 +526,7 @@ def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_v
         if qword_var in qword_vars:
             qword_val = qword_vars[qword_var]
             result = qword_val ^ xor_key
-            result_bytes = struct.pack('<Q', result & 0xFFFFFFFFFFFFFFFF)
+            result_bytes = struct.pack("<Q", result & 0xFFFFFFFFFFFFFFFF)
             if array_name not in char_arrays:
                 char_arrays[array_name] = {}
             for i, b in enumerate(result_bytes):
@@ -541,9 +548,9 @@ def extract_xor_decoded_strings(content: str, byte_vars: Dict[str, int], qword_v
                         break  # Null terminator
                 else:
                     # Gap in array - might be using different pattern for this index
-                    result.append('?')
-            if result and len([c for c in result if c != '?']) > 0:
-                decoded[array_name] = ''.join(result).rstrip('?')
+                    result.append("?")
+            if result and len([c for c in result if c != "?"]) > 0:
+                decoded[array_name] = "".join(result).rstrip("?")
 
     return decoded
 
@@ -572,7 +579,7 @@ def extract_decoded_strings(content: str) -> Dict[str, str]:
 
     # Pattern: variable[N] = XX; (character by character assignments)
     # e.g., aFJ[0] = 100; aFJ[1] = 97; ...
-    char_pattern = r'(\w+)\[(\d+)\]\s*=\s*(\d+);'
+    char_pattern = r"(\w+)\[(\d+)\]\s*=\s*(\d+);"
     char_arrays = {}
 
     for match in re.finditer(char_pattern, content):
@@ -606,7 +613,7 @@ def extract_decoded_strings(content: str) -> Dict[str, str]:
                 else:
                     break
             if result:
-                decoded[var_name] = ''.join(result)
+                decoded[var_name] = "".join(result)
 
     # NEW: Also extract XOR-based decoded strings (OtixOpenmenuMACOS pattern)
     byte_vars = extract_byte_definitions(content)
@@ -626,7 +633,7 @@ def extract_urls(content: str) -> List[str]:
     urls = set()
 
     # Direct URL patterns
-    url_pattern = r'https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&\'()*+,;=%]+'
+    url_pattern = r"https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&\'()*+,;=%]+"
     for match in re.finditer(url_pattern, content):
         urls.add(match.group(0))
 
@@ -635,7 +642,7 @@ def extract_urls(content: str) -> List[str]:
 
 def compute_xor_key(encoded: bytes, decoded: str) -> bytes:
     """Compute XOR key given encoded bytes and decoded plaintext"""
-    decoded_bytes = decoded.encode('utf-8')
+    decoded_bytes = decoded.encode("utf-8")
     key = bytearray()
 
     for i in range(min(len(encoded), len(decoded_bytes))):
@@ -655,7 +662,7 @@ def xor_decode(encoded: bytes, key: bytes) -> str:
 
     try:
         # Try to decode as UTF-8, removing null terminator
-        decoded = result.rstrip(b'\x00').decode('utf-8', errors='replace')
+        decoded = result.rstrip(b"\x00").decode("utf-8", errors="replace")
         return decoded
     except:
         return result.hex()
@@ -678,19 +685,19 @@ def try_common_xor_keys(encoded: bytes) -> List[Tuple[str, bytes]]:
 def detect_string_decrypt_usage(content: str) -> Dict[str, dict]:
     """Detect StringDecrypt function and its encryption parameters"""
     info = {
-        'has_string_decrypt': False,
-        'has_fwt_obfuscator': False,
-        'encryption_keys': [],
-        'base64_keys': []
+        "has_string_decrypt": False,
+        "has_fwt_obfuscator": False,
+        "encryption_keys": [],
+        "base64_keys": [],
     }
 
     # Check for StringDecrypt function
-    if 'StringDecrypt' in content:
-        info['has_string_decrypt'] = True
+    if "StringDecrypt" in content:
+        info["has_string_decrypt"] = True
 
     # Check for FWTObfuscator
-    if 'FWTObfuscator' in content:
-        info['has_fwt_obfuscator'] = True
+    if "FWTObfuscator" in content:
+        info["has_fwt_obfuscator"] = True
 
     # Extract encryption keys
     # Pattern: strcpy(xxx, "BASE64KEY");
@@ -700,16 +707,15 @@ def detect_string_decrypt_usage(content: str) -> Dict[str, dict]:
         if is_base64(b64_key):
             decoded = try_base64_decode(b64_key)
             if decoded:
-                info['base64_keys'].append({
-                    'encoded': b64_key,
-                    'decoded': decoded.decode('utf-8', errors='replace')
-                })
+                info["base64_keys"].append(
+                    {"encoded": b64_key, "decoded": decoded.decode("utf-8", errors="replace")}
+                )
 
     # Pattern for EncryptionKey function returning base64
     enc_key_pattern = r'EncryptionKey\(\)[\s\S]{0,500}CFSTR\("([^"]+)"\)'
     for match in re.finditer(enc_key_pattern, content):
         cfstr_val = match.group(1)
-        info['encryption_keys'].append(cfstr_val)
+        info["encryption_keys"].append(cfstr_val)
 
     return info
 
@@ -726,7 +732,7 @@ def extract_cfstring_definitions(content: str) -> Dict[str, str]:
         cfstrings[name] = value
 
     # Also pattern: id XXX_Link = &cfstr_YYY;
-    link_pattern = r'id\s+(\w+_Link)\s*=\s*&(cfstr_\w+|stru_[0-9A-Fa-f]+)'
+    link_pattern = r"id\s+(\w+_Link)\s*=\s*&(cfstr_\w+|stru_[0-9A-Fa-f]+)"
     for match in re.finditer(link_pattern, content):
         link_name = match.group(1)
         cfstr_ref = match.group(2)
@@ -739,11 +745,11 @@ def extract_cfstring_definitions(content: str) -> Dict[str, str]:
 def analyze_string_patterns(content: str) -> dict:
     """Analyze patterns in encoded strings to identify encoding schemes"""
     patterns = {
-        'hikari_xor': [],
-        'base64': [],
-        'aes_encrypted': [],
-        'plaintext': [],
-        'string_decrypt': []
+        "hikari_xor": [],
+        "base64": [],
+        "aes_encrypted": [],
+        "plaintext": [],
+        "string_decrypt": [],
     }
 
     # Find CFSTR strings that look like base64
@@ -751,29 +757,29 @@ def analyze_string_patterns(content: str) -> dict:
     for match in re.finditer(base64_pattern, content):
         s = match.group(1)
         if len(s) >= 4 and is_base64(s):
-            patterns['base64'].append(s)
+            patterns["base64"].append(s)
 
     # Find StringDecrypt calls
-    sd_pattern = r'StringDecrypt\([^)]+\)'
-    patterns['string_decrypt'] = re.findall(sd_pattern, content)
+    sd_pattern = r"StringDecrypt\([^)]+\)"
+    patterns["string_decrypt"] = re.findall(sd_pattern, content)
 
     return patterns
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Decode obfuscated strings from Hikari-obfuscated C dumps',
+        description="Decode obfuscated strings from Hikari-obfuscated C dumps",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
     python decode_strings.py AldazA12.c
     python decode_strings.py RusskovT2RActivator.c
     python decode_strings.py ./dump.c --output decoded_output.txt
-        """
+        """,
     )
-    parser.add_argument('filename', help='Path to the C dump file to analyze')
-    parser.add_argument('--output', '-o', help='Output file for results (optional)')
-    parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+    parser.add_argument("filename", help="Path to the C dump file to analyze")
+    parser.add_argument("--output", "-o", help="Output file for results (optional)")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
     args = parser.parse_args()
 
@@ -784,7 +790,7 @@ Examples:
     print("=" * 70)
 
     try:
-        with open(dump_path, 'r', encoding='utf-8', errors='replace') as f:
+        with open(dump_path, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
     except FileNotFoundError:
         print(f"Error: Could not find {dump_path}")
@@ -800,27 +806,29 @@ Examples:
 
     string_decrypt_info = detect_string_decrypt_usage(content)
 
-    if string_decrypt_info['has_string_decrypt']:
+    if string_decrypt_info["has_string_decrypt"]:
         print("\n  [+] StringDecrypt() function found - Base64 + AES256 encryption")
-        if string_decrypt_info['base64_keys']:
+        if string_decrypt_info["base64_keys"]:
             print("      Encryption keys found:")
-            for key_info in string_decrypt_info['base64_keys']:
+            for key_info in string_decrypt_info["base64_keys"]:
                 print(f"        Base64: {key_info['encoded']}")
                 print(f"        Decoded: {key_info['decoded']}")
 
-    if string_decrypt_info['has_fwt_obfuscator']:
+    if string_decrypt_info["has_fwt_obfuscator"]:
         print("\n  [+] FWTObfuscator found - PBKDF2 + AES encryption")
 
     # Check for simple Hikari XOR (decimal assignments)
-    char_assign_count = len(re.findall(r'\[\d+\]\s*=\s*\d+;', content))
+    char_assign_count = len(re.findall(r"\[\d+\]\s*=\s*\d+;", content))
     if char_assign_count > 10:
         print(f"\n  [+] Hikari XOR encoding found - {char_assign_count} character assignments")
 
     # Check for XOR with byte variables (OtixOpenmenuMACOS pattern)
     byte_var_count = len(re.findall(r"char\s+byte_[0-9A-Fa-f]+\s*=\s*'", content))
-    xor_expr_count = len(re.findall(r'\[\d+\]\s*=\s*byte_[0-9A-Fa-f]+\s*\^', content))
+    xor_expr_count = len(re.findall(r"\[\d+\]\s*=\s*byte_[0-9A-Fa-f]+\s*\^", content))
     if byte_var_count > 0 and xor_expr_count > 0:
-        print(f"\n  [+] Hikari XOR with byte variables - {byte_var_count} byte definitions, {xor_expr_count} XOR expressions")
+        print(
+            f"\n  [+] Hikari XOR with byte variables - {byte_var_count} byte definitions, {xor_expr_count} XOR expressions"
+        )
 
     # Extract URLs (most useful for understanding functionality)
     print("\n" + "=" * 70)
@@ -849,20 +857,51 @@ Examples:
 
     # Filter for interesting strings
     interesting_strings = {}
-    keywords = ['http', 'com.apple', 'Library', 'API', 'activation',
-                'device', 'mobile', 'apple.com', 'icloud', 'ssh',
-                'Activation', 'OTA', 'plist', 'backup', 'Error', 'error',
-                'password', 'key', 'token', 'auth', 'cert', 'serial',
-                'ECID', 'CPID', 'ramdisk', 'boot', 'dfu', 'recovery']
+    keywords = [
+        "http",
+        "com.apple",
+        "Library",
+        "API",
+        "activation",
+        "device",
+        "mobile",
+        "apple.com",
+        "icloud",
+        "ssh",
+        "Activation",
+        "OTA",
+        "plist",
+        "backup",
+        "Error",
+        "error",
+        "password",
+        "key",
+        "token",
+        "auth",
+        "cert",
+        "serial",
+        "ECID",
+        "CPID",
+        "ramdisk",
+        "boot",
+        "dfu",
+        "recovery",
+    ]
 
     for var, text in decoded_strings.items():
         # Include if matches keywords or is a URL or path
-        if (any(kw.lower() in text.lower() for kw in keywords) or
-            text.startswith('http') or text.startswith('/') or
-            '.com' in text or '.plist' in text):
+        if (
+            any(kw.lower() in text.lower() for kw in keywords)
+            or text.startswith("http")
+            or text.startswith("/")
+            or ".com" in text
+            or ".plist" in text
+        ):
             interesting_strings[var] = text
 
-    print(f"\nFound {len(decoded_strings)} decoded strings, {len(interesting_strings)} interesting ones:\n")
+    print(
+        f"\nFound {len(decoded_strings)} decoded strings, {len(interesting_strings)} interesting ones:\n"
+    )
 
     # Sort by content for readability
     for var, text in sorted(interesting_strings.items(), key=lambda x: x[1]):
@@ -896,26 +935,26 @@ Examples:
     # then the resulting base64 strings need to be AES decrypted
     aes_decrypted_strings = {}
 
-    if HAS_CRYPTO and string_decrypt_info['base64_keys']:
+    if HAS_CRYPTO and string_decrypt_info["base64_keys"]:
         print("\n" + "=" * 70)
         print("ATTEMPTING AES256 DECRYPTION OF BASE64 STRINGS")
         print("=" * 70)
 
         # Look for base64-looking strings in the decoded strings
-        b64_pattern = re.compile(r'^[A-Za-z0-9+/]{16,}={0,2}$')
+        b64_pattern = re.compile(r"^[A-Za-z0-9+/]{16,}={0,2}$")
 
-        for key_info in string_decrypt_info['base64_keys']:
-            key = key_info['decoded'].encode('utf-8')
+        for key_info in string_decrypt_info["base64_keys"]:
+            key = key_info["decoded"].encode("utf-8")
             # Pad key to 32 bytes
             if len(key) < 32:
-                key = key + b'\x00' * (32 - len(key))
+                key = key + b"\x00" * (32 - len(key))
 
             print(f"\n  Using key: {key_info['decoded'][:20]}... (from {key_info['encoded']})")
 
             decrypted_count = 0
             for var_name, text in decoded_strings.items():
                 # Skip the key itself
-                if text == key_info['encoded']:
+                if text == key_info["encoded"]:
                     continue
 
                 # Check if it looks like base64
@@ -928,7 +967,7 @@ Examples:
                             continue
 
                         # Try CBC with zero IV
-                        iv = b'\x00' * 16
+                        iv = b"\x00" * 16
                         cipher = AES.new(key, AES.MODE_CBC, iv)
                         decrypted = cipher.decrypt(encrypted)
 
@@ -938,10 +977,12 @@ Examples:
                             pass
 
                         try:
-                            decrypted_text = decrypted.decode('utf-8', errors='strict')
+                            decrypted_text = decrypted.decode("utf-8", errors="strict")
                             # Check if mostly printable
                             if len(decrypted_text) > 0:
-                                printable_ratio = sum(1 for c in decrypted_text if c.isprintable() or c in '\n\t\r') / len(decrypted_text)
+                                printable_ratio = sum(
+                                    1 for c in decrypted_text if c.isprintable() or c in "\n\t\r"
+                                ) / len(decrypted_text)
                                 if printable_ratio > 0.8:
                                     print(f"    {var_name}: {decrypted_text}")
                                     aes_decrypted_strings[var_name] = decrypted_text
@@ -956,7 +997,7 @@ Examples:
             if decrypted_count > 0:
                 break  # Found the right key
 
-    elif not HAS_CRYPTO and string_decrypt_info['has_string_decrypt']:
+    elif not HAS_CRYPTO and string_decrypt_info["has_string_decrypt"]:
         print("\n  Note: Install pycryptodome for AES decryption support:")
         print("        pip install pycryptodome")
 
@@ -967,7 +1008,7 @@ Examples:
 
     methods_found = []
 
-    if 'AES256DecryptWithKey' in content:
+    if "AES256DecryptWithKey" in content:
         methods_found.append("""
   1. AES256DecryptWithKey (StringDecrypt pattern)
      - Input is Base64 encoded encrypted data
@@ -975,7 +1016,7 @@ Examples:
      - Uses AES-256 for decryption
      - Returns plaintext string""")
 
-    if 'decryptData' in content.lower():
+    if "decryptData" in content.lower():
         methods_found.append("""
   2. decryptData() - AES-256-CBC
      - Key size: 32 bytes (0x20)
@@ -983,7 +1024,7 @@ Examples:
      - CCCrypt(1, 0, 1, key, 0x20, iv, ...)
      - Input: Base64 string -> decode -> AES decrypt -> JSON""")
 
-    if 'decryptMyData' in content.lower():
+    if "decryptMyData" in content.lower():
         methods_found.append("""
   3. decryptMyData() - AES-128-CBC
      - Key size: 16 bytes (0x10)
@@ -997,7 +1038,7 @@ Examples:
      - Runtime decoding via character-by-character assignment
      - Pattern: var[N] = decimal_value;""")
 
-    if string_decrypt_info['has_fwt_obfuscator']:
+    if string_decrypt_info["has_fwt_obfuscator"]:
         methods_found.append("""
   5. FWTObfuscator
      - Uses PBKDF2 for key derivation
@@ -1011,7 +1052,7 @@ Examples:
         print("\n  No known encryption methods detected")
 
     # Write output files
-    output_base = args.output if args.output else dump_path.rsplit('.', 1)[0]
+    output_base = args.output if args.output else dump_path.rsplit(".", 1)[0]
 
     urls_file = f"{output_base}_urls.txt"
     strings_file = f"{output_base}_decoded.txt"
@@ -1019,16 +1060,16 @@ Examples:
     # Collect all URLs including decrypted ones
     all_urls = set(urls)
     for text in aes_decrypted_strings.values():
-        if text.startswith('http'):
+        if text.startswith("http"):
             all_urls.add(text)
 
-    with open(urls_file, 'w') as f:
+    with open(urls_file, "w") as f:
         f.write(f"# URLs extracted from {dump_path}\n")
         f.write("# " + "=" * 50 + "\n\n")
         for url in sorted(all_urls):
             f.write(url + "\n")
 
-    with open(strings_file, 'w') as f:
+    with open(strings_file, "w") as f:
         f.write(f"# Decoded strings from {dump_path}\n")
         f.write("# " + "=" * 50 + "\n\n")
 

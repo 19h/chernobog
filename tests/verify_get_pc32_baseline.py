@@ -1,4 +1,5 @@
 """Compare rejected-case CFG metadata against IDA with native analysis disabled."""
+
 import json
 import sys
 from pathlib import Path

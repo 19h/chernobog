@@ -26,9 +26,7 @@ def finish(code, message):
 def displayed_pseudocode(cfunc):
     # __str__ invokes print_func() directly and omits hxe_func_printed sv
     # annotations. Inspect the same rendered lines used by the pseudocode UI.
-    return "\n".join(
-        ida_lines.tag_remove(line.line) for line in cfunc.get_pseudocode()
-    )
+    return "\n".join(ida_lines.tag_remove(line.line) for line in cfunc.get_pseudocode())
 
 
 try:
@@ -45,9 +43,7 @@ try:
     # Automatic batch decompilation must trigger rax from Hex-Rays function
     # ingress; the standalone CHERNOBOG_RAX_BATCH_EA action is intentionally
     # not armed here.
-    cfunc = ida_hexrays.decompile(
-        function_ea, None, ida_hexrays.DECOMP_NO_CACHE
-    )
+    cfunc = ida_hexrays.decompile(function_ea, None, ida_hexrays.DECOMP_NO_CACHE)
     if cfunc is None:
         finish(4, "decompilation failed at 0x%X" % function_ea)
 
@@ -74,22 +70,18 @@ try:
     # fragment-producing regression without assuming its plaintext content.
     destination = 0x1002118A6
     before = ida_bytes.get_bytes(destination, 12)
-    second = ida_hexrays.decompile(
-        function_ea, None, ida_hexrays.DECOMP_NO_CACHE
-    )
+    second = ida_hexrays.decompile(function_ea, None, ida_hexrays.DECOMP_NO_CACHE)
     after = ida_bytes.get_bytes(destination, 12)
     if second is None or before != after:
         finish(6, "duplicate decompilation changed materialized data bytes")
     second_pseudocode = displayed_pseudocode(second)
-    missing = [value for value in expected_literals
-               if value not in second_pseudocode]
+    missing = [value for value in expected_literals if value not in second_pseudocode]
     if missing:
         finish(7, "runtime literals absent from repeated pseudocode: %s" % missing)
 
     finish(
         0,
-        "PASS function=0x%X runtime_literals=%d"
-        % (function_ea, len(expected_literals)),
+        "PASS function=0x%X runtime_literals=%d" % (function_ea, len(expected_literals)),
     )
 except BaseException as error:
     finish(9, "exception: %r" % (error,))

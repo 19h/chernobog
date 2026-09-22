@@ -29,8 +29,14 @@ class RunReportTests(unittest.TestCase):
         self.run_number = 0
 
     def run_fixture(
-        self, *, write_log=True, exit_code=0, before_probe="", after_probe="",
-        inherited=None, assignments=(),
+        self,
+        *,
+        write_log=True,
+        exit_code=0,
+        before_probe="",
+        after_probe="",
+        inherited=None,
+        assignments=(),
     ):
         self.executable.write_text(
             "#!%s\n" % sys.executable
@@ -41,8 +47,7 @@ class RunReportTests(unittest.TestCase):
             + "\nrunpy.run_path(str(probe), run_name='__main__')\n"
             + after_probe
             + "\n"
-            + ("log.write_text('[chernobog][fixture] PASS\\n')\n"
-               if write_log else "")
+            + ("log.write_text('[chernobog][fixture] PASS\\n')\n" if write_log else "")
             + "sys.exit(%d)\n" % exit_code
         )
         self.executable.chmod(0o755)
@@ -60,10 +65,16 @@ class RunReportTests(unittest.TestCase):
         environment = os.environ.copy()
         environment.update(inherited or {})
         command = [
-            sys.executable, str(Path(__file__).with_name("run_ida_smoke.py")),
-            "--ida", str(self.executable), "--plugin", str(self.plugin),
-            "--ida-user-template", str(self.template),
-            "--output-dir", str(self.output),
+            sys.executable,
+            str(Path(__file__).with_name("run_ida_smoke.py")),
+            "--ida",
+            str(self.executable),
+            "--plugin",
+            str(self.plugin),
+            "--ida-user-template",
+            str(self.template),
+            "--output-dir",
+            str(self.output),
         ]
         for assignment in assignments:
             command.extend(["--set", assignment])
@@ -86,14 +97,19 @@ class RunReportTests(unittest.TestCase):
         result, report = self.run_fixture()
         self.assertEqual(result.returncode, 0)
         for key in (
-            "source_input_unchanged", "script_unchanged", "source_script_unchanged",
-            "plugin_unchanged", "ida_unchanged", "input_copy_matches_source",
+            "source_input_unchanged",
+            "script_unchanged",
+            "source_script_unchanged",
+            "plugin_unchanged",
+            "ida_unchanged",
+            "input_copy_matches_source",
             "artifacts_unchanged",
         ):
             self.assertTrue(report[key], key)
         self.assertEqual(report["ida_sha256"], report["ida_sha256_after"])
-        self.assertEqual((self.output / "probe" / self.probe.name).read_bytes(),
-                         self.probe.read_bytes())
+        self.assertEqual(
+            (self.output / "probe" / self.probe.name).read_bytes(), self.probe.read_bytes()
+        )
 
     def test_missing_log_is_a_failed_assertion(self):
         result, _ = self.run_fixture(write_log=False)
@@ -123,7 +139,8 @@ class RunReportTests(unittest.TestCase):
 
     def test_internal_error_invalidates_a_pass_marker(self):
         result, report = self.run_fixture(
-            after_probe="print('Bad event detected during undo: idx=0 event=65')")
+            after_probe="print('Bad event detected during undo: idx=0 event=65')"
+        )
         self.assertTrue(report["expected_log_found"])
         self.assertTrue(report["internal_error_found"])
         self.assertEqual(result.returncode, 123)
@@ -147,32 +164,40 @@ class RunReportTests(unittest.TestCase):
         self.assertNotIn("FIXTURE_SECRET", serialized)
 
     def test_environment_digest_is_canonical_and_sensitive_to_effective_options(self):
-        _, first = self.run_fixture(
-            assignments=("CHERNOBOG_TEST_A=1", "CHERNOBOG_TEST_B=2"))
+        _, first = self.run_fixture(assignments=("CHERNOBOG_TEST_A=1", "CHERNOBOG_TEST_B=2"))
         _, reordered = self.run_fixture(
             inherited={"CHERNOBOG_DISABLE": "1"},
-            assignments=("CHERNOBOG_TEST_B=2", "CHERNOBOG_TEST_A=0", "CHERNOBOG_TEST_A=1"))
-        _, different = self.run_fixture(
-            assignments=("CHERNOBOG_TEST_A=2", "CHERNOBOG_TEST_B=2"))
-        self.assertEqual(first["chernobog_environment_sha256"],
-                         reordered["chernobog_environment_sha256"])
-        self.assertNotEqual(first["chernobog_environment_sha256"],
-                            different["chernobog_environment_sha256"])
+            assignments=("CHERNOBOG_TEST_B=2", "CHERNOBOG_TEST_A=0", "CHERNOBOG_TEST_A=1"),
+        )
+        _, different = self.run_fixture(assignments=("CHERNOBOG_TEST_A=2", "CHERNOBOG_TEST_B=2"))
+        self.assertEqual(
+            first["chernobog_environment_sha256"], reordered["chernobog_environment_sha256"]
+        )
+        self.assertNotEqual(
+            first["chernobog_environment_sha256"], different["chernobog_environment_sha256"]
+        )
         configuration = {
-            "CHERNOBOG_AUTO": "1", "CHERNOBOG_VERBOSE": "0",
-            "CHERNOBOG_PLUGIN_PRELOADED": "1", "CHERNOBOG_RAX_DISABLE": "1",
-            "CHERNOBOG_RAX_ENABLED": "0", "CHERNOBOG_RAX_APPLY_ANALYSIS": "0",
-            "CHERNOBOG_TEST_A": "1", "CHERNOBOG_TEST_B": "2",
+            "CHERNOBOG_AUTO": "1",
+            "CHERNOBOG_VERBOSE": "0",
+            "CHERNOBOG_PLUGIN_PRELOADED": "1",
+            "CHERNOBOG_RAX_DISABLE": "1",
+            "CHERNOBOG_RAX_ENABLED": "0",
+            "CHERNOBOG_RAX_APPLY_ANALYSIS": "0",
+            "CHERNOBOG_TEST_A": "1",
+            "CHERNOBOG_TEST_B": "2",
         }
-        canonical = json.dumps(configuration, sort_keys=True, separators=(",", ":"),
-                               ensure_ascii=True).encode("utf-8")
-        self.assertEqual(first["chernobog_environment_sha256"],
-                         hashlib.sha256(canonical).hexdigest())
+        canonical = json.dumps(
+            configuration, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode("utf-8")
+        self.assertEqual(
+            first["chernobog_environment_sha256"], hashlib.sha256(canonical).hexdigest()
+        )
 
     def test_source_probe_mutation_does_not_change_executed_copy(self):
         result, report = self.run_fixture(
             before_probe="pathlib.Path(%r).write_text('raise RuntimeError(\"changed\")\\n')\n"
-            % str(self.probe))
+            % str(self.probe)
+        )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(report["source_script_unchanged"])
         self.assertTrue(report["script_unchanged"])
@@ -186,22 +211,24 @@ class RunReportTests(unittest.TestCase):
 
     def test_installed_plugin_deletion_fails_attribution(self):
         result, report = self.run_fixture(
-            after_probe="pathlib.Path(os.environ['CHERNOBOG_PLUGIN_PATH']).unlink()")
+            after_probe="pathlib.Path(os.environ['CHERNOBOG_PLUGIN_PATH']).unlink()"
+        )
         self.assertEqual(result.returncode, 125)
         self.assertFalse(report["plugin_unchanged"])
         self.assertFalse(report["artifacts_unchanged"])
 
     def test_executable_mutation_fails_attribution(self):
         result, report = self.run_fixture(
-            after_probe="pathlib.Path(sys.argv[0]).write_text('# changed\\n')")
+            after_probe="pathlib.Path(sys.argv[0]).write_text('# changed\\n')"
+        )
         self.assertEqual(result.returncode, 125)
         self.assertFalse(report["ida_unchanged"])
         self.assertNotEqual(report["ida_sha256"], report["ida_sha256_after"])
 
     def test_source_input_deletion_precedes_process_and_log_failure(self):
         result, report = self.run_fixture(
-            write_log=False, exit_code=7,
-            after_probe="pathlib.Path(%r).unlink()" % str(self.binary))
+            write_log=False, exit_code=7, after_probe="pathlib.Path(%r).unlink()" % str(self.binary)
+        )
         self.assertEqual(result.returncode, 125)
         self.assertFalse(report["source_input_unchanged"])
 

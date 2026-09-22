@@ -12,7 +12,6 @@ import ida_kernwin
 import ida_lines
 import ida_pro
 
-
 TARGET_EA = int(os.environ["CHERNOBOG_SMOKE_EA"], 0)
 
 
@@ -34,9 +33,7 @@ try:
 
     started = time.monotonic()
     failure = ida_hexrays.hexrays_failure_t()
-    cfunc = ida_hexrays.decompile_function(
-        function_start, failure, ida_hexrays.DECOMP_NO_CACHE
-    )
+    cfunc = ida_hexrays.decompile_function(function_start, failure, ida_hexrays.DECOMP_NO_CACHE)
     elapsed = time.monotonic() - started
     if cfunc is None:
         finish(
@@ -53,9 +50,7 @@ try:
             ),
         )
 
-    pseudocode = "\n".join(
-        ida_lines.tag_remove(line.line) for line in cfunc.get_pseudocode()
-    )
+    pseudocode = "\n".join(ida_lines.tag_remove(line.line) for line in cfunc.get_pseudocode())
     output_path = os.environ.get("CHERNOBOG_PSEUDOCODE_OUT")
     if output_path:
         Path(output_path).write_text(pseudocode + "\n", encoding="utf-8")

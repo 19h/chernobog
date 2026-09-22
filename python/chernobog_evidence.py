@@ -3,6 +3,7 @@
 The C++ plugin supplies a bounded immutable snapshot. This module never executes
 the analyzed program, changes the database, or upgrades observations to proofs.
 """
+
 import json
 
 import ida_bytes
@@ -24,51 +25,87 @@ def api(name, ea):
 
 def matching_events(snapshot, site=None, run=None, allocation=None, interval=None):
     """All filters retain run/seed and allocation generation identity."""
-    return [row for row in snapshot.get("events", [])
-            if (site is None or row.get("site") == site or row.get("target") == site)
-            and (run is None or (row.get("run"), row.get("seed")) == run)
-            and (interval is None or interval[0] <= int(row.get("sequence", "0"), 0) <= interval[1])
-            and (allocation is None or tuple(row.get(key) for key in
-                 ("run", "seed", "allocation", "generation")) == allocation)]
+    return [
+        row
+        for row in snapshot.get("events", [])
+        if (site is None or row.get("site") == site or row.get("target") == site)
+        and (run is None or (row.get("run"), row.get("seed")) == run)
+        and (interval is None or interval[0] <= int(row.get("sequence", "0"), 0) <= interval[1])
+        and (
+            allocation is None
+            or tuple(row.get(key) for key in ("run", "seed", "allocation", "generation"))
+            == allocation
+        )
+    ]
 
 
 def current_snapshot(snapshot, state):
-    return bool(state.get("available") and state.get("fresh")
-                and snapshot.get("revision") not in (None, "0x0")
-                and state.get("revision") == snapshot.get("revision")
-                and state.get("database") == snapshot.get("database")
-                and state.get("generation") == snapshot.get("generation"))
+    return bool(
+        state.get("available")
+        and state.get("fresh")
+        and snapshot.get("revision") not in (None, "0x0")
+        and state.get("revision") == snapshot.get("revision")
+        and state.get("database") == snapshot.get("database")
+        and state.get("generation") == snapshot.get("generation")
+    )
 
 
 def current_native_publications(snapshot, state):
     """Exact record comparison; no hash equality or ownership receipt promotion."""
-    if (not state.get("available") or state.get("database") != snapshot.get("database")
-            or state.get("function") != snapshot.get("function")):
+    if (
+        not state.get("available")
+        or state.get("database") != snapshot.get("database")
+        or state.get("function") != snapshot.get("function")
+    ):
         return set()
     current = {row["publication"]: row for row in state.get("records", [])}
-    return {row["publication"] for row in snapshot.get("records", [])
-            if row.get("publication") not in (None, "0x0") and row.get("fresh") == "true"
-            and current.get(row["publication"]) == row}
+    return {
+        row["publication"]
+        for row in snapshot.get("records", [])
+        if row.get("publication") not in (None, "0x0")
+        and row.get("fresh") == "true"
+        and current.get(row["publication"]) == row
+    }
 
 
 def current_solver_sources(snapshot, state):
     """Admits source navigation only, never current-IR applicability."""
-    if (not state.get("available") or state.get("database") != snapshot.get("database")
-            or state.get("function") != snapshot.get("function")
-            or state.get("generation") != snapshot.get("generation")):
+    if (
+        not state.get("available")
+        or state.get("database") != snapshot.get("database")
+        or state.get("function") != snapshot.get("function")
+        or state.get("generation") != snapshot.get("generation")
+    ):
         return set()
-    current = {row["query_id"] for row in state.get("records", []) if row.get("source_bytes_current") == "true"}
-    return {row["query_id"] for row in snapshot.get("records", [])
-            if row.get("query_id") not in (None, "0x0") and row["query_id"] in current}
+    current = {
+        row["query_id"]
+        for row in state.get("records", [])
+        if row.get("source_bytes_current") == "true"
+    }
+    return {
+        row["query_id"]
+        for row in snapshot.get("records", [])
+        if row.get("query_id") not in (None, "0x0") and row["query_id"] in current
+    }
 
 
 def load_inspection(ea):
     snapshot = api("chernobog_evidence_view", ea)
     native = api("chernobog_native_evidence", ea)
     if not snapshot.get("available"):
-        snapshot = {"available": False, "fresh": False, "database": native["database"],
-                    "function": native["function"], "generation": "0x0", "revision": "0x0",
-                    "edges": [], "events": [], "lifetimes": [], "runs": [], "claims": []}
+        snapshot = {
+            "available": False,
+            "fresh": False,
+            "database": native["database"],
+            "function": native["function"],
+            "generation": "0x0",
+            "revision": "0x0",
+            "edges": [],
+            "events": [],
+            "lifetimes": [],
+            "runs": [],
+            "claims": [],
+        }
     snapshot["native"] = native
     snapshot["vm"] = api("chernobog_vm_summaries", ea)
     snapshot["vm_states"] = api("chernobog_vm_transitions", ea)
@@ -78,12 +115,18 @@ def load_inspection(ea):
 
 def current_vm_candidates(snapshot, state):
     """Exact recomputed local recognition, not VM semantics or execution admission."""
-    if (not state.get("available") or state.get("database") != snapshot.get("database")
-            or state.get("function") != snapshot.get("function")):
+    if (
+        not state.get("available")
+        or state.get("database") != snapshot.get("database")
+        or state.get("function") != snapshot.get("function")
+    ):
         return set()
     current = {row["vm_candidate"]: row for row in state.get("records", [])}
-    return {row["vm_candidate"] for row in snapshot.get("records", [])
-            if current.get(row["vm_candidate"]) == row}
+    return {
+        row["vm_candidate"]
+        for row in snapshot.get("records", [])
+        if current.get(row["vm_candidate"]) == row
+    }
 
 
 if ida_kernwin.is_idaq():
@@ -118,8 +161,10 @@ if ida_kernwin.is_idaq():
             self.setPen(pen)
             self.setZValue(-1)
             self.setToolTip(row["kind"] + " " + row["site"] + " -> " + row["target"])
-            arrow = QtWidgets.QGraphicsPolygonItem(QtGui.QPolygonF([
-                end, end + QtCore.QPointF(-9, -4), end + QtCore.QPointF(-9, 4)]), self)
+            arrow = QtWidgets.QGraphicsPolygonItem(
+                QtGui.QPolygonF([end, end + QtCore.QPointF(-9, -4), end + QtCore.QPointF(-9, 4)]),
+                self,
+            )
             arrow.setBrush(QtGui.QColor(color))
             arrow.setPen(QtGui.QPen(QtCore.Qt.PenStyle.NoPen))
 
@@ -131,8 +176,10 @@ if ida_kernwin.is_idaq():
     class FlowView(QtWidgets.QGraphicsView):
         def wheelEvent(self, event):
             if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
-                self.scale(1.15 if event.angleDelta().y() > 0 else 1 / 1.15,
-                           1.15 if event.angleDelta().y() > 0 else 1 / 1.15)
+                self.scale(
+                    1.15 if event.angleDelta().y() > 0 else 1 / 1.15,
+                    1.15 if event.angleDelta().y() > 0 else 1 / 1.15,
+                )
             else:
                 super().wheelEvent(event)
 
@@ -164,8 +211,11 @@ if ida_kernwin.is_idaq():
             self.status.setWordWrap(True)
             layout.addWidget(self.status)
             controls = QtWidgets.QHBoxLayout()
-            for title, callback in (("Reload capture", self.reload), ("All events", self.clear_filters),
-                                    ("Fit flow", self.fit_graph)):
+            for title, callback in (
+                ("Reload capture", self.reload),
+                ("All events", self.clear_filters),
+                ("Fit flow", self.fit_graph),
+            ):
                 button = QtWidgets.QPushButton(title)
                 button.clicked.connect(callback)
                 controls.addWidget(button)
@@ -182,22 +232,48 @@ if ida_kernwin.is_idaq():
             self.graph.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
             self.graph.setDragMode(QtWidgets.QGraphicsView.DragMode.ScrollHandDrag)
             self.graph.setResizeAnchor(QtWidgets.QGraphicsView.ViewportAnchor.AnchorViewCenter)
-            self.graph.setTransformationAnchor(QtWidgets.QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+            self.graph.setTransformationAnchor(
+                QtWidgets.QGraphicsView.ViewportAnchor.AnchorUnderMouse
+            )
             self.graph.setMinimumWidth(340)
             split.addWidget(self.graph)
             right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
             self.tabs = QtWidgets.QTabWidget()
             self.tables = {}
-            for key, title in (("events", "Event order"), ("read_streams", "Read streams"), ("lifetimes", "Allocations"),
-                               ("runs", "Run stops"), ("claims", "Branch claims"),
-                               ("native", "Native proofs"), ("solver", "SMT queries"),
-                               ("vm", "VM candidates"), ("vm_states", "VM states")):
+            for key, title in (
+                ("events", "Event order"),
+                ("read_streams", "Read streams"),
+                ("lifetimes", "Allocations"),
+                ("runs", "Run stops"),
+                ("claims", "Branch claims"),
+                ("native", "Native proofs"),
+                ("solver", "SMT queries"),
+                ("vm", "VM candidates"),
+                ("vm_states", "VM states"),
+            ):
                 table = QtWidgets.QTreeWidget()
-                table.setHeaderLabels(["Role / result", "Query", "Source bytes", "Instruction"] if key == "solver"
-                                      else ["Dispatch / direction", "Shape group", "Recognition", "Source"] if key == "vm"
-                                      else ["VIP / key", "Run / seed", "Sequence / validity", "Native candidate"] if key == "vm_states"
-                                      else ["Conclusion", "Publication", "Validation", "Source / target"] if key == "native"
-                                      else ["Kind / state", "Run / seed", "Sequence / lifetime", "Source / address"])
+                table.setHeaderLabels(
+                    ["Role / result", "Query", "Source bytes", "Instruction"]
+                    if key == "solver"
+                    else (
+                        ["Dispatch / direction", "Shape group", "Recognition", "Source"]
+                        if key == "vm"
+                        else (
+                            ["VIP / key", "Run / seed", "Sequence / validity", "Native candidate"]
+                            if key == "vm_states"
+                            else (
+                                ["Conclusion", "Publication", "Validation", "Source / target"]
+                                if key == "native"
+                                else [
+                                    "Kind / state",
+                                    "Run / seed",
+                                    "Sequence / lifetime",
+                                    "Source / address",
+                                ]
+                            )
+                        )
+                    )
+                )
                 table.setRootIsDecorated(False)
                 # IDA themes can override the base brush without overriding
                 # AlternateBase, producing unreadable light rows in dark mode.
@@ -213,8 +289,10 @@ if ida_kernwin.is_idaq():
             split.addWidget(right)
             split.setSizes([440, 680])
             layout.addWidget(split, 1)
-            legend = QtWidgets.QLabel("Blue: observed. Amber dashed: encoded. Green: locally proven native transfer. "
-                                      "Dimmed: historical. Local proofs retain their stated assumptions. Ctrl+wheel: zoom.")
+            legend = QtWidgets.QLabel(
+                "Blue: observed. Amber dashed: encoded. Green: locally proven native transfer. "
+                "Dimmed: historical. Local proofs retain their stated assumptions. Ctrl+wheel: zoom."
+            )
             legend.setWordWrap(True)
             layout.addWidget(legend)
             self.rebuild()
@@ -226,13 +304,20 @@ if ida_kernwin.is_idaq():
         def rebuild(self):
             self.scene.clear()
             self.nodes = {}
-            self.edges = self.snapshot.get("edges", []) + [r for r in self.native.get("records", [])
-                                                         if r.get("edge") == "true"]
-            sites = sorted({row[key] for row in self.edges for key in ("site", "target")}
-                           | {r["site"] for r in self.native.get("records", [])}
-                           | {r[key] for r in self.vm.get("records", []) for key in ("site", "dispatch")}
-                           | {r["site"] for r in self.queries.get("records", []) if r["site"] != "0xffffffffffffffff"},
-                           key=lambda text: int(text, 0))
+            self.edges = self.snapshot.get("edges", []) + [
+                r for r in self.native.get("records", []) if r.get("edge") == "true"
+            ]
+            sites = sorted(
+                {row[key] for row in self.edges for key in ("site", "target")}
+                | {r["site"] for r in self.native.get("records", [])}
+                | {r[key] for r in self.vm.get("records", []) for key in ("site", "dispatch")}
+                | {
+                    r["site"]
+                    for r in self.queries.get("records", [])
+                    if r["site"] != "0xffffffffffffffff"
+                },
+                key=lambda text: int(text, 0),
+            )
             # A deterministic address layout; edges are directed evidence links,
             # not a claim that address order is execution order.
             for index, site in enumerate(sites):
@@ -241,8 +326,14 @@ if ida_kernwin.is_idaq():
                 self.scene.addItem(node)
             for row in self.edges:
                 start, end = self.nodes[row["site"]], self.nodes[row["target"]]
-                self.scene.addItem(FlowEdge(self, row, start.pos() + QtCore.QPointF(155, 20),
-                                           end.pos() + QtCore.QPointF(0, 20)))
+                self.scene.addItem(
+                    FlowEdge(
+                        self,
+                        row,
+                        start.pos() + QtCore.QPointF(155, 20),
+                        end.pos() + QtCore.QPointF(0, 20),
+                    )
+                )
             self.run_filter.blockSignals(True)
             self.run_filter.clear()
             self.run_filter.addItem("All runs", None)
@@ -256,33 +347,72 @@ if ida_kernwin.is_idaq():
             self.populate("solver", self.queries.get("records", []))
             self.populate("vm", self.vm.get("records", []))
             self.populate("vm_states", self.vm_states.get("states", []))
-            self.show_detail({"inspection": "Select a flow node, event, allocation, run stop or branch claim."})
+            self.show_detail(
+                {"inspection": "Select a flow node, event, allocation, run stop or branch claim."}
+            )
 
         def fit_graph(self):
-            self.graph.fitInView(self.scene.itemsBoundingRect().adjusted(-20, -20, 20, 20),
-                                 QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+            self.graph.fitInView(
+                self.scene.itemsBoundingRect().adjusted(-20, -20, 20, 20),
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+            )
 
         def populate(self, key, rows):
             table = self.tables[key]
             table.blockSignals(True)
             table.clear()
             for row in rows:
-                kind = row.get("kind", "allocation" if key == "lifetimes" else row.get("verdict", "run stop"))
+                kind = row.get(
+                    "kind", "allocation" if key == "lifetimes" else row.get("verdict", "run stop")
+                )
                 order = row.get("sequence", row.get("allocated", ""))
                 if key == "lifetimes":
                     order += " .. " + ("live" if row["live"] == "true" else row["released"])
                 if key == "read_streams":
                     order = row["first_sequence"] + " .. " + row["last_sequence"]
-                columns = ([row["dispatch_kind"] + " / " + row["direction"], row["shape_group"],
-                            "candidate", row["site"]] if key == "vm" else
-                           [row["entry_vip"] + " / " + row["entry_key"], row["run"] + " / " + row["seed"],
-                            row["sequence"] + " / captured", row["site"]] if key == "vm_states" else
-                           [row["role"] + " / " + row["result"], row["query_id"],
-                            "captured", row["site"]] if key == "solver" else
-                           [kind + (" (unresolved)" if row.get("truth") == "candidate" else ""),
-                            row["publication"], row["validation"], row["site"] + " " + row.get("target", "")]
-                           if key == "native" else [kind, row.get("run", "") + " / " + row.get("seed", ""),
-                                                     order, row.get("site", "") + " " + row.get("address", "")])
+                columns = (
+                    [
+                        row["dispatch_kind"] + " / " + row["direction"],
+                        row["shape_group"],
+                        "candidate",
+                        row["site"],
+                    ]
+                    if key == "vm"
+                    else (
+                        [
+                            row["entry_vip"] + " / " + row["entry_key"],
+                            row["run"] + " / " + row["seed"],
+                            row["sequence"] + " / captured",
+                            row["site"],
+                        ]
+                        if key == "vm_states"
+                        else (
+                            [
+                                row["role"] + " / " + row["result"],
+                                row["query_id"],
+                                "captured",
+                                row["site"],
+                            ]
+                            if key == "solver"
+                            else (
+                                [
+                                    kind
+                                    + (" (unresolved)" if row.get("truth") == "candidate" else ""),
+                                    row["publication"],
+                                    row["validation"],
+                                    row["site"] + " " + row.get("target", ""),
+                                ]
+                                if key == "native"
+                                else [
+                                    kind,
+                                    row.get("run", "") + " / " + row.get("seed", ""),
+                                    order,
+                                    row.get("site", "") + " " + row.get("address", ""),
+                                ]
+                            )
+                        )
+                    )
+                )
                 item = QtWidgets.QTreeWidgetItem(columns)
                 item.setData(0, QtCore.Qt.ItemDataRole.UserRole, row)
                 table.addTopLevelItem(item)
@@ -291,8 +421,16 @@ if ida_kernwin.is_idaq():
             table.blockSignals(False)
 
         def update_events(self):
-            self.populate("events", matching_events(self.snapshot, self.site, self.run, self.allocation,
-                                                    getattr(self, "interval", None)))
+            self.populate(
+                "events",
+                matching_events(
+                    self.snapshot,
+                    self.site,
+                    self.run,
+                    self.allocation,
+                    getattr(self, "interval", None),
+                ),
+            )
 
         def filter_run(self, _index):
             self.interval = None
@@ -311,16 +449,29 @@ if ida_kernwin.is_idaq():
             self.interval = None
             self.site, self.allocation = site, None
             self.update_events()
-            self.select_record({"site": site, "outgoing_edges": [r for r in self.edges
-                                if r["site"] == site], "claims": [r for r in self.snapshot["claims"]
-                                if r["site"] == site], "native_publications": [r["publication"]
-                                for r in self.native.get("records", [])
-                                if site in (r.get("site"), r.get("target"))],
-                                "solver_queries": [r for r in self.queries.get("records", []) if r["site"] == site],
-                                "vm_candidates": [r for r in self.vm.get("records", [])
-                                                  if site in (r["site"], r["dispatch"])],
-                                "vm_candidate_ids": [r["vm_candidate"] for r in self.vm.get("records", [])
-                                                     if site in (r["site"], r["dispatch"])]})
+            self.select_record(
+                {
+                    "site": site,
+                    "outgoing_edges": [r for r in self.edges if r["site"] == site],
+                    "claims": [r for r in self.snapshot["claims"] if r["site"] == site],
+                    "native_publications": [
+                        r["publication"]
+                        for r in self.native.get("records", [])
+                        if site in (r.get("site"), r.get("target"))
+                    ],
+                    "solver_queries": [
+                        r for r in self.queries.get("records", []) if r["site"] == site
+                    ],
+                    "vm_candidates": [
+                        r for r in self.vm.get("records", []) if site in (r["site"], r["dispatch"])
+                    ],
+                    "vm_candidate_ids": [
+                        r["vm_candidate"]
+                        for r in self.vm.get("records", [])
+                        if site in (r["site"], r["dispatch"])
+                    ],
+                }
+            )
 
         def record_current(self, row):
             if "vm_state" in row:
@@ -331,8 +482,11 @@ if ida_kernwin.is_idaq():
                 return row["query_id"] in self.solver_sources_current
             if "publication" in row:
                 return row["publication"] in self.native_current
-            return (self.current or bool(self.native_current.intersection(row.get("native_publications", [])))
-                    or bool(self.vm_current.intersection(row.get("vm_candidate_ids", []))))
+            return (
+                self.current
+                or bool(self.native_current.intersection(row.get("native_publications", [])))
+                or bool(self.vm_current.intersection(row.get("vm_candidate_ids", [])))
+            )
 
         def select_record(self, row):
             self.selected = row
@@ -356,8 +510,14 @@ if ida_kernwin.is_idaq():
                 self.site = self.allocation = None
                 self.run = (row["run"], row["seed"])
                 self.interval = (int(row["first_sequence"], 0), int(row["last_sequence"], 0) + 1)
-                index = next((i for i in range(1, self.run_filter.count())
-                              if tuple(self.run_filter.itemData(i)) == self.run), 0)
+                index = next(
+                    (
+                        i
+                        for i in range(1, self.run_filter.count())
+                        if tuple(self.run_filter.itemData(i)) == self.run
+                    ),
+                    0,
+                )
                 self.run_filter.blockSignals(True)
                 self.run_filter.setCurrentIndex(index)
                 self.run_filter.blockSignals(False)
@@ -365,7 +525,9 @@ if ida_kernwin.is_idaq():
             elif key == "lifetimes":
                 self.site = self.run = None
                 self.run_filter.setCurrentIndex(0)
-                self.allocation = tuple(row.get(k) for k in ("run", "seed", "allocation", "generation"))
+                self.allocation = tuple(
+                    row.get(k) for k in ("run", "seed", "allocation", "generation")
+                )
                 self.update_events()
             elif key in ("claims", "native", "solver", "vm"):
                 self.site, self.run, self.allocation = row["site"], None, None
@@ -375,8 +537,14 @@ if ida_kernwin.is_idaq():
                 self.site = self.allocation = None
                 self.run = (row["run"], row["seed"])
                 # Qt transports sequence user data as either a list or tuple.
-                index = next((i for i in range(1, self.run_filter.count())
-                              if tuple(self.run_filter.itemData(i)) == self.run), 0)
+                index = next(
+                    (
+                        i
+                        for i in range(1, self.run_filter.count())
+                        if tuple(self.run_filter.itemData(i)) == self.run
+                    ),
+                    0,
+                )
                 self.run_filter.blockSignals(True)
                 self.run_filter.setCurrentIndex(index)
                 self.run_filter.blockSignals(False)
@@ -384,80 +552,186 @@ if ida_kernwin.is_idaq():
             self.select_record(row)
 
         def show_detail(self, row):
-            detail = {"current": self.record_current(row), "capture_current": self.current,
-                      "native_current_count": len(self.native_current),
-                      "native_scope": {key: self.native.get(key) for key in ("database", "function", "omitted")},
-                      "scope": {key: self.snapshot.get(key) for key in
-                      ("database", "function", "generation", "revision", "function_hash", "image_hash", "ticket")},
-                      "selected": row}
+            detail = {
+                "current": self.record_current(row),
+                "capture_current": self.current,
+                "native_current_count": len(self.native_current),
+                "native_scope": {
+                    key: self.native.get(key) for key in ("database", "function", "omitted")
+                },
+                "scope": {
+                    key: self.snapshot.get(key)
+                    for key in (
+                        "database",
+                        "function",
+                        "generation",
+                        "revision",
+                        "function_hash",
+                        "image_hash",
+                        "ticket",
+                    )
+                },
+                "selected": row,
+            }
             if "query_id" in row:
                 detail.pop("current")
                 detail["source_bytes_current"] = self.record_current(row)
-                detail["query_applicability"] = "Recorded formula only; current IR applicability unverified"
-                detail["solver_scope"] = {key: self.queries.get(key) for key in
-                                          ("database", "function", "generation", "omitted", "evicted_functions")}
+                detail["query_applicability"] = (
+                    "Recorded formula only; current IR applicability unverified"
+                )
+                detail["solver_scope"] = {
+                    key: self.queries.get(key)
+                    for key in (
+                        "database",
+                        "function",
+                        "generation",
+                        "omitted",
+                        "evicted_functions",
+                    )
+                }
                 # Keep the actual formula readable and the selected query's
                 # interpretation visible before generic capture metadata.
-                assignments = [row[f"model_{i}_symbol"] + " : " + row[f"model_{i}_sort"]
-                               + " = " + row[f"model_{i}_value"] for i in range(32)
-                               if all(f"model_{i}_{field}" in row for field in ("symbol", "sort", "value"))]
-                text = (row["role"] + " / " + row["result"] + " / query " + row["query_id"]
-                        + "\nquery_applicability: " + detail["query_applicability"]
-                        + "\nsource_bytes_current: " + str(detail["source_bytes_current"])
-                        + "\n" + row.get("model_interpretation", "")
-                        + "\n\nCaptured assignments:\n" + ("\n".join(assignments) or "None")
-                        + "\n\nSMT-LIB (" + row.get("formula_status", "unavailable") + "):\n"
-                        + row.get("formula", "No formula retained")
-                        + "\n\nProvenance and diagnostics:\n" + json.dumps(detail, indent=2))
+                assignments = [
+                    row[f"model_{i}_symbol"]
+                    + " : "
+                    + row[f"model_{i}_sort"]
+                    + " = "
+                    + row[f"model_{i}_value"]
+                    for i in range(32)
+                    if all(f"model_{i}_{field}" in row for field in ("symbol", "sort", "value"))
+                ]
+                text = (
+                    row["role"]
+                    + " / "
+                    + row["result"]
+                    + " / query "
+                    + row["query_id"]
+                    + "\nquery_applicability: "
+                    + detail["query_applicability"]
+                    + "\nsource_bytes_current: "
+                    + str(detail["source_bytes_current"])
+                    + "\n"
+                    + row.get("model_interpretation", "")
+                    + "\n\nCaptured assignments:\n"
+                    + ("\n".join(assignments) or "None")
+                    + "\n\nSMT-LIB ("
+                    + row.get("formula_status", "unavailable")
+                    + "):\n"
+                    + row.get("formula", "No formula retained")
+                    + "\n\nProvenance and diagnostics:\n"
+                    + json.dumps(detail, indent=2)
+                )
             elif row.get("kind") == "read-stream":
                 captured = bytes.fromhex(row.get("bytes_hex", ""))
                 preview = captured.split(b"\0", 1)[0].decode("utf-8", errors="ignore")
-                text = ("Observed native read stream\n"
-                        + "UTF-8 preview: " + json.dumps(preview, ensure_ascii=False)
-                        + (" [display truncated]" if row.get("display_truncated") == "true" else "")
-                        + "\nReads: " + row["read_count"] + " | Run / seed: " + row["run"] + " / " + row["seed"]
-                        + "\nSequence: " + row["first_sequence"] + " .. " + row["last_sequence"]
-                        + "\nSource / address: " + row["site"] + " / " + row["address"]
-                        + "\n" + row["assumption"]
-                        + "\nFragment references (source:sequence:bytes):\n" + row["fragments"]
-                        + "\nReferences omitted: " + row["fragments_omitted"]
-                        + "\n\nProvenance:\n" + json.dumps(detail, indent=2))
+                text = (
+                    "Observed native read stream\n"
+                    + "UTF-8 preview: "
+                    + json.dumps(preview, ensure_ascii=False)
+                    + (" [display truncated]" if row.get("display_truncated") == "true" else "")
+                    + "\nReads: "
+                    + row["read_count"]
+                    + " | Run / seed: "
+                    + row["run"]
+                    + " / "
+                    + row["seed"]
+                    + "\nSequence: "
+                    + row["first_sequence"]
+                    + " .. "
+                    + row["last_sequence"]
+                    + "\nSource / address: "
+                    + row["site"]
+                    + " / "
+                    + row["address"]
+                    + "\n"
+                    + row["assumption"]
+                    + "\nFragment references (source:sequence:bytes):\n"
+                    + row["fragments"]
+                    + "\nReferences omitted: "
+                    + row["fragments_omitted"]
+                    + "\n\nProvenance:\n"
+                    + json.dumps(detail, indent=2)
+                )
             else:
                 text = json.dumps(detail, indent=2)
                 if "vm_state" in row:
-                    detail["state_scope"] = {k: self.vm_states.get(k) for k in
-                                             ("database", "function", "generation", "revision", "states_reason", "states_omitted")}
+                    detail["state_scope"] = {
+                        k: self.vm_states.get(k)
+                        for k in (
+                            "database",
+                            "function",
+                            "generation",
+                            "revision",
+                            "states_reason",
+                            "states_omitted",
+                        )
+                    }
                     detail["transition_query_references"] = [
                         {k: q[k] for k in ("query_id", "role", "result")}
                         for q in self.queries.get("records", [])
-                        if row.get("transition_check") and q.get("transition_check") == row["transition_check"]
+                        if row.get("transition_check")
+                        and q.get("transition_check") == row["transition_check"]
                         and q.get("capture_revision") == row["revision"]
-                        and all(q.get(k) == row.get(k) for k in ("run", "seed", "sequence", "site"))]
-                    text = ("Captured VM-role observation / " + row["path"]
-                            + "\nVirtual stack, VM context and memory epoch: unknown"
-                            + "\n" + row["runtime_code_identity"]
-                            + "\nSemantic validation: " + row["semantic_validation"]
-                            + "\n" + row.get("transition_reason", "")
-                            + "\n\n" + json.dumps(detail, indent=2))
+                        and all(q.get(k) == row.get(k) for k in ("run", "seed", "sequence", "site"))
+                    ]
+                    text = (
+                        "Captured VM-role observation / "
+                        + row["path"]
+                        + "\nVirtual stack, VM context and memory epoch: unknown"
+                        + "\n"
+                        + row["runtime_code_identity"]
+                        + "\nSemantic validation: "
+                        + row["semantic_validation"]
+                        + "\n"
+                        + row.get("transition_reason", "")
+                        + "\n\n"
+                        + json.dumps(detail, indent=2)
+                    )
                 elif "vm_candidate" in row:
-                    binding = next((b for b in self.vm.get("summary_bindings", [])
-                                    if b["vm_candidate"] == row["vm_candidate"]), {})
-                    summary = next((s for s in self.vm.get("summaries", [])
-                                    if s["summary_id"] == binding.get("summary_id")), {})
+                    binding = next(
+                        (
+                            b
+                            for b in self.vm.get("summary_bindings", [])
+                            if b["vm_candidate"] == row["vm_candidate"]
+                        ),
+                        {},
+                    )
+                    summary = next(
+                        (
+                            s
+                            for s in self.vm.get("summaries", [])
+                            if s["summary_id"] == binding.get("summary_id")
+                        ),
+                        {},
+                    )
                     detail["local_effect_summary"] = {
-                        "binding": binding, "reference": summary,
-                        "sources_current": (row["vm_candidate"] in self.vm_current
-                                            and binding.get("reference_candidate") in self.vm_current),
+                        "binding": binding,
+                        "reference": summary,
+                        "sources_current": (
+                            row["vm_candidate"] in self.vm_current
+                            and binding.get("reference_candidate") in self.vm_current
+                        ),
                         "scope": "modeled normal-completion local effects; full VM/handler semantics unverified",
                     }
-                    text = (row["classification"] + "\n" + row["ownership"]
-                            + "\nUnresolved: " + row["unresolved"]
-                            + "\nSyntax grouping: " + row["summary_reuse"]
-                            + "\nModeled local effects: " + binding.get("status", "not retained")
-                            + "\n" + summary.get("contract", "")
-                            + "\nCurrent local recognition: " + str(self.record_current(row))
-                            + "\n\n" + json.dumps(detail["local_effect_summary"], indent=2)
-                            + "\n\nCandidate provenance:\n" + json.dumps(detail, indent=2))
+                    text = (
+                        row["classification"]
+                        + "\n"
+                        + row["ownership"]
+                        + "\nUnresolved: "
+                        + row["unresolved"]
+                        + "\nSyntax grouping: "
+                        + row["summary_reuse"]
+                        + "\nModeled local effects: "
+                        + binding.get("status", "not retained")
+                        + "\n"
+                        + summary.get("contract", "")
+                        + "\nCurrent local recognition: "
+                        + str(self.record_current(row))
+                        + "\n\n"
+                        + json.dumps(detail["local_effect_summary"], indent=2)
+                        + "\n\nCandidate provenance:\n"
+                        + json.dumps(detail, indent=2)
+                    )
             if self.detail.toPlainText() != text:
                 vertical = self.detail.verticalScrollBar().value()
                 horizontal = self.detail.horizontalScrollBar().value()
@@ -470,18 +744,26 @@ if ida_kernwin.is_idaq():
                 state = api("chernobog_evidence_state", self.ea)
                 self.current = current_snapshot(self.snapshot, state)
                 self.vm_states_current = current_snapshot(self.vm_states, state)
-                reason = "CURRENT" if self.current else "STALE / SUPERSEDED / UNAVAILABLE — historical capture"
+                reason = (
+                    "CURRENT"
+                    if self.current
+                    else "STALE / SUPERSEDED / UNAVAILABLE — historical capture"
+                )
                 if not self.snapshot.get("available"):
                     reason = "NO EXECUTION CAPTURE LOADED"
             except (RuntimeError, ValueError):
                 self.current, reason = False, "UNAVAILABLE — historical capture"
                 self.vm_states_current = False
             try:
-                self.native_current = current_native_publications(self.native, api("chernobog_native_evidence", self.ea))
+                self.native_current = current_native_publications(
+                    self.native, api("chernobog_native_evidence", self.ea)
+                )
             except (RuntimeError, ValueError):
                 self.native_current = set()
             try:
-                self.solver_sources_current = current_solver_sources(self.queries, api("chernobog_solver_state", self.ea))
+                self.solver_sources_current = current_solver_sources(
+                    self.queries, api("chernobog_solver_state", self.ea)
+                )
             except (RuntimeError, ValueError):
                 self.solver_sources_current = set()
             try:
@@ -495,50 +777,109 @@ if ida_kernwin.is_idaq():
             for index in range(state_table.topLevelItemCount()):
                 item = state_table.topLevelItem(index)
                 row = item.data(0, QtCore.Qt.ItemDataRole.UserRole)
-                item.setText(2, row["sequence"] + (" / current" if self.record_current(row) else " / historical"))
+                item.setText(
+                    2,
+                    row["sequence"]
+                    + (" / current" if self.record_current(row) else " / historical"),
+                )
             vm_table = self.tables["vm"]
             for index in range(vm_table.topLevelItemCount()):
                 item = vm_table.topLevelItem(index)
                 row = item.data(0, QtCore.Qt.ItemDataRole.UserRole)
-                item.setText(2, "candidate (current)" if row["vm_candidate"] in self.vm_current else "historical / unavailable")
+                item.setText(
+                    2,
+                    (
+                        "candidate (current)"
+                        if row["vm_candidate"] in self.vm_current
+                        else "historical / unavailable"
+                    ),
+                )
             solver_table = self.tables["solver"]
             for index in range(solver_table.topLevelItemCount()):
                 item = solver_table.topLevelItem(index)
                 row = item.data(0, QtCore.Qt.ItemDataRole.UserRole)
-                item.setText(2, "match (historical query)" if row["query_id"] in self.solver_sources_current
-                             else "changed / unavailable")
+                item.setText(
+                    2,
+                    (
+                        "match (historical query)"
+                        if row["query_id"] in self.solver_sources_current
+                        else "changed / unavailable"
+                    ),
+                )
             native_table = self.tables["native"]
             for index in range(native_table.topLevelItemCount()):
                 item = native_table.topLevelItem(index)
                 row = item.data(0, QtCore.Qt.ItemDataRole.UserRole)
-                item.setText(2, "current" if row["publication"] in self.native_current else "historical / invalidated")
-            self.status.setText(reason + " | native current " + str(len(self.native_current))
-                                + "/" + str(len(self.native.get("records", [])))
-                                + " (omitted " + str(self.native.get("omitted", 0)) + ") | function " + self.snapshot["function"]
-                                + " | SMT queries " + str(len(self.queries.get("records", [])))
-                                + " (omitted " + str(self.queries.get("omitted", 0)) + ")"
-                                + " | VM candidates " + str(len(self.vm.get("records", [])))
-                                + " (omitted " + str(self.vm.get("omitted", 0))
-                                + ", scan truncated " + str(any(self.vm.get(key, False) for key in
-                                    ("truncated", "path_scan_truncated", "reachability_truncated"))) + ")"
-                                + " | local summary bindings " + str(len(self.vm.get("summary_bindings", [])))
-                                + " (omitted " + str(self.vm.get("summary_omitted", 0)) + ")"
-                                + " | VM state samples " + str(len(self.vm_states.get("states", [])))
-                                + " (omitted " + str(self.vm_states.get("states_omitted", 0)) + ")"
-                                + " | transition queries " + str(self.vm_states.get("transition_queries", 0))
-                                + " | omitted " + json.dumps(self.snapshot.get("omitted", {}))
-                                + " | static capture truncated: " + str(self.snapshot.get("static_truncated")))
+                item.setText(
+                    2,
+                    (
+                        "current"
+                        if row["publication"] in self.native_current
+                        else "historical / invalidated"
+                    ),
+                )
+            self.status.setText(
+                reason
+                + " | native current "
+                + str(len(self.native_current))
+                + "/"
+                + str(len(self.native.get("records", [])))
+                + " (omitted "
+                + str(self.native.get("omitted", 0))
+                + ") | function "
+                + self.snapshot["function"]
+                + " | SMT queries "
+                + str(len(self.queries.get("records", [])))
+                + " (omitted "
+                + str(self.queries.get("omitted", 0))
+                + ")"
+                + " | VM candidates "
+                + str(len(self.vm.get("records", [])))
+                + " (omitted "
+                + str(self.vm.get("omitted", 0))
+                + ", scan truncated "
+                + str(
+                    any(
+                        self.vm.get(key, False)
+                        for key in ("truncated", "path_scan_truncated", "reachability_truncated")
+                    )
+                )
+                + ")"
+                + " | local summary bindings "
+                + str(len(self.vm.get("summary_bindings", [])))
+                + " (omitted "
+                + str(self.vm.get("summary_omitted", 0))
+                + ")"
+                + " | VM state samples "
+                + str(len(self.vm_states.get("states", [])))
+                + " (omitted "
+                + str(self.vm_states.get("states_omitted", 0))
+                + ")"
+                + " | transition queries "
+                + str(self.vm_states.get("transition_queries", 0))
+                + " | omitted "
+                + json.dumps(self.snapshot.get("omitted", {}))
+                + " | static capture truncated: "
+                + str(self.snapshot.get("static_truncated"))
+            )
             for item in self.scene.items():
                 if isinstance(item, FlowEdge):
                     item.setOpacity(1.0 if self.record_current(item.row) else 0.35)
                 elif isinstance(item, FlowNode):
-                    native_here = any(r["publication"] in self.native_current
-                                      and item.site in (r.get("site"), r.get("target"))
-                                      for r in self.native.get("records", []))
-                    vm_here = any(r["vm_candidate"] in self.vm_current and item.site in (r["site"], r["dispatch"])
-                                  for r in self.vm.get("records", []))
+                    native_here = any(
+                        r["publication"] in self.native_current
+                        and item.site in (r.get("site"), r.get("target"))
+                        for r in self.native.get("records", [])
+                    )
+                    vm_here = any(
+                        r["vm_candidate"] in self.vm_current
+                        and item.site in (r["site"], r["dispatch"])
+                        for r in self.vm.get("records", [])
+                    )
                     item.setOpacity(1.0 if self.current or native_here or vm_here else 0.45)
-            self.jump.setEnabled(self.record_current(self.selected) and int(self.selected.get("site", "0"), 0) != 0)
+            self.jump.setEnabled(
+                self.record_current(self.selected) and int(self.selected.get("site", "0"), 0) != 0
+            )
             self.show_detail(self.selected)
 
         def reload(self):
@@ -568,6 +909,7 @@ if ida_kernwin.is_idaq():
             if hasattr(self, "timer"):
                 self.timer.stop()
 
+
 class EvidenceAction(ida_kernwin.action_handler_t):
     def __init__(self, owner):
         super().__init__()
@@ -579,15 +921,21 @@ class EvidenceAction(ida_kernwin.action_handler_t):
             return 0
         try:
             snapshot = load_inspection(function.start_ea)
-            if (not snapshot.get("available") and not snapshot["native"].get("records")
-                    and not snapshot["solver"].get("records") and not snapshot["vm"].get("records")):
+            if (
+                not snapshot.get("available")
+                and not snapshot["native"].get("records")
+                and not snapshot["solver"].get("records")
+                and not snapshot["vm"].get("records")
+            ):
                 ida_kernwin.msg("[chernobog] No captured evidence for this function.\n")
                 return 0
             key = (snapshot["database"], snapshot["function"])
             existing = self.owner.forms.get(key)
             if existing is not None and not existing.closed:
-                existing.Show("Chernobog evidence " + snapshot["function"],
-                              options=ida_kernwin.PluginForm.WOPN_PERSIST)
+                existing.Show(
+                    "Chernobog evidence " + snapshot["function"],
+                    options=ida_kernwin.PluginForm.WOPN_PERSIST,
+                )
                 return 1
             form = EvidenceForm(function.start_ea, snapshot)
             if len(self.owner.forms) >= 8:
@@ -596,8 +944,10 @@ class EvidenceAction(ida_kernwin.action_handler_t):
                 if not previous.closed:
                     previous.Close(ida_kernwin.PluginForm.WCLS_SAVE)
             self.owner.forms[key] = form
-            form.Show("Chernobog evidence " + snapshot["function"],
-                      options=ida_kernwin.PluginForm.WOPN_PERSIST)
+            form.Show(
+                "Chernobog evidence " + snapshot["function"],
+                options=ida_kernwin.PluginForm.WOPN_PERSIST,
+            )
             return 1
         except (RuntimeError, ValueError):
             ida_kernwin.msg("[chernobog] Evidence inspection API unavailable.\n")
@@ -605,6 +955,7 @@ class EvidenceAction(ida_kernwin.action_handler_t):
 
     def update(self, _context):
         return ida_kernwin.AST_ENABLE_FOR_WIDGET
+
 
 class EvidencePlugin(ida_idaapi.plugin_t):
     flags = ida_idaapi.PLUGIN_FIX
@@ -618,8 +969,16 @@ class EvidencePlugin(ida_idaapi.plugin_t):
             return ida_idaapi.PLUGIN_SKIP
         self.forms = {}
         self.action = EvidenceAction(self)
-        if not ida_kernwin.register_action(ida_kernwin.action_desc_t(
-                ACTION, "Chernobog evidence", self.action, None, "Inspect current-function evidence", -1)):
+        if not ida_kernwin.register_action(
+            ida_kernwin.action_desc_t(
+                ACTION,
+                "Chernobog evidence",
+                self.action,
+                None,
+                "Inspect current-function evidence",
+                -1,
+            )
+        ):
             return ida_idaapi.PLUGIN_SKIP
         ida_kernwin.attach_action_to_menu("View/Open subviews/", ACTION, ida_kernwin.SETMENU_APP)
         return ida_idaapi.PLUGIN_KEEP

@@ -1,4 +1,5 @@
 """Corpus admission controls; native/protected ISA checks live in the real corpus."""
+
 import importlib.util
 import json
 from pathlib import Path
@@ -12,7 +13,9 @@ import run_vmp_conditions as conditions
 import run_vmp_strings as strings
 
 sys.dont_write_bytecode = True
-spec = importlib.util.spec_from_file_location("vmp_corpus", Path(__file__).with_name("run_vmp_corpus.py"))
+spec = importlib.util.spec_from_file_location(
+    "vmp_corpus", Path(__file__).with_name("run_vmp_corpus.py")
+)
 corpus = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(corpus)
 
@@ -22,7 +25,9 @@ def valid_rows(seed):
     for index, (x, y, memory) in enumerate(corpus.inputs(seed)):
         for function in (0, 1):
             result, flags, delta, before, changed, after = corpus.expected(function, x, y, memory)
-            rows.append(f"{index} {function} {x:08x} {y:08x} {memory:08x} {result:016x} {flags:04x} {delta} {before:08x} {changed:08x} {after:08x}")
+            rows.append(
+                f"{index} {function} {x:08x} {y:08x} {memory:08x} {result:016x} {flags:04x} {delta} {before:08x} {changed:08x} {after:08x}"
+            )
     return rows
 
 
@@ -33,7 +38,10 @@ class CorpusTests(unittest.TestCase):
         runtime.image = "sha256:" + "a" * 64
         runtime.mounts = []
         failure = {"exit_code": -9, "timed_out": True, "output_exceeded": False}
-        with patch("vmp_corpus.linux32.execute", side_effect=[(failure, b"", b""), ({"exit_code": 0}, b"", b"")]) as run:
+        with patch(
+            "vmp_corpus.linux32.execute",
+            side_effect=[(failure, b"", b""), ({"exit_code": 0}, b"", b"")],
+        ) as run:
             self.assertEqual(runtime.execute(["guest-command"])[0], failure)
             start = run.call_args_list[0].args[0]
             name = start[start.index("--name") + 1]
@@ -55,23 +63,48 @@ class CorpusTests(unittest.TestCase):
             report = runtime.output / "guest-runs/original-1.json"
             hashes = {name: "a" * 64 for name in ("qemu-i386", "ld-linux.so.2", "libc.so.6")}
             runtime.metadata = {"sha256": hashes}
-            good = {"binary_unchanged": True, "binary_sha256": corpus.digest(binary),
-                    "stdout_sha256": corpus.digest(stdout), "runtime_sha256": hashes}
+            good = {
+                "binary_unchanged": True,
+                "binary_sha256": corpus.digest(binary),
+                "stdout_sha256": corpus.digest(stdout),
+                "runtime_sha256": hashes,
+            }
             launcher = {"exit_code": 0, "timed_out": False, "output_exceeded": False}
             with patch.object(runtime, "execute", return_value=(launcher, b"", b"")):
                 report.write_text(json.dumps(good))
                 self.assertEqual(runtime.run(binary, 1)[1], b"observation")
-                for replacement in ({"binary_unchanged": False}, {"binary_sha256": "0" * 64},
-                                    {"stdout_sha256": "0" * 64}, {"runtime_sha256": {}},
-                                    {"runtime_sha256": dict(hashes, **{"qemu-i386": "0" * 64})}):
+                for replacement in (
+                    {"binary_unchanged": False},
+                    {"binary_sha256": "0" * 64},
+                    {"stdout_sha256": "0" * 64},
+                    {"runtime_sha256": {}},
+                    {"runtime_sha256": dict(hashes, **{"qemu-i386": "0" * 64})},
+                ):
                     report.write_text(json.dumps(dict(good, **replacement)))
                     with self.assertRaises(RuntimeError):
                         runtime.run(binary, 1)
 
     def test_elf32_bounds_architecture_and_load_mapping(self):
         data = bytearray(512)
-        struct.pack_into("<16sHHIIIIIHHHHHH", data, 0, b"\x7fELF\x01\x01\x01", 2, 3, 1,
-                         0x8048080, 52, 256, 0, 52, 32, 1, 40, 3, 2)
+        struct.pack_into(
+            "<16sHHIIIIIHHHHHH",
+            data,
+            0,
+            b"\x7fELF\x01\x01\x01",
+            2,
+            3,
+            1,
+            0x8048080,
+            52,
+            256,
+            0,
+            52,
+            32,
+            1,
+            40,
+            3,
+            2,
+        )
         struct.pack_into("<8I", data, 52, 1, 0, 0x8048000, 0x8048000, 512, 512, 5, 4096)
         data[84:101] = b"\0.text\0.shstrtab\0"
         data[128] = 0xC3
@@ -83,9 +116,20 @@ class CorpusTests(unittest.TestCase):
             section = corpus.text_section(path)
             self.assertTrue(section["file_backed"])
             self.assertEqual(corpus.function_bytes(path, section, 0x8048080, 1), b"\xc3")
-            for offset, width, value in ((4, "B", 2), (5, "B", 2), (18, "H", 62), (28, "I", 500),
-                                          (32, "I", 500), (42, "H", 31), (44, "H", 0), (46, "H", 39),
-                                          (48, "H", 4097), (50, "H", 3), (296, "I", 99), (72, "I", 1)):
+            for offset, width, value in (
+                (4, "B", 2),
+                (5, "B", 2),
+                (18, "H", 62),
+                (28, "I", 500),
+                (32, "I", 500),
+                (42, "H", 31),
+                (44, "H", 0),
+                (46, "H", 39),
+                (48, "H", 4097),
+                (50, "H", 3),
+                (296, "I", 99),
+                (72, "I", 1),
+            ):
                 with self.subTest(offset=offset):
                     changed = bytearray(data)
                     struct.pack_into("<" + width, changed, offset, value)
@@ -127,24 +171,38 @@ class CorpusTests(unittest.TestCase):
                 values = damaged[0].split()
                 values[field] = "9"
                 damaged[0] = " ".join(values)
-                self.assertFalse(corpus.verify("\n".join(damaged).encode(), corpus.INPUT_SEEDS[0])["passed"])
+                self.assertFalse(
+                    corpus.verify("\n".join(damaged).encode(), corpus.INPUT_SEEDS[0])["passed"]
+                )
 
     def test_record_cardinality_and_format(self):
         rows = valid_rows(corpus.INPUT_SEEDS[0])
         for damaged in (rows[:-1], rows + rows[:1], ["bad record"] + rows[1:]):
-            self.assertFalse(corpus.verify("\n".join(damaged).encode(), corpus.INPUT_SEEDS[0])["passed"])
+            self.assertFalse(
+                corpus.verify("\n".join(damaged).encode(), corpus.INPUT_SEEDS[0])["passed"]
+            )
         for field in range(11):
             damaged = rows.copy()
             values = damaged[0].split()
             values[field] = "invalid"
             damaged[0] = " ".join(values)
-            self.assertFalse(corpus.verify("\n".join(damaged).encode(), corpus.INPUT_SEEDS[0])["passed"])
+            self.assertFalse(
+                corpus.verify("\n".join(damaged).encode(), corpus.INPUT_SEEDS[0])["passed"]
+            )
         self.assertFalse(corpus.verify(b"\xff", corpus.INPUT_SEEDS[0])["passed"])
 
     def test_execution_environment_excludes_inherited_injection(self):
-        with patch.dict(corpus.os.environ, {"DYLD_INSERT_LIBRARIES": "inherited", "DYLD_LIBRARY_PATH": "inherited",
-                                           "LD_PRELOAD": "inherited", "LD_LIBRARY_PATH": "inherited",
-                                           "CHERNOBOG_CORPUS_TEST": "retained"}, clear=True):
+        with patch.dict(
+            corpus.os.environ,
+            {
+                "DYLD_INSERT_LIBRARIES": "inherited",
+                "DYLD_LIBRARY_PATH": "inherited",
+                "LD_PRELOAD": "inherited",
+                "LD_LIBRARY_PATH": "inherited",
+                "CHERNOBOG_CORPUS_TEST": "retained",
+            },
+            clear=True,
+        ):
             self.assertEqual(corpus.base_environment(), {"CHERNOBOG_CORPUS_TEST": "retained"})
 
     def test_process_limits_and_accounting(self):
@@ -153,31 +211,43 @@ class CorpusTests(unittest.TestCase):
         self.assertEqual(out, b"ok\n")
         self.assertGreater(measurement["elapsed_ns"], 0)
         self.assertGreater(measurement["peak_resident_bytes"], 0)
-        measurement, _, _ = corpus.execute([sys.executable, "-c", "import time; time.sleep(5)"], timeout=0.05)
+        measurement, _, _ = corpus.execute(
+            [sys.executable, "-c", "import time; time.sleep(5)"], timeout=0.05
+        )
         self.assertTrue(measurement["timed_out"])
         self.assertLess(measurement["exit_code"], 0)
-        measurement, out, _ = corpus.execute([sys.executable, "-c", "import sys; sys.stdout.write('x' * (2*1024*1024+1))"])
+        measurement, out, _ = corpus.execute(
+            [sys.executable, "-c", "import sys; sys.stdout.write('x' * (2*1024*1024+1))"]
+        )
         self.assertTrue(measurement["output_exceeded"])
-        self.assertLessEqual(len(out), 2*1024*1024)
+        self.assertLessEqual(len(out), 2 * 1024 * 1024)
 
     def test_macho_bounds_and_initialized_text(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "image"
-            for invalid in (b"", b"\x00"*32, struct.pack("<8I", 0xFEEDFACF, 0, 0, 0, 1, 999, 0, 0)):
+            for invalid in (
+                b"",
+                b"\x00" * 32,
+                struct.pack("<8I", 0xFEEDFACF, 0, 0, 0, 1, 999, 0, 0),
+            ):
                 path.write_bytes(invalid)
                 with self.assertRaises(ValueError):
                     corpus.text_section(path)
             header = struct.pack("<8I", 0xFEEDFACF, 0, 0, 0, 1, 152, 0, 0)
-            segment = struct.pack("<II16sQQQQIIII", 0x19, 152, b"__TEXT", 0x1000, 4096, 0, 185, 7, 5, 1, 0)
-            section = struct.pack("<16s16sQQ8I", b"__text", b"__TEXT", 0x1100, 1, 184, 0, 0, 0, 0, 0, 0, 0)
-            path.write_bytes(header+segment+section+b"\xc3")
+            segment = struct.pack(
+                "<II16sQQQQIIII", 0x19, 152, b"__TEXT", 0x1000, 4096, 0, 185, 7, 5, 1, 0
+            )
+            section = struct.pack(
+                "<16s16sQQ8I", b"__text", b"__TEXT", 0x1100, 1, 184, 0, 0, 0, 0, 0, 0, 0
+            )
+            path.write_bytes(header + segment + section + b"\xc3")
             text = corpus.text_section(path)
             self.assertTrue(text["file_backed"])
             self.assertEqual(corpus.function_bytes(path, text, 0x1100, 1), b"\xc3")
             with self.assertRaises(ValueError):
                 corpus.function_bytes(path, text, 0x1101, 1)
             data = bytearray(path.read_bytes())
-            struct.pack_into("<I", data, 32+72+64, 1)
+            struct.pack_into("<I", data, 32 + 72 + 64, 1)
             path.write_bytes(data)
             self.assertFalse(corpus.text_section(path)["file_backed"])
             with self.assertRaises(ValueError):
@@ -187,14 +257,27 @@ class CorpusTests(unittest.TestCase):
 class StringMeasurementTests(unittest.TestCase):
     @staticmethod
     def fixture():
-        run = {"ran": "true", "returned": "true", "temporal_complete": "true",
-               "temporal_truncated": "false", "memory_observation_available": "true",
-               "data_trace_truncated": "false", "data_trace_filtered": "false",
-               "kind": "returned", "stop_reason_name": "return"}
-        return {"passed": True, "errors": [], "view": {"runs": [run], "omitted": {}, "available": True, "fresh": True},
-                "candidates": [{"ok": 1, "value": value, "eligible_runs": 1, "observations": 1}
-                               for value in strings.EXPECTED],
-                "display": {"status": "decompiled", "annotations": ["first", "second"]}}
+        run = {
+            "ran": "true",
+            "returned": "true",
+            "temporal_complete": "true",
+            "temporal_truncated": "false",
+            "memory_observation_available": "true",
+            "data_trace_truncated": "false",
+            "data_trace_filtered": "false",
+            "kind": "returned",
+            "stop_reason_name": "return",
+        }
+        return {
+            "passed": True,
+            "errors": [],
+            "view": {"runs": [run], "omitted": {}, "available": True, "fresh": True},
+            "candidates": [
+                {"ok": 1, "value": value, "eligible_runs": 1, "observations": 1}
+                for value in strings.EXPECTED
+            ],
+            "display": {"status": "decompiled", "annotations": ["first", "second"]},
+        }
 
     def test_duplicate_candidates_do_not_inflate_recall(self):
         probe = self.fixture()
@@ -218,8 +301,15 @@ class StringMeasurementTests(unittest.TestCase):
         self.assertFalse(summary["temporal_corpus_complete"])
 
     def test_incomplete_temporal_corpus_cannot_publish(self):
-        for key in ("ran", "returned", "temporal_complete", "temporal_truncated",
-                    "memory_observation_available", "data_trace_truncated", "data_trace_filtered"):
+        for key in (
+            "ran",
+            "returned",
+            "temporal_complete",
+            "temporal_truncated",
+            "memory_observation_available",
+            "data_trace_truncated",
+            "data_trace_filtered",
+        ):
             probe = self.fixture()
             run = probe["view"]["runs"][0]
             run[key] = "false" if run[key] == "true" else "true"
@@ -245,24 +335,53 @@ class StringMeasurementTests(unittest.TestCase):
     def test_seed_markers_require_callback_and_every_applied_seed(self):
         good = b"CHERNOBOG_CORPUS_SEED=17\nCHERNOBOG_CORPUS_SRAND=17 requested=1\n"
         self.assertTrue(strings.seed_attested(good, 17))
-        for data in (b"", good.replace(b"SEED=17", b"SEED=1"), good + b"CHERNOBOG_CORPUS_SEED=17\n",
-                     good + b"CHERNOBOG_CORPUS_SRAND=1 requested=2\n", good.splitlines()[0]):
+        for data in (
+            b"",
+            good.replace(b"SEED=17", b"SEED=1"),
+            good + b"CHERNOBOG_CORPUS_SEED=17\n",
+            good + b"CHERNOBOG_CORPUS_SRAND=1 requested=2\n",
+            good.splitlines()[0],
+        ):
             self.assertFalse(strings.seed_attested(data, 17))
 
 
 class ConditionMeasurementTests(unittest.TestCase):
     @staticmethod
     def fixture():
-        return {"entries": {"entry": {"instructions": [{"ea": 100, "kind": "setcc", "owner": None}],
-                                       "truncated": False}},
-                "owners_omitted": 0, "reachability_preserved": True,
-                "owners": [{"entry": 10, "status": "inspected", "native_head_count": 2,
-                            "native_truncated": False, "native_sha256": "same native input", "flags_before": 0,
-                            "conditions": [{"ea": 11, "kind": "cmov"}], "native_preserved": True,
-                            "generated": {"status": "captured", "capture_truncated": False,
-                                          "microcode_sha256": "same IR", "conditions": {"11": ["native condition"]},
-                                          "codegen_delta": {"codegen_setcc": 0, "codegen_cmov": 0, "codegen_cmov_memory": 0}},
-                            "decompiled": {"status": "success", "sha256": "same pseudocode"}}]}
+        return {
+            "entries": {
+                "entry": {
+                    "instructions": [{"ea": 100, "kind": "setcc", "owner": None}],
+                    "truncated": False,
+                }
+            },
+            "owners_omitted": 0,
+            "reachability_preserved": True,
+            "owners": [
+                {
+                    "entry": 10,
+                    "status": "inspected",
+                    "native_head_count": 2,
+                    "native_truncated": False,
+                    "native_sha256": "same native input",
+                    "flags_before": 0,
+                    "conditions": [{"ea": 11, "kind": "cmov"}],
+                    "native_preserved": True,
+                    "generated": {
+                        "status": "captured",
+                        "capture_truncated": False,
+                        "microcode_sha256": "same IR",
+                        "conditions": {"11": ["native condition"]},
+                        "codegen_delta": {
+                            "codegen_setcc": 0,
+                            "codegen_cmov": 0,
+                            "codegen_cmov_memory": 0,
+                        },
+                    },
+                    "decompiled": {"status": "success", "sha256": "same pseudocode"},
+                }
+            ],
+        }
 
     def test_ownerless_sites_are_not_counted_as_emissions(self):
         report = self.fixture()
@@ -270,13 +389,19 @@ class ConditionMeasurementTests(unittest.TestCase):
         self.assertEqual(summary["reachable_condition_sites"], 1)
         self.assertEqual(summary["ownerless_condition_sites"], 1)
         self.assertEqual(summary["owned_function_condition_sites"], 1)
-        self.assertEqual(summary["codegen_events"], {"codegen_setcc": 0, "codegen_cmov": 0, "codegen_cmov_memory": 0})
+        self.assertEqual(
+            summary["codegen_events"],
+            {"codegen_setcc": 0, "codegen_cmov": 0, "codegen_cmov_memory": 0},
+        )
         self.assertEqual(summary["decompiled_successes"], 1)
 
     def test_failed_generation_is_not_successful_recovery(self):
         report = self.fixture()
-        report["owners"][0]["generated"] = {"status": "failed", "failure_code": -1,
-                                            "codegen_delta": {"codegen_cmov": 1}}
+        report["owners"][0]["generated"] = {
+            "status": "failed",
+            "failure_code": -1,
+            "codegen_delta": {"codegen_cmov": 1},
+        }
         report["owners"][0]["decompiled"] = {"status": "failed", "failure_code": -2}
         report["owners"].append({"entry": 200, "status": "native_budget", "conditions": []})
         summary = conditions.summarize(report)
@@ -289,6 +414,7 @@ class ConditionMeasurementTests(unittest.TestCase):
 
     def test_changed_native_input_or_active_baseline_rejects_comparison(self):
         import copy
+
         for mutation in ("native", "scope", "baseline"):
             off, on = self.fixture(), self.fixture()
             if mutation == "native":

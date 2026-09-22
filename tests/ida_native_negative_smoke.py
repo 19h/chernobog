@@ -67,9 +67,7 @@ try:
             xref = ida_xref.xrefblk_t()
             valid = xref.first_to(function_ea, ida_xref.XREF_ALL)
             while valid:
-                incoming.append(
-                    "0x%X/type=%d" % (xref.frm, xref.type)
-                )
+                incoming.append("0x%X/type=%d" % (xref.frm, xref.type))
                 valid = xref.next_to()
             print(
                 "[chernobog][native-negative-smoke] diagnostic "
@@ -90,21 +88,17 @@ try:
         failures.append("hexrays")
     for function_ea in decompile:
         failure = ida_hexrays.hexrays_failure_t()
-        cfunc = ida_hexrays.decompile(
-            function_ea, failure, ida_hexrays.DECOMP_NO_CACHE
-        )
+        cfunc = ida_hexrays.decompile(function_ea, failure, ida_hexrays.DECOMP_NO_CACHE)
         if cfunc is None:
             failures.append(
-                "decompile@0x%X(code=%d,ea=0x%X)"
-                % (function_ea, failure.code, failure.errea)
+                "decompile@0x%X(code=%d,ea=0x%X)" % (function_ea, failure.code, failure.errea)
             )
 
     if failures:
         finish(2, "FAIL %s" % "; ".join(failures))
     finish(
         0,
-        "PASS calls=%d functions=%d decompiled=%d"
-        % (len(calls), len(functions), len(decompile)),
+        "PASS calls=%d functions=%d decompiled=%d" % (len(calls), len(functions), len(decompile)),
     )
 except BaseException as error:
     finish(9, "exception: %r" % (error,))

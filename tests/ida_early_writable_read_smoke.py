@@ -46,6 +46,7 @@ def instructions(mba):
         for operand in (instruction.l, instruction.r, instruction.d):
             if operand.t == ida_hexrays.mop_d:
                 yield from nested(operand.d)
+
     for index in range(mba.qty):
         instruction = mba.get_mblock(index).head
         while instruction is not None:
@@ -57,8 +58,11 @@ def microcode(address):
     function = ida_funcs.get_func(address)
     failure = ida_hexrays.hexrays_failure_t()
     mba = ida_hexrays.gen_microcode(
-        ida_hexrays.mba_ranges_t(function), failure, None,
-        ida_hexrays.DECOMP_NO_CACHE, ida_hexrays.MMAT_PREOPTIMIZED,
+        ida_hexrays.mba_ranges_t(function),
+        failure,
+        None,
+        ida_hexrays.DECOMP_NO_CACHE,
+        ida_hexrays.MMAT_PREOPTIMIZED,
     )
     if mba is None:
         raise RuntimeError("microcode failed: %s" % failure.desc())
@@ -71,11 +75,13 @@ def native_scalar_reads(function):
         instruction = ida_ua.insn_t()
         if ida_ua.decode_insn(instruction, address) <= 0:
             continue
-        if (instruction.get_canon_mnem() == "mov"
-                and instruction.ops[0].type == ida_ua.o_reg
-                and ida_idp.get_reg_name(instruction.ops[0].reg, 4) == "eax"
-                and instruction.ops[1].type in (ida_ua.o_mem, ida_ua.o_phrase, ida_ua.o_displ)
-                and ida_ua.get_dtype_size(instruction.ops[0].dtype) == 4):
+        if (
+            instruction.get_canon_mnem() == "mov"
+            and instruction.ops[0].type == ida_ua.o_reg
+            and ida_idp.get_reg_name(instruction.ops[0].reg, 4) == "eax"
+            and instruction.ops[1].type in (ida_ua.o_mem, ida_ua.o_phrase, ida_ua.o_displ)
+            and ida_ua.get_dtype_size(instruction.ops[0].dtype) == 4
+        ):
             result.append(address)
     return result
 
@@ -112,47 +118,65 @@ try:
                 for xref in idautils.XrefsTo(address + offset, ida_xref.XREF_DATA)
                 if (xref.type & ida_xref.XREF_MASK) == ida_xref.dr_W
             ]
-            metadata.update({"global": address, "permissions": segment.perm,
-                             "initial_value": ida_bytes.get_dword(address),
-                             "write_xrefs": write_references})
+            metadata.update(
+                {
+                    "global": address,
+                    "permissions": segment.perm,
+                    "initial_value": ida_bytes.get_dword(address),
+                    "write_xrefs": write_references,
+                }
+            )
             if metadata["initial_value"] != expected_initial or write_references:
-                finish(5, "%s requires unchanged initial bytes and no recorded writes: %r"
-                       % (label, metadata))
+                finish(
+                    5,
+                    "%s requires unchanged initial bytes and no recorded writes: %r"
+                    % (label, metadata),
+                )
             if label in ("alias", "call"):
                 if not (segment.perm & ida_segment.SEGPERM_WRITE):
                     finish(5, "%s global must be writable" % label)
-            elif not (segment.perm & ida_segment.SEGPERM_READ) or (segment.perm & ida_segment.SEGPERM_WRITE):
+            elif not (segment.perm & ida_segment.SEGPERM_READ) or (
+                segment.perm & ida_segment.SEGPERM_WRITE
+            ):
                 finish(5, "readonly control must be read-permitted and nonwritable")
         mba = microcode(function)
         retained_mbas.append(mba)
         items = list(instructions(mba))
         metadata["loads_at_native_read"] = sum(
-            item.opcode == ida_hexrays.m_ldx and item.ea == load_address for item in items)
+            item.opcode == ida_hexrays.m_ldx and item.ea == load_address for item in items
+        )
         metadata["constants_at_native_read"] = [
-            item.l.nnn.value for item in items
-            if item.ea == load_address and item.opcode == ida_hexrays.m_mov
+            item.l.nnn.value
+            for item in items
+            if item.ea == load_address
+            and item.opcode == ida_hexrays.m_mov
             and item.l.t == ida_hexrays.mop_n
         ]
         report[label] = metadata
         text += [label + ":"] + [item.dstr() for item in items]
     (output / "early_writable_microcode.txt").write_text("\n".join(text) + "\n", encoding="utf-8")
     (output / "early_writable_report.json").write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
-    failed_writable = [label for label in ("alias", "call")
-                       if report[label]["loads_at_native_read"] != 1]
+    failed_writable = [
+        label for label in ("alias", "call") if report[label]["loads_at_native_read"] != 1
+    ]
     if failed_writable:
         finish(6, "writable loads were replaced after store/call: %s" % ",".join(failed_writable))
     if os.environ.get("CHERNOBOG_IDA_EARLY_CONSTANTS") != "0":
         for label, value in (("readonly", 0x23456789),):
-            if (report[label]["loads_at_native_read"] != 0
-                    or value not in report[label]["constants_at_native_read"]):
+            if (
+                report[label]["loads_at_native_read"] != 0
+                or value not in report[label]["constants_at_native_read"]
+            ):
                 finish(7, "%s constant forwarding was not preserved" % label)
     stack_function = ida_hexrays.decompile(symbol("early_stack_constant"))
     if stack_function is None:
         finish(8, "stack control decompilation failed")
-    stack_text = "\n".join(ida_lines.tag_remove(line.line)
-                           for line in stack_function.get_pseudocode())
+    stack_text = "\n".join(
+        ida_lines.tag_remove(line.line) for line in stack_function.get_pseudocode()
+    )
     (output / "early_writable_stack_pseudocode.txt").write_text(stack_text + "\n", encoding="utf-8")
     if "0x3456789A" not in stack_text and "878082202" not in stack_text:
         finish(8, "stack control lost its exact scalar result")

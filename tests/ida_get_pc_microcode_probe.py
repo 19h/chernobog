@@ -1,4 +1,5 @@
 """Capture initial get-PC microcode and stack metadata for semantic auditing."""
+
 import json
 import os
 from pathlib import Path
@@ -44,15 +45,25 @@ def operand(op):
 
 
 def instruction(insn):
-    return {"ea": int(insn.ea), "opcode": int(insn.opcode), "text": insn.dstr(),
-            "left": operand(insn.l), "right": operand(insn.r), "destination": operand(insn.d)}
+    return {
+        "ea": int(insn.ea),
+        "opcode": int(insn.opcode),
+        "text": insn.dstr(),
+        "left": operand(insn.l),
+        "right": operand(insn.r),
+        "destination": operand(insn.d),
+    }
 
 
 records, errors = [], []
 try:
     ida_auto.auto_wait()
     assert ida_hexrays.init_hexrays_plugin(), "Hex-Rays initialization"
-    names = ("gp_call", "gp_adjust", "gp_materialize") if ida_ida.inf_is_64bit() else ("gp32_call", "gp32_materialize")
+    names = (
+        ("gp_call", "gp_adjust", "gp_materialize")
+        if ida_ida.inf_is_64bit()
+        else ("gp32_call", "gp32_materialize")
+    )
     if os.environ.get("CHERNOBOG_MICROCODE_FUNCTIONS"):
         names = tuple(os.environ["CHERNOBOG_MICROCODE_FUNCTIONS"].split(","))
     for name in names:
@@ -66,9 +77,14 @@ try:
         function = ida_funcs.get_func(ea)
         assert function is not None, "missing function " + name
         if callee_only:
-            assert not ida_funcs.function_contains(ea, caller_ea), "callee control must exclude its caller"
+            assert not ida_funcs.function_contains(
+                ea, caller_ea
+            ), "callee control must exclude its caller"
         context = None
-        if os.environ.get("CHERNOBOG_MICROCODE_ADMIT_GADGET") == "1" and name not in ("gp_materialize", "gp32_materialize"):
+        if os.environ.get("CHERNOBOG_MICROCODE_ADMIT_GADGET") == "1" and name not in (
+            "gp_materialize",
+            "gp32_materialize",
+        ):
             call = ida_ua.insn_t()
             assert ida_ua.decode_insn(call, ea) > 0
             entry = call.Op1.addr
@@ -86,9 +102,15 @@ try:
                 assert ida_funcs.append_func_tail(function, entry, end), "fixture tail admission"
             ida_auto.auto_wait()
             function = ida_funcs.get_func(ea)
-            context = {"entry": int(entry), "return": int(decoded.ea), "return_size": int(decoded.size),
-                       "continuation": int(ea + call.size + (3 if name == "gp_adjust" else 0)),
-                       "boundary_delta": -(8 if ida_ida.inf_is_64bit() else 4) if name.endswith("nonzero") else 0}
+            context = {
+                "entry": int(entry),
+                "return": int(decoded.ea),
+                "return_size": int(decoded.size),
+                "continuation": int(ea + call.size + (3 if name == "gp_adjust" else 0)),
+                "boundary_delta": (
+                    -(8 if ida_ida.inf_is_64bit() else 4) if name.endswith("nonzero") else 0
+                ),
+            }
             if os.environ.get("CHERNOBOG_MICROCODE_ALTERNATE_ENTRY") == "1":
                 source = address("gp_wrongreg" if ida_ida.inf_is_64bit() else "gp32_unknown")
                 ida_xref.add_cref(source, entry, ida_xref.fl_JN | ida_xref.XREF_USER)
@@ -108,12 +130,23 @@ try:
         for site in idautils.FuncItems(ea):
             decoded = ida_ua.insn_t()
             if ida_ua.decode_insn(decoded, site) > 0:
-                native.append({"ea": int(site), "itype": int(decoded.itype), "size": int(decoded.size),
-                               "sp_delta_before": int(idc.get_spd(site)),
-                               "text": idc.generate_disasm_line(site, 0)})
+                native.append(
+                    {
+                        "ea": int(site),
+                        "itype": int(decoded.itype),
+                        "size": int(decoded.size),
+                        "sp_delta_before": int(idc.get_spd(site)),
+                        "text": idc.generate_disasm_line(site, 0),
+                    }
+                )
         failure = ida_hexrays.hexrays_failure_t()
-        mba = ida_hexrays.gen_microcode(ida_hexrays.mba_ranges_t(function), failure, None,
-            ida_hexrays.DECOMP_NO_CACHE | ida_hexrays.DECOMP_ALL_BLKS, ida_hexrays.MMAT_GENERATED)
+        mba = ida_hexrays.gen_microcode(
+            ida_hexrays.mba_ranges_t(function),
+            failure,
+            None,
+            ida_hexrays.DECOMP_NO_CACHE | ida_hexrays.DECOMP_ALL_BLKS,
+            ida_hexrays.MMAT_GENERATED,
+        )
         assert mba is not None, "microcode failed: " + failure.desc()
         blocks = []
         for index in range(mba.qty):
@@ -123,8 +156,14 @@ try:
             while insn is not None:
                 items.append(instruction(insn))
                 insn = insn.next
-            blocks.append({"index": index, "start": int(block.start), "end": int(block.end),
-                           "instructions": items})
+            blocks.append(
+                {
+                    "index": index,
+                    "start": int(block.start),
+                    "end": int(block.end),
+                    "instructions": items,
+                }
+            )
         ctree = None
         if os.environ.get("CHERNOBOG_MICROCODE_DECOMPILE") == "1":
             cfunc = ida_hexrays.decompile(ea, failure, ida_hexrays.DECOMP_NO_CACHE)
@@ -132,18 +171,29 @@ try:
             ctree = str(cfunc)
             if "return 7;" not in ctree:
                 errors.append(name + ": expected returning constant-seven function")
-        records.append({"name": name, "entry_ea": int(ea), "context": context,
-                        "returning_contract": returning_contract, "callee_only": callee_only,
-                        "original_function_flags": original_function_flags,
-                        "function_flags": int(ida_funcs.get_func(ea).flags),
-                        "noret_attribute": bool(ida_nalt.is_noret(ea)),
-                        "user_type": bool(ida_nalt.is_userti(ea)), "type": idc.get_type(ea),
-                        "native": native, "blocks": blocks, "ctree": ctree})
+        records.append(
+            {
+                "name": name,
+                "entry_ea": int(ea),
+                "context": context,
+                "returning_contract": returning_contract,
+                "callee_only": callee_only,
+                "original_function_flags": original_function_flags,
+                "function_flags": int(ida_funcs.get_func(ea).flags),
+                "noret_attribute": bool(ida_nalt.is_noret(ea)),
+                "user_type": bool(ida_nalt.is_userti(ea)),
+                "type": idc.get_type(ea),
+                "native": native,
+                "blocks": blocks,
+                "ctree": ctree,
+            }
+        )
 except BaseException as error:
     errors.append(type(error).__name__ + ": " + str(error))
 
 (Path(os.environ["IDAUSR"]).parent / "get_pc_microcode.json").write_text(
-    json.dumps({"records": records, "errors": errors}, indent=2) + "\n")
+    json.dumps({"records": records, "errors": errors}, indent=2) + "\n"
+)
 message = "FAIL " + "; ".join(errors) if errors else "PASS captured_functions=%d" % len(records)
 line = "[chernobog][get-pc-microcode] " + message
 print(line, flush=True)

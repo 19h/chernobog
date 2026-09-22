@@ -5,6 +5,7 @@ It compares architectural registers, represented status flags, SP and every
 byte in its stack window both at the first continuation and at function exit.
 Unsupported IR is an error, never a successful comparison or counterexample.
 """
+
 import argparse
 import json
 from pathlib import Path
@@ -49,7 +50,9 @@ class Machine:
                         prior = self.architecture.get(normalized)
                         if prior is None or prior[1] < op["size"]:
                             self.architecture[normalized] = (op["register"], op["size"])
-        self.root = record.get("entry_ea") or next(x["ea"] for x in record["native"] if x["text"].startswith("call"))
+        self.root = record.get("entry_ea") or next(
+            x["ea"] for x in record["native"] if x["text"].startswith("call")
+        )
         self.continuation = self.root + (8 if record["name"] == "gp_adjust" else 5)
         for name, bit in (("cf", 0), ("pf", 1), ("zf", 3), ("sf", 4), ("of", 5)):
             if name in self.architecture:
@@ -58,8 +61,10 @@ class Machine:
         self.pc = self.addresses[self.root]
 
     def reg(self, number, size):
-        return sum(self.regs.get(number + i, ((number + i) * 29 + self.seed * 11) & 255)
-                   << (8 * i) for i in range(size))
+        return sum(
+            self.regs.get(number + i, ((number + i) * 29 + self.seed * 11) & 255) << (8 * i)
+            for i in range(size)
+        )
 
     def load(self, address, size):
         if any(address + i not in self.memory for i in range(size)):
@@ -91,8 +96,11 @@ class Machine:
             self.regs[op["register"] + i] = (value >> (8 * i)) & 255
 
     def snapshot(self):
-        return {"sp": self.sp, "memory": dict(self.memory),
-                "registers": {name: self.reg(*where) for name, where in self.architecture.items()}}
+        return {
+            "sp": self.sp,
+            "memory": dict(self.memory),
+            "registers": {name: self.reg(*where) for name, where in self.architecture.items()},
+        }
 
     def jump(self, op):
         if "block" in op:
@@ -139,19 +147,28 @@ class Machine:
                         raise UnsupportedIR("continuation was never executed")
                     return {"boundary": boundary, "exit": self.snapshot()}
                 if target not in self.addresses:
-                    raise UnsupportedIR("indirect transfer outside admitted function: target=%x SP=%x" % (target, self.sp))
+                    raise UnsupportedIR(
+                        "indirect transfer outside admitted function: target=%x SP=%x"
+                        % (target, self.sp)
+                    )
                 self.pc = self.addresses[target]
             elif op in ("add", "cfadd", "ofadd", "setz", "setp", "sets"):
                 a = self.read(left)
                 b = self.read(right) if op in ("add", "cfadd", "ofadd", "setz") else 0
                 word_mask = mask(left["size"])
                 total = (a + b) & word_mask
-                if op == "add": value = total
-                elif op == "cfadd": value = int(a + b > word_mask)
-                elif op == "ofadd": value = int(bool((~(a ^ b) & (a ^ total)) & (1 << (8 * left["size"] - 1))))
-                elif op == "setz": value = int(a == b)
-                elif op == "setp": value = int((a & 255).bit_count() % 2 == 0)
-                else: value = a >> (8 * left["size"] - 1)
+                if op == "add":
+                    value = total
+                elif op == "cfadd":
+                    value = int(a + b > word_mask)
+                elif op == "ofadd":
+                    value = int(bool((~(a ^ b) & (a ^ total)) & (1 << (8 * left["size"] - 1))))
+                elif op == "setz":
+                    value = int(a == b)
+                elif op == "setp":
+                    value = int((a & 255).bit_count() % 2 == 0)
+                else:
+                    value = a >> (8 * left["size"] - 1)
                 self.write(dest, value)
             else:
                 raise UnsupportedIR("unsupported operation: " + op)
@@ -165,8 +182,20 @@ def load(directory):
     assert not report["internal_error_found"]
     capture = json.loads((path / "get_pc_microcode.json").read_text())
     assert not capture["errors"]
-    selected = {r["name"]: r for r in capture["records"] if r["name"] in (
-        "gp_call", "gp_adjust", "gp_backward", "gp_nonzero", "gp32_call", "gp32_backward", "gp32_nonzero")}
+    selected = {
+        r["name"]: r
+        for r in capture["records"]
+        if r["name"]
+        in (
+            "gp_call",
+            "gp_adjust",
+            "gp_backward",
+            "gp_nonzero",
+            "gp32_call",
+            "gp32_backward",
+            "gp32_nonzero",
+        )
+    }
     assert selected
     return report, selected
 
@@ -190,8 +219,15 @@ def main():
                 sites = {record["context"]["return"]}
             assert sites, name + ": no guarded return"
             for site in sites:
-                operations = [i["text"].split()[0] for b in record["blocks"] for i in b["instructions"] if i["ea"] == site]
-                assert "ijmp" in operations and "goto" not in operations, name + ": guarded return was resolved"
+                operations = [
+                    i["text"].split()[0]
+                    for b in record["blocks"]
+                    for i in b["instructions"]
+                    if i["ea"] == site
+                ]
+                assert "ijmp" in operations and "goto" not in operations, (
+                    name + ": guarded return was resolved"
+                )
                 checked += 1
         print("PASS indirect_guard_sites=%d" % checked)
         return
@@ -205,12 +241,18 @@ def main():
         if args.require_direct:
             context = actual[name]["context"]
             assert context is not None
-            transfers = [i for b in actual[name]["blocks"] for i in b["instructions"]
-                         if i["ea"] == context["return"] and i["text"].startswith("goto")]
+            transfers = [
+                i
+                for b in actual[name]["blocks"]
+                for i in b["instructions"]
+                if i["ea"] == context["return"] and i["text"].startswith("goto")
+            ]
             assert len(transfers) == 1, name + ": exact return was not lowered"
             target = transfers[0]["left"]
             if "block" in target:
-                target_ea = next(b["start"] for b in actual[name]["blocks"] if b["index"] == target["block"])
+                target_ea = next(
+                    b["start"] for b in actual[name]["blocks"] if b["index"] == target["block"]
+                )
             else:
                 target_ea = target.get("address")
             assert target_ea == context["continuation"], name + ": wrong direct target"
@@ -220,12 +262,19 @@ def main():
             word = 4 if name.startswith("gp32_") else 8
             initial_sp = 0x100000 + seed * 0x100
             boundary_delta = -word if name.endswith("nonzero") else 0
-            assert expected["boundary"]["sp"] == initial_sp + boundary_delta, "reference boundary SP"
+            assert (
+                expected["boundary"]["sp"] == initial_sp + boundary_delta
+            ), "reference boundary SP"
             assert expected["exit"]["sp"] == initial_sp + word, "reference exit SP"
             assert expected["exit"]["registers"]["ax"] == 7, "reference return value"
-            root = baseline[name].get("entry_ea") or next(i["ea"] for i in baseline[name]["native"] if i["text"].startswith("call"))
+            root = baseline[name].get("entry_ea") or next(
+                i["ea"] for i in baseline[name]["native"] if i["text"].startswith("call")
+            )
             expected_pc = root + (8 if name == "gp_adjust" else 5)
-            slot = sum(expected["boundary"]["memory"][initial_sp - word + i] << (8 * i) for i in range(word))
+            slot = sum(
+                expected["boundary"]["memory"][initial_sp - word + i] << (8 * i)
+                for i in range(word)
+            )
             assert slot == expected_pc, "reference CALL-slot bytes"
             for phase in ("boundary", "exit"):
                 comparisons += 1
@@ -233,11 +282,17 @@ def main():
                     mismatches.append((name, seed, phase))
     if args.expect_mismatch:
         assert mismatches, "legacy negative control did not falsify equivalence"
-        print("PASS expected_legacy_counterexamples=%d comparisons=%d" % (len(mismatches), comparisons))
+        print(
+            "PASS expected_legacy_counterexamples=%d comparisons=%d"
+            % (len(mismatches), comparisons)
+        )
     else:
         if mismatches:
             raise EffectMismatch(str(mismatches[:4]))
-        print("PASS effect_comparisons=%d functions=%d seeds=64 boundaries=2" % (comparisons, len(baseline)))
+        print(
+            "PASS effect_comparisons=%d functions=%d seeds=64 boundaries=2"
+            % (comparisons, len(baseline))
+        )
 
 
 if __name__ == "__main__":

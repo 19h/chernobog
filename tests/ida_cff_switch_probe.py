@@ -7,7 +7,6 @@ import ida_kernwin
 import ida_pro
 from collections import Counter, deque
 
-
 TARGET_EA = 0x82AF0
 DISPATCH_EA = 0x82C65
 
@@ -48,9 +47,7 @@ try:
         if block.start <= DISPATCH_EA < block.end:
             dispatch_block = block
         if block.nsucc() >= 8:
-            high_fanout.append(
-                (index, block.start, block.end, block.npred(), block.nsucc())
-            )
+            high_fanout.append((index, block.start, block.end, block.npred(), block.nsucc()))
             if switch_block is None or block.nsucc() > switch_block.nsucc():
                 switch_block = block
 
@@ -77,8 +74,7 @@ try:
         return None
 
     distances = [
-        distance_to_dispatch(switch_block.succ(index))
-        for index in range(switch_block.nsucc())
+        distance_to_dispatch(switch_block.succ(index)) for index in range(switch_block.nsucc())
     ]
     returning = [distance for distance in distances if distance is not None]
     histogram = Counter(returning)

@@ -1,4 +1,5 @@
 """Validate exact native push/return targets and conservative boundary cases."""
+
 import json
 import os
 from pathlib import Path
@@ -15,11 +16,18 @@ import ida_ua
 import ida_xref
 
 CASES = {
-    "vt_reg": "exact", "vt_mem": "exact", "vt_indexed": "exact",
-    "vt_unknown_reg": "unresolved", "vt_alias": "unresolved",
-    "vt_writable": "unresolved", "vt_unknown_index": "unresolved",
-    "vt_load_writable": "unresolved", "vt_adjust": "rejected",
-    "vt_far": "rejected", "vt_width": "rejected", "vt_alternate": "rejected",
+    "vt_reg": "exact",
+    "vt_mem": "exact",
+    "vt_indexed": "exact",
+    "vt_unknown_reg": "unresolved",
+    "vt_alias": "unresolved",
+    "vt_writable": "unresolved",
+    "vt_unknown_index": "unresolved",
+    "vt_load_writable": "unresolved",
+    "vt_adjust": "rejected",
+    "vt_far": "rejected",
+    "vt_width": "rejected",
+    "vt_alternate": "rejected",
 }
 
 
@@ -68,8 +76,9 @@ try:
     for name, expected in CASES.items():
         push, ret = pair(name)
         edges = jump_targets(ret)
-        comment = "\n".join(filter(None, (
-            ida_bytes.get_cmt(ret, False), ida_bytes.get_cmt(ret, True))))
+        comment = "\n".join(
+            filter(None, (ida_bytes.get_cmt(ret, False), ida_bytes.get_cmt(ret, True)))
+        )
         if edges != ({target} if expected == "exact" else set()):
             errors.append("%s: target set %r" % (name, edges))
         if ("exact push/return target" in comment) != (expected == "exact"):
@@ -78,12 +87,21 @@ try:
             errors.append("%s: unresolved annotation absent %r" % (name, comment))
         if expected == "rejected" and "stack-mediated transfer candidate" in comment:
             errors.append("%s: unsupported pair admitted" % name)
-        records.append({"name": name, "expected": expected, "push": int(push.ea),
-                        "return": int(ret), "targets": sorted(edges), "comment": comment})
+        records.append(
+            {
+                "name": name,
+                "expected": expected,
+                "push": int(push.ea),
+                "return": int(ret),
+                "targets": sorted(edges),
+                "comment": comment,
+            }
+        )
     if ida_funcs.get_func_start(target) != target:
         errors.append("target function was merged")
     (Path(os.environ["IDAUSR"]).parent / "stack_transfer.json").write_text(
-        json.dumps({"records": records, "errors": errors}, indent=2) + "\n")
+        json.dumps({"records": records, "errors": errors}, indent=2) + "\n"
+    )
     if errors:
         finish(2, "FAIL " + "; ".join(errors))
     finish(0, "PASS cases=%d" % len(records))

@@ -1,0 +1,3 @@
+[tool.black]
+line-length = 100
+required-version = "26.5.1"

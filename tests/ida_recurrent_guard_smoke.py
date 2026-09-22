@@ -5,6 +5,7 @@ uses function-relative offsets so table data does not split function extents.
 The GLBOPT3 interpreter checks concrete native-reference inputs independently of
 the plugin's solver and fails on unsupported or uninitialized microcode values.
 """
+
 import json
 import hashlib
 import os
@@ -22,10 +23,17 @@ import ida_idp
 import idautils
 
 NAMES = (
-    "rg_positive", "rg_late_guard", "rg_unknown_guard", "rg_global_effect",
-    "rg_escaped_state", "rg_recurrence_register", "rg_middle_entry",
-    "rg_register_effect", "rg_entry_cycle",
-    "rg_restored_selector", "rg_corrupted_restore",
+    "rg_positive",
+    "rg_late_guard",
+    "rg_unknown_guard",
+    "rg_global_effect",
+    "rg_escaped_state",
+    "rg_recurrence_register",
+    "rg_middle_entry",
+    "rg_register_effect",
+    "rg_entry_cycle",
+    "rg_restored_selector",
+    "rg_corrupted_restore",
 )
 
 
@@ -75,9 +83,13 @@ class InstructionAddresses(ida_hexrays.minsn_visitor_t):
         self.records = []
 
     def visit_minsn(self):
-        self.records.append({"ea": int(self.curins.ea),
-                             "real_ea": int(self.mba.map_fict_ea(self.curins.ea)),
-                             "opcode": self.curins.opcode})
+        self.records.append(
+            {
+                "ea": int(self.curins.ea),
+                "real_ea": int(self.mba.map_fict_ea(self.curins.ea)),
+                "opcode": self.curins.opcode,
+            }
+        )
         return 0
 
 
@@ -85,18 +97,23 @@ def block_record(block):
     instructions = []
     instruction = block.head
     while instruction is not None:
-        instructions.append({
-            "ea": int(instruction.ea),
-            "real_ea": int(block.mba.map_fict_ea(instruction.ea)),
-            "opcode": instruction.opcode,
-            "text": instruction.dstr(),
-        })
+        instructions.append(
+            {
+                "ea": int(instruction.ea),
+                "real_ea": int(block.mba.map_fict_ea(instruction.ea)),
+                "opcode": instruction.opcode,
+                "text": instruction.dstr(),
+            }
+        )
         instruction = instruction.next
     addresses = InstructionAddresses(block.mba)
     block.for_all_insns(addresses)
     return {
-        "serial": block.serial, "start": int(block.start), "end": int(block.end),
-        "type": block.type, "pred": list(block.predset),
+        "serial": block.serial,
+        "start": int(block.start),
+        "end": int(block.end),
+        "type": block.type,
+        "pred": list(block.predset),
         "succ": [block.succ(index) for index in range(block.nsucc())],
         "instructions": instructions,
         "instruction_addresses": addresses.records,
@@ -109,8 +126,14 @@ def snapshot_bytes(ranges):
         data = ida_bytes.get_bytes(start, end - start)
         if data is None or len(data) != end - start:
             raise RuntimeError("unreadable function bytes at 0x%X" % start)
-        result.append({"start": start, "end": end, "hex": data.hex(),
-                       "sha256": hashlib.sha256(data).hexdigest()})
+        result.append(
+            {
+                "start": start,
+                "end": end,
+                "hex": data.hex(),
+                "sha256": hashlib.sha256(data).hexdigest(),
+            }
+        )
     return result
 
 
@@ -122,10 +145,12 @@ def verify_instruction_addresses(blocks, native_heads, reference_eas):
             if ea == real_ea or real_ea == ida_idaapi.BADADDR:
                 continue
             if real_ea not in native_heads:
-                raise RuntimeError("fictional EA 0x%X maps outside native instructions: 0x%X"
-                                   % (ea, real_ea))
-            mapped.append({"ea": ea, "real_ea": real_ea,
-                           "present_at_LOCOPT": real_ea in reference_eas})
+                raise RuntimeError(
+                    "fictional EA 0x%X maps outside native instructions: 0x%X" % (ea, real_ea)
+                )
+            mapped.append(
+                {"ea": ea, "real_ea": real_ea, "present_at_LOCOPT": real_ea in reference_eas}
+            )
     return mapped
 
 
@@ -136,6 +161,7 @@ class FixtureInterpreter:
     and nested expression nodes per block, W <= 8 bytes, S is touched storage.
     None means no return within the bound, not an inferred nontermination proof.
     """
+
     STACK = 0x700000000000
 
     def __init__(self, mba, argument):
@@ -238,30 +264,47 @@ class FixtureInterpreter:
                         successor = default
                     if successor is None:
                         raise RuntimeError("switch has no matching/default edge")
-                elif opcode in (ida_hexrays.m_jz, ida_hexrays.m_jnz,
-                                ida_hexrays.m_ja, ida_hexrays.m_jb,
-                                ida_hexrays.m_jae, ida_hexrays.m_jbe,
-                                ida_hexrays.m_jl, ida_hexrays.m_jge):
+                elif opcode in (
+                    ida_hexrays.m_jz,
+                    ida_hexrays.m_jnz,
+                    ida_hexrays.m_ja,
+                    ida_hexrays.m_jb,
+                    ida_hexrays.m_jae,
+                    ida_hexrays.m_jbe,
+                    ida_hexrays.m_jl,
+                    ida_hexrays.m_jge,
+                ):
                     left, right = self.value(instruction.l), self.value(instruction.r)
                     bits = 8 * instruction.l.size
                     sign = 1 << (bits - 1)
                     signed_left = left - (1 << bits) if left & sign else left
                     signed_right = right - (1 << bits) if right & sign else right
                     predicates = {
-                        ida_hexrays.m_jz: left == right, ida_hexrays.m_jnz: left != right,
-                        ida_hexrays.m_ja: left > right, ida_hexrays.m_jb: left < right,
-                        ida_hexrays.m_jae: left >= right, ida_hexrays.m_jbe: left <= right,
+                        ida_hexrays.m_jz: left == right,
+                        ida_hexrays.m_jnz: left != right,
+                        ida_hexrays.m_ja: left > right,
+                        ida_hexrays.m_jb: left < right,
+                        ida_hexrays.m_jae: left >= right,
+                        ida_hexrays.m_jbe: left <= right,
                         ida_hexrays.m_jl: signed_left < signed_right,
                         ida_hexrays.m_jge: signed_left >= signed_right,
                     }
                     successor = int(instruction.d.b) if predicates[opcode] else current + 1
                 elif opcode == ida_hexrays.m_stx:
-                    self.store(self.memory, self.value(instruction.d),
-                               instruction.l.size, self.value(instruction.l))
+                    self.store(
+                        self.memory,
+                        self.value(instruction.d),
+                        instruction.l.size,
+                        self.value(instruction.l),
+                    )
                 else:
                     storage, location = self.location(instruction.d)
-                    self.store(storage, location, instruction.d.size,
-                               self.expression(instruction, instruction.d.size))
+                    self.store(
+                        storage,
+                        location,
+                        instruction.d.size,
+                        self.expression(instruction, instruction.d.size),
+                    )
                 instruction = instruction.next
             if not block.nsucc():
                 return self.read(self.registers, self.rax, 8)
@@ -281,29 +324,37 @@ def verify_semantics(mba, name):
         interpreter = FixtureInterpreter(mba, argument)
         observed = interpreter.run()
         if observed != expected:
-            raise RuntimeError("%s(%d): microcode=%r native-reference=%r" %
-                               (name, argument, observed, expected))
+            raise RuntimeError(
+                "%s(%d): microcode=%r native-reference=%r" % (name, argument, observed, expected)
+            )
         counter = interpreter.read(interpreter.memory, address("rg_guard_hits"), 4)
         if name == "rg_global_effect" and counter != 8:
             raise RuntimeError("dispatcher counter=%d, expected 8" % counter)
-        observations.append({"argument": argument, "result": observed,
-                             "expected": expected, "global_counter": counter,
-                             "block_trace": interpreter.trace})
+        observations.append(
+            {
+                "argument": argument,
+                "result": observed,
+                "expected": expected,
+                "global_counter": counter,
+                "block_trace": interpreter.trace,
+            }
+        )
     return observations
 
 
 try:
     import ida_idaapi
+
     ida_auto.auto_wait()
     if not ida_hexrays.init_hexrays_plugin():
         finish(2, "Hex-Rays initialization failed")
-    function_ranges = {name: [(int(start), int(end))
-                              for start, end in idautils.Chunks(address(name))]
-                       for name in NAMES}
+    function_ranges = {
+        name: [(int(start), int(end)) for start, end in idautils.Chunks(address(name))]
+        for name in NAMES
+    }
     if any(not ranges for ranges in function_ranges.values()):
         raise RuntimeError("fixture function has no native ranges")
-    original_bytes = {name: snapshot_bytes(ranges)
-                      for name, ranges in function_ranges.items()}
+    original_bytes = {name: snapshot_bytes(ranges) for name, ranges in function_ranges.items()}
     records = []
     for name in NAMES:
         start = address(name)
@@ -312,43 +363,69 @@ try:
             raise RuntimeError("missing function " + name)
         offsets = address(name + "_offsets")
         sites = [start + ida_bytes.get_dword(offsets + index * 4) for index in range(11)]
-        record = {"name": name, "start": start, "dispatcher_ea": sites[0],
-                  "guard_ea": sites[1], "switch_ea": sites[2],
-                  "case_eas": sites[3:], "microcode": []}
-        native_heads = {int(ea) for first, last in function_ranges[name]
-                        for ea in idautils.Heads(first, last)
-                        if ida_bytes.is_code(ida_bytes.get_flags(ea))}
+        record = {
+            "name": name,
+            "start": start,
+            "dispatcher_ea": sites[0],
+            "guard_ea": sites[1],
+            "switch_ea": sites[2],
+            "case_eas": sites[3:],
+            "microcode": [],
+        }
+        native_heads = {
+            int(ea)
+            for first, last in function_ranges[name]
+            for ea in idautils.Heads(first, last)
+            if ida_bytes.is_code(ida_bytes.get_flags(ea))
+        }
         reference_eas = set()
-        for label, maturity in (("LOCOPT", ida_hexrays.MMAT_LOCOPT),
-                                ("GLBOPT3", ida_hexrays.MMAT_GLBOPT3)):
+        for label, maturity in (
+            ("LOCOPT", ida_hexrays.MMAT_LOCOPT),
+            ("GLBOPT3", ida_hexrays.MMAT_GLBOPT3),
+        ):
             failure = ida_hexrays.hexrays_failure_t()
             mba = ida_hexrays.gen_microcode(
-                ida_hexrays.mba_ranges_t(function), failure, None,
-                ida_hexrays.DECOMP_NO_CACHE, maturity,
+                ida_hexrays.mba_ranges_t(function),
+                failure,
+                None,
+                ida_hexrays.DECOMP_NO_CACHE,
+                maturity,
             )
             if mba is None:
                 raise RuntimeError("%s %s: %s" % (name, label, failure.desc()))
             mba.verify(True)
             blocks = [block_record(mba.get_mblock(index)) for index in range(mba.qty)]
             if label == "LOCOPT":
-                reference_eas = {instruction["real_ea"] for block in blocks
-                                 for instruction in block["instruction_addresses"]
-                                 if instruction["real_ea"] != ida_idaapi.BADADDR}
-            mapped_addresses = verify_instruction_addresses(
-                blocks, native_heads, reference_eas)
-            switch_count = sum(instruction["opcode"] == ida_hexrays.m_jtbl
-                               for block in blocks for instruction in block["instructions"])
-            record["microcode"].append({"maturity": label, "qty": mba.qty,
-                                        "switch_count": switch_count, "blocks": blocks,
-                                        "fictional_address_mappings": mapped_addresses})
+                reference_eas = {
+                    instruction["real_ea"]
+                    for block in blocks
+                    for instruction in block["instruction_addresses"]
+                    if instruction["real_ea"] != ida_idaapi.BADADDR
+                }
+            mapped_addresses = verify_instruction_addresses(blocks, native_heads, reference_eas)
+            switch_count = sum(
+                instruction["opcode"] == ida_hexrays.m_jtbl
+                for block in blocks
+                for instruction in block["instructions"]
+            )
+            record["microcode"].append(
+                {
+                    "maturity": label,
+                    "qty": mba.qty,
+                    "switch_count": switch_count,
+                    "blocks": blocks,
+                    "fictional_address_mappings": mapped_addresses,
+                }
+            )
             if label == "GLBOPT3":
                 record["native_reference_checks"] = verify_semantics(mba, name)
             emit("%s %s blocks=%d switches=%d" % (name, label, mba.qty, switch_count))
         cfunc = ida_hexrays.decompile(start)
         if cfunc is None:
             raise RuntimeError("decompile failed " + name)
-        record["pseudocode"] = "\n".join(ida_lines.tag_remove(line.line)
-                                             for line in cfunc.get_pseudocode())
+        record["pseudocode"] = "\n".join(
+            ida_lines.tag_remove(line.line) for line in cfunc.get_pseudocode()
+        )
         records.append(record)
     # Compare every original function range only after all eleven functions
     # have been transformed and decompiled, catching cross-function changes.
@@ -358,7 +435,9 @@ try:
         if after_bytes != original_bytes[name]:
             raise RuntimeError("native IDB bytes changed in " + name)
         record["native_byte_integrity"] = {
-            "before": original_bytes[name], "after": after_bytes, "unchanged": True,
+            "before": original_bytes[name],
+            "after": after_bytes,
+            "unchanged": True,
         }
     destination = Path(os.environ["IDAUSR"]).parent / "recurrent_guard.json"
     destination.write_text(json.dumps(records, indent=2) + "\n", encoding="utf-8")

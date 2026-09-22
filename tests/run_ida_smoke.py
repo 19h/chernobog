@@ -22,7 +22,6 @@ import sys
 import tempfile
 import time
 
-
 DATABASE_SUFFIXES = {
     ".i64",
     ".idb",
@@ -71,9 +70,9 @@ def observed_sha256(path: Path) -> str | None:
 
 def chernobog_environment_sha256(environment: dict[str, str]) -> str:
     configuration = {
-        key: value for key, value in environment.items()
-        if key.startswith("CHERNOBOG_")
-        and key not in ENVIRONMENT_DIGEST_EXCLUSIONS
+        key: value
+        for key, value in environment.items()
+        if key.startswith("CHERNOBOG_") and key not in ENVIRONMENT_DIGEST_EXCLUSIONS
     }
     serialized = json.dumps(
         configuration, sort_keys=True, separators=(",", ":"), ensure_ascii=True
@@ -176,15 +175,10 @@ def main() -> int:
     ida = require_tool_path(arguments.ida, "--ida")
     plugin = require_tool_path(arguments.plugin, "--plugin")
     license_file = (
-        require_tool_path(arguments.license, "--license")
-        if arguments.license is not None
-        else None
+        require_tool_path(arguments.license, "--license") if arguments.license is not None else None
     )
     input_path: Path = arguments.input
-    if (
-        input_path.suffix.lower() in DATABASE_SUFFIXES
-        and not arguments.allow_database
-    ):
+    if input_path.suffix.lower() in DATABASE_SUFFIXES and not arguments.allow_database:
         raise SystemExit(
             "database input refused; use the original binary or pass "
             "--allow-database explicitly: %s" % input_path
@@ -211,8 +205,7 @@ def main() -> int:
     log_path = run_dir / "ida.log"
 
     environment = {
-        key: value for key, value in os.environ.items()
-        if not key.startswith("CHERNOBOG_")
+        key: value for key, value in os.environ.items() if not key.startswith("CHERNOBOG_")
     }
     environment.update(
         {
@@ -256,8 +249,10 @@ def main() -> int:
 
     def redact_paths(text: str) -> str:
         roots = {
-            str(run_dir): "<run>", str(ida.parent): "<ida>",
-            str(Path.cwd()): "<workspace>", str(Path.home()): "<home>",
+            str(run_dir): "<run>",
+            str(ida.parent): "<ida>",
+            str(Path.cwd()): "<workspace>",
+            str(Path.home()): "<home>",
             str(input_path.parent): "<input>",
             str(arguments.script.parent): "<probe>",
             str(plugin.parent): "<plugin>",
@@ -275,8 +270,9 @@ def main() -> int:
     ida_hash = sha256(ida)
     print("plugin_sha256=%s" % plugin_hash, flush=True)
     started = time.perf_counter_ns()
-    completed = subprocess.run(command, env=environment, check=False,
-                               capture_output=True, text=True, errors="replace")
+    completed = subprocess.run(
+        command, env=environment, check=False, capture_output=True, text=True, errors="replace"
+    )
     elapsed_ns = time.perf_counter_ns() - started
     if completed.stdout:
         print(redact_paths(completed.stdout), end="")
@@ -289,22 +285,23 @@ def main() -> int:
     ida_unchanged = ida_hash_after == ida_hash
     input_copy_matches_source = copied_input_hash == source_hash
     artifacts_unchanged = (
-        unchanged and copied_script_unchanged and plugin_unchanged
-        and ida_unchanged and input_copy_matches_source
+        unchanged
+        and copied_script_unchanged
+        and plugin_unchanged
+        and ida_unchanged
+        and input_copy_matches_source
     )
     if not artifacts_unchanged:
         print("run artifact integrity check failed", file=sys.stderr)
         return_code = 125
     else:
         return_code = completed.returncode
-    log_text = (
-        log_path.read_text(encoding="utf-8", errors="replace")
-        if log_path.is_file() else ""
-    )
+    log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
     marker_found = re.search(arguments.expect_log, log_text) is not None
-    internal_error = re.search(
-        INTERNAL_ERROR_PATTERN, log_text + completed.stdout + completed.stderr
-    ) is not None
+    internal_error = (
+        re.search(INTERNAL_ERROR_PATTERN, log_text + completed.stdout + completed.stderr)
+        is not None
+    )
     if log_path.is_file():
         log_path.write_text(redact_paths(log_text), encoding="utf-8")
     if return_code == 0 and not marker_found:
@@ -326,9 +323,7 @@ def main() -> int:
         "script_sha256": script_hash,
         "script_unchanged": copied_script_unchanged,
         "source_script_sha256": source_script_hash,
-        "source_script_unchanged": (
-            observed_sha256(arguments.script) == source_script_hash
-        ),
+        "source_script_unchanged": (observed_sha256(arguments.script) == source_script_hash),
         "source_input_unchanged": unchanged,
         "input_copy_matches_source": input_copy_matches_source,
         "ida_path": "<ida>/" + ida.name,

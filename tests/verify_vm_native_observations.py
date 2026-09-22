@@ -4,6 +4,7 @@ Capstone supplies instruction decoding; Python integers supply effects. This
 oracle does not import Chernobog recognition, semantics, or transition checking.
 Unsupported instructions fail the verification instead of counting as coverage.
 """
+
 import argparse
 from collections import Counter
 import copy
@@ -16,7 +17,7 @@ sys.dont_write_bytecode = True
 import capstone
 from capstone import Cs, CS_ARCH_X86, CS_MODE_32, CS_MODE_64, CS_OP_REG, CS_OP_IMM, CS_OP_MEM
 
-ARITH = 0x8d5
+ARITH = 0x8D5
 
 
 def state_registers(state, mode):
@@ -27,14 +28,22 @@ def state_registers(state, mode):
         assert width == mode // 8 and reg not in result
         result[reg] = value
     base = 0x100 if mode == 64 else 0x200
-    return [result[base + i] for i in range(16 if mode == 64 else 8)], result[0x12 if mode == 64 else 0x13]
+    return [result[base + i] for i in range(16 if mode == 64 else 8)], result[
+        0x12 if mode == 64 else 0x13
+    ]
 
 
 def alias(name):
-    families = [("rax", "eax", "ax", "al", "ah"), ("rcx", "ecx", "cx", "cl", "ch"),
-                ("rdx", "edx", "dx", "dl", "dh"), ("rbx", "ebx", "bx", "bl", "bh"),
-                ("rsp", "esp", "sp", "spl"), ("rbp", "ebp", "bp", "bpl"),
-                ("rsi", "esi", "si", "sil"), ("rdi", "edi", "di", "dil")]
+    families = [
+        ("rax", "eax", "ax", "al", "ah"),
+        ("rcx", "ecx", "cx", "cl", "ch"),
+        ("rdx", "edx", "dx", "dl", "dh"),
+        ("rbx", "ebx", "bx", "bl", "bh"),
+        ("rsp", "esp", "sp", "spl"),
+        ("rbp", "ebp", "bp", "bpl"),
+        ("rsi", "esi", "si", "sil"),
+        ("rdi", "edi", "di", "dil"),
+    ]
     families += [(f"r{i}", f"r{i}d", f"r{i}w", f"r{i}b") for i in range(8, 16)]
     for index, family in enumerate(families):
         if name in family:
@@ -70,8 +79,11 @@ def replay_step(insn, entry, output, accesses, mode, memory):
 
     def address(op):
         assert not op.mem.segment
-        return ((get_reg(op.mem.base) if op.mem.base else 0)
-                + (get_reg(op.mem.index) * op.mem.scale if op.mem.index else 0) + op.mem.disp) & mask
+        return (
+            (get_reg(op.mem.base) if op.mem.base else 0)
+            + (get_reg(op.mem.index) * op.mem.scale if op.mem.index else 0)
+            + op.mem.disp
+        ) & mask
 
     def access(kind, addr, size, value=None):
         nonlocal cursor
@@ -165,10 +177,21 @@ def replay_step(insn, entry, output, accesses, mode, memory):
         value, reduced, m = a, count % bits, (1 << bits) - 1
         if count:
             if reduced:
-                value = ((a << reduced) | (a >> (bits - reduced))) & m if mnemonic == "rol" else ((a >> reduced) | (a << (bits - reduced))) & m
+                value = (
+                    ((a << reduced) | (a >> (bits - reduced))) & m
+                    if mnemonic == "rol"
+                    else ((a >> reduced) | (a << (bits - reduced))) & m
+                )
             flag(1, value & 1 if mnemonic == "rol" else value >> (bits - 1))
             if count == 1:
-                flag(0x800, ((value >> (bits - 1)) ^ (flags & 1)) if mnemonic == "rol" else ((value >> (bits - 1)) ^ (value >> (bits - 2))) & 1)
+                flag(
+                    0x800,
+                    (
+                        ((value >> (bits - 1)) ^ (flags & 1))
+                        if mnemonic == "rol"
+                        else ((value >> (bits - 1)) ^ (value >> (bits - 2))) & 1
+                    ),
+                )
             else:
                 checked_flags &= ~0x800
         write(ops[0], value)
@@ -196,7 +219,8 @@ def replay_step(insn, entry, output, accesses, mode, memory):
     assert regs == expected_regs, "GPR mismatch"
     assert (flags ^ expected_flags) & checked_flags == 0, (
         f"defined flag mismatch at {insn.address:#x} {insn.mnemonic} {insn.op_str}: "
-        f"expected={flags:#x} captured={expected_flags:#x} mask={checked_flags:#x}")
+        f"expected={flags:#x} captured={expected_flags:#x} mask={checked_flags:#x}"
+    )
     assert target == int(output["site"], 0), "successor mismatch"
 
 
@@ -204,11 +228,18 @@ def verify_row(trace, row):
     mode = trace["address_bits"]
     begin, end = int(row["sequence"], 0), int(row["output_sequence"], 0)
     path = [p for p in trace["execution"] if begin <= int(p["sequence"]) < end]
-    entries = {int(s["sequence"]): s for s in trace["states"] if s["kind"] == "native instruction entry"}
-    exits = [s for s in trace["states"] if s["kind"] == "transfer target" and int(s["sequence"]) == end]
+    entries = {
+        int(s["sequence"]): s for s in trace["states"] if s["kind"] == "native instruction entry"
+    }
+    exits = [
+        s for s in trace["states"] if s["kind"] == "transfer target" and int(s["sequence"]) == end
+    ]
     assert len(exits) == 1 and int(exits[0]["site"], 0) == int(row["target"], 0)
     assert [(int(p["site"], 0), int(p["size"])) for p in path] == [
-        (int(item.split(":")[0], 0), int(item.split(":")[1])) for item in row["instruction_spans"].split(";") if item]
+        (int(item.split(":")[0], 0), int(item.split(":")[1]))
+        for item in row["instruction_spans"].split(";")
+        if item
+    ]
     heads = {int(h["site"], 0): h for h in trace["heads"]}
     decoder = Cs(CS_ARCH_X86, CS_MODE_64 if mode == 64 else CS_MODE_32)
     decoder.detail = True
@@ -235,9 +266,17 @@ def main():
     digest = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
     report = json.loads(args.report.read_text())
     assert report["passed"] and report["native_check"]
-    result = {"schema": 1, "passed": False, "source_sha256": digest(__file__),
-              "report_sha256": digest(args.report), "capstone_version": capstone.__version__,
-              "capture_sha256": {}, "transitions": 0, "instructions": {}, "negative_controls": 0}
+    result = {
+        "schema": 1,
+        "passed": False,
+        "source_sha256": digest(__file__),
+        "report_sha256": digest(args.report),
+        "capstone_version": capstone.__version__,
+        "capture_sha256": {},
+        "transitions": 0,
+        "instructions": {},
+        "negative_controls": 0,
+    }
     counts, examples = Counter(), {}
     for run in report["runs"]:
         path = args.report.parent / run["label"] / "vm_native_inputs.json"
@@ -256,9 +295,17 @@ def main():
         for mutation in ("gpr", "flags", "target", "read"):
             changed = copy.deepcopy(trace)
             begin, end = int(row["sequence"], 0), int(row["output_sequence"], 0)
-            output = next(s for s in changed["states"] if s["kind"] == "transfer target" and int(s["sequence"]) == end)
+            output = next(
+                s
+                for s in changed["states"]
+                if s["kind"] == "transfer target" and int(s["sequence"]) == end
+            )
             if mutation in ("gpr", "flags"):
-                reg = (0x100 if trace["address_bits"] == 64 else 0x200) if mutation == "gpr" else (0x12 if trace["address_bits"] == 64 else 0x13)
+                reg = (
+                    (0x100 if trace["address_bits"] == 64 else 0x200)
+                    if mutation == "gpr"
+                    else (0x12 if trace["address_bits"] == 64 else 0x13)
+                )
                 values = [item.split(":") for item in output["registers"].split(";")]
                 for item in values:
                     if int(item[0]) == reg:
@@ -267,7 +314,11 @@ def main():
             elif mutation == "target":
                 output["site"] = hex(int(output["site"], 0) ^ 1)
             else:
-                access = next(d for d in changed["data"] if begin < int(d["sequence"]) < end and d["kind"] == "read")
+                access = next(
+                    d
+                    for d in changed["data"]
+                    if begin < int(d["sequence"]) < end and d["kind"] == "read"
+                )
                 access["value"] = hex(int(access["value"], 0) ^ 1)
             try:
                 verify_row(changed, row)

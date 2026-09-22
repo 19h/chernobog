@@ -25,10 +25,7 @@ def has_xref(source, target, expected_type):
     xref = ida_xref.xrefblk_t()
     valid = xref.first_from(source, ida_xref.XREF_ALL)
     while valid:
-        if (
-            xref.to == target
-            and (xref.type & ida_xref.XREF_MASK) == expected_type
-        ):
+        if xref.to == target and (xref.type & ida_xref.XREF_MASK) == expected_type:
             return True
         valid = xref.next_from()
     return False
@@ -77,9 +74,7 @@ try:
             failures.append("code@0x%X" % continuation_ea)
         if not ida_funcs.function_contains(function.start_ea, continuation_ea):
             owner_ea = ida_funcs.get_func_start(continuation_ea)
-            failures.append(
-                "chunk@0x%X(owner=0x%X)" % (continuation_ea, owner_ea)
-            )
+            failures.append("chunk@0x%X(owner=0x%X)" % (continuation_ea, owner_ea))
         return_ea = gadget_ea + 4
         if not has_xref(return_ea, continuation_ea, ida_xref.fl_F):
             failures.append("flow@0x%X" % return_ea)
@@ -90,10 +85,7 @@ try:
         if block.start_ea != function.start_ea and not list(block.preds()):
             orphan_blocks.append(block.start_ea)
     if orphan_blocks:
-        failures.append(
-            "orphans=%s"
-            % ",".join("0x%X" % address for address in orphan_blocks)
-        )
+        failures.append("orphans=%s" % ",".join("0x%X" % address for address in orphan_blocks))
     if failures:
         diagnostics = {
             "chunks": list(idautils.Chunks(function.start_ea)),
@@ -119,7 +111,8 @@ try:
                 for address in range(0x405036, 0x405041)
             ],
             "discard_calls": {
-                "0x%X" % address: {
+                "0x%X"
+                % address: {
                     "owner": ida_funcs.get_func_start(address),
                     "code": ida_bytes.is_code(ida_bytes.get_flags(address)),
                     "comment": ida_bytes.get_cmt(address, True),
@@ -137,16 +130,11 @@ try:
                 )
             },
         }
-        ida_kernwin.msg(
-            "[chernobog][early-acprotect-smoke] diagnostics=%r\n"
-            % diagnostics
-        )
+        ida_kernwin.msg("[chernobog][early-acprotect-smoke] diagnostics=%r\n" % diagnostics)
         finish(4, "native CFG incomplete: %s" % "; ".join(failures))
 
     failure = ida_hexrays.hexrays_failure_t()
-    cfunc = ida_hexrays.decompile(
-        function.start_ea, failure, ida_hexrays.DECOMP_NO_CACHE
-    )
+    cfunc = ida_hexrays.decompile(function.start_ea, failure, ida_hexrays.DECOMP_NO_CACHE)
     if cfunc is None:
         stack_points = {
             "0x%X" % address: idc.get_spd(address)
@@ -168,9 +156,7 @@ try:
                 0x40517B,
             )
         }
-        ida_kernwin.msg(
-            "[chernobog][early-acprotect-smoke] spd=%r\n" % stack_points
-        )
+        ida_kernwin.msg("[chernobog][early-acprotect-smoke] spd=%r\n" % stack_points)
         finish(
             5,
             "decompilation failed: %s (code=%d ea=0x%X)"
@@ -185,14 +171,10 @@ try:
     }
     missing = [name for name, present in required.items() if not present]
     if missing:
-        ida_kernwin.msg(
-            "[chernobog][early-acprotect-smoke] pseudocode:\n%s\n"
-            % pseudocode
-        )
+        ida_kernwin.msg("[chernobog][early-acprotect-smoke] pseudocode:\n%s\n" % pseudocode)
         finish(
             6,
-            "decompilation missing %s (%d characters)"
-            % (", ".join(missing), len(pseudocode)),
+            "decompilation missing %s (%d characters)" % (", ".join(missing), len(pseudocode)),
         )
 
     # Exercise hxe_flowchart independently of the persisted native repair. The
@@ -231,17 +213,12 @@ try:
             ida_xref.add_cref(return_ea, continuation_ea, ida_xref.fl_F)
 
     repaired_required = {
-        "loop": re.search(r"\b(for|while|do)\b", repaired_pseudocode)
-        is not None,
+        "loop": re.search(r"\b(for|while|do)\b", repaired_pseudocode) is not None,
         "rotation": "__ROL4__" in repaired_pseudocode,
-        "key": "-17858287" in repaired_pseudocode
-        or "0XFEEF8111" in repaired_pseudocode.upper(),
-        "count": "60" in repaired_pseudocode
-        or "0X3C" in repaired_pseudocode.upper(),
+        "key": "-17858287" in repaired_pseudocode or "0XFEEF8111" in repaired_pseudocode.upper(),
+        "count": "60" in repaired_pseudocode or "0X3C" in repaired_pseudocode.upper(),
     }
-    repaired_missing = [
-        name for name, present in repaired_required.items() if not present
-    ]
+    repaired_missing = [name for name, present in repaired_required.items() if not present]
     if repaired_missing:
         finish(
             8,

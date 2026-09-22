@@ -68,7 +68,8 @@ try:
     if expected not in literals:
         finish(6, "runtime literal missing on repeated uncached decompilation")
     (Path(os.environ["IDAUSR"]).parent / "bounded_search_pseudocode.txt").write_text(
-        str(second), encoding="utf-8")
+        str(second), encoding="utf-8"
+    )
     original_needle = ida_bytes.get_bytes(needle, 4)
     try:
         # None of the three fixture bytes equals zero. The changed memchr

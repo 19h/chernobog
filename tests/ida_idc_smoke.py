@@ -121,8 +121,7 @@ try:
         "a numeric option value did not take effect",
     )
     require(
-        int(evaluate('chernobog_set_option("CHERNOBOG_RAX_EXPLORE_RUNS", "")'))
-        == 1,
+        int(evaluate('chernobog_set_option("CHERNOBOG_RAX_EXPLORE_RUNS", "")')) == 1,
         "an option could not be cleared through its variable name",
     )
     evaluate('chernobog_set_option("auto", 1)')
@@ -160,14 +159,14 @@ try:
     attribute(flatten, "confidence_score")
     attribute("chernobog_detect_flatten(-1)", "confidence_score")
 
-    require(int(evaluate("chernobog_analyze(%s)" % target)) == 1,
-            "chernobog_analyze() failed")
+    require(int(evaluate("chernobog_analyze(%s)" % target)) == 1, "chernobog_analyze() failed")
 
     # Admission tracking.
-    require(int(evaluate("chernobog_request(%s)" % target)) == 1,
-            "chernobog_request() failed")
-    require(int(evaluate("chernobog_enabled_for(%s)" % target)) == 1,
-            "an explicitly requested function is not admitted")
+    require(int(evaluate("chernobog_request(%s)" % target)) == 1, "chernobog_request() failed")
+    require(
+        int(evaluate("chernobog_enabled_for(%s)" % target)) == 1,
+        "an explicitly requested function is not admitted",
+    )
 
     # rax exploration is bounded and synchronous; a disabled or unavailable
     # engine is a valid outcome, an interpreter-level failure is not.
@@ -182,14 +181,13 @@ try:
     strings = int(evaluate("chernobog_rax_string_count(%s)" % target))
     require(strings >= 0, "negative runtime string count")
     out_of_range = "chernobog_rax_string(%s, 100000)" % target
-    require(int(attribute(out_of_range, "ok")) == 0,
-            "an out-of-range string index reported success")
-    require(attribute(out_of_range, "value") == "",
-            "an out-of-range string index returned a value")
+    require(
+        int(attribute(out_of_range, "ok")) == 0, "an out-of-range string index reported success"
+    )
+    require(attribute(out_of_range, "value") == "", "an out-of-range string index returned a value")
     attribute("chernobog_rax_target(%s, %s, 0)" % (target, target), "ok")
     attribute("chernobog_rax_branch(%s, %s, 1)" % (target, target), "veto")
-    require(int(evaluate("chernobog_rax_show()")) == 1,
-            "chernobog_rax_show() failed")
+    require(int(evaluate("chernobog_rax_show()")) == 1, "chernobog_rax_show() failed")
 
     # Native passes report whether they ran; both are opt-in and default off.
     attribute("chernobog_hikari_cfg()", "patched_dispatchers")
@@ -202,33 +200,43 @@ try:
     require(rules > 0, "no MBA rules are registered")
     first = evaluate("chernobog_rule_name(0)")
     require(first != "", "the first rule has no name")
-    require(int(evaluate('chernobog_rule_hits("%s")' % first)) >= 0,
-            "a registered rule has no hit counter")
-    require(int(evaluate('chernobog_rule_hits("no_such_rule")')) == -1,
-            "an unknown rule name did not report -1")
-    require(int(attribute("chernobog_rule_stats()", "rules")) == rules,
-            "rule registry statistics disagree with the rule count")
+    require(
+        int(evaluate('chernobog_rule_hits("%s")' % first)) >= 0,
+        "a registered rule has no hit counter",
+    )
+    require(
+        int(evaluate('chernobog_rule_hits("no_such_rule")')) == -1,
+        "an unknown rule name did not report -1",
+    )
+    require(
+        int(attribute("chernobog_rule_stats()", "rules")) == rules,
+        "rule registry statistics disagree with the rule count",
+    )
 
     # Transformation and text extraction.
-    require(int(evaluate("chernobog_deobfuscate(%s)" % target)) == 1,
-            "chernobog_deobfuscate() failed")
+    require(
+        int(evaluate("chernobog_deobfuscate(%s)" % target)) == 1, "chernobog_deobfuscate() failed"
+    )
     text = evaluate("chernobog_deobfuscate_text(%s)" % target)
     require(len(text) > 0, "chernobog_deobfuscate_text() returned no text")
-    require(len(evaluate("chernobog_decompile(%s)" % target)) > 0,
-            "chernobog_decompile() returned no text")
+    require(
+        len(evaluate("chernobog_decompile(%s)" % target)) > 0,
+        "chernobog_decompile() returned no text",
+    )
 
     sweep = "chernobog_deobfuscate_range(%s, %s + 1)" % (target, target)
-    require(int(attribute(sweep, "processed")) == 1,
-            "a single-function sweep did not process its function")
+    require(
+        int(attribute(sweep, "processed")) == 1,
+        "a single-function sweep did not process its function",
+    )
 
-    require(int(evaluate("chernobog_clear_function(%s)" % target)) == 1,
-            "chernobog_clear_function() failed")
-    require(int(evaluate("chernobog_clear_all()")) == 1,
-            "chernobog_clear_all() failed")
-    require(int(evaluate("chernobog_clear_cache()")) == 1,
-            "chernobog_clear_cache() failed")
+    require(
+        int(evaluate("chernobog_clear_function(%s)" % target)) == 1,
+        "chernobog_clear_function() failed",
+    )
+    require(int(evaluate("chernobog_clear_all()")) == 1, "chernobog_clear_all() failed")
+    require(int(evaluate("chernobog_clear_cache()")) == 1, "chernobog_clear_cache() failed")
 
-    finish(0, "PASS function=0x%X idc_functions=%d rules=%d"
-           % (function_start, functions, rules))
+    finish(0, "PASS function=0x%X idc_functions=%d rules=%d" % (function_start, functions, rules))
 except BaseException as error:  # IDAPython must convert every failure to qexit.
     finish(9, "exception: %r" % (error,))
