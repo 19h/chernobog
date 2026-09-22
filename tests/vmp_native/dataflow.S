@@ -152,6 +152,36 @@ BEGIN NAME(df_target_changes)
 4:  movl $9, %eax
     ret
 
+/* The probe assigns the remote body as a tail of df_flow_root. The CLC
+ * immediately before that tail is deliberately outside its owned graph. */
+.p2align 4
+.globl NAME(df_flow_root)
+NAME(df_flow_root):
+    stc
+    jmp NAME(df_flow_tail)
+.globl NAME(df_flow_root_end)
+NAME(df_flow_root_end):
+    int3
+.p2align 4
+.globl NAME(df_flow_external)
+NAME(df_flow_external):
+    clc
+.globl NAME(df_flow_tail)
+NAME(df_flow_tail):
+    setb %al
+.globl NAME(df_flow_branch)
+NAME(df_flow_branch):
+    jb NAME(df_flow_taken)
+    movl $0, %eax
+    ret
+.globl NAME(df_flow_taken)
+NAME(df_flow_taken):
+    movl $1, %eax
+    ret
+.globl NAME(df_flow_tail_end)
+NAME(df_flow_tail_end):
+    int3
+
 #ifndef __APPLE__
 .section .note.GNU-stack,"",@progbits
 #endif

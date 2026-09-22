@@ -1,0 +1,149 @@
+{
+  "schema": 1,
+  "scope": "Native proof metadata revocation under entry and ownership changes",
+  "parent_commit": "870eacd393769bab026da416235c858973a0e64b",
+  "source_sha256": {
+    "AGENTS.md": "f3941fdc7d429480c7f093ea4181d53add9eed741cd28feca8f4a8000ca4e0e3",
+    "docs/VMP_NATIVE_TOPOLOGY.md": "dd63e940a07117b154fcd3cb1843024d8f73d2ef88552a256eca448ee90955fd",
+    "docs/VMP_IMPLEMENTATION.md": "327ac8ccd53b5162b35d8508aab63f02f30533b5060731c46de063bd18f6b6cd",
+    "src/ida_analysis/native_engine.cpp": "04223fd9a2cfcecc1471c45123e1bb26caf2a02090511aa87dce99cf57383663",
+    "src/ida_analysis/x86_analysis.cpp": "7ff11b988633086edd22f12e048a2fa6b93d6c82950861153346474c2474d5ae",
+    "src/ida_analysis/x86_analysis.hpp": "742e51aceaf4a3742fdf18f34bc0567a59d2078b54217d5c99702d6b3175a854",
+    "src/ida_analysis/get_pc_ida.cpp": "5daf92495121a143df160af974bee8834c4ebed82b77bb75734f54bf7f624aa0",
+    "src/ida_analysis/native_classifier.hpp": "b5c9a59650e2a67d81335ce50ff2f33081d1e70f4976a265b1345ee6b4b3e6d2",
+    "src/ida_analysis/proof_receipt.hpp": "00b6f4f0108647ecc41050f919c4a3f173ff97dce47a126b0b065b9aa1ace519",
+    "src/common/bounded_dataflow.h": "4817d5008b7f4b2278cab382b844db8937ddd17471c35c3250607707e09f04d6",
+    "src/common/x86_abstract.h": "13aa636614421bdda3f6d8db7c744b50727f3a1cd935810de0e3c038259afb4f",
+    "tests/ida_dataflow_probe.py": "2c17f6cbe54cf8e1d4a657eca8e33146c470209aedf59ec3e536a03fe03d1d0d",
+    "tests/vmp_native/dataflow.S": "a7649e27f704b26d0df04ac918b40b556dc9de5e0ffe588fff1c1b73bc015efa",
+    "tests/vmp_native/dataflow_main.c": "98052a75211325d1faa00c4f0f1eba9c3cdd37834aa9929525ad46b011c3a973",
+    "tests/run_native_dataflow.py": "bbd8384d2ff15b67a7c5dac7b2412d34b9423a6e6bd8ea41900b99ef4813728d",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/ida_native_proof_lifecycle_smoke.py": "1be9a7ced70feb3b1937c016bb42a9dd02e5df18c6a93e264f230b8c54120976",
+    "tests/ida_native_ownership_smoke.py": "233de549973b320d327b25e12b6ec27377289a5f7c8dfaee1f555bc7ab4bcd90",
+    "tests/ida_stack_ownership_smoke.py": "e9b23574c9f951fba953de0bef885b5b7471ab269c3ba34eaaa15930f35ac297",
+    "tests/ida_get_pc_smoke.py": "21d1c81cf8b77c63e4067976d3bcb6923414f0452225dac44a26fad193325938"
+  },
+  "primary_sdk_sha256": {
+    "include/idp.hpp": "8a3b67a46a2dc4a9ee54c70492a5de1bb21fc694ebfc46def6efcaef7454a898"
+  },
+  "runtime_sha256": {
+    "plugin": "b4877445680598b2c9942a749c2b49c721fdab31679caecd286cbdd291e1e8e2",
+    "ida": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+    "baseline_plugin": "8f38f49a847dfbb9ed5507c9b2d0ead2f4dfe5ab84c1b527c38e8985cfd7ff12"
+  },
+  "baseline": {
+    "assertions": 53,
+    "expected_failures": [
+      "adjacent flow immediate revokes old publications",
+      "adjacent flow immediate revokes owned edge",
+      "adjacent flow immediate revokes owned comments",
+      "adjacent flow after_autoanalysis revokes old publications",
+      "adjacent flow after_autoanalysis revokes owned edge",
+      "adjacent flow after_autoanalysis revokes owned comments",
+      "tail_removed_immediate revokes or independently recomputes owned comments",
+      "tail_removed_immediate revokes or independently recomputes owned edge",
+      "tail_removed_after_autoanalysis revokes or independently recomputes owned comments",
+      "tail_removed_after_autoanalysis revokes or independently recomputes owned edge"
+    ],
+    "x64_binary_matches_corrected": true
+  },
+  "validation": {
+    "production_assertions": 106,
+    "native_result_checks": 5116,
+    "ctest_suites": 20,
+    "ctest_elapsed_seconds": 5.99,
+    "regressions": [
+      {
+        "case": "getpc",
+        "assertions": 53,
+        "passed": true
+      },
+      {
+        "case": "lifecycle-flags",
+        "assertions": 11,
+        "passed": true
+      },
+      {
+        "case": "lifecycle-stack",
+        "assertions": 10,
+        "passed": true
+      },
+      {
+        "case": "ownership-flags-rebase",
+        "assertions": 21,
+        "passed": true
+      },
+      {
+        "case": "ownership-flags-rebase_nodes",
+        "assertions": 21,
+        "passed": true
+      },
+      {
+        "case": "ownership-flags-reopen",
+        "assertions": 16,
+        "passed": true
+      },
+      {
+        "case": "ownership-flags-undo",
+        "assertions": 23,
+        "passed": true
+      },
+      {
+        "case": "ownership-flags-write",
+        "assertions": 6,
+        "passed": true
+      },
+      {
+        "case": "ownership-stack-reopen",
+        "assertions": 6,
+        "passed": true
+      },
+      {
+        "case": "ownership-stack-write",
+        "assertions": 2,
+        "passed": true
+      }
+    ]
+  },
+  "artifact_sha256": {
+    "build/vmp-dataflow-topology-before/dataflow.json": "cb643ce6af2ab15f4e02793410c71ae1db2e1091b51211700459b4fcbd99e26d",
+    "build/vmp-dataflow-topology-before/run.json": "c6c15b65f4e4642bb3c1b5321cd34035cffedaa1adbb006ec097d7aa9cb5c824",
+    "build/vmp-dataflow-topology-after/dataflow_analysis.json": "dfe266026f95d1a2ce3bb89853f11a8d1f2f238269bdc840df2a096a45484d3d",
+    "build/vmp-dataflow-topology-ctest.log": "6a0e2bac19d84fbf5f88559ecd729a61f138623581234626c57257b12aa5e08a",
+    "build/vmp-dataflow-topology-build.log": "a7133ec07f9983a0166e564240fb0393de67412236b19c0bedc7c7620c95ed50",
+    "build/vmp-dataflow-topology-after/x86_64/dataflow": "289ad3e77ba3a00ace8263432977943d1715029faa08e40a895e40708f99e802",
+    "build/vmp-dataflow-topology-after/x86_64/inspection/dataflow.json": "083e8808607fdb94c81441e6e2333446ef22bb07687461ebc702fd571e84851f",
+    "build/vmp-dataflow-topology-after/x86_64/inspection/run.json": "c8400bfc8aa652d224c6f55c0744bde9bc8e331e9fde583090c2f5f26c4e9a8a",
+    "build/vmp-dataflow-topology-after/i386/dataflow": "343cacaebf1b6ec077c69e36b3ee1de6b427fffd494dab4085352d717c8ab617",
+    "build/vmp-dataflow-topology-after/i386/inspection/dataflow.json": "92eda90f81a6d54d82c6cb0ddc637715053320879dcadc4ed876ea7ee6a92b8b",
+    "build/vmp-dataflow-topology-after/i386/inspection/run.json": "f0768f32291ecd5eb78ad5dafda3449182e89dbe0b90fd7c12473a9888e29ee3",
+    "build/vmp-dataflow-topology-regressions/getpc/get_pc.json": "d42d7073851999c4f6ec2b7d300e529fc3121e1beadb2a0bb0660de2dc7844e8",
+    "build/vmp-dataflow-topology-regressions/getpc/run.json": "11a261c3bd48630f43357df35b033f52e96955f6da56fb6020e50d904e7e31ad",
+    "build/vmp-dataflow-topology-regressions/lifecycle-flags/native_proof_lifecycle.json": "d7552524e8a713a805e44183e91a683de0af3ff649c6ef3dc9898658e4dbbd03",
+    "build/vmp-dataflow-topology-regressions/lifecycle-flags/run.json": "344b86e2e8dc4219850580515a13373d7258f2340ebcb1c27656dc8ecc0d7dcf",
+    "build/vmp-dataflow-topology-regressions/lifecycle-stack/native_proof_lifecycle.json": "cc91e98cde9eeb30c731d8315c43b4d6d268ad3cace9c5c4908869aec5a2d98a",
+    "build/vmp-dataflow-topology-regressions/lifecycle-stack/run.json": "aabea377e522655ef4e4a2c5f4e02db6bab07b291b02db21a454dd854d6077da",
+    "build/vmp-dataflow-topology-regressions/ownership-flags-rebase/native_ownership.json": "6170ca2acdef25831adac3b77cc71c4f282104094b4dbec67f3e6bd2e1e4e34b",
+    "build/vmp-dataflow-topology-regressions/ownership-flags-rebase/run.json": "dfc9c30259ed40d7850039b7419d837aadcf0e6506645344cff9f991fcf950da",
+    "build/vmp-dataflow-topology-regressions/ownership-flags-rebase_nodes/native_ownership.json": "87600431e99eed247437eeaf433250604b03dd7adaf9b136f1657889cec3171b",
+    "build/vmp-dataflow-topology-regressions/ownership-flags-rebase_nodes/run.json": "1eedd68b93ba86ab55039ecdacbb2d524e00169cebbdf87348b2ef78080a58f4",
+    "build/vmp-dataflow-topology-regressions/ownership-flags-reopen/native_ownership.json": "a3e579765f791eae261b179a1f0547cb5b41d0ee244f95a58109ea6a73609bbd",
+    "build/vmp-dataflow-topology-regressions/ownership-flags-reopen/run.json": "551bc4258a30b916555ab794f682c3b0d11b7254eac735e10ea426b13c24fdee",
+    "build/vmp-dataflow-topology-regressions/ownership-flags-undo/native_ownership.json": "7726b22437af1037a2e7c441f6c6ce132d04645f8d3a9599067f95a55787c93f",
+    "build/vmp-dataflow-topology-regressions/ownership-flags-undo/run.json": "7d0376da35432f873a70a64aeb78f6b2dae35a8cd6ce4447c369d9dc8f5630b8",
+    "build/vmp-dataflow-topology-regressions/ownership-flags-write/native_ownership.json": "d2b6be855d05923aa29503e474b484ca30e7b61ad72df2a91a316dcac08d5a1b",
+    "build/vmp-dataflow-topology-regressions/ownership-flags-write/run.json": "49fa78becec1106691197fcc33fbdb1556efc0fdaf331105f72f93b7fc02ed05",
+    "build/vmp-dataflow-topology-regressions/ownership-stack-reopen/stack_ownership.json": "5c4520b93c0b5af4f2791941871855105258dc8688cd561fbfb69d0e7abc449c",
+    "build/vmp-dataflow-topology-regressions/ownership-stack-reopen/run.json": "df6acc0481751acb377afbde67870ecf57cb354f43bf21f03645cca4e88fb69f",
+    "build/vmp-dataflow-topology-regressions/ownership-stack-write/stack_ownership.json": "9dddd6b8453ff3feb871fdbd2845f29ddc662d101fc7a163afb0e1c7a750b7a9",
+    "build/vmp-dataflow-topology-regressions/ownership-stack-write/run.json": "7dd600cb3e4074289dcb88ea6df256d4a7f5522d4d667e9bf4c36a2b5be69876"
+  },
+  "remaining_scope": [
+    "Full topology and SDK-version mutation matrix",
+    "Large-database revalidation latency",
+    "Protected ownerless regions",
+    "Legacy metadata without ownership receipts",
+    "Complete VMP review"
+  ]
+}

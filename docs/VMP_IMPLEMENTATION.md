@@ -39,6 +39,15 @@ abstentions; they cannot be counted as successful recovery.
 Quality gates are applied to each completed change and again to the complete
 objective. Neither baseline test success nor this ledger proves completion.
 
+Native topology checkpoint: an actual IDA counterexample showed stale owned
+comments and a branch edge after an external adjacent fallthrough or tail
+removal, despite inspector rejection. Entry and ownership mutations now revoke
+affected publications; revalidation shares the inspector's recognizer and checks
+support coverage. Both architectures pass 106 production assertions and 5,116
+native result checks; 169 ownership/get-PC regression assertions and all 20
+CTest suites pass. See `VMP_NATIVE_TOPOLOGY.md`. Broader metadata/lifecycle and
+protected-region requirements remain incomplete.
+
 Explicit native-input checkpoint: `chernobog_vm_trace_input` supplies bounded
 initialized objects through the existing ABI policy and captures final scalar
 registers plus whole-object bytes. Of 640 x86/x64 paired captures, all 256

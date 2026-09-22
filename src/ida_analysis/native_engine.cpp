@@ -1096,6 +1096,165 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         return true;
     }
 
+    bool current_proof_conclusion(const NativeProof &proof,
+                                  std::map<std::string, std::string> *details = nullptr) const
+    {
+        std::map<std::string, std::string> ignored;
+        auto &row = details != nullptr ? *details : ignored;
+        const auto covered = [&](const std::vector<uint64_t> &support)
+        {
+            return std::all_of(support.begin(), support.end(),
+                               [&](uint64_t address)
+                               {
+                                   return std::any_of(
+                                       proof.dependencies.begin(), proof.dependencies.end(),
+                                       [&](const NativeProofDependency &dependency)
+                                       { return dependency.code && dependency.first == address; });
+                               });
+        };
+        const auto hex = [](uint64_t value)
+        {
+            std::ostringstream out;
+            out << "0x" << std::hex << value;
+            return out.str();
+        };
+        insn_t instruction;
+        const ea_t root =
+            proof.kind == NativeProof::Kind::Return ? proof.context_call : proof.source;
+        bool current = decode_insn(&instruction, root) > 0;
+        // Re-run the read-only recognizer as well as checking stored bytes. This
+        // covers current entry topology and alias/write-reference restrictions.
+        if (current)
+            switch (proof.kind)
+            {
+            case NativeProof::Kind::StackTransfer:
+            {
+                row["kind"] = "stack-transfer";
+                const auto candidate =
+                    classify_ida_push_return(instruction, config.register_scan_depth);
+                current = candidate && candidate->transfer == proof.site &&
+                          covered(candidate->target.definitions);
+                if (!current)
+                    break;
+                for (const auto &memory : candidate->target.memory)
+                    current =
+                        current && std::any_of(proof.dependencies.begin(), proof.dependencies.end(),
+                                               [&](const NativeProofDependency &dependency)
+                                               {
+                                                   return !dependency.code &&
+                                                          dependency.first == memory.address &&
+                                                          dependency.bytes == memory.bytes;
+                                               });
+                if (!current)
+                    break;
+                current = proof.intended_edge
+                              ? candidate->target.value &&
+                                    *candidate->target.value == proof.intended_edge->target
+                              : !candidate->target.value;
+                row["width_bits"] = std::to_string(candidate->width_bits);
+                row["stack_delta_bytes"] = std::to_string(candidate->stack_delta_bytes);
+                row["stack_write_bytes"] = std::to_string(candidate->stack_write_bytes);
+                switch (candidate->target.kind)
+                {
+                case classifier::target_proof_kind_t::immediate:
+                    row["target_basis"] = "immediate";
+                    break;
+                case classifier::target_proof_kind_t::register_definition:
+                    row["target_basis"] = "register-definition";
+                    break;
+                case classifier::target_proof_kind_t::immutable_memory:
+                    row["target_basis"] = "immutable-memory";
+                    break;
+                default:
+                    row["target_basis"] = "unresolved";
+                    break;
+                }
+                row["register_scan_depth"] = std::to_string(config.register_scan_depth);
+                row["memory_model"] =
+                    "IDA loaded immutable bytes and current write-reference checks; external runtime mutations unmodeled";
+                if (!proof.intended_edge)
+                    row["truth"] = "candidate";
+                break;
+            }
+            case NativeProof::Kind::Call:
+            case NativeProof::Kind::Return:
+            {
+                const bool returning = proof.kind == NativeProof::Kind::Return;
+                row["kind"] = returning ? "call-context-return" : "get-pc-call";
+                const auto candidate =
+                    classify_ida_get_pc_call(instruction, size_t(config.pop_ret_depth), true);
+                current = candidate && proof.intended_edge && covered(candidate->support);
+                if (!current)
+                    break;
+                current = returning ? candidate->return_instruction == proof.site &&
+                                          candidate->resumed_at &&
+                                          *candidate->resumed_at == proof.intended_edge->target
+                                    : candidate->gadget == proof.intended_edge->target;
+                row["context_call"] = hex(candidate->call);
+                row["scan_depth"] = std::to_string(config.pop_ret_depth);
+                row["width_bits"] = std::to_string(candidate->width_bits);
+                row["stack_delta_bytes"] = std::to_string(candidate->stack_delta_bytes);
+                row["stack_access_count"] = std::to_string(candidate->stack_accesses.size());
+                row["effect_scope"] = "complete recognized CALL sequence; not the isolated edge";
+                if (returning)
+                    row["assumption"] =
+                        "recognized CALL entry context and return-address provenance; native stack accesses retained";
+                break;
+            }
+            case NativeProof::Kind::Materialization:
+            {
+                row["kind"] = "stack-address-materialization";
+                const auto candidate = classify_ida_push_get_pc(instruction);
+                current = candidate && proof.value && candidate->address_value == *proof.value &&
+                          covered(candidate->support);
+                if (!current)
+                    break;
+                row["value"] = hex(candidate->address_value);
+                row["width_bits"] = std::to_string(candidate->width_bits);
+                row["stack_delta_bytes"] = std::to_string(candidate->stack_delta_bytes);
+                row["stack_access_count"] = std::to_string(candidate->stack_accesses.size());
+                row["flags_preserved"] = candidate->flags_preserved ? "true" : "false";
+                break;
+            }
+            case NativeProof::Kind::Condition:
+            {
+                const auto condition = x86_condition(instruction.itype);
+                current = condition.has_value();
+                if (!current)
+                    break;
+                const auto fact =
+                    analyze_x86_flag_fact_before(instruction, size_t(config.flag_scan_depth));
+                const auto outcome = x86_abstract::evaluate(condition->condition, fact.flags);
+                current = outcome && proof.value && uint64_t(*outcome ? 1 : 0) == *proof.value &&
+                          covered(fact.support);
+                row["kind"] = condition->use == X86ConditionUse::branch     ? "local-flag-branch"
+                              : condition->use == X86ConditionUse::set_byte ? "setcc-value"
+                                                                            : "cmov-condition";
+                if (!current)
+                    break;
+                row["condition_value"] = *outcome ? "true" : "false";
+                row["scan_depth"] = std::to_string(config.flag_scan_depth);
+                if (condition->use == X86ConditionUse::branch)
+                    current =
+                        proof.intended_edge && proof.intended_edge->target ==
+                                                   (*outcome ? branch_target(instruction)
+                                                             : instruction.ea + instruction.size);
+                if (condition->use == X86ConditionUse::set_byte)
+                {
+                    row["value"] = *outcome ? "0x1" : "0x0";
+                    row["width_bits"] = "8";
+                }
+                row["assumption"] =
+                    "bounded owned-graph or single-entry flag analysis; SETcc byte writes and CMOV memory/partial-register effects retained";
+                break;
+            }
+            default:
+                current = false;
+                break;
+            }
+        return current;
+    }
+
     NativeInspection inspect(uint64_t function_start) const
     {
         NativeInspection result;
@@ -1137,126 +1296,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 row["target"] = hex(proof.intended_edge->target);
             bool current = proof.publication != 0 && proof_is_fresh(proof);
             const bool dependencies_current = current;
-            insn_t instruction;
-            const ea_t root = proof.kind == NativeProof::Kind::Return ? proof.context_call : source;
-            current = current && decode_insn(&instruction, root) > 0;
-            // Re-run the read-only recognizer as well as checking stored bytes. This
-            // covers current entry topology and alias/write-reference restrictions.
-            if (current)
-                switch (proof.kind)
-                {
-                case NativeProof::Kind::StackTransfer:
-                {
-                    row["kind"] = "stack-transfer";
-                    const auto candidate =
-                        classify_ida_push_return(instruction, config.register_scan_depth);
-                    current = candidate && candidate->transfer == proof.site;
-                    if (!current)
-                        break;
-                    current = proof.intended_edge
-                                  ? candidate->target.value &&
-                                        *candidate->target.value == proof.intended_edge->target
-                                  : !candidate->target.value;
-                    row["width_bits"] = std::to_string(candidate->width_bits);
-                    row["stack_delta_bytes"] = std::to_string(candidate->stack_delta_bytes);
-                    row["stack_write_bytes"] = std::to_string(candidate->stack_write_bytes);
-                    switch (candidate->target.kind)
-                    {
-                    case classifier::target_proof_kind_t::immediate:
-                        row["target_basis"] = "immediate";
-                        break;
-                    case classifier::target_proof_kind_t::register_definition:
-                        row["target_basis"] = "register-definition";
-                        break;
-                    case classifier::target_proof_kind_t::immutable_memory:
-                        row["target_basis"] = "immutable-memory";
-                        break;
-                    default:
-                        row["target_basis"] = "unresolved";
-                        break;
-                    }
-                    row["register_scan_depth"] = std::to_string(config.register_scan_depth);
-                    row["memory_model"] =
-                        "IDA loaded immutable bytes and current write-reference checks; external runtime mutations unmodeled";
-                    if (!proof.intended_edge)
-                        row["truth"] = "candidate";
-                    break;
-                }
-                case NativeProof::Kind::Call:
-                case NativeProof::Kind::Return:
-                {
-                    const bool returning = proof.kind == NativeProof::Kind::Return;
-                    row["kind"] = returning ? "call-context-return" : "get-pc-call";
-                    const auto candidate =
-                        classify_ida_get_pc_call(instruction, size_t(config.pop_ret_depth), true);
-                    current = candidate && proof.intended_edge;
-                    if (!current)
-                        break;
-                    current = returning ? candidate->return_instruction == proof.site &&
-                                              candidate->resumed_at &&
-                                              *candidate->resumed_at == proof.intended_edge->target
-                                        : candidate->gadget == proof.intended_edge->target;
-                    row["context_call"] = hex(candidate->call);
-                    row["scan_depth"] = std::to_string(config.pop_ret_depth);
-                    row["width_bits"] = std::to_string(candidate->width_bits);
-                    row["stack_delta_bytes"] = std::to_string(candidate->stack_delta_bytes);
-                    row["stack_access_count"] = std::to_string(candidate->stack_accesses.size());
-                    row["effect_scope"] =
-                        "complete recognized CALL sequence; not the isolated edge";
-                    if (returning)
-                        row["assumption"] =
-                            "recognized CALL entry context and return-address provenance; native stack accesses retained";
-                    break;
-                }
-                case NativeProof::Kind::Materialization:
-                {
-                    row["kind"] = "stack-address-materialization";
-                    const auto candidate = classify_ida_push_get_pc(instruction);
-                    current = candidate && proof.value && candidate->address_value == *proof.value;
-                    if (!current)
-                        break;
-                    row["value"] = hex(candidate->address_value);
-                    row["width_bits"] = std::to_string(candidate->width_bits);
-                    row["stack_delta_bytes"] = std::to_string(candidate->stack_delta_bytes);
-                    row["stack_access_count"] = std::to_string(candidate->stack_accesses.size());
-                    row["flags_preserved"] = candidate->flags_preserved ? "true" : "false";
-                    break;
-                }
-                case NativeProof::Kind::Condition:
-                {
-                    const auto condition = x86_condition(instruction.itype);
-                    current = condition.has_value();
-                    if (!current)
-                        break;
-                    const auto fact =
-                        analyze_x86_flag_fact_before(instruction, size_t(config.flag_scan_depth));
-                    const auto outcome = x86_abstract::evaluate(condition->condition, fact.flags);
-                    current = outcome && proof.value && uint64_t(*outcome ? 1 : 0) == *proof.value;
-                    row["kind"] = condition->use == X86ConditionUse::branch ? "local-flag-branch"
-                                  : condition->use == X86ConditionUse::set_byte ? "setcc-value"
-                                                                                : "cmov-condition";
-                    if (!current)
-                        break;
-                    row["condition_value"] = *outcome ? "true" : "false";
-                    row["scan_depth"] = std::to_string(config.flag_scan_depth);
-                    if (condition->use == X86ConditionUse::branch)
-                        current = proof.intended_edge &&
-                                  proof.intended_edge->target ==
-                                      (*outcome ? branch_target(instruction)
-                                                : instruction.ea + instruction.size);
-                    if (condition->use == X86ConditionUse::set_byte)
-                    {
-                        row["value"] = *outcome ? "0x1" : "0x0";
-                        row["width_bits"] = "8";
-                    }
-                    row["assumption"] =
-                        "bounded owned-graph or single-entry flag analysis; SETcc byte writes and CMOV memory/partial-register effects retained";
-                    break;
-                }
-                default:
-                    current = false;
-                    break;
-                }
+            current = current && current_proof_conclusion(proof, &row);
             row["fresh"] = current ? "true" : "false";
             row["validation"] = current                ? "current"
                                 : dependencies_current ? "current-recognizer-rejected"
@@ -1340,7 +1380,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     {
         for (auto it = native_proofs.begin(); it != native_proofs.end();)
         {
-            if (proof_is_fresh(it->second))
+            if (proof_is_fresh(it->second) && current_proof_conclusion(it->second))
             {
                 ++it;
                 continue;
@@ -1348,6 +1388,40 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             NativeProof proof = std::move(it->second);
             it = native_proofs.erase(it);
             revoke_proof(std::move(proof), true);
+        }
+    }
+
+    void invalidate_new_fallthrough(ea_t from, ea_t to)
+    {
+        insn_t source;
+        const bool ordinary = decode_insn(&source, from) > 0 && source.ea + source.size == to &&
+                              source.itype != NN_jmp && !is_ret_insn(source) &&
+                              !is_call_insn(source) && !is_indirect_jump_insn(source);
+        for (auto it = native_proofs.begin(); it != native_proofs.end();)
+        {
+            const auto &proof = it->second;
+            const auto covered = [&](ea_t address)
+            {
+                return std::any_of(proof.dependencies.begin(), proof.dependencies.end(),
+                                   [&](const NativeProofDependency &dependency)
+                                   { return dependency.code && dependency.first == address; });
+            };
+            // The register/flag analysis already reconstructs this architectural
+            // successor from bytes. Its ordinary emulation does not add an entry
+            // if both endpoints were included in the proof. External adjacent
+            // instructions, including those before a tail, do add an entry.
+            const bool modeled = ordinary &&
+                                 (proof.kind == NativeProof::Kind::Condition ||
+                                  proof.kind == NativeProof::Kind::StackTransfer) &&
+                                 covered(from) && covered(to);
+            if (!dependency_intersects(proof, to, to + 1) || modeled)
+            {
+                ++it;
+                continue;
+            }
+            NativeProof stale = std::move(it->second);
+            it = native_proofs.erase(it);
+            revoke_proof(std::move(stale), true);
         }
     }
 
@@ -1411,15 +1485,48 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     {
         if (get_dbctx_id() != owner_database || native_mutation_depth != 0 || replaying_undo)
             return;
+        const bool topology_changing =
+            event == idb_event::set_func_start || event == idb_event::set_func_end ||
+            event == idb_event::deleting_func || event == idb_event::deleting_func_tail
+#if IDA_SDK_VERSION >= 940
+            || event == idb_event::set_function_start || event == idb_event::set_function_end ||
+            event == idb_event::deleting_function || event == idb_event::deleting_function_tail
+#endif
+            ;
+        const bool topology_changed =
+            event == idb_event::func_added || event == idb_event::func_updated ||
+            event == idb_event::func_tail_appended || event == idb_event::func_tail_deleted ||
+            event == idb_event::tail_owner_changed
+#if IDA_SDK_VERSION >= 940
+            || event == idb_event::function_added || event == idb_event::function_updated ||
+            event == idb_event::function_tail_appended ||
+            event == idb_event::function_tail_deleted ||
+            event == idb_event::function_tail_owner_changed
+#endif
+            ;
         if (pending_ownership_recovery &&
-            (event == idb_event::byte_patched || event == idb_event::destroyed_items ||
-             event == idb_event::deleting_segm || event == idb_event::savebase ||
-             event == idb_event::segm_attrs_updated
+            (topology_changing || topology_changed || event == idb_event::byte_patched ||
+             event == idb_event::destroyed_items || event == idb_event::deleting_segm ||
+             event == idb_event::savebase || event == idb_event::segm_attrs_updated
 #if IDA_SDK_VERSION >= 940
              || event == idb_event::segment_attrs_updated
 #endif
              ))
             recover_ownership_receipts();
+        if (topology_changing)
+        {
+            // These notifications precede the ownership mutation. Invalidate
+            // conservatively while receipts still refer to the original sites.
+            invalidate_proofs(0, BADADDR);
+            return;
+        }
+        if (topology_changed)
+        {
+            // Recompute conclusions after a topology update, including support
+            // coverage; equal values with newly introduced dependencies are stale.
+            revalidate_proofs();
+            return;
+        }
         if (event == idb_event::closebase)
         {
             closing_database = true;
@@ -1508,13 +1615,13 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 }
                 invalidate_proofs(from, from + 1);
             }
-            // Ordinary contiguous flow already belongs to the single-entry prefix.
-            if ((type & XREF_MASK) == fl_F && get_item_end(from) == to)
-                return;
             if (exact_code_edge_exists(from,
                                        desired_code_edge_t{to, cref_t(type & XREF_MASK), false}))
                 return;
-            invalidate_proofs(to, to + 1);
+            if ((type & XREF_MASK) == fl_F)
+                invalidate_new_fallthrough(from, to);
+            else
+                invalidate_proofs(to, to + 1);
         }
         else if ((type & XREF_MASK) == dr_W)
         {
@@ -1970,7 +2077,18 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         const auto flags = fact.flags;
         const auto outcome = x86_abstract::evaluate(condition->condition, flags);
         if (!outcome)
+        {
+            const auto old = native_proofs.find(instruction.ea);
+            if (old != native_proofs.end() && old->second.kind == NativeProof::Kind::Condition)
+            {
+                NativeProof stale = std::move(old->second);
+                native_proofs.erase(old);
+                // This instruction is already being emulated. Revoke its old
+                // publication without scheduling another identical unknown query.
+                revoke_proof(std::move(stale), false);
+            }
             return false;
+        }
         if (!can_record_proof(instruction.ea))
             return false;
         NativeProof proof;
