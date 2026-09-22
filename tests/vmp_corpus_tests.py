@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 from vmp_corpus.linux32 import Linux32
 import run_vmp_conditions as conditions
+import run_vmp_strings as strings
 
 sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("vmp_corpus", Path(__file__).with_name("run_vmp_corpus.py"))
@@ -181,6 +182,72 @@ class CorpusTests(unittest.TestCase):
             self.assertFalse(corpus.text_section(path)["file_backed"])
             with self.assertRaises(ValueError):
                 corpus.function_bytes(path, corpus.text_section(path), 0x1100, 1)
+
+
+class StringMeasurementTests(unittest.TestCase):
+    @staticmethod
+    def fixture():
+        run = {"ran": "true", "returned": "true", "temporal_complete": "true",
+               "temporal_truncated": "false", "memory_observation_available": "true",
+               "data_trace_truncated": "false", "data_trace_filtered": "false",
+               "kind": "returned", "stop_reason_name": "return"}
+        return {"passed": True, "errors": [], "view": {"runs": [run], "omitted": {}, "available": True, "fresh": True},
+                "candidates": [{"ok": 1, "value": value, "eligible_runs": 1, "observations": 1}
+                               for value in strings.EXPECTED],
+                "display": {"status": "decompiled", "annotations": ["first", "second"]}}
+
+    def test_duplicate_candidates_do_not_inflate_recall(self):
+        probe = self.fixture()
+        probe["candidates"][1] = dict(probe["candidates"][0])
+        summary = strings.summarize(probe)
+        self.assertEqual(summary["candidate_instances"], 2)
+        self.assertEqual(summary["distinct_value_recall"], 0.5)
+        self.assertEqual(summary["missing_expected_values"], 1)
+
+    def test_unexpected_value_and_empty_precision(self):
+        probe = self.fixture()
+        probe["candidates"][0]["value"] = "incorrect"
+        summary = strings.summarize(probe)
+        self.assertEqual(summary["unexpected_value_instances"], 1)
+        self.assertEqual(summary["literal_value_precision"], 0.5)
+        probe["candidates"] = []
+        probe["view"]["runs"][0]["returned"] = "false"
+        summary = strings.summarize(probe)
+        self.assertIsNone(summary["literal_value_precision"])
+        self.assertEqual(summary["distinct_value_recall"], 0)
+        self.assertFalse(summary["temporal_corpus_complete"])
+
+    def test_incomplete_temporal_corpus_cannot_publish(self):
+        for key in ("ran", "returned", "temporal_complete", "temporal_truncated",
+                    "memory_observation_available", "data_trace_truncated", "data_trace_filtered"):
+            probe = self.fixture()
+            run = probe["view"]["runs"][0]
+            run[key] = "false" if run[key] == "true" else "true"
+            with self.subTest(key=key), self.assertRaises(AssertionError):
+                strings.summarize(probe)
+        for change in ("omitted", "missing", "consensus", "failed", "stale", "unavailable"):
+            probe = self.fixture()
+            if change == "omitted":
+                probe["view"]["omitted"]["runs"] = 1
+            elif change == "missing":
+                probe["view"]["runs"] = []
+            elif change == "consensus":
+                probe["candidates"][0]["observations"] = 0
+            elif change == "stale":
+                probe["view"]["fresh"] = False
+            elif change == "unavailable":
+                probe["view"]["available"] = False
+            else:
+                probe["passed"] = False
+            with self.subTest(change=change), self.assertRaises(AssertionError):
+                strings.summarize(probe)
+
+    def test_seed_markers_require_callback_and_every_applied_seed(self):
+        good = b"CHERNOBOG_CORPUS_SEED=17\nCHERNOBOG_CORPUS_SRAND=17 requested=1\n"
+        self.assertTrue(strings.seed_attested(good, 17))
+        for data in (b"", good.replace(b"SEED=17", b"SEED=1"), good + b"CHERNOBOG_CORPUS_SEED=17\n",
+                     good + b"CHERNOBOG_CORPUS_SRAND=1 requested=2\n", good.splitlines()[0]):
+            self.assertFalse(strings.seed_attested(data, 17))
 
 
 class ConditionMeasurementTests(unittest.TestCase):

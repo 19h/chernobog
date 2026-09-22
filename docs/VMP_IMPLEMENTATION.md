@@ -72,6 +72,14 @@ rejected BSWAP16 semantics; full handler effects and logical VM state remain
 unknown. See `VMP_NATIVE_OBSERVATIONS.md` for assumptions, quotas, per-variant
 yield and evidence. This advances rows 6a–6c and V without completing them.
 
+Protected string measurement checkpoint: nine deterministic x64 variants now
+pass 30 native process runs against an unchanged byte comparator, with two
+independent negative controls. Ten production runs recover 2/2 original literals
+and 0/18 protected literals: all 36 protected executions stop at the entry jump
+into ownerless code before allocation. See `VMP_PROTECTED_STRINGS.md`. This
+measures the first execution bottleneck for rows 0b, 3a/3b and V; it does not
+establish protected string recovery or complete those requirements.
+
 Native read-string checkpoint: bounded contiguous scalar-read streams now retain
 per-read source, event, object and lifetime witnesses. An independent native
 fixture compares all consumed bytes and contains no plaintext literals. Both
