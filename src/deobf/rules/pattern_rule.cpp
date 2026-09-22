@@ -1,61 +1,58 @@
 #include "pattern_rule.h"
 #include "rule_verifier.h"
 
-namespace chernobog {
-namespace rules {
+namespace chernobog
+{
+namespace rules
+{
 
 using namespace ast;
 
-minsn_t* PatternMatchingRule::apply_replacement(
-    const std::map<std::string, mop_t>& bindings,
-    mblock_t* blk,
-    minsn_t* orig_ins)
+minsn_t *PatternMatchingRule::apply_replacement(const std::map<std::string, mop_t> &bindings,
+                                                mblock_t *blk, minsn_t *orig_ins)
 {
-    if ( !orig_ins )
+    if (!orig_ins)
     {
         return nullptr;
     }
 
     AstPtr replacement = get_replacement();
-    if ( !replacement )
+    if (!replacement)
     {
         return nullptr;
     }
 
-    std::unique_ptr<minsn_t> proposed(build_replacement(
-        replacement, bindings, blk, orig_ins->ea, orig_ins->d.size));
+    std::unique_ptr<minsn_t> proposed(
+        build_replacement(replacement, bindings, blk, orig_ins->ea, orig_ins->d.size));
     RuleVerifier verifier;
-    if ( !proposed || !verifier.verify_instance(orig_ins, proposed.get()).verified() )
+    if (!proposed || !verifier.verify_instance(orig_ins, proposed.get()).verified())
         return nullptr;
     return proposed.release();
 }
 
-minsn_t* PatternMatchingRule::build_replacement(
-    AstPtr replacement,
-    const std::map<std::string, mop_t>& bindings,
-    mblock_t* blk,
-    ea_t ea,
-    int size)
+minsn_t *PatternMatchingRule::build_replacement(AstPtr replacement,
+                                                const std::map<std::string, mop_t> &bindings,
+                                                mblock_t *blk, ea_t ea, int size)
 {
-    if ( !replacement )
+    if (!replacement)
     {
         return nullptr;
     }
 
     // Handle leaf nodes
-    if ( replacement->is_leaf() )
+    if (replacement->is_leaf())
     {
         // A replacement that is just a leaf means the result is a mov
         auto leaf = std::static_pointer_cast<AstLeaf>(replacement);
 
         mop_t src_mop = ast_leaf_to_mop(leaf, bindings, size);
-        if ( src_mop.t == mop_z )
+        if (src_mop.t == mop_z)
         {
             return nullptr;
         }
 
         // Create mov instruction
-        minsn_t* mov = new minsn_t(ea);
+        minsn_t *mov = new minsn_t(ea);
         mov->opcode = m_mov;
         mov->l = src_mop;
         mov->d.size = size > 0 ? size : src_mop.size;
@@ -68,19 +65,18 @@ minsn_t* PatternMatchingRule::build_replacement(
 
     // Build left operand
     mop_t left_mop;
-    if ( node->left )
+    if (node->left)
     {
-        if ( node->left->is_leaf() )
+        if (node->left->is_leaf())
         {
-            left_mop = ast_leaf_to_mop(
-                std::static_pointer_cast<AstLeaf>(node->left), bindings, size);
+            left_mop =
+                ast_leaf_to_mop(std::static_pointer_cast<AstLeaf>(node->left), bindings, size);
         }
         else
         {
             // Nested operation
-            minsn_t* sub_ins = build_replacement(
-                node->left, bindings, blk, ea, size);
-            if ( sub_ins )
+            minsn_t *sub_ins = build_replacement(node->left, bindings, blk, ea, size);
+            if (sub_ins)
             {
                 left_mop.create_from_insn(sub_ins);
                 delete sub_ins;
@@ -90,18 +86,17 @@ minsn_t* PatternMatchingRule::build_replacement(
 
     // Build right operand
     mop_t right_mop;
-    if ( node->right )
+    if (node->right)
     {
-        if ( node->right->is_leaf() )
+        if (node->right->is_leaf())
         {
-            right_mop = ast_leaf_to_mop(
-                std::static_pointer_cast<AstLeaf>(node->right), bindings, size);
+            right_mop =
+                ast_leaf_to_mop(std::static_pointer_cast<AstLeaf>(node->right), bindings, size);
         }
         else
         {
-            minsn_t* sub_ins = build_replacement(
-                node->right, bindings, blk, ea, size);
-            if ( sub_ins )
+            minsn_t *sub_ins = build_replacement(node->right, bindings, blk, ea, size);
+            if (sub_ins)
             {
                 right_mop.create_from_insn(sub_ins);
                 delete sub_ins;
@@ -110,7 +105,7 @@ minsn_t* PatternMatchingRule::build_replacement(
     }
 
     // Create instruction
-    minsn_t* ins = new minsn_t(ea);
+    minsn_t *ins = new minsn_t(ea);
     ins->opcode = node->opcode;
     ins->l = left_mop;
     ins->r = right_mop;
@@ -122,19 +117,17 @@ minsn_t* PatternMatchingRule::build_replacement(
 //--------------------------------------------------------------------------
 // Validation helpers
 //--------------------------------------------------------------------------
-bool check_const_value(const std::map<std::string, mop_t>& bindings,
-                       const std::string& name,
-                       uint64_t expected,
-                       int size)
+bool check_const_value(const std::map<std::string, mop_t> &bindings, const std::string &name,
+                       uint64_t expected, int size)
 {
     auto p = bindings.find(name);
-    if ( p == bindings.end() )
+    if (p == bindings.end())
     {
         return false;
     }
 
-    const mop_t& mop = p->second;
-    if ( mop.t != mop_n )
+    const mop_t &mop = p->second;
+    if (mop.t != mop_n)
     {
         return false;
     }
@@ -146,33 +139,33 @@ bool check_const_value(const std::map<std::string, mop_t>& bindings,
     return value == expect;
 }
 
-bool is_minus_2(const mop_t& mop)
+bool is_minus_2(const mop_t &mop)
 {
-    if ( mop.t != mop_n )
+    if (mop.t != mop_n)
     {
         return false;
     }
 
     uint64_t mask = size_mask(mop.size);
-    uint64_t minus_2 = ( uint64_t )( -2 ) & mask;
+    uint64_t minus_2 = (uint64_t)(-2) & mask;
 
-    return ( mop.nnn->value & mask ) == minus_2;
+    return (mop.nnn->value & mask) == minus_2;
 }
 
-bool is_minus_1(const mop_t& mop)
+bool is_minus_1(const mop_t &mop)
 {
-    if ( mop.t != mop_n )
+    if (mop.t != mop_n)
     {
         return false;
     }
 
     uint64_t mask = size_mask(mop.size);
-    return ( mop.nnn->value & mask ) == mask;
+    return (mop.nnn->value & mask) == mask;
 }
 
-bool get_const_value(const mop_t& mop, uint64_t* out)
+bool get_const_value(const mop_t &mop, uint64_t *out)
 {
-    if ( mop.t != mop_n )
+    if (mop.t != mop_n)
     {
         return false;
     }

@@ -22,22 +22,24 @@
 //   4. Delete unreachable blocks
 //   5. Simplify remaining CFG
 //--------------------------------------------------------------------------
-class bogus_cf_handler_t {
-public:
+class bogus_cf_handler_t
+{
+  public:
     // Detection
     static bool detect(mbl_array_t *mba, deobf_ctx_t *ctx);
 
     // Main deobfuscation pass
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
 
-private:
+  private:
     // Find all opaque predicates
-    struct opaque_info_t {
+    struct opaque_info_t
+    {
         int block_idx;
         minsn_t *cond_insn;
         bool always_true;
-        int live_target;    // Target to keep
-        int dead_target;    // Target to remove
+        int live_target; // Target to keep
+        int dead_target; // Target to remove
     };
 
     static std::vector<opaque_info_t> find_opaque_predicates(mbl_array_t *mba, deobf_ctx_t *ctx);
@@ -47,7 +49,7 @@ private:
 
     // Check specific opaque patterns
     static bool check_const_comparison(minsn_t *insn, bool *result);
-    static bool check_math_identity(minsn_t *insn, bool *result);  // x*(x+1) % 2 == 0
+    static bool check_math_identity(minsn_t *insn, bool *result); // x*(x+1) % 2 == 0
     static bool check_global_var_pattern(minsn_t *insn, bool *result);
 
     // Remove dead branch edges

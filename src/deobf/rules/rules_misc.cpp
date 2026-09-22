@@ -1,7 +1,9 @@
 #include "rules_misc.h"
 
-namespace chernobog {
-namespace rules {
+namespace chernobog
+{
+namespace rules
+{
 
 // Register all BNOT rules
 REGISTER_MBA_RULE(Bnot_HackersDelightRule_1);

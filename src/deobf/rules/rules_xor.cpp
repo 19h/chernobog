@@ -1,7 +1,9 @@
 #include "rules_xor.h"
 
-namespace chernobog {
-namespace rules {
+namespace chernobog
+{
+namespace rules
+{
 
 // Register all XOR rules
 REGISTER_MBA_RULE(Xor_HackersDelightRule_1);

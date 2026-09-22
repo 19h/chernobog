@@ -15,8 +15,9 @@
 //
 // This runs after the initial decompilation as a ctree transformation.
 //--------------------------------------------------------------------------
-class ctree_const_fold_handler_t {
-public:
+class ctree_const_fold_handler_t
+{
+  public:
     // Main entry point - transforms the ctree
     static int run(cfunc_t *cfunc);
 };

@@ -5,15 +5,17 @@
 #include <iostream>
 #endif
 
-namespace chernobog {
-namespace rules {
+namespace chernobog
+{
+namespace rules
+{
 
 using namespace ast;
 
 //--------------------------------------------------------------------------
 // Singleton implementation
 //--------------------------------------------------------------------------
-RuleRegistry& RuleRegistry::instance()
+RuleRegistry &RuleRegistry::instance()
 {
     // CRITICAL: Use heap-allocated singleton that intentionally leaks on exit.
     // This is necessary because the RuleRegistry contains AST nodes with mop_t
@@ -24,7 +26,7 @@ RuleRegistry& RuleRegistry::instance()
     // By using a heap-allocated singleton that never gets deleted, we avoid
     // the destructor being called during exit. The memory leak is intentional
     // and harmless since the process is exiting anyway.
-    static RuleRegistry* instance = new RuleRegistry();
+    static RuleRegistry *instance = new RuleRegistry();
     return *instance;
 }
 
@@ -34,7 +36,7 @@ RuleRegistry& RuleRegistry::instance()
 void RuleRegistry::register_rule(std::unique_ptr<PatternMatchingRule> rule)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    if ( rule )
+    if (rule)
     {
         rules_.push_back(std::move(rule));
     }
@@ -44,7 +46,7 @@ void RuleRegistry::initialize()
 {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    if ( initialized_ )
+    if (initialized_)
     {
         return;
     }
@@ -80,27 +82,26 @@ void RuleRegistry::rebuild_storage_locked()
 #else
     RuleVerifier verifier;
 #endif
-    for ( auto& rule : rules_ )
+    for (auto &rule : rules_)
     {
-        if ( !rule )
+        if (!rule)
             continue;
 
         AstPtr pattern = rule->get_pattern();
         AstPtr replacement = rule->get_replacement();
         semantic_roots_.push_back(replacement);
         RuleVerificationResult verification = verifier.verify(pattern, replacement);
-        if ( !verification.verified() )
+        if (!verification.verified())
         {
             ++rejected_rule_count_;
 #if defined(CHERNOBOG_CATALOG_TEST)
-            std::cerr << "rejected MBA rule '" << rule->name() << "': "
-                      << rule_verification_status_name(verification.status)
-                      << " at " << verification.bit_width << " bits ("
-                      << verification.detail << ")\n";
+            std::cerr << "rejected MBA rule '" << rule->name()
+                      << "': " << rule_verification_status_name(verification.status) << " at "
+                      << verification.bit_width << " bits (" << verification.detail << ")\n";
 #else
-            msg("[chernobog] rejected MBA rule '%s': %s at %u bits (%s)\n",
-                rule->name(), rule_verification_status_name(verification.status),
-                verification.bit_width, verification.detail.c_str());
+            msg("[chernobog] rejected MBA rule '%s': %s at %u bits (%s)\n", rule->name(),
+                rule_verification_status_name(verification.status), verification.bit_width,
+                verification.detail.c_str());
 #endif
             continue;
         }
@@ -138,9 +139,9 @@ void RuleRegistry::clear()
 // Uses non-mutating match path to eliminate pattern cloning per attempt.
 // Uses stack-allocated MatchBindings to avoid heap allocations.
 //--------------------------------------------------------------------------
-RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t* ins)
+RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
 {
-    if ( SIMD_UNLIKELY( !ins || !initialized_ ) )
+    if (SIMD_UNLIKELY(!ins || !initialized_))
     {
         return MatchResult();
     }
@@ -149,45 +150,45 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t* ins)
 
     // Convert instruction to AST
     AstPtr candidate = minsn_to_ast(ins);
-    if ( SIMD_UNLIKELY( !candidate ) )
+    if (SIMD_UNLIKELY(!candidate))
     {
         return MatchResult();
     }
 
     // Get matching patterns from storage - const ref, no copy
-    const auto& matches = storage_.get_matching_rules(candidate);
+    const auto &matches = storage_.get_matching_rules(candidate);
 
     // Stack-allocated bindings - NO HEAP ALLOCATION PER MATCH ATTEMPT
     MatchBindings match_bindings;
 
     // Try each match
-    for ( const auto& rp : matches )
+    for (const auto &rp : matches)
     {
-        if ( SIMD_UNLIKELY( !rp.rule || !rp.pattern ) )
+        if (SIMD_UNLIKELY(!rp.rule || !rp.pattern))
         {
             continue;
         }
 
         // OPTIMIZED: Non-mutating match - NO PATTERN CLONING
         // match_pattern() doesn't modify pattern, just fills bindings
-        if ( match_pattern(rp.pattern.get(), candidate.get(), match_bindings) )
+        if (match_pattern(rp.pattern.get(), candidate.get(), match_bindings))
         {
             // Only convert to std::map when we have a structural match
             // This moves the allocation cost to the success path
             std::map<std::string, mop_t> bindings;
-            for ( size_t i = 0; i < match_bindings.count; ++i )
+            for (size_t i = 0; i < match_bindings.count; ++i)
             {
                 bindings[match_bindings.bindings[i].name] = match_bindings.bindings[i].mop;
             }
 
             // Check extra validation - pass candidate (unchanged)
-            if ( !rp.rule->check_candidate(candidate) )
+            if (!rp.rule->check_candidate(candidate))
             {
                 continue;
             }
 
             // Check constant constraints
-            if ( !rp.rule->check_constants(bindings) )
+            if (!rp.rule->check_constants(bindings))
             {
                 continue;
             }
@@ -198,8 +199,7 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t* ins)
 
             // Debug: log successful match
 #if !defined(CHERNOBOG_CATALOG_TEST)
-            deobf::log_verbose("[chernobog] MBA rule '%s' matched\n",
-                               rp.rule->name());
+            deobf::log_verbose("[chernobog] MBA rule '%s' matched\n", rp.rule->name());
 #endif
 
             MatchResult result;
@@ -213,25 +213,24 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t* ins)
     return MatchResult();
 }
 
-std::vector<RuleRegistry::MatchResult> RuleRegistry::find_all_matches(
-    const minsn_t* ins)
+std::vector<RuleRegistry::MatchResult> RuleRegistry::find_all_matches(const minsn_t *ins)
 {
     std::vector<MatchResult> results;
 
-    if ( SIMD_UNLIKELY( !ins || !initialized_ ) )
+    if (SIMD_UNLIKELY(!ins || !initialized_))
     {
         return results;
     }
 
     // Convert instruction to AST
     AstPtr candidate = minsn_to_ast(ins);
-    if ( SIMD_UNLIKELY( !candidate ) )
+    if (SIMD_UNLIKELY(!candidate))
     {
         return results;
     }
 
     // Get matching patterns - const ref, no copy
-    const auto& matches = storage_.get_matching_rules(candidate);
+    const auto &matches = storage_.get_matching_rules(candidate);
 
     // Reserve for typical case
     results.reserve(4);
@@ -239,29 +238,29 @@ std::vector<RuleRegistry::MatchResult> RuleRegistry::find_all_matches(
     // Stack-allocated bindings - NO HEAP ALLOCATION PER MATCH ATTEMPT
     MatchBindings match_bindings;
 
-    for ( const auto& rp : matches )
+    for (const auto &rp : matches)
     {
-        if ( SIMD_UNLIKELY( !rp.rule || !rp.pattern ) )
+        if (SIMD_UNLIKELY(!rp.rule || !rp.pattern))
         {
             continue;
         }
 
         // OPTIMIZED: Non-mutating match - NO PATTERN CLONING
-        if ( match_pattern(rp.pattern.get(), candidate.get(), match_bindings) )
+        if (match_pattern(rp.pattern.get(), candidate.get(), match_bindings))
         {
             // Convert bindings only on successful structural match
             std::map<std::string, mop_t> bindings;
-            for ( size_t i = 0; i < match_bindings.count; ++i )
+            for (size_t i = 0; i < match_bindings.count; ++i)
             {
                 bindings[match_bindings.bindings[i].name] = match_bindings.bindings[i].mop;
             }
 
-            if ( !rp.rule->check_candidate(candidate) )
+            if (!rp.rule->check_candidate(candidate))
             {
                 continue;
             }
 
-            if ( !rp.rule->check_constants(bindings) )
+            if (!rp.rule->check_constants(bindings))
             {
                 continue;
             }
@@ -280,18 +279,15 @@ std::vector<RuleRegistry::MatchResult> RuleRegistry::find_all_matches(
 //--------------------------------------------------------------------------
 // Statistics
 //--------------------------------------------------------------------------
-size_t RuleRegistry::pattern_count() const
-{
-    return storage_.pattern_count();
-}
+size_t RuleRegistry::pattern_count() const { return storage_.pattern_count(); }
 
 std::map<std::string, size_t> RuleRegistry::get_hit_statistics() const
 {
     std::map<std::string, size_t> stats;
 
-    for ( const auto& p : rules_ )
+    for (const auto &p : rules_)
     {
-        if ( p )
+        if (p)
         {
             stats[p->name()] = p->hit_count();
         }
@@ -322,9 +318,9 @@ void RuleRegistry::dump() const
     msg("  Successful matches: %zu\n", successful_matches_);
 
     msg("  Rule list:\n");
-    for ( const auto& p : rules_ )
+    for (const auto &p : rules_)
     {
-        if ( p )
+        if (p)
         {
             msg("    - %s (hits: %zu)\n", p->name(), p->hit_count());
         }
@@ -334,9 +330,9 @@ void RuleRegistry::dump() const
 std::vector<std::string> RuleRegistry::list_rules() const
 {
     std::vector<std::string> names;
-    for ( const auto& p : rules_ )
+    for (const auto &p : rules_)
     {
-        if ( p )
+        if (p)
         {
             names.push_back(p->name());
         }
@@ -347,10 +343,7 @@ std::vector<std::string> RuleRegistry::list_rules() const
 //--------------------------------------------------------------------------
 // Initialization helper
 //--------------------------------------------------------------------------
-void initialize_mba_rules()
-{
-    RuleRegistry::instance().initialize();
-}
+void initialize_mba_rules() { RuleRegistry::instance().initialize(); }
 
 } // namespace rules
 } // namespace chernobog

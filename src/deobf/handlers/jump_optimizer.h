@@ -13,33 +13,34 @@
 // When a jump is never taken:   Convert to nop / remove
 //--------------------------------------------------------------------------
 
-namespace chernobog {
+namespace chernobog
+{
 
-class jump_optimizer_handler_t {
-public:
+class jump_optimizer_handler_t
+{
+  public:
     // Detect if opaque jump patterns are present
-    static bool detect(mbl_array_t* mba);
+    static bool detect(mbl_array_t *mba);
 
     // Run jump optimization pass
-    static int run(mbl_array_t* mba, deobf_ctx_t* ctx);
+    static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
 
     // Late, bounded propagation for branch-only stack constants. This is
     // called from hxe_glbopt, where the final stack-form predicates exist.
-    static int run_local_constant_branches(mbl_array_t* mba,
-                                           deobf_ctx_t* ctx);
+    static int run_local_constant_branches(mbl_array_t *mba, deobf_ctx_t *ctx);
 
     // Instruction-level optimization
-    static int simplify_jcc(mblock_t* blk, minsn_t* jcc, deobf_ctx_t* ctx);
+    static int simplify_jcc(mblock_t *blk, minsn_t *jcc, deobf_ctx_t *ctx);
 
     // Statistics
     static void dump_statistics();
     static void reset_statistics();
 
-private:
+  private:
     // Apply optimization based on rule result
     // result: 1 = always taken, 0 = never taken
-    static int apply_optimization(mblock_t* blk, minsn_t* jcc, int result);
-    static void replace_successors(mblock_t* blk, int new_target);
+    static int apply_optimization(mblock_t *blk, minsn_t *jcc, int result);
+    static void replace_successors(mblock_t *blk, int new_target);
 
     static size_t jumps_simplified_;
     static size_t jumps_converted_goto_;

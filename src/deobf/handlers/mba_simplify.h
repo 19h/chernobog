@@ -19,8 +19,9 @@
 // both instruction-level (optinsn_t) and block-level passes.
 //--------------------------------------------------------------------------
 
-class mba_simplify_handler_t {
-public:
+class mba_simplify_handler_t
+{
+  public:
     //----------------------------------------------------------------------
     // Standard handler interface
     //----------------------------------------------------------------------
@@ -56,7 +57,7 @@ public:
     static void reset_statistics();
     static void dump_statistics();
 
-private:
+  private:
     static bool initialized_;
     static size_t total_simplified_;
 
@@ -64,5 +65,5 @@ private:
     static int try_simplify_instruction(mblock_t *blk, minsn_t *ins);
     static int try_simplify_node(mblock_t *blk, minsn_t *ins);
     static int apply_match(mblock_t *blk, minsn_t *ins,
-                          const chernobog::rules::RuleRegistry::MatchResult &match);
+                           const chernobog::rules::RuleRegistry::MatchResult &match);
 };

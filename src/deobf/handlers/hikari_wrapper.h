@@ -26,8 +26,9 @@
 //   3. Rename wrappers to indicate the real target
 //   4. Annotate call sites with the resolved API name
 //--------------------------------------------------------------------------
-class hikari_wrapper_handler_t {
-public:
+class hikari_wrapper_handler_t
+{
+  public:
     // Detection
     static bool detect(mbl_array_t *mba);
 
@@ -37,25 +38,27 @@ public:
     // Clear address-keyed analysis between databases.
     static void clear_cache();
 
-private:
+  private:
     // Wrapper function info
-    struct wrapper_info_t {
-        ea_t func_ea = BADADDR;     // Wrapper function address
-        qstring original_name;       // Original name (e.g., HikariFunctionWrapper_390)
-        qstring resolved_name;       // Resolved name (e.g., NSDictionary_dictionaryWithContentsOfFile)
-        qstring target_class;        // For Obj-C: class name
-        qstring target_selector;     // For Obj-C: selector
+    struct wrapper_info_t
+    {
+        ea_t func_ea = BADADDR;  // Wrapper function address
+        qstring original_name;   // Original name (e.g., HikariFunctionWrapper_390)
+        qstring resolved_name;   // Resolved name (e.g., NSDictionary_dictionaryWithContentsOfFile)
+        qstring target_class;    // For Obj-C: class name
+        qstring target_selector; // For Obj-C: selector
         ea_t target_func = BADADDR; // For direct calls: target function
         bool is_objc = false;       // True if Obj-C message send
     };
 
     // Call site info
-    struct call_site_t {
+    struct call_site_t
+    {
         int block_idx = -1;
         minsn_t *call_insn = nullptr;
         wrapper_info_t wrapper;
-        qstring class_arg;          // Class argument if determinable
-        qstring selector_arg;       // Selector argument if determinable
+        qstring class_arg;    // Class argument if determinable
+        qstring selector_arg; // Selector argument if determinable
     };
 
     // Analyze a single wrapper function

@@ -6,18 +6,21 @@
 //--------------------------------------------------------------------------
 bool const_decrypt_handler_t::detect(mbl_array_t *mba)
 {
-    if ( !mba ) 
+    if (!mba)
         return false;
 
     // Look for XOR instructions with global variable operands
-    for ( int i = 0; i < mba->qty; ++i ) {
+    for (int i = 0; i < mba->qty; ++i)
+    {
         mblock_t *blk = mba->get_mblock(i);
-        if ( !blk ) 
+        if (!blk)
             continue;
 
-        for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
+        for (minsn_t *ins = blk->head; ins; ins = ins->next)
+        {
             encrypted_const_t ec;
-            if ( is_const_encryption_pattern(ins, &ec) ) {
+            if (is_const_encryption_pattern(ins, &ec))
+            {
                 return true;
             }
         }
@@ -31,7 +34,7 @@ bool const_decrypt_handler_t::detect(mbl_array_t *mba)
 //--------------------------------------------------------------------------
 int const_decrypt_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 {
-    if ( !mba || !ctx ) 
+    if (!mba || !ctx)
         return 0;
 
     deobf::log("[const_decrypt] Starting constant decryption\n");
@@ -43,23 +46,26 @@ int const_decrypt_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
     deobf::log("[const_decrypt] Found %zu encrypted constants\n", encrypted_consts.size());
 
     // Replace each with the decrypted value
-    for ( const auto &ec : encrypted_consts ) {
+    for (const auto &ec : encrypted_consts)
+    {
         // Find the block containing this instruction
-        for ( int i = 0; i < mba->qty; ++i ) {
+        for (int i = 0; i < mba->qty; ++i)
+        {
             mblock_t *blk = mba->get_mblock(i);
-            if ( !blk ) 
+            if (!blk)
                 continue;
 
-            for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
-                if ( ins == ec.xor_insn ) {
+            for (minsn_t *ins = blk->head; ins; ins = ins->next)
+            {
+                if (ins == ec.xor_insn)
+                {
                     total_changes += replace_with_constant(blk, ins, ec);
                     ctx->decrypted_consts[ec.gv_addr] = ec.decrypted_val;
                     ctx->consts_decrypted++;
 
                     deobf::log("[const_decrypt] Decrypted constant at %a: 0x%llx -> 0x%llx\n",
-                              ec.gv_addr,
-                              (unsigned long long)ec.encrypted_val,
-                              (unsigned long long)ec.decrypted_val);
+                               ec.gv_addr, (unsigned long long)ec.encrypted_val,
+                               (unsigned long long)ec.decrypted_val);
                     break;
                 }
             }
@@ -73,12 +79,14 @@ int const_decrypt_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 //--------------------------------------------------------------------------
 // Instruction-level simplification
 //--------------------------------------------------------------------------
-int const_decrypt_handler_t::simplify_insn(mblock_t *blk, minsn_t *ins, deobf_ctx_t *ctx) {
-    if ( !ins ) 
+int const_decrypt_handler_t::simplify_insn(mblock_t *blk, minsn_t *ins, deobf_ctx_t *ctx)
+{
+    if (!ins)
         return 0;
 
     encrypted_const_t ec;
-    if ( is_const_encryption_pattern(ins, &ec) ) {
+    if (is_const_encryption_pattern(ins, &ec))
+    {
         return replace_with_constant(blk, ins, ec);
     }
 
@@ -94,14 +102,17 @@ const_decrypt_handler_t::find_encrypted_consts(mbl_array_t *mba)
 
     std::vector<encrypted_const_t> result;
 
-    for ( int i = 0; i < mba->qty; ++i ) {
+    for (int i = 0; i < mba->qty; ++i)
+    {
         mblock_t *blk = mba->get_mblock(i);
-        if ( !blk ) 
+        if (!blk)
             continue;
 
-        for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
+        for (minsn_t *ins = blk->head; ins; ins = ins->next)
+        {
             encrypted_const_t ec;
-            if ( is_const_encryption_pattern(ins, &ec) ) {
+            if (is_const_encryption_pattern(ins, &ec))
+            {
                 result.push_back(ec);
             }
         }
@@ -115,7 +126,7 @@ const_decrypt_handler_t::find_encrypted_consts(mbl_array_t *mba)
 //--------------------------------------------------------------------------
 bool const_decrypt_handler_t::is_const_encryption_pattern(minsn_t *ins, encrypted_const_t *out)
 {
-    if ( !ins || ins->opcode != m_xor ) 
+    if (!ins || ins->opcode != m_xor)
         return false;
 
     // Pattern: xor reg, gv_load, immediate
@@ -126,39 +137,50 @@ bool const_decrypt_handler_t::is_const_encryption_pattern(minsn_t *ins, encrypte
     int size = 0;
 
     // Check both operand orderings
-    if ( ins->l.t == mop_v && ins->r.t == mop_n && ins->r.nnn ) {
+    if (ins->l.t == mop_v && ins->r.t == mop_n && ins->r.nnn)
+    {
         // Left is global, right is immediate
         gv_addr = ins->l.g;
         key = ins->r.nnn->value;
         size = ins->l.size;
-    } else if ( ins->r.t == mop_v && ins->l.t == mop_n && ins->l.nnn ) {
+    }
+    else if (ins->r.t == mop_v && ins->l.t == mop_n && ins->l.nnn)
+    {
         // Right is global, left is immediate
         gv_addr = ins->r.g;
         key = ins->l.nnn->value;
         size = ins->r.size;
-    } else {
+    }
+    else
+    {
         // Also check for nested load
         // Pattern: xor(ldx(gv), immediate)
         mop_t *gv_mop = nullptr;
         mop_t *key_mop = nullptr;
 
-        if ( ins->l.t == mop_d && ins->l.d && ins->l.d->opcode == m_ldx ) {
+        if (ins->l.t == mop_d && ins->l.d && ins->l.d->opcode == m_ldx)
+        {
             minsn_t *load = ins->l.d;
-            if ( load->r.t == mop_v ) {
+            if (load->r.t == mop_v)
+            {
                 gv_mop = &load->r;
-                if ( ins->r.t == mop_n && ins->r.nnn )
+                if (ins->r.t == mop_n && ins->r.nnn)
                     key_mop = &ins->r;
             }
-        } else if ( ins->r.t == mop_d && ins->r.d && ins->r.d->opcode == m_ldx ) {
+        }
+        else if (ins->r.t == mop_d && ins->r.d && ins->r.d->opcode == m_ldx)
+        {
             minsn_t *load = ins->r.d;
-            if ( load->r.t == mop_v ) {
+            if (load->r.t == mop_v)
+            {
                 gv_mop = &load->r;
-                if ( ins->l.t == mop_n && ins->l.nnn )
+                if (ins->l.t == mop_n && ins->l.nnn)
                     key_mop = &ins->l;
             }
         }
 
-        if ( gv_mop && key_mop ) {
+        if (gv_mop && key_mop)
+        {
             gv_addr = gv_mop->g;
             key = key_mop->nnn->value;
             minsn_t *load = ins->l.t == mop_d ? ins->l.d : ins->r.d;
@@ -166,31 +188,32 @@ bool const_decrypt_handler_t::is_const_encryption_pattern(minsn_t *ins, encrypte
         }
     }
 
-    if ( gv_addr == BADADDR || size <= 0 || size > 8 ) 
+    if (gv_addr == BADADDR || size <= 0 || size > 8)
         return false;
 
     // The database value is invariant only in non-writable storage.
     segment_t *segment = getseg(gv_addr);
-    if ( !segment || (segment->perm & SEGPERM_WRITE) != 0 )
+    if (!segment || (segment->perm & SEGPERM_WRITE) != 0)
         return false;
 
     flags64_t flags = get_flags(gv_addr);
-    if ( is_code(flags) || !is_loaded(gv_addr) )
+    if (is_code(flags) || !is_loaded(gv_addr))
         return false;
 
     // Read the encrypted value
     auto encrypted_value = read_global_value(gv_addr, size);
-    if ( !encrypted_value.has_value() )
+    if (!encrypted_value.has_value())
         return false;
     uint64_t encrypted = *encrypted_value;
 
     // Compute decrypted value
-    const uint64_t mask = size == 8 ? UINT64_MAX
-        : (uint64_t{1} << static_cast<unsigned>(size * 8)) - 1;
+    const uint64_t mask =
+        size == 8 ? UINT64_MAX : (uint64_t{1} << static_cast<unsigned>(size * 8)) - 1;
     key &= mask;
     uint64_t decrypted = (encrypted ^ key) & mask;
 
-    if ( out ) {
+    if (out)
+    {
         out->xor_insn = ins;
         out->gv_addr = gv_addr;
         out->xor_key = key;
@@ -206,10 +229,10 @@ bool const_decrypt_handler_t::is_const_encryption_pattern(minsn_t *ins, encrypte
 // Replace XOR with constant
 //--------------------------------------------------------------------------
 int const_decrypt_handler_t::replace_with_constant(mblock_t *blk, minsn_t *ins,
-    const encrypted_const_t &ec)
-    {
+                                                   const encrypted_const_t &ec)
+{
 
-    if ( !ins ) 
+    if (!ins)
         return 0;
 
     // Transform: xor dst, gv, key  ->  mov dst, decrypted_value
@@ -217,7 +240,7 @@ int const_decrypt_handler_t::replace_with_constant(mblock_t *blk, minsn_t *ins,
     ins->opcode = m_mov;
     ins->l.make_number(ec.decrypted_val, ec.size);
     ins->r.erase();
-    if ( blk )
+    if (blk)
         blk->mark_lists_dirty();
 
     return 1;

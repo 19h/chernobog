@@ -20,8 +20,9 @@
 //   3. XOR with key to get original constant
 //   4. Replace XOR expression with constant
 //--------------------------------------------------------------------------
-class const_decrypt_handler_t {
-public:
+class const_decrypt_handler_t
+{
+  public:
     // Detection
     static bool detect(mbl_array_t *mba);
 
@@ -31,9 +32,10 @@ public:
     // Instruction-level simplification (called from optinsn_t)
     static int simplify_insn(mblock_t *blk, minsn_t *ins, deobf_ctx_t *ctx);
 
-private:
+  private:
     // Find encrypted constant patterns
-    struct encrypted_const_t {
+    struct encrypted_const_t
+    {
         minsn_t *xor_insn;      // The XOR instruction
         ea_t gv_addr;           // Global variable holding encrypted value
         uint64_t xor_key;       // XOR key
@@ -48,8 +50,7 @@ private:
     static bool is_const_encryption_pattern(minsn_t *ins, encrypted_const_t *out);
 
     // Replace XOR with decrypted constant
-    static int replace_with_constant(mblock_t *blk, minsn_t *ins,
-                                    const encrypted_const_t &ec);
+    static int replace_with_constant(mblock_t *blk, minsn_t *ins, const encrypted_const_t &ec);
 
     // Read value from global variable
     static std::optional<uint64_t> read_global_value(ea_t addr, int size);

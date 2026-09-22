@@ -16,7 +16,7 @@ struct native_opaque_stats_t
 // memory only through global_const_handler_t's exact scalar proof.
 class native_opaque_handler_t
 {
-public:
+  public:
     static int mode();
     static native_opaque_stats_t run();
 };

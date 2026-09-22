@@ -3,16 +3,19 @@
 #include "switch_dispatch_classifier.hpp"
 
 // Control-flow flattening detection shared by the deflattening handler.
-namespace pattern_match {
+namespace pattern_match
+{
 
-enum class flatten_pattern_kind_t {
+enum class flatten_pattern_kind_t
+{
     unknown,
     constant_state,
     indexed_jump_table,
     recurrent_switch,
 };
 
-struct flatten_info_t {
+struct flatten_info_t
+{
     flatten_pattern_kind_t kind = flatten_pattern_kind_t::unknown;
     int dispatcher_block = -1;
     int switch_block = -1;

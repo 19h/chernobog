@@ -8,26 +8,25 @@
 
 #include "evidence.hpp"
 
-namespace chernobog::hybrid {
+namespace chernobog::hybrid
+{
 
 struct HybridBranchCheck
 {
-  bool evidence_available = false;
-  bool snapshot_current = false;
-  uint64_t generation = 0;
-  BranchClaimCheck claim;
+    bool evidence_available = false;
+    bool snapshot_current = false;
+    uint64_t generation = 0;
+    BranchClaimCheck claim;
 
-  bool veto() const
-  {
-    return evidence_available && snapshot_current
-        && claim.falsifies_universal_claim();
-  }
+    bool veto() const
+    {
+        return evidence_available && snapshot_current && claim.falsifies_universal_claim();
+    }
 };
 
 // Session lifecycle. Database IDs are IDA's signed dbctx identifiers cast to
 // int64_t; shared ownership allows a concurrent reader to finish safely.
-bool hybrid_publish_evidence(
-    int64_t database_id, std::shared_ptr<const TargetEvidence> evidence);
+bool hybrid_publish_evidence(int64_t database_id, std::shared_ptr<const TargetEvidence> evidence);
 void hybrid_clear_evidence(int64_t database_id);
 
 // Exact current-function plus consumed-context freshness check. Main thread
@@ -52,25 +51,22 @@ uint64_t hybrid_evidence_snapshot_revision(const std::shared_ptr<const TargetEvi
 // original exact entry profile. Finish prevents any later resealing.
 bool hybrid_begin_deobfuscation_projection(uint64_t function_start);
 void hybrid_abandon_deobfuscation_projection(uint64_t function_start);
-bool hybrid_authorize_deobfuscation_patch(
-    uint64_t function_start, uint64_t address, size_t size);
+bool hybrid_authorize_deobfuscation_patch(uint64_t function_start, uint64_t address, size_t size);
 bool hybrid_seal_deobfuscation_projection(uint64_t function_start);
 bool hybrid_finish_deobfuscation_projection(uint64_t function_start);
 
 // Consensus runtime plaintext for proof-adjacent consumers. This requires the
 // complete function-plus-consumed-context identity to remain current.
-std::vector<RuntimeStringCandidate> hybrid_current_runtime_strings(
-    uint64_t function_start);
+std::vector<RuntimeStringCandidate> hybrid_current_runtime_strings(uint64_t function_start);
 
 // Exact live function AND consumed-image freshness, including model inputs.
 // No address-only or post-materialization projection is admitted here.
-std::vector<RuntimeUseStringCandidate> hybrid_current_use_strings(
-    uint64_t function_start);
+std::vector<RuntimeUseStringCandidate> hybrid_current_use_strings(uint64_t function_start);
 
 // Print-only: a finished owned display lease may admit Hex-Rays entry-profile
 // refinement. Original function bytes and ALL consumed bytes must still match.
-std::vector<RuntimeUseStringCandidate> hybrid_current_use_strings_for_decompilation(
-    uint64_t function_start);
+std::vector<RuntimeUseStringCandidate>
+hybrid_current_use_strings_for_decompilation(uint64_t function_start);
 
 // Display-only projection for the ctree produced from the explored function.
 // It accepts either the original exact function identity or the post-pass
@@ -83,45 +79,44 @@ hybrid_current_runtime_strings_for_decompilation(uint64_t function_start);
 // Main-thread convenience used by microcode handlers. It derives the current
 // database ID and byte-compares every snapshotted function chunk before using
 // an observation, so stale evidence fails closed after patches/reanalysis.
-HybridBranchCheck hybrid_check_current_branch_claim(
-    uint64_t function_start, uint64_t branch_instruction,
-    bool expected_taken);
+HybridBranchCheck hybrid_check_current_branch_claim(uint64_t function_start,
+                                                    uint64_t branch_instruction,
+                                                    bool expected_taken);
 
 struct Z3ConcreteRegisterInput
 {
-  int micro_register = -1;
-  uint8_t width = 0;
-  uint64_t value = 0;
-  std::string native_register;
+    int micro_register = -1;
+    uint8_t width = 0;
+    uint64_t value = 0;
+    std::string native_register;
 };
 
 struct Z3ConcretePredicateInput
 {
-  uint32_t run_id = 0;
-  uint64_t seed = 0;
-  std::vector<Z3ConcreteRegisterInput> registers;
+    uint32_t run_id = 0;
+    uint64_t seed = 0;
+    std::vector<Z3ConcreteRegisterInput> registers;
 };
 
 // Concrete architectural states captured immediately before a conditional
 // instruction and mapped into Hex-Rays micro-register identifiers. Consumers
 // must still model preceding microcode/aliases; these are inputs, not proofs.
-std::vector<Z3ConcretePredicateInput> hybrid_collect_current_z3_inputs(
-    uint64_t function_start, uint64_t branch_instruction);
+std::vector<Z3ConcretePredicateInput> hybrid_collect_current_z3_inputs(uint64_t function_start,
+                                                                       uint64_t branch_instruction);
 
 struct HybridObservedTargetCandidate
 {
-  uint64_t target = 0;
-  ExecEdge::Kind kind = ExecEdge::Kind::Unknown;
-  size_t observations = 0;
-  std::vector<uint32_t> runs;
+    uint64_t target = 0;
+    ExecEdge::Kind kind = ExecEdge::Kind::Unknown;
+    size_t observations = 0;
+    std::vector<uint32_t> runs;
 };
 
 // Observation-only candidates for unresolved microcode calls/jumps. The
 // bridge intentionally does not expose a "unique proof" operation: repeated
 // concrete runs cannot establish that no other target exists.
 std::vector<HybridObservedTargetCandidate>
-hybrid_current_indirect_target_candidates(
-    uint64_t function_start, uint64_t instruction);
+hybrid_current_indirect_target_candidates(uint64_t function_start, uint64_t instruction);
 
 // Generic hand-off for Z3 consumers that can express a model in source-level
 // explicit-argument order. For Objective-C methods the session preserves the
@@ -130,15 +125,14 @@ hybrid_current_indirect_target_candidates(
 // exact database/function; no background/global model sweep is possible.
 struct Z3ModelReplayRequest
 {
-  uint64_t function_start = 0;
-  uint64_t claim_address = 0;
-  std::vector<uint64_t> arguments;
-  std::string label;
+    uint64_t function_start = 0;
+    uint64_t claim_address = 0;
+    std::vector<uint64_t> arguments;
+    std::string label;
 };
 
-bool hybrid_queue_z3_model_replay(
-    int64_t database_id, Z3ModelReplayRequest request);
-std::vector<Z3ModelReplayRequest> hybrid_take_z3_model_replays(
-    int64_t database_id, uint64_t function_start);
+bool hybrid_queue_z3_model_replay(int64_t database_id, Z3ModelReplayRequest request);
+std::vector<Z3ModelReplayRequest> hybrid_take_z3_model_replays(int64_t database_id,
+                                                               uint64_t function_start);
 
 } // namespace chernobog::hybrid

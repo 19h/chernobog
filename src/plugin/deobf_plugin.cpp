@@ -53,22 +53,18 @@ static merror_t compatible_merr_loop()
     {
         // A header containing the timeout addition already has the correct
         // runtime value. Unknown layouts are likewise safer when left intact.
-        if constexpr ( static_cast<int>(MERR_MAX_ERR) != 35
-                    || static_cast<int>(MERR_LOOP) != -36 )
+        if constexpr (static_cast<int>(MERR_MAX_ERR) != 35 || static_cast<int>(MERR_LOOP) != -36)
         {
             return MERR_LOOP;
         }
 
         const char *runtime_version = get_hexrays_version();
-        if ( chernobog::hexrays_compat::uses_timeout_merror_layout(
-                 runtime_version) )
+        if (chernobog::hexrays_compat::uses_timeout_merror_layout(runtime_version))
         {
             constexpr int timeout_layout_merr_loop = -37;
-            debug_log(
-                "[chernobog] Hex-Rays %s uses shifted merror layout; "
-                "MERR_LOOP=%d\n",
-                runtime_version,
-                timeout_layout_merr_loop);
+            debug_log("[chernobog] Hex-Rays %s uses shifted merror layout; "
+                      "MERR_LOOP=%d\n",
+                      runtime_version, timeout_layout_merr_loop);
             return static_cast<merror_t>(timeout_layout_merr_loop);
         }
         return MERR_LOOP;
@@ -78,15 +74,14 @@ static merror_t compatible_merr_loop()
 
 #ifndef _WIN32
 // Global constructor to trace when dylib is loaded (Unix only)
-__attribute__((constructor))
-static void dylib_loaded()
+__attribute__((constructor)) static void dylib_loaded()
 {
-    if ( !deobf::debug_enabled() )
+    if (!deobf::debug_enabled())
         return;
 
     // Write directly to a marker file to prove we loaded
     int fd = open("/tmp/CHERNOBOG_LOADED", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if ( fd >= 0 )
+    if (fd >= 0)
     {
         const char *msg = "DYLIB LOADED\n";
         write(fd, msg, 13);
@@ -96,8 +91,7 @@ static void dylib_loaded()
 }
 #endif
 
-struct chernobog_plugmod_t final
-    : public plugmod_t, public chernobog::idc::Host
+struct chernobog_plugmod_t final : public plugmod_t, public chernobog::idc::Host
 {
     ssize_t database_id = -1;
     bool hexrays_initialized = false;
@@ -120,10 +114,8 @@ struct chernobog_plugmod_t final
     std::set<ea_t> rax_completed_functions;
     qtimer_t activation_timer = nullptr;
     int activation_attempts = 0;
-    std::unique_ptr<chernobog::ida_analysis::NativeAnalysisEngine>
-        ida_analysis;
-    std::unique_ptr<chernobog::ida_analysis::EarlyHexRaysAnalysis>
-        early_hexrays;
+    std::unique_ptr<chernobog::ida_analysis::NativeAnalysisEngine> ida_analysis;
+    std::unique_ptr<chernobog::ida_analysis::EarlyHexRaysAnalysis> early_hexrays;
     std::unique_ptr<chernobog::hybrid::Session> hybrid_session;
 
     // All address-keyed state belongs to this database instance.
@@ -150,31 +142,20 @@ struct chernobog_plugmod_t final
 
     // chernobog::idc::Host. The IDC layer reaches exactly the same state the
     // hotkeys, popup actions, and automatic callbacks do.
-    virtual int64_t database_context() const override
-    {
-        return int64_t(database_id);
-    }
+    virtual int64_t database_context() const override { return int64_t(database_id); }
     virtual bool ensure_activated() override { return activate(); }
     virtual bool hexrays_ready() const override { return hexrays_initialized; }
-    virtual bool components_ready() const override
-    {
-        return components_initialized;
-    }
+    virtual bool components_ready() const override { return components_initialized; }
     virtual void clear_state() override { clear_processing_state(); }
     virtual bool auto_mode() const override;
     virtual void set_auto_mode(bool enabled) override;
     virtual bool transformations_disabled() const override;
-    virtual chernobog::hybrid::Session *rax_session() override
-    {
-        return hybrid_session.get();
-    }
-    virtual chernobog::ida_analysis::NativeAnalysisEngine *
-        native_analysis_engine() override
+    virtual chernobog::hybrid::Session *rax_session() override { return hybrid_session.get(); }
+    virtual chernobog::ida_analysis::NativeAnalysisEngine *native_analysis_engine() override
     {
         return ida_analysis.get();
     }
-    virtual chernobog::ida_analysis::EarlyHexRaysAnalysis *
-        early_hexrays_analysis() override
+    virtual chernobog::ida_analysis::EarlyHexRaysAnalysis *early_hexrays_analysis() override
     {
         return early_hexrays.get();
     }
@@ -194,17 +175,17 @@ static int s_auto_mode_override = -1;
 
 static bool is_auto_mode_enabled()
 {
-    if ( s_auto_mode_override >= 0 )
+    if (s_auto_mode_override >= 0)
         return s_auto_mode_override != 0;
 
     static int cached = -1;
-    if ( cached == -1 )
+    if (cached == -1)
     {
         cached = 0;
         // Try qgetenv first
         qstring env_val;
         const bool environment_override = qgetenv("CHERNOBOG_AUTO", &env_val);
-        if ( environment_override && !env_val.empty() && env_val[0] == '1' )
+        if (environment_override && !env_val.empty() && env_val[0] == '1')
         {
             cached = 1;
             debug_log("[chernobog] AUTO mode detected via env var\n");
@@ -212,14 +193,14 @@ static bool is_auto_mode_enabled()
         // An explicit environment value, including 0, takes precedence over
         // the per-user marker. Consult the marker only when the variable is
         // absent.
-        if ( cached == 0 && !environment_override )
+        if (cached == 0 && !environment_override)
         {
             qstring home;
-            if ( qgetenv("HOME", &home) )
+            if (qgetenv("HOME", &home))
             {
                 qstring auto_file = home + "/.chernobog_auto";
                 FILE *f = qfopen(auto_file.c_str(), "r");
-                if ( f )
+                if (f)
                 {
                     qfclose(f);
                     cached = 1;
@@ -236,7 +217,7 @@ static bool is_auto_mode_enabled()
 static bool is_reset_mode_enabled()
 {
     qstring env;
-    if ( qgetenv("CHERNOBOG_RESET", &env) && !env.empty() && env[0] != '0' )
+    if (qgetenv("CHERNOBOG_RESET", &env) && !env.empty() && env[0] != '0')
         return true;
     return false;
 }
@@ -249,15 +230,13 @@ static bool is_reset_mode_enabled()
 static bool is_disabled_mode_enabled()
 {
     qstring env;
-    return qgetenv("CHERNOBOG_DISABLE", &env)
-        && !env.empty() && env[0] != '0';
+    return qgetenv("CHERNOBOG_DISABLE", &env) && !env.empty() && env[0] != '0';
 }
 
-static bool automatic_rax_succeeded(
-    chernobog::hybrid::EnsureExploredResult result)
+static bool automatic_rax_succeeded(chernobog::hybrid::EnsureExploredResult result)
 {
-    return result == chernobog::hybrid::EnsureExploredResult::ALREADY_FRESH
-        || result == chernobog::hybrid::EnsureExploredResult::EXPLORED;
+    return result == chernobog::hybrid::EnsureExploredResult::ALREADY_FRESH ||
+           result == chernobog::hybrid::EnsureExploredResult::EXPLORED;
 }
 
 //--------------------------------------------------------------------------
@@ -267,73 +246,63 @@ static bool automatic_rax_succeeded(
 // new flowchart. The session remains strictly one-function-at-a-time and
 // bounded.
 //--------------------------------------------------------------------------
-static bool ensure_automatic_rax(
-    chernobog_plugmod_t *self,
-    ea_t function_ea,
-    const char *trigger,
-    bool keep_projection_open)
+static bool ensure_automatic_rax(chernobog_plugmod_t *self, ea_t function_ea, const char *trigger,
+                                 bool keep_projection_open)
 {
-    if ( self == nullptr || function_ea == BADADDR
-      || !is_auto_mode_enabled() || is_disabled_mode_enabled() )
+    if (self == nullptr || function_ea == BADADDR || !is_auto_mode_enabled() ||
+        is_disabled_mode_enabled())
     {
         return false;
     }
 
     const chernobog::hybrid::EnsureExploredResult result =
         self->hybrid_session != nullptr
-        ? self->hybrid_session->ensure_explored(uint64_t(function_ea))
-        : chernobog::hybrid::EnsureExploredResult::UNAVAILABLE;
+            ? self->hybrid_session->ensure_explored(uint64_t(function_ea))
+            : chernobog::hybrid::EnsureExploredResult::UNAVAILABLE;
     const bool succeeded = automatic_rax_succeeded(result);
-    if ( succeeded )
+    if (succeeded)
     {
         self->rax_completed_functions.insert(function_ea);
-        if ( !keep_projection_open )
+        if (!keep_projection_open)
         {
-            chernobog::hybrid::hybrid_finish_deobfuscation_projection(
-                uint64_t(function_ea));
+            chernobog::hybrid::hybrid_finish_deobfuscation_projection(uint64_t(function_ea));
         }
     }
-    else if ( result == chernobog::hybrid::EnsureExploredResult::FAILED
-           || result == chernobog::hybrid::EnsureExploredResult::CANCELLED )
+    else if (result == chernobog::hybrid::EnsureExploredResult::FAILED ||
+             result == chernobog::hybrid::EnsureExploredResult::CANCELLED)
     {
         msg("[chernobog][rax] Automatic exploration for %a at %s did not produce fresh evidence; continuing\n",
             function_ea, trigger != nullptr ? trigger : "unknown ingress");
     }
-    debug_log(
-        "[chernobog][rax] automatic ingress=%s function=%llx result=%d\n",
-        trigger != nullptr ? trigger : "unknown",
-        static_cast<unsigned long long>(function_ea),
-        static_cast<int>(result));
+    debug_log("[chernobog][rax] automatic ingress=%s function=%llx result=%d\n",
+              trigger != nullptr ? trigger : "unknown",
+              static_cast<unsigned long long>(function_ea), static_cast<int>(result));
     return succeeded;
 }
 
-static void ensure_cached_rax_fallback(
-    chernobog_plugmod_t *self, ea_t function_ea, const char *trigger)
+static void ensure_cached_rax_fallback(chernobog_plugmod_t *self, ea_t function_ea,
+                                       const char *trigger)
 {
-    if ( self == nullptr || function_ea == BADADDR
-      || !is_auto_mode_enabled()
-      || self->rax_completed_functions.count(function_ea) != 0 )
+    if (self == nullptr || function_ea == BADADDR || !is_auto_mode_enabled() ||
+        self->rax_completed_functions.count(function_ea) != 0)
     {
         return;
     }
-    if ( chernobog::hybrid::hybrid_current_evidence_is_fresh(
-            uint64_t(function_ea)) )
+    if (chernobog::hybrid::hybrid_current_evidence_is_fresh(uint64_t(function_ea)))
     {
         self->rax_completed_functions.insert(function_ea);
         return;
     }
 
     (void)ensure_automatic_rax(self, function_ea, trigger, false);
-    if ( self->hybrid_session != nullptr
-      && self->hybrid_session->take_analysis_changes() )
+    if (self->hybrid_session != nullptr && self->hybrid_session->take_analysis_changes())
     {
         // This callback is later than flowchart ingress and cannot request a
         // coherent MERR_REDO. Consume the signal here so it cannot leak into
         // the next function; IDA already owns the applied xrefs/metadata.
-        debug_log(
-            "[chernobog][rax] late ingress=%s applied IDB analysis at %llx\n",
-            trigger != nullptr ? trigger : "unknown",
-            static_cast<unsigned long long>(function_ea));
+        debug_log("[chernobog][rax] late ingress=%s applied IDB analysis at %llx\n",
+                  trigger != nullptr ? trigger : "unknown",
+                  static_cast<unsigned long long>(function_ea));
     }
 }
 
@@ -345,30 +314,30 @@ static void ensure_cached_rax_fallback(
 static bool configure_max_funcsize()
 {
     qstring env;
-    if ( !qgetenv("CHERNOBOG_MAX_FUNCSIZE_KB", &env) || env.empty() )
+    if (!qgetenv("CHERNOBOG_MAX_FUNCSIZE_KB", &env) || env.empty())
         return true;
 
     // Decimal only, 1 KiB..1 GiB. Apart from rejecting ambiguous input, the
     // upper bound keeps MAX_FUNCSIZE * 1024 within a signed 32-bit byte count.
     uint64 value = 0;
-    for ( size_t i = 0; i < env.length(); ++i )
+    for (size_t i = 0; i < env.length(); ++i)
     {
         const char c = env[i];
-        if ( c < '0' || c > '9' )
+        if (c < '0' || c > '9')
         {
             msg("[chernobog] Invalid CHERNOBOG_MAX_FUNCSIZE_KB='%s' (decimal KiB required)\n",
                 env.c_str());
             return false;
         }
         value = value * 10 + uint64(c - '0');
-        if ( value > 1024 * 1024 )
+        if (value > 1024 * 1024)
         {
             msg("[chernobog] Invalid CHERNOBOG_MAX_FUNCSIZE_KB='%s' (maximum 1048576 KiB)\n",
                 env.c_str());
             return false;
         }
     }
-    if ( value == 0 )
+    if (value == 0)
     {
         msg("[chernobog] Invalid CHERNOBOG_MAX_FUNCSIZE_KB='0'\n");
         return false;
@@ -389,11 +358,11 @@ static bool configure_max_funcsize()
 static void check_verbose_mode()
 {
     static bool checked = false;
-    if ( !checked )
+    if (!checked)
     {
         checked = true;
         qstring env_val;
-        if ( qgetenv("CHERNOBOG_VERBOSE", &env_val) && env_val == "1" )
+        if (qgetenv("CHERNOBOG_VERBOSE", &env_val) && env_val == "1")
         {
             deobf::set_verbose(true);
             msg("[chernobog] Verbose mode enabled (CHERNOBOG_VERBOSE=1)\n");
@@ -407,27 +376,28 @@ static void check_verbose_mode()
 static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list va)
 {
     chernobog_plugmod_t *self = static_cast<chernobog_plugmod_t *>(ud);
-    if ( self == nullptr || get_dbctx_id() != self->database_id )
+    if (self == nullptr || get_dbctx_id() != self->database_id)
         return 0;
 
     // Debug: log all events
     debug_log("[chernobog] hexrays_callback event=%d\n", (int)event);
 
-    if ( self->first_hexrays_callback )
+    if (self->first_hexrays_callback)
     {
         self->first_hexrays_callback = false;
-        debug_log("[chernobog] First hexrays callback, auto_mode=%d\n", is_auto_mode_enabled() ? 1 : 0);
+        debug_log("[chernobog] First hexrays callback, auto_mode=%d\n",
+                  is_auto_mode_enabled() ? 1 : 0);
         msg("[chernobog] Hexrays callback registered and active\n");
     }
 
-    if ( event == hxe_func_printed )
+    if (event == hxe_func_printed)
     {
         cfunc_t *cfunc = va_arg(va, cfunc_t *);
-        if ( cfunc != nullptr && !is_disabled_mode_enabled() )
+        if (cfunc != nullptr && !is_disabled_mode_enabled())
         {
             ctree_string_decrypt_handler_t::annotate_runtime_cfstring_addresses(cfunc);
             ctree_string_decrypt_handler_t::annotate_runtime_use_strings(cfunc);
-            if ( chernobog_function_deobfuscation_enabled(cfunc->entry_ea) )
+            if (chernobog_function_deobfuscation_enabled(cfunc->entry_ea))
                 annotate_rotating_string_facts(cfunc);
         }
         return 0;
@@ -443,10 +413,10 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     // the supported ABI.
     const bool is_flowchart_event = event == hxe_flowchart
 #if IDA_SDK_VERSION >= 940
-        || event == hxe_flowchart_ea
+                                    || event == hxe_flowchart_ea
 #endif
         ;
-    if ( is_flowchart_event )
+    if (is_flowchart_event)
     {
         ea_t function_ea = BADADDR;
         bitset_t *reachable = nullptr;
@@ -455,14 +425,13 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         const qflow_chart_ea_t *ea_flowchart = nullptr;
 #endif
 #if IDA_SDK_VERSION >= 940
-        if ( event == hxe_flowchart_ea )
+        if (event == hxe_flowchart_ea)
         {
             ea_flowchart = va_arg(va, const qflow_chart_ea_t *);
             mba_t *mba = va_arg(va, mba_t *);
             reachable = va_arg(va, bitset_t *);
-            function_ea = ea_flowchart != nullptr
-                        ? ea_flowchart->func_ea : BADADDR;
-            if ( function_ea == BADADDR && mba != nullptr )
+            function_ea = ea_flowchart != nullptr ? ea_flowchart->func_ea : BADADDR;
+            if (function_ea == BADADDR && mba != nullptr)
                 function_ea = mba->entry_ea;
         }
         else
@@ -471,41 +440,36 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             legacy_flowchart = va_arg(va, const qflow_chart_t *);
             mba_t *mba = va_arg(va, mba_t *);
             reachable = va_arg(va, bitset_t *);
-            if ( legacy_flowchart != nullptr
-              && legacy_flowchart->pfn != nullptr )
+            if (legacy_flowchart != nullptr && legacy_flowchart->pfn != nullptr)
             {
                 function_ea = legacy_flowchart->pfn->start_ea;
             }
-            else if ( mba != nullptr )
+            else if (mba != nullptr)
                 function_ea = mba->entry_ea;
         }
 
         const bool hikari_changed = self->recover_hikari_cfg_if_ready(true);
         const bool native_changed = self->recover_native_opaque_if_ready(true);
-        if ( hikari_changed || native_changed )
+        if (hikari_changed || native_changed)
         {
-            if ( function_ea != BADADDR )
-                chernobog::hybrid::hybrid_abandon_deobfuscation_projection(
-                    uint64_t(function_ea));
-            if ( self->rax_pipeline_target == function_ea )
+            if (function_ea != BADADDR)
+                chernobog::hybrid::hybrid_abandon_deobfuscation_projection(uint64_t(function_ea));
+            if (self->rax_pipeline_target == function_ea)
                 self->rax_pipeline_target = BADADDR;
             return MERR_REDO;
         }
 
-        if ( function_ea != BADADDR && !is_disabled_mode_enabled() )
+        if (function_ea != BADADDR && !is_disabled_mode_enabled())
         {
-            if ( ensure_automatic_rax(
-                    self, function_ea, "flowchart", true) )
+            if (ensure_automatic_rax(self, function_ea, "flowchart", true))
                 self->rax_pipeline_target = function_ea;
-            if ( self->hybrid_session != nullptr
-              && self->hybrid_session->take_analysis_changes() )
+            if (self->hybrid_session != nullptr && self->hybrid_session->take_analysis_changes())
             {
                 // Static/dynamic evidence may have added exact IDB edges or
                 // metadata while this flowchart prerequisite was running.
                 // Rebuild once from the enriched database.
-                chernobog::hybrid::hybrid_abandon_deobfuscation_projection(
-                    uint64_t(function_ea));
-                if ( self->rax_pipeline_target == function_ea )
+                chernobog::hybrid::hybrid_abandon_deobfuscation_projection(uint64_t(function_ea));
+                if (self->rax_pipeline_target == function_ea)
                     self->rax_pipeline_target = BADADDR;
                 return MERR_REDO;
             }
@@ -515,28 +479,24 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         // has built a native flowchart, but has not generated microcode yet.
         // It is intentionally independent of CHERNOBOG_AUTO and distinct from
         // the later MMAT_LOCOPT deobfuscation pipeline.
-        if ( self->early_hexrays != nullptr )
+        if (self->early_hexrays != nullptr)
         {
             int changes = 0;
 #if IDA_SDK_VERSION >= 940
-            if ( ea_flowchart != nullptr )
+            if (ea_flowchart != nullptr)
             {
-                changes = self->early_hexrays->on_flowchart(
-                    ea_flowchart, reachable);
+                changes = self->early_hexrays->on_flowchart(ea_flowchart, reachable);
             }
             else
 #endif
-            if ( legacy_flowchart != nullptr )
+                if (legacy_flowchart != nullptr)
             {
-                changes = self->early_hexrays->on_flowchart(
-                    legacy_flowchart, reachable);
+                changes = self->early_hexrays->on_flowchart(legacy_flowchart, reachable);
             }
-            if ( changes > 0 )
+            if (changes > 0)
             {
-                debug_log(
-                    "[chernobog] hxe_flowchart added %d early CFG edges at %llx\n",
-                    changes,
-                    static_cast<unsigned long long>(function_ea));
+                debug_log("[chernobog] hxe_flowchart added %d early CFG edges at %llx\n", changes,
+                          static_cast<unsigned long long>(function_ea));
             }
         }
     }
@@ -544,36 +504,32 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     // A cached cfunc can be printed or attached to a pseudocode widget without
     // rebuilding its flowchart. These late hooks close that coverage gap while
     // the completed set prevents repeated exploration on refresh/navigation.
-    if ( event == hxe_func_printed )
+    if (event == hxe_func_printed)
     {
         cfunc_t *cfunc = va_arg(va, cfunc_t *);
-        if ( cfunc != nullptr )
+        if (cfunc != nullptr)
         {
-            ensure_cached_rax_fallback(
-                self, cfunc->entry_ea, "function text");
+            ensure_cached_rax_fallback(self, cfunc->entry_ea, "function text");
         }
     }
-    else if ( event == hxe_open_pseudocode
-           || event == hxe_switch_pseudocode )
+    else if (event == hxe_open_pseudocode || event == hxe_switch_pseudocode)
     {
         vdui_t *vu = va_arg(va, vdui_t *);
-        if ( vu != nullptr && vu->cfunc != nullptr )
+        if (vu != nullptr && vu->cfunc != nullptr)
         {
-            ensure_cached_rax_fallback(
-                self,
-                vu->cfunc->entry_ea,
-                event == hxe_open_pseudocode
-                    ? "pseudocode open" : "pseudocode switch");
+            ensure_cached_rax_fallback(self, vu->cfunc->entry_ea,
+                                       event == hxe_open_pseudocode ? "pseudocode open"
+                                                                    : "pseudocode switch");
         }
     }
-    else if ( event == hxe_populating_popup )
+    else if (event == hxe_populating_popup)
     {
         TWidget *widget = va_arg(va, TWidget *);
         TPopupMenu *popup = va_arg(va, TPopupMenu *);
         vdui_t *vu = va_arg(va, vdui_t *);
 
         // Add separator if we have any components
-        if ( component_registry_t::get_count() > 0 )
+        if (component_registry_t::get_count() > 0)
             attach_action_to_popup(widget, popup, nullptr);
 
         // Attach all component actions
@@ -583,10 +539,10 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     // Do not clear whole-MBA tracking or rax evidence merely because a view was
     // rendered again: the manual action itself refreshes the view, and doing so
     // previously decrypted already-patched bytes a second time.
-    else if ( event == hxe_refresh_pseudocode )
+    else if (event == hxe_refresh_pseudocode)
     {
         vdui_t *vu = va_arg(va, vdui_t *);
-        if ( vu && vu->cfunc )
+        if (vu && vu->cfunc)
         {
             ea_t func_ea = vu->cfunc->entry_ea;
             self->ctree_const_folded.erase(func_ea);
@@ -599,11 +555,11 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     // optinsn/optblock handlers still own the later deobfuscation pipeline;
     // running that whole pipeline here would duplicate work at an invalid
     // maturity.
-    else if ( event == hxe_microcode )
+    else if (event == hxe_microcode)
     {
         mba_t *mba = va_arg(va, mba_t *);
         chernobog_begin_mba_tracking(mba);
-        if ( mba != nullptr )
+        if (mba != nullptr)
         {
             // Every generated MBA will produce a distinct ctree, even for the
             // same function under DECOMP_NO_CACHE. Reset only transient tree
@@ -614,129 +570,116 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             self->ctree_indirect_call_processed.erase(func_ea);
             self->ctree_string_decrypt_processed.erase(func_ea);
         }
-        const int changes = self->early_hexrays != nullptr
-                          ? self->early_hexrays->on_microcode(mba) : 0;
-        debug_log("[chernobog] hxe_microcode: mba=%p, auto=%d\n", mba, is_auto_mode_enabled() ? 1 : 0);
-        if ( changes > 0 )
+        const int changes =
+            self->early_hexrays != nullptr ? self->early_hexrays->on_microcode(mba) : 0;
+        debug_log("[chernobog] hxe_microcode: mba=%p, auto=%d\n", mba,
+                  is_auto_mode_enabled() ? 1 : 0);
+        if (changes > 0)
         {
-            debug_log(
-                "[chernobog] hxe_microcode converted %d resolved returns\n",
-                changes);
+            debug_log("[chernobog] hxe_microcode converted %d resolved returns\n", changes);
         }
-        if ( self->early_hexrays != nullptr )
+        if (self->early_hexrays != nullptr)
         {
             const auto &stats = self->early_hexrays->stats();
-            debug_log(
-                "[chernobog] early Hex-Rays totals: flow_edges=%zu "
-                "codegen_returns=%zu generated_gotos=%zu folds=%zu "
-                "char_operands=%zu bounded_skips=%zu\n",
-                stats.flowchart_edges, stats.codegen_returns,
-                stats.generated_gotos, stats.folded_instructions,
-                stats.character_operands, stats.bounded_skips);
+            debug_log("[chernobog] early Hex-Rays totals: flow_edges=%zu "
+                      "codegen_returns=%zu generated_gotos=%zu folds=%zu "
+                      "char_operands=%zu bounded_skips=%zu\n",
+                      stats.flowchart_edges, stats.codegen_returns, stats.generated_gotos,
+                      stats.folded_instructions, stats.character_operands, stats.bounded_skips);
         }
     }
     // Constant propagation and character-store numforms need the raw,
     // preoptimized MBA. LOCOPT is too late to be stage-equivalent because
     // these rewrites are intended to improve the optimizer's input.
-    else if ( event == hxe_preoptimized )
+    else if (event == hxe_preoptimized)
     {
         mba_t *mba = va_arg(va, mba_t *);
-        chernobog::solver_evidence::Scope query_scope({int64_t(get_dbctx_id()),
-            mba ? uint64_t(mba->entry_ea) : UINT64_MAX, UINT64_MAX,
-            mba ? int(mba->maturity) : -1, "preoptimized"});
-        const int changes = self->early_hexrays != nullptr
-                          ? self->early_hexrays->on_preoptimized(mba) : 0;
-        if ( changes > 0 )
+        chernobog::solver_evidence::Scope query_scope(
+            {int64_t(get_dbctx_id()), mba ? uint64_t(mba->entry_ea) : UINT64_MAX, UINT64_MAX,
+             mba ? int(mba->maturity) : -1, "preoptimized"});
+        const int changes =
+            self->early_hexrays != nullptr ? self->early_hexrays->on_preoptimized(mba) : 0;
+        if (changes > 0)
         {
-            debug_log(
-                "[chernobog] hxe_preoptimized applied %d early rewrites at %llx\n",
-                changes,
-                static_cast<unsigned long long>(
-                    mba != nullptr ? mba->entry_ea : BADADDR));
+            debug_log("[chernobog] hxe_preoptimized applied %d early rewrites at %llx\n", changes,
+                      static_cast<unsigned long long>(mba != nullptr ? mba->entry_ea : BADADDR));
         }
     }
     // Global optimization exposes exact register-defined tail targets that do
     // not exist at LOCOPT. Hex-Rays requires MERR_LOOP after any mutation at
     // this event so its global optimizer can rebuild coherent chains.
-    else if ( event == hxe_glbopt )
+    else if (event == hxe_glbopt)
     {
         mbl_array_t *mba = va_arg(va, mbl_array_t *);
-        chernobog::solver_evidence::Scope query_scope({int64_t(get_dbctx_id()),
-            mba ? uint64_t(mba->entry_ea) : UINT64_MAX, UINT64_MAX,
-            mba ? int(mba->maturity) : -1, "global-optimization"});
-        if ( mba
-          && chernobog_function_deobfuscation_enabled(mba->entry_ea)
-          && !is_disabled_mode_enabled() )
+        chernobog::solver_evidence::Scope query_scope(
+            {int64_t(get_dbctx_id()), mba ? uint64_t(mba->entry_ea) : UINT64_MAX, UINT64_MAX,
+             mba ? int(mba->maturity) : -1, "global-optimization"});
+        if (mba && chernobog_function_deobfuscation_enabled(mba->entry_ea) &&
+            !is_disabled_mode_enabled())
         {
             deobf_ctx_t branch_ctx;
             branch_ctx.mba = mba;
             branch_ctx.func_ea = mba->entry_ea;
             int changes = 0;
-            if ( chernobog_t::has_indirect_branches(mba) )
+            if (chernobog_t::has_indirect_branches(mba))
             {
-                changes += chernobog_t::resolve_indirect_branches(
-                    mba, &branch_ctx);
+                changes += chernobog_t::resolve_indirect_branches(mba, &branch_ctx);
             }
-            changes += chernobog::jump_optimizer_handler_t::
-                run_local_constant_branches(mba, &branch_ctx);
-            if ( changes > 0 )
+            changes +=
+                chernobog::jump_optimizer_handler_t::run_local_constant_branches(mba, &branch_ctx);
+            if (changes > 0)
             {
-                chernobog::hybrid::hybrid_seal_deobfuscation_projection(
-                    uint64_t(mba->entry_ea));
-                debug_log(
-                    "[chernobog] hxe_glbopt applied %d branch rewrites at %llx\n",
-                    changes,
-                    static_cast<unsigned long long>(mba->entry_ea));
+                chernobog::hybrid::hybrid_seal_deobfuscation_projection(uint64_t(mba->entry_ea));
+                debug_log("[chernobog] hxe_glbopt applied %d branch rewrites at %llx\n", changes,
+                          static_cast<unsigned long long>(mba->entry_ea));
                 return compatible_merr_loop();
             }
         }
     }
     // Apply ctree-level optimizations after decompilation
-    else if ( event == hxe_maturity )
+    else if (event == hxe_maturity)
     {
         cfunc_t *cfunc = va_arg(va, cfunc_t *);
         ctree_maturity_t maturity = va_argi(va, ctree_maturity_t);
         // Defensive ingress for decompiler variants that omit both flowchart
         // callbacks. CMAT_BUILT is the first ctree event and therefore still
         // guarantees one bounded emulation before final pseudocode is emitted.
-        if ( cfunc != nullptr && maturity == CMAT_BUILT
-          && self->rax_pipeline_target != cfunc->entry_ea )
+        if (cfunc != nullptr && maturity == CMAT_BUILT &&
+            self->rax_pipeline_target != cfunc->entry_ea)
         {
-            if ( ensure_automatic_rax(
-                    self, cfunc->entry_ea, "ctree built", true) )
+            if (ensure_automatic_rax(self, cfunc->entry_ea, "ctree built", true))
                 self->rax_pipeline_target = cfunc->entry_ea;
-            if ( self->hybrid_session != nullptr
-              && self->hybrid_session->take_analysis_changes() )
+            if (self->hybrid_session != nullptr && self->hybrid_session->take_analysis_changes())
             {
-                debug_log(
-                    "[chernobog][rax] ctree fallback applied IDB analysis at %llx\n",
-                    static_cast<unsigned long long>(cfunc->entry_ea));
+                debug_log("[chernobog][rax] ctree fallback applied IDB analysis at %llx\n",
+                          static_cast<unsigned long long>(cfunc->entry_ea));
             }
         }
         // Run at CMAT_FINAL when the ctree is complete
         // Track by function to avoid infinite recursion if ctree modification triggers reprocessing
-        if ( cfunc && maturity == CMAT_FINAL
-          && chernobog_function_deobfuscation_enabled(cfunc->entry_ea)
-          && !is_disabled_mode_enabled() )
+        if (cfunc && maturity == CMAT_FINAL &&
+            chernobog_function_deobfuscation_enabled(cfunc->entry_ea) &&
+            !is_disabled_mode_enabled())
         {
             ea_t func_ea = cfunc->entry_ea;
             // Constant folding for XOR patterns
-            if ( self->ctree_const_folded.find(func_ea) == self->ctree_const_folded.end() )
+            if (self->ctree_const_folded.find(func_ea) == self->ctree_const_folded.end())
             {
                 self->ctree_const_folded.insert(func_ea);
                 ctree_const_fold_handler_t::run(cfunc);
             }
             // Switch folding for opaque predicates
-            if ( self->ctree_switch_folded.find(func_ea) == self->ctree_switch_folded.end() )
+            if (self->ctree_switch_folded.find(func_ea) == self->ctree_switch_folded.end())
             {
                 self->ctree_switch_folded.insert(func_ea);
                 ctree_switch_fold_handler_t::run(cfunc);
             }
             // Indirect call resolution (Hikari IndirectCall)
-            if ( self->ctree_indirect_call_processed.find(func_ea) == self->ctree_indirect_call_processed.end() )
+            if (self->ctree_indirect_call_processed.find(func_ea) ==
+                self->ctree_indirect_call_processed.end())
             {
                 self->ctree_indirect_call_processed.insert(func_ea);
-                if ( ctree_indirect_call_handler_t::detect(cfunc) )
+                if (ctree_indirect_call_handler_t::detect(cfunc))
                 {
                     ctree_indirect_call_handler_t::run(cfunc, nullptr);
                 }
@@ -746,50 +689,45 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         // Runtime plaintext remains scoped to the one function currently in
         // this Hex-Rays pipeline. Automatic decompile-all can reach this path,
         // but each cfunc must own an exact display-eligible rax projection.
-        const bool ctree_strings_ready = cfunc != nullptr
-          && maturity == CMAT_FINAL && !is_disabled_mode_enabled();
+        const bool ctree_strings_ready =
+            cfunc != nullptr && maturity == CMAT_FINAL && !is_disabled_mode_enabled();
         // Hex-Rays can refine the entry prototype after the last microcode
         // pass. Seal the still-owned display projection before its exact
         // profile check, rather than only after string materialization.
-        if ( ctree_strings_ready && self->rax_pipeline_target == cfunc->entry_ea )
-            chernobog::hybrid::hybrid_seal_deobfuscation_projection(
-                uint64_t(cfunc->entry_ea));
-        const bool runtime_strings_available = ctree_strings_ready
-          && !chernobog::hybrid::
-                hybrid_current_runtime_strings_for_decompilation(
-                    uint64_t(cfunc->entry_ea)).empty();
-        const bool static_strings_detected = ctree_strings_ready
-          && chernobog_function_deobfuscation_enabled(cfunc->entry_ea)
-          && !runtime_strings_available
-          && ctree_string_decrypt_handler_t::detect(cfunc);
-        if ( ctree_strings_ready
-          && (runtime_strings_available || static_strings_detected) )
+        if (ctree_strings_ready && self->rax_pipeline_target == cfunc->entry_ea)
+            chernobog::hybrid::hybrid_seal_deobfuscation_projection(uint64_t(cfunc->entry_ea));
+        const bool runtime_strings_available =
+            ctree_strings_ready &&
+            !chernobog::hybrid::hybrid_current_runtime_strings_for_decompilation(
+                 uint64_t(cfunc->entry_ea))
+                 .empty();
+        const bool static_strings_detected =
+            ctree_strings_ready && chernobog_function_deobfuscation_enabled(cfunc->entry_ea) &&
+            !runtime_strings_available && ctree_string_decrypt_handler_t::detect(cfunc);
+        if (ctree_strings_ready && (runtime_strings_available || static_strings_detected))
         {
             const ea_t func_ea = cfunc->entry_ea;
-            const auto processed =
-                self->ctree_string_decrypt_processed.find(func_ea);
-            if ( processed == self->ctree_string_decrypt_processed.end()
-              || processed->second != cfunc )
+            const auto processed = self->ctree_string_decrypt_processed.find(func_ea);
+            if (processed == self->ctree_string_decrypt_processed.end() ||
+                processed->second != cfunc)
             {
                 self->ctree_string_decrypt_processed[func_ea] = cfunc;
                 deobf_ctx_t str_ctx;
                 str_ctx.cfunc = cfunc;
                 str_ctx.func_ea = func_ea;
-                const int changes = ctree_string_decrypt_handler_t::run(
-                    cfunc, &str_ctx, maturity);
-                if ( changes > 0 )
+                const int changes = ctree_string_decrypt_handler_t::run(cfunc, &str_ctx, maturity);
+                if (changes > 0)
                     msg("[chernobog] Ctree string display: applied %d expression changes\n",
                         changes);
             }
         }
-        if ( cfunc != nullptr && maturity == CMAT_FINAL )
+        if (cfunc != nullptr && maturity == CMAT_FINAL)
         {
-            if ( !is_disabled_mode_enabled()
-              && chernobog_function_deobfuscation_enabled(cfunc->entry_ea) )
+            if (!is_disabled_mode_enabled() &&
+                chernobog_function_deobfuscation_enabled(cfunc->entry_ea))
                 capture_rotating_string_facts(cfunc);
-            chernobog::hybrid::hybrid_finish_deobfuscation_projection(
-                uint64_t(cfunc->entry_ea));
-            if ( self->rax_pipeline_target == cfunc->entry_ea )
+            chernobog::hybrid::hybrid_finish_deobfuscation_projection(uint64_t(cfunc->entry_ea));
+            if (self->rax_pipeline_target == cfunc->entry_ea)
                 self->rax_pipeline_target = BADADDR;
         }
     }
@@ -801,10 +739,10 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
 //--------------------------------------------------------------------------
 static bool is_hexrays_plugin(const plugin_t *entry)
 {
-    if ( entry == nullptr || entry->wanted_name == nullptr )
+    if (entry == nullptr || entry->wanted_name == nullptr)
         return false;
-    return streq(entry->wanted_name, "Hex-Rays Decompiler")
-        || streq(entry->wanted_name, "Hex-Rays Cloud Decompiler");
+    return streq(entry->wanted_name, "Hex-Rays Decompiler") ||
+           streq(entry->wanted_name, "Hex-Rays Cloud Decompiler");
 }
 
 void chernobog_plugmod_t::clear_processing_state()
@@ -819,20 +757,18 @@ void chernobog_plugmod_t::clear_processing_state()
     hikari_cfg_attempted = false;
     native_opaque_attempted = false;
     chernobog_clear_all_tracking();
-    if ( hybrid_session )
+    if (hybrid_session)
         hybrid_session->clear();
-    if ( early_hexrays )
+    if (early_hexrays)
         early_hexrays->reset();
 }
 
 bool chernobog_plugmod_t::recover_hikari_cfg_if_ready(bool force)
 {
-    debug_log(
-        "[chernobog] CFG readiness: attempted=%d mode=%d auto_ok=%d force=%d\n",
-        hikari_cfg_attempted ? 1 : 0, hikari_cfg_handler_t::mode(),
-        auto_is_ok() ? 1 : 0, force ? 1 : 0);
-    if ( hikari_cfg_attempted || hikari_cfg_handler_t::mode() == 0
-      || (!force && !auto_is_ok()) )
+    debug_log("[chernobog] CFG readiness: attempted=%d mode=%d auto_ok=%d force=%d\n",
+              hikari_cfg_attempted ? 1 : 0, hikari_cfg_handler_t::mode(), auto_is_ok() ? 1 : 0,
+              force ? 1 : 0);
+    if (hikari_cfg_attempted || hikari_cfg_handler_t::mode() == 0 || (!force && !auto_is_ok()))
     {
         return false;
     }
@@ -842,29 +778,25 @@ bool chernobog_plugmod_t::recover_hikari_cfg_if_ready(bool force)
     hikari_cfg_attempted = true;
     const hikari_cfg_stats_t stats = hikari_cfg_handler_t::run();
     last_hikari_cfg_stats = stats;
-    debug_log(
-        "[chernobog] CFG stats: slots=%d indirect=%d recovered=%d patched=%d "
-        "reachable=%d\n",
-        stats.root_state_slots, stats.terminal_indirect_branches,
-        stats.recovered_dispatchers, stats.patched_dispatchers,
-        stats.reachable_functions);
-    msg(
-        "[chernobog] Hikari CFG recovery: %d/%d dispatchers, %d compact "
+    debug_log("[chernobog] CFG stats: slots=%d indirect=%d recovered=%d patched=%d "
+              "reachable=%d\n",
+              stats.root_state_slots, stats.terminal_indirect_branches, stats.recovered_dispatchers,
+              stats.patched_dispatchers, stats.reachable_functions);
+    msg("[chernobog] Hikari CFG recovery: %d/%d dispatchers, %d compact "
         "patches, %d reachable functions\n",
-        stats.recovered_dispatchers, stats.terminal_indirect_branches,
-        stats.patched_dispatchers, stats.reachable_functions);
+        stats.recovered_dispatchers, stats.terminal_indirect_branches, stats.patched_dispatchers,
+        stats.reachable_functions);
     return stats.patched_dispatchers > 0;
 }
 
 bool chernobog_plugmod_t::recover_native_opaque_if_ready(bool force)
 {
-    debug_log(
-        "[chernobog] Native predicate readiness: attempted=%d mode=%d "
-        "auto_ok=%d force=%d\n",
-        native_opaque_attempted ? 1 : 0, native_opaque_handler_t::mode(),
-        auto_is_ok() ? 1 : 0, force ? 1 : 0);
-    if ( native_opaque_attempted || native_opaque_handler_t::mode() == 0
-      || is_disabled_mode_enabled() || (!force && !auto_is_ok()) )
+    debug_log("[chernobog] Native predicate readiness: attempted=%d mode=%d "
+              "auto_ok=%d force=%d\n",
+              native_opaque_attempted ? 1 : 0, native_opaque_handler_t::mode(),
+              auto_is_ok() ? 1 : 0, force ? 1 : 0);
+    if (native_opaque_attempted || native_opaque_handler_t::mode() == 0 ||
+        is_disabled_mode_enabled() || (!force && !auto_is_ok()))
     {
         return false;
     }
@@ -872,27 +804,20 @@ bool chernobog_plugmod_t::recover_native_opaque_if_ready(bool force)
     native_opaque_attempted = true;
     const native_opaque_stats_t stats = native_opaque_handler_t::run();
     last_native_opaque_stats = stats;
-    debug_log(
-        "[chernobog] Native predicate stats: functions=%d blocks=%d "
-        "conditional=%d proved=%d patched=%d\n",
-        stats.functions_scanned, stats.blocks_scanned,
-        stats.conditional_branches, stats.predicates_proved,
-        stats.branches_patched);
-    msg(
-        "[chernobog] Native opaque predicates: %d/%d proved, %d reversible "
+    debug_log("[chernobog] Native predicate stats: functions=%d blocks=%d "
+              "conditional=%d proved=%d patched=%d\n",
+              stats.functions_scanned, stats.blocks_scanned, stats.conditional_branches,
+              stats.predicates_proved, stats.branches_patched);
+    msg("[chernobog] Native opaque predicates: %d/%d proved, %d reversible "
         "patches\n",
-        stats.predicates_proved, stats.conditional_branches,
-        stats.branches_patched);
+        stats.predicates_proved, stats.conditional_branches, stats.branches_patched);
     return stats.branches_patched > 0;
 }
 
 //--------------------------------------------------------------------------
 // chernobog::idc::Host implementation
 //--------------------------------------------------------------------------
-bool chernobog_plugmod_t::auto_mode() const
-{
-    return is_auto_mode_enabled();
-}
+bool chernobog_plugmod_t::auto_mode() const { return is_auto_mode_enabled(); }
 
 // The startup decision this overrides is itself process-wide, so the override
 // is too; the execution policy it configures remains per-database.
@@ -901,13 +826,11 @@ void chernobog_plugmod_t::set_auto_mode(bool enabled)
     s_auto_mode_override = enabled ? 1 : 0;
     chernobog_configure_automatic_deobfuscation(enabled);
     msg("[chernobog] Automatic emulation and deobfuscation %s for this "
-        "process\n", enabled ? "enabled" : "disabled");
+        "process\n",
+        enabled ? "enabled" : "disabled");
 }
 
-bool chernobog_plugmod_t::transformations_disabled() const
-{
-    return is_disabled_mode_enabled();
-}
+bool chernobog_plugmod_t::transformations_disabled() const { return is_disabled_mode_enabled(); }
 
 // An explicit request re-arms the one-shot latch first, so the pass runs even
 // when the automatic path already attempted it, and the automatic path will
@@ -916,26 +839,25 @@ bool chernobog_plugmod_t::transformations_disabled() const
 bool chernobog_plugmod_t::run_hikari_cfg(hikari_cfg_stats_t *out)
 {
     const bool eligible = hikari_cfg_handler_t::mode() != 0;
-    if ( eligible )
+    if (eligible)
     {
         hikari_cfg_attempted = false;
         (void)recover_hikari_cfg_if_ready(true);
     }
-    if ( out != nullptr )
+    if (out != nullptr)
         *out = eligible ? last_hikari_cfg_stats : hikari_cfg_stats_t();
     return eligible;
 }
 
 bool chernobog_plugmod_t::run_native_opaque(native_opaque_stats_t *out)
 {
-    const bool eligible = native_opaque_handler_t::mode() != 0
-                       && !is_disabled_mode_enabled();
-    if ( eligible )
+    const bool eligible = native_opaque_handler_t::mode() != 0 && !is_disabled_mode_enabled();
+    if (eligible)
     {
         native_opaque_attempted = false;
         (void)recover_native_opaque_if_ready(true);
     }
-    if ( out != nullptr )
+    if (out != nullptr)
         *out = eligible ? last_native_opaque_stats : native_opaque_stats_t();
     return eligible;
 }
@@ -943,22 +865,18 @@ bool chernobog_plugmod_t::run_native_opaque(native_opaque_stats_t *out)
 bool chernobog_plugmod_t::activate()
 {
     debug_log("[chernobog] activate called, already_init=%d, dbctx=%lld\n",
-        hexrays_initialized ? 1 : 0,
-        static_cast<long long>(get_dbctx_id()));
+              hexrays_initialized ? 1 : 0, static_cast<long long>(get_dbctx_id()));
 
-    if ( hexrays_initialized )
+    if (hexrays_initialized)
         return true;
 
     msg("[chernobog] build=%s dirty=%s source=%s sdk=%s rax=%.12s "
         "dbctx=%lld\n",
-        chernobog::build_provenance::revision,
-        chernobog::build_provenance::dirty,
-        chernobog::build_provenance::source_fingerprint,
-        chernobog::build_provenance::ida_sdk,
-        chernobog::build_provenance::rax_revision,
-        static_cast<long long>(database_id));
+        chernobog::build_provenance::revision, chernobog::build_provenance::dirty,
+        chernobog::build_provenance::source_fingerprint, chernobog::build_provenance::ida_sdk,
+        chernobog::build_provenance::rax_revision, static_cast<long long>(database_id));
 
-    if ( !init_hexrays_plugin() )
+    if (!init_hexrays_plugin())
     {
         debug_log("[chernobog] init_hexrays_plugin() failed\n");
         return false;
@@ -966,12 +884,12 @@ bool chernobog_plugmod_t::activate()
 
     debug_log("[chernobog] init_hexrays_plugin() succeeded\n");
 
-    if ( !configure_max_funcsize() )
+    if (!configure_max_funcsize())
         return false;
 
     // A unique plugmod pointer distinguishes callbacks in concurrent IDBs.
     debug_log("[chernobog] Installing Hex-Rays callback...\n");
-    if ( !install_hexrays_callback(hexrays_callback, this) )
+    if (!install_hexrays_callback(hexrays_callback, this))
     {
         debug_log("[chernobog] install_hexrays_callback() failed\n");
         msg("[chernobog] Failed to install Hex-Rays callback\n");
@@ -980,9 +898,8 @@ bool chernobog_plugmod_t::activate()
     hexrays_initialized = true;
     debug_log("[chernobog] Hex-Rays callback installed\n");
 
-    early_hexrays.reset(
-        new chernobog::ida_analysis::EarlyHexRaysAnalysis());
-    if ( !early_hexrays->install() )
+    early_hexrays.reset(new chernobog::ida_analysis::EarlyHexRaysAnalysis());
+    if (!early_hexrays->install())
     {
         msg("[chernobog] Early Hex-Rays call/pop codegen filter was not installed; callback-stage analysis remains active\n");
     }
@@ -991,10 +908,10 @@ bool chernobog_plugmod_t::activate()
     const bool auto_mode = is_auto_mode_enabled();
     const bool disabled = is_disabled_mode_enabled();
 
-    if ( disabled )
+    if (disabled)
     {
         clear_processing_state();
-        if ( is_reset_mode_enabled() )
+        if (is_reset_mode_enabled())
         {
             clear_cached_cfuncs();
             msg("[chernobog] Cleared Hex-Rays decompiler cache (CHERNOBOG_RESET=1)\n");
@@ -1005,7 +922,7 @@ bool chernobog_plugmod_t::activate()
     }
 
     debug_log("[chernobog] Components registered: %d, auto=%d\n",
-        (int)component_registry_t::get_count(), auto_mode ? 1 : 0);
+              (int)component_registry_t::get_count(), auto_mode ? 1 : 0);
     msg("[chernobog] Chernobog (Hikari Deobfuscator) initializing (%d components registered, auto=%d)\n",
         (int)component_registry_t::get_count(), auto_mode ? 1 : 0);
 
@@ -1015,7 +932,7 @@ bool chernobog_plugmod_t::activate()
     chernobog_configure_automatic_deobfuscation(auto_mode);
     debug_log("[chernobog] init_all() returned %d components initialized\n", initialized);
 
-    if ( component_registry_t::get_count() != 0 && !components_initialized )
+    if (component_registry_t::get_count() != 0 && !components_initialized)
     {
         msg("[chernobog] No components initialized; activation failed\n");
         early_hexrays.reset();
@@ -1027,19 +944,19 @@ bool chernobog_plugmod_t::activate()
     // Clear address-keyed state for this database. The optional cache reset
     // additionally invalidates Hex-Rays' persisted decompilation results.
     clear_processing_state();
-    if ( is_reset_mode_enabled() )
+    if (is_reset_mode_enabled())
     {
         clear_cached_cfuncs();
         msg("[chernobog] Cleared Hex-Rays decompiler cache (CHERNOBOG_RESET=1)\n");
     }
 
-    if ( ida_analysis && auto_is_ok() )
+    if (ida_analysis && auto_is_ok())
         ida_analysis->on_autoanalysis_complete();
     recover_hikari_cfg_if_ready();
     recover_native_opaque_if_ready();
 
     msg("[chernobog] Plugin ready (%d components initialized)\n", initialized);
-    if ( auto_mode )
+    if (auto_mode)
         msg("[chernobog] *** AUTO MODE ACTIVE - will emulate and deobfuscate on decompilation ***\n");
 
     msg("[chernobog] Use Ctrl+Shift+D to deobfuscate current function\n");
@@ -1049,13 +966,12 @@ bool chernobog_plugmod_t::activate()
 
 void chernobog_plugmod_t::schedule_activation_retry()
 {
-    if ( hexrays_initialized || activation_timer != nullptr )
+    if (hexrays_initialized || activation_timer != nullptr)
         return;
 
     activation_attempts = 0;
-    activation_timer = register_timer(
-        100, activation_retry_callback, this);
-    if ( activation_timer == nullptr )
+    activation_timer = register_timer(100, activation_retry_callback, this);
+    if (activation_timer == nullptr)
     {
         // Timers are GUI-only. IDALib and idat retain event-driven retries at
         // database completion and at the first explicit plugin invocation.
@@ -1065,7 +981,7 @@ void chernobog_plugmod_t::schedule_activation_retry()
 
 void chernobog_plugmod_t::cancel_activation_retry()
 {
-    if ( activation_timer != nullptr )
+    if (activation_timer != nullptr)
     {
         unregister_timer(activation_timer);
         activation_timer = nullptr;
@@ -1076,11 +992,11 @@ void chernobog_plugmod_t::cancel_activation_retry()
 int idaapi chernobog_plugmod_t::activation_retry_callback(void *ud)
 {
     chernobog_plugmod_t *self = static_cast<chernobog_plugmod_t *>(ud);
-    if ( self == nullptr )
+    if (self == nullptr)
         return -1;
 
     ++self->activation_attempts;
-    if ( self->activate() )
+    if (self->activate())
     {
         self->activation_timer = nullptr;
         self->activation_attempts = 0;
@@ -1089,7 +1005,7 @@ int idaapi chernobog_plugmod_t::activation_retry_callback(void *ud)
 
     // Bound autonomous retries to 15 s. UI/plugin/database notifications can
     // still start a new bounded window after a material loader-state change.
-    if ( self->activation_attempts >= 60 )
+    if (self->activation_attempts >= 60)
     {
         self->activation_timer = nullptr;
         msg("[chernobog] Hex-Rays activation retry window expired; "
@@ -1101,17 +1017,16 @@ int idaapi chernobog_plugmod_t::activation_retry_callback(void *ud)
 
 void chernobog_plugmod_t::deactivate()
 {
-    if ( !hexrays_initialized && !components_initialized
-      && early_hexrays == nullptr )
+    if (!hexrays_initialized && !components_initialized && early_hexrays == nullptr)
         return;
 
     // ui_destroying_plugmod invokes this while the decompiler dispatcher is
     // still valid. This prevents teardown calls after Hex-Rays module data is
     // destroyed, irrespective of plugin unload order.
-    if ( get_hexdsp() == nullptr )
+    if (get_hexdsp() == nullptr)
     {
         debug_log("[chernobog] Hex-Rays disappeared before teardown\n");
-        if ( early_hexrays != nullptr )
+        if (early_hexrays != nullptr)
         {
             early_hexrays->uninstall(false);
             early_hexrays.reset();
@@ -1121,21 +1036,21 @@ void chernobog_plugmod_t::deactivate()
         return;
     }
 
-    if ( hexrays_initialized )
+    if (hexrays_initialized)
     {
         const int removed = remove_hexrays_callback(hexrays_callback, this);
         debug_log("[chernobog] Removed %d Hex-Rays callbacks\n", removed);
         hexrays_initialized = false;
     }
 
-    if ( early_hexrays != nullptr )
+    if (early_hexrays != nullptr)
     {
         early_hexrays->uninstall(true);
         early_hexrays.reset();
     }
 
     int terminated = 0;
-    if ( components_initialized )
+    if (components_initialized)
     {
         terminated = component_registry_t::done_all();
         components_initialized = false;
@@ -1149,27 +1064,27 @@ void chernobog_plugmod_t::deactivate()
 static ssize_t idaapi ui_callback(void *ud, int event_id, va_list va)
 {
     chernobog_plugmod_t *self = static_cast<chernobog_plugmod_t *>(ud);
-    if ( self == nullptr || get_dbctx_id() != self->database_id )
+    if (self == nullptr || get_dbctx_id() != self->database_id)
         return 0;
 
-    if ( event_id == ui_ready_to_run || event_id == ui_database_inited )
+    if (event_id == ui_ready_to_run || event_id == ui_database_inited)
     {
-        if ( !self->activate() )
+        if (!self->activate())
             self->schedule_activation_retry();
     }
-    else if ( event_id == ui_plugin_loaded )
+    else if (event_id == ui_plugin_loaded)
     {
         // Retrying once per plugin load is bounded and also supports renamed
         // or cloud decompiler variants without relying on display strings.
         (void)va_arg(va, const plugin_info_t *);
-        if ( !self->hexrays_initialized && !self->activate() )
+        if (!self->hexrays_initialized && !self->activate())
             self->schedule_activation_retry();
     }
-    else if ( event_id == ui_destroying_plugmod )
+    else if (event_id == ui_destroying_plugmod)
     {
         (void)va_arg(va, const plugmod_t *);
         const plugin_t *entry = va_arg(va, const plugin_t *);
-        if ( is_hexrays_plugin(entry) )
+        if (is_hexrays_plugin(entry))
             self->deactivate();
     }
     return 0;
@@ -1178,22 +1093,22 @@ static ssize_t idaapi ui_callback(void *ud, int event_id, va_list va)
 static ssize_t idaapi idb_callback(void *ud, int event_id, va_list arguments)
 {
     chernobog_plugmod_t *self = static_cast<chernobog_plugmod_t *>(ud);
-    if ( self != nullptr && get_dbctx_id() == self->database_id )
+    if (self != nullptr && get_dbctx_id() == self->database_id)
     {
-        if ( self->ida_analysis )
+        if (self->ida_analysis)
             self->ida_analysis->on_database_event(event_id, arguments);
-        if ( event_id == idb_event::closebase )
+        if (event_id == idb_event::closebase)
         {
             chernobog::vm::clear_native_temporal_strings();
             self->clear_processing_state();
-            if ( self->ida_analysis )
+            if (self->ida_analysis)
                 self->ida_analysis->reset();
         }
-        else if ( event_id == idb_event::auto_empty_finally )
+        else if (event_id == idb_event::auto_empty_finally)
         {
-            if ( !self->hexrays_initialized && !self->activate() )
+            if (!self->hexrays_initialized && !self->activate())
                 self->schedule_activation_retry();
-            if ( self->ida_analysis )
+            if (self->ida_analysis)
                 self->ida_analysis->on_autoanalysis_complete();
             self->recover_hikari_cfg_if_ready();
             self->recover_native_opaque_if_ready();
@@ -1206,24 +1121,23 @@ chernobog_plugmod_t::chernobog_plugmod_t()
 {
     database_id = get_dbctx_id();
     debug_log("[chernobog] Per-IDB plugmod created, dbctx=%lld\n",
-        static_cast<long long>(get_dbctx_id()));
+              static_cast<long long>(get_dbctx_id()));
 
     ida_analysis.reset(new chernobog::ida_analysis::NativeAnalysisEngine());
-    hybrid_session.reset(new chernobog::hybrid::Session(
-        static_cast<int64_t>(get_dbctx_id())));
+    hybrid_session.reset(new chernobog::hybrid::Session(static_cast<int64_t>(get_dbctx_id())));
 
     idb_hooked = hook_to_notification_point(HT_IDB, idb_callback, this);
     ui_hooked = hook_to_notification_point(HT_UI, ui_callback, this);
-    if ( !idb_hooked || !ui_hooked )
+    if (!idb_hooked || !ui_hooked)
     {
-        debug_log("[chernobog] Hook registration failed: IDB=%d UI=%d\n",
-            idb_hooked ? 1 : 0, ui_hooked ? 1 : 0);
+        debug_log("[chernobog] Hook registration failed: IDB=%d UI=%d\n", idb_hooked ? 1 : 0,
+                  ui_hooked ? 1 : 0);
     }
 
     // The IDC surface is bound before activation so a batch script can drive
     // it even when Hex-Rays is not ready yet; each call retries activation.
     idc_installed = chernobog::idc::install(this);
-    if ( idc_installed )
+    if (idc_installed)
     {
         msg("[chernobog] %zu IDC functions registered; run "
             "chernobog_help() for the list\n",
@@ -1234,7 +1148,7 @@ chernobog_plugmod_t::chernobog_plugmod_t()
         msg("[chernobog] IDC function registration failed\n");
     }
 
-    if ( !activate() )
+    if (!activate())
     {
         debug_log("[chernobog] Hex-Rays not ready; activation deferred\n");
         msg("[chernobog] Waiting for Hex-Rays decompiler...\n");
@@ -1245,14 +1159,14 @@ chernobog_plugmod_t::chernobog_plugmod_t()
 chernobog_plugmod_t::~chernobog_plugmod_t()
 {
     cancel_activation_retry();
-    if ( idc_installed )
+    if (idc_installed)
     {
         chernobog::idc::uninstall(this);
         idc_installed = false;
     }
-    if ( idb_hooked )
+    if (idb_hooked)
         unhook_from_notification_point(HT_IDB, idb_callback, this);
-    if ( ui_hooked )
+    if (ui_hooked)
         unhook_from_notification_point(HT_UI, ui_callback, this);
 
     deactivate();
@@ -1264,17 +1178,17 @@ chernobog_plugmod_t::~chernobog_plugmod_t()
 bool idaapi chernobog_plugmod_t::run(size_t argument)
 {
     const bool ready = activate();
-    if ( !ready )
+    if (!ready)
         schedule_activation_retry();
 
     // IDA's text frontend does not register UI actions. A batch script can
     // invoke the same bounded session through ida_loader.run_plugin() after
     // setting CHERNOBOG_RAX_BATCH_EA. 0x524158 is ASCII "RAX".
-    if ( argument == 0x524158 )
+    if (argument == 0x524158)
     {
-        const bool explored = ready && hybrid_session != nullptr
-            && hybrid_session->explore_batch_target();
-        if ( explored )
+        const bool explored =
+            ready && hybrid_session != nullptr && hybrid_session->explore_batch_target();
+        if (explored)
             hybrid_session->show_last(nullptr);
         else
             msg("[chernobog][rax] Batch exploration failed: set "
@@ -1286,60 +1200,49 @@ bool idaapi chernobog_plugmod_t::run(size_t argument)
     // LOCOPT microcode and invokes the detector without enabling mutation
     // components, so regression tests can distinguish detector behavior from
     // full ctree construction cost. 0x434646 is ASCII "CFF".
-    if ( argument == 0x434646 )
+    if (argument == 0x434646)
     {
         qstring raw;
         ea_t requested = BADADDR;
-        if ( !qgetenv("CHERNOBOG_CFF_BATCH_EA", &raw) || raw.empty()
-          || !str2ea(&requested, raw.c_str(), BADADDR) )
+        if (!qgetenv("CHERNOBOG_CFF_BATCH_EA", &raw) || raw.empty() ||
+            !str2ea(&requested, raw.c_str(), BADADDR))
         {
             msg("[chernobog][cff-batch] Set CHERNOBOG_CFF_BATCH_EA to an "
                 "address in a function\n");
             return false;
         }
         const ea_t function_ea = get_func_start(requested);
-        if ( function_ea == BADADDR )
+        if (function_ea == BADADDR)
         {
             msg("[chernobog][cff-batch] No function contains %a\n", requested);
             return false;
         }
 
         hexrays_failure_t failure;
-        std::unique_ptr<mba_t> mba(gen_microcode(
-            decomp_ranges_t(function_ea),
-            &failure,
-            nullptr,
-            DECOMP_NO_CACHE,
-            MMAT_LOCOPT));
-        if ( !mba )
+        std::unique_ptr<mba_t> mba(gen_microcode(decomp_ranges_t(function_ea), &failure, nullptr,
+                                                 DECOMP_NO_CACHE, MMAT_LOCOPT));
+        if (!mba)
         {
             msg("[chernobog][cff-batch] Microcode generation failed at %a: "
-                "%s\n", function_ea, failure.desc().c_str());
+                "%s\n",
+                function_ea, failure.desc().c_str());
             return false;
         }
 
         pattern_match::flatten_info_t info;
-        const bool detected = pattern_match::detect_flatten_pattern(
-            mba.get(), &info);
+        const bool detected = pattern_match::detect_flatten_pattern(mba.get(), &info);
         msg("[chernobog][cff-batch] function=%a detected=%d kind=%d "
             "switch=%d dispatcher=%d cases=%zu returning=%zu direct=%zu "
             "frontier=%zu score=%u\n",
-            function_ea,
-            detected ? 1 : 0,
-            static_cast<int>(info.kind),
-            info.switch_block,
-            info.dispatcher_block,
-            info.case_count,
-            info.returning_target_count,
-            info.direct_return_target_count,
-            info.return_frontier_count,
-            info.confidence_score);
+            function_ea, detected ? 1 : 0, static_cast<int>(info.kind), info.switch_block,
+            info.dispatcher_block, info.case_count, info.returning_target_count,
+            info.direct_return_target_count, info.return_frontier_count, info.confidence_score);
         return detected;
     }
 
     // Plugin can be invoked manually - show info
     msg("\n=== Chernobog - Hikari Deobfuscator ===\n");
-    if ( !ready )
+    if (!ready)
         msg("Hex-Rays is not available for the current database.\n\n");
     msg("This plugin deobfuscates code protected with Hikari LLVM obfuscator.\n\n");
     msg("Supported obfuscations:\n");
@@ -1373,23 +1276,19 @@ bool idaapi chernobog_plugmod_t::run(size_t argument)
     return true;
 }
 
-static plugmod_t *idaapi init()
-{
-    return new chernobog_plugmod_t();
-}
+static plugmod_t *idaapi init() { return new chernobog_plugmod_t(); }
 
 //--------------------------------------------------------------------------
 // Plugin Descriptor
 //--------------------------------------------------------------------------
-plugin_t PLUGIN =
-{
+plugin_t PLUGIN = {
     IDP_INTERFACE_VERSION,
-    PLUGIN_MULTI,                       // one plugmod instance per database
-    init,                               // initialize
-    nullptr,                            // PLUGIN_MULTI uses plugmod destructor
-    nullptr,                            // PLUGIN_MULTI uses plugmod_t::run
-    "Chernobog - Hikari LLVM Deobfuscator", // long comment
+    PLUGIN_MULTI,                                          // one plugmod instance per database
+    init,                                                  // initialize
+    nullptr,                                               // PLUGIN_MULTI uses plugmod destructor
+    nullptr,                                               // PLUGIN_MULTI uses plugmod_t::run
+    "Chernobog - Hikari LLVM Deobfuscator",                // long comment
     "Deobfuscates Hikari-protected binaries for Hex-Rays", // help text
-    "Chernobog",                        // preferred short name
-    "Ctrl+Shift+H"                     // preferred hotkey
+    "Chernobog",                                           // preferred short name
+    "Ctrl+Shift+H"                                         // preferred hotkey
 };

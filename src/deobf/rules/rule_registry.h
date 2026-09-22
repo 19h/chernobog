@@ -21,22 +21,25 @@
 //   3. Use find_match() to find applicable rules for an instruction
 //--------------------------------------------------------------------------
 
-namespace chernobog {
-namespace rules {
+namespace chernobog
+{
+namespace rules
+{
 
 using namespace ast;
 
 //--------------------------------------------------------------------------
 // Rule Registry Singleton
 //--------------------------------------------------------------------------
-class RuleRegistry {
-public:
+class RuleRegistry
+{
+  public:
     // Singleton access
-    static RuleRegistry& instance();
+    static RuleRegistry &instance();
 
     // Delete copy/move
-    RuleRegistry(const RuleRegistry&) = delete;
-    RuleRegistry& operator=(const RuleRegistry&) = delete;
+    RuleRegistry(const RuleRegistry &) = delete;
+    RuleRegistry &operator=(const RuleRegistry &) = delete;
 
     //----------------------------------------------------------------------
     // Registration
@@ -49,10 +52,7 @@ public:
     void initialize();
 
     // Check if initialized
-    bool is_initialized() const
-    {
-        return initialized_;
-    }
+    bool is_initialized() const { return initialized_; }
 
     // Re-initialize (e.g., after configuration change)
     void reinitialize();
@@ -64,59 +64,42 @@ public:
     // Matching
     //----------------------------------------------------------------------
 
-    struct MatchResult {
-        PatternMatchingRule* rule;
+    struct MatchResult
+    {
+        PatternMatchingRule *rule;
         AstPtr matched_pattern;
         std::map<std::string, mop_t> bindings;
 
         MatchResult() : rule(nullptr) {}
-        bool matched() const
-        {
-            return rule != nullptr;
-        }
+        bool matched() const { return rule != nullptr; }
     };
 
     // Find first matching rule for instruction
-    MatchResult find_match(const minsn_t* ins);
+    MatchResult find_match(const minsn_t *ins);
 
     // Find all matching rules
-    std::vector<MatchResult> find_all_matches(const minsn_t* ins);
+    std::vector<MatchResult> find_all_matches(const minsn_t *ins);
 
     //----------------------------------------------------------------------
     // Statistics
     //----------------------------------------------------------------------
 
     // Number of registered rules
-    size_t rule_count() const
-    {
-        return rules_.size();
-    }
+    size_t rule_count() const { return rules_.size(); }
 
     // Number of semantically verified patterns
     size_t pattern_count() const;
 
     // Number of rules admitted/rejected by semantic verification.
-    size_t verified_rule_count() const
-    {
-        return verified_rule_count_;
-    }
-    size_t rejected_rule_count() const
-    {
-        return rejected_rule_count_;
-    }
+    size_t verified_rule_count() const { return verified_rule_count_; }
+    size_t rejected_rule_count() const { return rejected_rule_count_; }
 
     // Get rule hit statistics
     std::map<std::string, size_t> get_hit_statistics() const;
 
     // Total matches performed
-    size_t total_matches() const
-    {
-        return total_matches_;
-    }
-    size_t successful_matches() const
-    {
-        return successful_matches_;
-    }
+    size_t total_matches() const { return total_matches_; }
+    size_t successful_matches() const { return successful_matches_; }
 
     // Clear statistics
     void clear_statistics();
@@ -131,7 +114,7 @@ public:
     // List all rules
     std::vector<std::string> list_rules() const;
 
-private:
+  private:
     RuleRegistry() = default;
 
     std::vector<std::unique_ptr<PatternMatchingRule>> rules_;
@@ -156,13 +139,14 @@ private:
 //--------------------------------------------------------------------------
 // Registration macro for automatic rule registration
 //--------------------------------------------------------------------------
-#define REGISTER_MBA_RULE(RuleClass) \
-    namespace { \
-        static bool _registered_##RuleClass = []() { \
-            ::chernobog::rules::RuleRegistry::instance().register_rule( \
-                std::make_unique<RuleClass>()); \
-            return true; \
-        }(); \
+#define REGISTER_MBA_RULE(RuleClass)                                                               \
+    namespace                                                                                      \
+    {                                                                                              \
+    static bool _registered_##RuleClass = []()                                                     \
+    {                                                                                              \
+        ::chernobog::rules::RuleRegistry::instance().register_rule(std::make_unique<RuleClass>()); \
+        return true;                                                                               \
+    }();                                                                                           \
     }
 
 //--------------------------------------------------------------------------

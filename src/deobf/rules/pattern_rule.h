@@ -24,16 +24,19 @@
 // Forward declaration (global scope - matches deobf_types.h)
 struct deobf_ctx_t;
 
-namespace chernobog {
-namespace rules {
+namespace chernobog
+{
+namespace rules
+{
 
 using namespace ast;
 
 //--------------------------------------------------------------------------
 // Base class for all pattern matching rules
 //--------------------------------------------------------------------------
-class PatternMatchingRule {
-public:
+class PatternMatchingRule
+{
+  public:
     virtual ~PatternMatchingRule() = default;
 
     //----------------------------------------------------------------------
@@ -41,7 +44,7 @@ public:
     //----------------------------------------------------------------------
 
     // Rule name for identification and statistics
-    virtual const char* name() const = 0;
+    virtual const char *name() const = 0;
 
     // The pattern to match (obfuscated form)
     virtual AstPtr get_pattern() const = 0;
@@ -56,17 +59,11 @@ public:
     // Extra validation after structural match
     // candidate: the matched AST with mops filled in from instruction
     // Return false to reject the match
-    virtual bool check_candidate(AstPtr candidate)
-    {
-        return true;
-    }
+    virtual bool check_candidate(AstPtr candidate) { return true; }
 
     // Optional: check constraints on named constants
     // For patterns like "c_minus_2" that must equal -2
-    virtual bool check_constants(const std::map<std::string, mop_t>& bindings)
-    {
-        return true;
-    }
+    virtual bool check_constants(const std::map<std::string, mop_t> &bindings) { return true; }
 
     //----------------------------------------------------------------------
     // Apply replacement
@@ -74,70 +71,50 @@ public:
 
     // Apply the replacement pattern given variable bindings
     // Returns new instruction or nullptr on failure
-    minsn_t* apply_replacement(
-        const std::map<std::string, mop_t>& bindings,
-        mblock_t* blk,
-        minsn_t* orig_ins);
+    minsn_t *apply_replacement(const std::map<std::string, mop_t> &bindings, mblock_t *blk,
+                               minsn_t *orig_ins);
 
     //----------------------------------------------------------------------
     // Statistics
     //----------------------------------------------------------------------
 
-    void increment_hit_count()
-    {
-        ++hit_count_;
-    }
-    size_t hit_count() const
-    {
-        return hit_count_;
-    }
+    void increment_hit_count() { ++hit_count_; }
+    size_t hit_count() const { return hit_count_; }
 
-protected:
+  protected:
     PatternMatchingRule() = default;
 
-private:
+  private:
     size_t hit_count_ = 0;
 
     // Generate replacement instruction from pattern
-    minsn_t* build_replacement(
-        AstPtr replacement,
-        const std::map<std::string, mop_t>& bindings,
-        mblock_t* blk,
-        ea_t ea,
-        int size);
+    minsn_t *build_replacement(AstPtr replacement, const std::map<std::string, mop_t> &bindings,
+                               mblock_t *blk, ea_t ea, int size);
 };
 
 //--------------------------------------------------------------------------
 // Macro for easy rule definition
 //--------------------------------------------------------------------------
-#define DEFINE_MBA_RULE(ClassName, RuleName, PatternExpr, ReplacementExpr) \
-    class ClassName : public PatternMatchingRule { \
-    public: \
-        const char* name() const override { return RuleName; } \
-        AstPtr get_pattern() const override { \
-            return PatternExpr; \
-        } \
-        AstPtr get_replacement() const override { \
-            return ReplacementExpr; \
-        } \
+#define DEFINE_MBA_RULE(ClassName, RuleName, PatternExpr, ReplacementExpr)                         \
+    class ClassName : public PatternMatchingRule                                                   \
+    {                                                                                              \
+      public:                                                                                      \
+        const char *name() const override { return RuleName; }                                     \
+        AstPtr get_pattern() const override { return PatternExpr; }                                \
+        AstPtr get_replacement() const override { return ReplacementExpr; }                        \
     }
 
 //--------------------------------------------------------------------------
 // Macro for rule with constant validation
 //--------------------------------------------------------------------------
-#define DEFINE_MBA_RULE_WITH_CHECK(ClassName, RuleName, PatternExpr, ReplacementExpr, CheckFn) \
-    class ClassName : public PatternMatchingRule { \
-    public: \
-        const char* name() const override { return RuleName; } \
-        AstPtr get_pattern() const override { \
-            return PatternExpr; \
-        } \
-        AstPtr get_replacement() const override { \
-            return ReplacementExpr; \
-        } \
-        bool check_candidate(AstPtr candidate) override { \
-            return CheckFn(candidate); \
-        } \
+#define DEFINE_MBA_RULE_WITH_CHECK(ClassName, RuleName, PatternExpr, ReplacementExpr, CheckFn)     \
+    class ClassName : public PatternMatchingRule                                                   \
+    {                                                                                              \
+      public:                                                                                      \
+        const char *name() const override { return RuleName; }                                     \
+        AstPtr get_pattern() const override { return PatternExpr; }                                \
+        AstPtr get_replacement() const override { return ReplacementExpr; }                        \
+        bool check_candidate(AstPtr candidate) override { return CheckFn(candidate); }             \
     }
 
 //--------------------------------------------------------------------------
@@ -145,99 +122,46 @@ private:
 //--------------------------------------------------------------------------
 
 // Create variable leaves
-inline AstPtr x_0()
-{
-    return make_leaf("x_0");
-}
-inline AstPtr x_1()
-{
-    return make_leaf("x_1");
-}
-inline AstPtr x_2()
-{
-    return make_leaf("x_2");
-}
-inline AstPtr x_3()
-{
-    return make_leaf("x_3");
-}
+inline AstPtr x_0() { return make_leaf("x_0"); }
+inline AstPtr x_1() { return make_leaf("x_1"); }
+inline AstPtr x_2() { return make_leaf("x_2"); }
+inline AstPtr x_3() { return make_leaf("x_3"); }
 
 // Create constant leaves
 // Note: make_const creates constants with name = stringified value ("0", "1", "2")
 // check_const_value calls must use these names, not "c_0", "c_1", "c_2"
-inline AstPtr c_0()
-{
-    return make_const(0);
-}
-inline AstPtr c_1()
-{
-    return make_const(1);
-}
-inline AstPtr c_2()
-{
-    return make_const(2);
-}
-inline AstPtr c_minus_1()
-{
-    return make_named_const("c_minus_1", 0xFFFFFFFFFFFFFFFFULL);
-}
-inline AstPtr c_minus_2()
-{
-    return make_named_const("c_minus_2", 0xFFFFFFFFFFFFFFFEULL);
-}
+inline AstPtr c_0() { return make_const(0); }
+inline AstPtr c_1() { return make_const(1); }
+inline AstPtr c_2() { return make_const(2); }
+inline AstPtr c_minus_1() { return make_named_const("c_minus_1", 0xFFFFFFFFFFFFFFFFULL); }
+inline AstPtr c_minus_2() { return make_named_const("c_minus_2", 0xFFFFFFFFFFFFFFFEULL); }
 
 // Shorthand for common operations
-inline AstPtr add(AstPtr l, AstPtr r)
-{
-    return make_node(m_add, l, r);
-}
-inline AstPtr sub(AstPtr l, AstPtr r)
-{
-    return make_node(m_sub, l, r);
-}
-inline AstPtr mul(AstPtr l, AstPtr r)
-{
-    return make_node(m_mul, l, r);
-}
-inline AstPtr band(AstPtr l, AstPtr r)
-{
-    return make_node(m_and, l, r);
-}
-inline AstPtr bor(AstPtr l, AstPtr r)
-{
-    return make_node(m_or, l, r);
-}
-inline AstPtr bxor(AstPtr l, AstPtr r)
-{
-    return make_node(m_xor, l, r);
-}
-inline AstPtr bnot(AstPtr o)
-{
-    return make_unary(m_bnot, o);
-}
-inline AstPtr neg(AstPtr o)
-{
-    return make_unary(m_neg, o);
-}
+inline AstPtr add(AstPtr l, AstPtr r) { return make_node(m_add, l, r); }
+inline AstPtr sub(AstPtr l, AstPtr r) { return make_node(m_sub, l, r); }
+inline AstPtr mul(AstPtr l, AstPtr r) { return make_node(m_mul, l, r); }
+inline AstPtr band(AstPtr l, AstPtr r) { return make_node(m_and, l, r); }
+inline AstPtr bor(AstPtr l, AstPtr r) { return make_node(m_or, l, r); }
+inline AstPtr bxor(AstPtr l, AstPtr r) { return make_node(m_xor, l, r); }
+inline AstPtr bnot(AstPtr o) { return make_unary(m_bnot, o); }
+inline AstPtr neg(AstPtr o) { return make_unary(m_neg, o); }
 
 //--------------------------------------------------------------------------
 // Validation helpers
 //--------------------------------------------------------------------------
 
 // Check if a named constant has the expected value
-bool check_const_value(const std::map<std::string, mop_t>& bindings,
-                       const std::string& name,
-                       uint64_t expected,
-                       int size);
+bool check_const_value(const std::map<std::string, mop_t> &bindings, const std::string &name,
+                       uint64_t expected, int size);
 
 // Check if constant equals -2 in two's complement for operand size
-bool is_minus_2(const mop_t& mop);
+bool is_minus_2(const mop_t &mop);
 
 // Check if constant equals -1 (all ones)
-bool is_minus_1(const mop_t& mop);
+bool is_minus_1(const mop_t &mop);
 
 // Get constant value from mop
-bool get_const_value(const mop_t& mop, uint64_t* out);
+bool get_const_value(const mop_t &mop, uint64_t *out);
 
 } // namespace rules
 } // namespace chernobog

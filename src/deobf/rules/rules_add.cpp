@@ -1,7 +1,9 @@
 #include "rules_add.h"
 
-namespace chernobog {
-namespace rules {
+namespace chernobog
+{
+namespace rules
+{
 
 // Register all addition rules
 REGISTER_MBA_RULE(Add_HackersDelightRule_1);

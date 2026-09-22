@@ -21,8 +21,9 @@
 //   3. Trace receiver to identify class if possible
 //   4. Annotate with resolved method signature
 //--------------------------------------------------------------------------
-class objc_resolve_handler_t {
-public:
+class objc_resolve_handler_t
+{
+  public:
     // Detection
     static bool detect(mbl_array_t *mba);
 
@@ -34,33 +35,34 @@ public:
     static bool is_objc_msgsend(const char *name);
 
     // Get selector string from various sources
-    static bool get_selector_string(mbl_array_t *mba, const mop_t &sel_op,
-                                   qstring *out_selector);
+    static bool get_selector_string(mbl_array_t *mba, const mop_t &sel_op, qstring *out_selector);
 
-private:
+  private:
     // Resolved ObjC call information
-    struct objc_call_info_t {
-        ea_t call_addr;             // Address of the call
-        ea_t msgsend_addr;          // Address of objc_msgSend variant
-        qstring msgsend_variant;    // Which variant (msgSend, msgSendSuper, etc)
-        qstring selector;           // Resolved selector string
-        qstring receiver_class;     // Receiver class name (if determinable)
-        bool is_class_method;       // True if class method (+), false if instance (-)
-        bool is_super_call;         // True if msgSendSuper
-        bool is_stret;              // True if returns struct (msgSend_stret)
+    struct objc_call_info_t
+    {
+        ea_t call_addr;          // Address of the call
+        ea_t msgsend_addr;       // Address of objc_msgSend variant
+        qstring msgsend_variant; // Which variant (msgSend, msgSendSuper, etc)
+        qstring selector;        // Resolved selector string
+        qstring receiver_class;  // Receiver class name (if determinable)
+        bool is_class_method;    // True if class method (+), false if instance (-)
+        bool is_super_call;      // True if msgSendSuper
+        bool is_stret;           // True if returns struct (msgSend_stret)
     };
 
     // objc_msgSend variants
-    enum msgsend_variant_t {
+    enum msgsend_variant_t
+    {
         MSGSEND_UNKNOWN,
-        MSGSEND_NORMAL,         // objc_msgSend
-        MSGSEND_SUPER,          // objc_msgSendSuper
-        MSGSEND_SUPER2,         // objc_msgSendSuper2
-        MSGSEND_STRET,          // objc_msgSend_stret
-        MSGSEND_SUPER_STRET,    // objc_msgSendSuper_stret
-        MSGSEND_SUPER2_STRET,   // objc_msgSendSuper2_stret
-        MSGSEND_FPRET,          // objc_msgSend_fpret
-        MSGSEND_FP2RET,         // objc_msgSend_fp2ret
+        MSGSEND_NORMAL,       // objc_msgSend
+        MSGSEND_SUPER,        // objc_msgSendSuper
+        MSGSEND_SUPER2,       // objc_msgSendSuper2
+        MSGSEND_STRET,        // objc_msgSend_stret
+        MSGSEND_SUPER_STRET,  // objc_msgSendSuper_stret
+        MSGSEND_SUPER2_STRET, // objc_msgSendSuper2_stret
+        MSGSEND_FPRET,        // objc_msgSend_fpret
+        MSGSEND_FP2RET,       // objc_msgSend_fp2ret
     };
 
     // Analysis functions
@@ -69,26 +71,22 @@ private:
 
     // Find all objc_msgSend calls (direct and indirect)
     static void find_msgsend_calls(mbl_array_t *mba,
-                                  std::vector<std::pair<mblock_t*, minsn_t*>> &calls);
+                                   std::vector<std::pair<mblock_t *, minsn_t *>> &calls);
 
     // Resolve a single objc_msgSend call
-    static bool resolve_msgsend_call(mbl_array_t *mba, mblock_t *blk,
-                                    minsn_t *call_insn,
-                                    objc_call_info_t *out);
+    static bool resolve_msgsend_call(mbl_array_t *mba, mblock_t *blk, minsn_t *call_insn,
+                                     objc_call_info_t *out);
 
     // Trace selector argument
-    static bool trace_selector(mbl_array_t *mba, mblock_t *blk,
-                              minsn_t *call_insn,
-                              qstring *out_selector);
+    static bool trace_selector(mbl_array_t *mba, mblock_t *blk, minsn_t *call_insn,
+                               qstring *out_selector);
 
     // Trace receiver to find class
-    static bool trace_receiver_class(mbl_array_t *mba, mblock_t *blk,
-                                    minsn_t *call_insn,
-                                    qstring *out_class);
+    static bool trace_receiver_class(mbl_array_t *mba, mblock_t *blk, minsn_t *call_insn,
+                                     qstring *out_class);
 
     // Check if receiver is a class object (for class methods)
-    static bool is_class_object(mbl_array_t *mba, const mop_t &receiver,
-                               qstring *out_class);
+    static bool is_class_object(mbl_array_t *mba, const mop_t &receiver, qstring *out_class);
 
     // Annotation
     static void annotate_objc_call(ea_t call_addr, const objc_call_info_t &info);

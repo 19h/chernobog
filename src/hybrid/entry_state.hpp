@@ -16,13 +16,14 @@
 #include "emu_driver.hpp"
 #include "program_model.hpp"
 
-namespace chernobog::hybrid {
+namespace chernobog::hybrid
+{
 
 struct EntryInputPlan
 {
-  HybridAbi abi = HybridAbi::UNKNOWN;
-  std::string abi_name;
-  std::vector<EmuInput> inputs;
+    HybridAbi abi = HybridAbi::UNKNOWN;
+    std::string abi_name;
+    std::vector<EmuInput> inputs;
 };
 
 HybridAbi hybrid_detect_abi(HybridArch arch);
@@ -31,6 +32,6 @@ HybridAbi hybrid_detect_abi(HybridArch arch);
 // retain the deterministic seeded value; only tracker-proven constants/addresses
 // are overridden. Main thread only.
 EntryInputPlan hybrid_build_entry_inputs(HybridArch arch, uint64_t function_start,
-                                      size_t max_inputs);
+                                         size_t max_inputs);
 
 } // namespace chernobog::hybrid

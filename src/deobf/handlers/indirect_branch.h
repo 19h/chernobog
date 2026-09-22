@@ -11,8 +11,9 @@
 // particular, it does not infer a jump table from unrelated loads, symbols,
 // constants, or arithmetic across blocks.
 //--------------------------------------------------------------------------
-class indirect_branch_handler_t {
-public:
+class indirect_branch_handler_t
+{
+  public:
     static bool detect(mbl_array_t *mba);
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
 };

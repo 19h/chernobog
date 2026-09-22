@@ -5,8 +5,9 @@
 //--------------------------------------------------------------------------
 // Main deobfuscator class - Hex-Rays optimizer callback (instruction level)
 //--------------------------------------------------------------------------
-class chernobog_t : public optinsn_t {
-public:
+class chernobog_t : public optinsn_t
+{
+  public:
     chernobog_t();
     virtual ~chernobog_t();
 
@@ -36,7 +37,7 @@ public:
     static int merge_blocks(mbl_array_t *mba, deobf_ctx_t *ctx);
     static int simplify_substitutions(mbl_array_t *mba, deobf_ctx_t *ctx);
 
-private:
+  private:
     ssize_t owner_database_ = -1;
 };
 
@@ -44,14 +45,15 @@ private:
 // Block-level optimizer for CFG modifications (e.g., deflattening)
 // This runs at different maturity levels during microcode optimization
 //--------------------------------------------------------------------------
-class chernobog_optblock_t : public optblock_t {
-public:
+class chernobog_optblock_t : public optblock_t
+{
+  public:
     chernobog_optblock_t();
 
     // optblock_t interface - called for each block during optimization
     virtual int idaapi func(mblock_t *blk) override;
 
-private:
+  private:
     ssize_t owner_database_ = -1;
 };
 

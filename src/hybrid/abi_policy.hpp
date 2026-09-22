@@ -17,32 +17,33 @@
 #include "emu_input.hpp"
 #include "program_model.hpp"
 
-namespace chernobog::hybrid {
+namespace chernobog::hybrid
+{
 
 enum class HybridAbi : uint8_t
 {
-  UNKNOWN = 0,
-  X86_32,
-  X86_64_SYSV,
-  X86_64_WIN64,
-  AAPCS32,
-  AAPCS64,
-  RISCV64,
-  CORTEX_M,
-  HEXAGON,
+    UNKNOWN = 0,
+    X86_32,
+    X86_64_SYSV,
+    X86_64_WIN64,
+    AAPCS32,
+    AAPCS64,
+    RISCV64,
+    CORTEX_M,
+    HEXAGON,
 };
 
 struct HybridAbiLayout
 {
-  HybridAbi abi = HybridAbi::UNKNOWN;
-  const char *name = "unknown";
-  uint8_t pointer_size = 0;
-  bool return_address_on_stack = false;
-  uint32_t stack_argument_offset = 0; // home/shadow bytes before arg N+1
-  std::vector<int> argument_registers; // positional integer carriers (rax ids)
-  std::vector<const char *> ida_argument_registers; // same order, IDA names
+    HybridAbi abi = HybridAbi::UNKNOWN;
+    const char *name = "unknown";
+    uint8_t pointer_size = 0;
+    bool return_address_on_stack = false;
+    uint32_t stack_argument_offset = 0;               // home/shadow bytes before arg N+1
+    std::vector<int> argument_registers;              // positional integer carriers (rax ids)
+    std::vector<const char *> ida_argument_registers; // same order, IDA names
 
-  bool supported() const { return abi != HybridAbi::UNKNOWN; }
+    bool supported() const { return abi != HybridAbi::UNKNOWN; }
 };
 
 // Select an ABI from the portable architecture plus the only platform-specific
@@ -53,70 +54,67 @@ const char *hybrid_abi_name(HybridAbi abi);
 
 enum class HybridSeedValueKind : uint8_t
 {
-  ZERO = 0,
-  ONE,
-  U16_MAX,
-  I16_MAX,
-  I16_MIN,
-  IMAGE_POINTER,
-  STACK_POINTER,
-  MIXED,
+    ZERO = 0,
+    ONE,
+    U16_MAX,
+    I16_MAX,
+    I16_MIN,
+    IMAGE_POINTER,
+    STACK_POINTER,
+    MIXED,
 };
 
 struct HybridSeedValue
 {
-  uint64_t value = 0;
-  HybridSeedValueKind kind = HybridSeedValueKind::ZERO;
+    uint64_t value = 0;
+    HybridSeedValueKind kind = HybridSeedValueKind::ZERO;
 };
 
 // Produce exactly `count` deterministic values. Every eight consecutive
 // argument positions cover zero/one/integer boundaries, image/stack pointers,
 // and a mixed scalar (rotated by seed). STACK_POINTER is emitted only when the
 // supplied stack range is non-empty, non-overflowing, and the value is mapped.
-std::vector<HybridSeedValue> hybrid_seed_argument_corpus(
-    uint64_t seed, size_t count, uint64_t image_lo,
-    uint64_t stack_base, uint64_t stack_size);
+std::vector<HybridSeedValue> hybrid_seed_argument_corpus(uint64_t seed, size_t count,
+                                                         uint64_t image_lo, uint64_t stack_base,
+                                                         uint64_t stack_size);
 
 struct HybridAbiRegisterWrite
 {
-  int reg = -1;
-  uint64_t value = 0;
+    int reg = -1;
+    uint64_t value = 0;
 };
 
 struct HybridAbiStackWrite
 {
-  uint64_t address = 0;
-  std::array<uint8_t, 8> bytes{};
-  uint8_t size = 0;
+    uint64_t address = 0;
+    std::array<uint8_t, 8> bytes{};
+    uint8_t size = 0;
 };
 
 enum class HybridAbiPlanError : uint8_t
 {
-  NONE = 0,
-  UNSUPPORTED_ABI,
-  INVALID_REGISTER,
-  STACK_OFFSET_MISMATCH,
-  ADDRESS_OVERFLOW,
-  STACK_OUT_OF_RANGE,
+    NONE = 0,
+    UNSUPPORTED_ABI,
+    INVALID_REGISTER,
+    STACK_OFFSET_MISMATCH,
+    ADDRESS_OVERFLOW,
+    STACK_OUT_OF_RANGE,
 };
 
 struct HybridAbiInputPlan
 {
-  HybridAbiPlanError error = HybridAbiPlanError::NONE;
-  std::vector<HybridAbiRegisterWrite> registers;
-  std::vector<HybridAbiStackWrite> stack;
+    HybridAbiPlanError error = HybridAbiPlanError::NONE;
+    std::vector<HybridAbiRegisterWrite> registers;
+    std::vector<HybridAbiStackWrite> stack;
 
-  bool valid() const { return error == HybridAbiPlanError::NONE; }
+    bool valid() const { return error == HybridAbiPlanError::NONE; }
 };
 
 // Translate positional/explicit input into ordered rax register writes and
 // target-endian stack writes. Later explicit writes intentionally follow (and
 // therefore override) earlier positional writes, matching engine semantics.
-HybridAbiInputPlan hybrid_plan_abi_input(const HybridAbiLayout &layout,
-                                   const EmuInput &input,
-                                   uint64_t entry_sp,
-                                   uint64_t stack_base,
-                                   uint64_t stack_size,
-                                   bool big_endian);
+HybridAbiInputPlan hybrid_plan_abi_input(const HybridAbiLayout &layout, const EmuInput &input,
+                                         uint64_t entry_sp, uint64_t stack_base,
+                                         uint64_t stack_size, bool big_endian);
 
 } // namespace chernobog::hybrid

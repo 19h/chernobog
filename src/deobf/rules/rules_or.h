@@ -12,43 +12,35 @@
 //   x | y = (x ^ y) | (x & y)
 //--------------------------------------------------------------------------
 
-namespace chernobog {
-namespace rules {
+namespace chernobog
+{
+namespace rules
+{
 
 //--------------------------------------------------------------------------
 // Hacker's Delight OR Rules
 //--------------------------------------------------------------------------
 
 // (x & y) + (x ^ y) -> x | y
-class Or_HackersDelightRule_1 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "Or_HackersDelightRule_1"; }
+class Or_HackersDelightRule_1 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "Or_HackersDelightRule_1"; }
 
-    AstPtr get_pattern() const override
-    {
-        return add(band(x_0(), x_1()), bxor(x_0(), x_1()));
-    }
+    AstPtr get_pattern() const override { return add(band(x_0(), x_1()), bxor(x_0(), x_1())); }
 
-    AstPtr get_replacement() const override
-    {
-        return bor(x_0(), x_1());
-    }
+    AstPtr get_replacement() const override { return bor(x_0(), x_1()); }
 };
 
 // (x + y) - (x & y) -> x | y
-class Or_HackersDelightRule_2 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "Or_HackersDelightRule_2"; }
+class Or_HackersDelightRule_2 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "Or_HackersDelightRule_2"; }
 
-    AstPtr get_pattern() const override
-    {
-        return sub(add(x_0(), x_1()), band(x_0(), x_1()));
-    }
+    AstPtr get_pattern() const override { return sub(add(x_0(), x_1()), band(x_0(), x_1())); }
 
-    AstPtr get_replacement() const override
-    {
-        return bor(x_0(), x_1());
-    }
+    AstPtr get_replacement() const override { return bor(x_0(), x_1()); }
 };
 
 //--------------------------------------------------------------------------
@@ -56,51 +48,36 @@ public:
 //--------------------------------------------------------------------------
 
 // ~(~x & ~y) -> x | y (De Morgan)
-class Or_MbaRule_1 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "Or_MbaRule_1"; }
+class Or_MbaRule_1 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "Or_MbaRule_1"; }
 
-    AstPtr get_pattern() const override
-    {
-        return bnot(band(bnot(x_0()), bnot(x_1())));
-    }
+    AstPtr get_pattern() const override { return bnot(band(bnot(x_0()), bnot(x_1()))); }
 
-    AstPtr get_replacement() const override
-    {
-        return bor(x_0(), x_1());
-    }
+    AstPtr get_replacement() const override { return bor(x_0(), x_1()); }
 };
 
 // (x ^ y) | (x & y) -> x | y
-class Or_MbaRule_2 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "Or_MbaRule_2"; }
+class Or_MbaRule_2 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "Or_MbaRule_2"; }
 
-    AstPtr get_pattern() const override
-    {
-        return bor(bxor(x_0(), x_1()), band(x_0(), x_1()));
-    }
+    AstPtr get_pattern() const override { return bor(bxor(x_0(), x_1()), band(x_0(), x_1())); }
 
-    AstPtr get_replacement() const override
-    {
-        return bor(x_0(), x_1());
-    }
+    AstPtr get_replacement() const override { return bor(x_0(), x_1()); }
 };
 
 // (x & y) | (x ^ y) -> x | y (commutative)
-class Or_MbaRule_3 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "Or_MbaRule_3"; }
+class Or_MbaRule_3 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "Or_MbaRule_3"; }
 
-    AstPtr get_pattern() const override
-    {
-        return bor(band(x_0(), x_1()), bxor(x_0(), x_1()));
-    }
+    AstPtr get_pattern() const override { return bor(band(x_0(), x_1()), bxor(x_0(), x_1())); }
 
-    AstPtr get_replacement() const override
-    {
-        return bor(x_0(), x_1());
-    }
+    AstPtr get_replacement() const override { return bor(x_0(), x_1()); }
 };
 
 //--------------------------------------------------------------------------
@@ -108,51 +85,36 @@ public:
 //--------------------------------------------------------------------------
 
 // x | (x & y) -> x (absorption)
-class Or_FactorRule_1 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "Or_FactorRule_1"; }
+class Or_FactorRule_1 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "Or_FactorRule_1"; }
 
-    AstPtr get_pattern() const override
-    {
-        return bor(x_0(), band(x_0(), x_1()));
-    }
+    AstPtr get_pattern() const override { return bor(x_0(), band(x_0(), x_1())); }
 
-    AstPtr get_replacement() const override
-    {
-        return x_0();
-    }
+    AstPtr get_replacement() const override { return x_0(); }
 };
 
 // (x & y) | x -> x (absorption, commutative)
-class Or_FactorRule_2 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "Or_FactorRule_2"; }
+class Or_FactorRule_2 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "Or_FactorRule_2"; }
 
-    AstPtr get_pattern() const override
-    {
-        return bor(band(x_0(), x_1()), x_0());
-    }
+    AstPtr get_pattern() const override { return bor(band(x_0(), x_1()), x_0()); }
 
-    AstPtr get_replacement() const override
-    {
-        return x_0();
-    }
+    AstPtr get_replacement() const override { return x_0(); }
 };
 
 // (x | y) | (x & y) -> x | y
-class Or_FactorRule_3 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "Or_FactorRule_3"; }
+class Or_FactorRule_3 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "Or_FactorRule_3"; }
 
-    AstPtr get_pattern() const override
-    {
-        return bor(bor(x_0(), x_1()), band(x_0(), x_1()));
-    }
+    AstPtr get_pattern() const override { return bor(bor(x_0(), x_1()), band(x_0(), x_1())); }
 
-    AstPtr get_replacement() const override
-    {
-        return bor(x_0(), x_1());
-    }
+    AstPtr get_replacement() const override { return bor(x_0(), x_1()); }
 };
 
 //--------------------------------------------------------------------------
@@ -160,22 +122,17 @@ public:
 //--------------------------------------------------------------------------
 
 // (~x & y) | (x & ~y) | (x & y) -> x | y
-class Or_OllvmRule_1 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "Or_OllvmRule_1"; }
+class Or_OllvmRule_1 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "Or_OllvmRule_1"; }
 
     AstPtr get_pattern() const override
     {
-        return bor(
-            bor(band(bnot(x_0()), x_1()), band(x_0(), bnot(x_1()))),
-            band(x_0(), x_1())
-        );
+        return bor(bor(band(bnot(x_0()), x_1()), band(x_0(), bnot(x_1()))), band(x_0(), x_1()));
     }
 
-    AstPtr get_replacement() const override
-    {
-        return bor(x_0(), x_1());
-    }
+    AstPtr get_replacement() const override { return bor(x_0(), x_1()); }
 };
 
 //--------------------------------------------------------------------------
@@ -183,51 +140,36 @@ public:
 //--------------------------------------------------------------------------
 
 // ~x | ~y -> ~(x & y) (De Morgan)
-class OrBnot_FactorRule_1 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "OrBnot_FactorRule_1"; }
+class OrBnot_FactorRule_1 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "OrBnot_FactorRule_1"; }
 
-    AstPtr get_pattern() const override
-    {
-        return bor(bnot(x_0()), bnot(x_1()));
-    }
+    AstPtr get_pattern() const override { return bor(bnot(x_0()), bnot(x_1())); }
 
-    AstPtr get_replacement() const override
-    {
-        return bnot(band(x_0(), x_1()));
-    }
+    AstPtr get_replacement() const override { return bnot(band(x_0(), x_1())); }
 };
 
 // x | ~x -> -1 (all ones)
-class OrBnot_FactorRule_2 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "OrBnot_FactorRule_2"; }
+class OrBnot_FactorRule_2 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "OrBnot_FactorRule_2"; }
 
-    AstPtr get_pattern() const override
-    {
-        return bor(x_0(), bnot(x_0()));
-    }
+    AstPtr get_pattern() const override { return bor(x_0(), bnot(x_0())); }
 
-    AstPtr get_replacement() const override
-    {
-        return c_minus_1();
-    }
+    AstPtr get_replacement() const override { return c_minus_1(); }
 };
 
 // ~x | x -> -1 (all ones)
-class OrBnot_FactorRule_3 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "OrBnot_FactorRule_3"; }
+class OrBnot_FactorRule_3 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "OrBnot_FactorRule_3"; }
 
-    AstPtr get_pattern() const override
-    {
-        return bor(bnot(x_0()), x_0());
-    }
+    AstPtr get_pattern() const override { return bor(bnot(x_0()), x_0()); }
 
-    AstPtr get_replacement() const override
-    {
-        return c_minus_1();
-    }
+    AstPtr get_replacement() const override { return c_minus_1(); }
 };
 
 //--------------------------------------------------------------------------
@@ -235,61 +177,47 @@ public:
 //--------------------------------------------------------------------------
 
 // x | x -> x
-class Or_Rule_1 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "Or_Rule_1"; }
+class Or_Rule_1 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "Or_Rule_1"; }
 
-    AstPtr get_pattern() const override
-    {
-        return bor(x_0(), x_0());
-    }
+    AstPtr get_pattern() const override { return bor(x_0(), x_0()); }
 
-    AstPtr get_replacement() const override
-    {
-        return x_0();
-    }
+    AstPtr get_replacement() const override { return x_0(); }
 };
 
 // x | 0 -> x
-class Or_Rule_2 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "Or_Rule_2"; }
+class Or_Rule_2 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "Or_Rule_2"; }
 
-    AstPtr get_pattern() const override
-    {
-        return bor(x_0(), c_0());
-    }
+    AstPtr get_pattern() const override { return bor(x_0(), c_0()); }
 
-    AstPtr get_replacement() const override
-    {
-        return x_0();
-    }
+    AstPtr get_replacement() const override { return x_0(); }
 
-    bool check_constants(const std::map<std::string, mop_t>& bindings) override
+    bool check_constants(const std::map<std::string, mop_t> &bindings) override
     {
         return check_const_value(bindings, "0", 0, 8);
     }
 };
 
 // x | -1 -> -1
-class Or_Rule_3 : public PatternMatchingRule {
-public:
-    const char* name() const override { return "Or_Rule_3"; }
+class Or_Rule_3 : public PatternMatchingRule
+{
+  public:
+    const char *name() const override { return "Or_Rule_3"; }
 
-    AstPtr get_pattern() const override
-    {
-        return bor(x_0(), make_named_const("c_minus_1"));
-    }
+    AstPtr get_pattern() const override { return bor(x_0(), make_named_const("c_minus_1")); }
 
-    AstPtr get_replacement() const override
-    {
-        return c_minus_1();
-    }
+    AstPtr get_replacement() const override { return c_minus_1(); }
 
-    bool check_constants(const std::map<std::string, mop_t>& bindings) override
+    bool check_constants(const std::map<std::string, mop_t> &bindings) override
     {
         auto p = bindings.find("c_minus_1");
-        if ( p == bindings.end() ) return false;
+        if (p == bindings.end())
+            return false;
         return is_minus_1(p->second);
     }
 };

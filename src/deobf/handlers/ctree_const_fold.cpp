@@ -5,7 +5,8 @@
 #include <algorithm>
 #include <vector>
 
-namespace {
+namespace
+{
 
 struct lvar_usage_t
 {
@@ -18,23 +19,18 @@ struct lvar_usage_visitor_t final : public ctree_visitor_t
 {
     std::vector<lvar_usage_t> usage;
 
-    explicit lvar_usage_visitor_t(size_t count)
-        : ctree_visitor_t(CV_PARENTS), usage(count)
-    {
-    }
+    explicit lvar_usage_visitor_t(size_t count) : ctree_visitor_t(CV_PARENTS), usage(count) {}
 
     int idaapi visit_expr(cexpr_t *expression) override
     {
-        if ( expression == nullptr || expression->op != cot_var
-          || expression->v.idx >= usage.size() )
+        if (expression == nullptr || expression->op != cot_var || expression->v.idx >= usage.size())
         {
             return 0;
         }
 
         lvar_usage_t &entry = usage[expression->v.idx];
         cexpr_t *parent = parent_expr();
-        if ( parent != nullptr && parent->op == cot_asg
-          && parent->x == expression )
+        if (parent != nullptr && parent->op == cot_asg && parent->x == expression)
         {
             ++entry.writes;
         }
@@ -42,7 +38,7 @@ struct lvar_usage_visitor_t final : public ctree_visitor_t
         {
             ++entry.reads;
         }
-        if ( parent != nullptr && parent->op == cot_ref )
+        if (parent != nullptr && parent->op == cot_ref)
             entry.address_taken = true;
         return 0;
     }
@@ -50,75 +46,69 @@ struct lvar_usage_visitor_t final : public ctree_visitor_t
 
 bool is_discardable_rhs(const cexpr_t *expression)
 {
-    if ( expression == nullptr || expression->type.is_volatile()
-      || expression->has_side_effects() )
+    if (expression == nullptr || expression->type.is_volatile() || expression->has_side_effects())
     {
         return false;
     }
 
-    switch ( expression->op )
+    switch (expression->op)
     {
-        case cot_num:
-        case cot_fnum:
-        case cot_str:
-        case cot_obj:
-        case cot_var:
-        case cot_helper:
-            return true;
+    case cot_num:
+    case cot_fnum:
+    case cot_str:
+    case cot_obj:
+    case cot_var:
+    case cot_helper:
+        return true;
 
-        case cot_cast:
-        case cot_ref:
-        case cot_neg:
-        case cot_bnot:
-        case cot_lnot:
-            return is_discardable_rhs(expression->x);
+    case cot_cast:
+    case cot_ref:
+    case cot_neg:
+    case cot_bnot:
+    case cot_lnot:
+        return is_discardable_rhs(expression->x);
 
-        case cot_add:
-        case cot_sub:
-        case cot_mul:
-        case cot_fadd:
-        case cot_fsub:
-        case cot_fmul:
-        case cot_bor:
-        case cot_xor:
-        case cot_band:
-        case cot_shl:
-        case cot_sshr:
-        case cot_ushr:
-        case cot_eq:
-        case cot_ne:
-        case cot_sge:
-        case cot_uge:
-        case cot_sle:
-        case cot_ule:
-        case cot_sgt:
-        case cot_ugt:
-        case cot_slt:
-        case cot_ult:
-        case cot_land:
-        case cot_lor:
-            return is_discardable_rhs(expression->x)
-                && is_discardable_rhs(expression->y);
+    case cot_add:
+    case cot_sub:
+    case cot_mul:
+    case cot_fadd:
+    case cot_fsub:
+    case cot_fmul:
+    case cot_bor:
+    case cot_xor:
+    case cot_band:
+    case cot_shl:
+    case cot_sshr:
+    case cot_ushr:
+    case cot_eq:
+    case cot_ne:
+    case cot_sge:
+    case cot_uge:
+    case cot_sle:
+    case cot_ule:
+    case cot_sgt:
+    case cot_ugt:
+    case cot_slt:
+    case cot_ult:
+    case cot_land:
+    case cot_lor:
+        return is_discardable_rhs(expression->x) && is_discardable_rhs(expression->y);
 
-        default:
-            // Calls, pointer/member loads, comma/ternary expressions,
-            // assignments, increments, and potentially trapping div/mod
-            // expressions are deliberately retained.
-            return false;
+    default:
+        // Calls, pointer/member loads, comma/ternary expressions,
+        // assignments, increments, and potentially trapping div/mod
+        // expressions are deliberately retained.
+        return false;
     }
 }
 
-bool is_safe_dead_assignment_destination(
-    const lvar_t &variable,
-    const lvar_usage_t &usage)
+bool is_safe_dead_assignment_destination(const lvar_t &variable, const lvar_usage_t &usage)
 {
-    return !usage.address_taken
-        && !variable.is_arg_var() && !variable.is_result_var()
-        && !variable.is_fake_var() && !variable.is_used_byref()
-        && !variable.is_overlapped_var() && !variable.is_mapdst_var()
-        && !variable.is_shared() && !variable.is_noprop()
-        && !variable.in_asm() && !variable.has_user_info()
-        && variable.tif.is_scalar() && !variable.tif.is_volatile();
+    return !usage.address_taken && !variable.is_arg_var() && !variable.is_result_var() &&
+           !variable.is_fake_var() && !variable.is_used_byref() && !variable.is_overlapped_var() &&
+           !variable.is_mapdst_var() && !variable.is_shared() && !variable.is_noprop() &&
+           !variable.in_asm() && !variable.has_user_info() && variable.tif.is_scalar() &&
+           !variable.tif.is_volatile();
 }
 
 struct rhs_lvar_collector_t final : public ctree_visitor_t
@@ -133,15 +123,15 @@ struct rhs_lvar_collector_t final : public ctree_visitor_t
 
     int idaapi visit_expr(cexpr_t *expression) override
     {
-        if ( expression == nullptr || expression->op != cot_var )
+        if (expression == nullptr || expression->op != cot_var)
             return 0;
 
         const int index = expression->v.idx;
-        if ( index < 0 || static_cast<size_t>(index) >= internal_reads.size() )
+        if (index < 0 || static_cast<size_t>(index) >= internal_reads.size())
             return 0;
 
         ++internal_reads[index];
-        if ( std::find(sources.begin(), sources.end(), index) == sources.end() )
+        if (std::find(sources.begin(), sources.end(), index) == sources.end())
             sources.push_back(index);
         return 0;
     }
@@ -161,8 +151,7 @@ struct removable_assignment_collector_t final : public ctree_visitor_t
     std::vector<int> internal_reads;
     std::vector<removable_assignment_t> assignments;
 
-    removable_assignment_collector_t(cfunc_t *function,
-        const std::vector<lvar_usage_t> &usage)
+    removable_assignment_collector_t(cfunc_t *function, const std::vector<lvar_usage_t> &usage)
         : ctree_visitor_t(CV_INSNS), function(function), usage(usage),
           internal_reads(usage.size(), 0)
     {
@@ -170,37 +159,32 @@ struct removable_assignment_collector_t final : public ctree_visitor_t
 
     int idaapi visit_insn(cinsn_t *instruction) override
     {
-        if ( instruction == nullptr || instruction->op != cit_expr
-          || instruction->label_num >= 0
-          || instruction->cexpr == nullptr
-          || instruction->cexpr->op != cot_asg
-          || instruction->cexpr->x == nullptr
-          || instruction->cexpr->x->op != cot_var
-          || instruction->cexpr->y == nullptr )
+        if (instruction == nullptr || instruction->op != cit_expr || instruction->label_num >= 0 ||
+            instruction->cexpr == nullptr || instruction->cexpr->op != cot_asg ||
+            instruction->cexpr->x == nullptr || instruction->cexpr->x->op != cot_var ||
+            instruction->cexpr->y == nullptr)
         {
             return 0;
         }
 
         const int index = instruction->cexpr->x->v.idx;
         lvars_t *variables = function->get_lvars();
-        if ( index < 0 || variables == nullptr
-          || static_cast<size_t>(index) >= variables->size()
-          || static_cast<size_t>(index) >= usage.size() )
+        if (index < 0 || variables == nullptr || static_cast<size_t>(index) >= variables->size() ||
+            static_cast<size_t>(index) >= usage.size())
         {
             return 0;
         }
 
         const lvar_t &variable = (*variables)[index];
-        if ( !is_safe_dead_assignment_destination(variable, usage[index])
-          || !is_discardable_rhs(instruction->cexpr->y) )
+        if (!is_safe_dead_assignment_destination(variable, usage[index]) ||
+            !is_discardable_rhs(instruction->cexpr->y))
         {
             return 0;
         }
 
         rhs_lvar_collector_t collector(internal_reads);
         collector.apply_to(instruction->cexpr->y, instruction->cexpr);
-        assignments.push_back(
-            {instruction, index, std::move(collector.sources)});
+        assignments.push_back({instruction, index, std::move(collector.sources)});
         return 0;
     }
 };
@@ -211,15 +195,14 @@ struct empty_statement_visitor_t final : public ctree_visitor_t
 
     int idaapi leave_insn(cinsn_t *instruction) override
     {
-        if ( instruction == nullptr || instruction->op != cit_block
-          || instruction->cblock == nullptr )
+        if (instruction == nullptr || instruction->op != cit_block ||
+            instruction->cblock == nullptr)
         {
             return 0;
         }
-        for ( auto iterator = instruction->cblock->begin();
-              iterator != instruction->cblock->end(); )
+        for (auto iterator = instruction->cblock->begin(); iterator != instruction->cblock->end();)
         {
-            if ( iterator->op == cit_empty && iterator->label_num == -1 )
+            if (iterator->op == cit_empty && iterator->label_num == -1)
                 iterator = instruction->cblock->erase(iterator);
             else
                 ++iterator;
@@ -231,7 +214,7 @@ struct empty_statement_visitor_t final : public ctree_visitor_t
 int remove_transitively_dead_local_assignments(cfunc_t *function)
 {
     lvars_t *variables = function != nullptr ? function->get_lvars() : nullptr;
-    if ( function == nullptr || variables == nullptr || variables->empty() )
+    if (function == nullptr || variables == nullptr || variables->empty())
         return 0;
 
     lvar_usage_visitor_t usage(variables->size());
@@ -239,7 +222,7 @@ int remove_transitively_dead_local_assignments(cfunc_t *function)
 
     removable_assignment_collector_t candidates(function, usage.usage);
     candidates.apply_to(&function->body, nullptr);
-    if ( candidates.assignments.empty() )
+    if (candidates.assignments.empty())
         return 0;
 
     // Candidate RHS reads are internal data-flow edges. Any read outside that
@@ -247,14 +230,13 @@ int remove_transitively_dead_local_assignments(cfunc_t *function)
     // This deliberately operates at lvar granularity: it may retain extra
     // definitions, but cannot erase a definition that reaches an external use.
     std::vector<std::vector<size_t>> dependencies(variables->size());
-    for ( const removable_assignment_t &assignment : candidates.assignments )
+    for (const removable_assignment_t &assignment : candidates.assignments)
     {
         std::vector<size_t> &sources = dependencies[assignment.destination];
-        for ( int source : assignment.sources )
+        for (int source : assignment.sources)
         {
             const size_t source_index = static_cast<size_t>(source);
-            if ( std::find(sources.begin(), sources.end(), source_index)
-              == sources.end() )
+            if (std::find(sources.begin(), sources.end(), source_index) == sources.end())
             {
                 sources.push_back(source_index);
             }
@@ -262,27 +244,26 @@ int remove_transitively_dead_local_assignments(cfunc_t *function)
     }
 
     std::vector<uint8_t> observable(variables->size(), 0);
-    for ( size_t index = 0; index < usage.usage.size(); ++index )
+    for (size_t index = 0; index < usage.usage.size(); ++index)
     {
-        if ( usage.usage[index].reads > candidates.internal_reads[index] )
+        if (usage.usage[index].reads > candidates.internal_reads[index])
             observable[index] = 1;
     }
-    const std::vector<uint8_t> live =
-        chernobog::analysis::propagate_dependency_liveness(
-            variables->size(), observable, dependencies);
+    const std::vector<uint8_t> live = chernobog::analysis::propagate_dependency_liveness(
+        variables->size(), observable, dependencies);
 
     std::vector<int> removed_by_variable(variables->size(), 0);
     int changes = 0;
-    for ( const removable_assignment_t &assignment : candidates.assignments )
+    for (const removable_assignment_t &assignment : candidates.assignments)
     {
-        if ( live[assignment.destination] )
+        if (live[assignment.destination])
             continue;
         assignment.instruction->cleanup();
         ++removed_by_variable[assignment.destination];
         ++changes;
     }
 
-    if ( changes == 0 )
+    if (changes == 0)
         return 0;
 
     empty_statement_visitor_t empty_remover;
@@ -290,11 +271,10 @@ int remove_transitively_dead_local_assignments(cfunc_t *function)
 
     lvar_usage_visitor_t remaining(variables->size());
     remaining.apply_to(&function->body, nullptr);
-    for ( size_t index = 0; index < variables->size(); ++index )
+    for (size_t index = 0; index < variables->size(); ++index)
     {
-        if ( removed_by_variable[index] > 0
-          && remaining.usage[index].reads == 0
-          && remaining.usage[index].writes == 0 )
+        if (removed_by_variable[index] > 0 && remaining.usage[index].reads == 0 &&
+            remaining.usage[index].writes == 0)
         {
             (*variables)[index].clear_used();
         }
@@ -307,23 +287,25 @@ int remove_transitively_dead_local_assignments(cfunc_t *function)
 //--------------------------------------------------------------------------
 // Ctree visitor that folds XOR with global constants
 //--------------------------------------------------------------------------
-struct const_fold_visitor_t : public ctree_visitor_t {
+struct const_fold_visitor_t : public ctree_visitor_t
+{
     int changes = 0;
     cfunc_t *func = nullptr;
 
     const_fold_visitor_t(cfunc_t *f) : ctree_visitor_t(CV_PARENTS), func(f) {}
 
-    int idaapi visit_expr(cexpr_t *e) override {
+    int idaapi visit_expr(cexpr_t *e) override
+    {
         // Look for XOR expressions
-        if ( e->op != cot_xor ) 
+        if (e->op != cot_xor)
             return 0;
 
         // Need both operands
-        if ( !e->x || !e->y ) 
+        if (!e->x || !e->y)
             return 0;
 
         // One operand must be a number constant
-        if ( e->x->op != cot_num && e->y->op != cot_num ) 
+        if (e->x->op != cot_num && e->y->op != cot_num)
             return 0;
 
         cexpr_t *val_expr = (e->y->op == cot_num) ? e->x : e->y;
@@ -333,40 +315,46 @@ struct const_fold_visitor_t : public ctree_visitor_t {
         ea_t obj_addr = BADADDR;
 
         // Case 1: Direct object reference (cot_obj)
-        if ( val_expr->op == cot_obj ) {
+        if (val_expr->op == cot_obj)
+        {
             obj_addr = val_expr->obj_ea;
         }
         // Case 2: Pointer dereference (cot_ptr) - check if dereferencing a constant
-        else if ( val_expr->op == cot_ptr && val_expr->x ) {
-            if ( val_expr->x->op == cot_num ) {
+        else if (val_expr->op == cot_ptr && val_expr->x)
+        {
+            if (val_expr->x->op == cot_num)
+            {
                 obj_addr = (ea_t)val_expr->x->numval();
-            } else if ( val_expr->x->op == cot_cast && val_expr->x->x ) {
+            }
+            else if (val_expr->x->op == cot_cast && val_expr->x->x)
+            {
                 // A casted numeric address is direct. A cot_obj here holds a
                 // pointer value and would require an additional load.
-                if ( val_expr->x->x->op == cot_num ) {
+                if (val_expr->x->x->op == cot_num)
+                {
                     obj_addr = (ea_t)val_expr->x->x->numval();
                 }
             }
         }
 
-        if ( obj_addr == BADADDR ) 
+        if (obj_addr == BADADDR)
             return 0;
 
         // Check if the address is in a valid segment
         segment_t *seg = getseg(obj_addr);
-        if ( !seg || (seg->perm & SEGPERM_WRITE) != 0 )
+        if (!seg || (seg->perm & SEGPERM_WRITE) != 0)
             return 0;
 
-        if ( !is_loaded(obj_addr) ) 
+        if (!is_loaded(obj_addr))
             return 0;
 
         // Read the value based on size
         int size = val_expr->type.get_size();
-        if ( size <= 0 || size > 8 ) 
+        if (size <= 0 || size > 8)
             return 0;
 
         auto object_value = chernobog::ida_memory::read_integer(obj_addr, size);
-        if ( !object_value )
+        if (!object_value)
             return 0;
         const uint64_t obj_val = *object_value;
 
@@ -375,12 +363,11 @@ struct const_fold_visitor_t : public ctree_visitor_t {
 
         // Compute the XOR
         uint64_t result = obj_val ^ const_val;
-        if ( size < 8 )
+        if (size < 8)
             result &= (uint64_t{1} << static_cast<unsigned>(size * 8)) - 1;
 
-        deobf::log("[ctree_const_fold] Folding %a ^ 0x%llx = 0x%llx\n",
-                   obj_addr, (unsigned long long)const_val,
-                   (unsigned long long)result);
+        deobf::log("[ctree_const_fold] Folding %a ^ 0x%llx = 0x%llx\n", obj_addr,
+                   (unsigned long long)const_val, (unsigned long long)result);
 
         e->put_number(func, result, size, no_sign);
 
@@ -394,7 +381,7 @@ struct const_fold_visitor_t : public ctree_visitor_t {
 //--------------------------------------------------------------------------
 int ctree_const_fold_handler_t::run(cfunc_t *cfunc)
 {
-    if ( !cfunc ) 
+    if (!cfunc)
         return 0;
 
     deobf::log_verbose("[ctree_const_fold] Running on %a\n", cfunc->entry_ea);
@@ -402,15 +389,14 @@ int ctree_const_fold_handler_t::run(cfunc_t *cfunc)
     const_fold_visitor_t visitor(cfunc);
     visitor.apply_to(&cfunc->body, nullptr);
 
-    const int dead_assignments =
-        remove_transitively_dead_local_assignments(cfunc);
+    const int dead_assignments = remove_transitively_dead_local_assignments(cfunc);
     const int total_changes = visitor.changes + dead_assignments;
 
-    if ( total_changes > 0 ) {
-        deobf::log(
-            "[ctree_const_fold] Folded %d constants and removed %d "
-            "transitively dead local assignments\n",
-            visitor.changes, dead_assignments);
+    if (total_changes > 0)
+    {
+        deobf::log("[ctree_const_fold] Folded %d constants and removed %d "
+                   "transitively dead local assignments\n",
+                   visitor.changes, dead_assignments);
         cfunc->verify(ALLOW_UNUSED_LABELS, false);
     }
 

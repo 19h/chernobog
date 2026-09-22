@@ -15,14 +15,15 @@
 //   - Calling convention awareness
 //--------------------------------------------------------------------------
 
-namespace arch {
+namespace arch
+{
 
 // Convenience checks
-bool is_x86();          // x86 or x86-64
-bool is_x86_64();       // 64-bit x86 only
-bool is_arm();          // ARM32 or ARM64
-bool is_arm64();        // 64-bit ARM only
-bool is_64bit();        // Any 64-bit architecture
+bool is_x86();    // x86 or x86-64
+bool is_x86_64(); // 64-bit x86 only
+bool is_arm();    // ARM32 or ARM64
+bool is_arm64();  // 64-bit ARM only
+bool is_64bit();  // Any 64-bit architecture
 
 //--------------------------------------------------------------------------
 // Register role abstraction

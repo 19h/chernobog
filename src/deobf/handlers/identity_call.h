@@ -43,8 +43,9 @@
 // Forward declaration
 struct deferred_identity_call_t;
 
-class identity_call_handler_t {
-public:
+class identity_call_handler_t
+{
+  public:
     // Detection
     static bool detect(mbl_array_t *mba);
 
@@ -76,33 +77,34 @@ public:
     // Returns: pair<entry0_target, entry1_target>
     // If both resolve to same target, second will equal first
     // If resolution fails, returns BADADDR
-    struct table_resolution_t {
+    struct table_resolution_t
+    {
         ea_t table_base;
-        ea_t entry0_target;   // Final resolved target for index 0
-        ea_t entry1_target;   // Final resolved target for index 1
-        bool both_same;       // True if both entries resolve to same target
+        ea_t entry0_target;     // Final resolved target for index 0
+        ea_t entry1_target;     // Final resolved target for index 1
+        bool both_same;         // True if both entries resolve to same target
         bool is_cff_dispatcher; // True if targets loop back (CFF pattern)
     };
     static table_resolution_t resolve_indexed_table(ea_t table_base, ea_t func_ea = BADADDR);
 
     // Deferred analysis storage (public for clearing on refresh)
-    using deferred_cache_t =
-        std::map<ea_t, std::vector<deferred_identity_call_t>>;
+    using deferred_cache_t = std::map<ea_t, std::vector<deferred_identity_call_t>>;
     static std::map<ssize_t, deferred_cache_t> s_deferred_analysis;
 
-private:
+  private:
     // Identity call pattern info (used during detection)
-    struct identity_call_t {
+    struct identity_call_t
+    {
         int block_idx;
-        minsn_t *call_insn;      // The call to identity function
-        minsn_t *ijmp_insn;      // The subsequent ijmp instruction
-        ea_t identity_func;       // Address of identity function
-        ea_t global_ptr;          // Address of global pointer
-        ea_t resolved_target;     // Immediate target address
-        ea_t final_target;        // Final target after following chain
-        ea_t call_ea;             // Address of call instruction (stable across maturities)
-        ea_t ijmp_ea;             // Address of ijmp instruction (stable across maturities)
-        bool is_ijmp_pattern;     // True if followed by m_ijmp (vs m_icall)
+        minsn_t *call_insn;   // The call to identity function
+        minsn_t *ijmp_insn;   // The subsequent ijmp instruction
+        ea_t identity_func;   // Address of identity function
+        ea_t global_ptr;      // Address of global pointer
+        ea_t resolved_target; // Immediate target address
+        ea_t final_target;    // Final target after following chain
+        ea_t call_ea;         // Address of call instruction (stable across maturities)
+        ea_t ijmp_ea;         // Address of ijmp instruction (stable across maturities)
+        bool is_ijmp_pattern; // True if followed by m_ijmp (vs m_icall)
     };
 
     // Find all identity call patterns
@@ -128,12 +130,13 @@ private:
 };
 
 // Deferred analysis record - stored between maturity 0 and MMAT_LOCOPT
-struct deferred_identity_call_t {
-    ea_t call_ea;             // Address of call instruction
-    ea_t ijmp_ea;             // Address of ijmp instruction
-    ea_t identity_func;       // Address of identity function
-    ea_t global_ptr;          // Address of global pointer
-    ea_t final_target;        // Resolved final target
-    qstring target_name;      // Name of target function (for annotation)
-    bool is_ijmp_pattern;     // True if followed by m_ijmp
+struct deferred_identity_call_t
+{
+    ea_t call_ea;         // Address of call instruction
+    ea_t ijmp_ea;         // Address of ijmp instruction
+    ea_t identity_func;   // Address of identity function
+    ea_t global_ptr;      // Address of global pointer
+    ea_t final_target;    // Resolved final target
+    qstring target_name;  // Name of target function (for annotation)
+    bool is_ijmp_pattern; // True if followed by m_ijmp
 };

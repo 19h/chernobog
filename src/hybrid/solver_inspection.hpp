@@ -2,7 +2,8 @@
 #include "../common/solver_evidence.hpp"
 #include <string>
 
-namespace chernobog::hybrid {
+namespace chernobog::hybrid
+{
 void solver_inspection_install(int64_t database);
 void solver_inspection_remove(int64_t database);
 void solver_inspection_begin(uint64_t function);

@@ -3,7 +3,8 @@
 #include <vector>
 #include "../common/warn_on.h"
 
-struct stored_component_t {
+struct stored_component_t
+{
     component_desc_t d;
 };
 
@@ -20,23 +21,20 @@ void component_registry_t::register_component(const component_desc_t &d)
     repo().push_back(sc);
 }
 
-size_t component_registry_t::get_count()
-{
-    return repo().size();
-}
+size_t component_registry_t::get_count() { return repo().size(); }
 
 int component_registry_t::init_all()
 {
     int inited = 0;
-    for ( stored_component_t &sc: repo() )
+    for (stored_component_t &sc : repo())
     {
         const bool available = sc.d.avail == nullptr || sc.d.avail();
         const bool active = sc.d.active != nullptr && sc.d.active();
-        if ( available && !active )
+        if (available && !active)
         {
-            if ( sc.d.init )
+            if (sc.d.init)
                 sc.d.init();
-            if ( sc.d.active == nullptr || sc.d.active() )
+            if (sc.d.active == nullptr || sc.d.active())
                 ++inited;
         }
     }
@@ -46,9 +44,9 @@ int component_registry_t::init_all()
 int component_registry_t::done_all()
 {
     int donec = 0;
-    for ( stored_component_t &sc: repo() )
+    for (stored_component_t &sc : repo())
     {
-        if ( sc.d.active && sc.d.active() && sc.d.done )
+        if (sc.d.active && sc.d.active() && sc.d.done)
         {
             sc.d.done();
             ++donec;
@@ -59,9 +57,9 @@ int component_registry_t::done_all()
 
 void component_registry_t::attach_to_popup(TWidget *widget, TPopupMenu *popup, vdui_t *vu)
 {
-    for ( stored_component_t &sc: repo() )
+    for (stored_component_t &sc : repo())
     {
-        if ( sc.d.active && sc.d.active() && sc.d.attach_popup )
+        if (sc.d.active && sc.d.active() && sc.d.attach_popup)
         {
             sc.d.attach_popup(widget, popup, vu);
         }

@@ -1,17 +1,18 @@
 #include "hikari_wrapper.h"
 
-namespace {
+namespace
+{
 
 std::string normalize_import_name(const qstring &raw_name)
 {
     std::string name = raw_name.c_str();
-    while ( !name.empty() && name.front() == '_' )
+    while (!name.empty() && name.front() == '_')
         name.erase(name.begin());
-    if ( name.compare(0, 4, "imp_") == 0 )
+    if (name.compare(0, 4, "imp_") == 0)
         name.erase(0, 4);
-    if ( name.compare(0, 2, "j_") == 0 )
+    if (name.compare(0, 2, "j_") == 0)
         name.erase(0, 2);
-    while ( !name.empty() && name.front() == '_' )
+    while (!name.empty() && name.front() == '_')
         name.erase(name.begin());
     return name;
 }
@@ -19,12 +20,15 @@ std::string normalize_import_name(const qstring &raw_name)
 bool is_objc_dispatch_name(const qstring &raw_name)
 {
     const std::string name = normalize_import_name(raw_name);
-    static const std::set<std::string> dispatchers = {
-        "objc_msgSend", "objc_msgSendSuper", "objc_msgSendSuper2",
-        "objc_msgSend_stret", "objc_msgSend_fpret", "objc_msgSend_fp2ret",
-        "objc_msgSendSuper_stret", "objc_msgSendSuper2_stret",
-        "objc_msgSend_fixup"
-    };
+    static const std::set<std::string> dispatchers = {"objc_msgSend",
+                                                      "objc_msgSendSuper",
+                                                      "objc_msgSendSuper2",
+                                                      "objc_msgSend_stret",
+                                                      "objc_msgSend_fpret",
+                                                      "objc_msgSend_fp2ret",
+                                                      "objc_msgSendSuper_stret",
+                                                      "objc_msgSendSuper2_stret",
+                                                      "objc_msgSend_fixup"};
     return dispatchers.count(name) != 0 ||
            name.compare(0, sizeof("objc_msgSend$") - 1, "objc_msgSend$") == 0;
 }
@@ -44,34 +48,31 @@ enum class wrapper_runtime_t : uint8_t
 
 bool unique_direct_transfer_target(ea_t from, ea_t *target)
 {
-    if ( !target )
+    if (!target)
         return false;
     *target = BADADDR;
     xrefblk_t xref;
-    for ( bool ok = xref.first_from(from, XREF_CODE);
-          ok; ok = xref.next_from() ) {
+    for (bool ok = xref.first_from(from, XREF_CODE); ok; ok = xref.next_from())
+    {
         const int type = int(xref.type) & XREF_MASK;
-        if ( type == fl_F )
+        if (type == fl_F)
             continue;
-        if ( type != fl_CN && type != fl_CF )
+        if (type != fl_CN && type != fl_CF)
             return false;
-        if ( *target != BADADDR && *target != xref.to )
+        if (*target != BADADDR && *target != xref.to)
             return false;
         *target = xref.to;
     }
     return *target != BADADDR;
 }
 
-wrapper_runtime_t classify_strict_runtime_wrapper(
-    ea_t function_ea,
-    ea_t *runtime_target)
+wrapper_runtime_t classify_strict_runtime_wrapper(ea_t function_ea, ea_t *runtime_target)
 {
-    if ( runtime_target )
+    if (runtime_target)
         *runtime_target = BADADDR;
     const func_t *function = get_func(function_ea);
-    if ( !function || function->start_ea != function_ea
-      || function->tailqty != 0 || function->end_ea <= function->start_ea
-      || function->end_ea - function->start_ea > 128 )
+    if (!function || function->start_ea != function_ea || function->tailqty != 0 ||
+        function->end_ea <= function->start_ea || function->end_ea - function->start_ea > 128)
         return wrapper_runtime_t::none;
 
     wrapper_runtime_t kind = wrapper_runtime_t::none;
@@ -79,39 +80,44 @@ wrapper_runtime_t classify_strict_runtime_wrapper(
     size_t instruction_count = 0;
     bool saw_return = false;
     ea_t address = function->start_ea;
-    while ( address < function->end_ea ) {
-        if ( ++instruction_count > 32
-          || !is_head(get_flags(address)) || !is_code(get_flags(address)) )
+    while (address < function->end_ea)
+    {
+        if (++instruction_count > 32 || !is_head(get_flags(address)) ||
+            !is_code(get_flags(address)))
             return wrapper_runtime_t::none;
         insn_t instruction;
-        if ( decode_insn(&instruction, address) <= 0
-          || instruction.size == 0
-          || instruction.ea + instruction.size > function->end_ea )
+        if (decode_insn(&instruction, address) <= 0 || instruction.size == 0 ||
+            instruction.ea + instruction.size > function->end_ea)
             return wrapper_runtime_t::none;
 
-        if ( is_call_insn(instruction) ) {
-            if ( kind != wrapper_runtime_t::none )
+        if (is_call_insn(instruction))
+        {
+            if (kind != wrapper_runtime_t::none)
                 return wrapper_runtime_t::none;
             ea_t target = BADADDR;
-            if ( !unique_direct_transfer_target(instruction.ea, &target) )
+            if (!unique_direct_transfer_target(instruction.ea, &target))
                 return wrapper_runtime_t::none;
             qstring name;
-            if ( get_func_name(&name, target) <= 0 )
+            if (get_func_name(&name, target) <= 0)
                 get_name(&name, target);
-            if ( is_objc_dispatch_name(name) )
+            if (is_objc_dispatch_name(name))
                 kind = wrapper_runtime_t::objc;
-            else if ( is_dynamic_loader_name(name) )
+            else if (is_dynamic_loader_name(name))
                 kind = wrapper_runtime_t::dynamic_loader;
             else
                 return wrapper_runtime_t::none;
             selected_target = target;
-        } else if ( is_ret_insn(instruction) ) {
-            if ( saw_return || kind == wrapper_runtime_t::none )
+        }
+        else if (is_ret_insn(instruction))
+        {
+            if (saw_return || kind == wrapper_runtime_t::none)
                 return wrapper_runtime_t::none;
             saw_return = true;
-            if ( instruction.ea + instruction.size != function->end_ea )
+            if (instruction.ea + instruction.size != function->end_ea)
                 return wrapper_runtime_t::none;
-        } else if ( is_basic_block_end(instruction, false) ) {
+        }
+        else if (is_basic_block_end(instruction, false))
+        {
             // A forwarding wrapper is one straight-line call/return body.
             // Conditional control flow and secondary tail transfers require a
             // separate path-complete semantic proof.
@@ -119,9 +125,9 @@ wrapper_runtime_t classify_strict_runtime_wrapper(
         }
         address += instruction.size;
     }
-    if ( !saw_return || kind == wrapper_runtime_t::none )
+    if (!saw_return || kind == wrapper_runtime_t::none)
         return wrapper_runtime_t::none;
-    if ( runtime_target )
+    if (runtime_target)
         *runtime_target = selected_target;
     return kind;
 }
@@ -131,11 +137,9 @@ wrapper_runtime_t classify_strict_runtime_wrapper(
 // Static member
 std::map<ssize_t, std::map<ea_t, hikari_wrapper_handler_t::wrapper_info_t>>
     hikari_wrapper_handler_t::s_wrapper_cache;
-std::map<ssize_t, std::set<ea_t>>
-    hikari_wrapper_handler_t::s_non_wrapper_cache;
+std::map<ssize_t, std::set<ea_t>> hikari_wrapper_handler_t::s_non_wrapper_cache;
 
-std::map<ea_t, hikari_wrapper_handler_t::wrapper_info_t> &
-hikari_wrapper_handler_t::wrapper_cache()
+std::map<ea_t, hikari_wrapper_handler_t::wrapper_info_t> &hikari_wrapper_handler_t::wrapper_cache()
 {
     return s_wrapper_cache[get_dbctx_id()];
 }
@@ -157,23 +161,27 @@ void hikari_wrapper_handler_t::clear_cache()
 //--------------------------------------------------------------------------
 bool hikari_wrapper_handler_t::detect(mbl_array_t *mba)
 {
-    if ( !mba ) 
+    if (!mba)
         return false;
 
     // Look for calls to wrapper functions
-    for ( int i = 0; i < mba->qty; ++i ) {
+    for (int i = 0; i < mba->qty; ++i)
+    {
         mblock_t *blk = mba->get_mblock(i);
-        if ( !blk ) 
+        if (!blk)
             continue;
 
-        for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
-            if ( ins->opcode == m_call ) {
+        for (minsn_t *ins = blk->head; ins; ins = ins->next)
+        {
+            if (ins->opcode == m_call)
+            {
                 ea_t target = BADADDR;
-                if ( ins->l.t == mop_v ) 
+                if (ins->l.t == mop_v)
                     target = ins->l.g;
 
                 wrapper_info_t wrapper;
-                if ( target != BADADDR && get_wrapper_info(target, &wrapper) ) {
+                if (target != BADADDR && get_wrapper_info(target, &wrapper))
+                {
                     return true;
                 }
             }
@@ -188,7 +196,7 @@ bool hikari_wrapper_handler_t::detect(mbl_array_t *mba)
 //--------------------------------------------------------------------------
 int hikari_wrapper_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 {
-    if ( !mba || !ctx ) 
+    if (!mba || !ctx)
         return 0;
 
     deobf::log("[hikari_wrapper] Starting wrapper resolution\n");
@@ -199,16 +207,16 @@ int hikari_wrapper_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 
     int changes = 0;
 
-    for ( auto &call : calls ) {
+    for (auto &call : calls)
+    {
         // Try to resolve the arguments
-        if ( !resolve_call_args(&call) )
+        if (!resolve_call_args(&call))
             continue;
         annotate_call_site(call);
         ++changes;
 
         deobf::log_verbose("[hikari_wrapper] Resolved call to %s -> %s\n",
-                          call.wrapper.original_name.c_str(),
-                          call.wrapper.resolved_name.c_str());
+                           call.wrapper.original_name.c_str(), call.wrapper.resolved_name.c_str());
     }
 
     deobf::log("[hikari_wrapper] Resolved %d wrapper calls\n", changes);
@@ -221,21 +229,21 @@ int hikari_wrapper_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 //--------------------------------------------------------------------------
 bool hikari_wrapper_handler_t::analyze_wrapper(ea_t func_ea, wrapper_info_t *out)
 {
-    if ( !out )
+    if (!out)
         return false;
     func_t *func = get_func(func_ea);
-    if ( !func ) 
+    if (!func)
         return false;
 
     out->func_ea = func_ea;
     get_func_name(&out->original_name, func_ea);
 
     ea_t runtime_target = BADADDR;
-    const wrapper_runtime_t runtime = classify_strict_runtime_wrapper(
-        func_ea, &runtime_target);
+    const wrapper_runtime_t runtime = classify_strict_runtime_wrapper(func_ea, &runtime_target);
 
     // Check for one straight-line objc_msgSend forwarding body.
-    if ( runtime == wrapper_runtime_t::objc ) {
+    if (runtime == wrapper_runtime_t::objc)
+    {
         out->is_objc = true;
         out->target_func = runtime_target;
 
@@ -251,12 +259,13 @@ bool hikari_wrapper_handler_t::analyze_wrapper(ea_t func_ea, wrapper_info_t *out
     }
 
     // Check for dlsym pattern
-    if ( runtime == wrapper_runtime_t::dynamic_loader ) {
+    if (runtime == wrapper_runtime_t::dynamic_loader)
+    {
         out->is_objc = false;
         out->target_func = runtime_target;
-        if ( get_func_name(&out->resolved_name, runtime_target) <= 0 )
+        if (get_func_name(&out->resolved_name, runtime_target) <= 0)
             get_name(&out->resolved_name, runtime_target);
-        if ( out->resolved_name.empty() )
+        if (out->resolved_name.empty())
             out->resolved_name = "dynamic_loader";
         return true;
     }
@@ -266,29 +275,31 @@ bool hikari_wrapper_handler_t::analyze_wrapper(ea_t func_ea, wrapper_info_t *out
     return false;
 }
 
-bool hikari_wrapper_handler_t::get_wrapper_info(ea_t func_ea,
-                                                wrapper_info_t *out)
+bool hikari_wrapper_handler_t::get_wrapper_info(ea_t func_ea, wrapper_info_t *out)
 {
-    if ( func_ea == BADADDR || !out )
+    if (func_ea == BADADDR || !out)
         return false;
 
     std::map<ea_t, wrapper_info_t> &wrappers = wrapper_cache();
     std::set<ea_t> &non_wrappers = non_wrapper_cache();
     const auto cached = wrappers.find(func_ea);
-    if ( cached != wrappers.end() ) {
+    if (cached != wrappers.end())
+    {
         *out = cached->second;
         return true;
     }
-    if ( non_wrappers.count(func_ea) != 0 )
+    if (non_wrappers.count(func_ea) != 0)
         return false;
 
-    if ( !is_wrapper_by_name(func_ea) && !is_wrapper_by_pattern(func_ea) ) {
+    if (!is_wrapper_by_name(func_ea) && !is_wrapper_by_pattern(func_ea))
+    {
         non_wrappers.insert(func_ea);
         return false;
     }
 
     wrapper_info_t wrapper;
-    if ( !analyze_wrapper(func_ea, &wrapper) ) {
+    if (!analyze_wrapper(func_ea, &wrapper))
+    {
         non_wrappers.insert(func_ea);
         return false;
     }
@@ -303,21 +314,21 @@ bool hikari_wrapper_handler_t::get_wrapper_info(ea_t func_ea,
 bool hikari_wrapper_handler_t::is_wrapper_by_name(ea_t func_ea)
 {
     qstring name;
-    if ( get_func_name(&name, func_ea) <= 0 ) 
+    if (get_func_name(&name, func_ea) <= 0)
         return false;
 
     // Common Hikari wrapper patterns
-    if ( name.find("HikariFunctionWrapper") != qstring::npos ) 
+    if (name.find("HikariFunctionWrapper") != qstring::npos)
         return true;
-    if ( name.find("HikariWrapper") != qstring::npos ) 
+    if (name.find("HikariWrapper") != qstring::npos)
         return true;
-    if ( name.find("FunctionWrapper_") != qstring::npos ) 
+    if (name.find("FunctionWrapper_") != qstring::npos)
         return true;
-    if ( name.find("_wrapper_") != qstring::npos ) 
+    if (name.find("_wrapper_") != qstring::npos)
         return true;
 
     // OLLVM patterns
-    if ( name.find("ollvm_") != qstring::npos ) 
+    if (name.find("ollvm_") != qstring::npos)
         return true;
 
     return false;
@@ -329,11 +340,10 @@ bool hikari_wrapper_handler_t::is_wrapper_by_name(ea_t func_ea)
 bool hikari_wrapper_handler_t::is_wrapper_by_pattern(ea_t func_ea)
 {
     func_t *func = get_func(func_ea);
-    if ( !func ) 
+    if (!func)
         return false;
 
-    return classify_strict_runtime_wrapper(func_ea, nullptr)
-        != wrapper_runtime_t::none;
+    return classify_strict_runtime_wrapper(func_ea, nullptr) != wrapper_runtime_t::none;
 }
 
 //--------------------------------------------------------------------------
@@ -341,25 +351,29 @@ bool hikari_wrapper_handler_t::is_wrapper_by_pattern(ea_t func_ea)
 //--------------------------------------------------------------------------
 std::vector<hikari_wrapper_handler_t::call_site_t>
 hikari_wrapper_handler_t::find_wrapper_calls(mbl_array_t *mba)
-    {
+{
 
     std::vector<call_site_t> result;
-    if ( !mba )
+    if (!mba)
         return result;
 
-    for ( int i = 0; i < mba->qty; ++i ) {
+    for (int i = 0; i < mba->qty; ++i)
+    {
         mblock_t *blk = mba->get_mblock(i);
-        if ( !blk ) 
+        if (!blk)
             continue;
 
-        for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
-            if ( ins->opcode == m_call ) {
+        for (minsn_t *ins = blk->head; ins; ins = ins->next)
+        {
+            if (ins->opcode == m_call)
+            {
                 ea_t target = BADADDR;
-                if ( ins->l.t == mop_v ) 
+                if (ins->l.t == mop_v)
                     target = ins->l.g;
 
                 wrapper_info_t wrapper;
-                if ( target != BADADDR && get_wrapper_info(target, &wrapper) ) {
+                if (target != BADADDR && get_wrapper_info(target, &wrapper))
+                {
                     call_site_t call;
                     call.block_idx = i;
                     call.call_insn = ins;
@@ -378,32 +392,33 @@ hikari_wrapper_handler_t::find_wrapper_calls(mbl_array_t *mba)
 //--------------------------------------------------------------------------
 bool hikari_wrapper_handler_t::resolve_call_args(call_site_t *call)
 {
-    if ( !call || !call->call_insn
-      || call->call_insn->d.t != mop_f || !call->call_insn->d.f )
+    if (!call || !call->call_insn || call->call_insn->d.t != mop_f || !call->call_insn->d.f)
         return false;
 
     // Only inspect operands that Hex-Rays identified as arguments of this
     // call. Backward scans can capture unrelated constants on another path.
     const mcallinfo_t *call_info = call->call_insn->d.f;
-    for ( const mcallarg_t& argument : call_info->args ) {
+    for (const mcallarg_t &argument : call_info->args)
+    {
         const mop_t *value = &argument;
-        if ( value->t == mop_a && value->a )
+        if (value->t == mop_a && value->a)
             value = value->a;
 
         ea_t address = BADADDR;
-        if ( value->t == mop_v )
+        if (value->t == mop_v)
             address = value->g;
-        else if ( value->t == mop_n && value->nnn ) {
+        else if (value->t == mop_n && value->nnn)
+        {
             const ea_t candidate = static_cast<ea_t>(value->nnn->value);
-            if ( getseg(candidate) )
+            if (getseg(candidate))
                 address = candidate;
         }
-        if ( address == BADADDR )
+        if (address == BADADDR)
             continue;
 
         qstring name;
-        if ( call->class_arg.empty() && get_name(&name, address) > 0
-          && name.find("OBJC_CLASS_") != qstring::npos )
+        if (call->class_arg.empty() && get_name(&name, address) > 0 &&
+            name.find("OBJC_CLASS_") != qstring::npos)
         {
             call->class_arg = name;
             call->class_arg.replace("OBJC_CLASS___", "");
@@ -411,10 +426,11 @@ bool hikari_wrapper_handler_t::resolve_call_args(call_site_t *call)
         }
 
         const size_t length = get_max_strlit_length(address, STRTYPE_C);
-        if ( call->selector_arg.empty() && length > 0 && length < 256 ) {
+        if (call->selector_arg.empty() && length > 0 && length < 256)
+        {
             qstring content;
-            if ( get_strlit_contents(&content, address, length, STRTYPE_C) > 0
-              && (content.find(':') != qstring::npos || content.length() > 3) )
+            if (get_strlit_contents(&content, address, length, STRTYPE_C) > 0 &&
+                (content.find(':') != qstring::npos || content.length() > 3))
             {
                 call->selector_arg = content;
             }
@@ -428,29 +444,36 @@ bool hikari_wrapper_handler_t::resolve_call_args(call_site_t *call)
 // Annotate call site
 //--------------------------------------------------------------------------
 void hikari_wrapper_handler_t::annotate_call_site(const call_site_t &call)
-    {
+{
 
-    if ( !call.call_insn ) 
+    if (!call.call_insn)
         return;
 
     qstring comment;
 
-    if ( call.wrapper.is_objc ) {
-        if ( !call.class_arg.empty() && !call.selector_arg.empty() ) {
-            comment.sprnt("ObjC: [%s %s]",
-                         call.class_arg.c_str(), call.selector_arg.c_str());
-        } else if ( !call.class_arg.empty() ) {
+    if (call.wrapper.is_objc)
+    {
+        if (!call.class_arg.empty() && !call.selector_arg.empty())
+        {
+            comment.sprnt("ObjC: [%s %s]", call.class_arg.c_str(), call.selector_arg.c_str());
+        }
+        else if (!call.class_arg.empty())
+        {
             comment.sprnt("ObjC: %s method call", call.class_arg.c_str());
-        } else if ( !call.selector_arg.empty() ) {
+        }
+        else if (!call.selector_arg.empty())
+        {
             comment.sprnt("ObjC selector: %s", call.selector_arg.c_str());
         }
-    } else if ( !call.selector_arg.empty() ) {
-        comment.sprnt("Dynamic lookup via %s: %s",
-                     call.wrapper.resolved_name.c_str(),
-                     call.selector_arg.c_str());
+    }
+    else if (!call.selector_arg.empty())
+    {
+        comment.sprnt("Dynamic lookup via %s: %s", call.wrapper.resolved_name.c_str(),
+                      call.selector_arg.c_str());
     }
 
-    if ( !comment.empty() ) {
+    if (!comment.empty())
+    {
         set_cmt(call.call_insn->ea, comment.c_str(), false);
     }
 }
@@ -460,8 +483,7 @@ void hikari_wrapper_handler_t::annotate_call_site(const call_site_t &call)
 //--------------------------------------------------------------------------
 bool hikari_wrapper_handler_t::has_objc_msgsend(ea_t func_ea)
 {
-    return classify_strict_runtime_wrapper(func_ea, nullptr)
-        == wrapper_runtime_t::objc;
+    return classify_strict_runtime_wrapper(func_ea, nullptr) == wrapper_runtime_t::objc;
 }
 
 //--------------------------------------------------------------------------
@@ -469,6 +491,5 @@ bool hikari_wrapper_handler_t::has_objc_msgsend(ea_t func_ea)
 //--------------------------------------------------------------------------
 bool hikari_wrapper_handler_t::has_dlsym_call(ea_t func_ea)
 {
-    return classify_strict_runtime_wrapper(func_ea, nullptr)
-        == wrapper_runtime_t::dynamic_loader;
+    return classify_strict_runtime_wrapper(func_ea, nullptr) == wrapper_runtime_t::dynamic_loader;
 }

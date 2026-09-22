@@ -12,9 +12,11 @@
 // Activation is explicit: set CHERNOBOG_VM=1.
 //--------------------------------------------------------------------------
 
-class vm_mba_handler_t {
-public:
-    struct micro_op_t {
+class vm_mba_handler_t
+{
+  public:
+    struct micro_op_t
+    {
         ea_t ea = BADADDR;
         int input_count = 0;
         std::vector<int> input_offsets;
@@ -24,7 +26,8 @@ public:
         bool writes_accumulator = false;
     };
 
-    struct handler_summary_t {
+    struct handler_summary_t
+    {
         ea_t ea = BADADDR;
         qstring name;
         int stride = 0;
@@ -57,8 +60,9 @@ public:
     static void dump_summary(ea_t ea);
     static void dump_statistics();
 
-private:
-    struct budget_t {
+  private:
+    struct budget_t
+    {
         std::chrono::steady_clock::time_point start;
         int changed = 0;
         int visited = 0;
@@ -110,34 +114,31 @@ private:
     static bool match_scalar_pack_expr(const mop_t &mop, mop_t *lo, mop_t *hi);
     static bool match_zext32_to_64(const mop_t &mop, mop_t *out);
     static bool match_shl32_hi(const mop_t &mop, mop_t *hi);
-    static bool make_accumulator_half_dst(const mop_t &dst, uint64_t old_off,
-                                          uint64_t new_off, mop_t *out);
+    static bool make_accumulator_half_dst(const mop_t &dst, uint64_t old_off, uint64_t new_off,
+                                          mop_t *out);
     static bool match_cvtsi32_operand(const mop_t &mop, mop_t *out);
     static bool match_load_si128_low32(const mop_t &mop, mop_t *out);
     static bool is_helper_call(const minsn_t *ins, const char *needle);
     static int simplify_single_var_residual(minsn_t *ins);
     static bool replace_with_operand(minsn_t *ins, const mop_t &src);
     static bool replace_with_constant(minsn_t *ins, uint64_t value, int size = 0);
-    static bool replace_with_and_not(minsn_t *ins, const mop_t &value,
-                                     const mop_t &mask);
-    static bool match_and_with_operand(const mop_t &mop, const mop_t &value,
-                                       mop_t *other);
+    static bool replace_with_and_not(minsn_t *ins, const mop_t &value, const mop_t &mask);
+    static bool match_and_with_operand(const mop_t &mop, const mop_t &value, mop_t *other);
     static bool match_add_const(const mop_t &mop, mop_t *value, uint64_t *constant);
     static bool match_sub_operands(const mop_t &mop, mop_t *left, mop_t *right);
-    static bool match_pair_mba_core(const mop_t &mop, mop_t *x, mop_t *y,
-                                    uint64_t *constant);
-    static bool replace_with_binary_const_expr(minsn_t *ins, mcode_t base_op,
-                                               const mop_t &left, const mop_t &right,
-                                               mcode_t outer_op, uint64_t constant);
+    static bool match_pair_mba_core(const mop_t &mop, mop_t *x, mop_t *y, uint64_t *constant);
+    static bool replace_with_binary_const_expr(minsn_t *ins, mcode_t base_op, const mop_t &left,
+                                               const mop_t &right, mcode_t outer_op,
+                                               uint64_t constant);
     static bool eval_const_insn(const minsn_t *ins, uint64_t *out, int *out_size = nullptr);
     static bool is_pure_expr(const minsn_t *ins);
     static int expr_op_count(const minsn_t *ins);
     static void collect_free_mops(const minsn_t *ins, std::vector<mop_t> *out);
     static void collect_free_mops(const mop_t &mop, std::vector<mop_t> *out);
-    static bool replace_with_simple_expr(minsn_t *ins, mcode_t op,
-                                         const mop_t &var, uint64_t constant);
-    static bool replace_with_binary_expr(minsn_t *ins, mcode_t op,
-                                         const mop_t &left, const mop_t &right);
+    static bool replace_with_simple_expr(minsn_t *ins, mcode_t op, const mop_t &var,
+                                         uint64_t constant);
+    static bool replace_with_binary_expr(minsn_t *ins, mcode_t op, const mop_t &left,
+                                         const mop_t &right);
 
     static bool contains_pack_idiom(const minsn_t *ins);
     static bool contains_pack_idiom(const mop_t &mop);
@@ -150,10 +151,8 @@ private:
     static bool is_ip_advance_store(const minsn_t *ins, int *delta);
     static bool is_tailcall_to_handler(const minsn_t *ins, ea_t *target);
 
-    static void collect_bytecode_reads(const minsn_t *ins,
-                                       std::map<int, int> *offset_widths);
-    static void collect_bytecode_reads(const mop_t &mop,
-                                       std::map<int, int> *offset_widths);
+    static void collect_bytecode_reads(const minsn_t *ins, std::map<int, int> *offset_widths);
+    static void collect_bytecode_reads(const mop_t &mop, std::map<int, int> *offset_widths);
     static bool parse_ip_offset_text(const char *text, int *offset);
 
     static uint64_t hash_insn(const minsn_t *ins);

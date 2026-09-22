@@ -18,13 +18,14 @@
 #include <limits>
 #include <vector>
 
-namespace {
+namespace
+{
 
 int failures = 0;
 
 void check(bool condition, const char *description)
 {
-    if ( condition )
+    if (condition)
         return;
     std::fprintf(stderr, "FAIL: %s\n", description);
     ++failures;
@@ -33,24 +34,25 @@ void check(bool condition, const char *description)
 void test_native_proof_receipts()
 {
     using namespace chernobog::ida_analysis::proof_receipt;
-    Receipt original{0x0123456789ABCDEFULL, 0xFEDCBA9876543210ULL,
+    Receipt original{0x0123456789ABCDEFULL,
+                     0xFEDCBA9876543210ULL,
                      {{0x100000001ULL, 19, true}, {0x1010, 21, false}},
                      "[chernobog][ida-analysis] test receipt"};
     const auto bytes = encode(original);
     check(bytes.has_value(), "ownership receipt encodes");
-    if ( !bytes ) return;
+    if (!bytes)
+        return;
     check((*bytes)[4] == 0xEF && (*bytes)[11] == 0x01,
           "receipt IDs use explicit little-endian encoding");
     const auto decoded = decode(bytes->data(), bytes->size());
-    check(decoded && decoded->source_node == original.source_node
-          && decoded->site_node == original.site_node
-          && decoded->edges.size() == 2
-          && decoded->edges[0].target_node == original.edges[0].target_node
-          && decoded->edges[0].type == 19 && decoded->edges[0].user
-          && decoded->edges[1].type == 21 && !decoded->edges[1].user
-          && decoded->comment == original.comment,
+    check(decoded && decoded->source_node == original.source_node &&
+              decoded->site_node == original.site_node && decoded->edges.size() == 2 &&
+              decoded->edges[0].target_node == original.edges[0].target_node &&
+              decoded->edges[0].type == 19 && decoded->edges[0].user &&
+              decoded->edges[1].type == 21 && !decoded->edges[1].user &&
+              decoded->comment == original.comment,
           "ownership receipt preserves IDs, types, user bits, and exact comment");
-    for ( size_t size = 0; size < bytes->size(); ++size )
+    for (size_t size = 0; size < bytes->size(); ++size)
         check(!decode(bytes->data(), size), "every truncated receipt is rejected");
     auto altered = *bytes;
     altered.push_back(0);
@@ -67,8 +69,8 @@ void test_native_proof_receipts()
     original.comment = std::string(maximum_comment, 'x');
     original.edges.resize(maximum_edges);
     const auto largest = encode(original);
-    check(largest && largest->size() == maximum_size
-          && decode(largest->data(), largest->size()), "maximum bounded receipt admitted");
+    check(largest && largest->size() == maximum_size && decode(largest->data(), largest->size()),
+          "maximum bounded receipt admitted");
     original.edges.push_back({});
     check(!encode(original), "too many owned edges rejected");
     original.edges.clear();
@@ -84,10 +86,9 @@ void test_bitvectors()
 {
     using namespace chernobog::bitvector;
 
-    check(valid_byte_width(1) && valid_byte_width(8),
-          "scalar byte widths are admitted");
-    check(!valid_byte_width(0) && !valid_byte_width(9)
-          && !valid_byte_width(16) && !valid_byte_width(32),
+    check(valid_byte_width(1) && valid_byte_width(8), "scalar byte widths are admitted");
+    check(!valid_byte_width(0) && !valid_byte_width(9) && !valid_byte_width(16) &&
+              !valid_byte_width(32),
           "non-scalar and SIMD byte widths are rejected");
     check(mask(1) == 0xFFULL, "8-bit mask");
     check(mask(3) == 0xFFFFFFULL, "24-bit mask");
@@ -95,40 +96,28 @@ void test_bitvectors()
     check(truncate(0x1234, 1) == 0x34, "8-bit truncation");
     check(logical_not(0) == 1 && logical_not(2) == 0, "logical NOT");
     check(negate(0x80, 1) == 0x80, "8-bit minimum negation wraps");
-    check(negate(1, 8) == std::numeric_limits<uint64_t>::max(),
-          "64-bit negation");
+    check(negate(1, 8) == std::numeric_limits<uint64_t>::max(), "64-bit negation");
 
     check(sign_extend(0x7F, 1) == 127, "positive 8-bit sign extension");
     check(sign_extend(0x80, 1) == -128, "negative 8-bit sign extension");
     check(sign_extend(0x800000, 3) == -8388608, "negative 24-bit sign extension");
-    check(sign_extend(0xFFFFFFFFFFFFFFFFULL, 8) == -1,
-          "negative 64-bit sign extension");
-    check(sign_extend(0x8000000000000000ULL, 8) ==
-              std::numeric_limits<int64_t>::min(),
+    check(sign_extend(0xFFFFFFFFFFFFFFFFULL, 8) == -1, "negative 64-bit sign extension");
+    check(sign_extend(0x8000000000000000ULL, 8) == std::numeric_limits<int64_t>::min(),
           "64-bit minimum sign extension");
 
     check(shift_left(1, 7, 1) == 0x80, "8-bit left shift");
     check(shift_left(1, 8, 1) == 0, "oversized 8-bit left shift");
     check(shift_right_logical(0x80, 7, 1) == 1, "8-bit logical right shift");
-    check(shift_right_arithmetic(0x80, 1, 1) == 0xC0,
-          "8-bit arithmetic right shift");
-    check(shift_right_arithmetic(0x80, 8, 1) == 0xFF,
-          "oversized negative arithmetic shift");
-    check(shift_right_arithmetic(0x7F, 8, 1) == 0,
-          "oversized positive arithmetic shift");
+    check(shift_right_arithmetic(0x80, 1, 1) == 0xC0, "8-bit arithmetic right shift");
+    check(shift_right_arithmetic(0x80, 8, 1) == 0xFF, "oversized negative arithmetic shift");
+    check(shift_right_arithmetic(0x7F, 8, 1) == 0, "oversized positive arithmetic shift");
 
-    constexpr uint8_t bytes[] = {0x01, 0x23, 0x45, 0x67,
-                                 0x89, 0xAB, 0xCD, 0xEF};
-    check(decode_bytes(bytes, 8, true) == 0x0123456789ABCDEFULL,
-          "big-endian 64-bit decode");
-    check(decode_bytes(bytes, 8, false) == 0xEFCDAB8967452301ULL,
-          "little-endian 64-bit decode");
-    check(decode_bytes(bytes, 3, true) == 0x012345ULL,
-          "big-endian 24-bit decode");
-    check(decode_bytes(bytes, 3, false) == 0x452301ULL,
-          "little-endian 24-bit decode");
-    check(decode_bytes(nullptr, 4, false) == 0,
-          "null byte decode is rejected");
+    constexpr uint8_t bytes[] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF};
+    check(decode_bytes(bytes, 8, true) == 0x0123456789ABCDEFULL, "big-endian 64-bit decode");
+    check(decode_bytes(bytes, 8, false) == 0xEFCDAB8967452301ULL, "little-endian 64-bit decode");
+    check(decode_bytes(bytes, 3, true) == 0x012345ULL, "big-endian 24-bit decode");
+    check(decode_bytes(bytes, 3, false) == 0x452301ULL, "little-endian 24-bit decode");
+    check(decode_bytes(nullptr, 4, false) == 0, "null byte decode is rejected");
 }
 
 void test_aarch64_address_origin()
@@ -136,50 +125,38 @@ void test_aarch64_address_origin()
     using chernobog::aarch64_address_origin::decode_adrp_add_str_address;
     // These instruction words come from independently assembling/disassembling
     // tests/aarch64_address_origin.s, not from an encoder shared with the parser.
-    check(decode_adrp_add_str_address(
-              0x12345FF8, 0xB0000008, 0x91048D08, 0xF9000008) == 0x12346123,
+    check(decode_adrp_add_str_address(0x12345FF8, 0xB0000008, 0x91048D08, 0xF9000008) == 0x12346123,
           "ADRP uses its own 4096-byte PC page, then ADD's byte offset");
-    check(decode_adrp_add_str_address(
-              0x5008, 0xF0FFFFFE, 0x913FFFDE, 0xF93FFFFE) == 0x4FFF,
+    check(decode_adrp_add_str_address(0x5008, 0xF0FFFFFE, 0x913FFFDE, 0xF93FFFFE) == 0x4FFF,
           "negative page displacement, X30, SP base and maximum STR offset");
-    check(decode_adrp_add_str_address(
-              0x200000000ULL, 0xF07FFFE0, 0x91000000, 0xF9000420)
-              == 0x2FFFFF000ULL,
+    check(decode_adrp_add_str_address(0x200000000ULL, 0xF07FFFE0, 0x91000000, 0xF9000420) ==
+              0x2FFFFF000ULL,
           "maximum positive signed 21-bit page displacement");
-    check(decode_adrp_add_str_address(
-              0x200000000ULL, 0x90800010, 0x91000610, 0xF9000A30)
-              == 0x100000001ULL,
+    check(decode_adrp_add_str_address(0x200000000ULL, 0x90800010, 0x91000610, 0xF9000A30) ==
+              0x100000001ULL,
           "minimum negative signed 21-bit page displacement");
-    check(decode_adrp_add_str_address(
-              0xFFFFFFFFFFFFF000ULL, 0xB0000008, 0x91048D08, 0xF9000008)
-              == 0x123,
+    check(decode_adrp_add_str_address(0xFFFFFFFFFFFFF000ULL, 0xB0000008, 0x91048D08, 0xF9000008) ==
+              0x123,
           "architectural upper-address addition wraps modulo 2^64");
-    check(decode_adrp_add_str_address(
-              0, 0xF0FFFFFE, 0x913FFFDE, 0xF93FFFFE)
-              == 0xFFFFFFFFFFFFFFFFULL,
+    check(decode_adrp_add_str_address(0, 0xF0FFFFFE, 0x913FFFDE, 0xF93FFFFE) ==
+              0xFFFFFFFFFFFFFFFFULL,
           "negative page addition wraps without signed overflow");
-    check(!decode_adrp_add_str_address(
-              0x1001, 0xB0000008, 0x91048D08, 0xF9000008),
+    check(!decode_adrp_add_str_address(0x1001, 0xB0000008, 0x91048D08, 0xF9000008),
           "unaligned AArch64 instruction address rejected");
-    check(!decode_adrp_add_str_address(
-              0x1000, 0x10008008, 0x91048D08, 0xF9000008),
+    check(!decode_adrp_add_str_address(0x1000, 0x10008008, 0x91048D08, 0xF9000008),
           "ADR is not treated as page-relative ADRP");
-    for ( uint32_t add : {0x91400508U, 0xB1000508U, 0x11000508U,
-                         0x91048D28U, 0x91048D09U} )
+    for (uint32_t add : {0x91400508U, 0xB1000508U, 0x11000508U, 0x91048D28U, 0x91048D09U})
     {
-        check(!decode_adrp_add_str_address(
-                  0x1000, 0xB0000008, add, 0xF9000008),
+        check(!decode_adrp_add_str_address(0x1000, 0xB0000008, add, 0xF9000008),
               "shifted/flag-setting/32-bit ADD or mismatched registers rejected");
     }
-    for ( uint32_t store : {0xB9000008U, 0xF9400008U, 0xF8000008U,
-                           0xF8216808U, 0xF8008408U, 0xF9000009U} )
+    for (uint32_t store :
+         {0xB9000008U, 0xF9400008U, 0xF8000008U, 0xF8216808U, 0xF8008408U, 0xF9000009U})
     {
-        check(!decode_adrp_add_str_address(
-                  0x1000, 0xB0000008, 0x91048D08, store),
+        check(!decode_adrp_add_str_address(0x1000, 0xB0000008, 0x91048D08, store),
               "different memory operation/width/addressing or source rejected");
     }
-    check(!decode_adrp_add_str_address(
-              0x1000, 0x9000001F, 0x910003FF, 0xF900001F),
+    check(!decode_adrp_add_str_address(0x1000, 0x9000001F, 0x910003FF, 0xF900001F),
           "XZR/SP cannot serve as the constructed-address register");
 }
 
@@ -190,21 +167,18 @@ void test_hexrays_merror_layout_compatibility()
     using chernobog::hexrays_compat::uses_timeout_merror_layout;
 
     decompiler_version_t parsed;
-    check(parse_decompiler_version("9.4.0.260717", &parsed)
-          && parsed.major == 9 && parsed.minor == 4
-          && parsed.revision == 0 && parsed.build_date == 260717,
+    check(parse_decompiler_version("9.4.0.260717", &parsed) && parsed.major == 9 &&
+              parsed.minor == 4 && parsed.revision == 0 && parsed.build_date == 260717,
           "Hex-Rays four-component version parsing");
-    check(!uses_timeout_merror_layout("9.4.0.260629"),
-          "pre-timeout Hex-Rays merror layout");
-    check(uses_timeout_merror_layout("9.4.0.260630")
-          && uses_timeout_merror_layout("9.4.0.260717")
-          && uses_timeout_merror_layout("9.5.0.260701")
-          && uses_timeout_merror_layout("10.0.0.270101"),
+    check(!uses_timeout_merror_layout("9.4.0.260629"), "pre-timeout Hex-Rays merror layout");
+    check(uses_timeout_merror_layout("9.4.0.260630") &&
+              uses_timeout_merror_layout("9.4.0.260717") &&
+              uses_timeout_merror_layout("9.5.0.260701") &&
+              uses_timeout_merror_layout("10.0.0.270101"),
           "timeout-era Hex-Rays merror layout");
-    check(!uses_timeout_merror_layout(nullptr)
-          && !uses_timeout_merror_layout("9.4.0")
-          && !uses_timeout_merror_layout("9.4.0.260717-extra")
-          && !uses_timeout_merror_layout("9.4.0.99999999999999999999"),
+    check(!uses_timeout_merror_layout(nullptr) && !uses_timeout_merror_layout("9.4.0") &&
+              !uses_timeout_merror_layout("9.4.0.260717-extra") &&
+              !uses_timeout_merror_layout("9.4.0.99999999999999999999"),
           "malformed Hex-Rays versions fail closed");
 }
 
@@ -213,54 +187,46 @@ void test_dependency_liveness()
     using chernobog::analysis::propagate_dependency_liveness;
     using chernobog::analysis::transfer_bit_liveness;
 
-    const auto partial_write = transfer_bit_liveness(
-        ~uint64_t{0}, 0, uint64_t{0xFF});
-    check(!partial_write.observed
-          && partial_write.live_after == ~uint64_t{0xFF},
+    const auto partial_write = transfer_bit_liveness(~uint64_t{0}, 0, uint64_t{0xFF});
+    check(!partial_write.observed && partial_write.live_after == ~uint64_t{0xFF},
           "partial register write kills only overwritten incoming bits");
-    const auto rewritten_low_read = transfer_bit_liveness(
-        partial_write.live_after, uint64_t{0xFF}, uint64_t{0xFF});
+    const auto rewritten_low_read =
+        transfer_bit_liveness(partial_write.live_after, uint64_t{0xFF}, uint64_t{0xFF});
     check(!rewritten_low_read.observed,
           "read after partial write does not observe killed incoming bits");
-    const auto surviving_high_read = transfer_bit_liveness(
-        rewritten_low_read.live_after, ~uint64_t{0}, 0);
+    const auto surviving_high_read =
+        transfer_bit_liveness(rewritten_low_read.live_after, ~uint64_t{0}, 0);
     check(surviving_high_read.observed,
           "full read observes incoming high bits after a partial write");
-    const auto full_write = transfer_bit_liveness(
-        ~uint64_t{0}, 0, ~uint64_t{0});
+    const auto full_write = transfer_bit_liveness(~uint64_t{0}, 0, ~uint64_t{0});
     check(!full_write.observed && full_write.live_after == 0,
           "full register write kills the complete incoming value");
 
     // v0 and v1 form an isolated self-feedback component. v2 reaches the
     // observable v4 through v3 and must retain its complete dependency chain.
     const std::vector<std::vector<size_t>> dependencies = {
-        {1},       // v0 = f(v1)
-        {0},       // v1 = f(v0)
-        {},        // v2 = constant
-        {2},       // v3 = f(v2)
-        {3},       // v4 = f(v3)
-        {99},      // malformed edge cannot manufacture liveness
+        {1},  // v0 = f(v1)
+        {0},  // v1 = f(v0)
+        {},   // v2 = constant
+        {2},  // v3 = f(v2)
+        {3},  // v4 = f(v3)
+        {99}, // malformed edge cannot manufacture liveness
     };
     const std::vector<uint8_t> observable = {0, 0, 0, 0, 1, 0};
-    const auto live = propagate_dependency_liveness(
-        dependencies.size(), observable, dependencies);
+    const auto live = propagate_dependency_liveness(dependencies.size(), observable, dependencies);
 
-    check(live.size() == dependencies.size(),
-          "dependency liveness result size");
-    check(live[0] == 0 && live[1] == 0,
-          "isolated dependency cycle remains dead");
+    check(live.size() == dependencies.size(), "dependency liveness result size");
+    check(live[0] == 0 && live[1] == 0, "isolated dependency cycle remains dead");
     check(live[2] != 0 && live[3] != 0 && live[4] != 0,
           "observable dependency chain propagates backwards");
-    check(live[5] == 0,
-          "invalid dependency edge is ignored");
+    check(live[5] == 0, "invalid dependency edge is ignored");
 }
 
 void test_deobfuscation_execution_policy()
 {
     chernobog::deobf::execution_policy_t policy;
 
-    check(!policy.automatic() && !policy.allows(0x1000),
-          "deobfuscation defaults to manual-only");
+    check(!policy.automatic() && !policy.allows(0x1000), "deobfuscation defaults to manual-only");
     policy.request(0x1000);
     check(policy.allows(0x1000) && !policy.allows(0x2000),
           "an explicit request admits only its function");
@@ -271,28 +237,29 @@ void test_deobfuscation_execution_policy()
     check(policy.allows(0x1000) && !policy.allows(0x2000),
           "disabling automatic mode retains explicit requests");
     policy.clear_requests();
-    check(!policy.allows(0x1000),
-          "clearing database state removes explicit requests");
+    check(!policy.allows(0x1000), "clearing database state removes explicit requests");
 }
 
 void test_stack_transfer_classifier()
 {
     using namespace chernobog::ida_analysis::classifier;
-    for ( const unsigned mode : {32u, 64u} )
+    for (const unsigned mode : {32u, 64u})
     {
         instruction_t push, ret;
-        push.address = 0x1000; push.size = 1;
+        push.address = 0x1000;
+        push.size = 1;
         push.kind = instruction_kind_t::push_register;
         push.stack_width_bits = uint16_t(mode);
         push.source = {0, 0, uint16_t(mode)};
-        ret.address = 0x1001; ret.size = 1;
+        ret.address = 0x1001;
+        ret.size = 1;
         ret.kind = instruction_kind_t::return_instruction;
         ret.stack_width_bits = uint16_t(mode);
         target_proof_t proof;
         auto result = classify_push_return(push, ret, mode, proof);
-        check(result && !result->target.value && result->stack_delta_bytes == 0
-              && result->stack_write_bytes == mode / 8
-              && result->stack_write_offset_bytes == -int(mode / 8),
+        check(result && !result->target.value && result->stack_delta_bytes == 0 &&
+                  result->stack_write_bytes == mode / 8 &&
+                  result->stack_write_offset_bytes == -int(mode / 8),
               "unresolved push/return retains stack write and exact width");
         proof.kind = target_proof_kind_t::register_definition;
         proof.value = 0x2000;
@@ -390,15 +357,12 @@ void test_get_pc_classifier()
     ret.kind = instruction_kind_t::return_instruction;
     ret.stack_width_bits = 64;
 
-    auto result = classify_get_pc_gadget(
-        call, {pop, add, push, ret}, false, 8);
-    check(result && result->resumed_at == 0x100C
-          && result->return_instruction == 0x1013
-          && result->summary_end == 0x1014 && result->stack_delta_bytes == 0
-          && result->stack_accesses.size() == 4
-          && result->stack_accesses[0].value_after == 0x1005
-          && result->stack_accesses[2].value_after == 0x100C
-          && !result->flags_preserved,
+    auto result = classify_get_pc_gadget(call, {pop, add, push, ret}, false, 8);
+    check(result && result->resumed_at == 0x100C && result->return_instruction == 0x1013 &&
+              result->summary_end == 0x1014 && result->stack_delta_bytes == 0 &&
+              result->stack_accesses.size() == 4 &&
+              result->stack_accesses[0].value_after == 0x1005 &&
+              result->stack_accesses[2].value_after == 0x100C && !result->flags_preserved,
           "exact get-PC pop/add/push/ret classification");
 
     auto invalid_ret = ret;
@@ -425,42 +389,35 @@ void test_get_pc_classifier()
     instruction_t alias_write = add;
     alias_write.kind = instruction_kind_t::register_write;
     alias_write.destination = ah;
-    check(!classify_get_pc_gadget(
-              call, {pop, alias_write, push, ret}, false, 8),
+    check(!classify_get_pc_gadget(call, {pop, alias_write, push, ret}, false, 8),
           "overlapping partial-register write invalidates get-PC value");
 
     instruction_t width_change = add;
     width_change.destination = eax;
     width_change.source = eax;
-    check(!classify_get_pc_gadget(
-              call, {pop, width_change, push, ret}, false, 8),
+    check(!classify_get_pc_gadget(call, {pop, width_change, push, ret}, false, 8),
           "different-width arithmetic invalidates get-PC value");
 
     instruction_t other_push = push;
     other_push.source = rbx;
-    check(!classify_get_pc_gadget(
-              call, {pop, add, other_push, ret}, false, 8),
+    check(!classify_get_pc_gadget(call, {pop, add, other_push, ret}, false, 8),
           "unrelated push rejects get-PC gadget");
 
     instruction_t stack_write = add;
     stack_write.kind = instruction_kind_t::stack_mutation;
-    check(!classify_get_pc_gadget(
-              call, {pop, stack_write, push, ret}, false, 8),
+    check(!classify_get_pc_gadget(call, {pop, stack_write, push, ret}, false, 8),
           "unmodeled stack mutation rejects get-PC gadget");
 
     instruction_t joined = push;
     joined.alternate_predecessor = true;
-    check(!classify_get_pc_gadget(
-              call, {pop, add, joined, ret}, false, 8),
+    check(!classify_get_pc_gadget(call, {pop, add, joined, ret}, false, 8),
           "alternate gadget predecessor rejects linear proof");
-    check(!classify_get_pc_gadget(
-              call, {pop, add, push, ret}, true, 8),
+    check(!classify_get_pc_gadget(call, {pop, add, push, ret}, true, 8),
           "alternate gadget entry rejects get-PC proof");
 
     instruction_t discontinuous = add;
     discontinuous.address = 0x1012;
-    check(!classify_get_pc_gadget(
-              call, {pop, discontinuous, push, ret}, false, 8),
+    check(!classify_get_pc_gadget(call, {pop, discontinuous, push, ret}, false, 8),
           "noncontiguous gadget instructions reject proof");
     auto unrelated_ret = ret;
     unrelated_ret.address = pop.end();
@@ -477,56 +434,50 @@ void test_get_pc_classifier()
     result = classify_get_pc_gadget(call, {adjust, ret}, false, 8);
     check(result && result->resumed_at == 0x1009,
           "stack-top adjustment produces exact resumed address");
-    check(result && result->stack_delta_bytes == 0
-          && result->stack_accesses.size() == 3
-          && result->stack_accesses[1].kind == stack_access_kind_t::read_modify_write
-          && result->stack_accesses[1].value_before == 0x1005
-          && result->stack_accesses[1].value_after == 0x1009,
+    check(result && result->stack_delta_bytes == 0 && result->stack_accesses.size() == 3 &&
+              result->stack_accesses[1].kind == stack_access_kind_t::read_modify_write &&
+              result->stack_accesses[1].value_before == 0x1005 &&
+              result->stack_accesses[1].value_after == 0x1009,
           "call/stack-adjust/return preserves the ordered stack-memory effects");
 
     instruction_t discard = adjust;
     discard.kind = instruction_kind_t::adjust_stack_pointer_immediate;
     discard.immediate = 8;
     result = classify_get_pc_gadget(call, {discard}, false, 8);
-    check(result && result->mode == get_pc_mode_t::discard_return_address
-          && result->resumed_at == 0x1011,
+    check(result && result->mode == get_pc_mode_t::discard_return_address &&
+              result->resumed_at == 0x1011,
           "return-address discard has an exact inline continuation");
-    check(result && result->stack_delta_bytes == 0 && result->summary_end == discard.end()
-          && result->stack_accesses.size() == 1 && !result->flags_preserved,
+    check(result && result->stack_delta_bytes == 0 && result->summary_end == discard.end() &&
+              result->stack_accesses.size() == 1 && !result->flags_preserved,
           "discard retains the CALL write and ADD flag effects");
 
     instruction_t later_branch;
     later_branch.address = 0x1011;
     later_branch.size = 2;
     later_branch.kind = instruction_kind_t::conditional_branch;
-    result = classify_get_pc_gadget(
-        call, {discard, later_branch}, false, 8);
+    result = classify_get_pc_gadget(call, {discard, later_branch}, false, 8);
     check(result && result->resumed_at == 0x1011,
           "discard proof terminates before later application control flow");
 
     instruction_t invalid_call = call;
     invalid_call.address = k_bad_address;
-    check(!classify_get_pc_gadget(
-              invalid_call, {discard}, false, 8),
+    check(!classify_get_pc_gadget(invalid_call, {discard}, false, 8),
           "invalid call address rejects get-PC proof");
     instruction_t overflowing_discard = discard;
     overflowing_discard.address = k_bad_address - 3;
     overflowing_discard.size = 8;
     invalid_call = call;
     invalid_call.target = overflowing_discard.address;
-    check(!classify_get_pc_gadget(
-              invalid_call, {overflowing_discard}, false, 8),
+    check(!classify_get_pc_gadget(invalid_call, {overflowing_discard}, false, 8),
           "overflowing gadget endpoint rejects get-PC proof");
 
     instruction_t partial_discard = discard;
     partial_discard.immediate = 4;
-    check(!classify_get_pc_gadget(
-              call, {partial_discard}, false, 8),
+    check(!classify_get_pc_gadget(call, {partial_discard}, false, 8),
           "partial return-address discard is rejected");
     instruction_t wrong_width_discard = discard;
     wrong_width_discard.stack_width_bits = 32;
-    check(!classify_get_pc_gadget(
-              call, {wrong_width_discard}, false, 8),
+    check(!classify_get_pc_gadget(call, {wrong_width_discard}, false, 8),
           "wrong-width stack-pointer adjustment is rejected");
 
     instruction_t inline_other;
@@ -534,14 +485,12 @@ void test_get_pc_classifier()
     inline_other.size = 2;
     inline_other.kind = instruction_kind_t::other;
     later_branch.address = 0x1013;
-    result = classify_get_pc_gadget(
-        call, {pop, inline_other, later_branch}, false, 8);
-    check(result && result->mode == get_pc_mode_t::pop_return_address
-          && result->resumed_at == 0x1011
-          && result->register_value_at_return == 0x1005,
+    result = classify_get_pc_gadget(call, {pop, inline_other, later_branch}, false, 8);
+    check(result && result->mode == get_pc_mode_t::pop_return_address &&
+              result->resumed_at == 0x1011 && result->register_value_at_return == 0x1005,
           "inline call/pop proof stops at the next control transfer");
-    check(result && result->summary_end == pop.end() && result->support.size() == 2
-          && result->stack_delta_bytes == 0 && result->flags_preserved,
+    check(result && result->summary_end == pop.end() && result->support.size() == 2 &&
+              result->stack_delta_bytes == 0 && result->flags_preserved,
           "inline summary effects stop at the capture boundary, not the later branch");
 
     auto adjacent_call = call;
@@ -549,16 +498,17 @@ void test_get_pc_classifier()
     auto adjacent_pop = pop;
     adjacent_pop.address = call.end();
     result = classify_get_pc_gadget(adjacent_call, {adjacent_pop}, false, 4);
-    check(result && result->register_value_at_return == call.end()
-          && result->resumed_at == adjacent_pop.end(), "CALL-next/POP is admitted");
+    check(result && result->register_value_at_return == call.end() &&
+              result->resumed_at == adjacent_pop.end(),
+          "CALL-next/POP is admitted");
 
     auto read = pop;
     read.kind = instruction_kind_t::read_stack_top;
     push.address = read.end();
     ret.address = push.end();
     result = classify_get_pc_gadget(call, {read, push, ret}, false, 8);
-    check(result && result->stack_delta_bytes == -8
-          && result->resumed_at == call.end() && result->stack_accesses.size() == 4,
+    check(result && result->stack_delta_bytes == -8 && result->resumed_at == call.end() &&
+              result->stack_accesses.size() == 4,
           "read/push/RET retains the original CALL slot below its returned copy");
     auto second_push = push;
     second_push.address = push.end();
@@ -573,15 +523,22 @@ void test_get_pc_classifier()
     check(!classify_get_pc_gadget(call, {pop}, false, 8),
           "POP width is checked independently from a supplied register slice");
 
-    call.address = 0xfffffff0; call.target = 0x1010; call.stack_width_bits = 32;
-    pop.stack_width_bits = 32; pop.destination = eax;
-    add.destination = add.source = eax; add.immediate = 20;
-    push.address = add.end(); push.stack_width_bits = 32; push.source = eax;
-    ret.address = push.end(); ret.stack_width_bits = 32;
+    call.address = 0xfffffff0;
+    call.target = 0x1010;
+    call.stack_width_bits = 32;
+    pop.stack_width_bits = 32;
+    pop.destination = eax;
+    add.destination = add.source = eax;
+    add.immediate = 20;
+    push.address = add.end();
+    push.stack_width_bits = 32;
+    push.source = eax;
+    ret.address = push.end();
+    ret.stack_width_bits = 32;
     result = classify_get_pc_gadget(call, {pop, add, push, ret}, false, 8);
-    check(result && result->resumed_at == 9 && result->stack_delta_bytes == 0
-          && result->stack_accesses.front().offset_bytes == -4
-          && result->stack_accesses.front().width_bits == 32,
+    check(result && result->resumed_at == 9 && result->stack_delta_bytes == 0 &&
+              result->stack_accesses.front().offset_bytes == -4 &&
+              result->stack_accesses.front().width_bits == 32,
           "32-bit captured-PC arithmetic uses modular 32-bit addresses and four-byte slots");
     call.target = pop.address = 0xffffffff;
     check(!classify_get_pc_gadget(call, {pop}, false, 8),
@@ -592,47 +549,62 @@ void test_push_get_pc_classifier()
 {
     using namespace chernobog::ida_analysis::classifier;
     instruction_t push;
-    push.address = 0x401000; push.size = 5; push.stack_width_bits = 32;
-    push.kind = instruction_kind_t::push_immediate; push.immediate = push.end();
+    push.address = 0x401000;
+    push.size = 5;
+    push.stack_width_bits = 32;
+    push.kind = instruction_kind_t::push_immediate;
+    push.immediate = push.end();
     auto result = classify_push_get_pc({push}, 32);
-    check(result && result->address_value == push.end() && result->stack_delta_bytes == -4
-          && result->stack_accesses.size() == 1 && result->flags_preserved,
+    check(result && result->address_value == push.end() && result->stack_delta_bytes == -4 &&
+              result->stack_accesses.size() == 1 && result->flags_preserved,
           "32-bit push-next materializes a PC value with its stack write retained");
     ++push.immediate;
     check(!classify_push_get_pc({push}, 32), "arbitrary immediate is not push-next");
     --push.immediate;
     push.stack_width_bits = 16;
     check(!classify_push_get_pc({push}, 32), "16-bit PUSH does not materialize a 32-bit PC");
-    push.address = 0x100001000; push.size = 1; push.stack_width_bits = 64;
-    push.kind = instruction_kind_t::push_register; push.source = {0, 0, 64};
+    push.address = 0x100001000;
+    push.size = 1;
+    push.stack_width_bits = 64;
+    push.kind = instruction_kind_t::push_register;
+    push.source = {0, 0, 64};
     instruction_t lea, exchange;
-    lea.address = push.end(); lea.size = 7; lea.stack_width_bits = 64;
+    lea.address = push.end();
+    lea.size = 7;
+    lea.stack_width_bits = 64;
     lea.kind = instruction_kind_t::load_pc_relative_address;
-    lea.destination = push.source; lea.target = 0x100002000;
-    exchange.address = lea.end(); exchange.size = 4; exchange.stack_width_bits = 64;
+    lea.destination = push.source;
+    lea.target = 0x100002000;
+    exchange.address = lea.end();
+    exchange.size = 4;
+    exchange.stack_width_bits = 64;
     exchange.kind = instruction_kind_t::exchange_stack_top_register;
     exchange.source = push.source;
     result = classify_push_get_pc({push, lea, exchange}, 64);
-    check(result && result->address_value == lea.target && result->stack_delta_bytes == -8
-          && result->restored_register.same(push.source) && result->support.size() == 3
-          && result->stack_accesses.size() == 2
-          && result->stack_accesses[1].kind == stack_access_kind_t::read_modify_write
-          && result->stack_accesses[1].implicit_lock
-          && result->stack_accesses[1].value_after == lea.target,
+    check(result && result->address_value == lea.target && result->stack_delta_bytes == -8 &&
+              result->restored_register.same(push.source) && result->support.size() == 3 &&
+              result->stack_accesses.size() == 2 &&
+              result->stack_accesses[1].kind == stack_access_kind_t::read_modify_write &&
+              result->stack_accesses[1].implicit_lock &&
+              result->stack_accesses[1].value_after == lea.target,
           "64-bit push/LEA/XCHG restores its register and retains the locked stack exchange");
     auto bad = exchange;
     bad.source.reg = 1;
     check(!classify_push_get_pc({push, lea, bad}, 64), "exchange must restore the saved register");
     bad = exchange;
     bad.alternate_predecessor = true;
-    check(!classify_push_get_pc({push, lea, bad}, 64), "entry into the exchange rejects the summary");
+    check(!classify_push_get_pc({push, lea, bad}, 64),
+          "entry into the exchange rejects the summary");
     bad = exchange;
     bad.stack_width_bits = 32;
-    check(!classify_push_get_pc({push, lea, bad}, 64), "partial stack exchange is not a full PC write");
+    check(!classify_push_get_pc({push, lea, bad}, 64),
+          "partial stack exchange is not a full PC write");
     auto bad_push = push;
     bad_push.source_is_stack_pointer = true;
-    check(!classify_push_get_pc({bad_push, lea, exchange}, 64), "SP cannot serve as the scratch register");
-    check(!classify_push_get_pc({push, lea}, 64), "an unfinished save/address sequence has no restoration proof");
+    check(!classify_push_get_pc({bad_push, lea, exchange}, 64),
+          "SP cannot serve as the scratch register");
+    check(!classify_push_get_pc({push, lea}, 64),
+          "an unfinished save/address sequence has no restoration proof");
 }
 
 void test_switch_dispatch_classifier()
@@ -657,8 +629,7 @@ void test_switch_dispatch_classifier()
     measured_sample.has_indirect_jump = true;
     measured_sample.cfg_complete = true;
     const auto sample = assess_switch_dispatch(measured_sample);
-    check(sample.accepted && sample.score == 100
-          && sample.recurrence_percent >= 99,
+    check(sample.accepted && sample.score == 100 && sample.recurrence_percent >= 99,
           "measured recurrent switch dispatcher is accepted");
 
     switch_dispatch_features_t large_parser_switch;
@@ -731,21 +702,15 @@ void test_arm64_direct_branch_encoding()
 
     check(encode_b(0x100003034ULL, 0x100012DC8ULL) == 0x14003F65U,
           "ARM64 forward direct branch encoding");
-    check(encode_b(0x1000ULL, 0x0ULL) == 0x17FFFC00U,
-          "ARM64 backward direct branch encoding");
+    check(encode_b(0x1000ULL, 0x0ULL) == 0x17FFFC00U, "ARM64 backward direct branch encoding");
     check(encode_b(0, (uint64_t{1} << 27) - 4).has_value(),
           "ARM64 maximum forward branch displacement");
-    check(!encode_b(0, uint64_t{1} << 27),
-          "ARM64 out-of-range forward branch rejection");
-    check(encode_b(uint64_t{1} << 27, 0).has_value(),
-          "ARM64 maximum backward branch displacement");
-    check(!encode_b((uint64_t{1} << 27) + 4, 0),
-          "ARM64 out-of-range backward branch rejection");
-    check(!encode_b(0x1000, 0x1002),
-          "ARM64 unaligned branch target rejection");
+    check(!encode_b(0, uint64_t{1} << 27), "ARM64 out-of-range forward branch rejection");
+    check(encode_b(uint64_t{1} << 27, 0).has_value(), "ARM64 maximum backward branch displacement");
+    check(!encode_b((uint64_t{1} << 27) + 4, 0), "ARM64 out-of-range backward branch rejection");
+    check(!encode_b(0x1000, 0x1002), "ARM64 unaligned branch target rejection");
 
-    check(encode_b_cond(0x100012DD4ULL, 0x100012DDCULL, 0xAU)
-              == 0x5400004AU,
+    check(encode_b_cond(0x100012DD4ULL, 0x100012DDCULL, 0xAU) == 0x5400004AU,
           "ARM64 conditional branch encoding");
     check(encode_b_cond(uint64_t{1} << 20, 0, 0) == 0x54800000U,
           "ARM64 maximum backward conditional displacement");
@@ -753,15 +718,14 @@ void test_arm64_direct_branch_encoding()
           "ARM64 out-of-range backward conditional rejection");
     check(!encode_b_cond(0, uint64_t{1} << 20, 0),
           "ARM64 out-of-range forward conditional rejection");
-    check(!encode_b_cond(0x1000, 0x1000, 0xEU),
-          "ARM64 reserved conditional predicate rejection");
+    check(!encode_b_cond(0x1000, 0x1000, 0xEU), "ARM64 reserved conditional predicate rejection");
 }
 
 void test_arm64_predicates()
 {
     using namespace chernobog::arm64_predicate;
 
-    for ( unsigned encoded = 0; encoded < 16; ++encoded )
+    for (unsigned encoded = 0; encoded < 16; ++encoded)
     {
         const nzcv_t flags{
             (encoded & 8U) != 0,
@@ -769,12 +733,11 @@ void test_arm64_predicates()
             (encoded & 2U) != 0,
             (encoded & 1U) != 0,
         };
-        for ( uint8_t condition = 0; condition <= 0xC; condition += 2 )
+        for (uint8_t condition = 0; condition <= 0xC; condition += 2)
         {
             const auto positive = evaluate(condition, flags);
             const auto inverse = evaluate(condition + 1, flags);
-            check(positive.has_value() && inverse.has_value()
-                  && *positive != *inverse,
+            check(positive.has_value() && inverse.has_value() && *positive != *inverse,
                   "ARM64 paired predicates are exact inverses");
         }
     }
@@ -782,41 +745,33 @@ void test_arm64_predicates()
     const nzcv_t zero = sub_flags(0x12345678U, 0x12345678U, 4);
     check(!zero.negative && zero.zero && zero.carry && !zero.overflow,
           "ARM64 equal subtraction flags");
-    check(evaluate(0x0, zero) == true && evaluate(0x1, zero) == false,
-          "ARM64 EQ/NE predicates");
-    check(evaluate(0x2, zero) == true && evaluate(0x3, zero) == false,
-          "ARM64 CS/CC predicates");
-    check(evaluate(0x8, zero) == false && evaluate(0x9, zero) == true,
-          "ARM64 HI/LS predicates");
+    check(evaluate(0x0, zero) == true && evaluate(0x1, zero) == false, "ARM64 EQ/NE predicates");
+    check(evaluate(0x2, zero) == true && evaluate(0x3, zero) == false, "ARM64 CS/CC predicates");
+    check(evaluate(0x8, zero) == false && evaluate(0x9, zero) == true, "ARM64 HI/LS predicates");
 
     const nzcv_t signed_overflow = add_flags(0x7FFFFFFFU, 1, 4);
-    check(signed_overflow.negative && !signed_overflow.zero
-          && !signed_overflow.carry && signed_overflow.overflow,
+    check(signed_overflow.negative && !signed_overflow.zero && !signed_overflow.carry &&
+              signed_overflow.overflow,
           "ARM64 signed addition overflow flags");
-    check(evaluate(0xA, signed_overflow) == true,
-          "ARM64 GE uses N equals V");
-    check(evaluate(0xC, signed_overflow) == true,
-          "ARM64 GT uses nonzero and N equals V");
+    check(evaluate(0xA, signed_overflow) == true, "ARM64 GE uses N equals V");
+    check(evaluate(0xC, signed_overflow) == true, "ARM64 GT uses nonzero and N equals V");
 
     const nzcv_t unsigned_wrap = add_flags(0xFFFFFFFFU, 1, 4);
-    check(!unsigned_wrap.negative && unsigned_wrap.zero
-          && unsigned_wrap.carry && !unsigned_wrap.overflow,
+    check(!unsigned_wrap.negative && unsigned_wrap.zero && unsigned_wrap.carry &&
+              !unsigned_wrap.overflow,
           "ARM64 unsigned addition carry flags");
     const nzcv_t borrow = sub_flags(0, 1, 8);
-    check(borrow.negative && !borrow.zero && !borrow.carry
-          && !borrow.overflow,
+    check(borrow.negative && !borrow.zero && !borrow.carry && !borrow.overflow,
           "ARM64 subtraction borrow flags");
     const nzcv_t signed_sub_overflow = sub_flags(0x8000000000000000ULL, 1, 8);
-    check(!signed_sub_overflow.negative && !signed_sub_overflow.zero
-          && signed_sub_overflow.carry && signed_sub_overflow.overflow,
+    check(!signed_sub_overflow.negative && !signed_sub_overflow.zero && signed_sub_overflow.carry &&
+              signed_sub_overflow.overflow,
           "ARM64 64-bit signed subtraction overflow flags");
-    const nzcv_t signed_add_overflow =
-        add_flags(0x7FFFFFFFFFFFFFFFULL, 1, 8);
-    check(signed_add_overflow.negative && !signed_add_overflow.zero
-          && !signed_add_overflow.carry && signed_add_overflow.overflow,
+    const nzcv_t signed_add_overflow = add_flags(0x7FFFFFFFFFFFFFFFULL, 1, 8);
+    check(signed_add_overflow.negative && !signed_add_overflow.zero && !signed_add_overflow.carry &&
+              signed_add_overflow.overflow,
           "ARM64 64-bit signed addition overflow flags");
-    check(!evaluate(0xEU, zero).has_value()
-          && !evaluate(0xFU, zero).has_value(),
+    check(!evaluate(0xEU, zero).has_value() && !evaluate(0xFU, zero).has_value(),
           "ARM64 AL/NV predicate rejection");
 }
 
@@ -824,23 +779,20 @@ void test_simd_utilities()
 {
     using namespace chernobog::simd;
 
-    check(rotl64(0x0123456789ABCDEFULL, 0) == 0x0123456789ABCDEFULL,
-          "zero rotation");
+    check(rotl64(0x0123456789ABCDEFULL, 0) == 0x0123456789ABCDEFULL, "zero rotation");
     check(rotl64(1, 64) == 1, "full-width rotation");
     check(next_pow2(0) == 1 && next_pow2(9) == 16, "next 64-bit power of two");
-    check(next_pow2(std::numeric_limits<uint64_t>::max()) == 0,
-          "64-bit power-of-two overflow");
-    check(next_pow2_32(std::numeric_limits<uint32_t>::max()) == 0,
-          "32-bit power-of-two overflow");
+    check(next_pow2(std::numeric_limits<uint64_t>::max()) == 0, "64-bit power-of-two overflow");
+    check(next_pow2_32(std::numeric_limits<uint32_t>::max()) == 0, "32-bit power-of-two overflow");
 
     std::array<uint8_t, 192> source{};
     std::array<uint8_t, 192> copy{};
-    for ( size_t i = 0; i < source.size(); ++i )
+    for (size_t i = 0; i < source.size(); ++i)
         source[i] = static_cast<uint8_t>((i * 131U + 17U) & 0xFFU);
 
-    for ( size_t len = 0; len <= 128; ++len )
+    for (size_t len = 0; len <= 128; ++len)
     {
-        for ( size_t offset = 0; offset < 8; ++offset )
+        for (size_t offset = 0; offset < 8; ++offset)
         {
             std::memcpy(copy.data() + offset, source.data() + 3, len);
             const uint64_t expected = hash_bytes(source.data() + 3, len);
@@ -848,7 +800,7 @@ void test_simd_utilities()
                   "hash is independent of input alignment");
             check(mem_eq(source.data() + 3, copy.data() + offset, len),
                   "unaligned equal-memory comparison");
-            if ( len > 0 )
+            if (len > 0)
             {
                 copy[offset + len - 1] ^= 1;
                 check(!mem_eq(source.data() + 3, copy.data() + offset, len),
@@ -874,34 +826,26 @@ void test_mba_identities()
     const auto bnot = [&](uint32_t value) { return narrow(~value); };
     const auto neg = [&](uint32_t value) { return narrow(0U - value); };
 
-    for ( uint32_t x = 0; x <= width_mask; ++x )
+    for (uint32_t x = 0; x <= width_mask; ++x)
     {
-        for ( uint32_t y = 0; y <= width_mask; ++y )
+        for (uint32_t y = 0; y <= width_mask; ++y)
         {
-            check(narrow(bnot(narrow(bnot(x) + bnot(y))) + 1U) ==
-                      narrow(x + y + 2U),
+            check(narrow(bnot(narrow(bnot(x) + bnot(y))) + 1U) == narrow(x + y + 2U),
                   "Add_OllvmRule_2 identity");
-            check(narrow(bnot(bnot(x) | bnot(y)) +
-                         bnot(x | bnot(y)) + 1U) == narrow(y + 1U),
+            check(narrow(bnot(bnot(x) | bnot(y)) + bnot(x | bnot(y)) + 1U) == narrow(y + 1U),
                   "Add_OllvmRule_4 identity");
             check(narrow(bnot(x) + bnot(y) + 2U) == neg(narrow(x + y)),
                   "Add_FactorRule_1 identity");
-            check(narrow((x ^ bnot(y)) + 2U * (x | y)) ==
-                      narrow(x + y - 1U),
+            check(narrow((x ^ bnot(y)) + 2U * (x | y)) == narrow(x + y - 1U),
                   "Add_FactorRule_2 identity");
-            check(neg(narrow(neg(x) - neg(y))) == narrow(x - y),
-                  "Add_NegRule_2 identity");
-            check(narrow((bnot(x) & y) + (x | y)) ==
-                      narrow(x + 2U * (bnot(x) & y)),
+            check(neg(narrow(neg(x) - neg(y))) == narrow(x - y), "Add_NegRule_2 identity");
+            check(narrow((bnot(x) & y) + (x | y)) == narrow(x + 2U * (bnot(x) & y)),
                   "Add_ComplexRule_1 identity");
-            check(narrow((x ^ y) - 2U * (bnot(x) & y)) ==
-                      narrow(x - y),
+            check(narrow((x ^ y) - 2U * (bnot(x) & y)) == narrow(x - y),
                   "Sub_HackersDelightRule_3 identity");
-            check(narrow(neg(narrow(2U * (bnot(x) & y))) + (x ^ y)) ==
-                      narrow(x - y),
+            check(narrow(neg(narrow(2U * (bnot(x) & y))) + (x ^ y)) == narrow(x - y),
                   "Sub_HackersDelightRule_4 identity");
-            check(narrow(bnot(bnot(x) | bnot(y)) | bnot(x | y)) ==
-                      bnot(x ^ y),
+            check(narrow(bnot(bnot(x) | bnot(y)) | bnot(x | y)) == bnot(x ^ y),
                   "Xor_MbaRule_3 XNOR identity");
         }
     }
@@ -909,19 +853,18 @@ void test_mba_identities()
 
 void test_branchless_select_identity()
 {
-    const auto select = [](uint64_t old_value, uint64_t candidate,
-                           bool condition, int size) {
-        const uint64_t width_mask = size == 8
-            ? std::numeric_limits<uint64_t>::max()
-            : (uint64_t{1} << (size * 8)) - 1;
+    const auto select = [](uint64_t old_value, uint64_t candidate, bool condition, int size)
+    {
+        const uint64_t width_mask =
+            size == 8 ? std::numeric_limits<uint64_t>::max() : (uint64_t{1} << (size * 8)) - 1;
         const uint64_t mask = (uint64_t{0} - uint64_t{condition}) & width_mask;
         return (old_value ^ ((old_value ^ candidate) & mask)) & width_mask;
     };
 
     // Exhaust the complete 8-bit domain for both predicate values.
-    for ( uint64_t old_value = 0; old_value <= 0xFF; ++old_value )
+    for (uint64_t old_value = 0; old_value <= 0xFF; ++old_value)
     {
-        for ( uint64_t candidate = 0; candidate <= 0xFF; ++candidate )
+        for (uint64_t candidate = 0; candidate <= 0xFF; ++candidate)
         {
             check(select(old_value, candidate, false, 1) == old_value,
                   "branchless select retains the old 8-bit value");
@@ -938,20 +881,17 @@ void test_branchless_select_identity()
         0x0123456789ABCDEFULL,
         std::numeric_limits<uint64_t>::max(),
     };
-    for ( int size : {2, 4, 8} )
+    for (int size : {2, 4, 8})
     {
-        const uint64_t width_mask = size == 8
-            ? std::numeric_limits<uint64_t>::max()
-            : (uint64_t{1} << (size * 8)) - 1;
-        for ( uint64_t old_value : values )
+        const uint64_t width_mask =
+            size == 8 ? std::numeric_limits<uint64_t>::max() : (uint64_t{1} << (size * 8)) - 1;
+        for (uint64_t old_value : values)
         {
-            for ( uint64_t candidate : values )
+            for (uint64_t candidate : values)
             {
-                check(select(old_value, candidate, false, size) ==
-                          (old_value & width_mask),
+                check(select(old_value, candidate, false, size) == (old_value & width_mask),
                       "branchless select retains the old wide value");
-                check(select(old_value, candidate, true, size) ==
-                          (candidate & width_mask),
+                check(select(old_value, candidate, true, size) == (candidate & width_mask),
                       "branchless select takes the candidate wide value");
             }
         }
@@ -962,14 +902,12 @@ void test_hikari_string_recovery()
 {
     using chernobog::string_recovery::recover_hikari_xor_ascii;
 
-    const std::vector<uint8_t> separate_terminator = {
-        0x09, 0x3F, 0x39, 0x28, 0x3F, 0x2E, 0x00};
+    const std::vector<uint8_t> separate_terminator = {0x09, 0x3F, 0x39, 0x28, 0x3F, 0x2E, 0x00};
     const std::vector<uint8_t> six_keys(6, 0x5A);
     check(recover_hikari_xor_ascii(separate_terminator, six_keys) == "Secret",
           "Hikari separate destination terminator");
 
-    const std::vector<uint8_t> encrypted_terminator = {
-        0x09, 0x3F, 0x39, 0x28, 0x3F, 0x2E, 0x5A};
+    const std::vector<uint8_t> encrypted_terminator = {0x09, 0x3F, 0x39, 0x28, 0x3F, 0x2E, 0x5A};
     const std::vector<uint8_t> seven_keys(7, 0x5A);
     check(recover_hikari_xor_ascii(encrypted_terminator, seven_keys) == "Secret",
           "Hikari XOR-encrypted terminator");
@@ -979,62 +917,51 @@ void test_hikari_string_recovery()
     check(recover_hikari_xor_ascii(corrupted, six_keys).empty(),
           "Hikari non-printable plaintext rejection");
 
-    const std::vector<uint8_t> unterminated(
-        separate_terminator.begin(), separate_terminator.end() - 1);
+    const std::vector<uint8_t> unterminated(separate_terminator.begin(),
+                                            separate_terminator.end() - 1);
     check(recover_hikari_xor_ascii(unterminated, six_keys).empty(),
           "Hikari unterminated plaintext rejection");
 
     using chernobog::string_recovery::recover_static_text;
     const std::vector<uint8_t> ascii = {'N', 'h', 0};
     const auto recovered_ascii = recover_static_text(ascii, 1, false, false);
-    check(recovered_ascii && recovered_ascii->utf8 == "Nh"
-          && recovered_ascii->characters == 2
-          && recovered_ascii->explicitly_terminated,
+    check(recovered_ascii && recovered_ascii->utf8 == "Nh" && recovered_ascii->characters == 2 &&
+              recovered_ascii->explicitly_terminated,
           "terminated static UTF-8 recovery");
     const std::vector<uint8_t> one_character = {'-', 0};
-    const auto recovered_one = recover_static_text(
-        one_character, 1, false, false);
-    check(recovered_one && recovered_one->utf8 == "-"
-          && recovered_one->explicitly_terminated,
+    const auto recovered_one = recover_static_text(one_character, 1, false, false);
+    check(recovered_one && recovered_one->utf8 == "-" && recovered_one->explicitly_terminated,
           "single-character explicitly terminated static UTF-8 recovery");
 
     const std::vector<uint8_t> length_delimited = {'A', 'E', 'S', '-', '2', '5', '6'};
-    const auto recovered_length = recover_static_text(
-        length_delimited, 1, false, true);
-    check(recovered_length && recovered_length->utf8 == "AES-256"
-          && !recovered_length->explicitly_terminated,
+    const auto recovered_length = recover_static_text(length_delimited, 1, false, true);
+    check(recovered_length && recovered_length->utf8 == "AES-256" &&
+              !recovered_length->explicitly_terminated,
           "length-delimited static UTF-8 recovery");
     check(!recover_static_text(length_delimited, 1, false, false),
           "unterminated static text requires explicit admission");
 
-    const std::vector<uint8_t> utf16le = {
-        0xA9, 0x03, 0x3D, 0xD8, 0x80, 0xDE, 0x00, 0x00}; // Omega + U+1F680
+    const std::vector<uint8_t> utf16le = {0xA9, 0x03, 0x3D, 0xD8,
+                                          0x80, 0xDE, 0x00, 0x00}; // Omega + U+1F680
     const auto recovered_utf16 = recover_static_text(utf16le, 2, false, false);
-    check(recovered_utf16 && recovered_utf16->utf8 == "\xCE\xA9\xF0\x9F\x9A\x80"
-          && recovered_utf16->characters == 2,
+    check(recovered_utf16 && recovered_utf16->utf8 == "\xCE\xA9\xF0\x9F\x9A\x80" &&
+              recovered_utf16->characters == 2,
           "strict UTF-16LE recovery with surrogate pair");
-    const std::vector<uint8_t> utf16be = {
-        0x03, 0xA9, 0xD8, 0x3D, 0xDE, 0x80, 0x00, 0x00};
-    const auto recovered_utf16be = recover_static_text(
-        utf16be, 2, true, false);
-    check(recovered_utf16be
-          && recovered_utf16be->utf8 == "\xCE\xA9\xF0\x9F\x9A\x80",
+    const std::vector<uint8_t> utf16be = {0x03, 0xA9, 0xD8, 0x3D, 0xDE, 0x80, 0x00, 0x00};
+    const auto recovered_utf16be = recover_static_text(utf16be, 2, true, false);
+    check(recovered_utf16be && recovered_utf16be->utf8 == "\xCE\xA9\xF0\x9F\x9A\x80",
           "strict UTF-16BE recovery with surrogate pair");
-    const std::vector<uint8_t> utf32le = {
-        0x80, 0xF6, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
-    const auto recovered_utf32 = recover_static_text(
-        utf32le, 4, false, false);
+    const std::vector<uint8_t> utf32le = {0x80, 0xF6, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
+    const auto recovered_utf32 = recover_static_text(utf32le, 4, false, false);
     check(recovered_utf32 && recovered_utf32->utf8 == "\xF0\x9F\x9A\x80",
           "strict UTF-32LE recovery");
 
     const std::vector<uint8_t> invalid_utf8 = {0xC0, 0xAF, 0};
-    check(!recover_static_text(invalid_utf8, 1, false, false),
-          "overlong UTF-8 rejection");
+    check(!recover_static_text(invalid_utf8, 1, false, false), "overlong UTF-8 rejection");
     const std::vector<uint8_t> embedded_control = {'A', 0x01, 'B', 0};
     check(!recover_static_text(embedded_control, 1, false, false),
           "static text control-code rejection");
-    const std::vector<uint8_t> unpaired_surrogate = {
-        0x00, 0xD8, 0x41, 0x00, 0x00, 0x00};
+    const std::vector<uint8_t> unpaired_surrogate = {0x00, 0xD8, 0x41, 0x00, 0x00, 0x00};
     check(!recover_static_text(unpaired_surrogate, 2, false, false),
           "unpaired UTF-16 surrogate rejection");
 }
@@ -1059,7 +986,7 @@ int main()
     test_mba_identities();
     test_branchless_select_identity();
     test_hikari_string_recovery();
-    if ( failures != 0 )
+    if (failures != 0)
         std::fprintf(stderr, "%d core test(s) failed\n", failures);
     return failures == 0 ? 0 : 1;
 }

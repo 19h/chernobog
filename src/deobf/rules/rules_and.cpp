@@ -1,7 +1,9 @@
 #include "rules_and.h"
 
-namespace chernobog {
-namespace rules {
+namespace chernobog
+{
+namespace rules
+{
 
 // Register all AND rules
 REGISTER_MBA_RULE(And_HackersDelightRule_1);

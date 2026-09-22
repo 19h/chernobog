@@ -20,15 +20,16 @@
 //   3. Remove intermediate jumps
 //   4. Preserve semantic ordering
 //--------------------------------------------------------------------------
-class block_merge_handler_t {
-public:
+class block_merge_handler_t
+{
+  public:
     // Detection
     static bool detect_split_blocks(mbl_array_t *mba);
 
     // Main deobfuscation pass
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
 
-private:
+  private:
     // Helper: count instructions in a block
     static int count_insns(mblock_t *blk);
 

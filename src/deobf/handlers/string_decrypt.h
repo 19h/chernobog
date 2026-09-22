@@ -24,17 +24,19 @@
 //      plaintext immediates so Hex-Rays can collapse the initializer
 //   4. Retain the named-object Hikari key-vector path as a legacy fallback
 //--------------------------------------------------------------------------
-class string_decrypt_handler_t {
-public:
+class string_decrypt_handler_t
+{
+  public:
     // Detection
     static bool detect(mbl_array_t *mba);
 
     // Main deobfuscation pass
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
 
-private:
+  private:
     // Find encrypted strings in the binary
-    struct encrypted_string_t {
+    struct encrypted_string_t
+    {
         ea_t encrypted_addr = BADADDR;     // EncryptedString global
         ea_t decrypt_space_addr = BADADDR; // DecryptSpace global
         std::vector<uint8_t> encrypted_data;

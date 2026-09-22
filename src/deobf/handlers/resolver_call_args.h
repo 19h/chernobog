@@ -8,6 +8,6 @@
 // This is a MMAT_CALLS-only microcode transformation.
 class resolver_call_args_handler_t
 {
-public:
+  public:
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
 };

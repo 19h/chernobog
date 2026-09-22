@@ -9,9 +9,15 @@
 struct insn_t;
 struct op_t;
 
-namespace chernobog::ida_analysis {
+namespace chernobog::ida_analysis
+{
 
-enum class X86ConditionUse : uint8_t { branch, set_byte, conditional_move };
+enum class X86ConditionUse : uint8_t
+{
+    branch,
+    set_byte,
+    conditional_move
+};
 struct X86Condition
 {
     x86_abstract::Condition condition;
@@ -36,7 +42,7 @@ struct X86RegisterFact
     std::optional<uint64_t> value;
     std::vector<uint64_t> support;
 };
-X86RegisterFact analyze_x86_register_before(
-    const insn_t &instruction, const op_t &operand, size_t depth);
+X86RegisterFact analyze_x86_register_before(const insn_t &instruction, const op_t &operand,
+                                            size_t depth);
 
 } // namespace chernobog::ida_analysis

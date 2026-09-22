@@ -22,26 +22,28 @@
 //   3. Resolves to the target symbol
 //   4. Annotates or replaces the reference
 //--------------------------------------------------------------------------
-class ptr_resolve_handler_t {
-public:
+class ptr_resolve_handler_t
+{
+  public:
     // Detection
     static bool detect(mbl_array_t *mba);
 
     // Main deobfuscation pass
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
 
-private:
-    struct ptr_ref_t {
-        minsn_t *insn;          // Instruction using the pointer
-        mop_t *ptr_mop;         // The pointer operand
-        ea_t ptr_addr;          // Address of the pointer variable (e.g., off_XXXX)
-        ea_t target_addr;       // What the pointer points to
-        qstring ptr_name;       // Name of the pointer (off_XXXX)
-        qstring target_name;    // Name of the target (_OBJC_CLASS_$_...)
-        bool is_objc_class;     // Is this an ObjC class reference?
-        qstring class_name;     // Extracted class name (without prefix)
-        bool is_cfstring;       // Is this a CFConstantString?
-        qstring string_value;   // Extracted string content for CFConstantStrings
+  private:
+    struct ptr_ref_t
+    {
+        minsn_t *insn;        // Instruction using the pointer
+        mop_t *ptr_mop;       // The pointer operand
+        ea_t ptr_addr;        // Address of the pointer variable (e.g., off_XXXX)
+        ea_t target_addr;     // What the pointer points to
+        qstring ptr_name;     // Name of the pointer (off_XXXX)
+        qstring target_name;  // Name of the target (_OBJC_CLASS_$_...)
+        bool is_objc_class;   // Is this an ObjC class reference?
+        qstring class_name;   // Extracted class name (without prefix)
+        bool is_cfstring;     // Is this a CFConstantString?
+        qstring string_value; // Extracted string content for CFConstantStrings
     };
 
     // Find all indirect pointer references
@@ -65,5 +67,4 @@ private:
 
     // Annotate the resolved reference
     static void annotate_ptr_ref(const ptr_ref_t &ref);
-
 };

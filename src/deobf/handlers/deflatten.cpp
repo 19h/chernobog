@@ -5,16 +5,16 @@
 #include "../analysis/opaque_eval.h"
 #include "../analysis/z3_solver.h"
 #include "../../common/compat.h"
-#include <algorithm>  // for std::find
+#include <algorithm> // for std::find
 #include <limits>
 
 using namespace z3_solver;
 
 // Static storage for deferred analysis results
-std::map<ssize_t, deflatten_handler_t::deferred_cache_t>
-    deflatten_handler_t::s_deferred_analysis;
+std::map<ssize_t, deflatten_handler_t::deferred_cache_t> deflatten_handler_t::s_deferred_analysis;
 
-namespace {
+namespace
+{
 
 deflatten_handler_t::deferred_cache_t &current_deflatten_cache()
 {
@@ -28,23 +28,20 @@ void deflatten_handler_t::clear_deferred(ea_t func_ea)
 {
     const ssize_t database = get_dbctx_id();
     auto databases = s_deferred_analysis.find(database);
-    if ( databases == s_deferred_analysis.end() )
+    if (databases == s_deferred_analysis.end())
         return;
     databases->second.erase(func_ea);
-    if ( databases->second.empty() )
+    if (databases->second.empty())
         s_deferred_analysis.erase(databases);
 }
 
-void deflatten_handler_t::clear_cache()
-{
-    s_deferred_analysis.erase(get_dbctx_id());
-}
+void deflatten_handler_t::clear_cache() { s_deferred_analysis.erase(get_dbctx_id()); }
 
 // Check for pending analysis
 bool deflatten_handler_t::has_pending_analysis(ea_t func_ea)
 {
     const auto databases = s_deferred_analysis.find(get_dbctx_id());
-    if ( databases == s_deferred_analysis.end() )
+    if (databases == s_deferred_analysis.end())
         return false;
     const auto p = databases->second.find(func_ea);
     return p != databases->second.end() && p->second.analysis_complete;
@@ -55,7 +52,7 @@ bool deflatten_handler_t::has_pending_analysis(ea_t func_ea)
 //--------------------------------------------------------------------------
 bool deflatten_handler_t::detect(mbl_array_t *mba, deobf_ctx_t *ctx)
 {
-    if ( !mba || mba->qty < 4 ) 
+    if (!mba || mba->qty < 4)
         return false;
 
     pattern_match::flatten_info_t info;
@@ -72,23 +69,41 @@ bool deflatten_handler_t::detect(mbl_array_t *mba, deobf_ctx_t *ctx)
 bool deflatten_handler_t::is_state_constant(uint64_t val)
 {
     // Must be a 32-bit value in the "suspicious" range
-    if ( val < 0x10000000 || val > 0xFFFFFFFF ) 
+    if (val < 0x10000000 || val > 0xFFFFFFFF)
         return false;
 
     uint32_t high = (val >> 16) & 0xFFFF;
-    if ( high == 0 ) 
+    if (high == 0)
         return false;
 
     // Classic Hikari magic patterns
-    switch ( high ) {
-        case 0xAAAA: case 0xABCD: case 0xBBBB: case 0xCCCC: case 0xDDDD:
-        case 0xBEEF: case 0xCAFE: case 0xDEAD:
-        case 0x1111: case 0x2222: case 0x3333: case 0x4444:
-        case 0x5555: case 0x6666: case 0x7777: case 0x8888: case 0x9999:
-        case 0xFEED: case 0xFACE: case 0xBABE: case 0xC0DE: case 0xF00D:
-            return true;
-        default:
-            break;
+    switch (high)
+    {
+    case 0xAAAA:
+    case 0xABCD:
+    case 0xBBBB:
+    case 0xCCCC:
+    case 0xDDDD:
+    case 0xBEEF:
+    case 0xCAFE:
+    case 0xDEAD:
+    case 0x1111:
+    case 0x2222:
+    case 0x3333:
+    case 0x4444:
+    case 0x5555:
+    case 0x6666:
+    case 0x7777:
+    case 0x8888:
+    case 0x9999:
+    case 0xFEED:
+    case 0xFACE:
+    case 0xBABE:
+    case 0xC0DE:
+    case 0xF00D:
+        return true;
+    default:
+        break;
     }
 
     // Extended patterns: accept any value that looks like a state constant
@@ -96,29 +111,30 @@ bool deflatten_handler_t::is_state_constant(uint64_t val)
     // - Large enough to not be a small index (>= 0x10000000)
     // - Not a typical address (addresses are usually > 0x100000000 on 64-bit)
     // - Have high entropy in both halves (not like 0x00001234 or 0x12340000)
-    
+
     uint16_t low = val & 0xFFFF;
-    
+
     // Both halves should have some bits set (entropy check)
     // This filters out values like 0x12340000 or 0x00001234
-    if ( low == 0 || high == 0 ) 
+    if (low == 0 || high == 0)
         return false;
-    
+
     // Avoid values that look like shifted addresses or offsets
     // Typical code/data addresses on macOS are 0x100000000+
     // Small offsets would be < 0x10000000
-    if ( val >= 0x100000000ULL ) 
+    if (val >= 0x100000000ULL)
         return false;
-    
+
     // Accept as potential state constant if it has entropy in both halves
     // Count set bits - genuine state constants tend to have moderate bit density
     int bit_count = portable_popcount((uint32_t)val);
-    
+
     // State constants typically have 8-24 bits set (not all 0s or all 1s)
-    if ( bit_count >= 6 && bit_count <= 26 ) {
+    if (bit_count >= 6 && bit_count <= 26)
+    {
         return true;
     }
-    
+
     return false;
 }
 
@@ -128,32 +144,42 @@ bool deflatten_handler_t::is_state_constant(uint64_t val)
 std::set<uint64_t> deflatten_handler_t::find_state_constants(const mblock_t *blk)
 {
     std::set<uint64_t> constants;
-    if ( !blk) return constants;
+    if (!blk)
+        return constants;
 
-    for ( const minsn_t *ins = blk->head; ins; ins = ins->next ) {
-        if ( ins->l.t == mop_n && is_state_constant(ins->l.nnn->value) ) {
+    for (const minsn_t *ins = blk->head; ins; ins = ins->next)
+    {
+        if (ins->l.t == mop_n && is_state_constant(ins->l.nnn->value))
+        {
             constants.insert(ins->l.nnn->value);
         }
-        if ( ins->r.t == mop_n && is_state_constant(ins->r.nnn->value) ) {
+        if (ins->r.t == mop_n && is_state_constant(ins->r.nnn->value))
+        {
             constants.insert(ins->r.nnn->value);
         }
 
         // Check nested instructions
-        if ( ins->l.t == mop_d && ins->l.d ) {
+        if (ins->l.t == mop_d && ins->l.d)
+        {
             const minsn_t *nested = ins->l.d;
-            if ( nested->l.t == mop_n && is_state_constant(nested->l.nnn->value) ) {
+            if (nested->l.t == mop_n && is_state_constant(nested->l.nnn->value))
+            {
                 constants.insert(nested->l.nnn->value);
             }
-            if ( nested->r.t == mop_n && is_state_constant(nested->r.nnn->value) ) {
+            if (nested->r.t == mop_n && is_state_constant(nested->r.nnn->value))
+            {
                 constants.insert(nested->r.nnn->value);
             }
         }
-        if ( ins->r.t == mop_d && ins->r.d ) {
+        if (ins->r.t == mop_d && ins->r.d)
+        {
             const minsn_t *nested = ins->r.d;
-            if ( nested->l.t == mop_n && is_state_constant(nested->l.nnn->value) ) {
+            if (nested->l.t == mop_n && is_state_constant(nested->l.nnn->value))
+            {
                 constants.insert(nested->l.nnn->value);
             }
-            if ( nested->r.t == mop_n && is_state_constant(nested->r.nnn->value) ) {
+            if (nested->r.t == mop_n && is_state_constant(nested->r.nnn->value))
+            {
                 constants.insert(nested->r.nnn->value);
             }
         }
@@ -166,13 +192,13 @@ std::set<uint64_t> deflatten_handler_t::find_state_constants(const mblock_t *blk
 // Analyze a single block to determine if it's a dispatcher
 //--------------------------------------------------------------------------
 bool deflatten_handler_t::analyze_dispatcher_block(mbl_array_t *mba, int block_idx,
-                                                     dispatcher_info_t *out)
-                                                     {
-    if ( !mba || !out || block_idx < 0 || block_idx >= mba->qty ) 
+                                                   dispatcher_info_t *out)
+{
+    if (!mba || !out || block_idx < 0 || block_idx >= mba->qty)
         return false;
 
     mblock_t *blk = mba->get_mblock(block_idx);
-    if ( !blk ) 
+    if (!blk)
         return false;
 
     out->block_idx = block_idx;
@@ -181,7 +207,8 @@ bool deflatten_handler_t::analyze_dispatcher_block(mbl_array_t *mba, int block_i
     // Find state constants in this block
     std::set<uint64_t> state_consts = find_state_constants(blk);
 
-    if ( state_consts.size() < 2 ) {
+    if (state_consts.size() < 2)
+    {
         return false;
     }
 
@@ -190,31 +217,39 @@ bool deflatten_handler_t::analyze_dispatcher_block(mbl_array_t *mba, int block_i
     bool found_state_var = false;
     int consistent_comparisons = 0;
 
-    for ( const minsn_t *ins = blk->head; ins; ins = ins->next ) {
+    for (const minsn_t *ins = blk->head; ins; ins = ins->next)
+    {
         // Look for conditional jumps
-        if ( !deobf::is_jcc(ins->opcode) ) 
+        if (!deobf::is_jcc(ins->opcode))
             continue;
 
         // Extract comparison from condition
-        if ( ins->l.t == mop_d && ins->l.d ) {
+        if (ins->l.t == mop_d && ins->l.d)
+        {
             const minsn_t *cmp = ins->l.d;
-            if ( is_mcode_set(cmp->opcode) ) {
+            if (is_mcode_set(cmp->opcode))
+            {
                 uint64_t state_val = 0;
                 bool found_const = false;
                 mop_t var;
 
-                if ( cmp->l.t == mop_n && is_state_constant(cmp->l.nnn->value) ) {
+                if (cmp->l.t == mop_n && is_state_constant(cmp->l.nnn->value))
+                {
                     state_val = cmp->l.nnn->value;
                     var = cmp->r;
                     found_const = true;
-                } else if ( cmp->r.t == mop_n && is_state_constant(cmp->r.nnn->value) ) {
+                }
+                else if (cmp->r.t == mop_n && is_state_constant(cmp->r.nnn->value))
+                {
                     state_val = cmp->r.nnn->value;
                     var = cmp->l;
                     found_const = true;
                 }
 
-                if ( found_const && ins->d.t == mop_b ) {
-                    if ( !found_state_var ) {
+                if (found_const && ins->d.t == mop_b)
+                {
+                    if (!found_state_var)
+                    {
                         potential_state_var = var;
                         found_state_var = true;
                     }
@@ -226,36 +261,42 @@ bool deflatten_handler_t::analyze_dispatcher_block(mbl_array_t *mba, int block_i
         }
     }
 
-    if ( consistent_comparisons < 2 || !found_state_var ) {
+    if (consistent_comparisons < 2 || !found_state_var)
+    {
         return false;
     }
 
     // Convert mop to symbolic_var_t
-    if ( potential_state_var.t == mop_S && potential_state_var.s ) {
-        out->state_var = symbolic_var_t(symbolic_var_t::VAR_STACK,
-                                         potential_state_var.s->off,
-                                         potential_state_var.size);
-    } else if ( potential_state_var.t == mop_r ) {
-        out->state_var = symbolic_var_t(symbolic_var_t::VAR_REGISTER,
-                                         potential_state_var.r,
-                                         potential_state_var.size);
-    } else if ( potential_state_var.t == mop_v ) {
-        out->state_var = symbolic_var_t(symbolic_var_t::VAR_GLOBAL,
-                                         potential_state_var.g,
-                                         potential_state_var.size);
-    } else if ( potential_state_var.t == mop_l && potential_state_var.l ) {
-        out->state_var = symbolic_var_t(symbolic_var_t::VAR_LOCAL,
-                                         potential_state_var.l->idx,
-                                         potential_state_var.size);
-    } else {
+    if (potential_state_var.t == mop_S && potential_state_var.s)
+    {
+        out->state_var = symbolic_var_t(symbolic_var_t::VAR_STACK, potential_state_var.s->off,
+                                        potential_state_var.size);
+    }
+    else if (potential_state_var.t == mop_r)
+    {
+        out->state_var = symbolic_var_t(symbolic_var_t::VAR_REGISTER, potential_state_var.r,
+                                        potential_state_var.size);
+    }
+    else if (potential_state_var.t == mop_v)
+    {
+        out->state_var = symbolic_var_t(symbolic_var_t::VAR_GLOBAL, potential_state_var.g,
+                                        potential_state_var.size);
+    }
+    else if (potential_state_var.t == mop_l && potential_state_var.l)
+    {
+        out->state_var = symbolic_var_t(symbolic_var_t::VAR_LOCAL, potential_state_var.l->idx,
+                                        potential_state_var.size);
+    }
+    else
+    {
         return false;
     }
 
     out->dispatcher_chain.insert(block_idx);
     out->is_solved = true;
 
-    deobf::log("[deflatten] Found dispatcher at block %d with %zu state mappings\n",
-              block_idx, out->state_to_block.size());
+    deobf::log("[deflatten] Found dispatcher at block %d with %zu state mappings\n", block_idx,
+               out->state_to_block.size());
 
     return true;
 }
@@ -263,11 +304,12 @@ bool deflatten_handler_t::analyze_dispatcher_block(mbl_array_t *mba, int block_i
 //--------------------------------------------------------------------------
 // Index variable info - represents a state variable in jump table flattening
 //--------------------------------------------------------------------------
-struct index_var_info_t {
-    mop_t var;              // The index variable (stack or local)
-    int dispatcher_block;   // Block where this var is used for dispatch
-    ea_t jump_table;        // Associated jump table address
-    int num_cases;          // Number of cases in jump table
+struct index_var_info_t
+{
+    mop_t var;            // The index variable (stack or local)
+    int dispatcher_block; // Block where this var is used for dispatch
+    ea_t jump_table;      // Associated jump table address
+    int num_cases;        // Number of cases in jump table
 
     index_var_info_t() : dispatcher_block(-1), jump_table(BADADDR), num_cases(0) {}
 };
@@ -278,28 +320,33 @@ struct index_var_info_t {
 //--------------------------------------------------------------------------
 static bool extract_index_from_mul(const minsn_t *mul_ins, mop_t *out_var)
 {
-    if ( !mul_ins || mul_ins->opcode != m_mul ) 
+    if (!mul_ins || mul_ins->opcode != m_mul)
         return false;
 
     // Check if multiplying by 8 (pointer size for 64-bit)
     const mop_t *index_op = nullptr;
-    if ( mul_ins->r.t == mop_n && mul_ins->r.nnn->value == 8 ) {
+    if (mul_ins->r.t == mop_n && mul_ins->r.nnn->value == 8)
+    {
         index_op = &mul_ins->l;
-    } else if ( mul_ins->l.t == mop_n && mul_ins->l.nnn->value == 8 ) {
+    }
+    else if (mul_ins->l.t == mop_n && mul_ins->l.nnn->value == 8)
+    {
         index_op = &mul_ins->r;
     }
 
-    if ( !index_op ) 
+    if (!index_op)
         return false;
 
     // The index might be sign-extended (xds instruction)
-    if ( index_op->t == mop_d && index_op->d && index_op->d->opcode == m_xds ) {
+    if (index_op->t == mop_d && index_op->d && index_op->d->opcode == m_xds)
+    {
         *out_var = index_op->d->l;
         return true;
     }
 
     // Or it might be a direct variable reference
-    if ( index_op->t == mop_S || index_op->t == mop_l || index_op->t == mop_r ) {
+    if (index_op->t == mop_S || index_op->t == mop_l || index_op->t == mop_r)
+    {
         *out_var = *index_op;
         return true;
     }
@@ -314,15 +361,16 @@ static bool extract_index_from_mul(const minsn_t *mul_ins, mop_t *out_var)
 //--------------------------------------------------------------------------
 static bool find_index_variable(mblock_t *blk, index_var_info_t *out)
 {
-    if ( !blk || !blk->tail || blk->tail->opcode != m_ijmp ) 
+    if (!blk || !blk->tail || blk->tail->opcode != m_ijmp)
         return false;
 
     // The ijmp target comes from a register loaded via computed address
     // Pattern: ldx ds, [table + index*8] -> reg; ijmp cs, reg
 
     // Find the ldx that provides the jump target
-    for ( minsn_t *ins = blk->tail->prev; ins; ins = ins->prev ) {
-        if ( ins->opcode != m_ldx ) 
+    for (minsn_t *ins = blk->tail->prev; ins; ins = ins->prev)
+    {
+        if (ins->opcode != m_ldx)
             continue;
 
         // ldx has: l=segment, r=address, d=destination
@@ -330,32 +378,40 @@ static bool find_index_variable(mblock_t *blk, index_var_info_t *out)
         const mop_t &addr = ins->r;
 
         // The address is a compound expression like (base + index*8)
-        if ( addr.t == mop_d && addr.d ) {
+        if (addr.t == mop_d && addr.d)
+        {
             const minsn_t *addr_expr = addr.d;
 
             // Look for add operation
-            if ( addr_expr->opcode == m_add ) {
+            if (addr_expr->opcode == m_add)
+            {
                 // Check both operands for mul by 8
                 mop_t index_var;
 
                 // Check left operand for mul*8
-                if ( addr_expr->l.t == mop_d && addr_expr->l.d ) {
-                    if ( extract_index_from_mul(addr_expr->l.d, &index_var) ) {
+                if (addr_expr->l.t == mop_d && addr_expr->l.d)
+                {
+                    if (extract_index_from_mul(addr_expr->l.d, &index_var))
+                    {
                         out->var = index_var;
                         out->dispatcher_block = blk->serial;
-                        deobf::log_verbose("[deflatten] Found index var in ldx at block %d (type=%d)\n",
-                                  blk->serial, index_var.t);
+                        deobf::log_verbose(
+                            "[deflatten] Found index var in ldx at block %d (type=%d)\n",
+                            blk->serial, index_var.t);
                         return true;
                     }
                 }
 
                 // Check right operand for mul*8
-                if ( addr_expr->r.t == mop_d && addr_expr->r.d ) {
-                    if ( extract_index_from_mul(addr_expr->r.d, &index_var) ) {
+                if (addr_expr->r.t == mop_d && addr_expr->r.d)
+                {
+                    if (extract_index_from_mul(addr_expr->r.d, &index_var))
+                    {
                         out->var = index_var;
                         out->dispatcher_block = blk->serial;
-                        deobf::log_verbose("[deflatten] Found index var in ldx at block %d (type=%d)\n",
-                                  blk->serial, index_var.t);
+                        deobf::log_verbose(
+                            "[deflatten] Found index var in ldx at block %d (type=%d)\n",
+                            blk->serial, index_var.t);
                         return true;
                     }
                 }
@@ -371,42 +427,52 @@ static bool find_index_variable(mblock_t *blk, index_var_info_t *out)
 // This is for jump table flattening where multiple index variables exist
 // Returns pairs of (written_value, stack_offset_or_local_idx)
 //--------------------------------------------------------------------------
-static std::vector<std::pair<uint64_t, int64_t>>
-find_all_index_writes(mblock_t *blk, int max_value = 300)
+static std::vector<std::pair<uint64_t, int64_t>> find_all_index_writes(mblock_t *blk,
+                                                                       int max_value = 300)
 {
     std::vector<std::pair<uint64_t, int64_t>> writes;
 
-    if ( !blk ) 
+    if (!blk)
         return writes;
 
     // Track register values for backward data flow within this block
     // Key: register, Value: constant value (or -1 if unknown/non-constant)
     std::map<mreg_t, int64_t> reg_values;
 
-    for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
+    for (minsn_t *ins = blk->head; ins; ins = ins->next)
+    {
         uint64_t val = 0;
         int64_t var_id = -1;
         bool found = false;
 
         // Track register assignments: mov #const, reg
-        if ( ins->opcode == m_mov && ins->l.t == mop_n && ins->d.t == mop_r ) {
+        if (ins->opcode == m_mov && ins->l.t == mop_n && ins->d.t == mop_r)
+        {
             uint64_t cval = ins->l.nnn->value;
-            if ( cval <= (uint64_t)max_value ) {
+            if (cval <= (uint64_t)max_value)
+            {
                 reg_values[ins->d.r] = (int64_t)cval;
-            } else {
-                reg_values[ins->d.r] = -1;  // Large value, mark as unknown
+            }
+            else
+            {
+                reg_values[ins->d.r] = -1; // Large value, mark as unknown
             }
         }
 
         // Also track xdu/xds (zero/sign extend) from constants
-        if ( (ins->opcode == m_xdu || ins->opcode == m_xds) && ins->d.t == mop_r ) {
+        if ((ins->opcode == m_xdu || ins->opcode == m_xds) && ins->d.t == mop_r)
+        {
             // Check if source contains a constant
-            if ( ins->l.t == mop_n ) {
+            if (ins->l.t == mop_n)
+            {
                 uint64_t cval = ins->l.nnn->value;
-                if ( cval <= (uint64_t)max_value ) {
+                if (cval <= (uint64_t)max_value)
+                {
                     reg_values[ins->d.r] = (int64_t)cval;
                 }
-            } else if ( ins->l.t == mop_d && ins->l.d ) {
+            }
+            else if (ins->l.t == mop_d && ins->l.d)
+            {
                 // Nested expression - check if it produces a constant
                 // Common pattern: xdu (x == 0) or xdu (x & mask)
                 // For now, mark as unknown
@@ -415,16 +481,23 @@ find_all_index_writes(mblock_t *blk, int max_value = 300)
         }
 
         // Handle mov instruction: mov src, dst
-        if ( ins->opcode == m_mov ) {
+        if (ins->opcode == m_mov)
+        {
             // Direct constant to stack
-            if ( ins->l.t == mop_n ) {
+            if (ins->l.t == mop_n)
+            {
                 val = ins->l.nnn->value;
-                if ( val <= (uint64_t)max_value ) {
-                    if ( ins->d.size == 4 || ins->d.size == 8 ) {
-                        if ( ins->d.t == mop_S ) {
+                if (val <= (uint64_t)max_value)
+                {
+                    if (ins->d.size == 4 || ins->d.size == 8)
+                    {
+                        if (ins->d.t == mop_S)
+                        {
                             var_id = ins->d.s->off;
                             found = true;
-                        } else if ( ins->d.t == mop_l ) {
+                        }
+                        else if (ins->d.t == mop_l)
+                        {
                             var_id = ins->d.l->idx;
                             found = true;
                         }
@@ -432,15 +505,21 @@ find_all_index_writes(mblock_t *blk, int max_value = 300)
                 }
             }
             // Register to stack - look up register value
-            else if ( ins->l.t == mop_r && (ins->d.t == mop_S || ins->d.t == mop_l) ) {
+            else if (ins->l.t == mop_r && (ins->d.t == mop_S || ins->d.t == mop_l))
+            {
                 auto p = reg_values.find(ins->l.r);
-                if ( p != reg_values.end() && p->second >= 0 && p->second <= max_value ) {
+                if (p != reg_values.end() && p->second >= 0 && p->second <= max_value)
+                {
                     val = (uint64_t)p->second;
-                    if ( ins->d.size == 4 || ins->d.size == 8 ) {
-                        if ( ins->d.t == mop_S ) {
+                    if (ins->d.size == 4 || ins->d.size == 8)
+                    {
+                        if (ins->d.t == mop_S)
+                        {
                             var_id = ins->d.s->off;
                             found = true;
-                        } else if ( ins->d.t == mop_l ) {
+                        }
+                        else if (ins->d.t == mop_l)
+                        {
                             var_id = ins->d.l->idx;
                             found = true;
                         }
@@ -449,30 +528,42 @@ find_all_index_writes(mblock_t *blk, int max_value = 300)
             }
         }
         // Handle stx instruction: stx val, seg, dst
-        else if ( ins->opcode == m_stx ) {
+        else if (ins->opcode == m_stx)
+        {
             // Direct constant
-            if ( ins->l.t == mop_n ) {
+            if (ins->l.t == mop_n)
+            {
                 val = ins->l.nnn->value;
-                if ( val <= (uint64_t)max_value && (ins->l.size == 4 || ins->l.size == 8) ) {
-                    if ( ins->d.t == mop_S ) {
+                if (val <= (uint64_t)max_value && (ins->l.size == 4 || ins->l.size == 8))
+                {
+                    if (ins->d.t == mop_S)
+                    {
                         var_id = ins->d.s->off;
                         found = true;
-                    } else if ( ins->d.t == mop_l ) {
+                    }
+                    else if (ins->d.t == mop_l)
+                    {
                         var_id = ins->d.l->idx;
                         found = true;
                     }
                 }
             }
             // Register value
-            else if ( ins->l.t == mop_r ) {
+            else if (ins->l.t == mop_r)
+            {
                 auto p = reg_values.find(ins->l.r);
-                if ( p != reg_values.end() && p->second >= 0 && p->second <= max_value ) {
+                if (p != reg_values.end() && p->second >= 0 && p->second <= max_value)
+                {
                     val = (uint64_t)p->second;
-                    if ( ins->l.size == 4 || ins->l.size == 8 ) {
-                        if ( ins->d.t == mop_S ) {
+                    if (ins->l.size == 4 || ins->l.size == 8)
+                    {
+                        if (ins->d.t == mop_S)
+                        {
                             var_id = ins->d.s->off;
                             found = true;
-                        } else if ( ins->d.t == mop_l ) {
+                        }
+                        else if (ins->d.t == mop_l)
+                        {
                             var_id = ins->d.l->idx;
                             found = true;
                         }
@@ -481,14 +572,18 @@ find_all_index_writes(mblock_t *blk, int max_value = 300)
             }
         }
 
-        if ( found && var_id >= 0 ) {
+        if (found && var_id >= 0)
+        {
             writes.push_back({val, var_id});
         }
 
         // Clear register value if it's overwritten by something non-constant
-        if ( ins->d.t == mop_r ) {
-            if ( ins->opcode != m_mov || ins->l.t != mop_n ) {
-                if ( ins->opcode != m_xdu && ins->opcode != m_xds ) {
+        if (ins->d.t == mop_r)
+        {
+            if (ins->opcode != m_mov || ins->l.t != mop_n)
+            {
+                if (ins->opcode != m_xdu && ins->opcode != m_xds)
+                {
                     reg_values[ins->d.r] = -1;
                 }
             }
@@ -503,42 +598,49 @@ find_all_index_writes(mblock_t *blk, int max_value = 300)
 // Returns true if this appears to be jump table flattening
 //--------------------------------------------------------------------------
 bool deflatten_handler_t::analyze_jump_table_flattening(mbl_array_t *mba,
-                                           std::vector<dispatcher_info_t> &dispatchers)
-                                           {
-    if ( !mba ) 
+                                                        std::vector<dispatcher_info_t> &dispatchers)
+{
+    if (!mba)
         return false;
 
     // Step 1: Find all blocks with indirect jumps and their index variables
     std::vector<index_var_info_t> index_vars;
-    for ( int i = 0; i < mba->qty; ++i ) {
+    for (int i = 0; i < mba->qty; ++i)
+    {
         mblock_t *blk = mba->get_mblock(i);
-        if ( !blk || !blk->tail ) 
+        if (!blk || !blk->tail)
             continue;
-        if ( blk->tail->opcode == m_ijmp ) {
+        if (blk->tail->opcode == m_ijmp)
+        {
             index_var_info_t info;
-            if ( find_index_variable(blk, &info) ) {
+            if (find_index_variable(blk, &info))
+            {
                 index_vars.push_back(info);
                 int64_t var_off = -1;
-                if ( info.var.t == mop_S && info.var.s ) 
+                if (info.var.t == mop_S && info.var.s)
                     var_off = info.var.s->off;
-                else if ( info.var.t == mop_l && info.var.l ) 
+                else if (info.var.t == mop_l && info.var.l)
                     var_off = info.var.l->idx;
-                deobf::log("[deflatten] Block %d: found index var (type=%d, off=%lld)\n",
-                          i, info.var.t, (long long)var_off);
+                deobf::log("[deflatten] Block %d: found index var (type=%d, off=%lld)\n", i,
+                           info.var.t, (long long)var_off);
             }
         }
     }
 
-    if ( index_vars.empty() ) {
+    if (index_vars.empty())
+    {
         deobf::log("[deflatten] No index variables found in ijmp blocks\n");
         // Fall through to IDA switch-based analysis
-    } else {
+    }
+    else
+    {
         deobf::log("[deflatten] Found %zu index variables in ijmp blocks\n", index_vars.size());
     }
 
     // Step 2: Get IDA's switch detection for mapping state values to blocks
     func_t *pfn = get_func(mba->entry_ea);
-    if ( !pfn ) {
+    if (!pfn)
+    {
         deobf::log("[deflatten] Could not get function for switch analysis\n");
         return false;
     }
@@ -546,16 +648,20 @@ bool deflatten_handler_t::analyze_jump_table_flattening(mbl_array_t *mba,
     // Collect all switches in the function
     std::map<ea_t, switch_info_t> switches;
     ea_t ea = pfn->start_ea;
-    while ( ea < pfn->end_ea ) {
+    while (ea < pfn->end_ea)
+    {
         switch_info_t si;
-        if ( get_switch_info(&si, ea) > 0 && si.get_jtable_size() >= 10 ) {
+        if (get_switch_info(&si, ea) > 0 && si.get_jtable_size() >= 10)
+        {
             switches[ea] = si;
         }
         ea = next_head(ea, pfn->end_ea);
-        if ( ea == BADADDR) break;
+        if (ea == BADADDR)
+            break;
     }
 
-    if ( switches.empty() ) {
+    if (switches.empty())
+    {
         deobf::log("[deflatten] No IDA-detected switches found\n");
         return false;
     }
@@ -571,32 +677,37 @@ bool deflatten_handler_t::analyze_jump_table_flattening(mbl_array_t *mba,
     // Find the primary (largest) jump table - this is likely the main dispatcher
     ea_t primary_switch_ea = BADADDR;
     int max_cases = 0;
-    for ( const auto& kv : switches ) {
-        if ( (int)kv.second.get_jtable_size() > max_cases ) {
+    for (const auto &kv : switches)
+    {
+        if ((int)kv.second.get_jtable_size() > max_cases)
+        {
             max_cases = kv.second.get_jtable_size();
             primary_switch_ea = kv.first;
         }
     }
 
-    if ( primary_switch_ea == BADADDR ) {
+    if (primary_switch_ea == BADADDR)
+    {
         deobf::log("[deflatten] No primary switch found\n");
         return false;
     }
 
     const switch_info_t &primary_si = switches[primary_switch_ea];
-    deobf::log("[deflatten] Primary switch at %a: %d cases, table at %a\n",
-              primary_switch_ea, max_cases, primary_si.jumps);
+    deobf::log("[deflatten] Primary switch at %a: %d cases, table at %a\n", primary_switch_ea,
+               max_cases, primary_si.jumps);
 
     // Build the main dispatcher
     dispatcher_info_t disp;
     disp.is_solved = true;
-    disp.is_jump_table = true;  // Jump-table style uses small integer states
+    disp.is_jump_table = true; // Jump-table style uses small integer states
     disp.max_state = 0;
 
     // Find the dispatcher block
-    for ( int i = 0; i < mba->qty; ++i ) {
+    for (int i = 0; i < mba->qty; ++i)
+    {
         mblock_t *blk = mba->get_mblock(i);
-        if ( blk && blk->start <= primary_switch_ea && primary_switch_ea < blk->end ) {
+        if (blk && blk->start <= primary_switch_ea && primary_switch_ea < blk->end)
+        {
             disp.block_idx = i;
             break;
         }
@@ -607,34 +718,37 @@ bool deflatten_handler_t::analyze_jump_table_flattening(mbl_array_t *mba,
     // subtractive, indirect, and non-native-width tables.
     casevec_t case_values;
     eavec_t case_targets;
-    if ( !calc_switch_cases(&case_values, &case_targets, primary_switch_ea,
-                            primary_si) ||
-         case_values.size() != case_targets.size() ) {
+    if (!calc_switch_cases(&case_values, &case_targets, primary_switch_ea, primary_si) ||
+        case_values.size() != case_targets.size())
+    {
         deobf::log("[deflatten] IDA could not decode primary switch cases\n");
         return false;
     }
 
-    for ( size_t i = 0; i < case_targets.size(); ++i ) {
+    for (size_t i = 0; i < case_targets.size(); ++i)
+    {
         int target_block = -1;
-        for ( int bi = 0; bi < mba->qty; ++bi ) {
+        for (int bi = 0; bi < mba->qty; ++bi)
+        {
             const mblock_t *blk = mba->get_mblock(bi);
-            if ( blk && blk->start == case_targets[i] ) {
+            if (blk && blk->start == case_targets[i])
+            {
                 target_block = bi;
                 break;
             }
         }
-        if ( target_block < 0 )
+        if (target_block < 0)
             continue;
 
-        for ( sval_t case_value : case_values[i] ) {
-            if ( case_value < 0 )
+        for (sval_t case_value : case_values[i])
+        {
+            if (case_value < 0)
                 continue;
             const uint64_t state = static_cast<uint64_t>(case_value);
             disp.state_to_block[state] = target_block;
             disp.case_blocks.insert(target_block);
-            if ( state <= static_cast<uint64_t>(std::numeric_limits<int>::max()) )
-                disp.max_state = std::max(disp.max_state,
-                                          static_cast<int>(state));
+            if (state <= static_cast<uint64_t>(std::numeric_limits<int>::max()))
+                disp.max_state = std::max(disp.max_state, static_cast<int>(state));
         }
     }
 
@@ -644,26 +758,34 @@ bool deflatten_handler_t::analyze_jump_table_flattening(mbl_array_t *mba,
     // Step 4: Build a map of index variable offsets -> their usage
     // For jump table flattening, multiple index variables control different entry points
     std::set<int64_t> known_index_offsets;
-    for ( const auto &iv : index_vars ) {
-        if ( iv.var.t == mop_S ) {
+    for (const auto &iv : index_vars)
+    {
+        if (iv.var.t == mop_S)
+        {
             known_index_offsets.insert(iv.var.s->off);
-        } else if ( iv.var.t == mop_l ) {
+        }
+        else if (iv.var.t == mop_l)
+        {
             known_index_offsets.insert(iv.var.l->idx);
         }
     }
 
-    deobf::log("[deflatten] Found %zu unique index variable offsets:\n", known_index_offsets.size());
-    for ( int64_t off : known_index_offsets ) {
-        deobf::log("[deflatten]   offset: %lld (0x%llx)\n", (long long)off, (unsigned long long)off);
+    deobf::log("[deflatten] Found %zu unique index variable offsets:\n",
+               known_index_offsets.size());
+    for (int64_t off : known_index_offsets)
+    {
+        deobf::log("[deflatten]   offset: %lld (0x%llx)\n", (long long)off,
+                   (unsigned long long)off);
     }
 
     // Step 5: For each case block, find ALL writes of small integers
     // This captures state transitions regardless of which index variable is used
-    struct transition_t {
-        int from_block;       // Case block handling current state
-        uint64_t from_state;  // State value this block handles
-        uint64_t to_state;    // State value being written
-        int64_t var_offset;   // Which index variable is written
+    struct transition_t
+    {
+        int from_block;      // Case block handling current state
+        uint64_t from_state; // State value this block handles
+        uint64_t to_state;   // State value being written
+        int64_t var_offset;  // Which index variable is written
     };
 
     std::vector<transition_t> transitions;
@@ -671,28 +793,34 @@ bool deflatten_handler_t::analyze_jump_table_flattening(mbl_array_t *mba,
 
     int total_writes_found = 0;
     int sample_count = 0;
-    for ( const auto &kv : disp.state_to_block ) {
+    for (const auto &kv : disp.state_to_block)
+    {
         uint64_t state_val = kv.first;
         int case_idx = kv.second;
 
         mblock_t *case_blk = mba->get_mblock(case_idx);
-        if ( !case_blk ) 
+        if (!case_blk)
             continue;
 
         // Debug: log first few case blocks
-        if ( sample_count < 5 ) {
+        if (sample_count < 5)
+        {
             int ins_count = 0;
-            for ( minsn_t *p = case_blk->head; p; p = p->next) ins_count++;
+            for (minsn_t *p = case_blk->head; p; p = p->next)
+                ins_count++;
             deobf::log("[deflatten] Scanning case block %d (state 0x%llx), %d instructions\n",
-                      case_idx, (unsigned long long)state_val, ins_count);
-            for ( minsn_t *ins = case_blk->head; ins && sample_count < 5; ins = ins->next ) {
-                if ( ins->opcode == m_mov ) {
-                    deobf::log("[deflatten]   mov: src.t=%d dst.t=%d",
-                              ins->l.t, ins->d.t);
-                    if ( ins->l.t == mop_n ) {
+                       case_idx, (unsigned long long)state_val, ins_count);
+            for (minsn_t *ins = case_blk->head; ins && sample_count < 5; ins = ins->next)
+            {
+                if (ins->opcode == m_mov)
+                {
+                    deobf::log("[deflatten]   mov: src.t=%d dst.t=%d", ins->l.t, ins->d.t);
+                    if (ins->l.t == mop_n)
+                    {
                         deobf::log(" src_val=%llu", (unsigned long long)ins->l.nnn->value);
                     }
-                    if ( ins->d.t == mop_S ) {
+                    if (ins->d.t == mop_S)
+                    {
                         deobf::log(" dst_off=%lld", (long long)ins->d.s->off);
                     }
                     deobf::log("\n");
@@ -707,17 +835,20 @@ bool deflatten_handler_t::analyze_jump_table_flattening(mbl_array_t *mba,
 
         // Debug: show first few writes
         static int write_debug_count = 0;
-        if ( write_debug_count < 10 && !writes.empty() ) {
+        if (write_debug_count < 10 && !writes.empty())
+        {
             deobf::log("[deflatten] Block %d writes:\n", case_idx);
-            for ( const auto &w : writes ) {
+            for (const auto &w : writes)
+            {
                 deobf::log("[deflatten]   val=%llu to offset=%lld (known=%s)\n",
-                          (unsigned long long)w.first, (long long)w.second,
-                          known_index_offsets.count(w.second) ? "YES" : "no");
+                           (unsigned long long)w.first, (long long)w.second,
+                           known_index_offsets.count(w.second) ? "YES" : "no");
             }
             write_debug_count++;
         }
 
-        for ( const auto &w : writes ) {
+        for (const auto &w : writes)
+        {
             // For now, count ALL small integer writes to stack vars
             // In jump-table flattening, the state variable offsets may vary
             // We'll filter more precisely later based on observed patterns
@@ -729,54 +860,63 @@ bool deflatten_handler_t::analyze_jump_table_flattening(mbl_array_t *mba,
             transitions.push_back(t);
 
             // Log if this IS a known index offset
-            if ( known_index_offsets.count(w.second) ) {
+            if (known_index_offsets.count(w.second))
+            {
                 deobf::log("[deflatten] Matched known offset %lld\n", (long long)w.second);
             }
         }
     }
 
     deobf::log("[deflatten] Total small int writes found: %d (matched to known offsets: %zu)\n",
-              total_writes_found, transitions.size());
+               total_writes_found, transitions.size());
 
     deobf::log("[deflatten] Found %zu state transitions across %zu case blocks\n",
-              transitions.size(), block_writes.size());
+               transitions.size(), block_writes.size());
 
     // Log some sample transitions
     int logged = 0;
-    for ( const auto &t : transitions ) {
-        if ( logged < 20 ) {
-            deobf::log("[deflatten] Transition: block %d (state 0x%llx) -> state 0x%llx (var off %lld)\n",
-                      t.from_block, (unsigned long long)t.from_state,
-                      (unsigned long long)t.to_state, (long long)t.var_offset);
+    for (const auto &t : transitions)
+    {
+        if (logged < 20)
+        {
+            deobf::log(
+                "[deflatten] Transition: block %d (state 0x%llx) -> state 0x%llx (var off %lld)\n",
+                t.from_block, (unsigned long long)t.from_state, (unsigned long long)t.to_state,
+                (long long)t.var_offset);
             logged++;
         }
     }
 
     // If we found transitions, this confirms jump table flattening
-    if ( !transitions.empty() ) {
+    if (!transitions.empty())
+    {
         // Use the most commonly written index variable as the primary state var
         std::map<int64_t, int> offset_counts;
-        for ( const auto &t : transitions ) {
+        for (const auto &t : transitions)
+        {
             offset_counts[t.var_offset]++;
         }
 
         int64_t best_offset = 0;
         int best_count = 0;
-        for ( const auto &kv : offset_counts ) {
-            if ( kv.second > best_count ) {
+        for (const auto &kv : offset_counts)
+        {
+            if (kv.second > best_count)
+            {
                 best_count = kv.second;
                 best_offset = kv.first;
             }
         }
 
         deobf::log("[deflatten] Primary index var offset: %lld (used in %d transitions)\n",
-                  (long long)best_offset, best_count);
+                   (long long)best_offset, best_count);
 
         // Set up the state variable
-        disp.state_var = z3_solver::symbolic_var_t(
-            z3_solver::symbolic_var_t::VAR_STACK,
-            (uint64_t)best_offset, 4);
-    } else if ( !index_vars.empty() ) {
+        disp.state_var = z3_solver::symbolic_var_t(z3_solver::symbolic_var_t::VAR_STACK,
+                                                   (uint64_t)best_offset, 4);
+    }
+    else if (!index_vars.empty())
+    {
         // Fall back to using the first index variable
         const index_var_info_t &primary_idx = index_vars[0];
 
@@ -784,69 +924,82 @@ bool deflatten_handler_t::analyze_jump_table_flattening(mbl_array_t *mba,
         uint64_t var_id = 0;
         int var_size = primary_idx.var.size > 0 ? primary_idx.var.size : 4;
 
-        if ( primary_idx.var.t == mop_S ) {
+        if (primary_idx.var.t == mop_S)
+        {
             var_kind = z3_solver::symbolic_var_t::VAR_STACK;
             var_id = (uint64_t)primary_idx.var.s->off;
-        } else if ( primary_idx.var.t == mop_l ) {
+        }
+        else if (primary_idx.var.t == mop_l)
+        {
             var_kind = z3_solver::symbolic_var_t::VAR_LOCAL;
             var_id = (uint64_t)primary_idx.var.l->idx;
         }
 
         disp.state_var = z3_solver::symbolic_var_t(var_kind, var_id, var_size);
-        deobf::log("[deflatten] Using fallback index var (kind=%d, id=%llu)\n",
-                  (int)var_kind, (unsigned long long)var_id);
+        deobf::log("[deflatten] Using fallback index var (kind=%d, id=%llu)\n", (int)var_kind,
+                   (unsigned long long)var_id);
     }
 
     // The state variable must be the index used by this dispatcher itself, not
     // a statistically common small write elsewhere in the function.
     const index_var_info_t *primary_index = nullptr;
-    for ( const index_var_info_t &candidate : index_vars ) {
-        if ( candidate.dispatcher_block == disp.block_idx ) {
+    for (const index_var_info_t &candidate : index_vars)
+    {
+        if (candidate.dispatcher_block == disp.block_idx)
+        {
             primary_index = &candidate;
             break;
         }
     }
-    if ( !primary_index ) {
+    if (!primary_index)
+    {
         deobf::log("[deflatten] Primary switch index variable is not traceable\n");
         return false;
     }
 
     symbolic_var_t::var_kind_t kind;
     uint64_t id = 0;
-    switch ( primary_index->var.t ) {
-        case mop_S:
-            if ( !primary_index->var.s ) return false;
-            kind = symbolic_var_t::VAR_STACK;
-            id = static_cast<uint64_t>(primary_index->var.s->off);
-            break;
-        case mop_l:
-            if ( !primary_index->var.l ) return false;
-            kind = symbolic_var_t::VAR_LOCAL;
-            id = static_cast<uint64_t>(primary_index->var.l->idx);
-            break;
-        case mop_r:
-            kind = symbolic_var_t::VAR_REGISTER;
-            id = static_cast<uint64_t>(primary_index->var.r);
-            break;
-        case mop_v:
-            kind = symbolic_var_t::VAR_GLOBAL;
-            id = static_cast<uint64_t>(primary_index->var.g);
-            break;
-        default:
+    switch (primary_index->var.t)
+    {
+    case mop_S:
+        if (!primary_index->var.s)
             return false;
+        kind = symbolic_var_t::VAR_STACK;
+        id = static_cast<uint64_t>(primary_index->var.s->off);
+        break;
+    case mop_l:
+        if (!primary_index->var.l)
+            return false;
+        kind = symbolic_var_t::VAR_LOCAL;
+        id = static_cast<uint64_t>(primary_index->var.l->idx);
+        break;
+    case mop_r:
+        kind = symbolic_var_t::VAR_REGISTER;
+        id = static_cast<uint64_t>(primary_index->var.r);
+        break;
+    case mop_v:
+        kind = symbolic_var_t::VAR_GLOBAL;
+        id = static_cast<uint64_t>(primary_index->var.g);
+        break;
+    default:
+        return false;
     }
-    disp.state_var = symbolic_var_t(
-        kind, id, primary_index->var.size > 0 ? primary_index->var.size : 4);
+    disp.state_var =
+        symbolic_var_t(kind, id, primary_index->var.size > 0 ? primary_index->var.size : 4);
 
     // Mark all dispatcher-related blocks
     disp.dispatcher_chain.insert(disp.block_idx);
 
     // Add all blocks with indirect jumps to the same jump table
-    for ( const auto& kv : switches ) {
-        if ( kv.second.jumps == primary_si.jumps ) {
-            for ( int i = 0; i < mba->qty; ++i ) {
+    for (const auto &kv : switches)
+    {
+        if (kv.second.jumps == primary_si.jumps)
+        {
+            for (int i = 0; i < mba->qty; ++i)
+            {
                 mblock_t *blk = mba->get_mblock(i);
-                if ( blk && blk->start <= kv.first && kv.first < blk->end ) {
+                if (blk && blk->start <= kv.first && kv.first < blk->end)
+                {
                     disp.dispatcher_chain.insert(i);
                 }
             }
@@ -855,8 +1008,9 @@ bool deflatten_handler_t::analyze_jump_table_flattening(mbl_array_t *mba,
 
     deobf::log("[deflatten] Dispatcher chain has %zu blocks\n", disp.dispatcher_chain.size());
 
-    if ( disp.state_to_block.size() >= 10 ) {
-        disp.is_solved = true;  // Mark as solved so trace_transitions_z3 will process it
+    if (disp.state_to_block.size() >= 10)
+    {
+        disp.is_solved = true; // Mark as solved so trace_transitions_z3 will process it
         dispatchers.push_back(disp);
     }
 
@@ -871,26 +1025,30 @@ deflatten_handler_t::analyze_dispatchers_z3(mbl_array_t *mba)
 {
     std::vector<dispatcher_info_t> dispatchers;
 
-    if ( !mba ) 
+    if (!mba)
         return dispatchers;
 
     // Reset Z3 context for fresh analysis
     reset_global_context();
 
     // First pass: find all potential dispatcher blocks (constant-based)
-    for ( int i = 0; i < mba->qty; ++i ) {
+    for (int i = 0; i < mba->qty; ++i)
+    {
         dispatcher_info_t disp;
-        if ( analyze_dispatcher_block(mba, i, &disp) ) {
+        if (analyze_dispatcher_block(mba, i, &disp))
+        {
             dispatchers.push_back(disp);
         }
     }
 
     // If no constant-based dispatchers, try jump table-based analysis
-    if ( dispatchers.empty() ) {
+    if (dispatchers.empty())
+    {
         deobf::log("[deflatten] No constant-based dispatchers, trying jump table analysis...\n");
-        if ( analyze_jump_table_flattening(mba, dispatchers) ) {
+        if (analyze_jump_table_flattening(mba, dispatchers))
+        {
             deobf::log("[deflatten] Jump table flattening detected with %zu dispatchers\n",
-                      dispatchers.size());
+                       dispatchers.size());
             // For jump table flattening, we currently just log the detection
             // Full deflattening would require tracing index variable assignments
             // which is complex because there's no single "state variable"
@@ -898,55 +1056,64 @@ deflatten_handler_t::analyze_dispatchers_z3(mbl_array_t *mba)
         }
     }
 
-    if ( dispatchers.empty() ) {
+    if (dispatchers.empty())
+    {
         // Try broader search using Z3's state machine solver
         state_machine_solver_t solver(get_global_context());
         auto machine = solver.solve_state_machine(mba);
 
-        if ( machine.solved ) {
-            for ( const auto& z3_disp : machine.dispatchers ) {
+        if (machine.solved)
+        {
+            for (const auto &z3_disp : machine.dispatchers)
+            {
                 dispatcher_info_t disp;
                 disp.block_idx = z3_disp.block_idx;
                 disp.state_var = z3_disp.state_var;
                 disp.state_to_block = z3_disp.state_to_block;
                 disp.is_solved = true;
 
-                for ( const auto& kv : z3_disp.state_to_block ) {
+                for (const auto &kv : z3_disp.state_to_block)
+                {
                     disp.case_blocks.insert(kv.second);
                 }
 
                 // Compute dispatcher_chain: only blocks that COMPARE state constants
                 // (dispatcher conditional blocks), NOT blocks that WRITE state constants
                 // (those are transition blocks that we want to create edges from)
-                for ( int i = 0; i < mba->qty; ++i ) {
-                    if ( disp.case_blocks.count(i) ) 
-                        continue;  // Skip case blocks
+                for (int i = 0; i < mba->qty; ++i)
+                {
+                    if (disp.case_blocks.count(i))
+                        continue; // Skip case blocks
 
                     mblock_t *blk = mba->get_mblock(i);
-                    if ( !blk ) 
+                    if (!blk)
                         continue;
 
                     // Check if this block has a state constant COMPARISON (not just presence)
                     // Look for setXX or jcc patterns that compare against state constants
                     bool has_state_comparison = false;
-                    for ( const minsn_t *ins = blk->head; ins; ins = ins->next ) {
+                    for (const minsn_t *ins = blk->head; ins; ins = ins->next)
+                    {
                         // Check for setXX instructions (setz, setnz, setl, etc.)
-                        if ( ins->opcode >= m_sets && ins->opcode <= m_setnz ) {
+                        if (ins->opcode >= m_sets && ins->opcode <= m_setnz)
+                        {
                             // Check if comparing against a state constant
-                            if ( (ins->l.t == mop_n && is_state_constant(ins->l.nnn->value)) ||
+                            if ((ins->l.t == mop_n && is_state_constant(ins->l.nnn->value)) ||
                                 (ins->r.t == mop_n && is_state_constant(ins->r.nnn->value)))
-                                {
+                            {
                                 has_state_comparison = true;
                                 break;
                             }
                         }
                         // Check for jcc with embedded comparison
-                        if ( deobf::is_jcc(ins->opcode) ) {
-                            if ( ins->l.t == mop_d && ins->l.d ) {
+                        if (deobf::is_jcc(ins->opcode))
+                        {
+                            if (ins->l.t == mop_d && ins->l.d)
+                            {
                                 const minsn_t *cmp = ins->l.d;
-                                if ( (cmp->l.t == mop_n && is_state_constant(cmp->l.nnn->value)) ||
+                                if ((cmp->l.t == mop_n && is_state_constant(cmp->l.nnn->value)) ||
                                     (cmp->r.t == mop_n && is_state_constant(cmp->r.nnn->value)))
-                                    {
+                                {
                                     has_state_comparison = true;
                                     break;
                                 }
@@ -954,7 +1121,8 @@ deflatten_handler_t::analyze_dispatchers_z3(mbl_array_t *mba)
                         }
                     }
 
-                    if ( has_state_comparison ) {
+                    if (has_state_comparison)
+                    {
                         disp.dispatcher_chain.insert(i);
                     }
                 }
@@ -965,44 +1133,54 @@ deflatten_handler_t::analyze_dispatchers_z3(mbl_array_t *mba)
     }
 
     // Second pass: extend dispatcher chains (cascading conditionals)
-    for ( auto& disp : dispatchers ) {
+    for (auto &disp : dispatchers)
+    {
         std::vector<int> worklist;
-        for ( int i = 0; i < mba->get_mblock(disp.block_idx)->nsucc(); ++i ) {
+        for (int i = 0; i < mba->get_mblock(disp.block_idx)->nsucc(); ++i)
+        {
             worklist.push_back(mba->get_mblock(disp.block_idx)->succ(i));
         }
 
-        while ( !worklist.empty() ) {
+        while (!worklist.empty())
+        {
             int idx = worklist.back();
             worklist.pop_back();
 
-            if ( disp.dispatcher_chain.count(idx) || disp.case_blocks.count(idx) ) 
+            if (disp.dispatcher_chain.count(idx) || disp.case_blocks.count(idx))
                 continue;
 
             mblock_t *blk = mba->get_mblock(idx);
-            if ( !blk ) 
+            if (!blk)
                 continue;
 
             // Check if this block also has state comparisons (cascading)
             std::set<uint64_t> consts = find_state_constants(blk);
-            if ( consts.size() >= 2 ) {
+            if (consts.size() >= 2)
+            {
                 disp.dispatcher_chain.insert(idx);
 
                 // Add state mappings from this block too
-                for ( const minsn_t *ins = blk->head; ins; ins = ins->next ) {
-                    if ( !deobf::is_jcc(ins->opcode) ) 
+                for (const minsn_t *ins = blk->head; ins; ins = ins->next)
+                {
+                    if (!deobf::is_jcc(ins->opcode))
                         continue;
 
-                    if ( ins->l.t == mop_d && ins->l.d && ins->d.t == mop_b ) {
+                    if (ins->l.t == mop_d && ins->l.d && ins->d.t == mop_b)
+                    {
                         const minsn_t *cmp = ins->l.d;
                         uint64_t state_val = 0;
 
-                        if ( cmp->l.t == mop_n && is_state_constant(cmp->l.nnn->value) ) {
+                        if (cmp->l.t == mop_n && is_state_constant(cmp->l.nnn->value))
+                        {
                             state_val = cmp->l.nnn->value;
-                        } else if ( cmp->r.t == mop_n && is_state_constant(cmp->r.nnn->value) ) {
+                        }
+                        else if (cmp->r.t == mop_n && is_state_constant(cmp->r.nnn->value))
+                        {
                             state_val = cmp->r.nnn->value;
                         }
 
-                        if ( state_val != 0 ) {
+                        if (state_val != 0)
+                        {
                             disp.state_to_block[state_val] = ins->d.b;
                             disp.case_blocks.insert(ins->d.b);
                         }
@@ -1010,7 +1188,8 @@ deflatten_handler_t::analyze_dispatchers_z3(mbl_array_t *mba)
                 }
 
                 // Continue following this block's successors
-                for ( int i = 0; i < blk->nsucc(); ++i ) {
+                for (int i = 0; i < blk->nsucc(); ++i)
+                {
                     worklist.push_back(blk->succ(i));
                 }
             }
@@ -1018,16 +1197,19 @@ deflatten_handler_t::analyze_dispatchers_z3(mbl_array_t *mba)
     }
 
     // Establish parent-child relationships for nested dispatchers
-    for ( size_t i = 0; i < dispatchers.size(); ++i ) {
-        for ( size_t j = 0; j < dispatchers.size(); ++j ) {
-            if ( i == j ) 
+    for (size_t i = 0; i < dispatchers.size(); ++i)
+    {
+        for (size_t j = 0; j < dispatchers.size(); ++j)
+        {
+            if (i == j)
                 continue;
 
             // Check if dispatcher j is within a case block of dispatcher i
-            for ( int case_blk : dispatchers[i].case_blocks ) {
-                if ( dispatchers[j].dispatcher_chain.count(case_blk) ||
+            for (int case_blk : dispatchers[i].case_blocks)
+            {
+                if (dispatchers[j].dispatcher_chain.count(case_blk) ||
                     case_blk == dispatchers[j].block_idx)
-                    {
+                {
                     dispatchers[j].parent_dispatcher = (int)i;
                     dispatchers[j].nesting_level = dispatchers[i].nesting_level + 1;
                 }
@@ -1038,9 +1220,7 @@ deflatten_handler_t::analyze_dispatchers_z3(mbl_array_t *mba)
     // Sort by nesting level (deepest first for bottom-up processing)
     std::sort(dispatchers.begin(), dispatchers.end(),
               [](const dispatcher_info_t &a, const dispatcher_info_t &b)
-              {
-                  return a.nesting_level > b.nesting_level;
-              });
+              { return a.nesting_level > b.nesting_level; });
 
     return dispatchers;
 }
@@ -1048,26 +1228,28 @@ deflatten_handler_t::analyze_dispatchers_z3(mbl_array_t *mba)
 //--------------------------------------------------------------------------
 // Solve for the next state value written by a block using Z3
 //--------------------------------------------------------------------------
-std::optional<uint64_t> deflatten_handler_t::solve_written_state(
-    mbl_array_t *mba,
-    int block_idx,
-    const symbolic_var_t &state_var,
-    int max_jump_table_state)
-    {
+std::optional<uint64_t> deflatten_handler_t::solve_written_state(mbl_array_t *mba, int block_idx,
+                                                                 const symbolic_var_t &state_var,
+                                                                 int max_jump_table_state)
+{
 
-    if ( !mba || block_idx < 0 || block_idx >= mba->qty ) 
+    if (!mba || block_idx < 0 || block_idx >= mba->qty)
         return std::nullopt;
 
     mblock_t *blk = mba->get_mblock(block_idx);
-    if ( !blk ) 
+    if (!blk)
         return std::nullopt;
 
     // Helper lambda: validate state value based on dispatcher type
-    auto is_valid_state = [max_jump_table_state](uint64_t val) -> bool {
-        if ( max_jump_table_state > 0 ) {
+    auto is_valid_state = [max_jump_table_state](uint64_t val) -> bool
+    {
+        if (max_jump_table_state > 0)
+        {
             // Jump-table: accept small indices [0..max]
             return val <= (uint64_t)max_jump_table_state;
-        } else {
+        }
+        else
+        {
             // Hikari: require magic constant patterns
             return is_state_constant(val);
         }
@@ -1081,47 +1263,57 @@ std::optional<uint64_t> deflatten_handler_t::solve_written_state(
 
     // Try to get the final value of the state variable
     auto value = executor.get_value(state_var);
-    if ( value.has_value() ) {
+    if (value.has_value())
+    {
         auto concrete = executor.solve_for_value(value.value());
-        if ( concrete.has_value() && is_valid_state(*concrete) ) {
+        if (concrete.has_value() && is_valid_state(*concrete))
+        {
             return concrete;
         }
     }
 
     // Fallback: inspect the last relevant write only. A previous constant is
     // not the block's final state after a later write, call, or aliasing store.
-    for ( const minsn_t *ins = blk->tail; ins; ins = ins->prev ) {
-        if ( is_mcode_call(ins->opcode) )
+    for (const minsn_t *ins = blk->tail; ins; ins = ins->prev)
+    {
+        if (is_mcode_call(ins->opcode))
             return std::nullopt;
 
         // Check if the explicit destination matches the state variable.
         bool matches = false;
-        if ( ins->d.t == mop_S && state_var.kind() == symbolic_var_t::VAR_STACK ) {
-            if ( ins->d.s && ins->d.s->off == (sval_t)state_var.id() ) 
+        if (ins->d.t == mop_S && state_var.kind() == symbolic_var_t::VAR_STACK)
+        {
+            if (ins->d.s && ins->d.s->off == (sval_t)state_var.id())
                 matches = true;
-        } else if ( ins->d.t == mop_r && state_var.kind() == symbolic_var_t::VAR_REGISTER ) {
-            if ( ins->d.r == (mreg_t)state_var.id() ) 
+        }
+        else if (ins->d.t == mop_r && state_var.kind() == symbolic_var_t::VAR_REGISTER)
+        {
+            if (ins->d.r == (mreg_t)state_var.id())
                 matches = true;
-        } else if ( ins->d.t == mop_v && state_var.kind() == symbolic_var_t::VAR_GLOBAL ) {
-            if ( ins->d.g == (ea_t)state_var.id() ) 
+        }
+        else if (ins->d.t == mop_v && state_var.kind() == symbolic_var_t::VAR_GLOBAL)
+        {
+            if (ins->d.g == (ea_t)state_var.id())
                 matches = true;
-        } else if ( ins->d.t == mop_l && state_var.kind() == symbolic_var_t::VAR_LOCAL ) {
-            if ( ins->d.l && ins->d.l->idx == (int)state_var.id() ) 
+        }
+        else if (ins->d.t == mop_l && state_var.kind() == symbolic_var_t::VAR_LOCAL)
+        {
+            if (ins->d.l && ins->d.l->idx == (int)state_var.id())
                 matches = true;
         }
 
-        if ( matches ) {
-            if ( (ins->opcode == m_mov || ins->opcode == m_stx) &&
-                 ins->l.t == mop_n && ins->l.nnn &&
-                 is_valid_state(ins->l.nnn->value) ) {
+        if (matches)
+        {
+            if ((ins->opcode == m_mov || ins->opcode == m_stx) && ins->l.t == mop_n && ins->l.nnn &&
+                is_valid_state(ins->l.nnn->value))
+            {
                 return ins->l.nnn->value;
             }
             return std::nullopt;
         }
 
-        if ( ins->opcode == m_stx &&
-             (state_var.kind() == symbolic_var_t::VAR_STACK ||
-              state_var.kind() == symbolic_var_t::VAR_GLOBAL) )
+        if (ins->opcode == m_stx && (state_var.kind() == symbolic_var_t::VAR_STACK ||
+                                     state_var.kind() == symbolic_var_t::VAR_GLOBAL))
             return std::nullopt;
     }
 
@@ -1132,12 +1324,11 @@ std::optional<uint64_t> deflatten_handler_t::solve_written_state(
 // Use Z3 symbolic execution to trace state transitions through case blocks
 //--------------------------------------------------------------------------
 std::vector<deflatten_handler_t::cfg_edge_t>
-deflatten_handler_t::trace_transitions_z3(mbl_array_t *mba,
-                                           const dispatcher_info_t &disp)
-                                           {
+deflatten_handler_t::trace_transitions_z3(mbl_array_t *mba, const dispatcher_info_t &disp)
+{
     std::vector<cfg_edge_t> edges;
 
-    if ( !mba || !disp.is_solved )
+    if (!mba || !disp.is_solved)
         return edges;
 
     // A transition is actionable only when the identified state variable has
@@ -1145,40 +1336,43 @@ deflatten_handler_t::trace_transitions_z3(mbl_array_t *mba,
     // dispatcher's chain. This couples the write, dispatcher, and replacement
     // edge; unrelated small constants elsewhere in the function are excluded.
     int max_state = -1;
-    if ( disp.is_jump_table ) {
+    if (disp.is_jump_table)
+    {
         max_state = disp.max_state;
-        if ( max_state <= 0 && !disp.state_to_block.empty() &&
-             disp.state_to_block.rbegin()->first <=
-                 static_cast<uint64_t>(std::numeric_limits<int>::max()) ) {
+        if (max_state <= 0 && !disp.state_to_block.empty() &&
+            disp.state_to_block.rbegin()->first <=
+                static_cast<uint64_t>(std::numeric_limits<int>::max()))
+        {
             max_state = static_cast<int>(disp.state_to_block.rbegin()->first);
         }
         // solve_written_state uses a negative value for magic-state mode.
         max_state = std::max(max_state, 1);
     }
 
-    for ( int block_idx = 0; block_idx < mba->qty; ++block_idx ) {
+    for (int block_idx = 0; block_idx < mba->qty; ++block_idx)
+    {
         mblock_t *blk = mba->get_mblock(block_idx);
-        if ( !blk || !blk->tail || blk->tail->opcode != m_goto ||
-             blk->tail->l.t != mop_b || blk->nsucc() != 1 ||
-             disp.dispatcher_chain.count(block_idx) ) {
+        if (!blk || !blk->tail || blk->tail->opcode != m_goto || blk->tail->l.t != mop_b ||
+            blk->nsucc() != 1 || disp.dispatcher_chain.count(block_idx))
+        {
             continue;
         }
 
         const int old_target = blk->succ(0);
-        if ( old_target != disp.block_idx &&
-             !disp.dispatcher_chain.count(old_target) ) {
+        if (old_target != disp.block_idx && !disp.dispatcher_chain.count(old_target))
+        {
             continue;
         }
 
         const std::optional<uint64_t> state =
             solve_written_state(mba, block_idx, disp.state_var, max_state);
-        if ( !state )
+        if (!state)
             continue;
 
         const auto target = disp.state_to_block.find(*state);
-        if ( target == disp.state_to_block.end() ||
-             target->second < 0 || target->second >= mba->qty ||
-             target->second == block_idx ) {
+        if (target == disp.state_to_block.end() || target->second < 0 ||
+            target->second >= mba->qty || target->second == block_idx)
+        {
             continue;
         }
 
@@ -1191,12 +1385,10 @@ deflatten_handler_t::trace_transitions_z3(mbl_array_t *mba,
 
         deobf::log("[deflatten] Exact transition: block %d writes 0x%llx "
                    "then dispatches -> block %d\n",
-                   block_idx, static_cast<unsigned long long>(*state),
-                   target->second);
+                   block_idx, static_cast<unsigned long long>(*state), target->second);
     }
 
-    deobf::log("[deflatten] Traced %zu exact direct transitions\n",
-               edges.size());
+    deobf::log("[deflatten] Traced %zu exact direct transitions\n", edges.size());
     return edges;
 
 #if 0
@@ -1676,29 +1868,29 @@ deflatten_handler_t::trace_transitions_z3(mbl_array_t *mba,
 //--------------------------------------------------------------------------
 // Verify CFG modification is safe
 //--------------------------------------------------------------------------
-bool deflatten_handler_t::verify_cfg_safety(mbl_array_t *mba,
-                                             const std::vector<cfg_edge_t> &edges)
-                                             {
-    if ( !mba ) 
+bool deflatten_handler_t::verify_cfg_safety(mbl_array_t *mba, const std::vector<cfg_edge_t> &edges)
+{
+    if (!mba)
         return false;
 
     std::set<int> sources;
-    for ( const auto& edge : edges ) {
+    for (const auto &edge : edges)
+    {
         // Verify source and target blocks exist
-        if ( edge.from_block < 0 || edge.from_block >= mba->qty ) 
+        if (edge.from_block < 0 || edge.from_block >= mba->qty)
             return false;
-        if ( edge.to_block < 0 || edge.to_block >= mba->qty )
+        if (edge.to_block < 0 || edge.to_block >= mba->qty)
             return false;
 
         // The conservative tracer emits one unconditional goto rewrite per
         // source. Reject duplicates/conflicts and any broader edge kind.
-        if ( edge.is_conditional || edge.from_block == edge.to_block ||
-             !sources.insert(edge.from_block).second )
+        if (edge.is_conditional || edge.from_block == edge.to_block ||
+            !sources.insert(edge.from_block).second)
             return false;
 
         const mblock_t *src = mba->get_mblock(edge.from_block);
-        if ( !src || !src->tail || src->tail->opcode != m_goto ||
-             src->tail->l.t != mop_b || src->nsucc() != 1 )
+        if (!src || !src->tail || src->tail->opcode != m_goto || src->tail->l.t != mop_b ||
+            src->nsucc() != 1)
             return false;
     }
 
@@ -1716,40 +1908,44 @@ static bool redirect_unconditional_edge(mbl_array_t *mba, int src_idx, int new_t
 //--------------------------------------------------------------------------
 static int find_reachable_ijmp(mbl_array_t *mba, int start_block, int max_depth = 5)
 {
-    if ( !mba || start_block < 0 || start_block >= mba->qty ) 
+    if (!mba || start_block < 0 || start_block >= mba->qty)
         return -1;
 
     std::set<int> visited;
-    std::vector<std::pair<int, int>> queue;  // (block_idx, depth)
+    std::vector<std::pair<int, int>> queue; // (block_idx, depth)
     queue.push_back({start_block, 0});
 
-    while ( !queue.empty() ) {
+    while (!queue.empty())
+    {
         auto [blk_idx, depth] = queue.front();
         queue.erase(queue.begin());
 
-        if ( visited.count(blk_idx) || depth > max_depth ) 
+        if (visited.count(blk_idx) || depth > max_depth)
             continue;
         visited.insert(blk_idx);
 
         mblock_t *blk = mba->get_mblock(blk_idx);
-        if ( !blk || !blk->tail ) 
+        if (!blk || !blk->tail)
             continue;
 
         // Found an ijmp block
-        if ( blk->tail->opcode == m_ijmp ) {
+        if (blk->tail->opcode == m_ijmp)
+        {
             return blk_idx;
         }
 
         // Continue searching through successors
-        for ( int i = 0; i < blk->nsucc(); ++i ) {
+        for (int i = 0; i < blk->nsucc(); ++i)
+        {
             int succ = blk->succ(i);
-            if ( !visited.count(succ) ) {
+            if (!visited.count(succ))
+            {
                 queue.push_back({succ, depth + 1});
             }
         }
     }
 
-    return -1;  // No ijmp found within depth limit
+    return -1; // No ijmp found within depth limit
 }
 
 //--------------------------------------------------------------------------
@@ -1759,61 +1955,73 @@ static int find_reachable_ijmp(mbl_array_t *mba, int start_block, int max_depth 
 //--------------------------------------------------------------------------
 static bool redirect_call_fallthrough(mbl_array_t *mba, int src_idx, int new_target)
 {
-    if ( !mba || src_idx < 0 || src_idx >= mba->qty || new_target < 0 || new_target >= mba->qty ) 
+    if (!mba || src_idx < 0 || src_idx >= mba->qty || new_target < 0 || new_target >= mba->qty)
         return false;
 
     mblock_t *src = mba->get_mblock(src_idx);
     mblock_t *dst = mba->get_mblock(new_target);
-    if ( !src || !dst || !src->tail ) 
+    if (!src || !dst || !src->tail)
         return false;
 
-    if ( src->tail->opcode != m_call ) 
+    if (src->tail->opcode != m_call)
         return false;
 
     // Get the current fall-through target
     int old_target = -1;
-    if ( src->nsucc() > 0 ) {
+    if (src->nsucc() > 0)
+    {
         old_target = src->succ(0);
     }
 
-    if ( old_target == new_target )
+    if (old_target == new_target)
         return false;
 
     // Trace through the CFG to find the dispatcher (ijmp) block
     int ijmp_blk = find_reachable_ijmp(mba, old_target, 8);
 
-    if ( ijmp_blk >= 0 ) {
-        deobf::log_verbose("[deflatten]   Found ijmp dispatcher at block %d via tracing from call succ %d\n",
-                  ijmp_blk, old_target);
+    if (ijmp_blk >= 0)
+    {
+        deobf::log_verbose(
+            "[deflatten]   Found ijmp dispatcher at block %d via tracing from call succ %d\n",
+            ijmp_blk, old_target);
 
         // Convert the ijmp to goto
-        if ( convert_ijmp_to_goto(mba, ijmp_blk, new_target) ) {
+        if (convert_ijmp_to_goto(mba, ijmp_blk, new_target))
+        {
             return true;
         }
     }
 
     // Check intermediate blocks for direct goto->ijmp patterns
-    if ( old_target >= 0 && old_target < mba->qty ) {
+    if (old_target >= 0 && old_target < mba->qty)
+    {
         mblock_t *succ = mba->get_mblock(old_target);
-        if ( succ && succ->tail ) {
-            deobf::log_verbose("[deflatten]   Call succ block %d has tail op=%d\n",
-                      old_target, succ->tail->opcode);
+        if (succ && succ->tail)
+        {
+            deobf::log_verbose("[deflatten]   Call succ block %d has tail op=%d\n", old_target,
+                               succ->tail->opcode);
 
-            if ( succ->tail->opcode == m_ijmp ) {
+            if (succ->tail->opcode == m_ijmp)
+            {
                 // The successor is a dispatcher block - convert it to goto
-                if ( convert_ijmp_to_goto(mba, old_target, new_target) ) {
+                if (convert_ijmp_to_goto(mba, old_target, new_target))
+                {
                     return true;
                 }
             }
             // Maybe the successor is a goto to a dispatcher
-            else if ( succ->tail->opcode == m_goto && succ->nsucc() == 1 ) {
+            else if (succ->tail->opcode == m_goto && succ->nsucc() == 1)
+            {
                 int next_blk = succ->succ(0);
-                if ( next_blk >= 0 && next_blk < mba->qty ) {
+                if (next_blk >= 0 && next_blk < mba->qty)
+                {
                     mblock_t *next = mba->get_mblock(next_blk);
-                    if ( next && next->tail && next->tail->opcode == m_ijmp ) {
+                    if (next && next->tail && next->tail->opcode == m_ijmp)
+                    {
                         // Chain: call -> goto -> ijmp
                         // Redirect the goto
-                        if ( redirect_unconditional_edge(mba, old_target, new_target) ) {
+                        if (redirect_unconditional_edge(mba, old_target, new_target))
+                        {
                             return true;
                         }
                     }
@@ -1822,7 +2030,7 @@ static bool redirect_call_fallthrough(mbl_array_t *mba, int src_idx, int new_tar
         }
     }
 
-    return false;  // Can't safely redirect call blocks at this maturity
+    return false; // Can't safely redirect call blocks at this maturity
 }
 
 //--------------------------------------------------------------------------
@@ -1832,24 +2040,24 @@ static bool redirect_call_fallthrough(mbl_array_t *mba, int src_idx, int new_tar
 //--------------------------------------------------------------------------
 static bool convert_ijmp_to_goto(mbl_array_t *mba, int src_idx, int new_target)
 {
-    if ( !mba || src_idx < 0 || src_idx >= mba->qty || new_target < 0 || new_target >= mba->qty ) 
+    if (!mba || src_idx < 0 || src_idx >= mba->qty || new_target < 0 || new_target >= mba->qty)
         return false;
 
     mblock_t *src = mba->get_mblock(src_idx);
     mblock_t *dst = mba->get_mblock(new_target);
-    if ( !src || !dst || !src->tail ) 
+    if (!src || !dst || !src->tail)
         return false;
 
     minsn_t *tail = src->tail;
-    if ( tail->opcode != m_ijmp ) 
+    if (tail->opcode != m_ijmp)
         return false;
 
     // Convert the ijmp to goto by modifying in place
     // This is safer than removing/inserting instructions
     tail->opcode = m_goto;
     tail->l.make_blkref(new_target);
-    tail->r.erase();  // Clear the right operand
-    tail->d.erase();  // Clear the destination operand
+    tail->r.erase(); // Clear the right operand
+    tail->d.erase(); // Clear the destination operand
 
     // ijmp blocks have no successors in the succset (computed jump)
     // After conversion to goto, we need to add the target
@@ -1858,7 +2066,8 @@ static bool convert_ijmp_to_goto(mbl_array_t *mba, int src_idx, int new_target)
 
     // Add src to dst's predset
     auto p = std::find(dst->predset.begin(), dst->predset.end(), src_idx);
-    if ( p == dst->predset.end() ) {
+    if (p == dst->predset.end())
+    {
         dst->predset.push_back(src_idx);
     }
 
@@ -1880,30 +2089,34 @@ static bool convert_ijmp_to_goto(mbl_array_t *mba, int src_idx, int new_target)
 //--------------------------------------------------------------------------
 static bool redirect_unconditional_edge(mbl_array_t *mba, int src_idx, int new_target)
 {
-    if ( !mba || src_idx < 0 || src_idx >= mba->qty || new_target < 0 || new_target >= mba->qty ) 
+    if (!mba || src_idx < 0 || src_idx >= mba->qty || new_target < 0 || new_target >= mba->qty)
         return false;
 
     mblock_t *src = mba->get_mblock(src_idx);
     mblock_t *dst = mba->get_mblock(new_target);
-    if ( !src || !dst || !src->tail ) 
+    if (!src || !dst || !src->tail)
         return false;
 
     // Get the current successor (we need to update its predset)
     int old_target = -1;
-    if ( src->nsucc() > 0 ) {
+    if (src->nsucc() > 0)
+    {
         old_target = src->succ(0);
     }
 
-    if ( old_target == new_target )
+    if (old_target == new_target)
         return false;
 
     // Update the goto instruction
     // For m_goto: L = target address/block, D is unused
     minsn_t *tail = src->tail;
-    if ( tail->opcode == m_goto ) {
+    if (tail->opcode == m_goto)
+    {
         // Use make_blkref() which properly erases the old value and sets up the block ref
         tail->l.make_blkref(new_target);
-    } else {
+    }
+    else
+    {
         // Not a goto - can't redirect
         return false;
     }
@@ -1914,11 +2127,14 @@ static bool redirect_unconditional_edge(mbl_array_t *mba, int src_idx, int new_t
     src->succset.push_back(new_target);
 
     // Update predset of old target (remove src)
-    if ( old_target >= 0 && old_target < mba->qty && old_target != new_target ) {
+    if (old_target >= 0 && old_target < mba->qty && old_target != new_target)
+    {
         mblock_t *old_dst = mba->get_mblock(old_target);
-        if ( old_dst ) {
+        if (old_dst)
+        {
             auto p = std::find(old_dst->predset.begin(), old_dst->predset.end(), src_idx);
-            if ( p != old_dst->predset.end() ) {
+            if (p != old_dst->predset.end())
+            {
                 old_dst->predset.erase(p);
             }
             old_dst->mark_lists_dirty();
@@ -1927,7 +2143,8 @@ static bool redirect_unconditional_edge(mbl_array_t *mba, int src_idx, int new_t
 
     // Update predset of new target (add src if not already present)
     auto p = std::find(dst->predset.begin(), dst->predset.end(), src_idx);
-    if ( p == dst->predset.end() ) {
+    if (p == dst->predset.end())
+    {
         dst->predset.push_back(src_idx);
     }
 
@@ -1944,42 +2161,48 @@ static bool redirect_unconditional_edge(mbl_array_t *mba, int src_idx, int new_t
 //--------------------------------------------------------------------------
 // Helper: Redirect a conditional branch's taken target to a new block
 //--------------------------------------------------------------------------
-static bool redirect_conditional_edge(mbl_array_t *mba, int src_idx, int new_target, bool is_true_branch)
+static bool redirect_conditional_edge(mbl_array_t *mba, int src_idx, int new_target,
+                                      bool is_true_branch)
 {
-    if ( !mba || src_idx < 0 || src_idx >= mba->qty || new_target < 0 || new_target >= mba->qty ) 
+    if (!mba || src_idx < 0 || src_idx >= mba->qty || new_target < 0 || new_target >= mba->qty)
         return false;
 
     mblock_t *src = mba->get_mblock(src_idx);
     mblock_t *dst = mba->get_mblock(new_target);
-    if ( !src || !dst || !src->tail ) 
+    if (!src || !dst || !src->tail)
         return false;
 
     // A conditional's false edge is the physical fall-through (serial+1), so
     // changing d can only retarget the true edge.
-    if ( !is_true_branch )
+    if (!is_true_branch)
         return false;
 
     minsn_t *tail = src->tail;
-    if ( !deobf::is_jcc(tail->opcode) ) 
+    if (!deobf::is_jcc(tail->opcode))
         return false;
 
     int old_taken = -1;
-    if ( tail->d.t == mop_b ) {
+    if (tail->d.t == mop_b)
+    {
         old_taken = tail->d.b;
     }
 
-    if ( old_taken == new_target )
+    if (old_taken == new_target)
         return false;
 
-    if ( is_true_branch ) {
+    if (is_true_branch)
+    {
         // Update the taken branch target using make_blkref for proper cleanup
         tail->d.make_blkref(new_target);
 
         // Update succset: need to replace old taken target with new one
         // For conditional branches, succset has 2 entries: [taken, fallthrough]
-        if ( old_taken >= 0 ) {
-            for ( auto& succ : src->succset ) {
-                if ( succ == old_taken ) {
+        if (old_taken >= 0)
+        {
+            for (auto &succ : src->succset)
+            {
+                if (succ == old_taken)
+                {
                     succ = new_target;
                     break;
                 }
@@ -1987,11 +2210,14 @@ static bool redirect_conditional_edge(mbl_array_t *mba, int src_idx, int new_tar
         }
 
         // Update predset of old taken target
-        if ( old_taken >= 0 && old_taken < mba->qty && old_taken != new_target ) {
+        if (old_taken >= 0 && old_taken < mba->qty && old_taken != new_target)
+        {
             mblock_t *old_dst = mba->get_mblock(old_taken);
-            if ( old_dst ) {
+            if (old_dst)
+            {
                 auto p = std::find(old_dst->predset.begin(), old_dst->predset.end(), src_idx);
-                if ( p != old_dst->predset.end() ) {
+                if (p != old_dst->predset.end())
+                {
                     old_dst->predset.erase(p);
                 }
                 old_dst->mark_lists_dirty();
@@ -2000,7 +2226,8 @@ static bool redirect_conditional_edge(mbl_array_t *mba, int src_idx, int new_tar
 
         // Update predset of new target
         auto p = std::find(dst->predset.begin(), dst->predset.end(), src_idx);
-        if ( p == dst->predset.end() ) {
+        if (p == dst->predset.end())
+        {
             dst->predset.push_back(src_idx);
         }
     }
@@ -2019,15 +2246,14 @@ static bool redirect_conditional_edge(mbl_array_t *mba, int src_idx, int new_tar
 // If we don't have enough transitions traced, we skip reconstruction to avoid
 // turning the function into unreachable code (e.g., just "jmp r15").
 //--------------------------------------------------------------------------
-int deflatten_handler_t::reconstruct_cfg_z3(mbl_array_t *mba,
-                                             const std::vector<cfg_edge_t> &edges,
-                                             const dispatcher_info_t &disp,
-                                             deobf_ctx_t *ctx)
-                                             {
-    if ( !mba || !ctx ) 
+int deflatten_handler_t::reconstruct_cfg_z3(mbl_array_t *mba, const std::vector<cfg_edge_t> &edges,
+                                            const dispatcher_info_t &disp, deobf_ctx_t *ctx)
+{
+    if (!mba || !ctx)
         return 0;
 
-    if ( !verify_cfg_safety(mba, edges) ) {
+    if (!verify_cfg_safety(mba, edges))
+    {
         deobf::log("[deflatten] CFG safety check failed, aborting reconstruction\n");
         return 0;
     }
@@ -2037,16 +2263,21 @@ int deflatten_handler_t::reconstruct_cfg_z3(mbl_array_t *mba,
     // If we only traced a few edges, we likely missed most transitions and shouldn't
     // modify the CFG at all - doing so would make the function body unreachable.
     size_t min_required_edges = 0;
-    if ( disp.case_blocks.size() > 0 ) {
+    if (disp.case_blocks.size() > 0)
+    {
         // Require at least 30% of case blocks to have outgoing transitions
         min_required_edges = std::max((size_t)3, disp.case_blocks.size() / 3);
-    } else {
+    }
+    else
+    {
         min_required_edges = 3;
     }
-    
-    if ( edges.size() < min_required_edges ) {
-        deobf::log("[deflatten] SAFEGUARD: Only %zu edges traced but %zu required (case_blocks=%zu)\n",
-                  edges.size(), min_required_edges, disp.case_blocks.size());
+
+    if (edges.size() < min_required_edges)
+    {
+        deobf::log(
+            "[deflatten] SAFEGUARD: Only %zu edges traced but %zu required (case_blocks=%zu)\n",
+            edges.size(), min_required_edges, disp.case_blocks.size());
         deobf::log("[deflatten] Skipping CFG reconstruction to avoid breaking function\n");
         return 0;
     }
@@ -2055,82 +2286,108 @@ int deflatten_handler_t::reconstruct_cfg_z3(mbl_array_t *mba,
 
     deobf::log("[deflatten] Reconstructing CFG with %zu edges\n", edges.size());
 
-    for ( const auto& edge : edges ) {
-        if ( edge.to_block < 0 ) 
+    for (const auto &edge : edges)
+    {
+        if (edge.to_block < 0)
             continue;
 
         mblock_t *src = mba->get_mblock(edge.from_block);
-        if ( !src || !src->tail ) {
+        if (!src || !src->tail)
+        {
             deobf::log("[deflatten]   Block %d: no tail instruction\n", edge.from_block);
             continue;
         }
 
         mblock_t *dst = mba->get_mblock(edge.to_block);
-        if ( !dst ) 
+        if (!dst)
             continue;
 
         mcode_t term_op = src->tail->opcode;
 
-        deobf::log("[deflatten]   Block %d term: op=%d l.t=%d d.t=%d (m_goto=%d is_jcc=%d) nsucc=%d\n",
-                  edge.from_block, term_op, src->tail->l.t, src->tail->d.t, (int)m_goto,
-                  deobf::is_jcc(term_op), src->nsucc());
+        deobf::log(
+            "[deflatten]   Block %d term: op=%d l.t=%d d.t=%d (m_goto=%d is_jcc=%d) nsucc=%d\n",
+            edge.from_block, term_op, src->tail->l.t, src->tail->d.t, (int)m_goto,
+            deobf::is_jcc(term_op), src->nsucc());
 
         // For unconditional edges, use the helper that properly updates pred/succ lists
-        if ( !edge.is_conditional ) {
-            if ( term_op == m_goto ) {
-                if ( redirect_unconditional_edge(mba, edge.from_block, edge.to_block) ) {
+        if (!edge.is_conditional)
+        {
+            if (term_op == m_goto)
+            {
+                if (redirect_unconditional_edge(mba, edge.from_block, edge.to_block))
+                {
                     deobf::log("[deflatten]   Block %d: goto (fall-through) -> goto blk%d\n",
-                              edge.from_block, edge.to_block);
+                               edge.from_block, edge.to_block);
                     changes++;
                     ctx->branches_simplified++;
-                } else {
+                }
+                else
+                {
                     deobf::log("[deflatten]   Block %d: redirect_unconditional_edge failed\n",
-                              edge.from_block);
+                               edge.from_block);
                 }
-            } else if ( term_op == m_ijmp ) {
+            }
+            else if (term_op == m_ijmp)
+            {
                 // Indirect jump - convert to direct goto
-                if ( convert_ijmp_to_goto(mba, edge.from_block, edge.to_block) ) {
-                    deobf::log("[deflatten]   Block %d: ijmp -> goto blk%d\n",
-                              edge.from_block, edge.to_block);
+                if (convert_ijmp_to_goto(mba, edge.from_block, edge.to_block))
+                {
+                    deobf::log("[deflatten]   Block %d: ijmp -> goto blk%d\n", edge.from_block,
+                               edge.to_block);
                     changes++;
                     ctx->branches_simplified++;
-                } else {
-                    deobf::log("[deflatten]   Block %d: ijmp conversion failed\n",
-                              edge.from_block);
                 }
-            } else if ( term_op == m_call && src->nsucc() == 1 ) {
+                else
+                {
+                    deobf::log("[deflatten]   Block %d: ijmp conversion failed\n", edge.from_block);
+                }
+            }
+            else if (term_op == m_call && src->nsucc() == 1)
+            {
                 // Call with fall-through - redirect to new target
-                if ( redirect_call_fallthrough(mba, edge.from_block, edge.to_block) ) {
+                if (redirect_call_fallthrough(mba, edge.from_block, edge.to_block))
+                {
                     deobf::log("[deflatten]   Block %d: call fall-through -> blk%d\n",
-                              edge.from_block, edge.to_block);
+                               edge.from_block, edge.to_block);
                     changes++;
                     ctx->branches_simplified++;
-                } else {
-                    deobf::log("[deflatten]   Block %d: call fall-through redirect failed\n",
-                              edge.from_block);
                 }
-            } else if ( deobf::is_jcc(term_op) ) {
+                else
+                {
+                    deobf::log("[deflatten]   Block %d: call fall-through redirect failed\n",
+                               edge.from_block);
+                }
+            }
+            else if (deobf::is_jcc(term_op))
+            {
                 // Conditional jump - use redirect_conditional_edge for true branch
-                if ( redirect_conditional_edge(mba, edge.from_block, edge.to_block, true) ) {
+                if (redirect_conditional_edge(mba, edge.from_block, edge.to_block, true))
+                {
                     deobf::log("[deflatten]   Block %d: jcc true branch -> blk%d\n",
-                              edge.from_block, edge.to_block);
+                               edge.from_block, edge.to_block);
                     changes++;
                     ctx->branches_simplified++;
                 }
             }
-        } else {
+        }
+        else
+        {
             // For conditional edges, use the conditional edge helper
-            if ( deobf::is_jcc(term_op) ) {
-                if ( redirect_conditional_edge(mba, edge.from_block, edge.to_block, edge.is_true_branch) ) {
-                    deobf::log("[deflatten]   Block %d: jcc %s branch -> blk%d\n",
-                              edge.from_block, edge.is_true_branch ? "true" : "false", edge.to_block);
+            if (deobf::is_jcc(term_op))
+            {
+                if (redirect_conditional_edge(mba, edge.from_block, edge.to_block,
+                                              edge.is_true_branch))
+                {
+                    deobf::log("[deflatten]   Block %d: jcc %s branch -> blk%d\n", edge.from_block,
+                               edge.is_true_branch ? "true" : "false", edge.to_block);
                     changes++;
                 }
             }
         }
     }
 
-    if ( changes > 0 ) {
+    if (changes > 0)
+    {
         deobf::log("[deflatten] Redirected %d branches\n", changes);
 
         // Mark microcode as modified - need to rebuild CFG info
@@ -2150,22 +2407,23 @@ int deflatten_handler_t::reconstruct_cfg_z3(mbl_array_t *mba,
 //--------------------------------------------------------------------------
 int deflatten_handler_t::analyze_and_store(mbl_array_t *mba, deobf_ctx_t *ctx)
 {
-    if ( !mba || !ctx ) 
+    if (!mba || !ctx)
         return 0;
 
     ea_t func_ea = mba->entry_ea;
 
-    deobf::log("[deflatten] Phase 1: Detecting flattening at maturity %d for %a\n",
-              mba->maturity, func_ea);
+    deobf::log("[deflatten] Phase 1: Detecting flattening at maturity %d for %a\n", mba->maturity,
+               func_ea);
 
     // Reset Z3 context
     reset_global_context();
-    set_global_timeout(10000);  // 10 second timeout
+    set_global_timeout(10000); // 10 second timeout
 
     // Find all dispatchers using Z3 analysis
     auto dispatchers = analyze_dispatchers_z3(mba);
 
-    if ( dispatchers.empty() ) {
+    if (dispatchers.empty())
+    {
         deobf::log("[deflatten] No dispatchers found\n");
         return 0;
     }
@@ -2177,16 +2435,18 @@ int deflatten_handler_t::analyze_and_store(mbl_array_t *mba, deobf_ctx_t *ctx)
     deferred_analysis_t &analysis = current_deflatten_cache()[func_ea];
     analysis.func_ea = func_ea;
     analysis.analysis_maturity = mba->maturity;
-    analysis.analysis_complete = true;  // Mark as ready for Phase 2
+    analysis.analysis_complete = true; // Mark as ready for Phase 2
     analysis.edges.clear();
     analysis.state_transitions.clear();
     analysis.dispatcher_blocks.clear();
 
     // Store dispatcher block info for logging
-    for ( const auto& disp : dispatchers ) {
-        deobf::log("[deflatten]   Dispatcher at block %d with %zu case blocks\n",
-                  disp.block_idx, disp.case_blocks.size());
-        for ( int blk : disp.dispatcher_chain ) {
+    for (const auto &disp : dispatchers)
+    {
+        deobf::log("[deflatten]   Dispatcher at block %d with %zu case blocks\n", disp.block_idx,
+                   disp.case_blocks.size());
+        for (int blk : disp.dispatcher_chain)
+        {
             analysis.dispatcher_blocks.insert(blk);
         }
     }
@@ -2204,42 +2464,46 @@ int deflatten_handler_t::analyze_and_store(mbl_array_t *mba, deobf_ctx_t *ctx)
 //--------------------------------------------------------------------------
 int deflatten_handler_t::apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx)
 {
-    if ( !mba || !ctx ) 
+    if (!mba || !ctx)
         return 0;
 
     ea_t func_ea = mba->entry_ea;
 
     deferred_cache_t &cache = current_deflatten_cache();
     auto p = cache.find(func_ea);
-    if ( p == cache.end() || !p->second.analysis_complete ) {
+    if (p == cache.end() || !p->second.analysis_complete)
+    {
         return 0;
     }
 
     deobf::log("[deflatten] === Phase 2: Applying deflattening for %a at maturity %d ===\n",
-              func_ea, mba->maturity);
+               func_ea, mba->maturity);
 
     // Re-analyze dispatchers at current maturity (CFG is now fully formed)
     auto dispatchers = analyze_dispatchers_z3(mba);
-    if ( dispatchers.empty() ) {
+    if (dispatchers.empty())
+    {
         deobf::log("[deflatten] No dispatchers found at current maturity\n");
         clear_deferred(func_ea);
         return 0;
     }
 
-    deobf::log("[deflatten] Found %zu dispatcher(s) at maturity %d\n",
-              dispatchers.size(), mba->maturity);
+    deobf::log("[deflatten] Found %zu dispatcher(s) at maturity %d\n", dispatchers.size(),
+               mba->maturity);
 
     int total_changes = 0;
 
     // Process each dispatcher using trace_transitions_z3 for fresh edges
-    for ( const auto& disp : dispatchers ) {
-        deobf::log("[deflatten] Processing dispatcher at block %d (level %d)\n",
-                  disp.block_idx, disp.nesting_level);
+    for (const auto &disp : dispatchers)
+    {
+        deobf::log("[deflatten] Processing dispatcher at block %d (level %d)\n", disp.block_idx,
+                   disp.nesting_level);
 
         // Get fresh edges using trace_transitions_z3 at current maturity
         auto edges = trace_transitions_z3(mba, disp);
 
-        if ( edges.empty() ) {
+        if (edges.empty())
+        {
             deobf::log("[deflatten]   No transitions found at current maturity, skipping\n");
             continue;
         }
@@ -2255,7 +2519,8 @@ int deflatten_handler_t::apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx)
         // did not modify blocks or assignments.
     }
 
-    if ( total_changes > 0 ) {
+    if (total_changes > 0)
+    {
         deobf::log("[deflatten] Phase 2 complete: %d CFG changes applied\n", total_changes);
         mba->mark_chains_dirty();
     }
@@ -2271,13 +2536,12 @@ int deflatten_handler_t::apply_deferred(mbl_array_t *mba, deobf_ctx_t *ctx)
 //--------------------------------------------------------------------------
 int deflatten_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 {
-    if ( !mba || !ctx ) 
+    if (!mba || !ctx)
         return 0;
 
     pattern_match::flatten_info_t detected_pattern;
-    if ( pattern_match::detect_flatten_pattern(mba, &detected_pattern)
-      && detected_pattern.kind
-           == pattern_match::flatten_pattern_kind_t::recurrent_switch )
+    if (pattern_match::detect_flatten_pattern(mba, &detected_pattern) &&
+        detected_pattern.kind == pattern_match::flatten_pattern_kind_t::recurrent_switch)
     {
         return recurrent_switch::run(mba, detected_pattern, ctx);
     }
@@ -2300,24 +2564,31 @@ int deflatten_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
     // Solution: Analyze at early maturity, apply at later maturity
 
     // Phase 1: Early maturity analysis
-    if ( maturity <= MMAT_GENERATED ) {
+    if (maturity <= MMAT_GENERATED)
+    {
         // Check if we already have analysis (avoid re-analyzing)
-        if ( !has_pending_analysis(func_ea) ) {
+        if (!has_pending_analysis(func_ea))
+        {
             return analyze_and_store(mba, ctx);
-        } else {
+        }
+        else
+        {
             deobf::log_verbose("[deflatten] Analysis already pending for %a\n", func_ea);
             return 0;
         }
     }
 
     // Phase 2: Apply at stable maturity
-    if ( maturity >= MMAT_LOCOPT && has_pending_analysis(func_ea) ) {
+    if (maturity >= MMAT_LOCOPT && has_pending_analysis(func_ea))
+    {
         return apply_deferred(mba, ctx);
     }
 
     // Intermediate maturities: try direct approach if no pending analysis
-    if ( !has_pending_analysis(func_ea) ) {
-        deobf::log("[deflatten] Starting Z3-based control flow deflattening (maturity=%d)\n", maturity);
+    if (!has_pending_analysis(func_ea))
+    {
+        deobf::log("[deflatten] Starting Z3-based control flow deflattening (maturity=%d)\n",
+                   maturity);
 
         // Reset Z3 context
         reset_global_context();
@@ -2326,7 +2597,8 @@ int deflatten_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
         // Find dispatchers
         auto dispatchers = analyze_dispatchers_z3(mba);
 
-        if ( dispatchers.empty() ) {
+        if (dispatchers.empty())
+        {
             deobf::log("[deflatten] No dispatchers found\n");
             return 0;
         }
@@ -2335,13 +2607,15 @@ int deflatten_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 
         int total_changes = 0;
 
-        for ( const auto& disp : dispatchers ) {
-            deobf::log("[deflatten] Processing dispatcher at block %d (level %d)\n",
-                      disp.block_idx, disp.nesting_level);
+        for (const auto &disp : dispatchers)
+        {
+            deobf::log("[deflatten] Processing dispatcher at block %d (level %d)\n", disp.block_idx,
+                       disp.nesting_level);
 
             auto edges = trace_transitions_z3(mba, disp);
 
-            if ( edges.empty() ) {
+            if (edges.empty())
+            {
                 deobf::log("[deflatten]   No transitions found, skipping\n");
                 continue;
             }
@@ -2353,7 +2627,8 @@ int deflatten_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
             // Exact edge rewrites are the only reported mutations.
         }
 
-        if ( total_changes > 0 ) {
+        if (total_changes > 0)
+        {
             deobf::log("[deflatten] Deflattening complete: %d CFG changes\n", total_changes);
             mba->mark_chains_dirty();
         }

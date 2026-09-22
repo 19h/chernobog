@@ -1,7 +1,9 @@
 #include "rules_or.h"
 
-namespace chernobog {
-namespace rules {
+namespace chernobog
+{
+namespace rules
+{
 
 // Register all OR rules
 REGISTER_MBA_RULE(Or_HackersDelightRule_1);

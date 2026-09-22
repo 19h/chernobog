@@ -20,19 +20,22 @@ constexpr uint32_t CF_JUMP = 2;
 constexpr uint32_t CF_STOP = 4;
 constexpr int PH = 0;
 
-struct op_t { int type = o_void; };
+struct op_t
+{
+    int type = o_void;
+};
 struct insn_t
 {
-  uint16_t size = 0;
-  op_t ops[UA_MAXOP]{};
-  uint32_t get_canon_feature(int) const { return 0; }
+    uint16_t size = 0;
+    op_t ops[UA_MAXOP]{};
+    uint32_t get_canon_feature(int) const { return 0; }
 };
 struct xrefblk_t
 {
-  int type = fl_F;
-  ea_t to = BADADDR;
-  bool first_from(ea_t, int);
-  bool next_from() { return false; }
+    int type = fl_F;
+    ea_t to = BADADDR;
+    bool first_from(ea_t, int);
+    bool next_from() { return false; }
 };
 
 inline bool is_call_insn(const insn_t &) { return false; }

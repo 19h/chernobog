@@ -1,5 +1,5 @@
 #ifdef _MSC_VER
-#pragma warning(disable:4244; disable:4267; disable:4146; disable:4018)
+#pragma warning(disable : 4244; disable : 4267; disable : 4146; disable : 4018)
 #endif //_MSC_VER
 #ifdef __GNUC__
 #pragma GCC diagnostic ignored "-Wswitch"

@@ -17,8 +17,10 @@
 // Ported from d810-ng's ast.py with C++ optimizations
 //--------------------------------------------------------------------------
 
-namespace chernobog {
-namespace ast {
+namespace chernobog
+{
+namespace ast
+{
 
 // Forward declarations
 class AstBase;
@@ -39,14 +41,13 @@ bool is_mba_opcode(mcode_t op);
 //--------------------------------------------------------------------------
 // AstBase - Abstract base class for all AST nodes
 //--------------------------------------------------------------------------
-class AstBase {
-public:
+class AstBase
+{
+  public:
     // Virtual destructor that safely clears mop_t before destruction.
     // This is critical because mop_t's destructor may call IDA functions
     // that are unavailable during static destruction (after IDA unloads).
-    virtual ~AstBase() {
-        mop.erase();
-    }
+    virtual ~AstBase() { mop.erase(); }
 
     // Type checking
     virtual bool is_node() const = 0;
@@ -57,33 +58,32 @@ public:
     virtual AstPtr clone() const = 0;
 
     // Metadata from microcode
-    int dest_size = 0;          // Size in bytes (1,2,4,8)
-    ea_t ea = BADADDR;          // Address in binary
-    mop_t mop;                  // Original microcode operand
+    int dest_size = 0; // Size in bytes (1,2,4,8)
+    ea_t ea = BADADDR; // Address in binary
+    mop_t mop;         // Original microcode operand
 
-protected:
+  protected:
     AstBase() = default;
-    AstBase(const AstBase& other);
+    AstBase(const AstBase &other);
 };
 
 //--------------------------------------------------------------------------
 // AstNode - Binary or unary operation node
 //--------------------------------------------------------------------------
-class AstNode : public AstBase {
-public:
-    mcode_t opcode;             // Operation (m_add, m_sub, m_xor, etc.)
-    AstPtr left;                // Left operand (always present)
-    AstPtr right;               // Right operand (nullptr for unary ops)
-    mop_t dst_mop;              // Destination operand
+class AstNode : public AstBase
+{
+  public:
+    mcode_t opcode; // Operation (m_add, m_sub, m_xor, etc.)
+    AstPtr left;    // Left operand (always present)
+    AstPtr right;   // Right operand (nullptr for unary ops)
+    mop_t dst_mop;  // Destination operand
 
     // Constructors
     AstNode(mcode_t op, AstPtr l, AstPtr r = nullptr);
-    AstNode(const AstNode& other);
+    AstNode(const AstNode &other);
 
     // Destructor - clear dst_mop before destruction
-    ~AstNode() override {
-        dst_mop.erase();
-    }
+    ~AstNode() override { dst_mop.erase(); }
 
     // Type checking
     bool is_node() const override { return true; }
@@ -95,14 +95,15 @@ public:
 //--------------------------------------------------------------------------
 // AstLeaf - Variable or register leaf node
 //--------------------------------------------------------------------------
-class AstLeaf : public AstBase {
-public:
-    std::string name;           // Variable name ("x_0", "x_1", etc.)
+class AstLeaf : public AstBase
+{
+  public:
+    std::string name; // Variable name ("x_0", "x_1", etc.)
 
     // Constructors
-    explicit AstLeaf(const std::string& n);
-    explicit AstLeaf(const mop_t& m);  // From microcode operand
-    AstLeaf(const AstLeaf& other);
+    explicit AstLeaf(const std::string &n);
+    explicit AstLeaf(const mop_t &m); // From microcode operand
+    AstLeaf(const AstLeaf &other);
 
     // Type checking
     bool is_node() const override { return false; }
@@ -112,55 +113,62 @@ public:
     AstPtr clone() const override;
 
     // Generate a name from microcode operand
-    static std::string name_from_mop(const mop_t& m);
+    static std::string name_from_mop(const mop_t &m);
 };
 
 //--------------------------------------------------------------------------
 // AstConstant - Constant value leaf node
 //--------------------------------------------------------------------------
-class AstConstant : public AstLeaf {
-public:
-    uint64_t value;             // Constant value
-    std::string const_name;     // Named constant (e.g., "c_minus_2")
+class AstConstant : public AstLeaf
+{
+  public:
+    uint64_t value;         // Constant value
+    std::string const_name; // Named constant (e.g., "c_minus_2")
 
     // Constructors
     AstConstant(uint64_t v, int size);
-    AstConstant(const std::string& name, uint64_t v);
-    AstConstant(const AstConstant& other);
+    AstConstant(const std::string &name, uint64_t v);
+    AstConstant(const AstConstant &other);
 
     // Type checking
     bool is_constant() const override { return true; }
 
     // Deep copy
     AstPtr clone() const override;
-
 };
 
 //--------------------------------------------------------------------------
 // Pattern match bindings - stores captured operands without mutating pattern
 //--------------------------------------------------------------------------
-struct MatchBindings {
-    static constexpr size_t MAX_BINDINGS = 8;  // x_0 through x_7 typically
-    
-    struct Binding {
-        const char* name;  // Variable name (pointer to interned string)
-        mop_t mop;         // Captured operand
-        int dest_size;     // Size in bytes
-        ea_t ea;           // Address
+struct MatchBindings
+{
+    static constexpr size_t MAX_BINDINGS = 8; // x_0 through x_7 typically
+
+    struct Binding
+    {
+        const char *name; // Variable name (pointer to interned string)
+        mop_t mop;        // Captured operand
+        int dest_size;    // Size in bytes
+        ea_t ea;          // Address
     };
-    
+
     Binding bindings[MAX_BINDINGS];
     size_t count = 0;
-    
+
     void clear() { count = 0; }
-    
-    bool add(const char* name, const mop_t& mop, int size, ea_t ea) {
-        if (count >= MAX_BINDINGS) return false;
-        Binding& binding = bindings[count];
+
+    bool add(const char *name, const mop_t &mop, int size, ea_t ea)
+    {
+        if (count >= MAX_BINDINGS)
+            return false;
+        Binding &binding = bindings[count];
         binding.name = name;
-        if ( mop.t != mop_z ) {
+        if (mop.t != mop_z)
+        {
             binding.mop = mop;
-        } else if ( binding.mop.t != mop_z ) {
+        }
+        else if (binding.mop.t != mop_z)
+        {
             binding.mop.erase();
         }
         binding.dest_size = size;
@@ -168,10 +176,13 @@ struct MatchBindings {
         ++count;
         return true;
     }
-    
-    const mop_t* find(const std::string& name) const {
-        for ( size_t i = 0; i < count; ++i ) {
-            if ( name == bindings[i].name ) {
+
+    const mop_t *find(const std::string &name) const
+    {
+        for (size_t i = 0; i < count; ++i)
+        {
+            if (name == bindings[i].name)
+            {
                 return &bindings[i].mop;
             }
         }
@@ -183,35 +194,36 @@ struct MatchBindings {
 // Non-mutating pattern match function (doesn't modify pattern AST)
 // Returns true if pattern matches candidate, fills bindings
 //--------------------------------------------------------------------------
-bool match_pattern(const AstBase* pattern, const AstBase* candidate, 
-                   MatchBindings& bindings);
+bool match_pattern(const AstBase *pattern, const AstBase *candidate, MatchBindings &bindings);
 
 //--------------------------------------------------------------------------
 // Helper functions for creating AST nodes (for rule definitions)
 //--------------------------------------------------------------------------
 
 // Create a variable leaf node
-inline AstPtr make_leaf(const std::string& name) {
-    return std::make_shared<AstLeaf>(name);
-}
+inline AstPtr make_leaf(const std::string &name) { return std::make_shared<AstLeaf>(name); }
 
 // Create a constant leaf node
-inline AstPtr make_const(uint64_t value, int size = 8) {
+inline AstPtr make_const(uint64_t value, int size = 8)
+{
     return std::make_shared<AstConstant>(value, size);
 }
 
 // Create a named constant (for pattern matching with validation)
-inline AstPtr make_named_const(const std::string& name, uint64_t value = 0) {
+inline AstPtr make_named_const(const std::string &name, uint64_t value = 0)
+{
     return std::make_shared<AstConstant>(name, value);
 }
 
 // Create a binary operation node
-inline AstPtr make_node(mcode_t op, AstPtr left, AstPtr right) {
+inline AstPtr make_node(mcode_t op, AstPtr left, AstPtr right)
+{
     return std::make_shared<AstNode>(op, left, right);
 }
 
 // Create a unary operation node
-inline AstPtr make_unary(mcode_t op, AstPtr operand) {
+inline AstPtr make_unary(mcode_t op, AstPtr operand)
+{
     return std::make_shared<AstNode>(op, operand, nullptr);
 }
 
@@ -220,10 +232,10 @@ inline AstPtr make_unary(mcode_t op, AstPtr operand) {
 //--------------------------------------------------------------------------
 
 // Get opcode name for debugging
-const char* opcode_name(mcode_t op);
+const char *opcode_name(mcode_t op);
 
 // Check if two mops are equal (ignoring size differences)
-bool mops_equal_strict(const mop_t& a, const mop_t& b);
+bool mops_equal_strict(const mop_t &a, const mop_t &b);
 
 // Size mask for given byte size
 uint64_t size_mask(int size);

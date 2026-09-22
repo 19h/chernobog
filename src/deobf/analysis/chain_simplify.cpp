@@ -2,53 +2,64 @@
 #include "../../common/bitvector.h"
 #include "../rules/rule_verifier.h"
 
-namespace chernobog {
-namespace chain {
+namespace chernobog
+{
+namespace chain
+{
 
 //--------------------------------------------------------------------------
 // Utility functions - OPTIMIZED
 //--------------------------------------------------------------------------
 
 // Fast operand equality check with early-out and SIMD hints
-SIMD_FORCE_INLINE bool ChainSimplifier::operands_equal(const mop_t& a, const mop_t& b) {
+SIMD_FORCE_INLINE bool ChainSimplifier::operands_equal(const mop_t &a, const mop_t &b)
+{
     // Fast path: type and size must match
     // Combine checks into single comparison where possible
-    if (SIMD_UNLIKELY(a.t != b.t)) return false;
-    if (SIMD_UNLIKELY(a.size != b.size)) return false;
+    if (SIMD_UNLIKELY(a.t != b.t))
+        return false;
+    if (SIMD_UNLIKELY(a.size != b.size))
+        return false;
 
     // Type-specific comparison
-    switch (a.t) {
-        case mop_r:  // Register - single int comparison
-            return a.r == b.r;
+    switch (a.t)
+    {
+    case mop_r: // Register - single int comparison
+        return a.r == b.r;
 
-        case mop_n:  // Number constant
-            // Null check first
-            if (SIMD_UNLIKELY(!a.nnn || !b.nnn)) return a.nnn == b.nnn;
-            return a.nnn->value == b.nnn->value;
+    case mop_n: // Number constant
+        // Null check first
+        if (SIMD_UNLIKELY(!a.nnn || !b.nnn))
+            return a.nnn == b.nnn;
+        return a.nnn->value == b.nnn->value;
 
-        case mop_S:  // Stack variable
-            if (SIMD_UNLIKELY(!a.s || !b.s)) return a.s == b.s;
-            return a.s->off == b.s->off;
+    case mop_S: // Stack variable
+        if (SIMD_UNLIKELY(!a.s || !b.s))
+            return a.s == b.s;
+        return a.s->off == b.s->off;
 
-        case mop_v:  // Global variable - single uint64 comparison
-            return a.g == b.g;
+    case mop_v: // Global variable - single uint64 comparison
+        return a.g == b.g;
 
-        case mop_l:  // Local variable
-            if (SIMD_UNLIKELY(!a.l || !b.l)) return a.l == b.l;
-            // Combine comparisons
-            return (a.l->idx == b.l->idx) & (a.l->off == b.l->off);
+    case mop_l: // Local variable
+        if (SIMD_UNLIKELY(!a.l || !b.l))
+            return a.l == b.l;
+        // Combine comparisons
+        return (a.l->idx == b.l->idx) & (a.l->off == b.l->off);
 
-        case mop_d:  // Result of another instruction
-            // Compare instruction content (most expensive case)
-            if (SIMD_UNLIKELY(!a.d || !b.d)) return a.d == b.d;
-            return a.d->equal_insns(*b.d, 0);
+    case mop_d: // Result of another instruction
+        // Compare instruction content (most expensive case)
+        if (SIMD_UNLIKELY(!a.d || !b.d))
+            return a.d == b.d;
+        return a.d->equal_insns(*b.d, 0);
 
-        default:
-            return false;
+    default:
+        return false;
     }
 }
 
-bool ChainSimplifier::is_not_of(const mop_t& a, const mop_t& b) {
+bool ChainSimplifier::is_not_of(const mop_t &a, const mop_t &b)
+{
     // Check if a = ~b
     if (a.t != mop_d || !a.d)
         return false;
@@ -59,7 +70,8 @@ bool ChainSimplifier::is_not_of(const mop_t& a, const mop_t& b) {
     return operands_equal(a.d->l, b);
 }
 
-bool ChainSimplifier::is_neg_of(const mop_t& a, const mop_t& b) {
+bool ChainSimplifier::is_neg_of(const mop_t &a, const mop_t &b)
+{
     // Check if a = -b
     if (a.t != mop_d || !a.d)
         return false;
@@ -70,48 +82,52 @@ bool ChainSimplifier::is_neg_of(const mop_t& a, const mop_t& b) {
     return operands_equal(a.d->l, b);
 }
 
-bool ChainSimplifier::get_const_value(const mop_t& mop, uint64_t* out) {
+bool ChainSimplifier::get_const_value(const mop_t &mop, uint64_t *out)
+{
     if (mop.t != mop_n || mop.nnn == nullptr || out == nullptr)
         return false;
 
     *out = chernobog::bitvector::valid_byte_width(mop.size)
-        ? chernobog::bitvector::truncate(mop.nnn->value, mop.size)
-        : mop.nnn->value;
+               ? chernobog::bitvector::truncate(mop.nnn->value, mop.size)
+               : mop.nnn->value;
     return true;
 }
 
-uint64_t ChainSimplifier::get_identity_element(mcode_t op, int size) {
-    switch (op) {
-        case m_xor:
-        case m_add:
-        case m_or:
-            return 0;
+uint64_t ChainSimplifier::get_identity_element(mcode_t op, int size)
+{
+    switch (op)
+    {
+    case m_xor:
+    case m_add:
+    case m_or:
+        return 0;
 
-        case m_and:
-            // All ones for the size
-            return chernobog::bitvector::valid_byte_width(size)
-                ? chernobog::bitvector::mask(size) : 0;
+    case m_and:
+        // All ones for the size
+        return chernobog::bitvector::valid_byte_width(size) ? chernobog::bitvector::mask(size) : 0;
 
-        default:
-            return 0;
+    default:
+        return 0;
     }
 }
 
-bool ChainSimplifier::has_absorbing_element(mcode_t op, uint64_t* out, int size) {
-    switch (op) {
-        case m_and:
-            *out = 0;
-            return true;
+bool ChainSimplifier::has_absorbing_element(mcode_t op, uint64_t *out, int size)
+{
+    switch (op)
+    {
+    case m_and:
+        *out = 0;
+        return true;
 
-        case m_or:
-            // All ones for the size
-            if (!chernobog::bitvector::valid_byte_width(size))
-                return false;
-            *out = chernobog::bitvector::mask(size);
-            return true;
-
-        default:
+    case m_or:
+        // All ones for the size
+        if (!chernobog::bitvector::valid_byte_width(size))
             return false;
+        *out = chernobog::bitvector::mask(size);
+        return true;
+
+    default:
+        return false;
     }
 }
 
@@ -119,29 +135,33 @@ bool ChainSimplifier::has_absorbing_element(mcode_t op, uint64_t* out, int size)
 // Chain flattening
 //--------------------------------------------------------------------------
 
-void ChainSimplifier::flatten_operand(const mop_t& mop, mcode_t target_op,
-                                      std::vector<chain_operand_t>& operands,
-                                      std::vector<uint64_t>& constants,
-                                      int size) {
+void ChainSimplifier::flatten_operand(const mop_t &mop, mcode_t target_op,
+                                      std::vector<chain_operand_t> &operands,
+                                      std::vector<uint64_t> &constants, int size)
+{
     // Check for constant
     uint64_t const_val;
-    if (get_const_value(mop, &const_val)) {
+    if (get_const_value(mop, &const_val))
+    {
         constants.push_back(const_val);
         return;
     }
 
     // Check for nested same opcode
-    if (mop.t == mop_d && mop.d && mop.d->opcode == target_op &&
-        mop.size == size && mop.d->d.size == size) {
+    if (mop.t == mop_d && mop.d && mop.d->opcode == target_op && mop.size == size &&
+        mop.d->d.size == size)
+    {
         flatten_chain(mop.d, target_op, operands, constants, size);
         return;
     }
 
     // Handle special cases for XOR with negation
-    if (target_op == m_xor && mop.t == mop_d && mop.d &&
-        mop.size == size && mop.d->d.size == size) {
-        if (mop.d->opcode == m_bnot) {
-            if (mop.d->l.size != size) {
+    if (target_op == m_xor && mop.t == mop_d && mop.d && mop.size == size && mop.d->d.size == size)
+    {
+        if (mop.d->opcode == m_bnot)
+        {
+            if (mop.d->l.size != size)
+            {
                 operands.push_back(chain_operand_t(mop, false));
                 return;
             }
@@ -157,10 +177,10 @@ void ChainSimplifier::flatten_operand(const mop_t& mop, mcode_t target_op,
     operands.push_back(chain_operand_t(mop, false));
 }
 
-void ChainSimplifier::flatten_chain(const minsn_t* ins, mcode_t target_op,
-                                    std::vector<chain_operand_t>& operands,
-                                    std::vector<uint64_t>& constants,
-                                    int size) {
+void ChainSimplifier::flatten_chain(const minsn_t *ins, mcode_t target_op,
+                                    std::vector<chain_operand_t> &operands,
+                                    std::vector<uint64_t> &constants, int size)
+{
     if (!ins || ins->opcode != target_op)
         return;
 
@@ -173,93 +193,106 @@ void ChainSimplifier::flatten_chain(const minsn_t* ins, mcode_t target_op,
 // Uses prefetching and in-place removal to reduce allocations
 //--------------------------------------------------------------------------
 
-bool ChainSimplifier::remove_identity_pairs(std::vector<chain_operand_t>& operands,
-                                            mcode_t op, int size) {
+bool ChainSimplifier::remove_identity_pairs(std::vector<chain_operand_t> &operands, mcode_t op,
+                                            int size)
+{
     const size_t n = operands.size();
-    if (n < 2) return false;
-    
-    bool removed = false;
-    
-    std::vector<uint8_t> removed_flags(n, 0);
-    
-    const chain_operand_t* ops = operands.data();
+    if (n < 2)
+        return false;
 
-    for (size_t i = 0; i < n; i++) {
+    bool removed = false;
+
+    std::vector<uint8_t> removed_flags(n, 0);
+
+    const chain_operand_t *ops = operands.data();
+
+    for (size_t i = 0; i < n; i++)
+    {
         if (removed_flags[i])
             continue;
 
         // Prefetch next operand for the inner loop
-        if (i + 2 < n) {
+        if (i + 2 < n)
+        {
             SIMD_PREFETCH_READ(&ops[i + 2].mop);
         }
 
-        for (size_t j = i + 1; j < n; j++) {
+        for (size_t j = i + 1; j < n; j++)
+        {
             if (removed_flags[j])
                 continue;
 
             // Prefetch ahead in inner loop
-            if (j + 1 < n) {
+            if (j + 1 < n)
+            {
                 SIMD_PREFETCH_READ(&ops[j + 1].mop);
             }
 
             bool is_pair = false;
 
-            switch (op) {
-                case m_xor:
-                    // x ^ x = 0
-                    if (operands_equal(ops[i].mop, ops[j].mop) &&
-                        ops[i].is_negated == ops[j].is_negated) {
+            switch (op)
+            {
+            case m_xor:
+                // x ^ x = 0
+                if (operands_equal(ops[i].mop, ops[j].mop) &&
+                    ops[i].is_negated == ops[j].is_negated)
+                {
+                    is_pair = true;
+                }
+                break;
+
+            case m_and:
+                // x & ~x = 0
+                if (is_not_of(ops[i].mop, ops[j].mop) || is_not_of(ops[j].mop, ops[i].mop))
+                {
+                    // This produces 0, which is absorbing for AND
+                    operands.clear();
+                    return true;
+                }
+                // x & x = x
+                if (operands_equal(ops[i].mop, ops[j].mop))
+                {
+                    removed_flags[j] = 1;
+                    removed = true;
+                }
+                break;
+
+            case m_or:
+                // x | ~x = -1
+                if (is_not_of(ops[i].mop, ops[j].mop) || is_not_of(ops[j].mop, ops[i].mop))
+                {
+                    // This produces -1, which is absorbing for OR
+                    operands.clear();
+                    return true;
+                }
+                // x | x = x
+                if (operands_equal(ops[i].mop, ops[j].mop))
+                {
+                    removed_flags[j] = 1;
+                    removed = true;
+                }
+                break;
+
+            case m_add:
+                // x + (-x) = 0
+                if (ops[i].is_negated != ops[j].is_negated &&
+                    operands_equal(ops[i].mop, ops[j].mop))
+                {
+                    is_pair = true;
+                }
+                // Also check for actual neg instructions
+                if (!is_pair)
+                {
+                    if (is_neg_of(ops[i].mop, ops[j].mop) || is_neg_of(ops[j].mop, ops[i].mop))
+                    {
                         is_pair = true;
                     }
-                    break;
-
-                case m_and:
-                    // x & ~x = 0
-                    if (is_not_of(ops[i].mop, ops[j].mop) ||
-                        is_not_of(ops[j].mop, ops[i].mop)) {
-                        // This produces 0, which is absorbing for AND
-                        operands.clear();
-                        return true;
-                    }
-                    // x & x = x
-                    if (operands_equal(ops[i].mop, ops[j].mop)) {
-                        removed_flags[j] = 1;
-                        removed = true;
-                    }
-                    break;
-
-                case m_or:
-                    // x | ~x = -1
-                    if (is_not_of(ops[i].mop, ops[j].mop) ||
-                        is_not_of(ops[j].mop, ops[i].mop)) {
-                        // This produces -1, which is absorbing for OR
-                        operands.clear();
-                        return true;
-                    }
-                    // x | x = x
-                    if (operands_equal(ops[i].mop, ops[j].mop)) {
-                        removed_flags[j] = 1;
-                        removed = true;
-                    }
-                    break;
-
-                case m_add:
-                    // x + (-x) = 0
-                    if (ops[i].is_negated != ops[j].is_negated &&
-                        operands_equal(ops[i].mop, ops[j].mop)) {
-                        is_pair = true;
-                    }
-                    // Also check for actual neg instructions
-                    if (!is_pair) {
-                        if (is_neg_of(ops[i].mop, ops[j].mop) ||
-                            is_neg_of(ops[j].mop, ops[i].mop)) {
-                            is_pair = true;
-                        }
-                    }
-                    break;
+                }
+                break;
             }
 
-            if (is_pair) {
+            if (is_pair)
+            {
                 removed_flags[i] = 1;
                 removed_flags[j] = 1;
                 removed = true;
@@ -269,11 +302,15 @@ bool ChainSimplifier::remove_identity_pairs(std::vector<chain_operand_t>& operan
     }
 
     // In-place compaction instead of creating new vector
-    if (removed) {
+    if (removed)
+    {
         size_t write_idx = 0;
-        for (size_t i = 0; i < n; i++) {
-            if (!removed_flags[i]) {
-                if (write_idx != i) {
+        for (size_t i = 0; i < n; i++)
+        {
+            if (!removed_flags[i])
+            {
+                if (write_idx != i)
+                {
                     operands[write_idx] = std::move(operands[i]);
                 }
                 write_idx++;
@@ -289,7 +326,8 @@ bool ChainSimplifier::remove_identity_pairs(std::vector<chain_operand_t>& operan
 // Chain analysis implementations
 //--------------------------------------------------------------------------
 
-chain_result_t ChainSimplifier::analyze_xor_chain(mblock_t* blk, minsn_t* ins) {
+chain_result_t ChainSimplifier::analyze_xor_chain(mblock_t *blk, minsn_t *ins)
+{
     chain_result_t result;
 
     if (!ins || ins->opcode != m_xor)
@@ -303,13 +341,15 @@ chain_result_t ChainSimplifier::analyze_xor_chain(mblock_t* blk, minsn_t* ins) {
 
     // Fold constants: c1 ^ c2 ^ c3 = (c1 ^ c2 ^ c3)
     uint64_t const_result = 0;
-    for (uint64_t c : constants) {
+    for (uint64_t c : constants)
+    {
         const_result ^= c;
     }
 
     // Remove identity pairs (x ^ x = 0)
     bool changed = true;
-    while (changed) {
+    while (changed)
+    {
         changed = remove_identity_pairs(operands, m_xor, size);
     }
 
@@ -318,24 +358,30 @@ chain_result_t ChainSimplifier::analyze_xor_chain(mblock_t* blk, minsn_t* ins) {
     result.operands = operands;
 
     // Determine simplification
-    if (operands.empty()) {
+    if (operands.empty())
+    {
         result.simplified = true;
         result.is_single_operand = false;
-        if (const_result == 0) {
+        if (const_result == 0)
+        {
             result.is_zero = true;
         }
-    } else if (operands.size() == 1 && const_result == 0) {
+    }
+    else if (operands.size() == 1 && const_result == 0)
+    {
         result.simplified = true;
         result.is_single_operand = true;
-    } else if (operands.size() + (const_result != 0 ? 1 : 0) <
-               constants.size() + operands.size()) {
+    }
+    else if (operands.size() + (const_result != 0 ? 1 : 0) < constants.size() + operands.size())
+    {
         result.simplified = true;
     }
 
     return result;
 }
 
-chain_result_t ChainSimplifier::analyze_and_chain(mblock_t* blk, minsn_t* ins) {
+chain_result_t ChainSimplifier::analyze_and_chain(mblock_t *blk, minsn_t *ins)
+{
     chain_result_t result;
 
     if (!ins || ins->opcode != m_and)
@@ -350,12 +396,14 @@ chain_result_t ChainSimplifier::analyze_and_chain(mblock_t* blk, minsn_t* ins) {
     // Fold constants: c1 & c2 & c3 = (c1 & c2 & c3)
     uint64_t all_ones = get_identity_element(m_and, size);
     uint64_t const_result = all_ones;
-    for (uint64_t c : constants) {
+    for (uint64_t c : constants)
+    {
         const_result &= c;
     }
 
     // Check for absorbing element (0)
-    if (const_result == 0) {
+    if (const_result == 0)
+    {
         result.simplified = true;
         result.is_zero = true;
         result.const_result = 0;
@@ -364,9 +412,11 @@ chain_result_t ChainSimplifier::analyze_and_chain(mblock_t* blk, minsn_t* ins) {
 
     // Remove identity pairs (x & x = x, x & ~x = 0)
     bool changed = true;
-    while (changed) {
+    while (changed)
+    {
         changed = remove_identity_pairs(operands, m_and, size);
-        if (operands.empty() && changed) {
+        if (operands.empty() && changed)
+        {
             // x & ~x was found - result is 0
             result.simplified = true;
             result.is_zero = true;
@@ -380,10 +430,13 @@ chain_result_t ChainSimplifier::analyze_and_chain(mblock_t* blk, minsn_t* ins) {
     result.operands = operands;
 
     // Determine simplification
-    if (operands.empty()) {
+    if (operands.empty())
+    {
         result.simplified = true;
         result.is_single_operand = false;
-    } else if (operands.size() == 1 && const_result == all_ones) {
+    }
+    else if (operands.size() == 1 && const_result == all_ones)
+    {
         result.simplified = true;
         result.is_single_operand = true;
     }
@@ -391,7 +444,8 @@ chain_result_t ChainSimplifier::analyze_and_chain(mblock_t* blk, minsn_t* ins) {
     return result;
 }
 
-chain_result_t ChainSimplifier::analyze_or_chain(mblock_t* blk, minsn_t* ins) {
+chain_result_t ChainSimplifier::analyze_or_chain(mblock_t *blk, minsn_t *ins)
+{
     chain_result_t result;
 
     if (!ins || ins->opcode != m_or)
@@ -405,13 +459,15 @@ chain_result_t ChainSimplifier::analyze_or_chain(mblock_t* blk, minsn_t* ins) {
 
     // Fold constants: c1 | c2 | c3 = (c1 | c2 | c3)
     uint64_t const_result = 0;
-    for (uint64_t c : constants) {
+    for (uint64_t c : constants)
+    {
         const_result |= c;
     }
 
     // Check for absorbing element (-1)
     uint64_t all_ones = get_identity_element(m_and, size);
-    if (const_result == all_ones) {
+    if (const_result == all_ones)
+    {
         result.simplified = true;
         result.is_all_ones = true;
         result.const_result = all_ones;
@@ -420,9 +476,11 @@ chain_result_t ChainSimplifier::analyze_or_chain(mblock_t* blk, minsn_t* ins) {
 
     // Remove identity pairs (x | x = x, x | ~x = -1)
     bool changed = true;
-    while (changed) {
+    while (changed)
+    {
         changed = remove_identity_pairs(operands, m_or, size);
-        if (operands.empty() && changed) {
+        if (operands.empty() && changed)
+        {
             // x | ~x was found - result is -1
             result.simplified = true;
             result.is_all_ones = true;
@@ -436,10 +494,13 @@ chain_result_t ChainSimplifier::analyze_or_chain(mblock_t* blk, minsn_t* ins) {
     result.operands = operands;
 
     // Determine simplification
-    if (operands.empty()) {
+    if (operands.empty())
+    {
         result.simplified = true;
         result.is_single_operand = false;
-    } else if (operands.size() == 1 && const_result == 0) {
+    }
+    else if (operands.size() == 1 && const_result == 0)
+    {
         result.simplified = true;
         result.is_single_operand = true;
     }
@@ -447,7 +508,8 @@ chain_result_t ChainSimplifier::analyze_or_chain(mblock_t* blk, minsn_t* ins) {
     return result;
 }
 
-chain_result_t ChainSimplifier::analyze_add_chain(mblock_t* blk, minsn_t* ins) {
+chain_result_t ChainSimplifier::analyze_add_chain(mblock_t *blk, minsn_t *ins)
+{
     chain_result_t result;
 
     if (!ins || ins->opcode != m_add)
@@ -461,7 +523,8 @@ chain_result_t ChainSimplifier::analyze_add_chain(mblock_t* blk, minsn_t* ins) {
 
     // Fold constants: c1 + c2 + c3 = (c1 + c2 + c3)
     uint64_t const_result = 0;
-    for (uint64_t c : constants) {
+    for (uint64_t c : constants)
+    {
         const_result += c;
     }
 
@@ -473,7 +536,8 @@ chain_result_t ChainSimplifier::analyze_add_chain(mblock_t* blk, minsn_t* ins) {
 
     // Remove identity pairs (x + (-x) = 0)
     bool changed = true;
-    while (changed) {
+    while (changed)
+    {
         changed = remove_identity_pairs(operands, m_add, size);
     }
 
@@ -482,13 +546,17 @@ chain_result_t ChainSimplifier::analyze_add_chain(mblock_t* blk, minsn_t* ins) {
     result.operands = operands;
 
     // Determine simplification
-    if (operands.empty()) {
+    if (operands.empty())
+    {
         result.simplified = true;
         result.is_single_operand = false;
-        if (const_result == 0) {
+        if (const_result == 0)
+        {
             result.is_zero = true;
         }
-    } else if (operands.size() == 1 && const_result == 0) {
+    }
+    else if (operands.size() == 1 && const_result == 0)
+    {
         result.simplified = true;
         result.is_single_operand = true;
     }
@@ -500,14 +568,15 @@ chain_result_t ChainSimplifier::analyze_add_chain(mblock_t* blk, minsn_t* ins) {
 // Build simplified instruction
 //--------------------------------------------------------------------------
 
-minsn_t* ChainSimplifier::build_simplified(mblock_t* blk, minsn_t* orig,
-                                           const chain_result_t& result,
-                                           mcode_t op) {
+minsn_t *ChainSimplifier::build_simplified(mblock_t *blk, minsn_t *orig,
+                                           const chain_result_t &result, mcode_t op)
+{
     int size = orig->d.size;
 
     // Result is a constant
-    if (result.operands.empty()) {
-        minsn_t* new_ins = new minsn_t(orig->ea);
+    if (result.operands.empty())
+    {
+        minsn_t *new_ins = new minsn_t(orig->ea);
         new_ins->opcode = m_mov;
         new_ins->l.make_number(result.const_result, size);
         new_ins->d = orig->d;
@@ -515,8 +584,9 @@ minsn_t* ChainSimplifier::build_simplified(mblock_t* blk, minsn_t* orig,
     }
 
     // Result is a single operand (possibly with constant)
-    if (result.is_single_operand && !result.has_const) {
-        minsn_t* new_ins = new minsn_t(orig->ea);
+    if (result.is_single_operand && !result.has_const)
+    {
+        minsn_t *new_ins = new minsn_t(orig->ea);
         new_ins->opcode = m_mov;
         new_ins->l = result.operands[0].mop;
         new_ins->d = orig->d;
@@ -525,17 +595,22 @@ minsn_t* ChainSimplifier::build_simplified(mblock_t* blk, minsn_t* orig,
 
     // Build chain from remaining operands
     // Start with first two operands (or first operand and constant)
-    minsn_t* new_ins = new minsn_t(orig->ea);
+    minsn_t *new_ins = new minsn_t(orig->ea);
     new_ins->opcode = op;
     new_ins->d = orig->d;
 
-    if (result.operands.size() >= 2) {
+    if (result.operands.size() >= 2)
+    {
         new_ins->l = result.operands[0].mop;
         new_ins->r = result.operands[1].mop;
-    } else if (result.operands.size() == 1 && result.has_const) {
+    }
+    else if (result.operands.size() == 1 && result.has_const)
+    {
         new_ins->l = result.operands[0].mop;
         new_ins->r.make_number(result.const_result, size);
-    } else {
+    }
+    else
+    {
         delete new_ins;
         return nullptr;
     }
@@ -547,7 +622,8 @@ minsn_t* ChainSimplifier::build_simplified(mblock_t* blk, minsn_t* orig,
 // Main simplification entry point
 //--------------------------------------------------------------------------
 
-int ChainSimplifier::simplify_chain(mblock_t* blk, minsn_t* ins) {
+int ChainSimplifier::simplify_chain(mblock_t *blk, minsn_t *ins)
+{
     if (!blk || !ins)
         return 0;
 
@@ -561,21 +637,22 @@ int ChainSimplifier::simplify_chain(mblock_t* blk, minsn_t* ins) {
 
     chain_result_t result;
 
-    switch (ins->opcode) {
-        case m_xor:
-            result = analyze_xor_chain(blk, ins);
-            break;
-        case m_and:
-            result = analyze_and_chain(blk, ins);
-            break;
-        case m_or:
-            result = analyze_or_chain(blk, ins);
-            break;
-        case m_add:
-            result = analyze_add_chain(blk, ins);
-            break;
-        default:
-            return 0;
+    switch (ins->opcode)
+    {
+    case m_xor:
+        result = analyze_xor_chain(blk, ins);
+        break;
+    case m_and:
+        result = analyze_and_chain(blk, ins);
+        break;
+    case m_or:
+        result = analyze_or_chain(blk, ins);
+        break;
+    case m_add:
+        result = analyze_add_chain(blk, ins);
+        break;
+    default:
+        return 0;
     }
 
     if (!result.simplified)
@@ -586,22 +663,26 @@ int ChainSimplifier::simplify_chain(mblock_t* blk, minsn_t* ins) {
     minsn_t proposed(*ins);
     minsn_t *original = ins;
     ins = &proposed;
-    const auto commit = [&]() {
+    const auto commit = [&]()
+    {
         rules::RuleVerifier verifier;
-        if ( !verifier.verify_instance(original, &proposed).verified() ) return 0;
+        if (!verifier.verify_instance(original, &proposed).verified())
+            return 0;
         original->swap(proposed);
         return 1;
     };
     int size = ins->d.size;
 
-    if (result.is_zero) {
+    if (result.is_zero)
+    {
         ins->opcode = m_mov;
         ins->l.make_number(0, size);
         ins->r.erase();
         return commit();
     }
 
-    if (result.is_all_ones) {
+    if (result.is_all_ones)
+    {
         uint64_t all_ones = get_identity_element(m_and, size);
         ins->opcode = m_mov;
         ins->l.make_number(all_ones, size);
@@ -609,14 +690,16 @@ int ChainSimplifier::simplify_chain(mblock_t* blk, minsn_t* ins) {
         return commit();
     }
 
-    if (result.is_single_operand && !result.has_const) {
+    if (result.is_single_operand && !result.has_const)
+    {
         ins->opcode = m_mov;
         ins->l = result.operands[0].mop;
         ins->r.erase();
         return commit();
     }
 
-    if (result.operands.empty() && result.has_const) {
+    if (result.operands.empty() && result.has_const)
+    {
         ins->opcode = m_mov;
         ins->l.make_number(result.const_result, size);
         ins->r.erase();
@@ -624,7 +707,8 @@ int ChainSimplifier::simplify_chain(mblock_t* blk, minsn_t* ins) {
     }
 
     // More complex simplification - rebuild instruction
-    if (result.operands.size() == 1 && result.has_const) {
+    if (result.operands.size() == 1 && result.has_const)
+    {
         ins->l = result.operands[0].mop;
         ins->r.make_number(result.const_result, size);
         return commit();
@@ -637,27 +721,31 @@ int ChainSimplifier::simplify_chain(mblock_t* blk, minsn_t* ins) {
 // Handler implementation
 //--------------------------------------------------------------------------
 
-bool chain_simplify_handler_t::detect(mbl_array_t* mba) {
+bool chain_simplify_handler_t::detect(mbl_array_t *mba)
+{
     if (!mba)
         return false;
 
     // Look for chains of same-opcode operations
-    for (int i = 0; i < mba->qty; i++) {
-        mblock_t* blk = mba->get_mblock(i);
-        if (!blk) continue;
+    for (int i = 0; i < mba->qty; i++)
+    {
+        mblock_t *blk = mba->get_mblock(i);
+        if (!blk)
+            continue;
 
-        for (minsn_t* ins = blk->head; ins; ins = ins->next) {
-            if (ins->opcode != m_xor && ins->opcode != m_and &&
-                ins->opcode != m_or && ins->opcode != m_add)
+        for (minsn_t *ins = blk->head; ins; ins = ins->next)
+        {
+            if (ins->opcode != m_xor && ins->opcode != m_and && ins->opcode != m_or &&
+                ins->opcode != m_add)
                 continue;
 
             // Check for nested same opcode
-            if (ins->l.t == mop_d && ins->l.d &&
-                ins->l.d->opcode == ins->opcode) {
+            if (ins->l.t == mop_d && ins->l.d && ins->l.d->opcode == ins->opcode)
+            {
                 return true;
             }
-            if (ins->r.t == mop_d && ins->r.d &&
-                ins->r.d->opcode == ins->opcode) {
+            if (ins->r.t == mop_d && ins->r.d && ins->r.d->opcode == ins->opcode)
+            {
                 return true;
             }
         }
@@ -666,23 +754,28 @@ bool chain_simplify_handler_t::detect(mbl_array_t* mba) {
     return false;
 }
 
-int chain_simplify_handler_t::run(mbl_array_t* mba, deobf_ctx_t* ctx) {
+int chain_simplify_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
+{
     if (!mba || !ctx)
         return 0;
 
     int total_changes = 0;
 
-    for (int i = 0; i < mba->qty; i++) {
-        mblock_t* blk = mba->get_mblock(i);
-        if (!blk) continue;
+    for (int i = 0; i < mba->qty; i++)
+    {
+        mblock_t *blk = mba->get_mblock(i);
+        if (!blk)
+            continue;
 
-        for (minsn_t* ins = blk->head; ins; ins = ins->next) {
+        for (minsn_t *ins = blk->head; ins; ins = ins->next)
+        {
             int changes = ChainSimplifier::simplify_chain(blk, ins);
             total_changes += changes;
         }
     }
 
-    if (total_changes > 0) {
+    if (total_changes > 0)
+    {
         ctx->expressions_simplified += total_changes;
         deobf::log_verbose("[Chain] Simplified %d chains\n", total_changes);
     }
@@ -690,11 +783,12 @@ int chain_simplify_handler_t::run(mbl_array_t* mba, deobf_ctx_t* ctx) {
     return total_changes;
 }
 
-int chain_simplify_handler_t::simplify_insn(mblock_t* blk, minsn_t* ins,
-                                            deobf_ctx_t* ctx) {
+int chain_simplify_handler_t::simplify_insn(mblock_t *blk, minsn_t *ins, deobf_ctx_t *ctx)
+{
     int changes = ChainSimplifier::simplify_chain(blk, ins);
 
-    if (changes > 0 && ctx) {
+    if (changes > 0 && ctx)
+    {
         ctx->expressions_simplified += changes;
     }
 

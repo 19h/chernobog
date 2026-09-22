@@ -1,7 +1,9 @@
 #include "rules_sub.h"
 
-namespace chernobog {
-namespace rules {
+namespace chernobog
+{
+namespace rules
+{
 
 // Register all subtraction rules
 REGISTER_MBA_RULE(Sub_HackersDelightRule_1);

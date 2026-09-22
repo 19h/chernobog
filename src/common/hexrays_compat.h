@@ -3,7 +3,8 @@
 
 #include <limits>
 
-namespace chernobog::hexrays_compat {
+namespace chernobog::hexrays_compat
+{
 
 struct decompiler_version_t
 {
@@ -15,8 +16,7 @@ struct decompiler_version_t
 
 inline bool parse_version_component(const char *&cursor, unsigned *value)
 {
-    if ( cursor == nullptr || value == nullptr
-      || *cursor < '0' || *cursor > '9' )
+    if (cursor == nullptr || value == nullptr || *cursor < '0' || *cursor > '9')
     {
         return false;
     }
@@ -25,12 +25,11 @@ inline bool parse_version_component(const char *&cursor, unsigned *value)
     do
     {
         const unsigned digit = static_cast<unsigned>(*cursor - '0');
-        if ( parsed > (std::numeric_limits<unsigned>::max() - digit) / 10U )
+        if (parsed > (std::numeric_limits<unsigned>::max() - digit) / 10U)
             return false;
         parsed = parsed * 10U + digit;
         ++cursor;
-    }
-    while ( *cursor >= '0' && *cursor <= '9' );
+    } while (*cursor >= '0' && *cursor <= '9');
 
     *value = parsed;
     return true;
@@ -38,23 +37,17 @@ inline bool parse_version_component(const char *&cursor, unsigned *value)
 
 // get_hexrays_version() documents this exact representation:
 // <major>.<minor>.<revision>.<build-date>.
-inline bool parse_decompiler_version(
-    const char *text,
-    decompiler_version_t *version)
+inline bool parse_decompiler_version(const char *text, decompiler_version_t *version)
 {
-    if ( text == nullptr || version == nullptr )
+    if (text == nullptr || version == nullptr)
         return false;
 
     const char *cursor = text;
     decompiler_version_t parsed;
-    if ( !parse_version_component(cursor, &parsed.major)
-      || *cursor++ != '.'
-      || !parse_version_component(cursor, &parsed.minor)
-      || *cursor++ != '.'
-      || !parse_version_component(cursor, &parsed.revision)
-      || *cursor++ != '.'
-      || !parse_version_component(cursor, &parsed.build_date)
-      || *cursor != '\0' )
+    if (!parse_version_component(cursor, &parsed.major) || *cursor++ != '.' ||
+        !parse_version_component(cursor, &parsed.minor) || *cursor++ != '.' ||
+        !parse_version_component(cursor, &parsed.revision) || *cursor++ != '.' ||
+        !parse_version_component(cursor, &parsed.build_date) || *cursor != '\0')
     {
         return false;
     }
@@ -70,15 +63,15 @@ inline bool parse_decompiler_version(
 inline bool uses_timeout_merror_layout(const char *runtime_version)
 {
     decompiler_version_t version;
-    if ( !parse_decompiler_version(runtime_version, &version) )
+    if (!parse_decompiler_version(runtime_version, &version))
         return false;
 
     constexpr decompiler_version_t first_timeout_layout{9, 4, 0, 260630};
-    if ( version.major != first_timeout_layout.major )
+    if (version.major != first_timeout_layout.major)
         return version.major > first_timeout_layout.major;
-    if ( version.minor != first_timeout_layout.minor )
+    if (version.minor != first_timeout_layout.minor)
         return version.minor > first_timeout_layout.minor;
-    if ( version.revision != first_timeout_layout.revision )
+    if (version.revision != first_timeout_layout.revision)
         return version.revision > first_timeout_layout.revision;
     return version.build_date >= first_timeout_layout.build_date;
 }

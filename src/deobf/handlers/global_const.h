@@ -15,8 +15,9 @@
 // This helps simplify code where constants are stored in data sections,
 // making the decompiled output cleaner and more readable.
 //--------------------------------------------------------------------------
-class global_const_handler_t {
-public:
+class global_const_handler_t
+{
+  public:
     // Detection - check if there are inlinable global constants
     static bool detect(mbl_array_t *mba);
 
@@ -39,12 +40,13 @@ public:
     // have identical memory assumptions.
     static std::optional<uint64_t> read_admitted_scalar(ea_t addr, int size);
 
-private:
-    struct global_const_t {
-        minsn_t *insn;          // The load instruction
-        ea_t gv_addr;           // Global variable address
-        uint64_t value;         // Constant value
-        int size;               // Size in bytes
+  private:
+    struct global_const_t
+    {
+        minsn_t *insn;  // The load instruction
+        ea_t gv_addr;   // Global variable address
+        uint64_t value; // Constant value
+        int size;       // Size in bytes
     };
 
     // Find all global constants being loaded
@@ -71,14 +73,11 @@ private:
     static std::optional<uint64_t> read_global_value(ea_t addr, int size);
 
     // Replace load with constant
-    static int replace_with_constant(mblock_t *blk, minsn_t *ins,
-                                    const global_const_t &gc);
+    static int replace_with_constant(mblock_t *blk, minsn_t *ins, const global_const_t &gc);
 
     // Recursively inline scalar mop_v values nested inside arithmetic trees.
     // Address, call-target, branch-target, and destination contexts are never
     // traversed as values.
-    static int simplify_value_operand(mblock_t *blk, mop_t *operand,
-                                      int depth);
-    static int simplify_value_instruction(mblock_t *blk, minsn_t *ins,
-                                          int depth);
+    static int simplify_value_operand(mblock_t *blk, mop_t *operand, int depth);
+    static int simplify_value_instruction(mblock_t *blk, minsn_t *ins, int depth);
 };

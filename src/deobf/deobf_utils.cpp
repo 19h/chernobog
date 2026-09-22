@@ -3,16 +3,17 @@
 #include <stdarg.h>
 #include <algorithm>
 
-namespace deobf {
+namespace deobf
+{
 
 static bool g_verbose = false;
 
 bool debug_enabled()
 {
-    static const bool enabled = []() {
+    static const bool enabled = []()
+    {
         qstring value;
-        return qgetenv("CHERNOBOG_DEBUG", &value) &&
-               !value.empty() && value[0] == '1';
+        return qgetenv("CHERNOBOG_DEBUG", &value) && !value.empty() && value[0] == '1';
     }();
     return enabled;
 }
@@ -20,7 +21,7 @@ bool debug_enabled()
 void debug_vlog(const char *path, const char *fmt, va_list va)
 {
 #ifndef _WIN32
-    if ( !debug_enabled() || !path || !fmt )
+    if (!debug_enabled() || !path || !fmt)
         return;
 
     char buf[4096];
@@ -28,7 +29,7 @@ void debug_vlog(const char *path, const char *fmt, va_list va)
     va_copy(copy, va);
     const int len = qvsnprintf(buf, sizeof(buf), fmt, copy);
     va_end(copy);
-    if ( len <= 0 )
+    if (len <= 0)
         return;
 
     // qvsnprintf may return the number of bytes that would have been written.
@@ -37,13 +38,13 @@ void debug_vlog(const char *path, const char *fmt, va_list va)
     const char *cursor = buf;
 
     int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if ( fd < 0 )
+    if (fd < 0)
         return;
 
-    while ( remaining > 0 )
+    while (remaining > 0)
     {
         const ssize_t written = write(fd, cursor, remaining);
-        if ( written <= 0 )
+        if (written <= 0)
             break;
         cursor += written;
         remaining -= static_cast<size_t>(written);
@@ -56,15 +57,9 @@ void debug_vlog(const char *path, const char *fmt, va_list va)
 #endif
 }
 
-void set_verbose(bool v)
-{
-    g_verbose = v;
-}
+void set_verbose(bool v) { g_verbose = v; }
 
-bool verbose_enabled()
-{
-    return g_verbose;
-}
+bool verbose_enabled() { return g_verbose; }
 
 void log(const char *fmt, ...)
 {
@@ -76,7 +71,7 @@ void log(const char *fmt, ...)
 
 void log_verbose(const char *fmt, ...)
 {
-    if ( !g_verbose )
+    if (!g_verbose)
         return;
     va_list va;
     va_start(va, fmt);
@@ -86,20 +81,16 @@ void log_verbose(const char *fmt, ...)
 
 bool set_cmt_if_changed(ea_t address, const char *comment, bool repeatable)
 {
-    if ( address == BADADDR || comment == nullptr )
+    if (address == BADADDR || comment == nullptr)
         return false;
     qstring existing;
-    if ( get_cmt(&existing, address, repeatable) >= 0
-      && existing == comment )
+    if (get_cmt(&existing, address, repeatable) >= 0 && existing == comment)
     {
         return false;
     }
     return set_cmt(address, comment, repeatable);
 }
 
-bool is_jcc(mcode_t op)
-{
-    return op >= m_jcnd && op <= m_jle;
-}
+bool is_jcc(mcode_t op) { return op >= m_jcnd && op <= m_jle; }
 
 } // namespace deobf

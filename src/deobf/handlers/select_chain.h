@@ -14,7 +14,7 @@
 //--------------------------------------------------------------------------
 class select_chain_handler_t
 {
-public:
+  public:
     static bool detect(mbl_array_t *mba);
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
 };

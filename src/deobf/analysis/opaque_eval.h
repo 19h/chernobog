@@ -23,8 +23,9 @@
 //   - Tier 1: Fast constant propagation for simple expressions
 //   - Tier 2: Z3 SMT solver for complex/symbolic expressions
 //--------------------------------------------------------------------------
-class opaque_eval_t {
-public:
+class opaque_eval_t
+{
+  public:
     //----------------------------------------------------------------------
     // Primary API
     //----------------------------------------------------------------------
@@ -46,20 +47,22 @@ public:
 
     // Check if condition is an opaque predicate using Z3
     // Returns: ALWAYS_TRUE, ALWAYS_FALSE, or UNKNOWN
-    enum opaque_result_t {
+    enum opaque_result_t
+    {
         OPAQUE_ALWAYS_TRUE,
         OPAQUE_ALWAYS_FALSE,
-        OPAQUE_NOT_OPAQUE,      // Depends on input
-        OPAQUE_UNKNOWN,         // Could not determine
+        OPAQUE_NOT_OPAQUE, // Depends on input
+        OPAQUE_UNKNOWN,    // Could not determine
     };
     static opaque_result_t check_opaque_predicate(minsn_t *cond);
 
-private:
+  private:
     // Evaluation state - tracks values during evaluation
-    struct eval_state_t {
-        std::map<ea_t, uint64_t> globals;     // Cached global values
-        std::map<int, uint64_t> temps;         // Temporary values (mreg)
-        int depth;                             // Recursion depth
+    struct eval_state_t
+    {
+        std::map<ea_t, uint64_t> globals; // Cached global values
+        std::map<int, uint64_t> temps;    // Temporary values (mreg)
+        int depth;                        // Recursion depth
     };
 
     // Core evaluation functions

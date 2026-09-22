@@ -6,7 +6,8 @@
 // Component registry for modular deobfuscator architecture
 // Each deobfuscation pass registers as a component
 
-struct component_desc_t {
+struct component_desc_t
+{
     bool (*avail)();
     bool (*active)();
     void (*init)();
@@ -17,8 +18,9 @@ struct component_desc_t {
     const char *action_prefix;
 };
 
-class component_registry_t {
-public:
+class component_registry_t
+{
+  public:
     static void register_component(const component_desc_t &d);
     static size_t get_count();
     static int init_all();
@@ -27,16 +29,24 @@ public:
 };
 
 // Registration helper macro
-#define REGISTER_COMPONENT(AVAIL, ACTIVE, INIT, DONE, ATTACH, LNAME, SNAME, APREFIX) \
-namespace {                                                                        \
- struct component_registrar_t_##SNAME {                                           \
-   component_registrar_t_##SNAME() {                                              \
-     component_desc_t d;                                                          \
-     d.avail = AVAIL; d.active = ACTIVE; d.init = INIT; d.done = DONE;            \
-     d.attach_popup = ATTACH;                                                     \
-     d.long_name = LNAME; d.short_name = #SNAME; d.action_prefix = #APREFIX;      \
-     component_registry_t::register_component(d);                                 \
-   }                                                                              \
- };                                                                               \
- static component_registrar_t_##SNAME g_component_registrar_##SNAME;              \
-}
+#define REGISTER_COMPONENT(AVAIL, ACTIVE, INIT, DONE, ATTACH, LNAME, SNAME, APREFIX)               \
+    namespace                                                                                      \
+    {                                                                                              \
+    struct component_registrar_t_##SNAME                                                           \
+    {                                                                                              \
+        component_registrar_t_##SNAME()                                                            \
+        {                                                                                          \
+            component_desc_t d;                                                                    \
+            d.avail = AVAIL;                                                                       \
+            d.active = ACTIVE;                                                                     \
+            d.init = INIT;                                                                         \
+            d.done = DONE;                                                                         \
+            d.attach_popup = ATTACH;                                                               \
+            d.long_name = LNAME;                                                                   \
+            d.short_name = #SNAME;                                                                 \
+            d.action_prefix = #APREFIX;                                                            \
+            component_registry_t::register_component(d);                                           \
+        }                                                                                          \
+    };                                                                                             \
+    static component_registrar_t_##SNAME g_component_registrar_##SNAME;                            \
+    }

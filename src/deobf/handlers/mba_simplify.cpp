@@ -23,12 +23,13 @@ using namespace chernobog::rules;
 bool mba_simplify_handler_t::initialized_ = false;
 size_t mba_simplify_handler_t::total_simplified_ = 0;
 
-namespace {
+namespace
+{
 
 static void mba_affine_debug(const char *fmt, ...)
 {
     qstring env;
-    if ( !qgetenv("CHERNOBOG_MBA_DEBUG", &env) || env.empty() || env[0] == '0' )
+    if (!qgetenv("CHERNOBOG_MBA_DEBUG", &env) || env.empty() || env[0] == '0')
         return;
 
 #ifndef _WIN32
@@ -37,12 +38,12 @@ static void mba_affine_debug(const char *fmt, ...)
     va_start(args, fmt);
     int len = qvsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
-    if ( len <= 0 )
+    if (len <= 0)
         return;
     const size_t bytes = std::min(static_cast<size_t>(len), sizeof(buf) - 1);
 
     int fd = open("/tmp/chernobog_mba_debug.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if ( fd >= 0 )
+    if (fd >= 0)
     {
         write(fd, buf, bytes);
         close(fd);
@@ -54,13 +55,18 @@ static void mba_affine_debug(const char *fmt, ...)
 
 static uint64_t mba_mask_for_size(int size)
 {
-    switch ( size )
+    switch (size)
     {
-        case 1: return 0xFFULL;
-        case 2: return 0xFFFFULL;
-        case 4: return 0xFFFFFFFFULL;
-        case 8: return 0xFFFFFFFFFFFFFFFFULL;
-        default: return 0xFFFFFFFFFFFFFFFFULL;
+    case 1:
+        return 0xFFULL;
+    case 2:
+        return 0xFFFFULL;
+    case 4:
+        return 0xFFFFFFFFULL;
+    case 8:
+        return 0xFFFFFFFFFFFFFFFFULL;
+    default:
+        return 0xFFFFFFFFFFFFFFFFULL;
     }
 }
 
@@ -68,30 +74,30 @@ static bool mba_pure_mop(const mop_t &mop);
 
 static bool mba_pure_insn(const minsn_t *ins)
 {
-    if ( !ins )
+    if (!ins)
         return false;
 
-    switch ( ins->opcode )
+    switch (ins->opcode)
     {
-        case m_mov:
-        case m_add:
-        case m_sub:
-        case m_mul:
-        case m_and:
-        case m_or:
-        case m_xor:
-        case m_bnot:
-        case m_neg:
-        case m_shl:
-        case m_shr:
-        case m_sar:
-        case m_xdu:
-        case m_xds:
-        case m_low:
-        case m_high:
-            break;
-        default:
-            return false;
+    case m_mov:
+    case m_add:
+    case m_sub:
+    case m_mul:
+    case m_and:
+    case m_or:
+    case m_xor:
+    case m_bnot:
+    case m_neg:
+    case m_shl:
+    case m_shr:
+    case m_sar:
+    case m_xdu:
+    case m_xds:
+    case m_low:
+    case m_high:
+        break;
+    default:
+        return false;
     }
 
     return mba_pure_mop(ins->l) && mba_pure_mop(ins->r);
@@ -99,56 +105,53 @@ static bool mba_pure_insn(const minsn_t *ins)
 
 static bool mba_pure_mop(const mop_t &mop)
 {
-    switch ( mop.t )
+    switch (mop.t)
     {
-        case mop_z:
-        case mop_n:
-        case mop_r:
-        case mop_l:
-        case mop_S:
-            return true;
-        case mop_d:
-            return mop.d != nullptr && mba_pure_insn(mop.d);
-        default:
-            return false;
+    case mop_z:
+    case mop_n:
+    case mop_r:
+    case mop_l:
+    case mop_S:
+        return true;
+    case mop_d:
+        return mop.d != nullptr && mba_pure_insn(mop.d);
+    default:
+        return false;
     }
 }
 
 static int mba_expr_op_count(const minsn_t *ins)
 {
-    if ( !ins )
+    if (!ins)
         return 0;
     int count = 1;
-    if ( ins->l.t == mop_d && ins->l.d )
+    if (ins->l.t == mop_d && ins->l.d)
         count += mba_expr_op_count(ins->l.d);
-    if ( ins->r.t == mop_d && ins->r.d )
+    if (ins->r.t == mop_d && ins->r.d)
         count += mba_expr_op_count(ins->r.d);
     return count;
 }
 
-static bool mba_is_const_mop(const mop_t &mop)
-{
-    return mop.t == mop_n && mop.nnn != nullptr;
-}
+static bool mba_is_const_mop(const mop_t &mop) { return mop.t == mop_n && mop.nnn != nullptr; }
 
 static bool mba_is_add_tree(const mop_t &mop)
 {
-    if ( mop.t != mop_d || !mop.d )
+    if (mop.t != mop_d || !mop.d)
         return false;
     return mop.d->opcode == m_add || mop.d->opcode == m_sub;
 }
 
 static bool mba_is_small_affine_candidate(const minsn_t *ins, int op_count)
 {
-    if ( op_count >= 8 )
+    if (op_count >= 8)
         return true;
-    if ( !ins || op_count < 3 )
+    if (!ins || op_count < 3)
         return false;
 
-    if ( ins->opcode == m_mul )
+    if (ins->opcode == m_mul)
     {
-        return (mba_is_const_mop(ins->l) && mba_is_add_tree(ins->r))
-            || (mba_is_const_mop(ins->r) && mba_is_add_tree(ins->l));
+        return (mba_is_const_mop(ins->l) && mba_is_add_tree(ins->r)) ||
+               (mba_is_const_mop(ins->r) && mba_is_add_tree(ins->l));
     }
 
     return false;
@@ -157,12 +160,11 @@ static bool mba_is_small_affine_candidate(const minsn_t *ins, int op_count)
 static bool mba_affine_enabled()
 {
     static int cached = -1;
-    if ( cached != -1 )
+    if (cached != -1)
         return cached == 1;
 
     qstring env;
-    cached = (qgetenv("CHERNOBOG_MBA_AFFINE", &env)
-           && !env.empty() && env[0] == '1') ? 1 : 0;
+    cached = (qgetenv("CHERNOBOG_MBA_AFFINE", &env) && !env.empty() && env[0] == '1') ? 1 : 0;
     return cached == 1;
 }
 
@@ -180,20 +182,20 @@ static bool mba_same_mop(const mop_t &a, const mop_t &b)
 
 static void mba_collect_vars(const mop_t &mop, std::vector<mop_t> *out)
 {
-    if ( !out )
+    if (!out)
         return;
-    if ( mop.t == mop_d && mop.d )
+    if (mop.t == mop_d && mop.d)
     {
         mba_collect_vars(mop.d->l, out);
         mba_collect_vars(mop.d->r, out);
         return;
     }
-    if ( mop.t != mop_r && mop.t != mop_l && mop.t != mop_S )
+    if (mop.t != mop_r && mop.t != mop_l && mop.t != mop_S)
         return;
 
-    for ( const mop_t &existing : *out )
+    for (const mop_t &existing : *out)
     {
-        if ( mba_same_mop(existing, mop) )
+        if (mba_same_mop(existing, mop))
             return;
     }
     out->push_back(mop);
@@ -201,47 +203,40 @@ static void mba_collect_vars(const mop_t &mop, std::vector<mop_t> *out)
 
 static void mba_collect_vars(const minsn_t *ins, std::vector<mop_t> *out)
 {
-    if ( !ins || !out )
+    if (!ins || !out)
         return;
     mba_collect_vars(ins->l, out);
     mba_collect_vars(ins->r, out);
 }
 
-static bool z3_eval_with_model(z3_solver::z3_context_t &zctx,
-                               const z3::expr &expr,
-                               const std::vector<z3::expr> &vars,
-                               size_t hot_idx,
-                               uint64_t hot_value,
-                               uint64_t *out)
+static bool z3_eval_with_model(z3_solver::z3_context_t &zctx, const z3::expr &expr,
+                               const std::vector<z3::expr> &vars, size_t hot_idx,
+                               uint64_t hot_value, uint64_t *out)
 {
-    if ( !out )
+    if (!out)
         return false;
 
     zctx.solver().reset();
-    for ( size_t i = 0; i < vars.size(); ++i )
+    for (size_t i = 0; i < vars.size(); ++i)
     {
         unsigned bits = vars[i].get_sort().bv_size();
         uint64_t value = (i == hot_idx) ? hot_value : 0;
         zctx.solver().add(vars[i] == zctx.ctx().bv_val(value, bits));
     }
 
-    if ( chernobog::solver_evidence::check(zctx.solver(), "MBA coefficient sample") != z3::sat )
+    if (chernobog::solver_evidence::check(zctx.solver(), "MBA coefficient sample") != z3::sat)
         return false;
 
     z3::expr val = zctx.solver().get_model().eval(expr, true);
     return Z3_get_numeral_uint64(zctx.ctx(), val, out);
 }
 
-static bool make_scaled_term(mop_t *out,
-                             const mop_t &var,
-                             uint64_t coeff,
-                             ea_t ea,
-                             int size)
+static bool make_scaled_term(mop_t *out, const mop_t &var, uint64_t coeff, ea_t ea, int size)
 {
-    if ( !out || coeff == 0 )
+    if (!out || coeff == 0)
         return false;
 
-    if ( coeff == 1 )
+    if (coeff == 1)
     {
         *out = var;
         out->size = size;
@@ -259,33 +254,31 @@ static bool make_scaled_term(mop_t *out,
     return out->t != mop_z;
 }
 
-static bool rewrite_as_affine(minsn_t *ins,
-                              const std::vector<mop_t> &vars,
-                              const std::vector<uint64_t> &coeffs,
-                              uint64_t constant)
+static bool rewrite_as_affine(minsn_t *ins, const std::vector<mop_t> &vars,
+                              const std::vector<uint64_t> &coeffs, uint64_t constant)
 {
-    if ( !ins || vars.size() != coeffs.size() )
+    if (!ins || vars.size() != coeffs.size())
         return false;
 
     int size = ins->d.size;
-    if ( size <= 0 || size > 4 )
+    if (size <= 0 || size > 4)
         return false;
 
     std::vector<mop_t> terms;
     terms.reserve(vars.size() + (constant != 0));
 
-    for ( size_t i = 0; i < vars.size(); ++i )
+    for (size_t i = 0; i < vars.size(); ++i)
     {
-        if ( coeffs[i] == 0 )
+        if (coeffs[i] == 0)
             continue;
 
         mop_t term;
-        if ( !make_scaled_term(&term, vars[i], coeffs[i], ins->ea, size) )
+        if (!make_scaled_term(&term, vars[i], coeffs[i], ins->ea, size))
             return false;
         terms.push_back(term);
     }
 
-    if ( constant != 0 )
+    if (constant != 0)
     {
         mop_t c;
         c.make_number(constant, size);
@@ -296,7 +289,7 @@ static bool rewrite_as_affine(minsn_t *ins,
     mop_t dst = ins->d;
     dst.size = size;
 
-    if ( terms.empty() )
+    if (terms.empty())
     {
         ins->opcode = m_mov;
         ins->l.make_number(0, size);
@@ -306,7 +299,7 @@ static bool rewrite_as_affine(minsn_t *ins,
         return true;
     }
 
-    if ( terms.size() == 1 )
+    if (terms.size() == 1)
     {
         ins->opcode = m_mov;
         ins->l = terms[0];
@@ -318,7 +311,7 @@ static bool rewrite_as_affine(minsn_t *ins,
     }
 
     mop_t accum = terms[0];
-    for ( size_t i = 1; i + 1 < terms.size(); ++i )
+    for (size_t i = 1; i + 1 < terms.size(); ++i)
     {
         minsn_t add(ea);
         add.opcode = m_add;
@@ -345,45 +338,45 @@ static bool rewrite_as_affine(minsn_t *ins,
 
 static int try_affine_bv_simplify(minsn_t *ins)
 {
-    if ( !mba_affine_enabled() || !ins || ins->opcode == m_mov )
+    if (!mba_affine_enabled() || !ins || ins->opcode == m_mov)
         return 0;
 
     const int size = ins->d.size;
-    if ( size <= 0 || size > 4 )
+    if (size <= 0 || size > 4)
     {
-        mba_affine_debug("[MBA affine] skip size=%d op=%d ea=%llx\n",
-                         size, ins->opcode, (unsigned long long)ins->ea);
+        mba_affine_debug("[MBA affine] skip size=%d op=%d ea=%llx\n", size, ins->opcode,
+                         (unsigned long long)ins->ea);
         return 0;
     }
     int op_count = mba_expr_op_count(ins);
-    if ( !mba_is_small_affine_candidate(ins, op_count) || op_count > 256 )
+    if (!mba_is_small_affine_candidate(ins, op_count) || op_count > 256)
     {
-        mba_affine_debug("[MBA affine] skip op_count=%d op=%d ea=%llx\n",
-                         op_count, ins->opcode, (unsigned long long)ins->ea);
+        mba_affine_debug("[MBA affine] skip op_count=%d op=%d ea=%llx\n", op_count, ins->opcode,
+                         (unsigned long long)ins->ea);
         return 0;
     }
-    if ( !mba_pure_insn(ins) )
+    if (!mba_pure_insn(ins))
     {
-        mba_affine_debug("[MBA affine] skip impure op=%d ea=%llx\n",
-                         ins->opcode, (unsigned long long)ins->ea);
+        mba_affine_debug("[MBA affine] skip impure op=%d ea=%llx\n", ins->opcode,
+                         (unsigned long long)ins->ea);
         return 0;
     }
 
     std::vector<mop_t> vars;
     mba_collect_vars(ins, &vars);
-    if ( vars.empty() || vars.size() > 4 )
+    if (vars.empty() || vars.size() > 4)
     {
-        mba_affine_debug("[MBA affine] skip vars=%zu op=%d ea=%llx\n",
-                         vars.size(), ins->opcode, (unsigned long long)ins->ea);
+        mba_affine_debug("[MBA affine] skip vars=%zu op=%d ea=%llx\n", vars.size(), ins->opcode,
+                         (unsigned long long)ins->ea);
         return 0;
     }
 
-    for ( const mop_t &v : vars )
+    for (const mop_t &v : vars)
     {
-        if ( v.size != size )
+        if (v.size != size)
         {
-            mba_affine_debug("[MBA affine] skip var size=%d expr size=%d op=%d ea=%llx\n",
-                             v.size, size, ins->opcode, (unsigned long long)ins->ea);
+            mba_affine_debug("[MBA affine] skip var size=%d expr size=%d op=%d ea=%llx\n", v.size,
+                             size, ins->opcode, (unsigned long long)ins->ea);
             return 0;
         }
     }
@@ -395,22 +388,24 @@ static int try_affine_bv_simplify(minsn_t *ins)
         z3_solver::mcode_translator_t translator(zctx);
         z3::expr expr = translator.translate_insn(ins);
         int bits = size * 8;
-        if ( (int)expr.get_sort().bv_size() != bits )
+        if ((int)expr.get_sort().bv_size() != bits)
         {
             mba_affine_debug("[MBA affine] skip expr bits=%u wanted=%d op=%d ea=%llx\n",
-                             expr.get_sort().bv_size(), bits, ins->opcode, (unsigned long long)ins->ea);
+                             expr.get_sort().bv_size(), bits, ins->opcode,
+                             (unsigned long long)ins->ea);
             return 0;
         }
 
         std::vector<z3::expr> zvars;
         zvars.reserve(vars.size());
-        for ( const mop_t &v : vars )
+        for (const mop_t &v : vars)
         {
             z3::expr zv = translator.translate_operand(v, size);
-            if ( (int)zv.get_sort().bv_size() != bits )
+            if ((int)zv.get_sort().bv_size() != bits)
             {
                 mba_affine_debug("[MBA affine] skip var bits=%u wanted=%d op=%d ea=%llx\n",
-                                 zv.get_sort().bv_size(), bits, ins->opcode, (unsigned long long)ins->ea);
+                                 zv.get_sort().bv_size(), bits, ins->opcode,
+                                 (unsigned long long)ins->ea);
                 return 0;
             }
             zvars.push_back(zv);
@@ -418,36 +413,37 @@ static int try_affine_bv_simplify(minsn_t *ins)
 
         uint64_t mask = mba_mask_for_size(size);
         uint64_t at_zero = 0;
-        if ( !z3_eval_with_model(zctx, expr, zvars, vars.size(), 0, &at_zero) )
+        if (!z3_eval_with_model(zctx, expr, zvars, vars.size(), 0, &at_zero))
         {
-            mba_affine_debug("[MBA affine] skip eval zero op=%d ea=%llx\n",
-                             ins->opcode, (unsigned long long)ins->ea);
+            mba_affine_debug("[MBA affine] skip eval zero op=%d ea=%llx\n", ins->opcode,
+                             (unsigned long long)ins->ea);
             return 0;
         }
         at_zero &= mask;
 
         std::vector<uint64_t> coeffs(vars.size(), 0);
-        for ( size_t i = 0; i < vars.size(); ++i )
+        for (size_t i = 0; i < vars.size(); ++i)
         {
             uint64_t at_one = 0;
-            if ( !z3_eval_with_model(zctx, expr, zvars, i, 1, &at_one) )
+            if (!z3_eval_with_model(zctx, expr, zvars, i, 1, &at_one))
             {
-                mba_affine_debug("[MBA affine] skip eval coeff[%zu] op=%d ea=%llx\n",
-                                 i, ins->opcode, (unsigned long long)ins->ea);
+                mba_affine_debug("[MBA affine] skip eval coeff[%zu] op=%d ea=%llx\n", i,
+                                 ins->opcode, (unsigned long long)ins->ea);
                 return 0;
             }
             coeffs[i] = (at_one - at_zero) & mask;
 
             // Keep this pass for readable affine reductions. Large modular
             // coefficients are sound, but usually not a deobfuscation win.
-            if ( !mba_is_readable_modular_value(coeffs[i], mask) )
+            if (!mba_is_readable_modular_value(coeffs[i], mask))
             {
-                mba_affine_debug("[MBA affine] skip coeff[%zu]=0x%llx op=%d ea=%llx\n",
-                                 i, (unsigned long long)coeffs[i], ins->opcode, (unsigned long long)ins->ea);
+                mba_affine_debug("[MBA affine] skip coeff[%zu]=0x%llx op=%d ea=%llx\n", i,
+                                 (unsigned long long)coeffs[i], ins->opcode,
+                                 (unsigned long long)ins->ea);
                 return 0;
             }
         }
-        if ( !mba_is_readable_modular_value(at_zero, mask) )
+        if (!mba_is_readable_modular_value(at_zero, mask))
         {
             mba_affine_debug("[MBA affine] skip constant=0x%llx op=%d ea=%llx\n",
                              (unsigned long long)at_zero, ins->opcode, (unsigned long long)ins->ea);
@@ -455,75 +451,79 @@ static int try_affine_bv_simplify(minsn_t *ins)
         }
 
         z3::expr cand = zctx.ctx().bv_val(at_zero, bits);
-        for ( size_t i = 0; i < zvars.size(); ++i )
+        for (size_t i = 0; i < zvars.size(); ++i)
         {
-            if ( coeffs[i] == 0 )
+            if (coeffs[i] == 0)
                 continue;
             cand = cand + (zctx.ctx().bv_val(coeffs[i], bits) * zvars[i]);
         }
 
-        if ( !chernobog::z3_utils::prove_bv_equivalent(expr, cand, 500) )
+        if (!chernobog::z3_utils::prove_bv_equivalent(expr, cand, 500))
         {
-            mba_affine_debug("[MBA affine] skip proof vars=%zu ops=%d op=%d ea=%llx\n",
-                             vars.size(), op_count, ins->opcode, (unsigned long long)ins->ea);
+            mba_affine_debug("[MBA affine] skip proof vars=%zu ops=%d op=%d ea=%llx\n", vars.size(),
+                             op_count, ins->opcode, (unsigned long long)ins->ea);
             return 0;
         }
 
         size_t term_count = at_zero != 0 ? 1 : 0;
         size_t reconstructed_ops = 0;
-        for ( uint64_t coeff : coeffs )
+        for (uint64_t coeff : coeffs)
         {
-            if ( coeff == 0 )
+            if (coeff == 0)
                 continue;
             ++term_count;
-            if ( coeff != 1 )
+            if (coeff != 1)
                 ++reconstructed_ops;
         }
         reconstructed_ops += term_count > 1 ? term_count - 1 : 1;
-        if ( reconstructed_ops >= static_cast<size_t>(op_count) )
+        if (reconstructed_ops >= static_cast<size_t>(op_count))
         {
             mba_affine_debug("[MBA affine] skip non-reducing rewrite old=%d new=%zu ea=%llx\n",
-                             op_count, reconstructed_ops,
-                             (unsigned long long)ins->ea);
+                             op_count, reconstructed_ops, (unsigned long long)ins->ea);
             return 0;
         }
 
         minsn_t proposed(*ins);
         bool rewritten = rewrite_as_affine(&proposed, vars, coeffs, at_zero);
-        if ( rewritten )
+        if (rewritten)
         {
             RuleVerifier verifier;
             rewritten = verifier.verify_instance(ins, &proposed).verified();
-            if ( rewritten ) ins->swap(proposed);
+            if (rewritten)
+                ins->swap(proposed);
         }
         mba_affine_debug("[MBA affine] %s vars=%zu ops=%d op=%d ea=%llx\n",
-                         rewritten ? "rewrote" : "rewrite failed",
-                         vars.size(), op_count, ins->opcode, (unsigned long long)ins->ea);
+                         rewritten ? "rewrote" : "rewrite failed", vars.size(), op_count,
+                         ins->opcode, (unsigned long long)ins->ea);
         return rewritten ? 1 : 0;
     }
-    catch ( ... )
+    catch (...)
     {
-        mba_affine_debug("[MBA affine] skip exception op=%d ea=%llx\n",
-                         ins->opcode, (unsigned long long)ins->ea);
+        mba_affine_debug("[MBA affine] skip exception op=%d ea=%llx\n", ins->opcode,
+                         (unsigned long long)ins->ea);
         return 0;
     }
 }
 
 } // namespace
 
-
 //--------------------------------------------------------------------------
 // Initialization
 //--------------------------------------------------------------------------
-void mba_simplify_handler_t::initialize() {
-    if ( initialized_ ) {
+void mba_simplify_handler_t::initialize()
+{
+    if (initialized_)
+    {
         return;
     }
 
     // Initialize the rule registry (builds pattern index)
-    try {
+    try
+    {
         RuleRegistry::instance().initialize();
-    } catch (...) {
+    }
+    catch (...)
+    {
         msg("[chernobog] ERROR: Exception during rule registry initialization\n");
         return;
     }
@@ -532,59 +532,71 @@ void mba_simplify_handler_t::initialize() {
     msg("[chernobog] MBA simplify handler initialized\n");
 }
 
-bool mba_simplify_handler_t::is_initialized() {
-    return initialized_;
-}
+bool mba_simplify_handler_t::is_initialized() { return initialized_; }
 
 //--------------------------------------------------------------------------
 // Detection
 //--------------------------------------------------------------------------
-bool mba_simplify_handler_t::detect(mbl_array_t *mba) {
-    if ( !mba ) {
+bool mba_simplify_handler_t::detect(mbl_array_t *mba)
+{
+    if (!mba)
+    {
         return false;
     }
 
     // Ensure initialized
-    if ( !initialized_ ) {
+    if (!initialized_)
+    {
         initialize();
     }
 
     // Look for complex arithmetic/logic patterns
     int complex_count = 0;
-    const int THRESHOLD = 3;  // Need at least 3 complex patterns
+    const int THRESHOLD = 3; // Need at least 3 complex patterns
 
-    for ( int i = 0; i < mba->qty; ++i ) {
+    for (int i = 0; i < mba->qty; ++i)
+    {
         mblock_t *blk = mba->get_mblock(i);
-        if ( !blk) continue;
+        if (!blk)
+            continue;
 
-        for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
-            if ( !chernobog::bitvector::valid_byte_width(ins->d.size) ) {
+        for (minsn_t *ins = blk->head; ins; ins = ins->next)
+        {
+            if (!chernobog::bitvector::valid_byte_width(ins->d.size))
+            {
                 continue;
             }
 
             // Look for nested operations (sign of obfuscation)
-            if ( !is_mba_opcode(ins->opcode) ) {
+            if (!is_mba_opcode(ins->opcode))
+            {
                 continue;
             }
 
             // Check if operands contain nested operations
             bool has_nested = false;
 
-            if ( ins->l.t == mop_d && ins->l.d ) {
-                if ( is_mba_opcode(ins->l.d->opcode) ) {
+            if (ins->l.t == mop_d && ins->l.d)
+            {
+                if (is_mba_opcode(ins->l.d->opcode))
+                {
                     has_nested = true;
                 }
             }
 
-            if ( ins->r.t == mop_d && ins->r.d ) {
-                if ( is_mba_opcode(ins->r.d->opcode) ) {
+            if (ins->r.t == mop_d && ins->r.d)
+            {
+                if (is_mba_opcode(ins->r.d->opcode))
+                {
                     has_nested = true;
                 }
             }
 
-            if ( has_nested ) {
+            if (has_nested)
+            {
                 complex_count++;
-                if ( complex_count >= THRESHOLD ) {
+                if (complex_count >= THRESHOLD)
+                {
                     return true;
                 }
             }
@@ -597,12 +609,15 @@ bool mba_simplify_handler_t::detect(mbl_array_t *mba) {
 //--------------------------------------------------------------------------
 // Main deobfuscation pass
 //--------------------------------------------------------------------------
-int mba_simplify_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx) {
-    if ( !mba || !ctx ) {
+int mba_simplify_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
+{
+    if (!mba || !ctx)
+    {
         return 0;
     }
 
-    if ( !initialized_ ) {
+    if (!initialized_)
+    {
         initialize();
     }
 
@@ -612,15 +627,19 @@ int mba_simplify_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx) {
     const int MAX_PASSES = 10;
 
     // Multi-pass simplification (simplifications may enable more simplifications)
-    do {
+    do
+    {
         pass_changes = 0;
         pass++;
 
-        for ( int i = 0; i < mba->qty; ++i ) {
+        for (int i = 0; i < mba->qty; ++i)
+        {
             mblock_t *blk = mba->get_mblock(i);
-            if ( !blk) continue;
+            if (!blk)
+                continue;
 
-            for ( minsn_t *ins = blk->head; ins; ins = ins->next ) {
+            for (minsn_t *ins = blk->head; ins; ins = ins->next)
+            {
                 int changes = try_simplify_instruction(blk, ins);
                 pass_changes += changes;
             }
@@ -628,14 +647,16 @@ int mba_simplify_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx) {
 
         total_changes += pass_changes;
 
-        if ( pass_changes > 0 ) {
+        if (pass_changes > 0)
+        {
             // Verify after changes
             mba->verify(false);
         }
 
-    } while ( pass < MAX_PASSES && pass_changes > 0 );
+    } while (pass < MAX_PASSES && pass_changes > 0);
 
-    if ( total_changes > 0 ) {
+    if (total_changes > 0)
+    {
         ctx->expressions_simplified += total_changes;
         deobf::log_verbose("[MBA] Simplified %d expressions\n", total_changes);
     }
@@ -646,21 +667,25 @@ int mba_simplify_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx) {
 //--------------------------------------------------------------------------
 // Instruction-level simplification
 //--------------------------------------------------------------------------
-int mba_simplify_handler_t::simplify_insn(mblock_t *blk, minsn_t *ins, deobf_ctx_t *ctx) {
+int mba_simplify_handler_t::simplify_insn(mblock_t *blk, minsn_t *ins, deobf_ctx_t *ctx)
+{
     // Early null check before anything else
-    if ( !blk || !ins ) {
+    if (!blk || !ins)
+    {
         return 0;
     }
 
     // Only try to simplify if registry is initialized
-    if ( !initialized_ ) {
+    if (!initialized_)
+    {
         // Don't initialize here - do it at plugin init time
         return 0;
     }
 
     int changes = try_simplify_instruction(blk, ins);
 
-    if ( changes > 0 && ctx ) {
+    if (changes > 0 && ctx)
+    {
         ctx->expressions_simplified += changes;
     }
 
@@ -670,31 +695,40 @@ int mba_simplify_handler_t::simplify_insn(mblock_t *blk, minsn_t *ins, deobf_ctx
 //--------------------------------------------------------------------------
 // Internal simplification
 //--------------------------------------------------------------------------
-int mba_simplify_handler_t::try_simplify_instruction(mblock_t *blk, minsn_t *ins) {
+int mba_simplify_handler_t::try_simplify_instruction(mblock_t *blk, minsn_t *ins)
+{
     // Global optimization can expose a catalog identity below xdu/low/mov
     // after the instruction callback has already processed the inner node.
     // Walk the current value tree bottom-up, retaining explicit conversions.
     // Collect first so a cycle/budget failure cannot leave a partial rewrite.
     std::vector<minsn_t *> order;
     std::set<const minsn_t *> seen;
-    std::function<bool(minsn_t *, unsigned)> collect = [&](minsn_t *node, unsigned depth) {
-        if ( !node || depth > 64 || seen.size() >= 256 || !seen.insert(node).second ) return false;
-        if ( node->is_fpinsn() || node->is_mbarrier() || node->is_persistent()
-          || node->is_assert() || !node->is_combinable() || !node->is_propagatable()
-          || (!is_mba_opcode(node->opcode) && node->opcode != m_mov) ) return true;
-        for ( auto *operand : {&node->l, &node->r} )
-            if ( operand->t == mop_d && !collect(operand->d, depth + 1) ) return false;
+    std::function<bool(minsn_t *, unsigned)> collect = [&](minsn_t *node, unsigned depth)
+    {
+        if (!node || depth > 64 || seen.size() >= 256 || !seen.insert(node).second)
+            return false;
+        if (node->is_fpinsn() || node->is_mbarrier() || node->is_persistent() ||
+            node->is_assert() || !node->is_combinable() || !node->is_propagatable() ||
+            (!is_mba_opcode(node->opcode) && node->opcode != m_mov))
+            return true;
+        for (auto *operand : {&node->l, &node->r})
+            if (operand->t == mop_d && !collect(operand->d, depth + 1))
+                return false;
         order.push_back(node);
         return true;
     };
-    if ( !blk || !collect(ins, 0) ) return 0;
+    if (!blk || !collect(ins, 0))
+        return 0;
     int changes = 0;
-    for ( auto *node : order ) changes += try_simplify_node(blk, node);
+    for (auto *node : order)
+        changes += try_simplify_node(blk, node);
     return changes;
 }
 
-int mba_simplify_handler_t::try_simplify_node(mblock_t *blk, minsn_t *ins) {
-    if ( !ins || ins->is_fpinsn() || !is_mba_opcode(ins->opcode) ) {
+int mba_simplify_handler_t::try_simplify_node(mblock_t *blk, minsn_t *ins)
+{
+    if (!ins || ins->is_fpinsn() || !is_mba_opcode(ins->opcode))
+    {
         return 0;
     }
 
@@ -702,28 +736,29 @@ int mba_simplify_handler_t::try_simplify_node(mblock_t *blk, minsn_t *ins) {
     // scalar bit-vectors representable by mnumber_t.  Do not apply them to
     // SIMD/wide microcode values: replacement constants would otherwise be
     // created with a width above 8 bytes and no source EA.
-    if ( !chernobog::bitvector::valid_byte_width(ins->d.size) ) {
+    if (!chernobog::bitvector::valid_byte_width(ins->d.size))
+    {
         return 0;
     }
 
     // Ensure initialized
-    if ( !initialized_ ) {
+    if (!initialized_)
+    {
         initialize();
     }
 
-    int changes =
-        chernobog::chain::chain_simplify_handler_t::simplify_insn(blk, ins, nullptr);
-    if ( changes > 0 )
+    int changes = chernobog::chain::chain_simplify_handler_t::simplify_insn(blk, ins, nullptr);
+    if (changes > 0)
     {
         blk->mark_lists_dirty();
         total_simplified_ += static_cast<size_t>(changes);
     }
 
-    if ( !is_mba_opcode(ins->opcode) )
+    if (!is_mba_opcode(ins->opcode))
         return changes;
 
     const int affine_changes = try_affine_bv_simplify(ins);
-    if ( affine_changes > 0 )
+    if (affine_changes > 0)
     {
         blk->mark_lists_dirty();
         total_simplified_ += static_cast<size_t>(affine_changes);
@@ -732,7 +767,8 @@ int mba_simplify_handler_t::try_simplify_node(mblock_t *blk, minsn_t *ins) {
 
     // Try to find a matching rule
     auto match = RuleRegistry::instance().find_match(ins);
-    if ( !match.rule ) {
+    if (!match.rule)
+    {
         return changes;
     }
 
@@ -742,15 +778,17 @@ int mba_simplify_handler_t::try_simplify_node(mblock_t *blk, minsn_t *ins) {
 
 int mba_simplify_handler_t::apply_match(mblock_t *blk, minsn_t *ins,
                                         const RuleRegistry::MatchResult &match)
-                                        {
-    if ( !match.rule ) {
+{
+    if (!match.rule)
+    {
         return 0;
     }
 
     // Apply the replacement
     minsn_t *replacement = match.rule->apply_replacement(match.bindings, blk, ins);
 
-    if ( !replacement ) {
+    if (!replacement)
+    {
         return 0;
     }
 
@@ -760,7 +798,7 @@ int mba_simplify_handler_t::apply_match(mblock_t *blk, minsn_t *ins,
 
     // Copy replacement instruction fields
     ins->opcode = replacement->opcode;
-    ins->l.swap(replacement->l);  // Use swap for proper mop_t handling
+    ins->l.swap(replacement->l); // Use swap for proper mop_t handling
     ins->r.swap(replacement->r);
 
     // Restore original ea and destination
@@ -768,10 +806,12 @@ int mba_simplify_handler_t::apply_match(mblock_t *blk, minsn_t *ins,
     ins->d = orig_dest;
 
     // Ensure operand sizes match destination
-    if ( ins->l.size == 0 && orig_dest.size > 0 ) {
+    if (ins->l.size == 0 && orig_dest.size > 0)
+    {
         ins->l.size = orig_dest.size;
     }
-    if ( ins->r.size == 0 && orig_dest.size > 0 && ins->r.t != mop_z ) {
+    if (ins->r.size == 0 && orig_dest.size > 0 && ins->r.t != mop_z)
+    {
         ins->r.size = orig_dest.size;
     }
 
@@ -787,12 +827,14 @@ int mba_simplify_handler_t::apply_match(mblock_t *blk, minsn_t *ins,
 //--------------------------------------------------------------------------
 // Statistics
 //--------------------------------------------------------------------------
-void mba_simplify_handler_t::reset_statistics() {
+void mba_simplify_handler_t::reset_statistics()
+{
     total_simplified_ = 0;
     RuleRegistry::instance().clear_statistics();
 }
 
-void mba_simplify_handler_t::dump_statistics() {
+void mba_simplify_handler_t::dump_statistics()
+{
     msg("[chernobog] MBA Simplify Statistics:\n");
     msg("  Total simplifications: %zu\n", total_simplified_);
 
