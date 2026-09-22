@@ -3,6 +3,7 @@
 #include "native_observations.hpp"
 #include "ida_regions.hpp"
 #include "../hybrid/emu_driver.hpp"
+#include "../hybrid/call_summary_policy.hpp"
 #include "../common/inspection_json.hpp"
 #include "../common/warn_off.h"
 #include <pro.h>
@@ -14,6 +15,7 @@
 #include <intel.hpp>
 #include <ua.hpp>
 #include <parsejson.hpp>
+#include <name.hpp>
 #include "../common/warn_on.h"
 #include <atomic>
 #include <algorithm>
@@ -138,9 +140,45 @@ bool decode_native(uint64_t ea,const uint8_t *expected,size_t offered,rax_decode
       || (insn.get_canon_feature(PH)&(CF_CALL|CF_JUMP|CF_STOP)))out.flow=RAX_FLOW_TRAP;
   return true;
 }
+
+bool parse_bindings(const std::string &request,std::vector<hybrid::EmuCallSummary> &bindings)
+{
+  if(request.empty() || request.size()>8192 || request.find('\0')!=std::string::npos)return false;
+  // Flat array of flat records; reject deep input before entering the parser.
+  unsigned depth=0;bool quoted=false,escaped=false;
+  for(char c:request)
+  {
+    if(quoted){if(escaped)escaped=false;else if(c=='\\')escaped=true;else if(c=='"')quoted=false;continue;}
+    if(c=='"')quoted=true;
+    else if(c=='[' || c=='{'){if(++depth>2)return false;}
+    else if(c==']' || c=='}'){if(!depth)return false;--depth;}
+  }
+  if(depth || quoted)return false;
+  jvalue_t root;
+  if(parse_json_string(&root,request.c_str())!=eOk || root.type()!=JT_ARR
+      || root.arr().values.empty() || root.arr().values.size()>32)return false;
+  std::set<uint64_t> addresses;
+  for(const auto &value:root.arr().values)
+  {
+    if(value.type()!=JT_OBJ || !keys(value.obj(),{"address","name"}))return false;
+    const auto *address=value.obj().get_value("address",JT_STR);
+    const auto *name=value.obj().get_value("name",JT_STR);
+    if(!address || !name || name->qstr().empty() || name->qstr().length()>128)return false;
+    const auto &text=address->qstr();uint64_t ea=0;
+    if(text.length()<3 || text.length()>18 || text[0]!='0' || text[1]!='x')return false;
+    for(size_t i=2;i<text.length();++i){const int d=digit(text[i]);if(d<0)return false;ea=(ea<<4)|unsigned(d);}
+    qstring actual;
+    if(ea==bad_address || !addresses.insert(ea).second || !is_mapped(ea_t(ea))
+        || get_name(&actual,ea_t(ea))<=0 || actual!=name->qstr())return false;
+    const auto kind=hybrid::hybrid_classify_call_summary_name(actual.c_str());
+    if(!kind || *kind==hybrid::EmuSummaryKind::UNMODELED)return false;
+    bindings.push_back({ea,*kind,actual.c_str()});
+  }
+  return true;
+}
 }
 static std::string trace_native_region_impl(uint64_t function,uint64_t seed,const hybrid::EmuInput *explicit_input,
-    bool walk=false,bool check=false)
+    bool walk=false,bool check=false,const std::vector<hybrid::EmuCallSummary> *bindings=nullptr)
 {
   using namespace hybrid;
   const auto *api=rax_load();
@@ -162,11 +200,12 @@ static std::string trace_native_region_impl(uint64_t function,uint64_t seed,cons
       {return decode_native(ea,data,size,decoded,mode);};
   auto region=plan_native_region(image,api,function,4096,decoder);
   if(!region.available())return unavailable("entry has no admissible native instruction");
-  EmuDriver driver(api,image,true,inf_get_filetype()==f_PE);
+  EmuDriver driver(api,image,true,inf_get_filetype()==f_PE,bindings?*bindings:std::vector<EmuCallSummary>{});
   EmuInput input=explicit_input?*explicit_input:EmuInput{};input.seed=seed;input.run_id=1;
   EmuEvents events;EmuOutcome outcome;
   const uint64_t initial_identity=region.identity();
-  const bool ran=walk?driver.emulate_region_walk(region,config,events,outcome,decoder,64,&input,check)
+  const bool ran=bindings?driver.emulate_region_temporal(region,config,events,outcome,decoder,&input)
+      :walk?driver.emulate_region_walk(region,config,events,outcome,decoder,64,&input,check)
       :driver.emulate_region(region,config,events,outcome,&input);
   static std::atomic<uint64_t> next_capture{1};
   uint64_t capture=next_capture.load();
@@ -182,6 +221,22 @@ static std::string trace_native_region_impl(uint64_t function,uint64_t seed,cons
   }
   using Row=std::map<std::string,std::string>;
   std::vector<Row> heads,frontiers,execution,edges,states,data,writes,objects,final_registers,arguments,admissions;
+  std::vector<Row> models,allocations,uses;
+  if(bindings)
+    for(const auto &binding:*bindings)models.push_back({{"address",hex(binding.address)},
+        {"name",binding.name},{"kind",std::to_string(unsigned(binding.kind))}});
+  for(const auto &object:events.allocations)
+    allocations.push_back({{"id",hex(object.id)},{"generation",hex(object.generation)},
+      {"address",hex(object.address)},{"size",std::to_string(object.size)},
+      {"site",hex(object.site)},{"context",hex(object.context)},{"allocated",std::to_string(object.allocated)},
+      {"released",std::to_string(object.released)},{"live",object.live?"true":"false"}});
+  for(const auto &use:events.uses)
+    uses.push_back({{"site",hex(use.site)},{"context",hex(use.context)},{"sequence",std::to_string(use.sequence)},
+      {"address",hex(use.address)},{"allocation",hex(use.allocation_id)},{"generation",hex(use.generation)},
+      {"callee",hex(use.callee)},{"argument",std::to_string(use.argument)},
+      {"producer",use_producer_name(use.producer)},{"model_kind",std::to_string(use.model_kind)},
+      {"status",std::to_string(unsigned(use.status))},{"scope",std::to_string(unsigned(use.scope))},
+      {"bytes",bytes(use.bytes)},{"observed_size",std::to_string(use.observed_size)}});
   for(const auto &step:outcome.native_admissions)
     admissions.push_back({{"source",hex(step.source)},{"target",hex(step.target)},
       {"sequence",std::to_string(step.sequence)},{"before_identity",hex(step.before_identity)},
@@ -261,6 +316,13 @@ static std::string trace_native_region_impl(uint64_t function,uint64_t seed,cons
       <<",\"boundary_target\":"<<inspection_json_quote(hex(outcome.region_boundary_target))
       <<",\"data_trace_complete\":"<<(outcome.data_trace_complete?"true":"false")
       <<",\"data_trace_truncated\":"<<(outcome.data_trace_truncated?"true":"false")
+      <<",\"native_temporal_requested\":"<<(outcome.native_temporal_requested?"true":"false")
+      <<",\"native_temporal_complete\":"<<(outcome.native_temporal_complete?"true":"false")
+      <<",\"temporal_capture_complete\":"<<(outcome.temporal_capture_complete?"true":"false")
+      <<",\"temporal_capture_truncated\":"<<(outcome.temporal_capture_truncated?"true":"false")
+      <<",\"environment_model_failure\":"<<(outcome.environment_model_failure?"true":"false")
+      <<",\"summarized_calls\":"<<outcome.summarized_calls
+      <<",\"model_contract\":\"explicit caller-selected name/address bindings; ABI models, not callee implementation proofs\""
       <<",\"ownerless_executed_heads\":"<<ownerless.size()<<",\"foreign_executed_heads\":"<<foreign.size()
       <<",\"function_evidence_published\":false,\"vm_identity_proved\":false"
       <<",\"environment_contract\":\"backend-defined timestamp, randomness, processor and device state; explicit arguments do not establish replay determinism\""
@@ -273,6 +335,8 @@ static std::string trace_native_region_impl(uint64_t function,uint64_t seed,cons
   inspection_json_rows(out,"input_arguments",arguments);inspection_json_rows(out,"input_objects",objects);
   inspection_json_rows(out,"final_registers",final_registers);
   inspection_json_rows(out,"native_admissions",admissions);
+  inspection_json_rows(out,"environment_bindings",models);
+  inspection_json_rows(out,"allocations",allocations);inspection_json_rows(out,"uses",uses);
   if(check)
   {
     out<<",\"native_observations\":{\"available\":"<<(observations.available?"true":"false")
@@ -308,5 +372,13 @@ std::string trace_native_region_check(uint64_t function,uint64_t seed,const std:
   hybrid::EmuInput input;
   if(!parse_input(request,input))return unavailable("invalid bounded native input");
   return trace_native_region_impl(function,seed,&input,true,true);
+}
+std::string trace_native_region_temporal(uint64_t function,uint64_t seed,const std::string &request,
+    const std::string &models)
+{
+  hybrid::EmuInput input;std::vector<hybrid::EmuCallSummary> bindings;
+  if(!parse_input(request,input) || !input.native_objects.empty())return unavailable("invalid bounded temporal input");
+  if(!parse_bindings(models,bindings))return unavailable("invalid named environment bindings");
+  return trace_native_region_impl(function,seed,&input,true,false,&bindings);
 }
 } // namespace chernobog::vm

@@ -231,6 +231,8 @@ struct EmuOutcome
   uint64_t external_target = 0;
   std::string external_name;
   bool     environment_model_failure = false;
+  // Explicit region environment contract, separate from function completeness.
+  bool     native_temporal_requested = false, native_temporal_complete = false;
   bool     external_model_used = false;
   bool     synthetic_entry_context = false;
   // `requested` records configuration intent; `available` records whether a
@@ -346,14 +348,21 @@ public:
       EmuOutcome &,const vm::NativeDecoder &,size_t maximum_extensions=64,const EmuInput *input=nullptr,
       bool sample_native_instructions=false);
 
+  // Explicitly uses constructor-supplied call models and captures temporal
+  // events. Ordinary temporal_capture_complete/conclusive remain false.
+  // Caller objects are rejected: their scratch range overlaps modeled heap.
+  bool emulate_region_temporal(vm::NativeRegion &,const HybridConfig &,EmuEvents &,
+      EmuOutcome &,const vm::NativeDecoder &,const EmuInput *input=nullptr);
+
 private:
   bool emulate_region_impl(const vm::NativeRegion &,const HybridConfig &,EmuEvents &,
-      EmuOutcome &,const EmuInput *,vm::NativeRegion *,const vm::NativeDecoder *,size_t,bool sample_native_instructions=false);
+      EmuOutcome &,const EmuInput *,vm::NativeRegion *,const vm::NativeDecoder *,size_t,bool sample_native_instructions=false,
+      bool native_temporal=false);
   bool emulate_scope(uint64_t entry,uint64_t func_end,const HybridConfig &,EmuEvents &,
       EmuOutcome *,bool record_pcs,uint64_t seed,uint32_t run_id,const EmuInput *,
       bool (*cancelled)(const void *),const void *cancellation_user,const vm::NativeRegion *,
       vm::NativeRegion *expanding=nullptr,const vm::NativeDecoder *decoder=nullptr,size_t maximum_extensions=0,
-      bool sample_native_instructions=false);
+      bool sample_native_instructions=false,bool native_temporal=false);
   bool map_image();
   bool map_stack();
   bool load_image_bytes();

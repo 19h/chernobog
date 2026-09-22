@@ -1,0 +1,227 @@
+{
+  "schema": 1,
+  "scope": "explicit named ABI models and temporal native-region observation; no ordinary publication, protected string consensus or VM identity claim",
+  "source_sha256": {
+    "tests/run_vmp_region_temporal.py": "a57752cac955ba7eb98cb49a0b51cd0f021035f0b36e34ae61aaea3bddbb1a31",
+    "tests/ida_region_temporal_probe.py": "85df55627cc9dc1b710b08e61f6b933bdc409edbfe2fd2ca89813fb2c183d8c3",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151",
+    "tests/run_vmp_corpus.py": "b8adfe9ce39e643b551c1e4d29f64cf023914bb0d6cf1516c0e3971a5fdc376a",
+    "src/vm/native_region.hpp": "9bd0a2006941f27bb944303fa1c90112b631895f8d1845bfcc7c64ef20c9d30b",
+    "src/vm/native_region.cpp": "0d0f00254ef44cab9fabe29fae50c6d2b2ac092ed937767cfa24574ee515abf8",
+    "src/vm/ida_native_trace.hpp": "fb8cfa28f9601c14945ee1f1b599aef37ff296cefd2203f648930c240a445071",
+    "src/vm/ida_native_trace.cpp": "9c275d011b18e95a8f66a39efa0e5e80d6a2f8a25c4c54751bc98b9ecb7490de",
+    "src/hybrid/emu_driver.hpp": "8a523e71993b5e8a0c456cc9f7013d4d30a6d1a365dab1ca920d5134ed98ec96",
+    "src/hybrid/emu_driver.cpp": "1a5091617972b566318388c06b6c9a3a7ad69041e98705d3daee2c9111ed4dde",
+    "src/hybrid/temporal_memory.hpp": "96d13dbad0767fa4abfbf5a04d182a86864684f8ddf780ff02234f4263b0bed6",
+    "src/hybrid/call_summary_policy.cpp": "2fec2be1118f5544efc0e88acf38f4cefce8992a21ff0d7d63581d15f5e839d5",
+    "src/plugin/idc_api.cpp": "3319c2eec7f243c93eb0747ca7c0865c127405cf799180191ed1163315453c15",
+    "tests/hybrid_tests.cpp": "c39185d551b89d3aebd2a00a5133018f35ffb899a75e31466520d4ba34c6b8e5",
+    "tests/verify_vm_native_region_decode.py": "a9a0fd3776c7fb6ab7c5b314437ead2fe723f2f475127f114f80a92c5ee5cc10",
+    "RAX_HYBRID.md": "b141d2d66236797a8f2ee49677b6148664488639f3c81c57eeec3806157e69d5",
+    "docs/VMP_REGION_TEMPORAL.md": "73342be7cb54989c27830d538f1f0192d9d3b0bea94547696c8aa79082e51db3",
+    "docs/VMP_IMPLEMENTATION.md": "6daa04c37b38fbf9aab2676435559603ef8d3beb1556810ef442e4a21316a5b2"
+  },
+  "primary_reference_sha256": {
+    "vmp/core/intel.cc": "ce0edd303f1b20d12affaf1bb4646b684a056babe724f36af24340fefe7cb17c",
+    "vmp/core/macfile.cc": "dbb12f7ccb34000734f552e8f917612674df04ba15f1d0923a6afd61c199d7e6",
+    "vmp/core/core.cc": "cd97023bcdcc9f24d238bdd325362817212e512d461264a225b94f7ee5e2510e",
+    "vmp/core/script.cc": "284c671019c30bb982534a8bb9b7fa4b46c60f4e50fbbddbe9f326dd46ad7313",
+    "vmp/runtime/string_manager.cc": "ea4ec11e0317a6508c2d14c4032e368259c98b1955072987171c7306718e3c4d"
+  },
+  "runtime_sha256": {
+    "plugin": "1321656cdb8ccdb69c7f2f4d462e688f6adf5d9dfe7f05f76dad8186b5f24b0e",
+    "ida": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+    "protector": "3fe722d21d5c8d9661f12b3b04f5863c4d9b93557692c1318dbf8f1c45c23568",
+    "protector_sdk": "92c6d56dc8d6092233ffd1d56d1969e272528dfeb98b9f0e1a27067883e74381"
+  },
+  "accepted_artifact_sha256": {
+    "build/vmp-region-temporal-final/region_temporal_analysis.json": "783012add5bf078bec02fd12777080ffb55f0f1acd6679c27b7f8e895b9ac80c",
+    "build/vmp-region-temporal-final/decode_verification.json": "f3c4b5d28e62ad698ce37eca1a7362aa798b194520161da805da18012f01ccfb",
+    "build/vmp-region-temporal-final/original/run.json": "76f96f1ec91cf9852821871bc1759562cd7dcb7e134f3ae940d65396df3d51cd",
+    "build/vmp-region-temporal-final/original/region_temporal.json": "da010bf53752a8d66f088f866c67f388f4a7bba7bb4f53eb9b21765d955d971f",
+    "build/vmp-region-temporal-final/mutation-0/run.json": "b20df5a7820942b8784052a2ef0c0f1a3050326bcee3e953e391a7bf3aa08665",
+    "build/vmp-region-temporal-final/mutation-0/region_temporal.json": "72b26f709a2c4235357a531e0e37c9c24a3b5bdbea94eb5d831c36bc76fcb85a",
+    "build/vmp-region-temporal-final/mutation-1/run.json": "22a2d987db7b775d5597297c678be1683e894fce7d36a8f9df48f8d331bb00f8",
+    "build/vmp-region-temporal-final/mutation-1/region_temporal.json": "2b660b66cd431bf1139089652ea03d34800e30f15dc5fb722565107ed1aaf364",
+    "build/vmp-region-temporal-final/mutation-12648430/run.json": "dba8cf4406e4925a448fd086a8971c38a21c84b7fe6a22a3fdcdfdcb09b05fbf",
+    "build/vmp-region-temporal-final/mutation-12648430/region_temporal.json": "e756d85a9322d2d46ee2f6fe3a22a6aa095e2d9d8f703ba4ef202c830b9b4f5b",
+    "build/vmp-region-temporal-final/virtualization-0/run.json": "7eb489c8b0764378e04525b77e2503f2d4709fe2675502644b0d5265784cb75d",
+    "build/vmp-region-temporal-final/virtualization-0/region_temporal.json": "d402fb88b47c61c906c7e64025a88d358e9cb04218fd36f7f159c6c784dc23c3",
+    "build/vmp-region-temporal-final/virtualization-1/run.json": "03483e314b16e0922f0d35819c3cb4681d7039235fef35045401fb24522c1217",
+    "build/vmp-region-temporal-final/virtualization-1/region_temporal.json": "a4550ef38275a11ff1a7cb3a698b204876cc479863778650da603f594bb551f7",
+    "build/vmp-region-temporal-final/virtualization-12648430/run.json": "84efe1cce679d7f3d74ee4efdd77eaad418c74604efa0bdd9d4e3cc79d4a5a39",
+    "build/vmp-region-temporal-final/virtualization-12648430/region_temporal.json": "f3d4c2d85fb7cfc94b515c9c2cfe0a523634210ca2647f082fc05c1a97ff1875",
+    "build/vmp-region-temporal-final/combined-0/run.json": "737e9e11c5f699d7657b56f89501fb4f3a6946782a44e854614a7368473616fc",
+    "build/vmp-region-temporal-final/combined-0/region_temporal.json": "49fb90d18e4be43542901ae0ff0a1e62582017ef86660863a772624b7aec3e38",
+    "build/vmp-region-temporal-final/combined-1/run.json": "8b83c6d896542a8ea30b02e10b1ca93c90fc6bbf645e897e217c80717e5c4ba5",
+    "build/vmp-region-temporal-final/combined-1/region_temporal.json": "515506f8a8792e806555255ce98fb3f4c8b30593f913bca2ae42d5899560996f",
+    "build/vmp-region-temporal-final/combined-12648430/run.json": "574e77381d59ccb459749944337e82d27796a6a5d0c5b374328106b40431c0a5",
+    "build/vmp-region-temporal-final/combined-12648430/region_temporal.json": "6f8cfb5f72c7dadce636d857297159bac5f8d23000b5c436acf1a80bce6de78b",
+    "build/vmp-region-temporal-final-ordinary/run.json": "7e9da4a315bcfdff40b0be703fa36a5bf316d63e46951a7f5667360e15f42284",
+    "build/vmp-region-temporal-final-ordinary/native_read_strings.json": "1c713d66f2dcfc0ce022ff40555c2a3c61e47727ff03c680bbd2978f8d1875da",
+    "build/vmp-region-temporal-final-build.log": "66691e573d63cb9ce5f963be259408dc513ce615d75158033f93832c4b1f3185",
+    "build/vmp-region-temporal-final-ctest.log": "4e9828be82165779db7b068aae31a9c01eaa581e114d65e3d0cc82490be048ee",
+    "build/vmp-protected-strings-release/strings.json": "cb24ac135a3726ee16ae4ae70a19af00774fe8a9da24f2a161009a1047293f17",
+    "build/chernobog_hybrid_tests": "e50a77cb14eb527fa2759cca267b0912ddae3b250a64d8f8bf3c791eefd597dd"
+  },
+  "historical_diagnostic_artifact_sha256": {
+    "build/vmp-region-temporal-first/original/region_temporal.json": "da010bf53752a8d66f088f866c67f388f4a7bba7bb4f53eb9b21765d955d971f",
+    "build/vmp-region-temporal-first/virtualization-0/region_temporal.json": "5c1e3a55ec55ada2c7d352c3624330763ab3c5d4519069560063a15a85e6d50d",
+    "build/vmp-region-temporal-first/combined-1/region_temporal.json": "47f5574395005de89e937c083a66828df92b4d0fcd2c0e26680a2add48d0b4d2",
+    "build/vmp-region-temporal-first/virtualization-1/region_temporal.json": "69a22062ff40bd0592e2f367702e0f09e9417f04ebd27ee94d062e12019dd99c",
+    "build/vmp-region-temporal-first/combined-0/region_temporal.json": "8ac0065b8c042e291a872cc448f33b5b395d64df0fd5e960c0e4fc29ad88e2a3",
+    "build/vmp-region-temporal-first/mutation-12648430/region_temporal.json": "f10599013f54de5c4ed5c72f61bee99578e3700bfb8c0795edc7a2be0e280d6e",
+    "build/vmp-region-temporal-first/combined-12648430/region_temporal.json": "cdf07c101255a35e5f059e761ad82d9ccc7676201907bde88d5247c4ac8ae168",
+    "build/vmp-region-temporal-first/mutation-1/region_temporal.json": "a1e660c835c545c56ebdb3c5c67af8db0b9f592d8f9634b92f004b535e374bde",
+    "build/vmp-region-temporal-first/mutation-0/region_temporal.json": "3c9feb42809768f708c85f910a733bb071d203b9534fdf3f3b78d07feb2e48b8",
+    "build/vmp-region-temporal-first/virtualization-12648430/region_temporal.json": "24e0194cdcb085db6f022405c12b357b9f3dd7cc992ee809f6248122b96cc223",
+    "build/vmp-region-temporal-thunk/original/region_temporal.json": "da010bf53752a8d66f088f866c67f388f4a7bba7bb4f53eb9b21765d955d971f",
+    "build/vmp-region-temporal-thunk/virtualization-0/region_temporal.json": "5c1e3a55ec55ada2c7d352c3624330763ab3c5d4519069560063a15a85e6d50d",
+    "build/vmp-region-temporal-thunk/combined-1/region_temporal.json": "47f5574395005de89e937c083a66828df92b4d0fcd2c0e26680a2add48d0b4d2",
+    "build/vmp-region-temporal-thunk/virtualization-1/region_temporal.json": "69a22062ff40bd0592e2f367702e0f09e9417f04ebd27ee94d062e12019dd99c",
+    "build/vmp-region-temporal-thunk/combined-0/region_temporal.json": "8ac0065b8c042e291a872cc448f33b5b395d64df0fd5e960c0e4fc29ad88e2a3",
+    "build/vmp-region-temporal-thunk/mutation-12648430/region_temporal.json": "e756d85a9322d2d46ee2f6fe3a22a6aa095e2d9d8f703ba4ef202c830b9b4f5b",
+    "build/vmp-region-temporal-thunk/combined-12648430/region_temporal.json": "cdf07c101255a35e5f059e761ad82d9ccc7676201907bde88d5247c4ac8ae168",
+    "build/vmp-region-temporal-thunk/mutation-1/region_temporal.json": "82a1ad60c53de4f6e66f868e54af9a92754a1099d47d9044b188c3db7d7ab029",
+    "build/vmp-region-temporal-thunk/mutation-0/region_temporal.json": "72b26f709a2c4235357a531e0e37c9c24a3b5bdbea94eb5d831c36bc76fcb85a",
+    "build/vmp-region-temporal-thunk/virtualization-12648430/region_temporal.json": "24e0194cdcb085db6f022405c12b357b9f3dd7cc992ee809f6248122b96cc223"
+  },
+  "accepted_results": {
+    "binaries": 10,
+    "captures": 40,
+    "completed_captures": 12,
+    "complete_byte_value_comparisons": 24,
+    "incomplete_bswap16_captures": 28,
+    "region_production_checks": 354,
+    "ordinary_regression_checks": 23,
+    "ctest_suites": 20,
+    "ctest_failures": 0,
+    "ctest_elapsed_seconds": 11.04,
+    "independent_instruction_records": 7156,
+    "byte_mismatches": 0,
+    "size_mismatches": 0,
+    "linear_successor_mismatches": 0,
+    "capstone_version": "5.0.7"
+  },
+  "per_binary": {
+    "original": {
+      "input_sha256": "44245e21de031582c987ff52dd969a4df64e8fec678be44fbf991b9342eb7134",
+      "checks": 41,
+      "completed": 4,
+      "instructions": [
+        171,
+        171,
+        171,
+        171
+      ]
+    },
+    "mutation-0": {
+      "input_sha256": "95140f47a0de35906578026b038bf1c1572f641421bf3657962ff0ba5481a835",
+      "checks": 41,
+      "completed": 4,
+      "instructions": [
+        303,
+        303,
+        303,
+        303
+      ]
+    },
+    "mutation-1": {
+      "input_sha256": "02cd90fa45364f0431b1b1a68472243326de0c1a0900ed791ad3d364d8fe1ec2",
+      "checks": 33,
+      "completed": 0,
+      "instructions": [
+        336,
+        336,
+        336,
+        336
+      ]
+    },
+    "mutation-12648430": {
+      "input_sha256": "5aab31336dbd8e956281a3d1c1c7f3159961976b197488c46c9c43d2a522316b",
+      "checks": 41,
+      "completed": 4,
+      "instructions": [
+        331,
+        331,
+        331,
+        331
+      ]
+    },
+    "virtualization-0": {
+      "input_sha256": "f94eddb8f3430fe9e286630b47ff2c8922e7044beaa410fe4a4b65ba8b155f57",
+      "checks": 33,
+      "completed": 0,
+      "instructions": [
+        50,
+        50,
+        50,
+        50
+      ]
+    },
+    "virtualization-1": {
+      "input_sha256": "97aa6e2f1f35870c5b668bb8d3ada19156bc7e8a703c99dd88e4c0f7b74aae6f",
+      "checks": 33,
+      "completed": 0,
+      "instructions": [
+        14,
+        14,
+        14,
+        14
+      ]
+    },
+    "virtualization-12648430": {
+      "input_sha256": "d55fd9683b1c854efe1ec0ee44cd8b2d4101647d1310b3e05e5073c5d14853e5",
+      "checks": 33,
+      "completed": 0,
+      "instructions": [
+        40,
+        40,
+        40,
+        40
+      ]
+    },
+    "combined-0": {
+      "input_sha256": "6400997543605e7f6464d8d18ec0b588c083d098918d543b1b3252807355f57b",
+      "checks": 33,
+      "completed": 0,
+      "instructions": [
+        18,
+        18,
+        18,
+        18
+      ]
+    },
+    "combined-1": {
+      "input_sha256": "b379a8388f2416dfa2ef4b7d5d57090880c6ee2b639dbded5bb2da70c91f1833",
+      "checks": 33,
+      "completed": 0,
+      "instructions": [
+        276,
+        276,
+        276,
+        276
+      ]
+    },
+    "combined-12648430": {
+      "input_sha256": "03f786c1ab630fbe06fa19c6172a2bd6e2a97b7f48d1b98ad643302933202a23",
+      "checks": 33,
+      "completed": 0,
+      "instructions": [
+        250,
+        250,
+        250,
+        250
+      ]
+    }
+  },
+  "limitations": [
+    "source-to-protector build attestation unknown",
+    "name binding is an explicit ABI modeling assumption, not callee equivalence",
+    "caller scratch objects excluded from this modeled heap contract",
+    "longer thunks and general call-as-jump effects remain unmodeled",
+    "x64 paired fixture; wider architecture corpus remains",
+    "protected consensus, annotations and GUI integration remain",
+    "full review objective remains active"
+  ]
+}

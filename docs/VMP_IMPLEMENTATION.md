@@ -72,6 +72,16 @@ rejected BSWAP16 semantics; full handler effects and logical VM state remain
 unknown. See `VMP_NATIVE_OBSERVATIONS.md` for assumptions, quotas, per-variant
 yield and evidence. This advances rows 6a–6c and V without completing them.
 
+Modeled native-region checkpoint: an explicit temporal API now binds named ABI
+models and retains allocation/use/release observations across owners. A checked
+CALL followed by one JMP thunk preserves source and return provenance. Twelve
+of 40 paired captures complete with 24 byte-value comparisons; 28 stop at rejected
+BSWAP16, including mutation seed 1 after both lifetimes. All 377 production and
+ordinary regression checks, 20 CTest suites and 7,156 independently decoded
+instruction records pass. See `VMP_REGION_TEMPORAL.md`. Protected consensus/display,
+wider architectures, caller objects and logical VM contracts remain incomplete
+for rows 3a/3b, 6a/6b and V.
+
 Protected string measurement checkpoint: nine deterministic x64 variants now
 pass 30 native process runs against an unchanged byte comparator, with two
 independent negative controls. Ten production runs recover 2/2 original literals

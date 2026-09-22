@@ -1242,6 +1242,15 @@ error_t idaapi idc_vm_trace_check(idc_value_t *argv,idc_value_t *r)
     return eOk;
 }
 
+error_t idaapi idc_vm_trace_temporal(idc_value_t *argv,idc_value_t *r)
+{
+    const auto request=arg_string(argv[2]),bindings=arg_string(argv[3]);
+    const auto json=vm::trace_native_region_temporal(uint64_t(resolve_function(argv[0])),
+        uint64_t(argv[1].num),std::string(request.c_str(),request.length()),
+        std::string(bindings.c_str(),bindings.length()));
+    r->set_string(json.c_str());return eOk;
+}
+
 error_t idc_vm_observations(idc_value_t *argv, idc_value_t *r, bool validate)
 {
     const auto function = uint64_t(resolve_function(argv[0]));
@@ -1677,6 +1686,7 @@ const char args_str_value[] = { VT_STR, VT_WILD, 0 };
 const char args_ea_ea[] = { VT_LONG, VT_LONG, 0 };
 const char args_ea_long[] = { VT_LONG, VT_LONG, 0 };
 const char args_ea_long_str[] = { VT_LONG, VT_LONG, VT_STR, 0 };
+const char args_ea_long_str_str[] = { VT_LONG, VT_LONG, VT_STR, VT_STR, 0 };
 const char args_ea_ea_long[] = { VT_LONG, VT_LONG, VT_LONG, 0 };
 
 struct idc_entry_t
@@ -1822,6 +1832,9 @@ const idc_entry_t idc_entries[] = {
     { "chernobog_vm_trace_check", idc_vm_trace_check, args_ea_long_str,
       "chernobog_vm_trace_check(ea, seed, input_json)",
       "Explicit native walk, instruction-entry samples and bounded local VM transition checks; separate capture scope" },
+    { "chernobog_vm_trace_temporal", idc_vm_trace_temporal, args_ea_long_str_str,
+      "chernobog_vm_trace_temporal(ea, seed, input_json, bindings_json)",
+      "Explicit named ABI models and temporal observations across native owners; no function evidence publication" },
     { "chernobog_vm_states", idc_vm_states, args_ea,
       "chernobog_vm_states(ea)",
       "Fresh captured VM-role observations; partial states remain distinct, no execution admission" },

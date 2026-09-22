@@ -1437,6 +1437,85 @@ void test_temporal_heap_uses(const RaxApi *api)
       {0x2030, EmuSummaryKind::MEMSET, "memset"}};
   EmuDriver driver(api, image, true, false, summaries);
   check(driver.can_discover(), "temporal fixture backend must initialize");
+  {
+    using namespace chernobog::vm;
+    const NativeDecoder decoder=[api](uint64_t ea,const uint8_t *bytes,size_t count,rax_decoded &decoded)
+    {return api->decode(RAX_ARCH_X86,RAX_MODE_64,ea,bytes,count,&decoded)==RAX_OK;};
+    auto region_image=image;
+    region_image.entries[0].end=0x1001;
+    region_image.entries[0].chunks={{0x1000,0x1001}};
+    region_image.content_hash=hybrid_program_content_hash(region_image);
+    EmuDriver regional(api,region_image,true,false,summaries);
+    auto region=plan_native_region(region_image,api,0x1000,4096,decoder);
+    HybridConfig cfg=short_run_config();cfg.max_insns=256;
+    EmuInput input;input.args={16};input.seed=0x93;input.run_id=7;
+    EmuEvents events;EmuOutcome outcome;
+    check(regional.emulate_region_temporal(region,cfg,events,outcome,decoder,&input)
+          && outcome.returned && outcome.native_temporal_requested && outcome.native_temporal_complete
+          && !outcome.temporal_capture_complete && !outcome.conclusive() && !outcome.consumed_context_complete
+          && !outcome.data_trace_complete && outcome.summarized_calls==9,
+          "modeled region crosses owner bounds under explicit temporal scope without proof promotion");
+    check(events.allocations.size()==3 && events.allocations[1].address==events.allocations[2].address
+          && events.allocations[1].generation!=events.allocations[2].generation,
+          "modeled region retains allocation reuse generations");
+    size_t observed=0;
+    for(const auto &use:events.uses)
+      if(use.callee==0x2010)
+      {
+        const std::string wanted=observed++==0?"secret!":"second!";
+        check(use.context==0x1000 && use.seed==input.seed && use.run_id==input.run_id
+              && use.bytes.size()==8 && use.bytes.back()==0
+              && std::equal(wanted.begin(),wanted.end(),use.bytes.begin()),
+              "modeled region preserves exact use bytes and selected-entry context");
+      }
+    check(observed==2,"modeled region observes both erased uses");
+    for(unsigned variant=0;variant<4;++variant)
+    {
+      auto thunk_image=region_image;
+      auto &text=thunk_image.segs[0];
+      text.end=0x1900;text.bytes.resize(0x900,0xcc);text.mask.assign(0x120,0xff);
+      // First malloc call goes through one native JMP. A plain incoming JMP
+      // and a two-instruction thunk are separate negative controls.
+      text.bytes[1]=variant==1?0xe9:0xe8;
+      const uint32_t call_displacement=0x1800-(0x1001+5);
+      for(unsigned byte=0;byte<4;++byte)text.bytes[2+byte]=uint8_t(call_displacement>>(8*byte));
+      auto thunk_input=input;
+      if(variant==3)
+      {
+        text.bytes[1]=0xff;text.bytes[2]=0xd0; // call rax; target admitted on observation
+        text.bytes[3]=text.bytes[4]=text.bytes[5]=0x90;
+        thunk_input.register_overrides.push_back({RAX_X86_REG_RAX,0x1800});
+      }
+      const size_t offset=0x800+(variant==2?1:0);
+      if(variant==2)text.bytes[0x800]=0x90;
+      text.bytes[offset]=0xe9;
+      const uint32_t jump_displacement=uint32_t(0x2000-(0x1000+offset+5));
+      for(unsigned byte=0;byte<4;++byte)text.bytes[offset+1+byte]=uint8_t(jump_displacement>>(8*byte));
+      thunk_image.content_hash=hybrid_program_content_hash(thunk_image);
+      EmuDriver thunk_driver(api,thunk_image,true,false,summaries);
+      auto thunk_region=plan_native_region(thunk_image,api,0x1000,4096,decoder);
+      EmuEvents thunk_events;EmuOutcome thunk_outcome;
+      check(thunk_driver.emulate_region_temporal(thunk_region,cfg,thunk_events,thunk_outcome,decoder,&thunk_input)
+            && (variant==0 || variant==3?(thunk_outcome.native_temporal_complete && thunk_outcome.summarized_calls==9)
+               :(!thunk_outcome.native_temporal_complete && thunk_outcome.summarized_calls==0
+                 && thunk_outcome.unmodeled_external)),
+            "one-instruction import thunk requires observed CALL and preserved return provenance");
+    }
+    region=plan_native_region(region_image,api,0x1000,4096,decoder);events={};outcome={};
+    check(regional.emulate_region_walk(region,cfg,events,outcome,decoder,64,&input)
+          && !outcome.returned && !outcome.native_temporal_requested && !outcome.native_temporal_complete
+          && outcome.summarized_calls==0 && events.uses.empty(),
+          "ordinary native walk cannot silently enable environment models");
+    region=plan_native_region(region_image,api,0x1000,4096,decoder);events={};outcome={};
+    cfg.max_insns=8;
+    check(regional.emulate_region_temporal(region,cfg,events,outcome,decoder,&input)
+          && !outcome.returned && !outcome.native_temporal_complete,
+          "modeled region instruction exhaustion cannot become complete temporal evidence");
+    input.native_objects.push_back({0,0,{0}});events={};outcome={};
+    check(!regional.emulate_region_temporal(region,cfg,events,outcome,decoder,&input)
+          && events.execution.empty() && !outcome.native_temporal_complete,
+          "modeled region rejects caller scratch objects overlapping its heap contract");
+  }
   TargetEvidence evidence;
   std::vector<uint64_t> addresses;
   for ( uint32_t run_id = 0; run_id < 3; ++run_id )

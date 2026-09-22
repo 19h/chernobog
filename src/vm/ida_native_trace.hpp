@@ -8,4 +8,6 @@ std::string trace_native_region(uint64_t function,uint64_t seed);
 std::string trace_native_region_input(uint64_t function,uint64_t seed,const std::string &request);
 std::string trace_native_region_walk(uint64_t function,uint64_t seed,const std::string &request);
 std::string trace_native_region_check(uint64_t function,uint64_t seed,const std::string &request);
+std::string trace_native_region_temporal(uint64_t function,uint64_t seed,const std::string &request,
+    const std::string &bindings);
 }

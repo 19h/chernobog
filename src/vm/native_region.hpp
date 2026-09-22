@@ -7,8 +7,9 @@
 
 namespace chernobog::vm {
 // An immutable allowlist for bounded native execution, separate from IDA
-// function ownership and from a proven VM/handler identity. Calls execute their
-// native instructions; no callee-return summary or ABI equivalence is assumed.
+// function ownership and from a proven VM/handler identity. Default captures
+// execute native calls. The separate temporal API explicitly binds ABI models;
+// neither mode establishes callee equivalence or logical VM ownership.
 struct NativeHead
 {
   uint64_t address = bad_address;

@@ -179,6 +179,9 @@ struct HookCtx
   std::string external_name;
   bool       environment_model_failure = false;
   bool       summary_resume = false;
+  bool       native_temporal = false;
+  uint64_t   modeled_thunk = 0, modeled_call_source = 0;
+  uint64_t   modeled_call_sp = 0, modeled_call_return = 0;
   uint32_t   summarized_calls = 0;
   bool       has_prev = false;
   bool       record_pcs = false; // populate out->exec_pcs (opaque-predicate analysis)
@@ -948,6 +951,8 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
   }
   bool summary_transfer = false;
   ExecEdge::Kind transfer_kind = ExecEdge::Kind::Unknown;
+  if(c->native_temporal && region_resume && c->has_prev)
+    decode_at(c,c->prev_pc,c->prev_decode_mode,nullptr,&transfer_kind);
   if ( c->has_prev && !region_resume )
   {
     uint32_t decoded_size = 0;
@@ -989,8 +994,20 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
     }
   }
   c->summary_source = c->has_prev ? c->prev_pc : addr;
+  bool thunk_call=false;
+  if(c->native_temporal && c->modeled_thunk && c->has_prev
+      && c->prev_pc==c->modeled_thunk && transfer_kind==ExecEdge::Kind::Jump)
+  {
+    uint64_t sp=0,return_address=0;
+    thunk_call=c->api->reg_read_u64(engine,c->sp_reg,&sp)==RAX_OK
+        && sp==c->modeled_call_sp
+        && read_scalar(c,engine,sp,c->is64?8:4,&return_address)
+        && return_address==c->modeled_call_return;
+    if(thunk_call)c->summary_source=c->modeled_call_source;
+  }
+  c->modeled_thunk=0;
   const EmuCallSummary *summary = summary_transfer
-                               && transfer_kind == ExecEdge::Kind::Call
+                               && (transfer_kind == ExecEdge::Kind::Call || thunk_call)
                                ? find_summary(c, addr) : nullptr;
   if ( summary != nullptr && summary->kind != EmuSummaryKind::UNMODELED )
   {
@@ -1084,6 +1101,23 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
           else c->native_sample_incomplete=true;
         }
         c->out->states.push_back(std::move(point));
+      }
+    }
+    // Carry one observed CALL through one exact native JMP import thunk.
+    // The next hook must see that JMP as its immediate predecessor and retain
+    // both architectural SP and the CALL's concrete return address.
+    if(c->native_temporal && transfer_kind==ExecEdge::Kind::Call && c->has_prev
+        && (head->flow==RAX_FLOW_BRANCH || head->flow==RAX_FLOW_INDIRECT_JUMP))
+    {
+      const auto *caller=c->region->at(c->prev_pc);
+      uint64_t sp=0,return_address=0;
+      if(caller && (caller->flow==RAX_FLOW_CALL || caller->flow==RAX_FLOW_INDIRECT_CALL)
+          && c->api->reg_read_u64(engine,c->sp_reg,&sp)==RAX_OK
+          && read_scalar(c,engine,sp,c->is64?8:4,&return_address)
+          && return_address==caller->address+caller->bytes.size())
+      {
+        c->modeled_thunk=addr;c->modeled_call_source=caller->address;
+        c->modeled_call_sp=sp;c->modeled_call_return=return_address;
       }
     }
   }
@@ -1934,9 +1968,18 @@ bool EmuDriver::emulate_region_walk(vm::NativeRegion &region,const HybridConfig 
   return emulate_region_impl(region,requested,out,outcome,input,&region,&decoder,maximum_extensions,sample_native_instructions);
 }
 
+bool EmuDriver::emulate_region_temporal(vm::NativeRegion &region,const HybridConfig &requested,
+    EmuEvents &out,EmuOutcome &outcome,const vm::NativeDecoder &decoder,const EmuInput *input)
+{
+  if(!decoder || (input && !input->native_objects.empty()))
+  {outcome=EmuOutcome{};outcome.native_region=true;outcome.native_temporal_requested=true;
+   outcome.native_walk_stop="invalid_temporal_request";return false;}
+  return emulate_region_impl(region,requested,out,outcome,input,&region,&decoder,64,false,true);
+}
+
 bool EmuDriver::emulate_region_impl(const vm::NativeRegion &region,const HybridConfig &requested,
     EmuEvents &out,EmuOutcome &outcome,const EmuInput *input,vm::NativeRegion *expanding,
-    const vm::NativeDecoder *decoder,size_t maximum_extensions,bool sample_native_instructions)
+    const vm::NativeDecoder *decoder,size_t maximum_extensions,bool sample_native_instructions,bool native_temporal)
 {
   outcome=EmuOutcome{};outcome.native_region=true;outcome.region_identity=region.identity();
   if(!requested.max_insns || !requested.timeout_ms || !strict_perms_ || !api_ || !api_->mem_read || !region.matches(img_)
@@ -1948,16 +1991,17 @@ bool EmuDriver::emulate_region_impl(const vm::NativeRegion &region,const HybridC
   cfg.max_insns=std::min(cfg.max_insns,uint64_t(65536));
   if(sample_native_instructions)cfg.max_insns=std::min(cfg.max_insns,uint64_t(4096));
   cfg.timeout_ms=std::min(cfg.timeout_ms,uint64_t(1000));
-  cfg.want_runtime_strings=false;cfg.want_import_summaries=false;
+  cfg.want_runtime_strings=native_temporal;cfg.want_import_summaries=native_temporal;
   cfg.max_runtime_bytes=std::min(cfg.max_runtime_bytes,uint64_t(65536));
   return emulate_scope(region.entry(),region.entry(),cfg,out,&outcome,true,0,0,input,
-      nullptr,nullptr,&region,expanding,decoder,maximum_extensions,sample_native_instructions);
+      nullptr,nullptr,&region,expanding,decoder,maximum_extensions,sample_native_instructions,native_temporal);
 }
 
 bool EmuDriver::emulate_scope(uint64_t entry,uint64_t func_end,const HybridConfig &cfg,EmuEvents &out,
     EmuOutcome *outcome,bool record_pcs,uint64_t seed,uint32_t run_id,const EmuInput *input,
     bool (*cancelled)(const void *),const void *cancellation_user,const vm::NativeRegion *region,
-    vm::NativeRegion *expanding,const vm::NativeDecoder *decoder,size_t maximum_extensions,bool sample_native_instructions)
+    vm::NativeRegion *expanding,const vm::NativeDecoder *decoder,size_t maximum_extensions,bool sample_native_instructions,
+    bool native_temporal)
 {
   if ( !can_discover() )
     return false;
@@ -1969,6 +2013,7 @@ bool EmuDriver::emulate_scope(uint64_t entry,uint64_t func_end,const HybridConfi
     outcome->region_identity=region?region->identity():0;
     outcome->native_walk=expanding!=nullptr;
     outcome->native_state_capture_requested=sample_native_instructions;
+    outcome->native_temporal_requested=region && native_temporal;
   }
   const uint64_t effective_seed = input != nullptr ? input->seed : seed;
   const uint32_t effective_run = input != nullptr ? input->run_id : run_id;
@@ -2089,7 +2134,7 @@ bool EmuDriver::emulate_scope(uint64_t entry,uint64_t func_end,const HybridConfi
   ctx.out = &out;
   ctx.api = api_;
   ctx.capture_regs = &capture_regs_;
-  ctx.summaries = region ? nullptr : &summaries_;
+  ctx.summaries = region && !native_temporal ? nullptr : &summaries_;
   ctx.image = &img_;
   ctx.lo = img_.lo;
   ctx.hi = img_.hi;
@@ -2097,6 +2142,7 @@ bool EmuDriver::emulate_scope(uint64_t entry,uint64_t func_end,const HybridConfi
   ctx.fhi = func_end > entry ? func_end : img_.hi;
   ctx.func = function != nullptr && function->start == entry ? function : nullptr;
   ctx.region = region;
+  ctx.native_temporal=region && native_temporal;
   ctx.sample_native_instructions=region && sample_native_instructions;
   ctx.stack_lo = stack_base_;
   ctx.stack_hi = stack_base_ + stack_size_;
@@ -2315,6 +2361,13 @@ bool EmuDriver::emulate_scope(uint64_t entry,uint64_t func_end,const HybridConfi
         && !ctx.escaped_image && !ctx.function_boundary
         && !ctx.unmodeled_external && !ctx.environment_model_failure
         && !synthetic_entry_context;
+    outcome->native_temporal_complete = region && native_temporal
+        && outcome->temporal_observation_available && outcome->returned
+        && !outcome->temporal_capture_truncated && !ctx.execution_truncated
+        && !ctx.dependency_truncated && !ctx.data_truncated && !ctx.data_filtered
+        && !ctx.permission_violation && !ctx.cancellation_requested && !ctx.escaped_image
+        && !ctx.region_boundary && !ctx.region_code_changed && !ctx.function_boundary
+        && !ctx.unmodeled_external && !ctx.environment_model_failure && !synthetic_entry_context;
     if ( outcome->returned && sp_reg_ >= 0 )
     {
       uint64_t sp_final = 0;

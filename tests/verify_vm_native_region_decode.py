@@ -41,7 +41,7 @@ def main():
     parser.add_argument("--corpus-report", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--expect-size-mismatches", type=int, default=0)
-    parser.add_argument("--capture-artifact", choices=("vm_native_traces.json", "vm_native_inputs.json"),
+    parser.add_argument("--capture-artifact", choices=("vm_native_traces.json", "vm_native_inputs.json", "region_temporal.json"),
                         default="vm_native_traces.json")
     args = parser.parse_args()
     report = json.loads(args.report.read_text())
@@ -70,7 +70,9 @@ def main():
         assert digest(path) == run["artifact_sha256"][args.capture_artifact]
         result["capture_sha256"][label] = digest(path)
         capture = json.loads(path.read_text())
-        if args.capture_artifact == "vm_native_inputs.json":
+        if args.capture_artifact == "region_temporal.json":
+            traces = [(str(index), trace) for index, trace in enumerate(capture["traces"])]
+        elif args.capture_artifact == "vm_native_inputs.json":
             traces = [(row["name"] + ":" + str(row["case"]), row["trace"]) for row in capture["captures"]]
         else:
             traces = [(name, trace) for name, trace in capture["captures"].items() if ":" in name]
