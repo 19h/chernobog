@@ -44,8 +44,13 @@ try:
     ida_auto.auto_wait()
     assert ida_hexrays.init_hexrays_plugin(), "Hex-Rays unavailable"
     assert ida_loader.load_plugin(os.environ["CHERNOBOG_PLUGIN_PATH"]), "plugin unavailable"
-    target = ida_name.get_name_ea(ida_idaapi.BADADDR, "_native_read_strings")
-    key = ida_name.get_name_ea(ida_idaapi.BADADDR, "_native_read_key")
+    interleaved = os.environ.get("CHERNOBOG_INTERLEAVED_READS")
+    target = ida_name.get_name_ea(
+        ida_idaapi.BADADDR, "_native_interleaved_strings" if interleaved else "_native_read_strings"
+    )
+    key = ida_name.get_name_ea(
+        ida_idaapi.BADADDR, "_native_interleaved_key" if interleaved else "_native_read_key"
+    )
     assert target != ida_idaapi.BADADDR and key != ida_idaapi.BADADDR, "fixture symbols missing"
 
     def count():
@@ -72,7 +77,8 @@ try:
             and values["runs"] > 0
             and values["returned_runs"] == values["runs"]
             and values["temporal_capture_complete_runs"] == values["runs"]
-            and values["allocation_lifetimes"] == 2 * values["runs"]
+            and values["allocation_lifetimes"]
+            == (1 if interleaved == "shared" else 2) * values["runs"]
             and values["temporal_capture_truncated_runs"] == 0,
             result=code,
             summary=values,
@@ -184,7 +190,7 @@ try:
             and candidate["read_count"] == 8
             and candidate["observed_bytes"] == 8
             and candidate["last_sequence"] > candidate["first_sequence"]
-            and candidate["object_size"] == 16
+            and candidate["object_size"] == (32 if interleaved else 16)
             and candidate["observations"] == candidate["eligible_runs"],
             candidate=candidate,
         )

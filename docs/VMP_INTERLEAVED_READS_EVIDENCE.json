@@ -1,0 +1,250 @@
+{
+  "schema": 1,
+  "scope": "bounded read-only interleaved native stream derivation with original witnesses; ordinary and native-region consumers",
+  "parent_commit": "74af2a689a8d69a5442779b3b0852e7a25a8a9ee",
+  "source_sha256": {
+    "tests/run_native_use_snapshots.py": "d56012509e870394076a1042d988b62bef660977bced97a4e138d21c9d5a707f",
+    "tests/ida_region_strings_probe.py": "ed78a263c2b0bf6e893627b48562633c3fa69750f08b4045f1634ab9b035251a",
+    "tests/vmp_native/native_snapshot_strings.c": "b786171bc009aa783428d929adf7ca63996835a0cde85075a9b100faef9bb950",
+    "tests/vmp_native/native_interleaved_strings.c": "6b800595c484b68d9479ebba9f2f0142b0698b9d37ff2fe5bab4a4b16615c0de",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vmp_corpus.py": "775cf951f3e7228cba2d3efde7f87ba6bc98f65dfde3faa0090b4c222ad6eee8",
+    "tests/evidence_tests.cpp": "ddc11b7675bcb1baa22e4fcc0f513b3c6d805d34114676eaff1a78226455ee57",
+    "src/hybrid/native_read_strings.cpp": "cac2c4ce723aa1fa3a0734eba7f2007f24c33eec408d9662aa1798f90113f3ef",
+    "src/vm/ida_native_trace.cpp": "2e57964bd9d9fd70bd8e84e24e76dc17d05a43061cae6c665c3294a0573d7ef4",
+    "python/chernobog_temporal_strings.py": "3fddc5d2a36269f653fd1857ae36eb761897295d6d94f977d046638077208e15",
+    "tests/run_vmp_region_temporal.py": "1f31c080ebde13785270b89800875a911e97dc109b703be7a00511ca3511a508",
+    "src/vm/native_region.hpp": "ad138de4ac49f56b6bb4a5d8f5dfa40d0df2185e5f7ce53c0543c0587d5eb664",
+    "src/vm/native_region.cpp": "1c8a3f8ded9567fe3c687df6dcf32283247d9e49c5013769db9313a6ca418ecc",
+    "src/vm/ida_native_trace.hpp": "d2cb5e6fe2fd6ce4e50c09691c5573d22f1c1475fef0be96863b934a9b99b3f4",
+    "src/hybrid/emu_driver.hpp": "ade88433691e578f46c2f569afbecb9b7fdb1140bac97195828a9e04d78c609d",
+    "src/hybrid/emu_driver.cpp": "f2a8eacbfaf1bd226fba2ad988515d2f9fd23d69aef81af9e8cd9754789a03d0",
+    "src/hybrid/temporal_memory.hpp": "77f5276e10388d5e1ebeea1ee25f43a19a0b759ec4a4d01271a8b17d4f20f324",
+    "src/hybrid/call_summary_policy.cpp": "7b6fa94842d9528de833a0ed786ba46c6bca205a05c568aefd4e36d46ad950cc",
+    "src/plugin/idc_api.cpp": "da186bdd5da134c2b327a1319bfc4f0de5db9e5cefdbbf6ff42fe188c18ea4ac",
+    "src/plugin/deobf_plugin.cpp": "2c530244900357f6b1d54cd0733b42f0468a2b9c0eca7d454845e328557d3784",
+    "tests/hybrid_tests.cpp": "92daad6d72c75ecc51e131feb218bb80cb0ab31566cf7105e439e1572cc4bf53",
+    "src/hybrid/evidence.hpp": "361538394bf7275e5642e9b765d73cc254004e30e035b82792d01ef0152a6487",
+    "src/hybrid/evidence.cpp": "42df09c7ab5415d21f7ec3ef15b376e209c25969d74c96c6c3060c71b2d3dbf9",
+    "tests/ida_native_read_strings_probe.py": "b53267f05357567a5635258d63de12b27ca0bdda6592376c2f65d0c7564c3e8a",
+    "python/chernobog_evidence.py": "157b6db3585b8d3e06f40c84d155edd5dfd4de3987c40eb0a7db5ed753c4008a",
+    "docs/VMP_INTERLEAVED_READS.md": "fe31eae85c257c97e0c9899c309e6f97b759eb8e1eb0b092d965f504fcb86ddd",
+    "docs/VMP_IMPLEMENTATION.md": "8f25c4347f730bfdef6a73395803767180a30747007e118cc6075a407f30c74a",
+    "AGENTS.md": "f3941fdc7d429480c7f093ea4181d53add9eed741cd28feca8f4a8000ca4e0e3",
+    "src/common/string_recovery.h": "dfce1ccdefb7e90f087d752ba0326f2668b6bfbbadbc8d3d8f6e4cef2d10298c"
+  },
+  "primary_reference_sha256": {
+    "vmp/runtime/string_manager.cc": "ea4ec11e0317a6508c2d14c4032e368259c98b1955072987171c7306718e3c4d"
+  },
+  "runtime_sha256": {
+    "plugin": "139f7830df448d87481ec140297e23c26248bacd752cad76437804472617c24c",
+    "ida_console": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+    "ida_gui": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b"
+  },
+  "execution_environment": {
+    "runner_architecture": "arm64",
+    "fixture_architecture": "x86_64",
+    "hardware_only_x86_differential_validation": "not established"
+  },
+  "accepted_artifact_sha256": {
+    "build/vmp-interleaved-separate/snapshot_analysis.json": "925f6819896793b00f241fb41205735669ae99c1430f7683a808716b505c216c",
+    "build/vmp-interleaved-separate/console/run.json": "be99dca4ba7cb4674c8d626f171cbbadcf73fd2901b3946dc95192e9011201f5",
+    "build/vmp-interleaved-separate/console/region_strings.json": "179177e39ce4cb9cf82208de7bc925d29193bba738e0ca616c56dada72215647",
+    "build/vmp-interleaved-separate/gui/run.json": "664c7f1879b820806dedf0d1588b5b37e8e9028db376d347427b5bfea36a2d60",
+    "build/vmp-interleaved-separate/gui/region_strings.json": "d7d1b637869caf84c3f1ef6ca0bfb116204a6193087a33a2f74c9afad61f9e8b",
+    "build/vmp-interleaved-separate/gui/region_strings.png": "f7929b4a3e9db41af8d3a1535ccd68be09bef37d0a0d8a8c1adc0dfc64210eda",
+    "build/vmp-interleaved-separate/original": "4cb9d74f5a890dcec4429ef1b76e253a517631843e2c259ea906a31d5d34861c",
+    "build/vmp-interleaved-separate/first-negative": "33dd5beb98e809da8efa5d99b015469eeab9a207be4f811ab762bdd74ed463bd",
+    "build/vmp-interleaved-separate/second-negative": "e402d04f0943131bad3da17b50873eb57eb7263caa6d993db3bedca8f795cceb",
+    "build/vmp-interleaved-shared/snapshot_analysis.json": "970905a8b175f34228b72a3bcd36c1b5d6242cbbbc8258ad95564a0c7084f1ba",
+    "build/vmp-interleaved-shared/console/run.json": "ce30a68a79e037508c99d077e62a3e5b515ef7a4d72a7659a40ea938249cbf68",
+    "build/vmp-interleaved-shared/console/region_strings.json": "18d5aa354589a36fdb32db238db3233472709a4d740d14c5cb74df03fe4c46d0",
+    "build/vmp-interleaved-shared/gui/run.json": "4f7ab727f85b06e92fd9f660642a09db4c886cb91cb3192ff3620fa55b686b43",
+    "build/vmp-interleaved-shared/gui/region_strings.json": "44dee7761e93a3993a271b9ec0c2e86116b08c3eb3f9029de874af018007d1ae",
+    "build/vmp-interleaved-shared/gui/region_strings.png": "cfc9129c8796eed3e5136f36e6e6e95d86a10456cf7946884cb4493a9c1b2ca8",
+    "build/vmp-interleaved-shared/original": "c95485dac36d0af14b9d11939963b301029d7c712e0faa0177fce0ddb8ade036",
+    "build/vmp-interleaved-shared/first-negative": "9694c010c2db04d250d7176d88a5fb35e38258b31b8184a58c73ea9d97a61eee",
+    "build/vmp-interleaved-shared/second-negative": "dee286a2ee61acab16c59dbfaf20d42ace6431d6db39072d224b7779f84ea4bb",
+    "build/vmp-interleaved-scalar/snapshot_analysis.json": "3d7328c4f4580c3624bf651d2d58e6b4914614d16eec920d83a15cf16157a4b3",
+    "build/vmp-interleaved-scalar/console/run.json": "832022052c3d09e04ab6439f11502db10da29147b521705c7a7991c710d3767d",
+    "build/vmp-interleaved-scalar/console/region_strings.json": "79b3e85eadb4790ddc6b590a8a2adaf5b11270979a1df12a7c358ba2642b3166",
+    "build/vmp-interleaved-scalar/gui/run.json": "0cab944234aa466ebc1c4ef79c624b9c38744ddae90b11377e615b06137ff9ad",
+    "build/vmp-interleaved-scalar/gui/region_strings.json": "93c76c12692e67a1abcd7fd1b27789a787f21ab3638ea66e07ea99cc686a9a1b",
+    "build/vmp-interleaved-scalar/gui/region_strings.png": "ab6214b04234a74835600e3b8552f653691bb4644abd674ef24a9388bed40c36",
+    "build/vmp-interleaved-scalar/original": "b9f46136e54b3e074f3f9b6e601c8006c62983e1585653772d8eeb1c758c7067",
+    "build/vmp-interleaved-scalar/first-negative": "a5b2c2e5ecbce0458d0095f66f7ffb5390fb71628f250c1a3cc77e4b8bf03259",
+    "build/vmp-interleaved-scalar/second-negative": "25137397252d00449530911e619cbdea8115d547c7ee71a641be4d4fec1f211d",
+    "build/vmp-interleaved-protected/region_strings_analysis.json": "d8da3767f68b025d9015d6d0e6993cdfdde7b15efe4e9b50b356602a6f7dcace",
+    "build/vmp-interleaved-protected/original/run.json": "7fbb87b8297cb0daab25f0ca53313cc046b528dc9c351b3818e805d880d7306f",
+    "build/vmp-interleaved-protected/original/region_strings.json": "a5b281090ddf9e7b1e6e283c12a7efa4483a90da9ce9aff652e9912bd5f126c3",
+    "build/vmp-interleaved-protected/mutation-0/run.json": "2ccb9c78f4f5f3420026b18ffc42cf2413ab6b1bc83bc0102991389d2900f04f",
+    "build/vmp-interleaved-protected/mutation-0/region_strings.json": "9a713960ee777cbbd957d35cf003a124e7dd7a2f6338133ddeb64866dbf6c6ce",
+    "build/vmp-interleaved-protected/mutation-1/run.json": "d4cf593e4db5e1a2e73a04bccad8b7629e835ae6e4e7856fd175d21e80b4875e",
+    "build/vmp-interleaved-protected/mutation-1/region_strings.json": "bbb34ef2e902ed86ec93c310f33e9b7131dfbd7d71ab20a5d300cbb4af4264b4",
+    "build/vmp-interleaved-protected/mutation-12648430/run.json": "dfb0187d85ae492bc1b55c4fdac113abe1bd58ffb2dd9c55e87c5255ce15cac2",
+    "build/vmp-interleaved-protected/mutation-12648430/region_strings.json": "0c9f686229c8626c5dab3e9de92d4b00ccb47f21c3c3fb03d9faf9f19bdf1987",
+    "build/vmp-interleaved-protected/virtualization-0/run.json": "2bb8c72a3996ec8f64bb871929b646e783d4db69e6fd397cf6145aa4b00b95ce",
+    "build/vmp-interleaved-protected/virtualization-0/region_strings.json": "bcfa30ca658663792b172f05f35da8719a38b9b94ae853d8db747309b4e97bfa",
+    "build/vmp-interleaved-protected/virtualization-1/run.json": "8bc5a0ee35d3efb39a6c420e12f1f529399e534d44efe9ef22722d7ee3599a0f",
+    "build/vmp-interleaved-protected/virtualization-1/region_strings.json": "e84ea568aaee953b1081dabf18f27f53bcd3e7efe02d32ee269353cc693e54b2",
+    "build/vmp-interleaved-protected/virtualization-12648430/run.json": "80306dfbafce88c2848980b59b86fcb2e5863b3273fcede6dd773f5a4dcc8dd0",
+    "build/vmp-interleaved-protected/virtualization-12648430/region_strings.json": "b0be6778a80e1ef4070048a61c5f173cdeb866832790a5eb243dfe4aa031b721",
+    "build/vmp-interleaved-protected/combined-0/run.json": "365e1eec617ee51a9bd13cd8c81d8d286645efafde750d210dbc7449bb6e8a70",
+    "build/vmp-interleaved-protected/combined-0/region_strings.json": "4df204ca62965a8e9154f34e6bc285d8cbb339d0fff5a53f32cc03175867c07e",
+    "build/vmp-interleaved-protected/combined-1/run.json": "2dc6710d767ef1a84bf8f43580c9a8a560ed8c086e6a585013cab0996568a88d",
+    "build/vmp-interleaved-protected/combined-1/region_strings.json": "b056bb26cb734e44b8ef9b93a41f1012608b107b3d445acd40463339a71bce08",
+    "build/vmp-interleaved-protected/combined-12648430/run.json": "a2d1d6275febb3cc7568c24001849f53ab821f297d166c5152e2d3bacfec9041",
+    "build/vmp-interleaved-protected/combined-12648430/region_strings.json": "1b74d8d7b99caa94241ddf7248e0648411c789c44354a5fd814799b12c8b1d10",
+    "build/vmp-interleaved-ctree-separate/run.json": "2b1733834aa79be741f35e12fa4ce5ee1468386321414bb848f3473bf7a6c694",
+    "build/vmp-interleaved-ctree-separate/native_read_strings.json": "9cabb9f3505fd316d3ff039214a541dc4042bc92f70637af97546624b6039db4",
+    "build/vmp-interleaved-ctree-separate/original": "4cb9d74f5a890dcec4429ef1b76e253a517631843e2c259ea906a31d5d34861c",
+    "build/vmp-interleaved-ctree-shared/run.json": "9609075412ce33208fddc789dd7c537a722aab458e7dfb50dbbf4d0c983a5d0c",
+    "build/vmp-interleaved-ctree-shared/native_read_strings.json": "e3aa9ee241bc1351ce02052c3d9bf8a1d9b4d4510df371b103b2f825841b80da",
+    "build/vmp-interleaved-ctree-shared/original": "c95485dac36d0af14b9d11939963b301029d7c712e0faa0177fce0ddb8ade036",
+    "build/vmp-interleaved-ctree-ordinary/run.json": "d02e1d7ee88678d4307bc870eb3405915c347c0c803c3562d06c72b6b9ccdeb9",
+    "build/vmp-interleaved-ctree-ordinary/native_read_strings.json": "c3db3599e044509844c06adb5218e1d4089db8587b67bd342ce7c6cd043ebc63",
+    "build/vmp-interleaved-ctree-ordinary/original": "44245e21de031582c987ff52dd969a4df64e8fec678be44fbf991b9342eb7134",
+    "build/vmp-interleaved-build.log": "3a529b77375cd0adae64e6f0aff75e19ae677c2355d98be6a93119871e61c671",
+    "build/vmp-interleaved-ctest.log": "1e063b03f33e553080aa328143a5daf8c9ba59df585649583d2ad29edfa8381d",
+    "build/chernobog_evidence_tests": "443632375279fdb5ee1d3dbb32ce8eb8a4fba0e419510e3566f7b0f3592df14f",
+    "build/vmp-protected-strings-release/strings.json": "cb24ac135a3726ee16ae4ae70a19af00774fe8a9da24f2a161009a1047293f17"
+  },
+  "accepted_results": {
+    "interleaved_layouts": [
+      "separate heap allocations",
+      "two buffers within one allocation"
+    ],
+    "interleaved_native_checks": [
+      75,
+      75
+    ],
+    "scalar_modeled_checks": 82,
+    "ordinary_ctree": [
+      {
+        "label": "separate",
+        "checks": 24,
+        "input_sha256": "4cb9d74f5a890dcec4429ef1b76e253a517631843e2c259ea906a31d5d34861c"
+      },
+      {
+        "label": "shared",
+        "checks": 24,
+        "input_sha256": "c95485dac36d0af14b9d11939963b301029d7c712e0faa0177fce0ddb8ade036"
+      },
+      {
+        "label": "ordinary",
+        "checks": 24,
+        "input_sha256": "44245e21de031582c987ff52dd969a4df64e8fec678be44fbf991b9342eb7134"
+      }
+    ],
+    "protected_binaries": 10,
+    "protected_checks": 183,
+    "protected_expected_value_occurrences": 18,
+    "protected_reported_value_occurrences": 4,
+    "total_production_checks": 487,
+    "native_oracle_exit_codes": [
+      [
+        0,
+        1,
+        1
+      ],
+      [
+        0,
+        1,
+        1
+      ],
+      [
+        0,
+        1,
+        1
+      ]
+    ],
+    "portable_interleaved_checks": 384,
+    "portable_layouts": [
+      "separate heap allocations",
+      "shared heap allocation",
+      "image",
+      "stack"
+    ],
+    "portable_read_width_bytes": [
+      1,
+      2,
+      4
+    ],
+    "ctest_suites": 20,
+    "ctest_failures": 0,
+    "ctest_elapsed_seconds": 12.04,
+    "qt_visual_inspection": [
+      "separate: passed",
+      "shared: passed"
+    ],
+    "format_checks": {
+      "clang_format_files": 3,
+      "black_files": 3,
+      "black_version": "26.5.1"
+    }
+  },
+  "counterexamples": {
+    "baseline_commit": "74af2a689a8d69a5442779b3b0852e7a25a8a9ee",
+    "artifact_sha256": {
+      "build/vmp-interleaved-before.json": "b29d26fadc46f5464c83f54457bb60a98c9782d04bc6a1102ace88fa4548804e",
+      "build/vmp-interleaved-before-build.log": "7929e8edf6e544fb5c58b4cd8ae290989b1986c1d097189b8670bb61a00974d6",
+      "build/vmp-interleaved-before-separate/snapshot_analysis.json": "437d1948c05746619f5802365e10c883f75e1b5bff4e262c114499c3a55cac54",
+      "build/vmp-interleaved-before-separate/console/run.json": "084c50c6ea2d8d68d8f71fb029e54dad365f84e45d78bce444fb7432541cfb9b",
+      "build/vmp-interleaved-before-separate/console/region_strings.json": "4de769655c6734166fc2b1a5e6b2cdf7f6d2ee7cd45aeccba440fc4e551c0da5"
+    },
+    "portable": {
+      "exit_code": 1,
+      "reason": "interleaved buffers retain two independent streams",
+      "source_sha256": {
+        "tests/evidence_tests.cpp": "8fba7f56a3c4fa81698c342f6a34d04499cfe58bd5010277a5a49ee841b055cd",
+        "src/hybrid/native_read_strings.cpp": "ad011d2e10a129a15c3c56f81a10c4489530edeb65da32cafceb90eb7330ae70"
+      }
+    },
+    "production": {
+      "passed": false,
+      "completed_captures": 4,
+      "reported_observations": 0,
+      "native_oracle_exit_codes": [
+        0,
+        1,
+        1
+      ],
+      "same_fixture_binary_hashes_after_fix": true,
+      "plugin_sha256": "73b84337cde8a2d1dd20e6a452fa59ee9c3a9d05afb6d4294e2c3c54347fd5bb",
+      "source_sha256": {
+        "tests/run_native_use_snapshots.py": "83f3543ec7ccbf0f7798a5273d2dcefd07bc194c398156ad9bd40c3554b7c3c9",
+        "tests/ida_region_strings_probe.py": "cf64162794d459c15dd11270676c102d4f69d083f002ae4add1bec64365f1745",
+        "tests/vmp_native/native_snapshot_strings.c": "b786171bc009aa783428d929adf7ca63996835a0cde85075a9b100faef9bb950",
+        "tests/vmp_native/native_interleaved_strings.c": "6b800595c484b68d9479ebba9f2f0142b0698b9d37ff2fe5bab4a4b16615c0de",
+        "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+        "tests/run_vmp_corpus.py": "775cf951f3e7228cba2d3efde7f87ba6bc98f65dfde3faa0090b4c222ad6eee8",
+        "tests/evidence_tests.cpp": "8fba7f56a3c4fa81698c342f6a34d04499cfe58bd5010277a5a49ee841b055cd",
+        "src/hybrid/native_read_strings.cpp": "ad011d2e10a129a15c3c56f81a10c4489530edeb65da32cafceb90eb7330ae70",
+        "src/vm/ida_native_trace.cpp": "2e57964bd9d9fd70bd8e84e24e76dc17d05a43061cae6c665c3294a0573d7ef4",
+        "python/chernobog_temporal_strings.py": "3fddc5d2a36269f653fd1857ae36eb761897295d6d94f977d046638077208e15"
+      },
+      "probe_errors": [
+        "both protected values",
+        "complete witness table",
+        "interleaved streams retain object identity",
+        "two eight-byte streams actually alternate in the trace",
+        "interleaved streams retain object identity",
+        "two eight-byte streams actually alternate in the trace",
+        "interleaved streams retain object identity",
+        "two eight-byte streams actually alternate in the trace",
+        "interleaved streams retain object identity",
+        "two eight-byte streams actually alternate in the trace",
+        "IndexError"
+      ]
+    },
+    "note": "Failures are retained counterexamples, not accepted regression passes. Historical harness hashes precede formatting and the implementation change."
+  },
+  "limitations": [
+    "flat-memory complete-ledger contract; no device/concurrent-memory claim",
+    "global writes/calls/lifetime changes still end all pending streams",
+    "reverse, strided, permuted and write-interleaved algorithms remain",
+    "new interleaved fixtures are independently written native code, not newly protected specimens",
+    "protected coverage unchanged at 4/18",
+    "full VMP review remains incomplete"
+  ]
+}

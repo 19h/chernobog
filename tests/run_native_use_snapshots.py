@@ -1,4 +1,4 @@
-"""Build and verify scalar-read and modeled-argument native-region snapshots."""
+"""Verify scalar/model snapshots or interleaved native read streams."""
 
 import argparse
 import json
@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--gui", type=Path)
     parser.add_argument("--plugin", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--interleaved", choices=("separate", "shared"))
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     output = args.output_dir.resolve()
@@ -23,6 +24,7 @@ def main():
         "tests/run_native_use_snapshots.py",
         "tests/ida_region_strings_probe.py",
         "tests/vmp_native/native_snapshot_strings.c",
+        "tests/vmp_native/native_interleaved_strings.c",
         "tests/run_ida_smoke.py",
         "tests/run_vmp_corpus.py",
         "tests/evidence_tests.cpp",
@@ -37,6 +39,7 @@ def main():
         "-O1",
         "-g0",
         "-fno-builtin",
+        "-fno-unroll-loops",
         "-D_FORTIFY_SOURCE=0",
         "-Wl,-no_fixup_chains",
         "-Wl,-no_data_const",
@@ -44,6 +47,7 @@ def main():
     report = {
         "schema": 1,
         "passed": False,
+        "fixture": "interleaved-" + args.interleaved if args.interleaved else "scalar-modeled",
         "source_sha256": source_hashes,
         "plugin_sha256": digest(args.plugin),
         "ida_sha256": digest(args.ida),
@@ -52,12 +56,19 @@ def main():
         "native": [],
         "inspections": [],
     }
+    source = (
+        root
+        / "tests/vmp_native"
+        / ("native_interleaved_strings.c" if args.interleaved else "native_snapshot_strings.c")
+    )
     try:
         for label, definitions, expected in (
             ("original", [], 0),
             ("first-negative", ["-DSNAPSHOT_ORACLE_FIRST=0x5a7b2e3f28393f28ULL"], 1),
             ("second-negative", ["-DSNAPSHOT_ORACLE_SECOND=0x5a7b3e3435393f28ULL"], 1),
         ):
+            if args.interleaved == "shared":
+                definitions = [*definitions, "-DSHARED_ALLOCATION=1"]
             binary = output / label
             build, _, _ = execute(
                 [
@@ -65,7 +76,7 @@ def main():
                     "clang",
                     *flags,
                     *definitions,
-                    root / "tests/vmp_native/native_snapshot_strings.c",
+                    source,
                     "-o",
                     binary,
                 ],
@@ -102,7 +113,11 @@ def main():
                     destination,
                     "--enable-rax",
                     "--set",
-                    "CHERNOBOG_SNAPSHOT_USES=1",
+                    (
+                        "CHERNOBOG_INTERLEAVED_READS=" + args.interleaved
+                        if args.interleaved
+                        else "CHERNOBOG_SNAPSHOT_USES=1"
+                    ),
                     "--set",
                     "CHERNOBOG_EXPECT_RETURN=1",
                     "--set",

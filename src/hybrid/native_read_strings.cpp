@@ -4,6 +4,7 @@
 #include <limits>
 #include <map>
 #include <set>
+#include <tuple>
 
 namespace chernobog::hybrid
 {
@@ -18,6 +19,12 @@ struct Stream
     std::vector<UseSnapshot> parts;
     std::string value;
 };
+using Endpoint = std::tuple<DataScope, uint64_t, uint64_t, uint64_t>;
+Endpoint endpoint(const UseSnapshot &use, uint64_t address)
+{
+    return {use.scope, use.scope == DataScope::HEAP ? use.allocation_id : 0,
+            use.scope == DataScope::HEAP ? use.generation : 0, address};
+}
 struct Records
 {
     std::vector<const UseSnapshot *> uses;
@@ -118,11 +125,8 @@ bool follows(const Stream &stream, const UseSnapshot &next, const Records &recor
     auto barrier = records.barriers.upper_bound(last.sequence);
     if (barrier != records.barriers.end() && *barrier <= next.sequence)
         return false;
-    // Any intervening read, including one without an eligible use snapshot,
-    // interrupts the stream. Control-only loop instructions need not do so.
-    auto data = records.data.upper_bound(last.sequence + 1);
-    if (data == records.data.end() || data->first != next.sequence + 1)
-        return false;
+    // Read-only interleaving does not change the observed bytes. Writes,
+    // calls, modeled uses and lifetime changes remain global barriers.
     if (first.scope == DataScope::HEAP)
         return first.allocation_id == next.allocation_id && first.generation == next.generation;
     if (first.scope == DataScope::STACK)
@@ -206,7 +210,7 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
     {
         std::sort(records.uses.begin(), records.uses.end(),
                   [](const auto *a, const auto *b) { return a->sequence < b->sequence; });
-        Stream stream;
+        std::map<Endpoint, Stream> pending;
         uint64_t previous = 0;
         bool first = true;
         size_t retained = 0;
@@ -236,11 +240,14 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
             const auto &use = *pointer;
             if (!first && use.sequence <= previous)
                 return {};
+            const auto barrier = records.barriers.upper_bound(previous);
+            if (barrier != records.barriers.end() && *barrier <= use.sequence)
+                pending.clear();
             previous = use.sequence;
             first = false;
             if (bindings && use.producer == UseProducer::MODELED_ARGUMENT)
             {
-                stream = {};
+                pending.clear();
                 if (!valid_argument(use, records, context, *bindings))
                     ambiguous.insert({use.semantic_key(), {{use.site, use.observed_size}}});
                 else if (!retain(Stream{use, {use}, {}}))
@@ -251,11 +258,17 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
             {
                 if (bindings)
                     ambiguous.insert({use.semantic_key(), {{use.site, use.observed_size}}});
-                stream = {};
+                pending.clear();
                 continue;
             }
             if (bindings && !retain(Stream{use, {use}, {}}))
                 return {};
+            Stream stream;
+            if (const auto found = pending.find(endpoint(use, use.address)); found != pending.end())
+            {
+                stream = std::move(found->second);
+                pending.erase(found);
+            }
             if (!follows(stream, use, records))
                 stream = {};
             if (stream.parts.empty())
@@ -274,10 +287,16 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
             stream.use.observed_size += use.observed_size;
             stream.parts.push_back(use);
             if (std::find(use.bytes.begin(), use.bytes.end(), 0) == use.bytes.end())
+            {
+                const auto key =
+                    endpoint(stream.use, stream.use.address + stream.use.observed_size);
+                const auto [found, inserted] = pending.emplace(key, std::move(stream));
+                if (!inserted)
+                    pending.erase(found); // No arbitrary choice between overlapping prefixes.
                 continue;
+            }
             if (stream.parts.size() > 1 && !retain(std::move(stream)))
                 return {};
-            stream = {};
         }
     }
     for (auto &[key, witnesses] : values)

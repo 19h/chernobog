@@ -1206,8 +1206,7 @@ void native_read_stream_regressions()
                 {0x1300, 0x5000, 0, 1, RAX_MEM_WRITE, DataScope::IMAGE, 12, 1, 11});
             break;
         case 15:
-            changed.events.data.push_back(
-                {0x1300, 0x5000, 0, 1, RAX_MEM_READ, DataScope::IMAGE, 12, 1, 11});
+            changed.events.data.push_back({0x1300, 0x5000, 0, 1, 99, DataScope::IMAGE, 12, 1, 11});
             break;
         case 16:
             changed.events.edges.push_back({0x1300, 0x2000, 1, 11, ExecEdge::Kind::Call, 12});
@@ -1321,6 +1320,155 @@ void native_read_stream_regressions()
     }
 }
 
+void native_interleaved_read_regressions()
+{
+    const uint8_t values[2][8] = {{'s', 'e', 'c', 'r', 'e', 't', '!', 0},
+                                  {'s', 'e', 'c', 'o', 'n', 'd', '!', 0}};
+    unsigned checks = 0;
+    const auto verify = [&](bool value, const char *message)
+    {
+        check(value, message);
+        ++checks;
+    };
+    for (unsigned layout = 0; layout < 4; ++layout)
+        for (unsigned width : {1u, 2u, 4u})
+        {
+            TargetEvidence evidence;
+            evidence.scope.function_start = 0x1000;
+            const auto scope = layout < 2    ? DataScope::HEAP
+                               : layout == 2 ? DataScope::IMAGE
+                                             : DataScope::STACK;
+            for (uint32_t id : {1u, 2u})
+            {
+                TemporalMemory memory;
+                memory.enabled = true;
+                memory.context = 0x1000;
+                memory.run_id = id;
+                memory.seed = 10 + id;
+                memory.heap_begin = 0x8000 + 0x1000 * id;
+                memory.heap_end = memory.heap_begin + 0x1000;
+                memory.entry_sp = 0x20000 + 0x1000 * id;
+                uint64_t addresses[2];
+                if (layout < 2)
+                {
+                    addresses[0] = memory.allocate(64, 0x1100, 0x2000, 1);
+                    addresses[1] =
+                        layout == 0 ? memory.allocate(64, 0x1110, 0x2000, 2) : addresses[0] + 16;
+                }
+                else
+                {
+                    addresses[0] = layout == 2 ? 0x4000 : memory.entry_sp - 64;
+                    addresses[1] = addresses[0] + 16;
+                }
+                uint64_t sequence = 10;
+                for (unsigned offset = 0; offset < 8; offset += width)
+                    for (unsigned step = 0; step < 2; ++step)
+                    {
+                        const unsigned channel = id == 1 ? step : 1 - step;
+                        const uint64_t site = 0x1200 + channel * 16;
+                        memory.capture(site, 0, -1, UseProducer::EXECUTED_READ, scope,
+                                       addresses[channel] + offset, values[channel] + offset, width,
+                                       width, sequence);
+                        uint64_t scalar = 0;
+                        for (unsigned byte = 0; byte < width; ++byte)
+                            scalar |= uint64_t(values[channel][offset + byte]) << (8 * byte);
+                        evidence.events.data.push_back({site, addresses[channel] + offset, scalar,
+                                                        width, RAX_MEM_READ, scope, sequence + 1,
+                                                        id, memory.seed});
+                        sequence += 4;
+                    }
+                if (layout < 2)
+                {
+                    check(memory.release(addresses[0], 100), "release interleaved first buffer");
+                    if (layout == 0)
+                        check(memory.release(addresses[1], 101),
+                              "release interleaved second buffer");
+                }
+                evidence.events.uses.insert(evidence.events.uses.end(), memory.uses.begin(),
+                                            memory.uses.end());
+                evidence.events.allocations.insert(evidence.events.allocations.end(),
+                                                   memory.allocations.begin(),
+                                                   memory.allocations.end());
+                RunObservation run;
+                run.ran = true;
+                run.provenance.run_id = id;
+                run.provenance.seed = memory.seed;
+                run.outcome.temporal_observation_available = true;
+                run.outcome.temporal_capture_complete = true;
+                run.outcome.memory_observation_available = true;
+                evidence.runs.push_back(run);
+            }
+            const auto result = hybrid_consensus_native_read_strings(evidence);
+            verify(result.size() == 2, "interleaved buffers retain two independent streams");
+            for (const auto &candidate : result)
+            {
+                verify((candidate.value == "secret!" || candidate.value == "second!") &&
+                           candidate.witnesses.size() == 2 && candidate.read_fragments.size() == 2,
+                       "interleaved consensus preserves both scheduled runs");
+                for (size_t run = 0; run < 2; ++run)
+                {
+                    const auto &parts = candidate.read_fragments[run];
+                    verify(parts.size() == 8 / width &&
+                               parts.back().sequence - parts.front().sequence ==
+                                   8 * (8 / width - 1),
+                           "interleaved fragments retain original nonconsecutive event sequences");
+                    for (size_t i = 0; i < parts.size(); ++i)
+                        verify(parts[i].address == parts.front().address + i * width &&
+                                   parts[i].allocation_id == parts.front().allocation_id &&
+                                   parts[i].generation == parts.front().generation,
+                               "interleaved stream preserves address and lifetime identity");
+                }
+            }
+            for (unsigned failure = 0; failure < 4; ++failure)
+            {
+                auto changed = evidence;
+                if (failure < 2)
+                    changed.events.data.push_back({0x1300, 0x5000, 0, 1,
+                                                   failure == 0 ? RAX_MEM_WRITE : 99,
+                                                   DataScope::IMAGE, 16, 1, 11});
+                else
+                    changed.events.edges.push_back(
+                        {0x1300, 0x2000, 1, 11,
+                         failure == 2 ? ExecEdge::Kind::Call : ExecEdge::Kind::Unknown, 16});
+                verify(hybrid_consensus_native_read_strings(changed).empty(),
+                       "interleaved streams cannot cross a write or control-effect barrier");
+            }
+            auto extra_read = evidence;
+            extra_read.events.data.push_back(
+                {0x1300, 0x5000, 0, 1, RAX_MEM_READ, DataScope::IMAGE, 16, 1, 11});
+            verify(hybrid_consensus_native_read_strings(extra_read).size() == 2,
+                   "unrelated read-only data does not erase interleaved witnesses");
+            auto divergent = evidence;
+            divergent.events.uses[0].bytes[0] = 'X';
+            divergent.events.data[0].value =
+                (divergent.events.data[0].value & ~UINT64_C(255)) | 'X';
+            const auto remaining = hybrid_consensus_native_read_strings(divergent);
+            verify(remaining.size() == 1 && remaining[0].value == "second!",
+                   "one divergent interleaved value does not suppress the other stream");
+            if (width == 4)
+            {
+                auto collision = evidence;
+                auto use = collision.events.uses.front();
+                use.site = 0x1300;
+                use.address += 2;
+                if (scope == DataScope::IMAGE)
+                    use.object_site = use.address;
+                else
+                    use.offset += 2;
+                use.observed_size = 2;
+                use.bytes = {'c', 'r'};
+                use.sequence = 12;
+                collision.events.uses.push_back(use);
+                collision.events.data.push_back(
+                    {use.site, use.address, 0x7263, 2, RAX_MEM_READ, scope, 13, 1, 11});
+                const auto unambiguous = hybrid_consensus_native_read_strings(collision);
+                verify(unambiguous.size() == 1 && unambiguous[0].value == "second!",
+                       "colliding stream endpoints cannot select an arbitrary prefix");
+            }
+        }
+    std::cout << "interleaved read checks: " << checks << '\n';
+}
+
 int main(int argc, char **argv)
 {
     evidence_view_regressions();
@@ -1328,6 +1476,7 @@ int main(int argc, char **argv)
     comparison_regressions();
     temporal_memory_regressions();
     native_read_stream_regressions();
+    native_interleaved_read_regressions();
 #ifndef CHERNOBOG_LEGACY_EVIDENCE
     runtime_string_regressions();
 #endif

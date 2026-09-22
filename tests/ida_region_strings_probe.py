@@ -43,10 +43,15 @@ try:
     ida_auto.auto_wait()
     assert ida_loader.load_plugin(os.environ["CHERNOBOG_PLUGIN_PATH"])
     snapshot_uses = os.environ.get("CHERNOBOG_SNAPSHOT_USES") == "1"
+    interleaved = os.environ.get("CHERNOBOG_INTERLEAVED_READS")
     target = (
-        ida_name.get_name_ea(ida_idaapi.BADADDR, "_native_snapshot_strings")
-        if snapshot_uses
-        else int(os.environ["CHERNOBOG_STRING_ENTRY"], 0)
+        ida_name.get_name_ea(ida_idaapi.BADADDR, "_native_interleaved_strings")
+        if interleaved
+        else (
+            ida_name.get_name_ea(ida_idaapi.BADADDR, "_native_snapshot_strings")
+            if snapshot_uses
+            else int(os.environ["CHERNOBOG_STRING_ENTRY"], 0)
+        )
     )
     assert target != ida_idaapi.BADADDR
     bindings = []
@@ -128,6 +133,40 @@ try:
                         not modeled or (witness["argument"] == "0" and witness["model_kind"] == "6")
                     ),
                 )
+        if interleaved:
+            for run in snapshot["runs"]:
+                pair = [w for w in snapshot["witnesses"] if w["capture"] == run["capture"]]
+                check(
+                    "interleaved streams retain object identity",
+                    len(pair) == 2
+                    and (pair[0]["allocation"] == pair[1]["allocation"])
+                    == (interleaved == "shared")
+                    and {w["producer"] for w in pair} == {"executed-read-stream"},
+                )
+                sequences = [
+                    [
+                        int(f["sequence"])
+                        for f in snapshot["fragments"]
+                        if f["capture"] == run["capture"]
+                        and f["observation"] == witness["observation"]
+                    ]
+                    for witness in pair
+                ]
+                check(
+                    "two eight-byte streams actually alternate in the trace",
+                    len(sequences) == 2
+                    and all(len(s) == 8 for s in sequences)
+                    and (
+                        all(
+                            sequences[0][i] < sequences[1][i] < sequences[0][i + 1]
+                            for i in range(7)
+                        )
+                        or all(
+                            sequences[1][i] < sequences[0][i] < sequences[1][i + 1]
+                            for i in range(7)
+                        )
+                    ),
+                )
     else:
         check(
             "partial executions cannot publish strings",
@@ -148,7 +187,12 @@ try:
 
     check("fresh exact snapshot", fresh())
     key = ida_name.get_name_ea(
-        ida_idaapi.BADADDR, "_native_snapshot_key" if snapshot_uses else "_native_read_key"
+        ida_idaapi.BADADDR,
+        (
+            "_native_interleaved_key"
+            if interleaved
+            else "_native_snapshot_key" if snapshot_uses else "_native_read_key"
+        ),
     )
     assert key != ida_idaapi.BADADDR
     original = ida_bytes.get_byte(key)
