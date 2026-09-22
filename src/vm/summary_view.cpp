@@ -42,6 +42,11 @@ SummaryRow describe(const Summary &s, size_t reference)
     if (s.candidate.stack_dispatch)
         row["contract"] +=
             "; near-return stack width equals address width; CET shadow stack disabled";
+    row["scope"] = s.candidate.stack_check
+                       ? "conditional observed fast stack-check path; relocation arm not summarized"
+                   : s.candidate.payload_value >= 0
+                       ? "local immediate-push scaffold; source continuation unproved"
+                       : "local read/decode/dispatch scaffold";
     size_t payload = 0, omitted = 0;
     for (const auto &field : row)
         payload += field.first.size() + field.second.size();
@@ -61,6 +66,12 @@ SummaryRow describe(const Summary &s, size_t reference)
         row[name + "_complete"] = text.size() <= 2048 ? "true" : "false";
         payload += name.size() * 2 + retained.size() + 20;
     };
+    // The input domain precedes optional output expressions so a conditional
+    // summary cannot appear unconditional when the display budget is exhausted.
+    row["domain_complete"] = "false";
+    expression("domain", s.domain);
+    if (!row.count("domain"))
+        row["domain"] = "omitted; conditional applicability must not be inferred";
     for (size_t i = 0; i < s.roles.size(); ++i)
         if (s.roles[i].find("preserved_") != 0)
             expression("out_" + s.roles[i], s.registers[i]);

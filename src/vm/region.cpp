@@ -24,56 +24,58 @@ bool advance(const Instruction &i, int vip, unsigned bits, unsigned mode, Op op)
 }
 } // namespace
 
-static std::optional<Candidate> recognize_core(const std::vector<Instruction> &code, unsigned mode)
+namespace
 {
-    if ((mode != 32 && mode != 64) || code.size() < 3 || code.size() > 128)
+struct ReadStage
+{
+    uint64_t read = bad_address;
+    unsigned bits = 0;
+    int vip = -1, value = -1, key = -1;
+    Direction direction = Direction::forward;
+    bool stack_key_update = false;
+};
+std::optional<ReadStage> read_stage(const std::vector<Instruction> &code, size_t &cursor,
+                                    unsigned mode)
+{
+    if (cursor + 1 >= code.size())
         return {};
-    for (size_t i = 0; i < code.size(); ++i)
-        if (code[i].address == bad_address || !code[i].size || code[i].size > 15 ||
-            code[i].address > UINT64_MAX - code[i].size)
-            return {};
-    const bool backwards = code[0].op == Op::sub;
-    const auto &load = code[backwards ? 1 : 0];
+    const bool backwards = code[cursor].op == Op::sub;
+    const auto &load = code[cursor + (backwards ? 1 : 0)];
+    const auto bits = load.src.bits;
     if (load.op != Op::load || load.dst.kind != Kind::reg || load.src.kind != Kind::memory ||
-        (load.src.bits != 8 && load.src.bits != 32) || load.dst.bits != 32 ||
+        (bits != 8 && bits != 16 && bits != 32 && !(mode == 64 && bits == 64)) ||
+        load.dst.bits != std::max(32u, bits) || load.dst.bit_offset != 0 ||
         !valid_reg(load.dst.reg, mode) || !valid_reg(load.src.base, mode) ||
-        load.dst.reg == load.src.base || !memory(load.src, load.src.base, load.src.bits, mode))
-        return {};
-    if (!advance(code[backwards ? 0 : 1], load.src.base, load.src.bits, mode,
+        load.dst.reg == load.src.base || !memory(load.src, load.src.base, bits, mode) ||
+        !advance(code[cursor + (backwards ? 0 : 1)], load.src.base, bits, mode,
                  backwards ? Op::sub : Op::add))
         return {};
-    Candidate c;
-    c.start = code.front().address;
-    c.end = code.back().address + code.back().size;
-    c.read = load.address;
-    c.dispatch = code.back().address;
-    c.address_bits = mode;
-    c.read_bits = load.src.bits;
-    c.direction = backwards ? Direction::backward : Direction::forward;
-    c.vip = load.src.base;
-    c.value = load.dst.reg;
-    size_t cursor = 2;
-    // Stateful source-emitted decode: value OP key, bounded immediate/unary
-    // transforms, then key OP value (including the x64 low-dword stack idiom).
+    ReadStage stage;
+    stage.read = load.address;
+    stage.bits = bits;
+    stage.vip = load.src.base;
+    stage.value = load.dst.reg;
+    stage.direction = backwards ? Direction::backward : Direction::forward;
+    cursor += 2;
     if (cursor < code.size() && arithmetic(code[cursor].op) &&
-        reg(code[cursor].dst, c.value, c.read_bits) && code[cursor].src.kind == Kind::reg)
+        reg(code[cursor].dst, stage.value, bits) && code[cursor].src.kind == Kind::reg)
     {
         const auto &mix = code[cursor++];
-        c.key = mix.src.reg;
-        if (!valid_reg(c.key, mode) || c.key == c.vip || c.key == c.value ||
-            mix.src.bits != c.read_bits)
+        stage.key = mix.src.reg;
+        if (!valid_reg(stage.key, mode) || stage.key == stage.vip || stage.key == stage.value ||
+            !reg(mix.src, stage.key, bits))
             return {};
         while (cursor < code.size())
         {
             const auto &i = code[cursor];
-            if (!reg(i.dst, c.value, c.read_bits))
+            if (!reg(i.dst, stage.value, bits))
                 break;
             const bool immediate =
                 (arithmetic(i.op) || i.op == Op::rotate_left || i.op == Op::rotate_right) &&
                 i.src.kind == Kind::immediate;
             const bool unary =
                 (i.op == Op::negate || i.op == Op::bit_not || i.op == Op::increment ||
-                 i.op == Op::decrement || (i.op == Op::byte_swap && c.read_bits == 32)) &&
+                 i.op == Op::decrement || (i.op == Op::byte_swap && (bits == 32 || bits == 64))) &&
                 i.src.kind == Kind::none;
             if (!immediate && !unary)
                 break;
@@ -81,34 +83,110 @@ static std::optional<Candidate> recognize_core(const std::vector<Instruction> &c
         }
         if (cursor == code.size())
             return {};
-        if (mode == 64 && c.read_bits == 32)
+        if (mode == 64 && bits == 32)
         {
             if (cursor + 2 >= code.size())
                 return {};
             const auto &push = code[cursor], &update = code[cursor + 1], &pop = code[cursor + 2];
-            if (push.op != Op::push || !reg(push.dst, c.key, 64) || update.op != mix.op ||
-                !memory(update.dst, 4, 32, 64) || !reg(update.src, c.value, 32) ||
-                pop.op != Op::pop || !reg(pop.dst, c.key, 64))
+            if (push.op != Op::push || !reg(push.dst, stage.key, 64) ||
+                push.src.kind != Kind::none || update.op != mix.op ||
+                !memory(update.dst, 4, 32, 64) || !reg(update.src, stage.value, 32) ||
+                pop.op != Op::pop || !reg(pop.dst, stage.key, 64) || pop.src.kind != Kind::none)
                 return {};
-            c.stack_key_update = true;
+            stage.stack_key_update = true;
             cursor += 3;
         }
         else
         {
             const auto &update = code[cursor++];
-            if (update.op != mix.op || !reg(update.dst, c.key, c.read_bits) ||
-                !reg(update.src, c.value, c.read_bits))
+            if (update.op != mix.op || !reg(update.dst, stage.key, bits) ||
+                !reg(update.src, stage.value, bits))
                 return {};
         }
     }
+    return stage;
+}
+bool stack_check(const std::vector<Instruction> &code, size_t &cursor, Candidate &c)
+{
+    if (cursor + 2 >= code.size())
+        return false;
+    const auto &lea = code[cursor], &cmp = code[cursor + 1], &branch = code[cursor + 2];
+    const auto mode = c.address_bits;
+    const auto &source = lea.src;
+    if (lea.op != Op::address || lea.dst.kind != Kind::reg || !valid_reg(lea.dst.reg, mode) ||
+        !reg(lea.dst, lea.dst.reg, mode) || source.kind != Kind::memory || source.base != 4 ||
+        source.index != -1 || source.bits != mode || source.address_bits != mode ||
+        source.scale != 1 ||
+        (source.value != (mode == 64 ? 256u : 96u) && source.value != (mode == 64 ? 320u : 128u)) ||
+        cmp.op != Op::compare || !reg(cmp.dst, c.virtual_stack, mode) ||
+        !reg(cmp.src, lea.dst.reg, mode) || branch.op != Op::jump_above ||
+        branch.dst.kind != Kind::immediate || branch.dst.bits != mode ||
+        branch.src.kind != Kind::none)
+        return false;
+    c.stack_check = true;
+    c.stack_check_branch = branch.address;
+    c.stack_check_offset = source.value;
+    c.stack_check_value = lea.dst.reg;
+    cursor += 3;
+    return true;
+}
+} // namespace
+
+static std::optional<Candidate> recognize_core(const std::vector<Instruction> &code, unsigned mode)
+{
+    if ((mode != 32 && mode != 64) || code.size() < 3 || code.size() > instruction_limit)
+        return {};
+    size_t cursor = 0;
+    auto stage = read_stage(code, cursor, mode);
+    if (!stage)
+        return {};
+    Candidate c;
+    c.start = code.front().address;
+    c.end = code.back().address + code.back().size;
+    c.dispatch = code.back().address;
+    c.address_bits = mode;
+    c.vip = stage->vip;
+    c.direction = stage->direction;
+    c.key = stage->key;
+    c.stack_key_update = stage->stack_key_update;
+    if (cursor + 1 < code.size() && code[cursor].op == Op::sub && code[cursor + 1].op == Op::load &&
+        code[cursor + 1].dst.kind == Kind::memory)
+    {
+        const auto &adjust = code[cursor++], &store = code[cursor++];
+        c.payload_read = stage->read;
+        c.payload_bits = stage->bits;
+        c.stored_bits = std::max(16u, c.payload_bits);
+        c.payload_value = stage->value;
+        c.virtual_stack = adjust.dst.reg;
+        c.payload_store = store.address;
+        if (!valid_reg(c.virtual_stack, mode) || c.virtual_stack == c.vip ||
+            c.virtual_stack == c.key || c.virtual_stack == c.payload_value ||
+            !advance(adjust, c.virtual_stack, c.stored_bits, mode, Op::sub) ||
+            !memory(store.dst, c.virtual_stack, c.stored_bits, mode) ||
+            !reg(store.src, c.payload_value, c.stored_bits))
+            return {};
+        if (cursor < code.size() && code[cursor].op == Op::address && !stack_check(code, cursor, c))
+            return {};
+        stage = read_stage(code, cursor, mode);
+        if (!stage || stage->vip != c.vip || stage->direction != c.direction ||
+            (stage->key >= 0 && c.key >= 0 && stage->key != c.key))
+            return {};
+        if (stage->key >= 0)
+            c.key = stage->key;
+        c.stack_key_update = c.stack_key_update || stage->stack_key_update;
+    }
+    c.read = stage->read;
+    c.read_bits = stage->bits;
+    c.value = stage->value;
     if (c.read_bits == 8)
     {
         if (cursor + 1 != code.size())
             return {};
         const auto &jump = code[cursor];
         const auto &target = jump.dst;
-        if (jump.op != Op::jump || target.kind != Kind::memory || target.bits != mode ||
-            target.address_bits != mode || target.index != c.value || target.scale != mode / 8)
+        if (jump.op != Op::jump || jump.src.kind != Kind::none || target.kind != Kind::memory ||
+            target.bits != mode || target.address_bits != mode || target.index != c.value ||
+            target.scale != mode / 8)
             return {};
         if (mode == 64 && (!valid_reg(target.base, mode) || target.base == c.vip ||
                            target.base == c.value || target.base == c.key || target.value != 0))
@@ -119,8 +197,11 @@ static std::optional<Candidate> recognize_core(const std::vector<Instruction> &c
         c.dispatch_base = target.base;
         c.table_displacement = target.value;
     }
-    else
+    else if (c.read_bits == 32)
     {
+        // Advanced handlers compute the relative target before their stack check.
+        if (c.stack_check)
+            return {};
         if (mode == 64)
         {
             if (cursor >= code.size() || code[cursor].op != Op::sign_extend ||
@@ -128,16 +209,35 @@ static std::optional<Candidate> recognize_core(const std::vector<Instruction> &c
                 return {};
             ++cursor;
         }
-        if (cursor + 2 != code.size())
+        if (cursor >= code.size())
             return {};
-        const auto &add = code[cursor], &jump = code[cursor + 1];
+        const auto &add = code[cursor++];
         if (add.op != Op::add || add.dst.kind != Kind::reg || !valid_reg(add.dst.reg, mode) ||
             add.dst.reg == c.vip || add.dst.reg == c.value || add.dst.reg == c.key ||
-            add.dst.bits != mode || !reg(add.src, c.value, mode) || jump.op != Op::jump ||
-            !reg(jump.dst, add.dst.reg, mode))
+            !reg(add.dst, add.dst.reg, mode) || !reg(add.src, c.value, mode))
             return {};
         c.dispatch_kind = Dispatch::relative_register;
         c.dispatch_base = add.dst.reg;
+        if (c.payload_bits && cursor < code.size() && code[cursor].op == Op::address &&
+            !stack_check(code, cursor, c))
+            return {};
+        if (cursor + 1 != code.size() || code[cursor].op != Op::jump ||
+            !reg(code[cursor].dst, c.dispatch_base, mode) || code[cursor].src.kind != Kind::none)
+            return {};
+    }
+    else
+        return {};
+    if (c.payload_bits)
+    {
+        for (int role : {c.vip, c.key, c.dispatch_base, c.value})
+            if (role >= 0 && role == c.virtual_stack)
+                return {};
+        for (int role : {c.vip, c.key, c.dispatch_base})
+            if (role >= 0 && (role == c.payload_value || role == c.value ||
+                              (c.stack_check && role == c.stack_check_value)))
+                return {};
+        if (c.stack_check && c.stack_check_value == c.virtual_stack)
+            return {};
     }
     c.support = code;
     return c;
@@ -165,7 +265,7 @@ bool register_effect(const Instruction &i, unsigned mode)
     if (i.op == Op::negate || i.op == Op::bit_not || i.op == Op::increment || i.op == Op::decrement)
         return i.src.kind == Kind::none;
     if (i.op == Op::byte_swap)
-        return i.dst.bits == 32 && i.src.kind == Kind::none;
+        return (i.dst.bits == 32 || i.dst.bits == 64) && i.src.kind == Kind::none;
     if (i.op == Op::load || i.op == Op::sign_extend)
         return register_operand(i.src, mode) && i.src.bits <= i.dst.bits;
     return i.op == Op::scan_forward && i.dst.bits >= 16 && register_operand(i.src, mode) &&
@@ -183,7 +283,7 @@ bool flag_effect(const Instruction &i, unsigned mode)
 
 std::optional<Candidate> recognize(const std::vector<Instruction> &code, unsigned mode)
 {
-    if ((mode != 32 && mode != 64) || code.size() < 3 || code.size() > 128 ||
+    if ((mode != 32 && mode != 64) || code.size() < 3 || code.size() > instruction_limit ||
         (code.back().op != Op::jump && code.back().op != Op::near_return))
         return {};
     for (size_t i = 0; i < code.size(); ++i)
@@ -199,8 +299,9 @@ std::optional<Candidate> recognize(const std::vector<Instruction> &code, unsigne
         if (i)
         {
             const auto &previous = code[i - 1];
-            const uint64_t next = previous.op == Op::direct_jump ? previous.dst.value
-                                                                 : previous.address + previous.size;
+            const uint64_t next = previous.op == Op::direct_jump || previous.op == Op::jump_above
+                                      ? previous.dst.value
+                                      : previous.address + previous.size;
             if (current.alternate_entry || current.address != next)
                 return {};
         }
@@ -209,18 +310,21 @@ std::optional<Candidate> recognize(const std::vector<Instruction> &code, unsigne
                 code[j].address < current.address + current.size)
                 return {};
     }
+    const bool guarded = std::any_of(code.begin(), code.end(),
+                                     [](const Instruction &i) { return i.op == Op::jump_above; });
     std::vector<Instruction> core;
     for (size_t index = 0; index < code.size(); ++index)
     {
         const auto &i = code[index];
-        if (i.op == Op::direct_jump)
+        if (i.op == Op::direct_jump || i.op == Op::jump_above)
         {
             if (index + 1 == code.size() || i.dst.kind != Kind::immediate || i.dst.bits != mode ||
-                i.src.kind != Kind::none)
+                i.src.kind != Kind::none || (mode == 32 && i.dst.value > UINT32_MAX))
                 return {};
-            continue;
+            if (i.op == Op::direct_jump)
+                continue;
         }
-        if (flag_effect(i, mode))
+        if (!guarded && flag_effect(i, mode))
             continue;
         core.push_back(i);
     }
@@ -303,22 +407,31 @@ std::string normalized_shape(const Candidate &c)
 {
     std::ostringstream out;
     out << c.address_bits << ':' << c.read_bits << ':' << int(c.direction) << ':'
-        << int(c.dispatch_kind);
+        << int(c.dispatch_kind) << ':' << c.payload_bits << ':' << c.stored_bits << ':'
+        << c.stack_check;
     const auto role = [&](int r)
     {
-        return r == -1                ? -1
-               : r == c.vip           ? 0
-               : r == c.value         ? 1
-               : r == c.key           ? 2
-               : r == c.dispatch_base ? 3
-               : r == 4               ? 4
-                                      : 5 + r;
+        return r == -1                    ? -1
+               : r == c.vip               ? 0
+               : r == c.value             ? 1
+               : r == c.key               ? 2
+               : r == c.dispatch_base     ? 3
+               : r == 4                   ? 4
+               : r == c.virtual_stack     ? 5
+               : r == c.payload_value     ? 6
+               : r == c.stack_check_value ? 7
+                                          : 8 + r;
     };
     for (const auto &i : c.support)
     {
         if (i.op == Op::direct_jump)
         {
             out << ";direct-next";
+            continue;
+        }
+        if (i.op == Op::jump_above)
+        {
+            out << ";above-next";
             continue;
         }
         out << ';' << int(i.op) << ':' << i.stack_bits;

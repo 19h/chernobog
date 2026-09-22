@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -50,7 +51,9 @@ enum class Op
     carry_clear,
     carry_toggle,
     scan_forward,
-    near_return
+    near_return,
+    address,   // LEA: compute the memory operand address without reading memory
+    jump_above // observed taken JA; the alternative successor is outside this path
 };
 struct Instruction
 {
@@ -83,11 +86,21 @@ struct Candidate
     bool stack_key_update = false;
     bool stack_dispatch = false; // final transfer is modeled push/near-return
     uint64_t table_displacement = 0;
+    uint64_t payload_read = bad_address, payload_store = bad_address;
+    unsigned payload_bits = 0, stored_bits = 0;
+    int payload_value = -1, virtual_stack = -1;
+    // Only the observed fast stack-check path is represented. A candidate
+    // without this check is a local scaffold, not a complete source handler.
+    bool stack_check = false;
+    uint64_t stack_check_branch = bad_address, stack_check_offset = 0;
+    int stack_check_value = -1;
     std::vector<Instruction> support;
 };
 
-// Single-entry local path, at most 128 instructions. Discontiguous links require
-// an explicit direct_jump to the next instruction; all effects remain in support.
+constexpr std::size_t instruction_limit = 256;
+// Single-entry local path, bounded by instruction_limit. Discontiguous links require
+// an explicit direct_jump or taken jump_above to the next instruction. Conditional
+// paths carry an input domain in their summary; all effects remain in support.
 // No naming convention, fixed register assignment, target enumeration or VM identity.
 std::optional<Candidate> recognize(const std::vector<Instruction> &, unsigned address_bits);
 

@@ -39,6 +39,16 @@ abstentions; they cannot be counted as successful recovery.
 Quality gates are applied to each completed change and again to the complete
 objective. Neither baseline test success nor this ledger proves completion.
 
+Guarded immediate-push checkpoint: payload/store effects, virtual-stack role
+hypotheses and source-ordered taken stack checks now have conditional summaries.
+Equivalence compares nonempty input domains and complete effects; observations
+require every internal transfer witness. Across x64/i386, 168 synthetic native
+cases and IDA captures pass 2,282 assertions and 84 independent full-path replays;
+all 21 CTest suites pass. A matched protected case retains 80 dispatch-only
+transitions and zero full guarded handlers, stopping at unsupported BSWAP16.
+Relocation, complete logical state and protected full-handler recovery remain
+incomplete. See `VMP_PUSH_HANDLERS.md`.
+
 Native topology checkpoint: an actual IDA counterexample showed stale owned
 comments and a branch edge after an external adjacent fallthrough or tail
 removal, despite inspector rejection. Entry and ownership mutations now revoke

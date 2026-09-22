@@ -51,6 +51,12 @@ void roles(ObservationView::Row &row, const Candidate &c, const hybrid::StatePoi
     row[p + "key"] = c.key < 0 ? "not used by candidate" : gpr(c.key);
     row[p + "dispatch_base"] =
         c.dispatch_base < 0 ? "absolute table displacement" : gpr(c.dispatch_base);
+    row[p + "virtual_stack"] =
+        c.virtual_stack < 0 ? "not identified by candidate" : gpr(c.virtual_stack);
+    row[p + "payload_register"] =
+        c.payload_value < 0 ? "not used by candidate" : gpr(c.payload_value);
+    row[p + "stack_check_register"] =
+        c.stack_check_value < 0 ? "not used by candidate" : gpr(c.stack_check_value);
     row[p + "native_sp"] = gpr(4);
     row[p + "flags"] =
         reg(state, c.address_bits == 64 ? RAX_X86_REG_RFLAGS : RAX_X86_REG_EFLAGS, c.address_bits);
@@ -171,12 +177,14 @@ NativeObservationView project_native_observations(const NativeRegion &region,
         if (!((initial.op == Op::load && initial.src.kind == Kind::memory) ||
               (initial.op == Op::sub && initial.dst.kind == Kind::reg &&
                initial.src.kind == Kind::immediate &&
-               (initial.src.value == 1 || initial.src.value == 4))))
+               (initial.src.value == 1 || initial.src.value == 2 || initial.src.value == 4 ||
+                initial.src.value == 8))))
             continue;
         ++view.starts_examined;
         std::vector<Instruction> path;
         bool ended = false;
-        for (size_t at = start; at < events.execution.size() && path.size() < 128; ++at)
+        for (size_t at = start; at < events.execution.size() && path.size() < instruction_limit;
+             ++at)
         {
             if (view.path_steps == 8192)
             {
@@ -237,7 +245,20 @@ NativeObservationView project_native_observations(const NativeRegion &region,
                     {"value_register", std::to_string(c.value)},
                     {"key_register", std::to_string(c.key)},
                     {"dispatch_base_register", std::to_string(c.dispatch_base)},
-                    {"virtual_stack", "unknown"},
+                    {"payload_read", hex(c.payload_read)},
+                    {"payload_store", hex(c.payload_store)},
+                    {"payload_bits", std::to_string(c.payload_bits)},
+                    {"stored_bits", std::to_string(c.stored_bits)},
+                    {"payload_value_register", std::to_string(c.payload_value)},
+                    {"virtual_stack_register", std::to_string(c.virtual_stack)},
+                    {"stack_check", c.stack_check ? "true" : "false"},
+                    {"stack_check_branch", hex(c.stack_check_branch)},
+                    {"stack_check_offset", std::to_string(c.stack_check_offset)},
+                    {"stack_check_register", std::to_string(c.stack_check_value)},
+                    {"payload_register_scope",
+                     "native register snapshot; stored payload is the ordered store value"},
+                    {"virtual_stack",
+                     c.virtual_stack < 0 ? "unknown" : "captured native register hypothesis"},
                     {"vm_context", "unknown"},
                     {"memory_epoch", "unknown"},
                     {"logical_state_complete", "false"},
@@ -255,12 +276,44 @@ NativeObservationView project_native_observations(const NativeRegion &region,
                 spans += hex(i.address) + ":" + std::to_string(i.size) + ";";
             row["instruction_spans"] = spans;
             roles(row, c, entry, "entry_");
+            bool internal_transfers = true;
+            for (size_t index = start; index < at && internal_transfers; ++index)
+            {
+                const auto &instruction = decoded.at(events.execution[index].pc);
+                const auto &next = events.execution[index + 1];
+                const auto state = outputs.find(next.sequence);
+                const auto edge = edges.find(next.sequence);
+                if (instruction.op != Op::direct_jump && instruction.op != Op::jump_above)
+                {
+                    internal_transfers = state == outputs.end() && edge == edges.end();
+                    continue;
+                }
+                internal_transfers =
+                    state != outputs.end() && edge != edges.end() &&
+                    state->second->source == instruction.address && state->second->pc == next.pc &&
+                    next.pc == instruction.dst.value && edge->second->from == instruction.address &&
+                    edge->second->to == next.pc && edge->second->kind == ExecEdge::Kind::Jump;
+                if (!internal_transfers)
+                    break;
+                const auto &entered = *entries.at(next.sequence);
+                for (int id = 0; id <= (mode == 64 ? 16 : 8); ++id)
+                {
+                    const bool flags = id == (mode == 64 ? 16 : 8);
+                    const int r = flags ? (mode == 64 ? RAX_X86_REG_RFLAGS : RAX_X86_REG_EFLAGS)
+                                        : (mode == 64 ? RAX_X86_GPR64(id) : RAX_X86_GPR32(id));
+                    const auto value = reg(*state->second, r, mode);
+                    if (value.find("unknown:") == 0 || value != reg(entered, r, mode))
+                        internal_transfers = false;
+                }
+            }
+            row["internal_transfers"] =
+                internal_transfers ? "exact captured witnesses" : "missing or inconsistent witness";
             bool matched = false;
             if (exit)
             {
                 const auto edge = edges.find(exit->sequence);
-                matched = edge != edges.end() && edge->second->from == c.dispatch &&
-                          edge->second->to == exit->pc &&
+                matched = internal_transfers && edge != edges.end() &&
+                          edge->second->from == c.dispatch && edge->second->to == exit->pc &&
                           edge->second->kind ==
                               (c.stack_dispatch ? ExecEdge::Kind::Return : ExecEdge::Kind::Jump);
                 row["output_sequence"] = hex(exit->sequence);
@@ -291,6 +344,9 @@ NativeObservationView project_native_observations(const NativeRegion &region,
                     "one observed fixed-entry normal-completion path; flat little-endian memory; no concurrency/devices/segment bases/exceptions; no cross-input equivalence";
                 if (c.stack_dispatch)
                     row["transition_contract"] += "; CET shadow stack disabled";
+                if (c.stack_check)
+                    row["transition_contract"] +=
+                        "; taken JA domain required; relocation arm not summarized";
                 if (code_write)
                     row["transition_reason"] = "recorded candidate code write";
                 else if (!outcome.data_trace_complete)
@@ -326,7 +382,7 @@ NativeObservationView project_native_observations(const NativeRegion &region,
         }
         if (!view.path_limited && !ended)
         {
-            if (path.size() == 128)
+            if (path.size() == instruction_limit)
                 ++view.path_length_stops;
             else
                 ++view.capture_end_stops;

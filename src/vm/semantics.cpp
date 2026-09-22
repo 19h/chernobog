@@ -26,6 +26,12 @@ std::vector<std::string> roles(const Candidate &c)
         result[c.key] = "key";
     if (c.dispatch_base >= 0)
         result[c.dispatch_base] = "base";
+    if (c.virtual_stack >= 0)
+        result[c.virtual_stack] = "virtual_stack";
+    if (c.payload_value >= 0 && result[c.payload_value].empty())
+        result[c.payload_value] = "payload_value";
+    if (c.stack_check_value >= 0 && result[c.stack_check_value].empty())
+        result[c.stack_check_value] = "stack_check_value";
     unsigned other = 0;
     for (auto &name : result)
         if (name.empty())
@@ -133,6 +139,18 @@ class Evaluator
         site = i.address;
         if (i.op == Op::direct_jump)
             return; // validated next support instruction
+        if (i.op == Op::jump_above)
+        {
+            if (!out.defined[0] || !out.defined[3])
+                throw std::runtime_error("undefined conditional path flags");
+            out.domain = out.domain && !out.flags[0] && !out.flags[3];
+            return; // recognition validates the observed taken successor
+        }
+        if (i.op == Op::address)
+        {
+            write(i.dst, address(i.src));
+            return;
+        }
         if (i.op == Op::carry_set || i.op == Op::carry_clear)
         {
             out.flags[0] = ctx.bool_val(i.op == Op::carry_set);
@@ -246,7 +264,7 @@ Summary::Summary(z3::context &ctx, Candidate c)
     : candidate(std::move(c)), roles(vm::roles(candidate)),
       memory(ctx.constant("input_memory",
                           ctx.array_sort(ctx.bv_sort(candidate.address_bits), ctx.bv_sort(8)))),
-      next_pc(ctx.bv_val(0, candidate.address_bits))
+      next_pc(ctx.bv_val(0, candidate.address_bits)), domain(ctx.bool_val(true))
 {
     for (const auto &role : roles)
         registers.push_back(ctx.bv_const(("input_" + role).c_str(), candidate.address_bits));
@@ -291,7 +309,8 @@ Comparison compare(const Summary &a, const Summary &b, unsigned timeout, unsigne
     if (&a.memory.ctx() != &b.memory.ctx() ||
         a.candidate.address_bits != b.candidate.address_bits ||
         (a.candidate.key >= 0) != (b.candidate.key >= 0) ||
-        (a.candidate.dispatch_base >= 0) != (b.candidate.dispatch_base >= 0))
+        (a.candidate.dispatch_base >= 0) != (b.candidate.dispatch_base >= 0) ||
+        (a.candidate.virtual_stack >= 0) != (b.candidate.virtual_stack >= 0))
         return {Equivalence::incompatible, "input role contract differs"};
     if (a.accesses.size() != b.accesses.size() || a.defined != b.defined)
         return {Equivalence::incompatible, "ordered access or defined-flag contract differs"};
@@ -321,14 +340,33 @@ Comparison compare(const Summary &a, const Summary &b, unsigned timeout, unsigne
         params.set("timeout", std::max(1u, timeout));
         params.set("rlimit", std::max(1u, resource));
         solver.set(params);
-        solver.add(mismatch);
         const auto settings = "timeout_ms=" + std::to_string(std::max(1u, timeout)) +
                               ";rlimit=" + std::to_string(std::max(1u, resource));
+        solver.push();
+        solver.add(a.domain || b.domain);
+        const auto nonempty =
+            solver_evidence::check(solver, "VM summary domain satisfiability", settings.c_str());
+        if (nonempty == z3::unknown)
+            return {Equivalence::unknown, solver.reason_unknown()};
+        if (nonempty == z3::unsat)
+            return {Equivalence::incompatible, "empty summary domains cannot prove equivalence"};
+        solver.pop();
+        solver.push();
+        solver.add(a.domain != b.domain);
+        const auto domains =
+            solver_evidence::check(solver, "VM summary domain mismatch", settings.c_str());
+        if (domains == z3::unknown)
+            return {Equivalence::unknown, solver.reason_unknown()};
+        if (domains == z3::sat)
+            return {Equivalence::different, "SAT: modeled input domains differ"};
+        solver.pop();
+        solver.add(a.domain && mismatch);
         const auto result =
             solver_evidence::check(solver, "VM local summary effect mismatch", settings.c_str());
         if (result == z3::unsat)
-            return {Equivalence::equivalent,
-                    "UNSAT: full modeled outputs and ordered accesses agree under role mapping"};
+            return {
+                Equivalence::equivalent,
+                "SAT common domain then UNSAT domain/effect mismatch: full modeled outputs and ordered accesses agree under role mapping"};
         if (result == z3::sat)
             return {Equivalence::different, "SAT: modeled effect counterexample exists"};
         return {Equivalence::unknown, solver.reason_unknown()};

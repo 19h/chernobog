@@ -36,7 +36,7 @@ template <class T> void order(std::vector<const T *> &items)
     std::stable_sort(items.begin(), items.end(),
                      [](auto a, auto b) { return a->sequence < b->sequence; });
 }
-template <class T> auto at(std::vector<const T *> &items, uint64_t sequence)
+template <class T> auto at(const std::vector<const T *> &items, uint64_t sequence)
 {
     return std::lower_bound(items.begin(), items.end(), sequence,
                             [](auto p, uint64_t s) { return p->sequence < s; });
@@ -64,6 +64,12 @@ void roles(Row &row, const StatePoint &s, const Candidate &c, const std::string 
     row[prefix + "dispatch_base"] =
         c.dispatch_base < 0 ? "absolute table displacement" : gpr(c.dispatch_base);
     row[prefix + "native_sp"] = gpr(4);
+    row[prefix + "virtual_stack"] =
+        c.virtual_stack < 0 ? "not identified by candidate" : gpr(c.virtual_stack);
+    row[prefix + "payload_register"] =
+        c.payload_value < 0 ? "not used by candidate" : gpr(c.payload_value);
+    row[prefix + "stack_check_register"] =
+        c.stack_check_value < 0 ? "not used by candidate" : gpr(c.stack_check_value);
     row[prefix + "flags"] =
         reg(s, c.address_bits == 64 ? RAX_X86_REG_RFLAGS : RAX_X86_REG_EFLAGS, c.address_bits);
 }
@@ -76,10 +82,118 @@ struct Trace
 {
     std::vector<const StatePoint *> states;
     std::vector<const ExecPoint *> execution;
+    std::vector<const ExecEdge *> edges;
     std::vector<const DataAcc *> data;
     const RunObservation *observation = nullptr;
     bool ambiguous = false;
 };
+struct LocalPath
+{
+    const StatePoint *output = nullptr;
+    size_t output_index = 0, internal_transfers = 0;
+    bool matched = false;
+    const char *reason = "unresolved: native instruction path differs";
+};
+LocalPath local_path(const Trace &trace, const Candidate &candidate, size_t entry_index)
+{
+    LocalPath result;
+    const auto &entry = *trace.states[entry_index];
+    if ((entry_index && trace.states[entry_index - 1]->sequence == entry.sequence) ||
+        (entry_index + 1 < trace.states.size() &&
+         trace.states[entry_index + 1]->sequence == entry.sequence))
+    {
+        result.reason = "unresolved: duplicate sample sequence";
+        return result;
+    }
+    const auto first = at(trace.execution, entry.sequence);
+    if (size_t(trace.execution.end() - first) < candidate.support.size())
+        return result;
+    for (size_t j = 0; j < candidate.support.size(); ++j)
+        if (first[j]->pc != candidate.support[j].address ||
+            first[j]->size != candidate.support[j].size || run(*first[j]) != run(entry) ||
+            (j ? first[j - 1]->sequence >= first[j]->sequence
+               : first[j]->sequence != entry.sequence))
+            return result;
+    size_t state_index = entry_index + 1;
+    std::vector<const StatePoint *> transfers{&entry};
+    for (size_t j = 1; j < candidate.support.size(); ++j)
+    {
+        const auto &previous = candidate.support[j - 1];
+        if (candidate.support[j].address == previous.address + previous.size)
+            continue; // Ordinary captures sample only non-fallthrough transfers.
+        if (state_index == trace.states.size())
+        {
+            result.reason = "unresolved: internal transfer sample absent";
+            return result;
+        }
+        const auto *state = trace.states[state_index++];
+        if ((previous.op != Op::direct_jump && previous.op != Op::jump_above) ||
+            state->sequence != first[j]->sequence || state->source != previous.address ||
+            state->pc != candidate.support[j].address || run(*state) != run(entry))
+        {
+            result.reason = "unresolved: internal transfer does not follow candidate support";
+            return result;
+        }
+        transfers.push_back(state);
+        ++result.internal_transfers;
+    }
+    if (state_index == trace.states.size())
+    {
+        result.reason = "unresolved: output sample absent";
+        return result;
+    }
+    result.output_index = state_index;
+    const auto *output = trace.states[state_index];
+    if (output->source != candidate.dispatch ||
+        output->sequence <= first[candidate.support.size() - 1]->sequence ||
+        run(*output) != run(entry) ||
+        output->pc == candidate.dispatch + candidate.support.back().size)
+    {
+        result.reason = "unresolved: next supported transfer is not candidate dispatch";
+        return result;
+    }
+    result.output = output;
+    if ((state_index + 1 < trace.states.size() &&
+         trace.states[state_index + 1]->sequence == output->sequence) ||
+        at(trace.execution, output->sequence) != first + candidate.support.size())
+    {
+        result.reason = "unresolved: duplicate sample or extra native instruction";
+        return result;
+    }
+    const auto target = at(trace.execution, output->sequence);
+    if (target != trace.execution.end() && (*target)->sequence == output->sequence &&
+        ((*target)->pc != output->pc ||
+         (target + 1 != trace.execution.end() && (*(target + 1))->sequence == output->sequence)))
+    {
+        result.reason = "unresolved: target sample and entered instruction differ";
+        return result;
+    }
+    transfers.push_back(output);
+    auto edge = at(trace.edges, entry.sequence);
+    for (size_t index = 0; index < transfers.size(); ++index)
+    {
+        const auto &state = *transfers[index];
+        const auto kind = index + 1 == transfers.size() && candidate.stack_dispatch
+                              ? ExecEdge::Kind::Return
+                              : ExecEdge::Kind::Jump;
+        if (edge == trace.edges.end() || (*edge)->sequence != state.sequence ||
+            (*edge)->from != state.source || (*edge)->to != state.pc || run(**edge) != run(entry) ||
+            (index && (*edge)->kind != kind))
+        {
+            result.reason = "unresolved: transfer edge and state witnesses differ";
+            return result;
+        }
+        ++edge;
+    }
+    if (edge != trace.edges.end() && (*edge)->sequence <= output->sequence)
+    {
+        result.reason = "unresolved: extra or duplicate transfer edge";
+        return result;
+    }
+    result.matched = true;
+    result.reason = "sampled local address/size path";
+    return result;
+}
 }
 
 ObservationView project_observations(const std::vector<Candidate> &input,
@@ -103,7 +217,7 @@ ObservationView project_observations(const std::vector<Candidate> &input,
     }
     size_t budget = 262144;
     for (auto n : {source.events.states.size(), source.events.execution.size(),
-                   source.events.data.size(), source.runs.size()})
+                   source.events.edges.size(), source.events.data.size(), source.runs.size()})
     {
         if (n > budget)
         {
@@ -147,6 +261,8 @@ ObservationView project_observations(const std::vector<Candidate> &input,
             traces[run(s)].states.push_back(&s);
     for (const auto &e : source.events.execution)
         traces[run(e)].execution.push_back(&e);
+    for (const auto &edge : source.events.edges)
+        traces[run(edge)].edges.push_back(&edge);
     for (const auto &d : source.events.data)
         traces[run(d)].data.push_back(&d);
     view.available = true;
@@ -156,6 +272,7 @@ ObservationView project_observations(const std::vector<Candidate> &input,
     {
         order(t.states);
         order(t.execution);
+        order(t.edges);
         order(t.data);
         for (size_t i = 0; i < t.states.size(); ++i)
         {
@@ -181,11 +298,20 @@ ObservationView project_observations(const std::vector<Candidate> &input,
                     {"sequence", hex(entry.sequence)},
                     {"revision", hex(revision)},
                     {"entry_source", hex(entry.source)},
+                    {"payload_value_register", std::to_string(c.payload_value)},
+                    {"virtual_stack_register", std::to_string(c.virtual_stack)},
+                    {"stack_check_register", std::to_string(c.stack_check_value)},
+                    {"stack_check", boolean(c.stack_check)},
+                    {"payload_read", hex(c.payload_read)},
+                    {"payload_store", hex(c.payload_store)},
+                    {"payload_bits", std::to_string(c.payload_bits)},
+                    {"stored_bits", std::to_string(c.stored_bits)},
                     {"kind", "sampled candidate entry"},
                     {"truth", "observation"},
                     {"classification",
                      "captured registers associated with current IDB role hypotheses"},
-                    {"virtual_stack", "unknown"},
+                    {"virtual_stack",
+                     c.virtual_stack < 0 ? "unknown" : "captured native register hypothesis"},
                     {"vm_context", "unknown"},
                     {"memory_epoch", "unknown"},
                     {"logical_state_complete", "false"},
@@ -195,6 +321,12 @@ ObservationView project_observations(const std::vector<Candidate> &input,
                     {"semantic_validation", "not performed"},
                     {"path", "unresolved: output sample absent"},
                     {"data_capture_complete", "false"}};
+            if (c.payload_bits)
+                row["payload_contract"] =
+                    "entry/output payload register snapshots; final register may be overwritten; pushed value requires the ordered payload-store access";
+            if (c.stack_check)
+                row["stack_check_contract"] =
+                    "observed taken unsigned JA fast path only; slow relocation path not represented";
             const auto *r = t.observation;
             const bool valid_run = r && !t.ambiguous && r->ran &&
                                    r->provenance.function_start == function &&
@@ -217,32 +349,21 @@ ObservationView project_observations(const std::vector<Candidate> &input,
             }
             // Register values are observations even if run metadata is incomplete.
             roles(row, entry, c, "entry_");
-            const StatePoint *output = i + 1 < t.states.size() ? t.states[i + 1] : nullptr;
-            const bool duplicate = (i && t.states[i - 1]->sequence == entry.sequence) ||
-                                   (output && output->sequence == entry.sequence);
-            if (duplicate)
-                row["path"] = "unresolved: duplicate sample sequence";
-            else if (output && output->source == c.dispatch)
+            const auto path = local_path(t, c, i);
+            const auto *output = path.output;
+            row["path"] = !valid_run && path.matched
+                              ? "unresolved: native path or run provenance differs"
+                              : path.reason;
+            row["internal_transfers"] = std::to_string(path.internal_transfers);
+            if (output)
             {
                 row["target"] = hex(output->pc);
                 row["output_sequence"] = hex(output->sequence);
                 roles(row, *output, c, "output_");
-                auto first = at(t.execution, entry.sequence),
-                     last = at(t.execution, output->sequence);
-                bool match = valid_run && size_t(last - first) == c.support.size();
-                for (size_t j = 0; match && j < c.support.size(); ++j)
-                    match = first[j]->pc == c.support[j].address &&
-                            first[j]->size == c.support[j].size &&
-                            (j ? first[j - 1]->sequence < first[j]->sequence
-                               : first[j]->sequence == entry.sequence);
-                if (i + 2 < t.states.size() && t.states[i + 2]->sequence == output->sequence)
-                    match = false;
-                row["path"] = match ? "sampled local address/size path"
-                                    : "unresolved: native path or run provenance differs";
                 row["exit"] = valid_run && r->outcome.function_boundary &&
                                       r->outcome.function_boundary_source == c.dispatch &&
                                       r->outcome.function_boundary_target == output->pc &&
-                                      i + 2 == t.states.size()
+                                      path.output_index + 1 == t.states.size()
                                   ? "function-boundary; target instruction not admitted"
                                   : "sampled transfer target";
                 const auto begin = at(t.data, entry.sequence), end = at(t.data, output->sequence);
@@ -263,14 +384,12 @@ ObservationView project_observations(const std::vector<Candidate> &input,
                     row[p + "value_low64"] = hex(a.value);
                 }
             }
-            else if (output)
-                row["path"] = "unresolved: next sampled transfer is not candidate dispatch";
             // A prior or local write disproves the stable-code assumption. Absence of
             // a recorded write cannot prove it, because data events may be incomplete.
             const uint64_t until =
                 output && output->source == c.dispatch ? output->sequence : entry.sequence;
             bool code_write = false;
-            for (auto p = t.data.begin(), end = at(t.data, until); p != end; ++p)
+            for (auto p = t.data.cbegin(), end = at(t.data, until); p != end; ++p)
                 if ((*p)->kind == RAX_MEM_WRITE &&
                     std::any_of(
                         c.support.begin(), c.support.end(), [&](const auto &i)

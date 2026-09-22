@@ -674,10 +674,22 @@ if ida_kernwin.is_idaq():
                         and q.get("capture_revision") == row["revision"]
                         and all(q.get(k) == row.get(k) for k in ("run", "seed", "sequence", "site"))
                     ]
+                    state_identity = "Virtual stack, VM context and memory epoch: unknown"
+                    if row.get("virtual_stack_register", "-1") != "-1":
+                        state_identity = (
+                            "Virtual stack register hypothesis GPR"
+                            + row["virtual_stack_register"]
+                            + ": entry "
+                            + row.get("entry_virtual_stack", "unknown")
+                            + ", output "
+                            + row.get("output_virtual_stack", "unknown")
+                            + "\nVM context and memory epoch: unknown"
+                        )
                     text = (
                         "Captured VM-role observation / "
                         + row["path"]
-                        + "\nVirtual stack, VM context and memory epoch: unknown"
+                        + "\n"
+                        + state_identity
                         + "\n"
                         + row["runtime_code_identity"]
                         + "\nSemantic validation: "

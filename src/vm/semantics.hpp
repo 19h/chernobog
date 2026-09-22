@@ -22,7 +22,7 @@ struct Summary
     Candidate candidate;
     std::vector<std::string> roles;
     std::vector<z3::expr> registers;
-    z3::expr memory, next_pc;
+    z3::expr memory, next_pc, domain;
     std::vector<Access> accesses;
     std::vector<z3::expr> flags; // CF, PF, AF, ZF, SF, OF
     std::array<bool, 6> defined{{true, true, true, true, true, true}};
@@ -30,6 +30,7 @@ struct Summary
 };
 // Re-recognizes support and ignores caller-supplied role claims. Invalid
 // architecture/operands or unsupported effects return null, never a partial proof.
+// A taken stack-check branch restricts domain; the relocation path is not modeled.
 std::unique_ptr<Summary> summarize(z3::context &, const Candidate &);
 enum class Equivalence
 {

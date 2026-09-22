@@ -119,6 +119,15 @@ Instruction decode(const insn_t &i, unsigned mode)
     case NN_movzx:
         r.op = Op::load;
         break;
+    case NN_lea:
+        if (r.src.kind == Kind::memory)
+        {
+            r.op = Op::address;
+            // LEA names an address, not a memory datum; normalize IDA's
+            // operand dtype to the destination width for the portable model.
+            r.src.bits = r.dst.bits;
+        }
+        break;
     case NN_movsxd:
         r.op = Op::sign_extend;
         break;
@@ -178,6 +187,15 @@ Instruction decode(const insn_t &i, unsigned mode)
         break;
     case NN_cmp:
         r.op = Op::compare;
+        break;
+    case NN_ja:
+        if (i.Op1.type == o_near)
+        {
+            r.op = Op::jump_above;
+            r.dst.kind = Kind::immediate;
+            r.dst.bits = mode;
+            r.dst.value = i.Op1.addr;
+        }
         break;
     case NN_test:
         r.op = Op::test;
@@ -444,17 +462,32 @@ std::string inspect_regions(uint64_t function, bool include_summaries,
              {"value_register", std::to_string(c.value)},
              {"key_register", std::to_string(c.key)},
              {"dispatch_base_register", std::to_string(c.dispatch_base)},
+             {"payload_read", hex(c.payload_read)},
+             {"payload_store", hex(c.payload_store)},
+             {"payload_bits", std::to_string(c.payload_bits)},
+             {"stored_bits", std::to_string(c.stored_bits)},
+             {"payload_value_register", std::to_string(c.payload_value)},
+             {"virtual_stack_register", std::to_string(c.virtual_stack)},
+             {"stack_check", c.stack_check ? "true" : "false"},
+             {"stack_check_branch", hex(c.stack_check_branch)},
+             {"stack_check_offset", std::to_string(c.stack_check_offset)},
+             {"stack_check_register", std::to_string(c.stack_check_value)},
              {"table_displacement", hex(c.table_displacement)},
              {"stack_key_update", c.stack_key_update ? "true" : "false"},
              {"bytes", bytes(c)},
              {"instruction_spans", spans(c)},
              {"shape_group", std::to_string(group)},
              {"normalized_shape", shape},
-             {"classification", "local read/decode/dispatch candidate; VM identity unverified"},
+             {"classification",
+              c.stack_check
+                  ? "immediate push and conditional fast stack-check path; VM identity unverified"
+              : c.payload_value >= 0
+                  ? "local immediate-push scaffold; source continuation unproved"
+                  : "local read/decode/dispatch candidate; VM identity unverified"},
              {"ownership",
               "selected function or ownerless code reached by existing xrefs; no VM execution region admitted"},
              {"unresolved",
-              "VM entry, virtual stack/context, memory contents, handler semantics, flags/exceptions and dispatch targets"},
+              "VM entry, logical context/memory identity, other handler paths, exceptions and dispatch target execution"},
              {"logical_state",
               "native address plus VIP, decoder key when present, virtual stack, dispatch base, context and memory epoch"},
              {"summary_reuse", "unproved; role-normalized syntax is indexing only"}});
@@ -518,7 +551,7 @@ std::string inspect_regions(uint64_t function, bool include_summaries,
             if (!window.empty() && window.back().address + window.back().size != ea)
                 window.clear();
             window.push_back(i);
-            if (window.size() > 128)
+            if (window.size() > instruction_limit)
                 window.erase(window.begin());
             if (i.op != Op::jump && i.op != Op::near_return)
                 continue;
@@ -591,7 +624,8 @@ std::string inspect_regions(uint64_t function, bool include_summaries,
             if (reachability_truncated)
                 break;
         }
-        // Follow only current same-owner fallthrough/direct-jump links. No new
+        // Follow current fallthrough/direct-jump or taken-JA candidate links.
+        // JA is conditional; its summary retains the selected input domain. No new
         // instructions, xrefs or function ownership are manufactured by inspection.
         for (const auto &head : decoded_path_heads)
         {
@@ -601,12 +635,13 @@ std::string inspect_regions(uint64_t function, bool include_summaries,
             if (!((first.op == Op::load && first.src.kind == Kind::memory) ||
                   (first.op == Op::sub && first.dst.kind == Kind::reg &&
                    first.src.kind == Kind::immediate &&
-                   (first.src.value == 1 || first.src.value == 4))))
+                   (first.src.value == 1 || first.src.value == 2 || first.src.value == 4 ||
+                    first.src.value == 8))))
                 continue;
             std::vector<Instruction> path;
             std::set<uint64_t> seen;
             uint64_t at = head.first;
-            while (path.size() < 128)
+            while (path.size() < instruction_limit)
             {
                 if (path_steps == 8192)
                 {
@@ -652,10 +687,11 @@ std::string inspect_regions(uint64_t function, bool include_summaries,
                         record(*candidate);
                     break;
                 }
-                at = current.op == Op::direct_jump ? current.dst.value
-                                                   : current.address + current.size;
+                at = current.op == Op::direct_jump || current.op == Op::jump_above
+                         ? current.dst.value
+                         : current.address + current.size;
             }
-            if (path.size() == 128 && path.back().op != Op::jump &&
+            if (path.size() == instruction_limit && path.back().op != Op::jump &&
                 path.back().op != Op::near_return)
                 path_truncated = true;
             if (path_truncated)

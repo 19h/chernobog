@@ -148,6 +148,12 @@ def replay_step(insn, entry, output, accesses, mode, memory):
             bits = ops[1].size * 8
             value = (value ^ (1 << (bits - 1))) - (1 << (bits - 1))
         write(ops[0], value)
+    elif mnemonic == "lea":
+        assert len(ops) == 2 and ops[0].type == CS_OP_REG and ops[1].type == CS_OP_MEM
+        assert insn.addr_size == mode // 8, "LEA address-size override unsupported"
+        assert not accesses, "LEA must not perform a data access"
+        write(ops[0], address(ops[1]))
+        checked_flags = mask  # Effective-address calculation preserves every captured flag.
     elif mnemonic in ("add", "sub", "cmp", "xor", "test", "and", "or"):
         a, b, bits = read(ops[0]), read(ops[1]), ops[0].size * 8
         if mnemonic in ("xor", "test", "and", "or"):
@@ -213,6 +219,13 @@ def replay_step(insn, entry, output, accesses, mode, memory):
         regs[4] = (regs[4] + mode // 8) & mask
     elif mnemonic == "jmp":
         target = read(ops[0]) & mask
+    elif mnemonic == "ja":
+        assert len(ops) == 1 and ops[0].type == CS_OP_IMM
+        assert not accesses, "JA must not perform a data access"
+        assert flags & 0x41 == 0, "captured JA does not satisfy its taken unsigned condition"
+        target = ops[0].imm & mask
+        assert target != insn.address + insn.size, "JA taken target must differ from fallthrough"
+        checked_flags = mask  # JA consumes CF/ZF without modifying any captured flag.
     elif mnemonic != "nop":
         raise AssertionError("unsupported concrete instruction: " + mnemonic)
     assert cursor == len(accesses), "unmodeled access"
@@ -258,6 +271,68 @@ def verify_row(trace, row):
     return counts
 
 
+def guard_replay_controls():
+    """Synthetic verifier checks, separate from counted production transitions."""
+    counts = {"accepted": 0, "rejected": 0}
+    for mode in (32, 64):
+        mask = (1 << mode) - 1
+        decoder = Cs(CS_ARCH_X86, CS_MODE_64 if mode == 64 else CS_MODE_32)
+        decoder.detail = True
+        base, flags_id = (0x100, 0x12) if mode == 64 else (0x200, 0x13)
+        regs = [0x100 + i for i in range(16 if mode == 64 else 8)]
+
+        def state(registers, flags, site):
+            values = [(base + index, value) for index, value in enumerate(registers)]
+            values.append((flags_id, flags))
+            return {
+                "site": hex(site),
+                "registers": ";".join(f"{reg}:{mode // 8}:{value:#x}" for reg, value in values),
+            }
+
+        def check(insn, entry, output, accesses=(), accept=True):
+            try:
+                replay_step(insn, entry, output, accesses, mode, {})
+            except AssertionError:
+                assert not accept, "valid guard instruction rejected"
+                counts["rejected"] += 1
+            else:
+                assert accept, "corrupted guard instruction accepted"
+                counts["accepted"] += 1
+
+        encoded = "488d8c2400010000" if mode == 64 else "8d4c2460"
+        lea = next(decoder.disasm(bytes.fromhex(encoded), 0x1000))
+        assert lea.mnemonic == "lea"
+        # The second pair wraps the native address width. These expected
+        # constants are independent of replay_step's effective-address helper.
+        for stack, result in (
+            (0x1000, 0x1100 if mode == 64 else 0x1060),
+            (mask - 31, 224 if mode == 64 else 64),
+        ):
+            regs[4] = stack
+            after = list(regs)
+            after[1] = result
+            entry = state(regs, 0xAD7, lea.address)
+            output = state(after, 0xAD7, lea.address + lea.size)
+            check(lea, entry, output)
+            check(lea, entry, output, [{"kind": "read"}], accept=False)
+            check(lea, entry, state(after, 0xAD7 ^ 0x100, lea.address + lea.size), accept=False)
+            after[1] ^= 1
+            check(lea, entry, state(after, 0xAD7, lea.address + lea.size), accept=False)
+
+        branch = next(decoder.disasm(bytes.fromhex("7707"), 0x1000))
+        assert branch.mnemonic == "ja" and branch.operands[0].imm == 0x1009
+        # SF/OF disagree in two controls: JA still depends only on CF and ZF.
+        for flags in (0x2, 0x82, 0x802, 0x882):
+            check(branch, state(regs, flags, 0x1000), state(regs, flags, 0x1009))
+        for flags in (0x3, 0x42, 0x43):
+            check(branch, state(regs, flags, 0x1000), state(regs, flags, 0x1009), accept=False)
+        entry = state(regs, 0x2, 0x1000)
+        check(branch, entry, state(regs, 0x2, 0x1002), accept=False)
+        check(branch, entry, state(regs, 0x102, 0x1009), accept=False)
+        check(branch, entry, state(regs, 0x2, 0x1009), [{"kind": "read"}], accept=False)
+    return counts
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path, required=True)
@@ -276,6 +351,7 @@ def main():
         "transitions": 0,
         "instructions": {},
         "negative_controls": 0,
+        "guard_replay_controls": guard_replay_controls(),
     }
     counts, examples = Counter(), {}
     for run in report["runs"]:

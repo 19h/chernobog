@@ -82,6 +82,7 @@ TransitionCheck check_transition(const Candidate &candidate, const hybrid::State
         solver.set(params);
         const auto settings = "timeout_ms=" + std::to_string(std::max(1u, timeout)) +
                               ";rlimit=" + std::to_string(std::max(1u, resource));
+        solver.add(summary->domain);
         auto mismatch = summary->next_pc != ctx.bv_val(output.pc, mode);
         for (size_t i = 0; i < summary->roles.size(); ++i)
         {
@@ -148,7 +149,9 @@ TransitionCheck check_transition(const Candidate &candidate, const hybrid::State
         const auto consistency =
             solver_evidence::check(solver, "VM observed input consistency", settings.c_str());
         if (consistency == z3::unsat)
-            return reject(Result::inconsistent, "UNSAT: captured initial reads conflict");
+            return reject(
+                Result::inconsistent,
+                "UNSAT: captured inputs conflict with initial reads or the observed path domain");
         if (consistency == z3::unknown)
             return reject(Result::unknown, solver.reason_unknown().substr(0, 512));
         solver.add(mismatch);
