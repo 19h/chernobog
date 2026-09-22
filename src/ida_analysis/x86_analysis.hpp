@@ -26,8 +26,9 @@ struct X86Condition
 
 std::optional<X86Condition> x86_condition(uint16_t instruction_type);
 
-// Reads only the current contiguous single-entry basic-block prefix. Unknown
-// effects invalidate facts; no dynamic witnesses or writable memory are folded.
+// Bounded owned-function must-analysis with architectural direct successors and
+// conservative joins. Incomplete/unsupported graphs fall back to the contiguous
+// single-entry prefix. No dynamic witnesses or writable memory are folded.
 x86_abstract::Flags analyze_x86_flags_before(const insn_t &instruction, size_t depth);
 
 struct X86FlagFact

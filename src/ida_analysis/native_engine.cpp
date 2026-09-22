@@ -1250,7 +1250,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                         row["width_bits"] = "8";
                     }
                     row["assumption"] =
-                        "bounded single-entry flag analysis; SETcc byte writes and CMOV memory/partial-register effects retained";
+                        "bounded owned-graph or single-entry flag analysis; SETcc byte writes and CMOV memory/partial-register effects retained";
                     break;
                 }
                 default:

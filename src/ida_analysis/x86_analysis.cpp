@@ -1,4 +1,5 @@
 #include "x86_analysis.hpp"
+#include "../common/bounded_dataflow.h"
 
 #include "../common/warn_off.h"
 #include <bytes.hpp>
@@ -13,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <map>
 #include <vector>
 
 namespace chernobog::ida_analysis
@@ -202,6 +204,31 @@ struct State
     // Only words established by this single-entry replay are retained. No
     // initial stack memory or absolute stack address is assumed known.
     std::vector<std::optional<uint64_t>> stack;
+
+    void join(const State &other)
+    {
+        flags.join(other.flags);
+        for (size_t i = 0; i < regs.size(); ++i)
+            regs[i].join(other.regs[i]);
+        // Both vectors describe a suffix above otherwise unknown stack bytes.
+        const size_t count = std::min(stack.size(), other.stack.size());
+        std::vector<std::optional<uint64_t>> suffix(count);
+        for (size_t i = 0; i < count; ++i)
+            if (stack[stack.size() - count + i] == other.stack[other.stack.size() - count + i])
+                suffix[i] = stack[stack.size() - count + i];
+        stack = std::move(suffix);
+    }
+
+    bool operator==(const State &other) const
+    {
+        if (flags.known != other.flags.known || flags.value != other.flags.value ||
+            stack != other.stack)
+            return false;
+        for (size_t i = 0; i < regs.size(); ++i)
+            if (regs[i].known != other.regs[i].known || regs[i].value != other.regs[i].value)
+                return false;
+        return true;
+    }
 
     static bool stack_top(const insn_t &insn, const op_t &operand)
     {
@@ -523,6 +550,129 @@ std::vector<insn_t> prefix_before(const insn_t &insn, size_t depth)
     }
     return prefix;
 }
+
+struct FlowFact
+{
+    State state;
+    std::vector<uint64_t> support;
+};
+
+std::optional<FlowFact> flow_before(const insn_t &insn, size_t depth)
+{
+    if (PH.id != PLFM_386 || (!mode32(insn) && !mode64(insn)))
+        return std::nullopt;
+    auto *owner = get_func(insn.ea);
+    if (!owner)
+        return std::nullopt;
+    const size_t limit = std::min<size_t>(depth, 64);
+    std::vector<insn_t> code;
+    std::map<ea_t, size_t> index;
+    func_item_iterator_t iterator;
+    if (!iterator.set(owner))
+        return std::nullopt;
+    do
+    {
+        const ea_t ea = iterator.current();
+        if (!is_code(get_flags(ea)))
+            continue;
+        insn_t decoded;
+        if (code.size() >= limit || get_func(ea) != owner || decode_insn(&decoded, ea) <= 0 ||
+            decoded.size == 0 || ea > BADADDR - decoded.size || mode64(decoded) != mode64(insn) ||
+            mode32(decoded) != mode32(insn))
+            return std::nullopt;
+        index.emplace(ea, code.size());
+        code.push_back(decoded);
+    } while (iterator.next_code());
+    if (!index.count(insn.ea) || !index.count(owner->start_ea))
+        return std::nullopt;
+    std::vector<FlowNode> graph(code.size());
+    graph[index.at(owner->start_ea)].unknown_entry = true;
+    for (size_t i = 0; i < code.size(); ++i)
+    {
+        const auto &instruction = code[i];
+        const auto condition = x86_condition(instruction.itype);
+        const bool branch = condition && condition->use == X86ConditionUse::branch;
+        const bool jump = instruction.itype == NN_jmp;
+        const bool call = is_call_insn(instruction);
+        if (!jump && !branch && !call && instruction.itype != NN_retn)
+        {
+            if (is_indirect_jump_insn(instruction))
+                return std::nullopt;
+            for (const auto &operand : instruction.ops)
+                if (operand.type == o_near || operand.type == o_far)
+                    return std::nullopt;
+        }
+        const auto add_edge = [&](ea_t target)
+        {
+            const auto found = index.find(target);
+            if (found == index.end())
+                return false;
+            graph[found->second].predecessors.push_back(i);
+            return true;
+        };
+        // Reconstruct both architectural Jcc successors from bytes, including
+        // edges suppressed by earlier native analysis. Never propagate over a
+        // guessed return/indirect/far destination or incomplete inventory.
+        if (jump || branch)
+        {
+            if (instruction.Op1.type != o_near || !add_edge(instruction.Op1.addr))
+                return std::nullopt;
+        }
+        if (!jump && instruction.itype != NN_retn)
+        {
+            if ((!branch && !call && (instruction.get_canon_feature(PH) & CF_STOP)) ||
+                !add_edge(instruction.ea + instruction.size))
+                return std::nullopt;
+        }
+        if (call && instruction.Op1.type == o_near && index.count(instruction.Op1.addr))
+            graph[index.at(instruction.Op1.addr)].unknown_entry = true;
+        xrefblk_t xref;
+        size_t references = 0;
+        for (bool ok = xref.first_to(instruction.ea, XREF_ALL); ok; ok = xref.next_to())
+        {
+            if (++references > 256)
+                return std::nullopt;
+            if (!xref.iscode)
+                continue;
+            const auto source = index.find(xref.from);
+            const int type = xref.type & XREF_MASK;
+            if (source == index.end() || (type != fl_F && type != fl_JN))
+                graph[i].unknown_entry = true;
+            else
+            {
+                const auto &from = code[source->second];
+                const auto from_condition = x86_condition(from.itype);
+                const bool from_branch =
+                    from_condition && from_condition->use == X86ConditionUse::branch;
+                const bool matches =
+                    type == fl_F ? from.ea + from.size == instruction.ea && from.itype != NN_jmp &&
+                                       from.itype != NN_retn
+                                 : (from.itype == NN_jmp || from_branch) &&
+                                       from.Op1.type == o_near && from.Op1.addr == instruction.ea;
+                if (!matches)
+                    graph[i].unknown_entry = true;
+            }
+        }
+    }
+    const auto states =
+        bounded_dataflow<State>(graph, 64, 128,
+                                [&](size_t i, State state)
+                                {
+                                    const auto condition = x86_condition(code[i].itype);
+                                    if (code[i].itype != NN_jmp &&
+                                        !(condition && condition->use == X86ConditionUse::branch))
+                                        state.step(code[i]);
+                                    return state;
+                                });
+    if (!states)
+        return std::nullopt;
+    FlowFact result;
+    result.state = (*states)[index.at(insn.ea)];
+    for (const auto &instruction : code)
+        if (instruction.ea != insn.ea)
+            result.support.push_back(instruction.ea);
+    return result;
+}
 } // namespace
 
 x86_abstract::Flags analyze_x86_flags_before(const insn_t &insn, size_t depth)
@@ -532,6 +682,8 @@ x86_abstract::Flags analyze_x86_flags_before(const insn_t &insn, size_t depth)
 
 X86FlagFact analyze_x86_flag_fact_before(const insn_t &insn, size_t depth)
 {
+    if (const auto flow = flow_before(insn, depth))
+        return {flow->state.flags, flow->support};
     const auto prefix = prefix_before(insn, depth);
     State state;
     X86FlagFact result;
@@ -546,6 +698,8 @@ X86FlagFact analyze_x86_flag_fact_before(const insn_t &insn, size_t depth)
 
 X86RegisterFact analyze_x86_register_before(const insn_t &insn, const op_t &operand, size_t depth)
 {
+    if (const auto flow = flow_before(insn, depth))
+        return {flow->state.read(operand), flow->support};
     const auto prefix = prefix_before(insn, depth);
     State state;
     X86RegisterFact result;

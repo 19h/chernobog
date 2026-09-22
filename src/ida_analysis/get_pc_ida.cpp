@@ -476,8 +476,8 @@ std::optional<classifier::stack_transfer_t> classify_ida_push_return(const insn_
         const size_t bytes = get_dtype_size(operand.dtype);
         if (operand.type != o_reg || bytes != mode / 8)
             return std::nullopt;
-        // Independently replay a bounded, single-entry instruction prefix. This
-        // never converts initial writable-memory bytes into a register constant.
+        // Independently analyze a bounded owned graph or single-entry prefix.
+        // Initial writable-memory bytes never become a register constant.
         const auto fact = analyze_x86_register_before(
             push, operand, register_scan_depth > 0 ? size_t(register_scan_depth) : size_t(64));
         // An unresolved value still depends on the inspected prefix. Retain that

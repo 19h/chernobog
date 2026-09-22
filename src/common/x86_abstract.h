@@ -23,6 +23,12 @@ struct Flags
     uint8_t known = 0;
     uint8_t value = 0;
 
+    void join(const Flags &other)
+    {
+        known &= uint8_t(other.known & uint8_t(~(value ^ other.value)));
+        value &= known;
+    }
+
     void forget(uint8_t mask = ALL)
     {
         known &= uint8_t(~mask);
@@ -137,6 +143,12 @@ struct Word
 {
     uint64_t known = 0;
     uint64_t value = 0;
+
+    void join(const Word &other)
+    {
+        known &= other.known & ~(value ^ other.value);
+        value &= known;
+    }
 
     std::optional<uint64_t> read(unsigned bits, unsigned offset = 0) const
     {

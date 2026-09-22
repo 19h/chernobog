@@ -1,4 +1,5 @@
 #include "common/x86_abstract.h"
+#include "common/bounded_dataflow.h"
 
 #include <array>
 #include <cstdio>
@@ -16,6 +17,115 @@ void check(bool ok, const char *what)
     if (failures < 20)
         std::fprintf(stderr, "FAIL: %s\n", what);
     ++failures;
+}
+
+struct FlowState
+{
+    Word word;
+    Flags flags;
+    void join(const FlowState &other)
+    {
+        word.join(other.word);
+        flags.join(other.flags);
+    }
+    bool operator==(const FlowState &other) const
+    {
+        return word.known == other.word.known && word.value == other.word.value &&
+               flags.known == other.flags.known && flags.value == other.flags.value;
+    }
+};
+
+void dataflow_regressions()
+{
+    using chernobog::FlowNode;
+    using chernobog::bounded_dataflow;
+    // Enumerate concretizations independently: a join may retain exactly the
+    // bits common to every member of the union of both abstract input sets.
+    for (unsigned ak = 0; ak < 16; ++ak)
+        for (unsigned av = 0; av < 16; ++av)
+            for (unsigned bk = 0; bk < 16; ++bk)
+                for (unsigned bv = 0; bv < 16; ++bv)
+                {
+                    unsigned all_one = 15, all_zero = 15;
+                    for (unsigned v = 0; v < 16; ++v)
+                        if ((v & ak) == (av & ak) || (v & bk) == (bv & bk))
+                        {
+                            all_one &= v;
+                            all_zero &= ~v;
+                        }
+                    Word word{ak, av & ak};
+                    word.join(Word{bk, bv & bk});
+                    Flags flags{uint8_t(ak), uint8_t(av & ak)};
+                    flags.join(Flags{uint8_t(bk), uint8_t(bv & bk)});
+                    check(word.known == (all_one | all_zero) && word.value == all_one &&
+                              flags.known == word.known && flags.value == word.value,
+                          "known-bit joins match independent concrete-set union");
+                }
+    const std::vector<FlowNode> diamond = {{{}, true}, {{0}, false}, {{0}, false}, {{1, 2}, false}};
+    const auto solve = [&](bool disagree, size_t rounds)
+    {
+        return bounded_dataflow<FlowState>(diamond, 4, rounds,
+                                           [&](size_t i, FlowState state)
+                                           {
+                                               if (i == 1 || i == 2)
+                                               {
+                                                   state.word.write(
+                                                       32, 0, i == 2 && disagree ? 8 : 7, true);
+                                                   state.flags.set(CF, !(i == 2 && disagree));
+                                               }
+                                               return state;
+                                           });
+    };
+    auto result = solve(false, 8);
+    check(result && (*result)[3].word.read(64) == 7 && (*result)[3].flags.get(CF) == true,
+          "equal diamond predecessors establish exact register and flag facts");
+    result = solve(true, 8);
+    check(result && !(*result)[3].word.read(64) && !(*result)[3].flags.get(CF),
+          "disagreeing branch inputs remain unknown");
+    check(!solve(false, 2), "unfinished iterations cannot publish provisional facts");
+    auto graph = diamond;
+    graph[3].unknown_entry = true;
+    result = bounded_dataflow<FlowState>(graph, 4, 8,
+                                         [](size_t i, FlowState state)
+                                         {
+                                             if (i == 1 || i == 2)
+                                                 state.flags.set(CF, true);
+                                             return state;
+                                         });
+    check(result && !(*result)[3].flags.get(CF), "external join entries contribute unknown state");
+    graph = {{{}, true}, {{0, 2}, false}, {{1}, false}, {{1}, false}};
+    for (bool clobber : {false, true})
+    {
+        result = bounded_dataflow<FlowState>(graph, 4, 16,
+                                             [=](size_t i, FlowState state)
+                                             {
+                                                 if (i == 0)
+                                                     state.flags.set(CF, true);
+                                                 if (i == 2 && clobber)
+                                                     state.flags.set(CF, false);
+                                                 return state;
+                                             });
+        check(result &&
+                  (clobber ? !(*result)[3].flags.get(CF) : (*result)[3].flags.get(CF) == true),
+              "loop fixed point preserves invariants but rejects back-edge disagreement");
+    }
+    const auto identity = [](size_t, FlowState state) { return state; };
+    check(!bounded_dataflow<FlowState>(graph, 3, 16, identity), "graph node cap rejects overflow");
+    check(!bounded_dataflow<FlowState>(graph, 4, 0, identity), "zero iteration cap rejects");
+    graph[0].predecessors = {4};
+    check(!bounded_dataflow<FlowState>(graph, 4, 16, identity), "foreign predecessor rejects");
+    graph[0].predecessors = {0, 0, 0, 0, 0};
+    check(!bounded_dataflow<FlowState>(graph, 4, 16, identity), "predecessor cap rejects overflow");
+    graph = {{{1}, false}, {{0}, false}};
+    result = bounded_dataflow<FlowState>(graph, 2, 8,
+                                         [](size_t, FlowState state)
+                                         {
+                                             state.flags.set(CF, true);
+                                             return state;
+                                         });
+    check(result && !(*result)[0].flags.known && !(*result)[1].flags.known,
+          "unreached cycles cannot manufacture input facts");
+    std::puts("dataflow join concretizations: 65536; graph controls passed");
 }
 
 uint8_t arithmetic_oracle(unsigned a, unsigned b, unsigned carry, bool sub)
@@ -275,6 +385,7 @@ void mapping_counterexamples()
 
 int main()
 {
+    dataflow_regressions();
     exhaustive_arithmetic();
     exhaustive_conditions();
     boundaries();
