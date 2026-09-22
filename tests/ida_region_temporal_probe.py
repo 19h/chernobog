@@ -70,6 +70,37 @@ try:
             and {(r["address"], r["name"]) for r in trace["environment_bindings"]}
             == {(r["address"], r["name"]) for r in bindings},
         )
+        end = trace["native_temporal_prefix_end"]
+        check(
+            "complete prefix retains an exclusive event cutoff",
+            trace["native_temporal_prefix_complete"] and end > 0,
+        )
+        sequences = [
+            int(row["sequence"]) for field in ("execution", "uses", "data") for row in trace[field]
+        ]
+        sequences += [
+            int(row[field])
+            for row in trace["allocations"]
+            for field in ("allocated", "released")
+            if int(row[field]) > 0
+        ]
+        check(
+            "all entered instructions and memory events precede cutoff",
+            sequences and max(sequences) + 1 == end,
+        )
+        check(
+            "cutoff edges denote only the unexecuted frontier",
+            all(
+                int(row["sequence"]) < end
+                or (
+                    trace["region_boundary"]
+                    and int(row["sequence"]) == end
+                    and row["source"] == trace["boundary_source"]
+                    and row["target"] == trace["boundary_target"]
+                )
+                for row in trace["edges"]
+            ),
+        )
         if trace["native_temporal_complete"]:
             registers = {int(r["reg"]): int(r["value"], 0) for r in trace["final_registers"]}
             check(

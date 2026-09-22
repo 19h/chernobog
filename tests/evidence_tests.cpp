@@ -845,6 +845,136 @@ void native_read_stream_regressions()
                 projected.captures.size() == 2 &&
                 projected.observations[0].read_fragments.size() == 2,
             "separate native projection retains every capture and raw fragment without ordinary proof flags");
+        auto prefix = native;
+        for (auto &run : prefix)
+        {
+            auto &out = run.outcome;
+            out.native_temporal_complete = out.returned = false;
+            out.native_temporal_prefix_complete = true;
+            out.native_temporal_prefix_end = 100;
+            out.region_boundary = true;
+            out.stop_reason = RAX_STOP_STOPPED;
+            out.region_boundary_source = 0x1300;
+            out.stop_pc = out.region_boundary_target = 0x1301;
+            run.events.execution = {{0x1300, 1, 99, run.run_id, run.seed}};
+        }
+        const auto prefix_result = hybrid_native_temporal_prefix_strings(prefix);
+        check(prefix_result.available && prefix_result.observations.size() == 2 &&
+                  prefix_result.captures.size() == 2 &&
+                  !hybrid_native_temporal_strings(prefix).available,
+              "separate prefix observations cannot satisfy the completed-run API");
+        auto mixed = prefix;
+        mixed.front().outcome.returned = mixed.front().outcome.native_temporal_complete = true;
+        mixed.front().outcome.region_boundary = false;
+        mixed.front().outcome.stop_reason = RAX_STOP_UNTIL;
+        check(hybrid_native_temporal_prefix_strings(mixed).observations.size() == 2 &&
+                  !hybrid_native_temporal_strings(mixed).available,
+              "prefix agreement includes every scheduled complete or stopped capture");
+        auto boundary_edge = prefix;
+        for (auto &run : boundary_edge)
+            run.events.edges.push_back(
+                {0x1300, 0x1301, run.run_id, run.seed, ExecEdge::Kind::Jump, 100});
+        check(
+            hybrid_native_temporal_prefix_strings(boundary_edge).observations.size() == 2,
+            "exclusive frontier edge remains stop evidence without becoming an entered instruction");
+        for (unsigned failure = 0; failure < 28; ++failure)
+        {
+            auto bad = prefix;
+            auto &run = bad.back();
+            auto &out = run.outcome;
+            switch (failure)
+            {
+            case 0:
+                out.native_temporal_prefix_complete = false;
+                break;
+            case 1:
+                out.native_temporal_prefix_end = 0;
+                break;
+            case 2:
+                ++out.native_temporal_prefix_end;
+                break;
+            case 3:
+                --out.native_temporal_prefix_end;
+                break;
+            case 4:
+                out.stop_reason = RAX_STOP_TIMEOUT;
+                break;
+            case 5:
+                out.stop_status = -1;
+                break;
+            case 6:
+                ++out.stop_pc;
+                break;
+            case 7:
+                ++out.region_boundary_source;
+                break;
+            case 8:
+                out.region_boundary = false;
+                break;
+            case 9:
+                out.native_temporal_complete = true;
+                break;
+            case 10:
+                out.returned = true;
+                break;
+            case 11:
+                run.events.execution.clear();
+                break;
+            case 12:
+                ++run.events.execution.back().run_id;
+                break;
+            case 13:
+                ++run.events.execution.back().seed;
+                break;
+            case 14:
+                run.events.execution.back().size = 0;
+                break;
+            case 15:
+                run.events.execution.back().sequence = 100;
+                break;
+            case 16:
+                run.events.execution.push_back(run.events.execution.back());
+                break;
+            case 17:
+                run.events.data.back().sequence = 100;
+                break;
+            case 18:
+                run.events.uses.back().sequence = 100;
+                break;
+            case 19:
+                run.events.allocations.front().released = 100;
+                break;
+            case 20:
+                run.events.allocations.front().allocated = 100;
+                break;
+            case 21:
+                run.events.edges.push_back(
+                    {0x1302, 0x1301, run.run_id, run.seed, ExecEdge::Kind::Jump, 100});
+                break;
+            case 22:
+                run.events.edges.push_back(
+                    {0x1300, 0x1301, run.run_id, run.seed, ExecEdge::Kind::Jump, 101});
+                break;
+            case 23:
+                run.events.execution.resize(4097);
+                break;
+            case 24:
+                run.events.edges.resize(4097);
+                break;
+            case 25:
+                run.events.uses.resize(TemporalMemory::use_limit + 1);
+                break;
+            case 26:
+                run.events.data.resize(65537);
+                break;
+            case 27:
+                run.events.allocations.resize(TemporalMemory::allocation_limit + 1);
+                break;
+            }
+            const auto rejected = hybrid_native_temporal_prefix_strings(bad);
+            check(!rejected.available && rejected.observations.empty() && rejected.captures.empty(),
+                  "invalid prefix bounds or identities reject the whole scheduled corpus");
+        }
         const auto whole_uses = [&](bool modeled)
         {
             auto copy = native;

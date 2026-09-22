@@ -21,6 +21,7 @@ sys.dont_write_bytecode = True
 records, errors = [], []
 freshness_elapsed_ns = []
 snapshot = {}
+completed_snapshot = None
 
 
 def api(name, *args):
@@ -61,11 +62,18 @@ try:
         bindings.append({"address": hex(ea), "name": name})
     request, models = json.dumps({"args": [], "objects": []}), json.dumps(bindings)
     before = api("chernobog_evidence_view", target)
-    snapshot = api("chernobog_vm_temporal_strings", target, request, models)
+    prefix = os.environ.get("CHERNOBOG_PREFIX_STRINGS") == "1"
+    inspection_api = (
+        "chernobog_vm_temporal_prefix_strings" if prefix else "chernobog_vm_temporal_strings"
+    )
+    if prefix:
+        completed_snapshot = api("chernobog_vm_temporal_strings", target, request, models)
+    snapshot = api(inspection_api, target, request, models)
     check(
         "separate native inspection",
         snapshot.get("available")
-        and snapshot["scope"] == "native-region-strings"
+        and snapshot["scope"]
+        == ("native-region-prefix-strings" if prefix else "native-region-strings")
         and not snapshot["function_evidence_published"]
         and not snapshot["vm_identity_proved"],
     )
@@ -74,8 +82,45 @@ try:
         len(snapshot["runs"]) == 4 and len({row["capture"] for row in snapshot["runs"]}) == 4,
     )
     expected = os.environ["CHERNOBOG_EXPECT_RETURN"] == "1"
-    check("all-run admission", snapshot["consensus_available"] == expected)
-    if expected:
+    expected_values = os.environ.get("CHERNOBOG_EXPECT_STRINGS", str(int(expected))) == "1"
+    check("all-run admission", snapshot["consensus_available"] == (True if prefix else expected))
+    if prefix:
+        check(
+            "prefix observation does not change execution completion",
+            all((row["complete"] == "true") == expected for row in snapshot["runs"]),
+        )
+        check(
+            "completed-run API retains its original admission",
+            completed_snapshot["consensus_available"] == expected
+            and (expected or not completed_snapshot["observations"]),
+        )
+        check(
+            "all scheduled prefixes have explicit cutoffs",
+            all(
+                row["prefix_complete"] == "true" and int(row["prefix_end_sequence"]) > 0
+                for row in snapshot["runs"]
+            ),
+        )
+        bounds = {row["capture"]: int(row["prefix_end_sequence"]) for row in snapshot["runs"]}
+        check(
+            "all displayed bytes precede the exclusive prefix cutoff",
+            all(
+                int(row["sequence"]) < bounds[row["capture"]]
+                and (not row["data_sequence"] or int(row["data_sequence"]) < bounds[row["capture"]])
+                for row in snapshot["fragments"]
+            ),
+        )
+        check(
+            "unexecuted frontiers remain explicit",
+            expected
+            or all(
+                row["backend_stop"] == "host-stop"
+                and row["site"] == row["boundary_target"]
+                and row["boundary_source"] != row["boundary_target"]
+                for row in snapshot["runs"]
+            ),
+        )
+    if expected_values:
         check(
             "both protected values",
             sorted(row["value"] for row in snapshot["observations"])
@@ -169,7 +214,11 @@ try:
                 )
     else:
         check(
-            "partial executions cannot publish strings",
+            (
+                "unobserved prefix values are not invented"
+                if prefix
+                else "partial executions cannot publish strings"
+            ),
             not snapshot["observations"]
             and not snapshot["witnesses"]
             and not snapshot["fragments"]
@@ -219,7 +268,7 @@ try:
     assert ida_segment.update_segm(segment)
     check("exact permission restoration revalidates", fresh())
     form = None
-    if os.environ.get("CHERNOBOG_VIEW_MODULE") and expected:
+    if os.environ.get("CHERNOBOG_VIEW_MODULE") and expected_values:
         spec = importlib.util.spec_from_file_location(
             "region_string_view", os.environ["CHERNOBOG_VIEW_MODULE"]
         )
@@ -239,6 +288,13 @@ try:
             form = module.TemporalStringForm(snapshot)
             form.Show("Protected region strings", options=ida_kernwin.PluginForm.WOPN_PERSIST)
             QtWidgets.QApplication.processEvents()
+            if prefix:
+                check(
+                    "Qt prefix scope and incomplete execution remain visible",
+                    "OBSERVED PREFIX ONLY" in form.status.text()
+                    and ("Incomplete executions: 0/4" if expected else "Incomplete executions: 4/4")
+                    in form.status.text(),
+                )
             selection = next(
                 (
                     i
@@ -278,7 +334,7 @@ try:
             form.parent.window().resize(1350, 1000)
             QtWidgets.QApplication.processEvents()
             form.parent.grab().save(str(Path(os.environ["IDAUSR"]).parent / "region_strings.png"))
-    replacement = api("chernobog_vm_temporal_strings", target, request, models)
+    replacement = api(inspection_api, target, request, models)
     check(
         "replacement supersedes only old lease",
         not fresh()
@@ -306,6 +362,7 @@ except BaseException as error:
             "records": records,
             "errors": errors,
             "snapshot": snapshot,
+            "completed_snapshot": completed_snapshot,
             "freshness_elapsed_ns": freshness_elapsed_ns,
         },
         indent=2,

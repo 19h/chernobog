@@ -13,6 +13,8 @@ std::string trace_native_region_temporal(uint64_t function, uint64_t seed,
                                          const std::string &request, const std::string &bindings);
 std::string inspect_native_temporal_strings(uint64_t function, const std::string &request,
                                             const std::string &bindings);
+std::string inspect_native_temporal_prefix_strings(uint64_t function, const std::string &request,
+                                                   const std::string &bindings);
 std::string native_temporal_string_state(uint64_t ticket, const std::string &identity);
 void clear_native_temporal_strings();
 }

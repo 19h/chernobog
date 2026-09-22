@@ -72,6 +72,16 @@ rejected BSWAP16 semantics; full handler effects and logical VM state remain
 unknown. See `VMP_NATIVE_OBSERVATIONS.md` for assumptions, quotas, per-variant
 yield and evidence. This advances rows 6a–6c and V without completing them.
 
+Prefix-string checkpoint: a separate opt-in API compares intact event prefixes
+ending at sentinel return or before an unexecuted native-region frontier. Mutation
+seed 1 now retains both erased values across four captures, while every execution
+remains incomplete at BSWAP16. Scoped protected recovery is 6/18; the existing
+completed-run API remains 4/18. All 20 CTest suites, 829 production checks and
+7,156 independent instruction-byte/size/successor checks pass. The Qt view retains
+the incomplete-execution count and exact original witnesses. See
+`VMP_PREFIX_STRINGS.md`. Timeout/fault prefixes, protected ctree publication and
+broader review requirements remain incomplete.
+
 Interleaved-read checkpoint: concurrent scoped stream endpoints retain alternating
 reads from separate allocations or distinct buffers in one allocation, while
 writes/calls/lifetime changes and ambiguous endpoint collisions remain barriers.

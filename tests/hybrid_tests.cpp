@@ -1691,6 +1691,43 @@ void test_temporal_heap_uses(const RaxApi *api)
                       "modeled region preserves exact use bytes and selected-entry context");
             }
         check(observed == 2, "modeled region observes both erased uses");
+        check(outcome.native_temporal_prefix_complete && outcome.native_temporal_prefix_end &&
+                  std::all_of(events.data.begin(), events.data.end(), [&](const auto &access)
+                              { return access.sequence < outcome.native_temporal_prefix_end; }),
+              "sentinel return bounds the completed temporal prefix");
+        const uint64_t frontier = 0x1000 + code.size() - 1;
+        const NativeDecoder stop_before_ret =
+            [&, frontier](uint64_t ea, const uint8_t *bytes, size_t count, rax_decoded &decoded)
+        { return ea != frontier && decoder(ea, bytes, count, decoded); };
+        auto prefix_region = plan_native_region(region_image, api, 0x1000, 4096, stop_before_ret);
+        EmuEvents prefix_events;
+        EmuOutcome prefix_outcome;
+        check(
+            regional.emulate_region_temporal(prefix_region, cfg, prefix_events, prefix_outcome,
+                                             stop_before_ret, &input) &&
+                prefix_outcome.native_temporal_prefix_complete &&
+                !prefix_outcome.native_temporal_complete && !prefix_outcome.returned &&
+                prefix_outcome.region_boundary && prefix_outcome.stop_pc == frontier &&
+                prefix_outcome.stop_reason == RAX_STOP_STOPPED &&
+                prefix_events.execution.back().pc == frontier - 1 &&
+                prefix_events.execution.back().sequence < prefix_outcome.native_temporal_prefix_end,
+            "completed modeled uses survive a later pre-instruction frontier without return promotion");
+        for (size_t i = 0; i < prefix_events.uses.size(); ++i)
+            check(i < events.uses.size() &&
+                      prefix_events.uses[i].witness_key() == events.uses[i].witness_key() &&
+                      prefix_events.uses[i].sequence < prefix_outcome.native_temporal_prefix_end,
+                  "prefix keeps exact original use witnesses before its exclusive cutoff");
+        auto truncated_config = cfg;
+        truncated_config.max_runtime_bytes = 1;
+        prefix_region = plan_native_region(region_image, api, 0x1000, 4096, stop_before_ret);
+        prefix_events = {};
+        prefix_outcome = {};
+        check(regional.emulate_region_temporal(prefix_region, truncated_config, prefix_events,
+                                               prefix_outcome, stop_before_ret, &input) &&
+                  prefix_outcome.temporal_capture_truncated &&
+                  !prefix_outcome.native_temporal_prefix_complete &&
+                  prefix_outcome.native_temporal_prefix_end == 0,
+              "a truncated temporal ledger cannot acquire prefix completeness");
         for (unsigned variant = 0; variant < 4; ++variant)
         {
             auto thunk_image = region_image;
@@ -1739,7 +1776,8 @@ void test_temporal_heap_uses(const RaxApi *api)
         outcome = {};
         check(regional.emulate_region_walk(region, cfg, events, outcome, decoder, 64, &input) &&
                   !outcome.returned && !outcome.native_temporal_requested &&
-                  !outcome.native_temporal_complete && outcome.summarized_calls == 0 &&
+                  !outcome.native_temporal_complete && !outcome.native_temporal_prefix_complete &&
+                  outcome.native_temporal_prefix_end == 0 && outcome.summarized_calls == 0 &&
                   events.uses.empty(),
               "ordinary native walk cannot silently enable environment models");
         region = plan_native_region(region_image, api, 0x1000, 4096, decoder);
@@ -1747,7 +1785,9 @@ void test_temporal_heap_uses(const RaxApi *api)
         outcome = {};
         cfg.max_insns = 8;
         check(regional.emulate_region_temporal(region, cfg, events, outcome, decoder, &input) &&
-                  !outcome.returned && !outcome.native_temporal_complete,
+                  !outcome.returned && !outcome.native_temporal_complete &&
+                  !outcome.native_temporal_prefix_complete &&
+                  outcome.native_temporal_prefix_end == 0,
               "modeled region instruction exhaustion cannot become complete temporal evidence");
         input.native_objects.push_back({0, 0, {0}});
         events = {};

@@ -1,6 +1,6 @@
 """Explicit native-region string inspection under caller-selected ABI models.
 
-show(ea, bindings, input_request=None) executes four bounded seeded captures.
+show(ea, bindings, input_request=None, prefix=False) executes four bounded captures.
 Polling revalidates the retained snapshot; it never reruns the program.
 """
 
@@ -228,6 +228,14 @@ if QtWidgets is not None:
                 + " | omitted: "
                 + str(self.snapshot["observations_omitted"])
             )
+            if self.snapshot["scope"] == "native-region-prefix-strings":
+                incomplete = sum(row["complete"] != "true" for row in self.snapshot["runs"])
+                message += (
+                    " | OBSERVED PREFIX ONLY | Incomplete executions: "
+                    + str(incomplete)
+                    + "/"
+                    + str(len(self.snapshot["runs"]))
+                )
             if not self.snapshot["consensus_available"]:
                 message += " | Abstained: " + self.snapshot["reason"]
             self.status.setText(message)
@@ -250,12 +258,12 @@ if QtWidgets is not None:
 _forms = []
 
 
-def show(ea, bindings, input_request=None):
+def show(ea, bindings, input_request=None, prefix=False):
     """Explicit capture action; names/addresses are the analyst's ABI contract."""
     if QtWidgets is None:
         raise RuntimeError("Qt inspection unavailable")
     snapshot = api(
-        "chernobog_vm_temporal_strings",
+        "chernobog_vm_temporal_prefix_strings" if prefix else "chernobog_vm_temporal_strings",
         ea,
         json.dumps(input_request or {"args": [], "objects": []}),
         json.dumps(bindings),
@@ -265,5 +273,8 @@ def show(ea, bindings, input_request=None):
     form = TemporalStringForm(snapshot)
     _forms[:] = [old for old in _forms if not old.closed]
     _forms.append(form)
-    form.Show("Native region strings", options=ida_kernwin.PluginForm.WOPN_PERSIST)
+    form.Show(
+        "Native prefix strings" if prefix else "Native region strings",
+        options=ida_kernwin.PluginForm.WOPN_PERSIST,
+    )
     return form

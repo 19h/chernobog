@@ -1237,6 +1237,16 @@ error_t idaapi idc_vm_temporal_string_state(idc_value_t *argv, idc_value_t *r)
                       .c_str());
     return eOk;
 }
+error_t idaapi idc_vm_temporal_prefix_strings(idc_value_t *argv, idc_value_t *r)
+{
+    const auto input = arg_string(argv[1]), models = arg_string(argv[2]);
+    r->set_string(
+        vm::inspect_native_temporal_prefix_strings(uint64_t(resolve_function(argv[0])),
+                                                   std::string(input.c_str(), input.length()),
+                                                   std::string(models.c_str(), models.length()))
+            .c_str());
+    return eOk;
+}
 
 error_t idc_vm_observations(idc_value_t *argv, idc_value_t *r, bool validate)
 {
@@ -1792,6 +1802,9 @@ const idc_entry_t idc_entries[] = {
     {"chernobog_vm_temporal_strings", idc_vm_temporal_strings, args_ea_str_str,
      "chernobog_vm_temporal_strings(ea, input_json, bindings_json)",
      "Four-run named-model native string observations with immutable read witnesses and separate freshness lease"},
+    {"chernobog_vm_temporal_prefix_strings", idc_vm_temporal_prefix_strings, args_ea_str_str,
+     "chernobog_vm_temporal_prefix_strings(ea, input_json, bindings_json)",
+     "Explicit completed-prefix string observations with retained incomplete execution and frontier bounds"},
     {"chernobog_vm_temporal_string_state", idc_vm_temporal_string_state, args_ea_str,
      "chernobog_vm_temporal_string_state(ticket, lease)",
      "Exact snapshot/profile/name revalidation for native string inspection; does not rerun execution"},

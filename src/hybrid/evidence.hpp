@@ -311,6 +311,11 @@ struct NativeTemporalStringProjection
 NativeTemporalStringProjection
 hybrid_native_temporal_strings(const std::vector<NativeTemporalStringRun> &,
                                size_t minimum_length = 4, size_t maximum_length = 4096);
+// Separate observation scope: requires a complete ledger ending at a sentinel
+// or before an unexecuted native-region frontier. Never implies execution return.
+NativeTemporalStringProjection
+hybrid_native_temporal_prefix_strings(const std::vector<NativeTemporalStringRun> &,
+                                      size_t minimum_length = 4, size_t maximum_length = 4096);
 
 TargetEvidence hybrid_build_target_evidence(const ProgramImage &image, const FuncRange &function,
                                             uint64_t focus_address,

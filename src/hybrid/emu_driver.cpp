@@ -2536,6 +2536,25 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
             !ctx.permission_violation && !ctx.cancellation_requested && !ctx.escaped_image &&
             !ctx.region_boundary && !ctx.region_code_changed && !ctx.function_boundary &&
             !ctx.unmodeled_external && !ctx.environment_model_failure && !synthetic_entry_context;
+        const bool stopped_before_instruction =
+            ctx.region_boundary && !outcome->returned && ctx.sequence > 0 &&
+            outcome->stop_reason == RAX_STOP_STOPPED &&
+            outcome->stop_pc == ctx.region_boundary_target && !out.execution.empty() &&
+            out.execution.back().pc == ctx.region_boundary_source &&
+            out.execution.back().sequence < ctx.sequence - 1;
+        outcome->native_temporal_prefix_complete =
+            region && native_temporal && code_ok && mem_ok && inv_ok && outcome->stop_valid &&
+            outcome->stop_status == RAX_OK && outcome->temporal_observation_available &&
+            outcome->memory_observation_available &&
+            (outcome->native_temporal_complete || stopped_before_instruction) &&
+            !outcome->temporal_capture_truncated && !ctx.execution_truncated &&
+            !ctx.dependency_truncated && !ctx.data_truncated && !ctx.data_filtered &&
+            !ctx.permission_violation && !ctx.cancellation_requested && !ctx.escaped_image &&
+            !ctx.region_code_changed && !ctx.function_boundary && !ctx.unmodeled_external &&
+            !ctx.environment_model_failure && !synthetic_entry_context;
+        if (outcome->native_temporal_prefix_complete)
+            outcome->native_temporal_prefix_end =
+                ctx.sequence - (stopped_before_instruction ? 1 : 0);
         if (outcome->returned && sp_reg_ >= 0)
         {
             uint64_t sp_final = 0;

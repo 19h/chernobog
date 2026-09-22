@@ -234,6 +234,10 @@ struct EmuOutcome
     bool environment_model_failure = false;
     // Explicit region environment contract, separate from function completeness.
     bool native_temporal_requested = false, native_temporal_complete = false;
+    // Complete temporal ledger before a sentinel or pre-instruction region stop.
+    // This does not assert that the selected execution returned or can continue.
+    bool native_temporal_prefix_complete = false;
+    uint64_t native_temporal_prefix_end = 0; // exclusive event sequence bound
     bool external_model_used = false;
     bool synthetic_entry_context = false;
     // `requested` records configuration intent; `available` records whether a

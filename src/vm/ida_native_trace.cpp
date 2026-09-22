@@ -560,6 +560,11 @@ trace_native_region_impl(uint64_t function, uint64_t seed, const hybrid::EmuInpu
         << ",\"native_temporal_requested\":"
         << (outcome.native_temporal_requested ? "true" : "false")
         << ",\"native_temporal_complete\":" << (outcome.native_temporal_complete ? "true" : "false")
+        << ",\"native_temporal_prefix_complete\":"
+        << (outcome.native_temporal_prefix_complete ? "true" : "false")
+        << ",\"native_temporal_prefix_end\":" << outcome.native_temporal_prefix_end
+        << ",\"backend_stop\":"
+        << inspection_json_quote(hybrid_rax_stop_reason_name(outcome.stop_reason))
         << ",\"temporal_capture_complete\":"
         << (outcome.temporal_capture_complete ? "true" : "false")
         << ",\"temporal_capture_truncated\":"
@@ -685,8 +690,9 @@ std::string native_temporal_string_state(uint64_t ticket, const std::string &ide
            ",\"database\":" + inspection_json_quote(std::to_string(string_lease->database)) + "}";
 }
 
-std::string inspect_native_temporal_strings(uint64_t function, const std::string &request,
-                                            const std::string &models)
+static std::string inspect_native_temporal_strings_impl(uint64_t function,
+                                                        const std::string &request,
+                                                        const std::string &models, bool prefix)
 {
     using namespace hybrid;
     clear_native_temporal_strings();
@@ -719,7 +725,8 @@ std::string inspect_native_temporal_strings(uint64_t function, const std::string
     std::vector<EmuCallSummary> final_bindings;
     if (!parse_bindings(models, final_bindings))
         return unavailable("model bindings changed during capture");
-    const auto projection = hybrid_native_temporal_strings(runs);
+    const auto projection =
+        prefix ? hybrid_native_temporal_prefix_strings(runs) : hybrid_native_temporal_strings(runs);
     auto lease = std::make_unique<StringLease>();
     lease->identity = bytes(identity);
     lease->ticket = runs.back().capture;
@@ -737,13 +744,19 @@ std::string inspect_native_temporal_strings(uint64_t function, const std::string
                              {"name", binding.name},
                              {"kind", std::to_string(unsigned(binding.kind))}});
     for (const auto &run : runs)
-        stops.push_back({{"capture", std::to_string(run.capture)},
-                         {"run", std::to_string(run.run_id)},
-                         {"seed", hex(run.seed)},
-                         {"complete", run.outcome.native_temporal_complete ? "true" : "false"},
-                         {"stop", hybrid_emu_outcome_name(run.outcome)},
-                         {"site", hex(run.outcome.stop_pc)},
-                         {"instructions", std::to_string(run.outcome.instruction_count)}});
+        stops.push_back(
+            {{"capture", std::to_string(run.capture)},
+             {"run", std::to_string(run.run_id)},
+             {"seed", hex(run.seed)},
+             {"complete", run.outcome.native_temporal_complete ? "true" : "false"},
+             {"prefix_complete", run.outcome.native_temporal_prefix_complete ? "true" : "false"},
+             {"prefix_end_sequence", std::to_string(run.outcome.native_temporal_prefix_end)},
+             {"backend_stop", hybrid_rax_stop_reason_name(run.outcome.stop_reason)},
+             {"boundary_source", hex(run.outcome.region_boundary_source)},
+             {"boundary_target", hex(run.outcome.region_boundary_target)},
+             {"stop", hybrid_emu_outcome_name(run.outcome)},
+             {"site", hex(run.outcome.stop_pc)},
+             {"instructions", std::to_string(run.outcome.instruction_count)}});
     const size_t count = std::min<size_t>(64, projection.observations.size());
     for (size_t index = 0; index < count; ++index)
     {
@@ -803,15 +816,21 @@ std::string inspect_native_temporal_strings(uint64_t function, const std::string
         }
     }
     std::ostringstream out;
-    out << "{\"schema\":1,\"available\":true,\"scope\":\"native-region-strings\",\"ticket\":"
-        << lease->ticket << ",\"lease\":" << inspection_json_quote(lease->identity)
+    out << "{\"schema\":1,\"available\":true,\"scope\":"
+        << inspection_json_quote(prefix ? "native-region-prefix-strings" : "native-region-strings")
+        << ",\"ticket\":" << lease->ticket
+        << ",\"lease\":" << inspection_json_quote(lease->identity)
         << ",\"database\":" << inspection_json_quote(std::to_string(lease->database))
         << ",\"function\":" << inspection_json_quote(hex(function))
         << ",\"consensus_available\":" << (projection.available ? "true" : "false")
         << ",\"reason\":" << inspection_json_quote(projection.reason)
         << ",\"observations_omitted\":" << (projection.observations.size() - count)
         << ",\"function_evidence_published\":false,\"vm_identity_proved\":false"
-        << ",\"contract\":\"four seeded runs under explicit named ABI models; immutable byte snapshots; no unique-input or callee-equivalence proof\"";
+        << ",\"contract\":"
+        << inspection_json_quote(
+               prefix
+                   ? "four seeded runs under explicit named ABI models; only complete event prefixes compared; execution return reported separately; no unique-input or callee-equivalence proof"
+                   : "four seeded runs under explicit named ABI models; immutable byte snapshots; no unique-input or callee-equivalence proof");
     inspection_json_rows(out, "observations", observations);
     inspection_json_rows(out, "witnesses", witnesses);
     inspection_json_rows(out, "fragments", fragments);
@@ -821,5 +840,15 @@ std::string inspect_native_temporal_strings(uint64_t function, const std::string
     out << '}';
     string_lease = std::move(lease);
     return out.str();
+}
+std::string inspect_native_temporal_strings(uint64_t function, const std::string &request,
+                                            const std::string &models)
+{
+    return inspect_native_temporal_strings_impl(function, request, models, false);
+}
+std::string inspect_native_temporal_prefix_strings(uint64_t function, const std::string &request,
+                                                   const std::string &models)
+{
+    return inspect_native_temporal_strings_impl(function, request, models, true);
 }
 } // namespace chernobog::vm

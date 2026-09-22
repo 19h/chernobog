@@ -350,9 +350,65 @@ hybrid_consensus_native_read_strings(const TargetEvidence &evidence, size_t mini
                           maximum_length);
 }
 
+namespace
+{
+bool bounded_prefix(const NativeTemporalStringRun &run)
+{
+    const auto &out = run.outcome;
+    const auto end = out.native_temporal_prefix_end;
+    if (!out.native_temporal_prefix_complete || !end || run.events.execution.empty() ||
+        run.events.execution.size() > 4096 || run.events.edges.size() > 4096 ||
+        run.events.uses.size() > TemporalMemory::use_limit || run.events.data.size() > 65536 ||
+        run.events.allocations.size() > TemporalMemory::allocation_limit)
+        return false;
+    const bool boundary = out.region_boundary && !out.returned && !out.native_temporal_complete &&
+                          out.stop_reason == RAX_STOP_STOPPED &&
+                          out.stop_pc == out.region_boundary_target &&
+                          run.events.execution.back().pc == out.region_boundary_source;
+    if (!boundary && !(out.returned && out.native_temporal_complete && !out.region_boundary &&
+                       out.stop_reason == RAX_STOP_UNTIL))
+        return false;
+    uint64_t last = 0, previous = 0;
+    bool first = true;
+    const auto before_end = [&](uint64_t sequence)
+    {
+        if (sequence >= end)
+            return false;
+        last = std::max(last, sequence);
+        return true;
+    };
+    for (const auto &point : run.events.execution)
+    {
+        if (point.run_id != run.run_id || point.seed != run.seed || !point.size ||
+            point.size > 15 || (!first && point.sequence <= previous) ||
+            !before_end(point.sequence))
+            return false;
+        previous = point.sequence;
+        first = false;
+    }
+    for (const auto &use : run.events.uses)
+        if (!before_end(use.sequence))
+            return false;
+    for (const auto &access : run.events.data)
+        if (!before_end(access.sequence))
+            return false;
+    for (const auto &allocation : run.events.allocations)
+        if (!before_end(allocation.allocated) ||
+            (allocation.live ? allocation.released != 0
+                             : (allocation.released <= allocation.allocated ||
+                                !before_end(allocation.released))))
+            return false;
+    for (const auto &edge : run.events.edges)
+        if (!(boundary && edge.sequence == end && edge.from == out.region_boundary_source &&
+              edge.to == out.region_boundary_target) &&
+            !before_end(edge.sequence))
+            return false;
+    return last + 1 == end;
+}
+
 NativeTemporalStringProjection
-hybrid_native_temporal_strings(const std::vector<NativeTemporalStringRun> &source,
-                               size_t minimum_length, size_t maximum_length)
+project_native_strings(const std::vector<NativeTemporalStringRun> &source, size_t minimum_length,
+                       size_t maximum_length, bool prefix)
 {
     NativeTemporalStringProjection result;
     auto reject = [&](const char *reason)
@@ -379,15 +435,17 @@ hybrid_native_temporal_strings(const std::vector<NativeTemporalStringRun> &sourc
         if (!run.context || !run.image_hash || !run.generation || run.context != first.context ||
             run.image_hash != first.image_hash || run.generation != first.generation)
             return reject("incompatible capture scopes");
+        const bool complete = out.native_temporal_complete && out.returned &&
+                              !out.region_boundary && out.stop_reason == RAX_STOP_UNTIL;
         if (!run.ran || !out.native_region || !out.region_identity ||
-            !out.native_temporal_requested || !out.native_temporal_complete || !out.returned ||
-            !out.stop_valid || out.stop_reason != RAX_STOP_UNTIL || out.stop_status != RAX_OK ||
-            out.conclusive() || out.temporal_capture_complete || out.consumed_context_complete ||
+            !out.native_temporal_requested || !(prefix ? bounded_prefix(run) : complete) ||
+            !out.stop_valid || out.stop_status != RAX_OK || out.conclusive() ||
+            out.temporal_capture_complete || out.consumed_context_complete ||
             !out.temporal_observation_available || !out.memory_observation_available ||
             out.temporal_capture_truncated || out.data_trace_truncated || out.data_trace_filtered ||
-            out.region_boundary || out.region_code_changed || out.function_boundary ||
-            out.permission_violation || out.cancelled || out.escaped_image ||
-            out.unmodeled_external || out.environment_model_failure)
+            out.region_code_changed || out.function_boundary || out.permission_violation ||
+            out.cancelled || out.escaped_image || out.unmodeled_external ||
+            out.environment_model_failure)
             return reject("incomplete or incompatible temporal capture");
         if (run.bindings.empty() || run.bindings.size() > 32)
             return reject("invalid model contract");
@@ -422,7 +480,24 @@ hybrid_native_temporal_strings(const std::vector<NativeTemporalStringRun> &sourc
     if (!valid)
         return reject("invalid or over-quota event ledger");
     result.available = true;
-    result.reason = "completed named-model observations; no function or VM proof publication";
+    result.reason =
+        prefix
+            ? "completed-prefix named-model observations; execution return not implied; no function or VM proof publication"
+            : "completed named-model observations; no function or VM proof publication";
     return result;
+}
+}
+
+NativeTemporalStringProjection
+hybrid_native_temporal_strings(const std::vector<NativeTemporalStringRun> &source,
+                               size_t minimum_length, size_t maximum_length)
+{
+    return project_native_strings(source, minimum_length, maximum_length, false);
+}
+NativeTemporalStringProjection
+hybrid_native_temporal_prefix_strings(const std::vector<NativeTemporalStringRun> &source,
+                                      size_t minimum_length, size_t maximum_length)
+{
+    return project_native_strings(source, minimum_length, maximum_length, true);
 }
 } // namespace chernobog::hybrid

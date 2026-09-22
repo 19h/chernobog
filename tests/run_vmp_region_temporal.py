@@ -18,7 +18,14 @@ def main():
     parser.add_argument(
         "--strings", action="store_true", help="Measure scoped string consensus and freshness"
     )
+    parser.add_argument(
+        "--prefix-strings",
+        action="store_true",
+        help="Inspect completed event prefixes while preserving incomplete execution",
+    )
     args = parser.parse_args()
+    if args.prefix_strings:
+        args.strings = True
     root = Path(__file__).resolve().parent.parent
     corpus_path = args.corpus_report.resolve()
     corpus = json.loads(corpus_path.read_text())
@@ -63,6 +70,7 @@ def main():
         "corpus_report_sha256": digest(corpus_path),
         "runs": [],
         "strings": args.strings,
+        "prefix_strings": args.prefix_strings,
         "scope": "explicit modeled native-region observations; ordinary publication and VM identity excluded",
     }
     try:
@@ -88,6 +96,11 @@ def main():
                     "CHERNOBOG_STRING_ENTRY=" + corpus["selected_entry"],
                     "--set",
                     "CHERNOBOG_EXPECT_RETURN=" + str(int(expected_return)),
+                    "--set",
+                    "CHERNOBOG_PREFIX_STRINGS=" + str(int(args.prefix_strings)),
+                    "--set",
+                    "CHERNOBOG_EXPECT_STRINGS="
+                    + str(int(expected_return or (args.prefix_strings and label == "mutation-1"))),
                 ],
                 timeout=120,
             )
@@ -120,6 +133,16 @@ def main():
                 item["instructions"] = [int(t["instructions"]) for t in snapshot["runs"]]
                 item["strings"] = [row["value"] for row in snapshot["observations"]]
                 item["witnesses"] = len(snapshot["witnesses"])
+                if args.prefix_strings:
+                    item["prefix_completed"] = sum(
+                        t["prefix_complete"] == "true" for t in snapshot["runs"]
+                    )
+                    item["prefix_end_sequences"] = [
+                        int(t["prefix_end_sequence"]) for t in snapshot["runs"]
+                    ]
+                    item["completed_run_strings"] = [
+                        row["value"] for row in capture["completed_snapshot"]["observations"]
+                    ]
             else:
                 assert len(capture["traces"]) == 4
                 item["completed"] = sum(t["native_temporal_complete"] for t in capture["traces"])
