@@ -451,6 +451,7 @@ struct NativeProof
 
 // Main-thread publication identity across all engines in this loaded plugin.
 uint64_t native_inspection_publication = 0;
+uint64_t native_region_context = 0;
 
 struct NativeMutationGuard
 {
@@ -872,6 +873,8 @@ ea_t bounded_function_end(ea_t start, int maximum_instructions)
 struct NativeAnalysisEngine::Impl final : event_listener_t
 {
     const ssize_t owner_database = get_dbctx_id();
+    const uint64_t region_context =
+        native_region_context == UINT64_MAX ? 0 : ++native_region_context;
     NativeAnalysisConfig config = load_native_analysis_config();
     NativeAnalysisStats statistics;
     Architecture architecture = Architecture::Unsupported;
@@ -1325,6 +1328,25 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             }
             result.records.push_back(std::move(row));
         }
+        return result;
+    }
+
+    X86RegionInspection inspect_region(uint64_t root) const
+    {
+        X86RegionInspection result;
+        result.database = int64_t(get_dbctx_id());
+        result.root = root;
+        result.context = region_context;
+        if (result.database != owner_database || closing_database || replaying_undo ||
+            pending_ownership_recovery || native_mutation_depth != 0 || !config.enabled ||
+            region_context == 0)
+        {
+            result.reason = "native analysis context unavailable";
+            return result;
+        }
+        result = analyze_x86_region(root);
+        result.database = int64_t(get_dbctx_id());
+        result.context = region_context;
         return result;
     }
 
@@ -2763,6 +2785,11 @@ const NativeAnalysisStats &NativeAnalysisEngine::stats() const
 NativeInspection NativeAnalysisEngine::inspect(uint64_t function_start) const
 {
     return impl_ != nullptr ? impl_->inspect(function_start) : NativeInspection{};
+}
+
+X86RegionInspection NativeAnalysisEngine::inspect_region(uint64_t root) const
+{
+    return impl_ != nullptr ? impl_->inspect_region(root) : X86RegionInspection{};
 }
 
 } // namespace chernobog::ida_analysis

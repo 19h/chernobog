@@ -43,6 +43,7 @@
 #include "../vm/ida_native_trace.hpp"
 #include "../ida_analysis/early_hexrays.hpp"
 #include "../ida_analysis/native_engine.hpp"
+#include "../ida_analysis/x86_analysis.hpp"
 
 #include <chernobog/build_provenance.hpp>
 
@@ -1302,6 +1303,44 @@ error_t idaapi idc_native_evidence(idc_value_t *argv, idc_value_t *r)
     return eOk;
 }
 
+error_t idaapi idc_native_region_facts(idc_value_t *argv, idc_value_t *r)
+{
+    const ea_t root = arg_ea(argv[0]);
+    Host *host = current_host();
+    const auto *engine = host ? host->native_analysis_engine() : nullptr;
+    auto view = engine && root != BADADDR ? engine->inspect_region(uint64_t(root))
+                                          : ida_analysis::X86RegionInspection{};
+    if (!engine || root == BADADDR)
+    {
+        view.root = uint64_t(root);
+        view.reason = "native analysis context or exact root unavailable";
+    }
+    std::ostringstream out;
+    out << "{\"schema\":1,\"available\":" << (view.available ? "true" : "false")
+        << ",\"converged\":" << (view.converged ? "true" : "false")
+        << ",\"truncated\":" << (view.truncated ? "true" : "false")
+        << ",\"database\":" << inspection_json_quote(std::to_string(view.database))
+        << ",\"root\":" << inspection_json_quote(hybrid::view_hex(view.root))
+        << ",\"address_bits\":" << view.address_bits
+        << ",\"incoming_examined\":" << view.incoming_examined
+        << ",\"context\":" << inspection_json_quote(hybrid::view_hex(view.context))
+        << ",\"flag_encoding\":"
+        << inspection_json_quote(
+               "Abstract bits: CF=1, PF=2, AF=4, ZF=8, SF=16, OF=32; not EFLAGS/RFLAGS positions")
+        << ",\"reason\":" << inspection_json_quote(view.reason)
+        << ",\"limits\":{\"nodes\":64,\"rounds\":128,\"incoming_per_node\":256}"
+        << ",\"scope\":"
+        << inspection_json_quote(
+               "Static must-facts conditional on entry at the selected ownerless root, before a region exit; known external entries start unknown; flat unchanged-code normal-completion model, calls require normal return; no whole-program reachability, IDA publication or VM identity")
+        << ",\"published\":false";
+    inspection_json_rows(out, "nodes", view.nodes);
+    inspection_json_rows(out, "edges", view.edges);
+    inspection_json_rows(out, "records", view.records);
+    out << '}';
+    r->set_string(out.str().c_str());
+    return eOk;
+}
+
 error_t idaapi idc_evidence_state(idc_value_t *argv, idc_value_t *r)
 {
     const ea_t function_ea = resolve_function(argv[0]);
@@ -1779,6 +1818,9 @@ const idc_entry_t idc_entries[] = {
      "Inspection identity and exact freshness without rebuilding the view"},
     {"chernobog_native_evidence", idc_native_evidence, args_ea, "chernobog_native_evidence(ea)",
      "Read-only native conclusions with current dependency and recognizer checks"},
+    {"chernobog_native_region_facts", idc_native_region_facts, args_ea,
+     "chernobog_native_region_facts(root_ea)",
+     "Read-only root-scoped ownerless graph facts; preserves both direct successors and never publishes IDA edges"},
     {"chernobog_solver_evidence", idc_solver_evidence, args_ea, "chernobog_solver_evidence(ea)",
      "Actual bounded SMT queries/models; current IR applicability is not inferred"},
     {"chernobog_vm_regions", idc_vm_regions, args_ea, "chernobog_vm_regions(ea)",

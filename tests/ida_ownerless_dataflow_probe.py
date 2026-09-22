@@ -1,0 +1,625 @@
+"""Read-only ownerless direct-CFG facts against independently executed fixtures."""
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
+import traceback
+
+import ida_auto
+import ida_bytes
+import ida_expr
+import ida_funcs
+import ida_idaapi
+import ida_loader
+import ida_name
+import ida_pro
+import ida_segment
+import ida_ua
+import ida_xref
+import idautils
+
+sys.dont_write_bytecode = True
+checks, errors, captures = [], [], {}
+ordinary = None
+
+
+def check(name, value):
+    checks.append({"case": name, "passed": bool(value)})
+    if not value:
+        errors.append(name)
+
+
+def number(value):
+    return int(value, 0) if isinstance(value, str) else int(value)
+
+
+def symbol(name):
+    for candidate in ("_" + name, name):
+        ea = ida_name.get_name_ea(ida_idaapi.BADADDR, candidate)
+        if ea != ida_idaapi.BADADDR:
+            return int(ea)
+    raise AssertionError("fixture symbol missing: " + name)
+
+
+def api(expression):
+    result = ida_expr.idc_value_t()
+    assert not ida_expr.eval_idc_expr(result, ida_idaapi.BADADDR, expression)
+    return json.loads(result.c_str())
+
+
+def inventory():
+    """Whole-IDB byte/head/owner/reference/comment identity, without host paths."""
+    digest = hashlib.sha256()
+    total = heads = references = 0
+
+    def add(value):
+        digest.update(json.dumps(value, separators=(",", ":")).encode())
+        digest.update(b"\n")
+
+    for index in range(ida_segment.get_segm_qty()):
+        segment = ida_segment.getnseg(index)
+        size = int(segment.end_ea - segment.start_ea)
+        total += size
+        assert total <= 64 * 1024 * 1024
+        add((int(segment.start_ea), int(segment.end_ea), int(segment.bitness), int(segment.perm)))
+        for part in ida_bytes.get_bytes_and_mask(segment.start_ea, size) or (b"unloaded",):
+            digest.update(part)
+        for ea in idautils.Heads(segment.start_ea, segment.end_ea):
+            heads += 1
+            assert heads <= 1048576
+            function = ida_funcs.get_func(ea)
+            add(
+                (
+                    ea,
+                    int(ida_bytes.get_full_flags(ea)),
+                    int(ida_bytes.get_item_end(ea)),
+                    None if function is None else int(function.start_ea),
+                    ida_bytes.get_cmt(ea, True),
+                    ida_bytes.get_cmt(ea, False),
+                )
+            )
+            refs = sorted(
+                (int(ref.frm), int(ref.to), int(ref.type), bool(ref.iscode), bool(ref.user))
+                for ref in idautils.XrefsFrom(ea)
+            )
+            references += len(refs)
+            assert references <= 2097152
+            add(refs)
+    functions = list(idautils.Functions())
+    assert len(functions) <= 4096
+    for ea in functions:
+        function = ida_funcs.get_func(ea)
+        add(
+            (
+                ea,
+                int(function.flags),
+                list(idautils.Chunks(ea)),
+                ida_funcs.get_func_cmt(function, True),
+                ida_funcs.get_func_cmt(function, False),
+            )
+        )
+    add(list(idautils.Names()))
+    return {
+        "sha256": digest.hexdigest(),
+        "heads": heads,
+        "references": references,
+        "functions": len(functions),
+    }
+
+
+def inspect(name, root):
+    if ordinary:
+        # Fixture topology edits deliberately revoke all ordinary publications.
+        # Refresh only this owned control before the read-only comparison.
+        function = ida_funcs.get_func(ordinary)
+        assert function is not None
+        assert ida_auto.plan_and_wait(function.start_ea, function.end_ea)
+    published_before = api(f"chernobog_native_evidence({ordinary})") if ordinary else None
+    check(
+        name + " fresh ordinary publication control",
+        published_before is None
+        or any(
+            row["fresh"] == "true" and row["kind"] == "setcc-value"
+            for row in published_before["records"]
+        ),
+    )
+    before = inventory()
+    result = api(f"chernobog_native_region_facts({root})")
+    after = inventory()
+    check(name + " read-only IDB inventory", before == after)
+    published_after = api(f"chernobog_native_evidence({ordinary})") if ordinary else None
+    check(name + " preserves ordinary publications", published_before == published_after)
+    check(
+        name + " schema and explicit root", result["schema"] == 1 and number(result["root"]) == root
+    )
+    check(
+        name + " explicit bounded unpublished scope",
+        result["limits"] == {"nodes": 64, "rounds": 128, "incoming_per_node": 256}
+        and result["published"] is False
+        and "selected ownerless root" in result["scope"]
+        and "no whole-program reachability" in result["scope"],
+    )
+    sites = [number(node["site"]) for node in result["nodes"]]
+    check(name + " bounded unique sorted nodes", sites == sorted(set(sites)) and len(sites) <= 64)
+    check(
+        name + " all admitted nodes remain ownerless",
+        all(ida_funcs.get_func(site) is None for site in sites),
+    )
+    expected_support = ";".join(hex(site) for site in sites)
+    check(
+        name + " exact static support attribution",
+        all(
+            row["truth"] == "static-region-fact" and row["support"] == expected_support
+            for row in result["records"]
+        ),
+    )
+    captures[name] = {
+        "facts": result,
+        "inventory_before": before,
+        "inventory_after": after,
+        "ordinary_before": published_before,
+        "ordinary_after": published_after,
+    }
+    return result
+
+
+def row_at(result, site, kind="setcc-value"):
+    rows = [row for row in result["records"] if number(row["site"]) == site and row["kind"] == kind]
+    assert len(rows) == 1
+    return rows[0]
+
+
+def condition(name, result, site, expected):
+    row = row_at(result, site)
+    check(
+        name + " converged", result["available"] and result["converged"] and not result["truncated"]
+    )
+    check(
+        name + " condition",
+        row["status"] == ("unresolved" if expected is None else "proved")
+        and row["outcome"] == ("unknown" if expected is None else "true" if expected else "false")
+        and row["value"] == ("unknown" if expected is None else "0x1" if expected else "0x0"),
+    )
+
+
+def remove_owners(first, end):
+    owners = {
+        int(function.start_ea)
+        for ea in range(first, end)
+        if (function := ida_funcs.get_func(ea)) is not None
+    }
+    for ea in sorted(owners):
+        assert ida_funcs.del_func(ea)
+
+
+def decode_span(first, end):
+    cursor, instructions = first, []
+    while cursor < end:
+        assert ida_ua.create_insn(cursor) > 0
+        instruction = ida_ua.insn_t()
+        assert ida_ua.decode_insn(instruction, cursor) > 0
+        assert cursor + instruction.size <= end
+        instructions.append(instruction)
+        cursor += instruction.size
+    assert cursor == end
+    return instructions
+
+
+def data_span(first, size, expected=None):
+    if expected is not None:
+        assert ida_bytes.get_bytes(first, size) == expected
+    assert ida_bytes.del_items(first, ida_bytes.DELIT_SIMPLE, size)
+    assert ida_bytes.create_data(first, ida_bytes.FF_BYTE, size, ida_idaapi.BADADDR)
+
+
+def prepare_diamond(name, offset=0):
+    labels = {
+        suffix: symbol(name + suffix) + offset
+        for suffix in (
+            "",
+            "_branch",
+            "_root_end",
+            "_left",
+            "_left_end",
+            "_right",
+            "_right_end",
+            "_join",
+            "_end",
+        )
+    }
+    remove_owners(labels[""], labels["_end"] + 3)
+    for suffix in ("_root_end", "_left_end", "_right_end", "_end"):
+        data_span(labels[suffix], 3, b"\xcc" * 3)
+    instructions = []
+    for first, end in (
+        ("", "_root_end"),
+        ("_left", "_left_end"),
+        ("_right", "_right_end"),
+        ("_join", "_end"),
+    ):
+        instructions.extend(decode_span(labels[first], labels[end]))
+    assert all(ida_funcs.get_func(instruction.ea) is None for instruction in instructions)
+    return labels, instructions
+
+
+def prepare_prefix(name):
+    """Existing loop/target fixture ends at its first architectural RET."""
+    first = cursor = symbol(name)
+    instructions = []
+    for _ in range(64):
+        instruction = ida_ua.insn_t()
+        assert ida_ua.decode_insn(instruction, cursor) > 0
+        instructions.append(instruction)
+        cursor += instruction.size
+        if instruction.get_canon_mnem() in ("ret", "retn"):
+            break
+    else:
+        raise AssertionError("fixture prefix lacks bounded RET")
+    remove_owners(first, cursor)
+    return first, decode_span(first, cursor)
+
+
+def mutation_controls(labels, baseline):
+    root, join, left = labels[""], labels["_join"], labels["_left"]
+    source = symbol("df_external")
+    assert ida_xref.add_cref(source, join, ida_xref.fl_JN | ida_xref.XREF_USER)
+    changed = inspect("external_join_entry", root)
+    condition("external join entry", changed, join, None)
+    check(
+        "external join is an explicit unknown entry",
+        next(node for node in changed["nodes"] if number(node["site"]) == join)["unknown_entry"]
+        == "true",
+    )
+    ida_xref.del_cref(source, join, False)
+    assert not any(ref.frm == source and ref.iscode for ref in idautils.XrefsTo(join))
+    restored = inspect("external_join_restored", root)
+    condition("external join restored", restored, join, True)
+
+    branch = ida_ua.insn_t()
+    assert ida_ua.decode_insn(branch, labels["_branch"]) > 0
+    outgoing = [(int(ref.to), int(ref.type)) for ref in idautils.XrefsFrom(branch.ea) if ref.iscode]
+    for target, _ in outgoing:
+        ida_xref.del_cref(branch.ea, target, False)
+    assert not any(ref.iscode for ref in idautils.XrefsFrom(branch.ea))
+    pruned = inspect("pruned_branch_references", root)
+    condition("pruned references", pruned, join, True)
+    targets = {
+        number(edge["target"])
+        for edge in pruned["edges"]
+        if number(edge["source"]) == branch.ea and edge["kind"] != "frontier"
+    }
+    check(
+        "both Jcc successors reconstructed from bytes",
+        targets == {int(branch.Op1.addr), branch.ea + branch.size},
+    )
+    check(
+        "pruned graph keeps all nodes",
+        pruned["nodes"] and len(pruned["nodes"]) == len(baseline["nodes"]),
+    )
+    for target, kind in outgoing:
+        assert ida_xref.add_cref(branch.ea, target, kind)
+    condition("pruned references restored", inspect("branch_references_restored", root), join, True)
+
+    assert ida_bytes.get_byte(left) == 0xF9
+    ida_bytes.patch_byte(left, 0xF8)
+    condition("changed defining byte", inspect("changed_defining_byte", root), join, None)
+    ida_bytes.patch_byte(left, 0xF9)
+    condition("defining byte restored", inspect("defining_byte_restored", root), join, True)
+
+    assert ida_funcs.add_func(root, labels["_root_end"])
+    owned = inspect("root_became_owned", root)
+    check(
+        "owned root is unavailable",
+        not owned["available"] and owned["reason"] == "owned_code" and not owned["records"],
+    )
+    assert ida_funcs.del_func(root)
+    condition("root ownership restored", inspect("root_ownerless_restored", root), join, True)
+
+    assert branch.size > 1
+    assert ida_xref.add_cref(source, branch.ea + 1, ida_xref.fl_JN | ida_xref.XREF_USER)
+    interior = inspect("interior_entry", root)
+    check(
+        "interior entry refuses every fact",
+        not interior["converged"]
+        and interior["reason"] == "interior_code_entry"
+        and not interior["records"],
+    )
+    ida_xref.del_cref(source, branch.ea + 1, False)
+    assert not any(ref.frm == source and ref.iscode for ref in idautils.XrefsTo(branch.ea + 1))
+    condition("interior entry restored", inspect("interior_entry_restored", root), join, True)
+
+
+def metadata_controls(labels):
+    """Exact-source byte projection; this new IDB address is not native-executed."""
+    first, end = labels[""], labels["_end"] + 3
+    raw = ida_bytes.get_bytes(first, end - first)
+    base = (
+        max(ida_segment.getnseg(i).end_ea for i in range(ida_segment.get_segm_qty())) + 0xFFFF
+    ) & ~0xFFFF
+    assert ida_segment.add_segm(0, base, base + 0x1000, "ownerless_metadata_projection", "CODE")
+    segment = ida_segment.getseg(base)
+    original_mode = ida_segment.getseg(first).bitness
+    segment.perm, segment.bitness = 5, original_mode
+    assert ida_segment.update_segm(segment)
+    ida_bytes.put_bytes(base, raw)
+    projected, _ = prepare_diamond("od_equal", base - first)
+    captures["metadata_projection_identity"] = {
+        "scope": "Exact native-fixture bytes copied to an IDB-only position-independent segment; no native execution at this address",
+        "source": hex(first),
+        "copy": hex(base),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
+    condition("metadata projection", inspect("metadata_projection", base), projected["_join"], True)
+    segment.perm = ida_segment.SEGPERM_READ
+    assert ida_segment.update_segm(segment)
+    removed = inspect("projection_nonexecutable", base)
+    check(
+        "nonexecutable root rejected",
+        not removed["available"]
+        and not removed["records"]
+        and removed["reason"] == "nonexecutable_or_external",
+    )
+    segment.perm = 5
+    assert ida_segment.update_segm(segment)
+    condition(
+        "permissions restored",
+        inspect("projection_permissions_restored", base),
+        projected["_join"],
+        True,
+    )
+    segment.bitness = 0
+    assert ida_segment.update_segm(segment)
+    changed = inspect("projection_16_bit_mode", base)
+    check(
+        "unsupported mode rejected",
+        not changed["available"]
+        and not changed["records"]
+        and changed["reason"] == "unsupported_mode",
+    )
+    segment.bitness = original_mode
+    assert ida_segment.update_segm(segment)
+    condition("mode restored", inspect("projection_mode_restored", base), projected["_join"], True)
+    check(
+        "metadata mutations preserve exact projected bytes",
+        ida_bytes.get_bytes(base, len(raw)) == raw,
+    )
+
+
+def main():
+    global ordinary
+    try:
+        assert ida_loader.load_plugin(os.environ["CHERNOBOG_PLUGIN_PATH"])
+        ida_auto.auto_wait()
+        value = ida_expr.idc_value_t()
+        assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
+        ida_auto.auto_wait()
+        ida_auto.enable_auto(False)
+        ordinary = symbol("df_equal")
+        owned_before = api(f"chernobog_native_evidence({ordinary})")
+        check(
+            "ordinary control has a fresh publication",
+            any(
+                row["fresh"] == "true" and row["kind"] == "setcc-value"
+                for row in owned_before["records"]
+            ),
+        )
+        configurations = {}
+        for name, nodes in (
+            ("od_equal", 11),
+            ("od_conflict", 11),
+            ("od_budget64", 64),
+            ("od_budget65", 65),
+        ):
+            labels, decoded = prepare_diamond(name)
+            check(name + " independent decoded instruction count", len(decoded) == nodes)
+            configurations[name] = labels
+        baseline = inspect("equal_diamond", configurations["od_equal"][""])
+        condition("equal diamond", baseline, configurations["od_equal"]["_join"], True)
+        condition(
+            "conflicting diamond",
+            inspect("conflicting_diamond", configurations["od_conflict"][""]),
+            configurations["od_conflict"]["_join"],
+            None,
+        )
+        condition(
+            "exact 64-node budget",
+            inspect("exact_node_budget", configurations["od_budget64"][""]),
+            configurations["od_budget64"]["_join"],
+            True,
+        )
+        excess = inspect("exceeded_node_budget", configurations["od_budget65"][""])
+        check(
+            "65-node graph yields no partial facts",
+            excess["available"]
+            and not excess["converged"]
+            and excess["truncated"]
+            and excess["reason"] == "node_limit"
+            and len(excess["nodes"]) == 64
+            and not excess["records"],
+        )
+
+        for name, expected in (("df_loop", True), ("df_loop_changes", None)):
+            root, instructions = prepare_prefix(name)
+            site = next(
+                instruction.ea
+                for instruction in instructions
+                if instruction.get_canon_mnem().startswith("set")
+            )
+            condition(name, inspect(name, root), site, expected)
+        for name, expected in (("df_target", True), ("df_target_changes", False)):
+            root, instructions = prepare_prefix(name)
+            result = inspect(name, root)
+            push = next(
+                instruction
+                for instruction in instructions
+                if instruction.get_canon_mnem() == "push"
+            )
+            row = row_at(result, push.ea, "push-return")
+            bits = result["address_bits"]
+            check(
+                name + " exact transfer stack effects",
+                number(row["width_bits"]) == bits
+                and number(row["stack_delta_bytes"]) == 0
+                and number(row["stack_write_bytes"]) == bits // 8
+                and number(row["stack_write_offset_bytes"]) == -(bits // 8)
+                and number(row["transfer"]) == push.ea + push.size,
+            )
+            check(
+                name + " target consensus",
+                row["status"] == ("proved" if expected else "unresolved")
+                and row["target_proof"] == ("register-definition" if expected else "unresolved")
+                and (row["target"] != "unknown") == expected,
+            )
+            if expected:
+                targets = {
+                    int(instruction.Op2.addr)
+                    for instruction in instructions
+                    if instruction.get_canon_mnem() == "lea"
+                }
+                check(
+                    name + " target matches encoded LEA definitions",
+                    targets == {number(row["target"])},
+                )
+
+        root, source, join, end = (
+            symbol("od_adjacent_" + suffix) for suffix in ("root", "external", "join", "end")
+        )
+        remove_owners(root, end + 3)
+        data_span(symbol("od_adjacent_root_end"), 3, b"\xcc" * 3)
+        data_span(end, 3, b"\xcc" * 3)
+        data_span(source, 1, b"\xf8")
+        decode_span(root, symbol("od_adjacent_root_end"))
+        decode_span(join, end)
+        condition("adjacent source not code", inspect("adjacent_source_data", root), join, True)
+        assert ida_bytes.del_items(source, ida_bytes.DELIT_SIMPLE, 1)
+        assert ida_ua.create_insn(source) == 1
+        ida_xref.del_cref(source, join, False)
+        adjacent = inspect("adjacent_source_without_reference", root)
+        condition("adjacent external fallthrough", adjacent, join, None)
+        node = next(node for node in adjacent["nodes"] if number(node["site"]) == join)
+        check(
+            "decoded adjacency captured without trusting xrefs",
+            node["unknown_entry"] == "true"
+            and number(node["adjacent"]) == source
+            and node["adjacent_bytes"] == "f8"
+            and not any(ref.frm == source and ref.iscode for ref in idautils.XrefsTo(join)),
+        )
+        data_span(source, 1, b"\xf8")
+        condition("adjacent source restored", inspect("adjacent_source_restored", root), join, True)
+
+        root, end = symbol("od_call_root"), symbol("od_call_end")
+        remove_owners(root, end + 3)
+        for suffix in ("root_end", "end"):
+            data_span(symbol("od_call_" + suffix), 3, b"\xcc" * 3)
+        decode_span(root, symbol("od_call_root_end"))
+        decode_span(symbol("od_call_callee"), end)
+        called = inspect("call_return_barrier", root)
+        condition("call return clears flags", called, symbol("od_call_join"), None)
+        check(
+            "call frontier and normal-return edge explicit",
+            any(
+                edge["kind"] == "frontier" and edge["reason"] == "call_target_not_followed"
+                for edge in called["edges"]
+            )
+            and any(edge["kind"] == "call-return" for edge in called["edges"])
+            and symbol("od_call_callee") not in {number(node["site"]) for node in called["nodes"]},
+        )
+
+        root, unsupported, join, end = (
+            symbol("od_frontier_" + suffix) for suffix in ("root", "unsupported", "join", "end")
+        )
+        remove_owners(root, end + 3)
+        for suffix in ("root_end", "end"):
+            data_span(symbol("od_frontier_" + suffix), 3, b"\xcc" * 3)
+        decode_span(root, symbol("od_frontier_root_end"))
+        decode_span(unsupported, end)
+        assert ida_bytes.get_bytes(unsupported, join - unsupported) == bytes.fromhex("660fc8")
+        ida_xref.del_cref(unsupported, join, False)
+        frontier = inspect("admitted_frontier_adjacency_encoding_only", root)
+        condition("unsupported predecessor cannot prove the join", frontier, join, None)
+        node = next(node for node in frontier["nodes"] if number(node["site"]) == join)
+        check(
+            "admitted unsupported predecessor remains an unknown adjacent entry",
+            node["unknown_entry"] == "true"
+            and number(node["adjacent"]) == unsupported
+            and node["adjacent_bytes"] == "660fc8",
+        )
+        check(
+            "BSWAP16 stops without a guessed continuation",
+            any(
+                number(edge["source"]) == unsupported
+                and edge["kind"] == "frontier"
+                and edge["reason"] == "unsupported_bswap_width"
+                for edge in frontier["edges"]
+            )
+            and not any(
+                number(edge["source"]) == unsupported
+                and number(edge["target"]) == join
+                and edge["kind"] != "frontier"
+                for edge in frontier["edges"]
+            ),
+        )
+        captures["admitted_frontier_adjacency_encoding_only"][
+            "scope"
+        ] = "Unsupported encoded-instruction frontier only; deliberately not native-executed"
+
+        for name, payload in (
+            ("od_negative8", bytes.fromhex("6affc3")),
+            ("od_negative32", bytes.fromhex("68ffffffffc3")),
+        ):
+            root, end = symbol(name), symbol(name + "_end")
+            remove_owners(root, end + 3)
+            data_span(end, 3, b"\xcc" * 3)
+            assert ida_bytes.get_bytes(root, end - root) == payload
+            decode_span(root, end)
+            result = inspect(name + "_encoding_only", root)
+            row = row_at(result, root, "push-return")
+            check(
+                name + " immediate target sign extension",
+                row["status"] == "proved"
+                and row["target_proof"] == "immediate"
+                and number(row["target"]) == (1 << result["address_bits"]) - 1,
+            )
+            captures[name + "_encoding_only"][
+                "scope"
+            ] = "Encoded operand semantics only; deliberately not native-executed"
+
+        mutation_controls(configurations["od_equal"], baseline)
+        metadata_controls(configurations["od_equal"])
+        root = configurations["od_equal"][""]
+        before = inventory()
+        legacy = api(f"chernobog_native_evidence({root})")
+        check(
+            "legacy ownerless evidence remains unavailable",
+            not legacy["available"] and not legacy["records"],
+        )
+        check("legacy ownerless inspection preserves IDB", before == inventory())
+        captures["ordinary_final"] = api(f"chernobog_native_evidence({ordinary})")
+        check(
+            "ordinary control remains fresh after final read-only calls",
+            any(
+                row["fresh"] == "true" and row["kind"] == "setcc-value"
+                for row in captures["ordinary_final"]["records"]
+            ),
+        )
+    except BaseException as error:
+        errors.append(type(error).__name__)
+        captures["exception"] = {
+            "type": type(error).__name__,
+            "frames": [
+                {"function": frame.name, "line": frame.lineno}
+                for frame in traceback.extract_tb(error.__traceback__)
+            ],
+        }
+
+    (Path(os.environ["IDAUSR"]).parent / "ownerless_dataflow.json").write_text(
+        json.dumps({"checks": checks, "errors": errors, "captures": captures}, indent=2) + "\n"
+    )
+    print("[chernobog][ownerless-dataflow] " + ("FAIL" if errors else "PASS"), flush=True)
+    return 2 if errors else 0
+
+
+if __name__ == "__main__":
+    ida_pro.qexit(main())

@@ -39,6 +39,16 @@ abstentions; they cannot be counted as successful recovery.
 Quality gates are applied to each completed change and again to the complete
 objective. Neither baseline test success nor this ledger proves completion.
 
+Ownerless native graph checkpoint: an explicit-root read-only inspector now
+propagates register, flag and stack facts across existing decoded ownerless
+branches and loops, with architectural successors, entry auditing and visible
+frontiers. Across x64/i386, 6,140 native checks and 620 IDA assertions pass;
+90 Qt assertions and all 21 CTest suites pass. A frozen protected development
+measurement proves 0/5 bounded condition sites, with one graph rejected at the
+64-node cap and zero microcode-lowering gain. Ordinary CFG publication, complete
+predecessor discovery and broader review requirements remain incomplete. See
+`VMP_OWNERLESS_DATAFLOW.md`.
+
 Guarded immediate-push checkpoint: payload/store effects, virtual-stack role
 hypotheses and source-ordered taken stack checks now have conditional summaries.
 Equivalence compares nonempty input domains and complete effects; observations

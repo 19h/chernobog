@@ -12,6 +12,8 @@
 namespace chernobog::ida_analysis
 {
 
+struct X86RegionInspection;
+
 // Read-only projection of live conclusions, never persisted ownership receipts.
 struct NativeInspection
 {
@@ -60,6 +62,7 @@ class NativeAnalysisEngine
     void on_database_event(int event, va_list arguments);
     const NativeAnalysisStats &stats() const;
     NativeInspection inspect(uint64_t function_start) const;
+    X86RegionInspection inspect_region(uint64_t root) const;
 
   private:
     struct Impl;

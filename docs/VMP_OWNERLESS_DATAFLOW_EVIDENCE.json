@@ -1,0 +1,409 @@
+{
+  "schema": 1,
+  "scope": "Read-only explicitly rooted ownerless x86/x64 direct-CFG must-facts and actual Qt inspection; no ordinary IDB publication or microcode-lowering authority.",
+  "parent_commit": "15fc6724f746eda25ce2fd6f9cd8c1d9778ddbbf",
+  "plugin_sha256": "1ade60ca3005851a89cd7e19837c68cd19ce0d4c6838252911bfc6d332e78d10",
+  "source_sha256": {
+    ".bake.toml": "aa49e5d4baf1904222eb39f8a86b99f788ca9b0ee9704dd2e547ba142f89f369",
+    ".clang-format": "931a11f0ad45f8af202d2a4ea9dc47b5c1654c6a7fc911ddbff172207d67ac1d",
+    "AGENTS.md": "a98d09c43ea438559d36d516ab686a04ce48e2654121e2381f633a8adfb3674d",
+    "CMakeLists.txt": "1858313802a65b186f4f4c96ac74b794a6f3c55d74303719a7ec3ddde774d110",
+    "Makefile": "7ed81707639ff233fd229769c07a5c6199528722a192f0468a5d6bf2f3bca1e7",
+    "docs/VMP_IMPLEMENTATION.md": "1a260584bc9142ede79cc59d8533482f976cde2d3c02dbd979a1f289062153d4",
+    "docs/VMP_OWNERLESS_DATAFLOW.md": "aee829a681c48e388918720a646b53875eca6f9d576066d27c16eb44a6a8eeff",
+    "pyproject.toml": "dc637582980013361955bed5e7ba83e489be1a10b80c0429a642ab251730cca5",
+    "python/chernobog_evidence.py": "63d3015662af2cccd3e2ea0ea8d37f52f7ce0aeb49f9dac5b483520f1674f486",
+    "src/common/bounded_dataflow.h": "4817d5008b7f4b2278cab382b844db8937ddd17471c35c3250607707e09f04d6",
+    "src/common/x86_abstract.h": "13aa636614421bdda3f6d8db7c744b50727f3a1cd935810de0e3c038259afb4f",
+    "src/ida_analysis/analysis_config.cpp": "c8a589ff4de1ca2f12b4b177c161ecd67e97a3598148841e11c60a601f69da2f",
+    "src/ida_analysis/analysis_config.hpp": "d9fc4daed5d9f955626136d60da3a91152cdf7e4d16395cb76dac5be08cd10f1",
+    "src/ida_analysis/get_pc_ida.cpp": "5daf92495121a143df160af974bee8834c4ebed82b77bb75734f54bf7f624aa0",
+    "src/ida_analysis/get_pc_ida.hpp": "36a389c664d02b9c857152de6b0c5e962696cb28ffe30e1bcfc17b2ed7fd5d57",
+    "src/ida_analysis/native_classifier.cpp": "62d625f294895158611027ac8d3bc69463963308d09450cacef9b4e7754c1b07",
+    "src/ida_analysis/native_classifier.hpp": "b5c9a59650e2a67d81335ce50ff2f33081d1e70f4976a265b1345ee6b4b3e6d2",
+    "src/ida_analysis/native_engine.cpp": "4d1cdf824c554c653de3484fe7794a8d1e4c82b9c4e8a688c25edae9eced96a4",
+    "src/ida_analysis/native_engine.hpp": "bf1da356b99eacf7678303016c420c20a6e936d971a932ec43e45df5b15f9103",
+    "src/ida_analysis/proof_receipt.hpp": "00b6f4f0108647ecc41050f919c4a3f173ff97dce47a126b0b065b9aa1ace519",
+    "src/ida_analysis/x86_analysis.cpp": "ae08f7059f2d30c1d6950830ba83d387964d9143b95d9ecdb28614ed701ec630",
+    "src/ida_analysis/x86_analysis.hpp": "1bfbc205661c2e55a24d6d2bf707cae15f51a034ba03816be4c0bb17f5248c16",
+    "src/plugin/idc_api.cpp": "fbe0a33e970d62152dc5fb32d2984da1ead3f3b93d95d4bff79a6d9a07ca925e",
+    "tests/ida_ownerless_corpus_probe.py": "f085a20c6e8338a79daf9f33a1cc388aa6dd22ddfe9138554d7221a8a880e0aa",
+    "tests/ida_ownerless_dataflow_gui_probe.py": "a63db291a8f7d78874fb0d5783af77ebcf7218c4855b51215ca7315b31904dac",
+    "tests/ida_ownerless_dataflow_probe.py": "866924e962bbacf41244b1689269cdf4424f64216425b383029b5846bf62af97",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_ownerless_corpus.py": "3097505a5cbd2ee1736bdeb98937aa15357160b4477149b81797304608bb3815",
+    "tests/run_ownerless_dataflow.py": "ddca09379c28786fd7a586b08bf79ff209c0700f82a5ba64e83183d8b77bb9bf",
+    "tests/run_vmp_corpus.py": "775cf951f3e7228cba2d3efde7f87ba6bc98f65dfde3faa0090b4c222ad6eee8",
+    "tests/verify_vm_native_region_decode.py": "d3e75430de5530227e755a44d7537dae49f3a87d361d3f048ea2580466960bfe",
+    "tests/vmp_corpus/linux32.Dockerfile": "6696a2c4c4b1d9b657f40d856a2cf24af845689d732e3a6762436400a0ebb85d",
+    "tests/vmp_corpus/linux32.py": "82bb5e0f90f612ead4a844a14142da1cac029c8f1d6d43e3d56cd597ef8398a5",
+    "tests/vmp_corpus/linux32_exec.py": "a0577238731548cde8e20c20299f61cc7fcf23b4602c33dfdbcd12f8c08793b0",
+    "tests/vmp_native/dataflow.S": "a7649e27f704b26d0df04ac918b40b556dc9de5e0ffe588fff1c1b73bc015efa",
+    "tests/vmp_native/ownerless_dataflow.S": "55601dddf80c372adbca83d80341fcfd4325a8618c5b2797007f900e6635a588",
+    "tests/vmp_native/ownerless_dataflow.c": "7d6104252321713e9f46a417e90a1505752c151bcda92f8ba956f053b934b31b",
+    "tests/x86_abstract_tests.cpp": "8589a3f5a7fe724c8416a374031c0cdf02113ec98c8d2639a3c5aacbd9e3890e"
+  },
+  "limits": {
+    "nodes": 64,
+    "fixed_point_rounds": 128,
+    "incoming_references_per_instruction_including_interiors": 256,
+    "tracked_stack_values": 64
+  },
+  "flag_encoding": "Abstract bits: CF=1, PF=2, AF=4, ZF=8, SF=16, OF=32; not EFLAGS/RFLAGS positions",
+  "assumptions": {
+    "entry_scope": "Facts cover modeled paths entered at the selected root before an exit. Both decoded direct alternatives remain; known incompatible code entries and unrepresented adjacent fallthrough start unknown.",
+    "semantics": "Flat unchanged-code normal completion. Calls require normal return and clear all state. Exceptions, CET shadow stacks, devices, concurrency and exit/reentry are not modeled.",
+    "itemization": "Exact existing loaded executable ownerless spans in one segment/mode. Overlap, interior entry, resource exhaustion and nonconvergence produce no graph facts.",
+    "oracle_independence": "Separate C expected results execute fixture bytes; corrupted expectations must fail. Negative PUSH encodings and BSWAP16 are explicitly nonexecuted encoding controls.",
+    "metadata_projection": "Permission/mode controls copy exact position-independent fixture bytes into a disposable IDB segment; no native execution at the copied address is claimed.",
+    "publication_control": "Topology setup can revoke ordinary proofs. Each measured call separately preserves a refreshed nonempty ordinary publication and the immediately surrounding IDB inventory.",
+    "freshness": "Qt compares full current results and database/context/root identity; stale navigation is rejected. Exact restoration can revalidate the same scoped result.",
+    "inventory_boundary": "Loaded bytes, item flags/spans, ownership/chunks/flags, inventoried references, names/comments and segment mode/permissions are checked; not every IDB attribute.",
+    "protected_source_build_attestation": "unknown",
+    "protected_selection": "Development seeds 0 and 1 and five roots were frozen before new-API measurement. No held-out semantic artifacts were used to tune this change."
+  },
+  "fixture_matrix": {
+    "report": "build/ownerless-dataflow-production-encoding/ownerless_dataflow_analysis.json",
+    "native_checks": 6140,
+    "ida_assertions": 620,
+    "read_only_api_calls": 60,
+    "corrupt_oracle_controls_rejected": 2,
+    "ida_console_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+    "architectures": [
+      {
+        "architecture": "x86_64",
+        "native_checks": 3070,
+        "ida_assertions": 310,
+        "read_only_api_calls": 30,
+        "corrupted_expected_result_rejected": true,
+        "runtime": "macOS x86-64 process; translated on arm64 hosts"
+      },
+      {
+        "architecture": "i386",
+        "native_checks": 3070,
+        "ida_assertions": 310,
+        "read_only_api_calls": 30,
+        "corrupted_expected_result_rejected": true,
+        "runtime": {
+          "image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+          "container_architecture": "arm64",
+          "execution": "qemu-i386 user-mode translation in Linux container",
+          "sha256": {
+            "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+            "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+            "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+            "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+            "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+          },
+          "packages": [
+            "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+            "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+            "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+            "libc6-i386-cross\t2.39-0ubuntu8cross1",
+            "python3\t3.12.3-0ubuntu2.1",
+            "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+          ]
+        }
+      }
+    ]
+  },
+  "qt_inspection": {
+    "report": "build/ownerless-dataflow-gui-encoding-fixed1/ownerless_dataflow_gui.json",
+    "runtime_report": "build/ownerless-dataflow-gui-encoding-fixed1/run.json",
+    "assertions": 90,
+    "screenshots": 6,
+    "registered_action_exercised": true,
+    "ida_gui_sha256": "a9d2f008a5ee1959b337bdb40e28396813166a193d0eace275c84c4e15228908",
+    "source_aliases": {
+      "preparation": "tests/ida_ownerless_dataflow_probe.py",
+      "view": "python/chernobog_evidence.py"
+    },
+    "scope": "Actual Qt/IDA ownerless-region inspection of native-executed synthetic diamonds; controlled IDB-only byte mutations are restored"
+  },
+  "portable_regression": {
+    "log": "build/ownerless-dataflow-ctest.log",
+    "passed": 21,
+    "total": 21,
+    "elapsed_seconds": 9.66,
+    "scope": "Existing portable CTest suites; final presentation-only flag-legend changes were rebuilt and validated by the final fixture, protected and Qt runs."
+  },
+  "protected_measurement": {
+    "report": "build/ownerless-corpus-production-encoding/ownerless_corpus_analysis.json",
+    "frozen_plan": "build/ownerless-corpus-frozen-development/ownerless_corpus_plan.json",
+    "frozen_plan_sha256": "3672ea45aa96c47e6b592b64574d711e21e21e31fa400a54a4e2c244ada47d0b",
+    "assertions": 36,
+    "converged_roots": 4,
+    "node_limit_abstentions": 1,
+    "converged_reference_node_counts": [
+      35,
+      12,
+      48,
+      35
+    ],
+    "rejected_reference_node_counts": [
+      97
+    ],
+    "distinct_bounded_condition_sites": 5,
+    "proved_condition_sites": 0,
+    "unresolved_record_occurrences": 9,
+    "microcode_lowering_delta": 0,
+    "source_build_attestation": "unknown",
+    "ida_console_sha256": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+    "capstone_reference_decoder_version": "5.0.7",
+    "protector_sha256": "3fe722d21d5c8d9661f12b3b04f5863c4d9b93557692c1318dbf8f1c45c23568",
+    "runs": [
+      {
+        "label": "combined-0",
+        "checks": 27,
+        "records": 8,
+        "status_counts": {
+          "unresolved": 8
+        },
+        "graph_reasons": {
+          "complete_bounded_region": 3,
+          "node_limit": 1
+        },
+        "microcode_lowering_delta": {
+          "codegen_setcc": 0,
+          "codegen_cmov": 0,
+          "codegen_cmov_memory": 0
+        }
+      },
+      {
+        "label": "combined-1",
+        "checks": 9,
+        "records": 1,
+        "status_counts": {
+          "unresolved": 1
+        },
+        "graph_reasons": {
+          "complete_bounded_region": 1
+        },
+        "microcode_lowering_delta": {
+          "codegen_setcc": 0,
+          "codegen_cmov": 0,
+          "codegen_cmov_memory": 0
+        }
+      }
+    ]
+  },
+  "accepted_artifact_sha256": {
+    "build/ownerless-corpus-frozen-development/ownerless_corpus_plan.json": "3672ea45aa96c47e6b592b64574d711e21e21e31fa400a54a4e2c244ada47d0b",
+    "build/ownerless-corpus-production-encoding/combined-0/combined-0": "1c14af5156970789fd75a758cadb3cbda8248849acabd2106a2e5ba907fb6b74",
+    "build/ownerless-corpus-production-encoding/combined-0/ida.log": "8ff10275012b3f91334750aba83fdc9395026f73a2a34d7725237efb82692a7b",
+    "build/ownerless-corpus-production-encoding/combined-0/ownerless_corpus.json": "30a675e95123ad26435b7a6b23043bd944b48e95e729c0844bd3225b520f7d9d",
+    "build/ownerless-corpus-production-encoding/combined-0/probe/ida_ownerless_corpus_probe.py": "f085a20c6e8338a79daf9f33a1cc388aa6dd22ddfe9138554d7221a8a880e0aa",
+    "build/ownerless-corpus-production-encoding/combined-0/run.json": "c1d07a3c21a0c3a73e566953a03283e354b8081245de3c7da82462776ddae48b",
+    "build/ownerless-corpus-production-encoding/combined-1/combined-1": "dbfd660a4c55d9d7e30f8de5eb53c625a0f618e55a1285087f68e70abcf05b8f",
+    "build/ownerless-corpus-production-encoding/combined-1/ida.log": "fe2b92e961a1c99d84e7d90c0f9a66b71e7e14f80b219e2ae2b5e6492d595ffe",
+    "build/ownerless-corpus-production-encoding/combined-1/ownerless_corpus.json": "51d65646c07dbd0382ea966647c3bf8e369e4034a473788a9133e4407efb9170",
+    "build/ownerless-corpus-production-encoding/combined-1/probe/ida_ownerless_corpus_probe.py": "f085a20c6e8338a79daf9f33a1cc388aa6dd22ddfe9138554d7221a8a880e0aa",
+    "build/ownerless-corpus-production-encoding/combined-1/run.json": "53f29469010990eda9cdabb8131f793e1f4d9ef3905adc3043db32d25af4e8b8",
+    "build/ownerless-corpus-production-encoding/ownerless_corpus_analysis.json": "d77032e9c09b72b6e099c687cb138382ec4560e067b050519dbc86f9c67a72e0",
+    "build/ownerless-corpus-production-encoding/ownerless_corpus_plan.json": "3672ea45aa96c47e6b592b64574d711e21e21e31fa400a54a4e2c244ada47d0b",
+    "build/ownerless-dataflow-build-encoding.log": "bd98d33be18d548b1816860c36c35b8e4b988ebd79bc0fb3f1303fcdf5b0dbca",
+    "build/ownerless-dataflow-build-final.log": "23d67778eda2bf4ef920a0d59cc62efd17680e35915330dfabede9babdddaff9",
+    "build/ownerless-dataflow-build.log": "4fb023c639e4efce7a361e6e5aec7e4dd744dad5809086dacc75eb443979ea6d",
+    "build/ownerless-dataflow-ctest.log": "c91c437bf076e84deaf9918dfe414214e4d772c8eeb94622ee669c76ec1141cd",
+    "build/ownerless-dataflow-gui-encoding-fixed1/ida.log": "b578cfa4552ac9353b80450dbb0e5e8beb0ddcebebd104e60b53406e6dfebe2f",
+    "build/ownerless-dataflow-gui-encoding-fixed1/ownerless": "5ddc94f983bbb9e5804ec255a585c49fd3a29b26fef0d650ab6cb527310b0f33",
+    "build/ownerless-dataflow-gui-encoding-fixed1/ownerless_conflict_fact.png": "c6666a9fcf84838edded39758f48f23c0c5cd445de898303623d9cfd63384261",
+    "build/ownerless-dataflow-gui-encoding-fixed1/ownerless_dataflow_gui.json": "d0c0817a2a8224dc3e058a58f48007b5d2a952e0163cb225c006bbaf42df189a",
+    "build/ownerless-dataflow-gui-encoding-fixed1/ownerless_equal_fact.png": "d6f3a1186e13f218e5ca84054dd57f72900bfae56996e349c7a5b4385119c3c2",
+    "build/ownerless-dataflow-gui-encoding-fixed1/ownerless_equal_scope.png": "6a7fb79c62fcfbd80f99f7e5217116336901c24e41d422c13ce914ee8bf709c5",
+    "build/ownerless-dataflow-gui-encoding-fixed1/ownerless_recomputed_unknown.png": "7a9656a5751aabe1b42dfff71ba2869abd902b85628c1ecaf2a2ae0bad042cb4",
+    "build/ownerless-dataflow-gui-encoding-fixed1/ownerless_registered_action.png": "8d2c97a7d3dfd47502c6e9d978734f75746f9ed7b70622fd4096131f6178157f",
+    "build/ownerless-dataflow-gui-encoding-fixed1/ownerless_stale_fact.png": "eb2da50376d84ccb50f723170dced754b203040d14747d082908b0690c8fa55c",
+    "build/ownerless-dataflow-gui-encoding-fixed1/probe/ida_ownerless_dataflow_gui_probe.py": "a63db291a8f7d78874fb0d5783af77ebcf7218c4855b51215ca7315b31904dac",
+    "build/ownerless-dataflow-gui-encoding-fixed1/run.json": "06daa2d9fbb4d28c9254e8f3150c59de2eae0334f6073f6c0ddf765776c7df41",
+    "build/ownerless-dataflow-production-encoding/i386/guest-runs/ownerless-0.json": "5c0737dce9242b0f02b442cda55a5edbc7ff6806ebf2a1f8eb3e4d8d0aac02f0",
+    "build/ownerless-dataflow-production-encoding/i386/guest-runs/ownerless-0.txt": "b5b451c80d05da0664c3da09cc372a1fe991388bdb5fadfcf24586bc7d929fde",
+    "build/ownerless-dataflow-production-encoding/i386/guest-runs/ownerless-corrupt-0.json": "324df50c826c7e227c0a46175b21d6d53b942b2acad34828c1b95e83086e1e88",
+    "build/ownerless-dataflow-production-encoding/i386/guest-runs/ownerless-corrupt-0.txt": "401a6d372644136ac4fa6698497a2409784880cbe4fc237826dae37091ce7163",
+    "build/ownerless-dataflow-production-encoding/i386/inspection/ida.log": "300d19ca29b907f10e01901136a6bcf2f01d6ea1af4aa27ebebd3bd5d8102581",
+    "build/ownerless-dataflow-production-encoding/i386/inspection/ownerless": "2106854fa1741bdd65ca8662155e844b4affffd85b03c2e7989bb01851c57495",
+    "build/ownerless-dataflow-production-encoding/i386/inspection/ownerless_dataflow.json": "c152341087c2a1e040a215c6e019d692fd946e39594c7f5665a87a3fadee8579",
+    "build/ownerless-dataflow-production-encoding/i386/inspection/probe/ida_ownerless_dataflow_probe.py": "866924e962bbacf41244b1689269cdf4424f64216425b383029b5846bf62af97",
+    "build/ownerless-dataflow-production-encoding/i386/inspection/run.json": "6d7557d9fb40bb8f50ef977d03f353382d65b8d89f0b5841e08b2940609a0489",
+    "build/ownerless-dataflow-production-encoding/i386/ownerless": "2106854fa1741bdd65ca8662155e844b4affffd85b03c2e7989bb01851c57495",
+    "build/ownerless-dataflow-production-encoding/i386/ownerless-corrupt": "6a4cf1ef4c10209825b019e1baf020d1cb723529f832532c1f0ec7a3d30f600b",
+    "build/ownerless-dataflow-production-encoding/ownerless_dataflow_analysis.json": "881d7139b5798a74017875cefc30860586ef46c36b3cee217f9d2ecc0a904502",
+    "build/ownerless-dataflow-production-encoding/x86_64/inspection/ida.log": "c4158c035e6e1a3eca298d1ce695819d1c594d9e12982686902e4308eee60935",
+    "build/ownerless-dataflow-production-encoding/x86_64/inspection/ownerless": "5ddc94f983bbb9e5804ec255a585c49fd3a29b26fef0d650ab6cb527310b0f33",
+    "build/ownerless-dataflow-production-encoding/x86_64/inspection/ownerless_dataflow.json": "65041ccb4a267f75491550aecad043fdc057d208fb9e0527d420f1f278aca017",
+    "build/ownerless-dataflow-production-encoding/x86_64/inspection/probe/ida_ownerless_dataflow_probe.py": "866924e962bbacf41244b1689269cdf4424f64216425b383029b5846bf62af97",
+    "build/ownerless-dataflow-production-encoding/x86_64/inspection/run.json": "9f47d28c10f99776f55efac981ca2e60cc478962fa6b43be63a3dccb7f9734d0",
+    "build/ownerless-dataflow-production-encoding/x86_64/ownerless": "5ddc94f983bbb9e5804ec255a585c49fd3a29b26fef0d650ab6cb527310b0f33",
+    "build/ownerless-dataflow-production-encoding/x86_64/ownerless-corrupt": "3a8d802327f095990aad915a3f41aa27a66e8dff8d817fbdf3dcd83a7851cefc",
+    "build/ownerless-mbake-version.log": "18964f510c00d3eb90395005cbd62ecc2b349a4ec1c6c599589bc2cdcb6fde38",
+    "build/vmp-corpus-release/combined-0": "1c14af5156970789fd75a758cadb3cbda8248849acabd2106a2e5ba907fb6b74",
+    "build/vmp-corpus-release/combined-1": "dbfd660a4c55d9d7e30f8de5eb53c625a0f618e55a1285087f68e70abcf05b8f"
+  },
+  "retained_failures": [
+    {
+      "report": "build/ownerless-dataflow-production/x86_64/inspection/ownerless_dataflow.json",
+      "assertions_recorded": 86,
+      "failed_assertions": 0,
+      "errors": [
+        "AssertionError"
+      ],
+      "exception": {
+        "type": "AssertionError",
+        "frames": [
+          {
+            "function": "main",
+            "line": 476
+          }
+        ]
+      },
+      "diagnosis": "Probe attempted code creation over an explicitly defined data item; item deletion before decoding corrected setup."
+    },
+    {
+      "report": "build/ownerless-dataflow-production-fixed1/x86_64/inspection/ownerless_dataflow.json",
+      "assertions_recorded": 280,
+      "failed_assertions": 1,
+      "errors": [
+        "ordinary control publication unchanged after all controls"
+      ],
+      "exception": null,
+      "diagnosis": "Probe compared publications across its own ownership mutations; each measured call now starts with an explicitly refreshed nonempty owned control."
+    },
+    {
+      "report": "build/ownerless-dataflow-gui/ownerless_dataflow_gui.json",
+      "assertions_recorded": 59,
+      "failed_assertions": 3,
+      "errors": [
+        "open_equal_form preserves whole IDB inventory",
+        "all graph APIs and GUI controls preserve the restored IDB",
+        "ordinary native publication remains unchanged"
+      ],
+      "diagnosis": "Deferred ordinary analysis after ownership setup changed six repeatable comments and associated item comment flags."
+    },
+    {
+      "report": "build/ownerless-dataflow-gui-fixed1/ownerless_dataflow_gui.json",
+      "assertions_recorded": 60,
+      "failed_assertions": 2,
+      "errors": [
+        "open_equal_form preserves whole IDB inventory",
+        "all graph APIs and GUI controls preserve the restored IDB"
+      ],
+      "diagnosis": "Owned-control refresh alone did not drain all deferred comment publication."
+    },
+    {
+      "report": "build/ownerless-dataflow-gui-diagnostic/ownerless_dataflow_gui.json",
+      "assertions_recorded": 60,
+      "failed_assertions": 2,
+      "errors": [
+        "open_equal_form preserves whole IDB inventory",
+        "all graph APIs and GUI controls preserve the restored IDB"
+      ],
+      "diagnosis": "Exact metadata differences identified the six deferred comments; source bytes, owners and references stayed unchanged."
+    },
+    {
+      "report": "build/ownerless-dataflow-gui-encoding/ownerless_dataflow_gui.json",
+      "assertions_recorded": 90,
+      "failed_assertions": 1,
+      "errors": [
+        "ownerless_recomputed_unknown.png full flag encoding is in the actual viewport"
+      ],
+      "diagnosis": "The recomputed-unknown screenshot omitted the leading flag legend; corrected viewport positioning passed without a production change."
+    }
+  ],
+  "exact_gui_diagnostic": {
+    "report": "build/ownerless-dataflow-gui-diagnostic/ownerless_dataflow_gui.json",
+    "field": "captures.open_equal_form_metadata_changes",
+    "changed_sites": [
+      "head:0x1000004ba",
+      "head:0x1000004d7",
+      "head:0x100000500",
+      "head:0x100000537",
+      "head:0x100000567",
+      "head:0x100000587"
+    ],
+    "changed_fields": [
+      "repeatable comments",
+      "associated item comment flags"
+    ],
+    "production_rules_weakened": false
+  },
+  "superseded_successful_reports": {
+    "scope": "Earlier successful runs before the explicit compact flag legend; historical identities only, not final-build source attribution.",
+    "reports": [
+      "build/ownerless-dataflow-production-fixed2/ownerless_dataflow_analysis.json",
+      "build/ownerless-dataflow-gui-fixed2/ownerless_dataflow_gui.json",
+      "build/ownerless-dataflow-gui-fixed2/run.json",
+      "build/ownerless-corpus-production/ownerless_corpus_analysis.json"
+    ]
+  },
+  "retained_artifact_sha256": {
+    "build/ownerless-corpus-production/ownerless_corpus_analysis.json": "e86f0e1437819f481de4346d814cb21f3239ec90f50bb80045ea16ff219c5af6",
+    "build/ownerless-dataflow-gui-diagnostic/ida.log": "b4b0372c5a5c707424c0f9c7210ce522689e71041b9a2b3b5f056a9b650fd623",
+    "build/ownerless-dataflow-gui-diagnostic/ownerless": "5ddc94f983bbb9e5804ec255a585c49fd3a29b26fef0d650ab6cb527310b0f33",
+    "build/ownerless-dataflow-gui-diagnostic/ownerless_conflict_fact.png": "579e04ab7282b4d6cbd6cc71a98d1c4fa95383a33b2eba47842a02b0720b77db",
+    "build/ownerless-dataflow-gui-diagnostic/ownerless_dataflow_gui.json": "d4dace147b4274cceb784ea84847d7289a8d182ed20671e36d05af42117b7fba",
+    "build/ownerless-dataflow-gui-diagnostic/ownerless_equal_fact.png": "7e34abe92ecc265fcc6192d0016bce8985d4d1f8f456e776e2c85d4ac667d2ef",
+    "build/ownerless-dataflow-gui-diagnostic/ownerless_equal_scope.png": "7b2af7c2a5607a114e2df638ba09bd0da5d7195e47edf84195be37681ed27baf",
+    "build/ownerless-dataflow-gui-diagnostic/ownerless_recomputed_unknown.png": "fb63881dcd7a0dd062a2d0f1de469e36d382160d392002c829b06004bc5f452f",
+    "build/ownerless-dataflow-gui-diagnostic/ownerless_stale_fact.png": "2a3e5bbfd31a1906d5179ed6572092d3c47965b94d95225b387ba5c2fb8e4695",
+    "build/ownerless-dataflow-gui-diagnostic/probe/ida_ownerless_dataflow_gui_probe.py": "a154b441365073cb4dbd5f685acd945f4b142de8f7809af6116065f8fd3beeec",
+    "build/ownerless-dataflow-gui-diagnostic/run.json": "4720a9a23ba73bb9f4b171330b13ac5a4369bc133979a65825543a8a70db5841",
+    "build/ownerless-dataflow-gui-encoding/ida.log": "691c3a0855a56e8a4f33596d0d87dc569a2e5ad70696fe9c786d83192b530af2",
+    "build/ownerless-dataflow-gui-encoding/ownerless": "5ddc94f983bbb9e5804ec255a585c49fd3a29b26fef0d650ab6cb527310b0f33",
+    "build/ownerless-dataflow-gui-encoding/ownerless_conflict_fact.png": "c6666a9fcf84838edded39758f48f23c0c5cd445de898303623d9cfd63384261",
+    "build/ownerless-dataflow-gui-encoding/ownerless_dataflow_gui.json": "3a92f2120e1175988a89dc0b2a2edc5deb4ce522c7e845e3a0efd6bc64327d0e",
+    "build/ownerless-dataflow-gui-encoding/ownerless_equal_fact.png": "d6f3a1186e13f218e5ca84054dd57f72900bfae56996e349c7a5b4385119c3c2",
+    "build/ownerless-dataflow-gui-encoding/ownerless_equal_scope.png": "6a7fb79c62fcfbd80f99f7e5217116336901c24e41d422c13ce914ee8bf709c5",
+    "build/ownerless-dataflow-gui-encoding/ownerless_recomputed_unknown.png": "b34042579e939d0a9d486de3c3fc7eb5b73b717d35a652783556e7ac05e1cdcd",
+    "build/ownerless-dataflow-gui-encoding/ownerless_registered_action.png": "8d2c97a7d3dfd47502c6e9d978734f75746f9ed7b70622fd4096131f6178157f",
+    "build/ownerless-dataflow-gui-encoding/ownerless_stale_fact.png": "eb2da50376d84ccb50f723170dced754b203040d14747d082908b0690c8fa55c",
+    "build/ownerless-dataflow-gui-encoding/probe/ida_ownerless_dataflow_gui_probe.py": "c07aaccdea8723e838c3727b61554dfc80b8ad498d8f88b12d60ef66938c85df",
+    "build/ownerless-dataflow-gui-encoding/run.json": "e699bebfd51cd4f5346321137f81ece04640c464f9f3a4044e12115d07a62b78",
+    "build/ownerless-dataflow-gui-fixed1/ida.log": "b4b0372c5a5c707424c0f9c7210ce522689e71041b9a2b3b5f056a9b650fd623",
+    "build/ownerless-dataflow-gui-fixed1/ownerless": "5ddc94f983bbb9e5804ec255a585c49fd3a29b26fef0d650ab6cb527310b0f33",
+    "build/ownerless-dataflow-gui-fixed1/ownerless_conflict_fact.png": "579e04ab7282b4d6cbd6cc71a98d1c4fa95383a33b2eba47842a02b0720b77db",
+    "build/ownerless-dataflow-gui-fixed1/ownerless_dataflow_gui.json": "186a950eeebc6ea989673791a22218cfdb00cf89ba06b54df7e855e323df766d",
+    "build/ownerless-dataflow-gui-fixed1/ownerless_equal_fact.png": "7e34abe92ecc265fcc6192d0016bce8985d4d1f8f456e776e2c85d4ac667d2ef",
+    "build/ownerless-dataflow-gui-fixed1/ownerless_equal_scope.png": "7b2af7c2a5607a114e2df638ba09bd0da5d7195e47edf84195be37681ed27baf",
+    "build/ownerless-dataflow-gui-fixed1/ownerless_recomputed_unknown.png": "fb63881dcd7a0dd062a2d0f1de469e36d382160d392002c829b06004bc5f452f",
+    "build/ownerless-dataflow-gui-fixed1/ownerless_stale_fact.png": "2a3e5bbfd31a1906d5179ed6572092d3c47965b94d95225b387ba5c2fb8e4695",
+    "build/ownerless-dataflow-gui-fixed1/probe/ida_ownerless_dataflow_gui_probe.py": "c58f536d6b6ab27b8186100989a0ea1bfb7403c4e4575d33fd99eb6955da7bd1",
+    "build/ownerless-dataflow-gui-fixed1/run.json": "99f08cfa47f41970d6d15cc68efea4584854f2aa516f6e7002ec8d465a5f2275",
+    "build/ownerless-dataflow-gui-fixed2/ownerless_dataflow_gui.json": "262899a068c94b3dfb83a5b17cf48bd35346a7479fa0c5be688210292631ded7",
+    "build/ownerless-dataflow-gui-fixed2/run.json": "2cc3f5ab5043ad480b74664d5b92d4ccf972ea9114a0726787286bcc87c45284",
+    "build/ownerless-dataflow-gui/ida.log": "b4b0372c5a5c707424c0f9c7210ce522689e71041b9a2b3b5f056a9b650fd623",
+    "build/ownerless-dataflow-gui/ownerless": "5ddc94f983bbb9e5804ec255a585c49fd3a29b26fef0d650ab6cb527310b0f33",
+    "build/ownerless-dataflow-gui/ownerless_conflict_fact.png": "579e04ab7282b4d6cbd6cc71a98d1c4fa95383a33b2eba47842a02b0720b77db",
+    "build/ownerless-dataflow-gui/ownerless_dataflow_gui.json": "e61a6ec3b6425c4ff06905d5dfcabcb3a40431bfc2f490282a905fa0f5869425",
+    "build/ownerless-dataflow-gui/ownerless_equal_fact.png": "7e34abe92ecc265fcc6192d0016bce8985d4d1f8f456e776e2c85d4ac667d2ef",
+    "build/ownerless-dataflow-gui/ownerless_equal_scope.png": "7b2af7c2a5607a114e2df638ba09bd0da5d7195e47edf84195be37681ed27baf",
+    "build/ownerless-dataflow-gui/ownerless_recomputed_unknown.png": "e1a2ed9d069d71359cd5e9fd25015678a3194fe3186409e56074e7e832cd23c2",
+    "build/ownerless-dataflow-gui/ownerless_stale_fact.png": "2a3e5bbfd31a1906d5179ed6572092d3c47965b94d95225b387ba5c2fb8e4695",
+    "build/ownerless-dataflow-gui/probe/ida_ownerless_dataflow_gui_probe.py": "160b3c9bede59ccdb8c5c56728834ef9a36c6cb17a3b5a3c0e32be7c1aa2a880",
+    "build/ownerless-dataflow-gui/run.json": "42c8cffab7338739f09a9103e4aa8d920a83300122e6b87189992391a2d9c0a6",
+    "build/ownerless-dataflow-production-fixed1/ownerless_dataflow_analysis.json": "f1182f9c17c37996bdd3e309fd51cb24675e1bc94879c058f24dbed36ee79788",
+    "build/ownerless-dataflow-production-fixed1/x86_64/inspection/ida.log": "78ca1e55e4c4e5b618c7fe3fbb69e9279ebda6f3888e1085fd6abb67ab556189",
+    "build/ownerless-dataflow-production-fixed1/x86_64/inspection/ownerless_dataflow.json": "8e861cd3cdbde7bc0bb73d835c58c4dca2276e8847662d4bcb5e2c08592eeb41",
+    "build/ownerless-dataflow-production-fixed1/x86_64/inspection/probe/ida_ownerless_dataflow_probe.py": "498ab20ebe9f714c8490d23069ee092620c773fb1a9e75069600d45e2673dd39",
+    "build/ownerless-dataflow-production-fixed1/x86_64/inspection/run.json": "c03357afbc4927b5a1bb53766b012ab5d6cc61a774d7d8515679b81491ba184b",
+    "build/ownerless-dataflow-production-fixed1/x86_64/ownerless": "5ddc94f983bbb9e5804ec255a585c49fd3a29b26fef0d650ab6cb527310b0f33",
+    "build/ownerless-dataflow-production-fixed1/x86_64/ownerless-corrupt": "3a8d802327f095990aad915a3f41aa27a66e8dff8d817fbdf3dcd83a7851cefc",
+    "build/ownerless-dataflow-production-fixed2/ownerless_dataflow_analysis.json": "f639c93f7ac79057d13e01445b1744e3b0bad40b3fb305c4d12834eb2f82695b",
+    "build/ownerless-dataflow-production/ownerless_dataflow_analysis.json": "2dc547b5ab5c3d8855d00ac17d85b1b6327220989f562b39d7880a9e6391ab35",
+    "build/ownerless-dataflow-production/x86_64/inspection/ida.log": "72f9b92eeb5a7f19580ef042d51971f32d64baa83dd4d7705ddf261e666f5c0a",
+    "build/ownerless-dataflow-production/x86_64/inspection/ownerless_dataflow.json": "c668dfc5723a880b5bc1c5b3ade34e9b7eac77bccef193cdb276bdf7ece34265",
+    "build/ownerless-dataflow-production/x86_64/inspection/probe/ida_ownerless_dataflow_probe.py": "4db35e379a48e706ffea9b94cf0f433a988c9f99de5cbf3c873776941c14e5b4",
+    "build/ownerless-dataflow-production/x86_64/inspection/run.json": "51f3ad4d87a717a650d844a548a7e6a0520a33f2c63d4acd69dcb367e44f9f9d",
+    "build/ownerless-dataflow-production/x86_64/ownerless": "5ddc94f983bbb9e5804ec255a585c49fd3a29b26fef0d650ab6cb527310b0f33",
+    "build/ownerless-dataflow-production/x86_64/ownerless-corrupt": "3a8d802327f095990aad915a3f41aa27a66e8dff8d817fbdf3dcd83a7851cefc"
+  },
+  "verification": {
+    "accepted_source_hashes_match_current_files": true,
+    "gui_source_aliases_resolved_to_current_files": true,
+    "accepted_input_script_plugin_and_ida_identities_verified": true,
+    "accepted_recorded_artifact_hashes_match_current_files": true,
+    "accepted_reports_have_no_failed_checks": true,
+    "historical_source_hashes_preserved": true,
+    "paths": "Repository-relative source/artifact names only; raw log contents and personal installation paths omitted.",
+    "manifest_self_hash_included": false
+  }
+}

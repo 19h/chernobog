@@ -3,7 +3,9 @@
 #include "../common/x86_abstract.h"
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
+#include <string>
 #include <vector>
 
 struct insn_t;
@@ -45,5 +47,25 @@ struct X86RegisterFact
 };
 X86RegisterFact analyze_x86_register_before(const insn_t &instruction, const op_t &operand,
                                             size_t depth);
+
+// Recomputed facts for an exact existing ownerless root, before the first
+// unrepresented transfer. No IDB mutation, automatic ownership or publication.
+// Calls clear state at their syntactic continuation under normal return.
+struct X86RegionInspection
+{
+    bool available = false, converged = false, truncated = false;
+    int64_t database = -1;
+    uint64_t context = 0, root = 0;
+    unsigned address_bits = 0;
+    size_t incoming_examined = 0;
+    std::string reason;
+    std::vector<std::map<std::string, std::string>> nodes, edges, records;
+};
+
+// Budgets are clamped to 64 nodes, 128 rounds and 256 incoming references per
+// instruction (including interior bytes). Resource or structural failures
+// retain diagnostics but return no facts. The root input is unknown.
+X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit = 64,
+                                       size_t round_limit = 128);
 
 } // namespace chernobog::ida_analysis

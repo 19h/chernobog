@@ -13,6 +13,7 @@ import ida_idaapi
 import ida_kernwin
 
 ACTION = "chernobog:evidence_view"
+REGION_ACTION = "chernobog:native_region_facts"
 
 
 def api(name, ea):
@@ -66,6 +67,15 @@ def current_native_publications(snapshot, state):
         and row.get("fresh") == "true"
         and current.get(row["publication"]) == row
     }
+
+
+def current_native_region(snapshot, state):
+    """Exact recomputation of a scoped graph, not ordinary proof publication."""
+    return bool(
+        snapshot.get("available")
+        and snapshot.get("context") not in (None, "0x0")
+        and snapshot == state
+    )
 
 
 def current_solver_sources(snapshot, state):
@@ -921,6 +931,257 @@ if ida_kernwin.is_idaq():
             if hasattr(self, "timer"):
                 self.timer.stop()
 
+    class NativeRegionForm(ida_kernwin.PluginForm):
+        """Root-scoped facts and decoded edges with exact recomputation guards."""
+
+        def __init__(self, root, snapshot):
+            super().__init__()
+            self.root, self.snapshot = root, snapshot
+            self.current = self.closed = False
+            self.selected = {}
+
+        def OnCreate(self, form):
+            self.parent = self.FormToPyQtWidget(form)
+            self.parent.setMinimumSize(1100, 700)
+            layout = QtWidgets.QVBoxLayout(self.parent)
+            self.status = QtWidgets.QLabel()
+            self.status.setWordWrap(True)
+            layout.addWidget(self.status)
+            self.scope = QtWidgets.QLabel(self.snapshot.get("scope", ""))
+            self.scope.setWordWrap(True)
+            layout.addWidget(self.scope)
+            controls = QtWidgets.QHBoxLayout()
+            self.reload_button = QtWidgets.QPushButton("Recompute graph")
+            self.reload_button.clicked.connect(self.reload)
+            controls.addWidget(self.reload_button)
+            fit = QtWidgets.QPushButton("Fit graph")
+            fit.clicked.connect(self.fit_graph)
+            controls.addWidget(fit)
+            self.jump = QtWidgets.QPushButton("Jump to source")
+            self.jump.clicked.connect(self.jump_source)
+            controls.addWidget(self.jump)
+            controls.addStretch()
+            layout.addLayout(controls)
+            splitter = QtWidgets.QSplitter()
+            self.graph = FlowView()
+            self.scene = QtWidgets.QGraphicsScene(self.graph)
+            self.graph.setScene(self.scene)
+            self.graph.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            splitter.addWidget(self.graph)
+            right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+            self.tabs = QtWidgets.QTabWidget()
+            self.facts = QtWidgets.QTableWidget()
+            self.edges = QtWidgets.QTableWidget()
+            self.tabs.addTab(self.facts, "Root-scoped facts")
+            self.tabs.addTab(self.edges, "Decoded edges and frontiers")
+            for table in (self.facts, self.edges):
+                table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+                table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+                table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+                table.itemSelectionChanged.connect(lambda t=table: self.select_table(t))
+            right.addWidget(self.tabs)
+            self.detail = QtWidgets.QPlainTextEdit()
+            self.detail.setReadOnly(True)
+            right.addWidget(self.detail)
+            right.setSizes([280, 260])
+            splitter.addWidget(right)
+            splitter.setSizes([480, 620])
+            layout.addWidget(splitter)
+            self.rebuild()
+            self.poll()
+            self.timer = QtCore.QTimer(self.parent)
+            self.timer.timeout.connect(self.poll)
+            self.timer.start(2000)
+
+        def fill_table(self, table, columns, rows):
+            table.blockSignals(True)
+            table.clear()
+            table.setColumnCount(len(columns))
+            table.setHorizontalHeaderLabels([label for label, _ in columns])
+            table.setRowCount(len(rows))
+            for index, row in enumerate(rows):
+                for column, (_, key) in enumerate(columns):
+                    item = QtWidgets.QTableWidgetItem(str(row.get(key, "")))
+                    item.setData(QtCore.Qt.ItemDataRole.UserRole, row)
+                    table.setItem(index, column, item)
+            table.resizeColumnsToContents()
+            table.horizontalHeader().setStretchLastSection(True)
+            table.blockSignals(False)
+
+        def rebuild(self):
+            self.selected = {}
+            self.scene.clear()
+            self.nodes = {}
+            for index, row in enumerate(self.snapshot.get("nodes", [])):
+                site = row["site"]
+                node = FlowNode(self, site, (index % 3) * 210, (index // 3) * 95)
+                node.setToolTip(json.dumps(row, indent=2, sort_keys=True))
+                self.scene.addItem(node)
+                self.nodes[site] = node
+            displayed_edges = []
+            for edge in self.snapshot.get("edges", []):
+                row = dict(edge, site=edge["source"], truth="encoding")
+                displayed_edges.append(row)
+                start, end = self.nodes.get(row["source"]), self.nodes.get(row["target"])
+                if start is not None and end is not None:
+                    self.scene.addItem(
+                        FlowEdge(
+                            self,
+                            row,
+                            start.sceneBoundingRect().center(),
+                            end.sceneBoundingRect().center(),
+                        )
+                    )
+            facts = [
+                dict(row, result=row.get("outcome", row.get("target", "unknown")))
+                for row in self.snapshot.get("records", [])
+            ]
+            self.fill_table(
+                self.facts,
+                [
+                    ("Site", "site"),
+                    ("Kind", "kind"),
+                    ("Status", "status"),
+                    ("Outcome / target", "result"),
+                ],
+                facts,
+            )
+            self.fill_table(
+                self.edges,
+                [
+                    ("Source", "source"),
+                    ("Target", "target"),
+                    ("Kind", "kind"),
+                    ("Frontier reason", "reason"),
+                ],
+                displayed_edges,
+            )
+            self.scope.setText(self.snapshot.get("scope", ""))
+            self.fit_graph()
+            self.show_detail()
+
+        def fit_graph(self):
+            if self.scene.items():
+                self.graph.fitInView(
+                    self.scene.itemsBoundingRect().adjusted(-20, -20, 20, 20),
+                    QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                )
+
+        def select_table(self, table):
+            if table.selectedItems():
+                self.select_record(table.selectedItems()[0].data(QtCore.Qt.ItemDataRole.UserRole))
+
+        def select_site(self, site):
+            node = next((row for row in self.snapshot.get("nodes", []) if row["site"] == site), {})
+            self.select_record(node)
+
+        def select_record(self, row):
+            self.selected = row
+            self.poll()
+
+        def show_detail(self):
+            self.detail.setPlainText(
+                json.dumps(
+                    {
+                        "root": self.snapshot.get("root"),
+                        "current_exact_graph": self.current,
+                        "flag_encoding": self.snapshot.get("flag_encoding"),
+                        "published": False,
+                        "scope": self.snapshot.get("scope"),
+                        "reason": self.snapshot.get("reason"),
+                        "limits": self.snapshot.get("limits"),
+                        "selected": self.selected,
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            self.jump.setEnabled(self.current and bool(self.selected.get("site")))
+
+        def poll(self):
+            try:
+                state = api("chernobog_native_region_facts", self.root)
+                self.current = current_native_region(self.snapshot, state)
+            except (RuntimeError, ValueError):
+                self.current = False
+            self.status.setText(
+                ("Current exact graph" if self.current else "Unavailable or stale graph; recompute")
+                + " | root "
+                + self.snapshot.get("root", "unknown")
+                + " | nodes "
+                + str(len(self.snapshot.get("nodes", [])))
+                + " | fixed point "
+                + str(self.snapshot.get("converged", False))
+                + " | truncated "
+                + str(self.snapshot.get("truncated", False))
+                + " | "
+                + self.snapshot.get("reason", "")
+            )
+            self.show_detail()
+
+        def reload(self):
+            try:
+                state = api("chernobog_native_region_facts", self.root)
+                if (state.get("database"), state.get("context")) != (
+                    self.snapshot.get("database"),
+                    self.snapshot.get("context"),
+                ):
+                    self.poll()
+                    return
+                self.snapshot = state
+                self.rebuild()
+                self.poll()
+            except (RuntimeError, ValueError):
+                self.poll()
+
+        def jump_source(self):
+            self.poll()
+            if self.current and self.selected.get("site"):
+                site = int(self.selected["site"], 0)
+                if ida_bytes.is_loaded(site):
+                    ida_kernwin.jumpto(site)
+
+        def OnClose(self, _form):
+            self.closed = True
+            if hasattr(self, "timer"):
+                self.timer.stop()
+
+
+class NativeRegionAction(ida_kernwin.action_handler_t):
+    def __init__(self, owner):
+        super().__init__()
+        self.owner = owner
+
+    def activate(self, context):
+        root = context.cur_ea
+        try:
+            snapshot = api("chernobog_native_region_facts", root)
+            key = (snapshot["database"], snapshot["context"], snapshot["root"])
+            existing = self.owner.region_forms.get(key)
+            if existing is not None and not existing.closed:
+                existing.Show(
+                    "Chernobog native region " + snapshot["root"],
+                    options=ida_kernwin.PluginForm.WOPN_PERSIST,
+                )
+                return 1
+            if len(self.owner.region_forms) >= 8:
+                oldest = self.owner.region_forms.pop(next(iter(self.owner.region_forms)))
+                if not oldest.closed:
+                    oldest.Close(ida_kernwin.PluginForm.WCLS_SAVE)
+            form = NativeRegionForm(root, snapshot)
+            self.owner.region_forms[key] = form
+            form.Show(
+                "Chernobog native region " + snapshot["root"],
+                options=ida_kernwin.PluginForm.WOPN_PERSIST,
+            )
+            return 1
+        except (RuntimeError, ValueError, KeyError):
+            ida_kernwin.msg("[chernobog] Native region inspection API unavailable.\n")
+            return 0
+
+    def update(self, _context):
+        return ida_kernwin.AST_ENABLE_FOR_WIDGET
+
 
 class EvidenceAction(ida_kernwin.action_handler_t):
     def __init__(self, owner):
@@ -980,6 +1241,7 @@ class EvidencePlugin(ida_idaapi.plugin_t):
         if not ida_kernwin.is_idaq():
             return ida_idaapi.PLUGIN_SKIP
         self.forms = {}
+        self.region_forms = {}
         self.action = EvidenceAction(self)
         if not ida_kernwin.register_action(
             ida_kernwin.action_desc_t(
@@ -993,12 +1255,32 @@ class EvidencePlugin(ida_idaapi.plugin_t):
         ):
             return ida_idaapi.PLUGIN_SKIP
         ida_kernwin.attach_action_to_menu("View/Open subviews/", ACTION, ida_kernwin.SETMENU_APP)
+        self.region_action = NativeRegionAction(self)
+        self.region_registered = ida_kernwin.register_action(
+            ida_kernwin.action_desc_t(
+                REGION_ACTION,
+                "Chernobog native region facts",
+                self.region_action,
+                None,
+                "Inspect a bounded graph from the exact selected ownerless instruction",
+                -1,
+            )
+        )
+        if self.region_registered:
+            ida_kernwin.attach_action_to_menu(
+                "View/Open subviews/", REGION_ACTION, ida_kernwin.SETMENU_APP
+            )
         return ida_idaapi.PLUGIN_KEEP
 
     def run(self, _argument):
         ida_kernwin.process_ui_action(ACTION)
 
     def term(self):
+        for form in getattr(self, "region_forms", {}).values():
+            if not form.closed:
+                form.Close(ida_kernwin.PluginForm.WCLS_SAVE)
+        if getattr(self, "region_registered", False):
+            ida_kernwin.unregister_action(REGION_ACTION)
         for form in getattr(self, "forms", {}).values():
             if not form.closed:
                 form.Close(ida_kernwin.PluginForm.WCLS_SAVE)

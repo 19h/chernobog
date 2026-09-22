@@ -8,6 +8,7 @@
 - Use the repository's formatter configuration when one exists. Verify that
   every code file included in a commit passes its formatter's check mode before
   staging and committing.
+- Format Makefiles with `mbake` 1.4.6 using `.bake.toml`.
 - Keep repository-wide formatting changes separate from functional changes.
   Make formatting-only changes in atomic commits, one language per commit.
 - Preserve historical evidence artifacts and their recorded source hashes;

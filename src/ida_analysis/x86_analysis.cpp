@@ -1,4 +1,5 @@
 #include "x86_analysis.hpp"
+#include "native_classifier.hpp"
 #include "../common/bounded_dataflow.h"
 
 #include "../common/warn_off.h"
@@ -14,7 +15,10 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <deque>
 #include <map>
+#include <set>
+#include <sstream>
 #include <vector>
 
 namespace chernobog::ida_analysis
@@ -709,6 +713,464 @@ X86RegisterFact analyze_x86_register_before(const insn_t &insn, const op_t &oper
         result.support.push_back(it->ea);
     }
     result.value = state.read(operand);
+    return result;
+}
+
+X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t round_limit)
+{
+    X86RegionInspection result;
+    result.root = root;
+    node_limit = std::min<size_t>(node_limit, 64);
+    round_limit = std::min<size_t>(round_limit, 128);
+    const auto hex = [](uint64_t value)
+    {
+        std::ostringstream out;
+        out << "0x" << std::hex << value;
+        return out.str();
+    };
+    const auto bytes_at = [](ea_t address, size_t size)
+    {
+        static const char digits[] = "0123456789abcdef";
+        std::string bytes;
+        for (size_t i = 0; i < size; ++i)
+        {
+            const auto value = get_byte(address + i);
+            bytes += digits[value >> 4];
+            bytes += digits[value & 15];
+        }
+        return bytes;
+    };
+    if (PH.id != PLFM_386 || root == BADADDR || uint64_t(ea_t(root)) != root)
+    {
+        result.reason = "unsupported_request";
+        return result;
+    }
+    const auto *segment = getseg(ea_t(root));
+    if (!segment || segment->type == SEG_XTRN || !(segment->perm & SEGPERM_EXEC))
+    {
+        result.reason = "nonexecutable_or_external";
+        return result;
+    }
+    if (segment->bitness != 1 && segment->bitness != 2)
+    {
+        result.reason = "unsupported_mode";
+        return result;
+    }
+    result.address_bits = segment->bitness == 2 ? 64 : 32;
+    const auto decode = [&](ea_t address, insn_t &instruction) -> std::string
+    {
+        if (address == BADADDR || getseg(address) != segment)
+            return "segment_boundary";
+        if (get_func(address))
+            return "owned_code";
+        const auto flags = get_flags(address);
+        if (!is_code(flags) || !is_head(flags))
+            return is_tail(flags) && is_code(get_flags(get_item_head(address)))
+                       ? "interior_instruction_target"
+                       : "not_existing_code_head";
+        if (decode_insn(&instruction, address) <= 0 || !instruction.size || instruction.size > 15 ||
+            address > BADADDR - instruction.size || address + instruction.size > segment->end_ea ||
+            get_item_end(address) != address + instruction.size)
+            return "invalid_instruction_span";
+        if ((result.address_bits == 64 && !mode64(instruction)) ||
+            (result.address_bits == 32 &&
+             (!mode32(instruction) ||
+              uint64_t(address) + instruction.size > uint64_t(UINT32_MAX) + 1)))
+            return "mode_boundary";
+        for (size_t offset = 0; offset < instruction.size; ++offset)
+        {
+            if (get_func(address + offset))
+                return "owned_code";
+            if (!is_loaded(address + offset) || get_item_head(address + offset) != address)
+                return "invalid_instruction_span";
+        }
+        return {};
+    };
+    insn_t entry;
+    result.reason = decode(ea_t(root), entry);
+    if (!result.reason.empty())
+        return result;
+    result.available = true;
+    if (!node_limit || !round_limit)
+    {
+        result.truncated = true;
+        result.reason = !node_limit ? "node_limit" : "round_limit";
+        return result;
+    }
+    struct Control
+    {
+        bool branch = false, jump = false, call = false, ret = false;
+        std::string stop;
+    };
+    const auto control = [](const insn_t &instruction)
+    {
+        Control flow;
+        const auto condition = x86_condition(instruction.itype);
+        flow.branch = condition && condition->use == X86ConditionUse::branch;
+        flow.jump = instruction.itype == NN_jmp;
+        flow.call = is_call_insn(instruction);
+        flow.ret = instruction.itype == NN_retn;
+        if (instruction.itype == NN_bswap && get_dtype_size(instruction.Op1.dtype) != 4 &&
+            get_dtype_size(instruction.Op1.dtype) != 8)
+            flow.stop = "unsupported_bswap_width";
+        else if (instruction.Op1.type == o_far || instruction.itype == NN_callfi ||
+                 instruction.itype == NN_jmpfi || (is_ret_insn(instruction) && !flow.ret) ||
+                 instruction.itype == NN_int || instruction.itype == NN_int3 ||
+                 instruction.itype == NN_into || instruction.itype == NN_syscall ||
+                 instruction.itype == NN_sysenter || instruction.itype == NN_sysexit ||
+                 instruction.itype == NN_sysret || instruction.itype == NN_xbegin ||
+                 instruction.itype == NN_hlt || instruction.itype == NN_ud2)
+            flow.stop = "unsupported_control";
+        else if (flow.jump && instruction.Op1.type != o_near)
+            flow.stop = "indirect_target";
+        else if (flow.branch && instruction.Op1.type != o_near)
+            flow.stop = "unsupported_control";
+        else if (!flow.jump && !flow.branch && !flow.call && !flow.ret)
+        {
+            if (instruction.get_canon_feature(PH) & (CF_CALL | CF_JUMP | CF_STOP))
+                flow.stop = "unsupported_control";
+            for (const auto &operand : instruction.ops)
+                if (operand.type == o_near || operand.type == o_far)
+                    flow.stop = "unsupported_control";
+        }
+        return flow;
+    };
+    struct Link
+    {
+        ea_t source, target;
+        std::string kind;
+    };
+    std::map<ea_t, insn_t> code{{entry.ea, entry}};
+    std::deque<ea_t> pending{entry.ea};
+    std::vector<Link> links;
+    bool failed = false;
+    const auto failure = [&](const std::string &reason, bool truncated)
+    {
+        if (!failed)
+            result.reason = reason;
+        failed = true;
+        result.truncated |= truncated;
+    };
+    const auto frontier = [&](ea_t source, ea_t target, const std::string &reason)
+    {
+        result.edges.push_back({{"source", hex(source)},
+                                {"target", hex(target)},
+                                {"kind", "frontier"},
+                                {"reason", reason}});
+    };
+    const auto successor = [&](ea_t source, ea_t target, const std::string &kind)
+    {
+        if (!code.count(target))
+        {
+            insn_t next;
+            const auto reason = decode(target, next);
+            if (!reason.empty())
+            {
+                frontier(source, target, reason);
+                if (reason == "interior_instruction_target" || reason == "invalid_instruction_span")
+                    failure(reason, false);
+                return;
+            }
+            const auto after = code.lower_bound(target);
+            if ((after != code.end() && target + next.size > after->first) ||
+                (after != code.begin() &&
+                 std::prev(after)->first + std::prev(after)->second.size > target))
+            {
+                frontier(source, target, "overlapping_instructions");
+                failure("overlapping_instructions", false);
+                return;
+            }
+            if (code.size() >= node_limit)
+            {
+                frontier(source, target, "node_limit");
+                failure("node_limit", true);
+                return;
+            }
+            code.emplace(target, next);
+            pending.push_back(target);
+        }
+        links.push_back({source, target, kind});
+        result.edges.push_back(
+            {{"source", hex(source)}, {"target", hex(target)}, {"kind", kind}, {"reason", ""}});
+    };
+    while (!pending.empty())
+    {
+        const auto &instruction = code.at(pending.front());
+        pending.pop_front();
+        const auto flow = control(instruction);
+        if (!flow.stop.empty())
+        {
+            frontier(instruction.ea, instruction.ea, flow.stop);
+            continue;
+        }
+        if (flow.ret)
+        {
+            frontier(instruction.ea, instruction.ea, "return_target");
+            continue;
+        }
+        if (flow.jump || flow.branch)
+            successor(instruction.ea, to_ea(instruction.cs, instruction.Op1.addr),
+                      flow.jump ? "direct-jump" : "conditional-taken");
+        if (flow.call)
+        {
+            frontier(instruction.ea,
+                     instruction.Op1.type == o_near ? to_ea(instruction.cs, instruction.Op1.addr)
+                                                    : instruction.ea,
+                     "call_target_not_followed");
+            successor(instruction.ea, instruction.ea + instruction.size, "call-return");
+        }
+        else if (!flow.jump)
+            successor(instruction.ea, instruction.ea + instruction.size, "fallthrough");
+    }
+    std::map<ea_t, size_t> index;
+    std::vector<insn_t> instructions;
+    for (const auto &[address, instruction] : code)
+    {
+        index.emplace(address, instructions.size());
+        instructions.push_back(instruction);
+    }
+    std::vector<FlowNode> graph(code.size());
+    graph[index.at(entry.ea)].unknown_entry = true;
+    for (const auto &link : links)
+    {
+        auto &predecessors = graph[index.at(link.target)].predecessors;
+        const auto source = index.at(link.source);
+        if (std::find(predecessors.begin(), predecessors.end(), source) == predecessors.end())
+            predecessors.push_back(source);
+    }
+    std::string support;
+    for (const auto &instruction : instructions)
+    {
+        if (!support.empty())
+            support += ';';
+        support += hex(instruction.ea);
+        auto &node = graph[index.at(instruction.ea)];
+        std::set<std::pair<ea_t, int>> incoming;
+        size_t examined = 0;
+        bool exhausted = false;
+        for (size_t offset = 0; offset < instruction.size && !exhausted; ++offset)
+        {
+            xrefblk_t xref;
+            for (bool more = xref.first_to(instruction.ea + offset, XREF_ALL); more;
+                 more = xref.next_to())
+            {
+                if (examined == 256)
+                {
+                    failure("incoming_reference_limit", true);
+                    exhausted = true;
+                    break;
+                }
+                ++examined;
+                ++result.incoming_examined;
+                incoming.emplace(xref.from, xref.type);
+                if (!xref.iscode)
+                    continue;
+                if (offset)
+                {
+                    failure("interior_code_entry", false);
+                    continue;
+                }
+                const int type = xref.type & XREF_MASK;
+                const bool compatible = std::any_of(
+                    links.begin(), links.end(),
+                    [&](const Link &link)
+                    {
+                        return link.source == xref.from && link.target == instruction.ea &&
+                               ((type == fl_F &&
+                                 (link.kind == "fallthrough" || link.kind == "call-return")) ||
+                                (type == fl_JN &&
+                                 (link.kind == "direct-jump" || link.kind == "conditional-taken")));
+                    });
+                if (!compatible)
+                    node.unknown_entry = true;
+            }
+        }
+        std::string adjacency = "unknown", adjacent_bytes;
+        const ea_t previous = prev_head(instruction.ea, segment->start_ea);
+        const bool admitted_fallthrough =
+            std::any_of(links.begin(), links.end(),
+                        [&](const Link &link)
+                        {
+                            return link.source == previous && link.target == instruction.ea &&
+                                   (link.kind == "fallthrough" || link.kind == "call-return");
+                        });
+        if (previous != BADADDR && !admitted_fallthrough && is_code(get_flags(previous)) &&
+            is_head(get_flags(previous)))
+        {
+            insn_t before;
+            if (decode_insn(&before, previous) > 0 && before.size &&
+                previous <= BADADDR - before.size && previous + before.size == instruction.ea)
+            {
+                // A modeling frontier can still have architectural fallthrough
+                // (for example LOOP or unsupported-width BSWAP). Its unknown
+                // input must not disappear merely because that instruction
+                // would not be propagated by this inspector.
+                const bool fallthrough =
+                    is_call_insn(before) ||
+                    (!is_ret_insn(before) && before.itype != NN_jmp && before.itype != NN_jmpfi &&
+                     !(before.get_canon_feature(PH) & CF_STOP));
+                if (fallthrough)
+                {
+                    node.unknown_entry = true;
+                    adjacency = hex(previous);
+                    adjacent_bytes = bytes_at(previous, before.size);
+                }
+            }
+        }
+        std::string references;
+        for (const auto &[source, type] : incoming)
+        {
+            if (!references.empty())
+                references += ';';
+            references += hex(source) + ':' + std::to_string(type);
+        }
+        result.nodes.push_back({{"site", hex(instruction.ea)},
+                                {"size", std::to_string(instruction.size)},
+                                {"bytes", bytes_at(instruction.ea, instruction.size)},
+                                {"owner", "unknown"},
+                                {"segment_start", hex(segment->start_ea)},
+                                {"segment_end", hex(segment->end_ea)},
+                                {"permissions", std::to_string(segment->perm)},
+                                {"segment_bitness", std::to_string(segment->bitness)},
+                                {"unknown_entry", node.unknown_entry ? "true" : "false"},
+                                {"incoming", references},
+                                {"adjacent", adjacency},
+                                {"adjacent_bytes", adjacent_bytes},
+                                {"flags_known", "0x0"},
+                                {"flags_value", "0x0"}});
+    }
+    if (failed)
+        return result;
+    const auto states = bounded_dataflow<State>(graph, node_limit, round_limit,
+                                                [&](size_t i, State state)
+                                                {
+                                                    const auto flow = control(instructions[i]);
+                                                    if (!flow.stop.empty() || flow.call || flow.ret)
+                                                        return State{};
+                                                    if (!flow.jump && !flow.branch)
+                                                        state.step(instructions[i]);
+                                                    return state;
+                                                });
+    if (!states)
+    {
+        result.reason = "nonconvergence";
+        return result;
+    }
+    result.converged = true;
+    result.reason = "complete_bounded_region";
+    for (size_t i = 0; i < instructions.size(); ++i)
+    {
+        const auto &instruction = instructions[i];
+        const auto &state = (*states)[i];
+        const auto known = hex(state.flags.known), value = hex(state.flags.value);
+        result.nodes[i]["flags_known"] = known;
+        result.nodes[i]["flags_value"] = value;
+        const auto condition = x86_condition(instruction.itype);
+        if (condition && control(instruction).stop.empty())
+        {
+            const auto outcome = evaluate(condition->condition, state.flags);
+            std::map<std::string, std::string> row{
+                {"site", hex(instruction.ea)},
+                {"truth", "static-region-fact"},
+                {"status", outcome ? "proved" : "unresolved"},
+                {"outcome", outcome ? (*outcome ? "true" : "false") : "unknown"},
+                {"kind", condition->use == X86ConditionUse::branch     ? "branch-condition"
+                         : condition->use == X86ConditionUse::set_byte ? "setcc-value"
+                                                                       : "cmov-condition"},
+                {"flags_known", known},
+                {"flags_value", value},
+                {"support", support}};
+            if (condition->use == X86ConditionUse::branch)
+            {
+                row["taken"] = hex(to_ea(instruction.cs, instruction.Op1.addr));
+                row["fallthrough"] = hex(instruction.ea + instruction.size);
+                row["target"] = !outcome ? "unknown" : row[*outcome ? "taken" : "fallthrough"];
+            }
+            if (condition->use == X86ConditionUse::set_byte)
+            {
+                row["value"] = !outcome ? "unknown" : (*outcome ? "0x1" : "0x0");
+                row["width_bits"] = "8";
+            }
+            result.records.push_back(std::move(row));
+        }
+        if (instruction.itype != NN_push || !natad(instruction) ||
+            (result.address_bits == 64 ? !op64(instruction) : !op32(instruction)))
+            continue;
+        const auto next = index.find(instruction.ea + instruction.size);
+        if (next == index.end())
+            continue;
+        const auto &ret = instructions[next->second];
+        if (ret.itype != NN_retn || !natad(ret) ||
+            (result.address_bits == 64 ? !op64(ret) : !op32(ret)) ||
+            (ret.Op1.type != o_void && ret.Op1.type != o_imm))
+            continue;
+        classifier::instruction_t push_model, ret_model;
+        push_model.address = instruction.ea;
+        push_model.size = instruction.size;
+        push_model.stack_width_bits = uint16_t(result.address_bits);
+        ret_model.address = ret.ea;
+        ret_model.size = ret.size;
+        ret_model.stack_width_bits = uint16_t(result.address_bits);
+        ret_model.kind = classifier::instruction_kind_t::return_instruction;
+        ret_model.immediate = ret.Op1.type == o_imm ? ret.Op1.value : 0;
+        const auto &ret_node = graph[next->second];
+        ret_model.alternate_predecessor = ret_node.unknown_entry ||
+                                          ret_node.predecessors.size() != 1 ||
+                                          ret_node.predecessors.front() != i;
+        classifier::target_proof_t target;
+        if (instruction.Op1.type == o_imm)
+        {
+            push_model.kind = classifier::instruction_kind_t::push_immediate;
+            target.kind = classifier::target_proof_kind_t::immediate;
+            const auto immediate = state.read(instruction.Op1, result.address_bits);
+            if (!immediate)
+                continue;
+            target.value = result.address_bits == 64 ? uint64_t(int64_t(int32_t(*immediate)))
+                                                     : uint64_t(uint32_t(*immediate));
+        }
+        else if (instruction.Op1.type == o_reg)
+        {
+            const auto slice = register_slice(instruction.Op1);
+            push_model.kind = classifier::instruction_kind_t::push_register;
+            push_model.source = {slice.reg, uint16_t(slice.offset), uint16_t(slice.width)};
+            target.value = state.read(instruction.Op1);
+            if (target.value)
+            {
+                target.kind = classifier::target_proof_kind_t::register_definition;
+                target.registers.push_back(push_model.source);
+                for (const auto &definition : instructions)
+                    target.definitions.push_back(definition.ea);
+            }
+        }
+        else if (instruction.Op1.type == o_mem || instruction.Op1.type == o_displ ||
+                 instruction.Op1.type == o_phrase)
+            push_model.kind = classifier::instruction_kind_t::push_memory;
+        else
+            continue;
+        const auto transfer =
+            classifier::classify_push_return(push_model, ret_model, result.address_bits, target);
+        if (!transfer)
+            continue;
+        result.records.push_back(
+            {{"site", hex(instruction.ea)},
+             {"kind", "push-return"},
+             {"truth", "static-region-fact"},
+             {"status", target.value ? "proved" : "unresolved"},
+             {"transfer", hex(ret.ea)},
+             {"target", target.value ? hex(*target.value) : "unknown"},
+             {"target_proof", target.kind == classifier::target_proof_kind_t::immediate
+                                  ? "immediate"
+                              : target.kind == classifier::target_proof_kind_t::register_definition
+                                  ? "register-definition"
+                                  : "unresolved"},
+             {"width_bits", std::to_string(transfer->width_bits)},
+             {"stack_delta_bytes", std::to_string(transfer->stack_delta_bytes)},
+             {"stack_write_bytes", std::to_string(transfer->stack_write_bytes)},
+             {"stack_write_offset_bytes", std::to_string(transfer->stack_write_offset_bytes)},
+             {"flags_known", known},
+             {"flags_value", value},
+             {"support", support}});
+    }
     return result;
 }
 

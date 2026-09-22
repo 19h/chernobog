@@ -78,12 +78,12 @@ build-linux-clang:
 		cmake --build --preset $(LINUX_CLANG_PRESET) --parallel $(NPROC); \
 	else \
 		docker run --rm --platform linux/amd64 \
-			-e IDASDK=/ida-sdk \
-			-v "$(CURDIR)":/workspace \
-			-v "$(IDASDK)":/ida-sdk \
-			-w /workspace \
-			$(DOCKER_LINUX_IMAGE) \
-			bash -lc 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential cmake ninja-build clang git python3 curl ca-certificates && curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$$HOME/.cargo/env" && rustup target add x86_64-unknown-linux-gnu && cmake --preset $(LINUX_CLANG_PRESET) && cmake --build --preset $(LINUX_CLANG_PRESET) --parallel $$(nproc)'; \
+		-e IDASDK=/ida-sdk \
+		-v "$(CURDIR)":/workspace \
+		-v "$(IDASDK)":/ida-sdk \
+		-w /workspace \
+		$(DOCKER_LINUX_IMAGE) \
+		bash -lc 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential cmake ninja-build clang git python3 curl ca-certificates && curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$$HOME/.cargo/env" && rustup target add x86_64-unknown-linux-gnu && cmake --preset $(LINUX_CLANG_PRESET) && cmake --build --preset $(LINUX_CLANG_PRESET) --parallel $$(nproc)'; \
 	fi
 	@mkdir -p $(ARTIFACT_DIR)
 	@cp $(IDASDK_PLUGINS_SRC)/$(PLUGIN_NAME).so $(ARTIFACT_DIR)/$(PLUGIN_NAME)_linux-x86_64.so 2>/dev/null || \
@@ -144,6 +144,7 @@ else
 	 cp $(IDASDK_PLUGINS_SRC)/$(PLUGIN_NAME).dll ~/.idapro/plugins/ 2>/dev/null || \
 	 echo "Plugin not found - check build output"
 endif
+	@cp python/chernobog_evidence.py ~/.idapro/plugins/
 	@echo "Done!"
 
 help:
