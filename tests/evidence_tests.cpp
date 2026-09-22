@@ -845,6 +845,142 @@ void native_read_stream_regressions()
                 projected.captures.size() == 2 &&
                 projected.observations[0].read_fragments.size() == 2,
             "separate native projection retains every capture and raw fragment without ordinary proof flags");
+        const auto whole_uses = [&](bool modeled)
+        {
+            auto copy = native;
+            for (auto &run : copy)
+            {
+                std::vector<UseSnapshot> uses;
+                std::vector<DataAcc> data;
+                for (size_t i : {size_t(0), size_t(8)})
+                {
+                    auto use = run.events.uses[i];
+                    use.bytes.assign(std::begin(text), std::end(text));
+                    use.observed_size = sizeof(text);
+                    if (modeled)
+                    {
+                        use.producer = UseProducer::MODELED_ARGUMENT;
+                        use.callee = 0x2020;
+                        use.argument = 0;
+                        use.model_kind = uint8_t(EmuSummaryKind::STRLEN);
+                    }
+                    else
+                    {
+                        auto read = run.events.data[i];
+                        read.size = sizeof(text);
+                        read.value = 0;
+                        for (size_t byte = 0; byte < sizeof(text); ++byte)
+                            read.value |= uint64_t(text[byte]) << (8 * byte);
+                        data.push_back(read);
+                    }
+                    uses.push_back(std::move(use));
+                }
+                run.events.uses = std::move(uses);
+                run.events.data = std::move(data);
+                if (modeled)
+                    run.bindings.push_back({0x2020, EmuSummaryKind::STRLEN, "strlen"});
+            }
+            return copy;
+        };
+        auto scalar = whole_uses(false);
+        const auto scalar_result = hybrid_native_temporal_strings(scalar);
+        check(scalar_result.available && scalar_result.observations.size() == 2 &&
+                  scalar_result.observations[0].use.producer == UseProducer::EXECUTED_READ &&
+                  scalar_result.observations[0].read_fragments.size() == 2 &&
+                  scalar_result.observations[0].read_fragments[0].size() == 1,
+              "single native reads retain exact scalar data witnesses and their producer");
+        scalar[0].events.data[0].value ^= 1;
+        check(hybrid_native_temporal_strings(scalar).observations.size() == 1,
+              "single-read snapshot must match the actual data value");
+        const auto arguments = whole_uses(true);
+        auto wide_arguments = arguments;
+        for (auto &run : wide_arguments)
+            for (auto &use : run.events.uses)
+            {
+                use.bytes = {'l', 'o', 'n', 'g', 'e', 'r', '-', 't', 'e', 'x', 't', '!', 0};
+                use.observed_size = use.bytes.size();
+            }
+        check(hybrid_native_temporal_strings(wide_arguments).observations.size() == 2,
+              "modeled snapshots retain bytes beyond the scalar data-event width");
+        const auto argument_result = hybrid_native_temporal_strings(arguments);
+        check(argument_result.available && argument_result.observations.size() == 2 &&
+                  argument_result.observations[0].use.producer == UseProducer::MODELED_ARGUMENT &&
+                  argument_result.observations[0].witnesses.size() == 2 &&
+                  argument_result.observations[0].read_fragments.empty(),
+              "modeled arguments preserve snapshots without inventing executed reads");
+        for (const auto &[kind, argument] :
+             std::vector<std::pair<EmuSummaryKind, int>>{{EmuSummaryKind::STRLEN, 0},
+                                                         {EmuSummaryKind::STRNLEN, 0},
+                                                         {EmuSummaryKind::MEMCHR, 0},
+                                                         {EmuSummaryKind::STRCMP, 0},
+                                                         {EmuSummaryKind::STRCMP, 1},
+                                                         {EmuSummaryKind::MEMCPY, 1},
+                                                         {EmuSummaryKind::MEMMOVE, 1},
+                                                         {EmuSummaryKind::STRCPY, 1},
+                                                         {EmuSummaryKind::STRNCPY, 1}})
+        {
+            auto copy = arguments;
+            for (auto &run : copy)
+            {
+                run.bindings.back().kind = kind;
+                for (auto &use : run.events.uses)
+                {
+                    use.model_kind = uint8_t(kind);
+                    use.argument = argument;
+                }
+            }
+            check(hybrid_native_temporal_strings(copy).observations.size() == 2,
+                  "each captured model argument has an explicit admissible input slot");
+            copy[0].events.uses[0].argument = 2;
+            check(hybrid_native_temporal_strings(copy).observations.size() == 1,
+                  "uncaptured argument slots cannot acquire modeled observations");
+        }
+        for (unsigned failure = 0; failure < 10; ++failure)
+        {
+            auto copy = arguments;
+            auto &use = copy[0].events.uses[0];
+            switch (failure)
+            {
+            case 0:
+                use.generation++;
+                break;
+            case 1:
+                use.sequence = copy[0].events.allocations[0].released;
+                break;
+            case 2:
+                use.context++;
+                break;
+            case 3:
+                use.callee++;
+                break;
+            case 4:
+                use.model_kind = uint8_t(EmuSummaryKind::MEMSET);
+                break;
+            case 5:
+                use.status = UseCaptureStatus::INCOMPLETE_VALUE;
+                break;
+            case 6:
+                use.bytes.back() = 'x';
+                break;
+            case 7:
+                use.bytes[0] = 'x';
+                break;
+            case 8:
+                copy[0].events.uses.push_back(use);
+                copy[0].events.uses.back().sequence++;
+                copy[0].events.uses.back().status = UseCaptureStatus::INCOMPLETE_VALUE;
+                break;
+            case 9:
+                use.offset++;
+                break;
+            }
+            check(hybrid_native_temporal_strings(copy).observations.size() == 1,
+                  "invalid or conflicting modeled uses cannot mask an unrelated valid lifetime");
+        }
+        auto over_quota = arguments;
+        over_quota[0].events.uses[0].bytes.resize(TemporalMemory::snapshot_limit + 1);
+        check(!hybrid_native_temporal_strings(over_quota).available,
+              "oversized retained snapshots reject the whole native corpus");
         auto forged_function = source;
         forged_function.runs[0].outcome.native_region = true;
         check(

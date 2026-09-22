@@ -68,12 +68,17 @@ if QtWidgets is not None:
             layout.addWidget(self.status)
             self.tables = {}
             for key, headers in (
-                ("observations", ["Observed string", "Read source", "Agreeing runs"]),
+                ("observations", ["Observed string", "Use site", "Agreeing runs"]),
                 (
                     "witnesses",
-                    ["Capture / seed", "Allocation / generation", "Use interval", "Reads"],
+                    [
+                        "Capture / seed",
+                        "Allocation / generation",
+                        "Use interval",
+                        "Reads / snapshots",
+                    ],
                 ),
-                ("fragments", ["Event / data event", "Read source", "Address", "Bytes"]),
+                ("fragments", ["Use / data event", "Use site", "Address", "Bytes", "Producer"]),
             ):
                 table = QtWidgets.QTreeWidget()
                 table.setHeaderLabels(headers)
@@ -91,7 +96,7 @@ if QtWidgets is not None:
             self.detail = QtWidgets.QPlainTextEdit()
             self.detail.setReadOnly(True)
             layout.addWidget(self.detail)
-            self.jump = QtWidgets.QPushButton("Go to selected read")
+            self.jump = QtWidgets.QPushButton("Go to selected use")
             self.jump.clicked.connect(self.navigate)
             layout.addWidget(self.jump)
             self.populate("observations", self.snapshot.get("observations", []))
@@ -111,14 +116,15 @@ if QtWidgets is not None:
                         row["capture"] + " / " + row["seed"],
                         row["allocation"] + " / " + row["generation"],
                         row["first_sequence"] + "–" + row["last_sequence"],
-                        row["read_count"],
+                        row["read_count"] + " / " + row["snapshot_count"],
                     ]
                 else:
                     columns = [
-                        row["sequence"] + " / " + row["data_sequence"],
+                        row["sequence"] + " / " + (row["data_sequence"] or "modeled"),
                         row["site"],
                         row["address"],
                         row["bytes"],
+                        row["producer"],
                     ]
                 item = QtWidgets.QTreeWidgetItem(columns)
                 item.setData(0, QtCore.Qt.ItemDataRole.UserRole, row)
@@ -147,11 +153,9 @@ if QtWidgets is not None:
 
         def update_detail(self):
             self.jump.setEnabled(self.current and bool(self.fragment))
-            lead = "Select a string, then a capture and an original read.\n\n"
+            lead = "Select a string, then a capture and an original byte snapshot.\n\n"
             if self.observation:
-                lead = (
-                    self.observation["value"] + "\nRead source: " + self.observation["site"] + "\n"
-                )
+                lead = self.observation["value"] + "\nUse site: " + self.observation["site"] + "\n"
                 if self.witness:
                     lead += (
                         "Capture "
@@ -160,7 +164,9 @@ if QtWidgets is not None:
                         + self.witness["seed"]
                         + ": "
                         + self.witness["read_count"]
-                        + " reads, allocation "
+                        + " reads / "
+                        + self.witness["snapshot_count"]
+                        + " snapshots, allocation "
                         + self.witness["allocation"]
                         + ", generation "
                         + self.witness["generation"]

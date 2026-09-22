@@ -42,9 +42,15 @@ def check(label, condition):
 try:
     ida_auto.auto_wait()
     assert ida_loader.load_plugin(os.environ["CHERNOBOG_PLUGIN_PATH"])
-    target = int(os.environ["CHERNOBOG_STRING_ENTRY"], 0)
+    snapshot_uses = os.environ.get("CHERNOBOG_SNAPSHOT_USES") == "1"
+    target = (
+        ida_name.get_name_ea(ida_idaapi.BADADDR, "_native_snapshot_strings")
+        if snapshot_uses
+        else int(os.environ["CHERNOBOG_STRING_ENTRY"], 0)
+    )
+    assert target != ida_idaapi.BADADDR
     bindings = []
-    for name in ("_malloc", "_memset", "_free"):
+    for name in ("_malloc", "_memset", "_free") + (("_strlen",) if snapshot_uses else ()):
         ea = ida_name.get_name_ea(ida_idaapi.BADADDR, name)
         assert ea != ida_idaapi.BADADDR
         bindings.append({"address": hex(ea), "name": name})
@@ -67,14 +73,21 @@ try:
     if expected:
         check(
             "both protected values",
-            sorted(row["value"] for row in snapshot["observations"]) == ["second!", "secret!"],
+            sorted(row["value"] for row in snapshot["observations"])
+            == sorted(["second!", "secret!"] * (2 if snapshot_uses else 1)),
         )
         check(
             "complete witness table",
-            len(snapshot["witnesses"]) == 8
-            and len(snapshot["fragments"]) == 64
+            len(snapshot["witnesses"]) == (16 if snapshot_uses else 8)
+            and len(snapshot["fragments"]) == (16 if snapshot_uses else 64)
             and snapshot["observations_omitted"] == 0,
         )
+        if snapshot_uses:
+            check(
+                "distinct snapshot producers",
+                sorted(row["producer"] for row in snapshot["observations"])
+                == ["executed-read", "executed-read", "modeled-argument", "modeled-argument"],
+            )
         for observation in snapshot["observations"]:
             witnesses = [
                 row for row in snapshot["witnesses"] if row["observation"] == observation["index"]
@@ -94,13 +107,25 @@ try:
                     and row["capture"] == witness["capture"]
                 ]
                 raw = b"".join(bytes.fromhex(row["bytes"]) for row in fragments)
+                modeled = observation["producer"] == "modeled-argument"
+                fragment_count = 1 if snapshot_uses else 8
                 check(
                     "exact original reads",
                     raw == observation["value"].encode() + b"\0"
-                    and len(fragments) == int(witness["read_count"]) == 8
+                    and len(fragments) == int(witness["snapshot_count"]) == fragment_count
+                    and int(witness["read_count"]) == (0 if modeled else fragment_count)
                     and witness["fragments_omitted"] == "0"
                     and all(
-                        int(row["data_sequence"]) == int(row["sequence"]) + 1 for row in fragments
+                        (
+                            row["data_sequence"] == ""
+                            if modeled
+                            else int(row["data_sequence"]) == int(row["sequence"]) + 1
+                        )
+                        and row["producer"] == ("modeled-argument" if modeled else "executed-read")
+                        for row in fragments
+                    )
+                    and (
+                        not modeled or (witness["argument"] == "0" and witness["model_kind"] == "6")
                     ),
                 )
     else:
@@ -120,7 +145,9 @@ try:
         return value
 
     check("fresh exact snapshot", fresh())
-    key = ida_name.get_name_ea(ida_idaapi.BADADDR, "_native_read_key")
+    key = ida_name.get_name_ea(
+        ida_idaapi.BADADDR, "_native_snapshot_key" if snapshot_uses else "_native_read_key"
+    )
     assert key != ida_idaapi.BADADDR
     original = ida_bytes.get_byte(key)
     ida_bytes.patch_byte(key, original ^ 1)
@@ -156,23 +183,43 @@ try:
         selected, fragments = module.select_rows(
             snapshot, witness["observation"], witness["capture"]
         )
-        check("capture selection isolates witnesses", len(selected) == 4 and len(fragments) == 8)
+        check(
+            "capture selection isolates witnesses",
+            len(selected) == 4 and len(fragments) == (1 if snapshot_uses else 8),
+        )
         if ida_kernwin.is_idaq():
             from PySide6 import QtWidgets
 
             form = module.TemporalStringForm(snapshot)
             form.Show("Protected region strings", options=ida_kernwin.PluginForm.WOPN_PERSIST)
             QtWidgets.QApplication.processEvents()
-            form.tables["observations"].setCurrentItem(form.tables["observations"].topLevelItem(0))
+            selection = next(
+                (
+                    i
+                    for i, row in enumerate(snapshot["observations"])
+                    if row["producer"] == "modeled-argument"
+                ),
+                0,
+            )
+            form.tables["observations"].setCurrentItem(
+                form.tables["observations"].topLevelItem(selection)
+            )
             form.tables["witnesses"].setCurrentItem(form.tables["witnesses"].topLevelItem(0))
             form.tables["fragments"].setCurrentItem(form.tables["fragments"].topLevelItem(0))
             check(
                 "Qt linked read witnesses",
-                form.tables["observations"].topLevelItemCount() == 2
+                form.tables["observations"].topLevelItemCount() == (4 if snapshot_uses else 2)
                 and form.tables["witnesses"].topLevelItemCount() == 4
-                and form.tables["fragments"].topLevelItemCount() == 8
+                and form.tables["fragments"].topLevelItemCount() == (1 if snapshot_uses else 8)
                 and form.jump.isEnabled(),
             )
+            if snapshot_uses:
+                check(
+                    "Qt modeled snapshot has no invented read event",
+                    form.tables["fragments"].topLevelItem(0).text(0).endswith(" / modeled")
+                    and form.tables["fragments"].topLevelItem(0).text(4) == "modeled-argument"
+                    and form.witness["read_count"] == "0",
+                )
             ida_bytes.patch_byte(key, original ^ 1)
             form.poll()
             check(

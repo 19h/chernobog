@@ -24,26 +24,16 @@ struct Records
     std::map<uint64_t, const DataAcc *> data;
     std::map<uint64_t, const AllocationLifetime *> objects;
     std::set<uint64_t> barriers;
+    size_t snapshot_bytes = 0;
 };
 
-bool valid_read(const UseSnapshot &use, const Records &records, uint64_t context)
+bool valid_object(const UseSnapshot &use, const Records &records, uint64_t context)
 {
-    if (use.context != context || use.producer != UseProducer::EXECUTED_READ ||
-        use.status != UseCaptureStatus::EXACT || use.argument != -1 || use.callee ||
-        use.model_kind || !use.occurrence || use.bytes.empty() || use.bytes.size() > 8 ||
+    if (use.context != context || use.status != UseCaptureStatus::EXACT || !use.occurrence ||
+        use.bytes.empty() || use.bytes.size() > TemporalMemory::snapshot_limit ||
         use.bytes.size() != use.observed_size || use.sequence == UINT64_MAX ||
         use.address > UINT64_MAX - use.observed_size)
         return false;
-    const auto found = records.data.find(use.sequence + 1);
-    if (found == records.data.end())
-        return false;
-    const auto &data = *found->second;
-    if (data.kind != RAX_MEM_READ || data.from != use.site || data.addr != use.address ||
-        data.size != use.observed_size || data.scope != use.scope)
-        return false;
-    for (size_t i = 0; i < use.bytes.size(); ++i)
-        if (use.bytes[i] != uint8_t(data.value >> (8 * i)))
-            return false;
     if (use.scope == DataScope::IMAGE)
         return use.object_site == use.address;
     if (use.scope == DataScope::STACK)
@@ -60,7 +50,59 @@ bool valid_read(const UseSnapshot &use, const Records &records, uint64_t context
            use.address >= a.address && use.address - a.address <= a.size && use.offset >= 0 &&
            uint64_t(use.offset) == use.address - a.address &&
            use.observed_size <= a.size - (use.address - a.address) && use.sequence > a.allocated &&
-           (a.live ? a.released == 0 : use.sequence + 1 < a.released);
+           (a.live ? a.released == 0 : use.sequence < a.released);
+}
+
+bool valid_read(const UseSnapshot &use, const Records &records, uint64_t context)
+{
+    if (!valid_object(use, records, context) || use.producer != UseProducer::EXECUTED_READ ||
+        use.argument != -1 || use.callee || use.model_kind || use.bytes.size() > 8)
+        return false;
+    const auto found = records.data.find(use.sequence + 1);
+    if (found == records.data.end())
+        return false;
+    const auto &data = *found->second;
+    if (data.kind != RAX_MEM_READ || data.from != use.site || data.addr != use.address ||
+        data.size != use.observed_size || data.scope != use.scope)
+        return false;
+    for (size_t i = 0; i < use.bytes.size(); ++i)
+        if (use.bytes[i] != uint8_t(data.value >> (8 * i)))
+            return false;
+    if (use.scope == DataScope::HEAP)
+    {
+        const auto &object = *records.objects.at(use.allocation_id);
+        if (!object.live && use.sequence + 1 >= object.released)
+            return false;
+    }
+    return true;
+}
+
+bool valid_argument(const UseSnapshot &use, const Records &records, uint64_t context,
+                    const std::vector<EmuCallSummary> &bindings)
+{
+    if (!valid_object(use, records, context) || use.producer != UseProducer::MODELED_ARGUMENT)
+        return false;
+    const auto binding = std::find_if(
+        bindings.begin(), bindings.end(), [&](const auto &item)
+        { return item.address == use.callee && uint8_t(item.kind) == use.model_kind; });
+    if (binding == bindings.end())
+        return false;
+    switch (binding->kind)
+    {
+    case EmuSummaryKind::STRLEN:
+    case EmuSummaryKind::STRNLEN:
+    case EmuSummaryKind::MEMCHR:
+        return use.argument == 0;
+    case EmuSummaryKind::STRCMP:
+        return use.argument == 0 || use.argument == 1;
+    case EmuSummaryKind::MEMCPY:
+    case EmuSummaryKind::MEMMOVE:
+    case EmuSummaryKind::STRCPY:
+    case EmuSummaryKind::STRNCPY:
+        return use.argument == 1;
+    default:
+        return false;
+    }
 }
 
 bool follows(const Stream &stream, const UseSnapshot &next, const Records &records)
@@ -89,11 +131,11 @@ bool follows(const Stream &stream, const UseSnapshot &next, const Records &recor
                first.offset + int64_t(first.observed_size) == next.offset;
     return true;
 }
-std::vector<RuntimeUseStringCandidate> derive_streams(uint64_t context,
-                                                      const std::vector<Run> &identities,
-                                                      const std::vector<const EmuEvents *> &events,
-                                                      size_t minimum_length, size_t maximum_length,
-                                                      bool *valid = nullptr)
+std::vector<RuntimeUseStringCandidate>
+derive_streams(uint64_t context, const std::vector<Run> &identities,
+               const std::vector<const EmuEvents *> &events, size_t minimum_length,
+               size_t maximum_length, bool *valid = nullptr,
+               const std::vector<EmuCallSummary> *bindings = nullptr)
 {
     if (valid)
         *valid = false;
@@ -112,8 +154,11 @@ std::vector<RuntimeUseStringCandidate> derive_streams(uint64_t context,
             if (run == runs.end())
                 return {};
             auto &r = run->second;
-            if (r.uses.size() == TemporalMemory::use_limit)
+            if (r.uses.size() == TemporalMemory::use_limit ||
+                use.bytes.size() > TemporalMemory::snapshot_limit ||
+                use.bytes.size() > TemporalMemory::total_byte_limit - r.snapshot_bytes)
                 return {};
+            r.snapshot_bytes += use.bytes.size();
             r.uses.push_back(&use);
             if (use.producer != UseProducer::EXECUTED_READ)
                 r.barriers.insert(use.sequence);
@@ -165,6 +210,27 @@ std::vector<RuntimeUseStringCandidate> derive_streams(uint64_t context,
         uint64_t previous = 0;
         bool first = true;
         size_t retained = 0;
+        const auto retain = [&](Stream value)
+        {
+            Shape shape;
+            for (const auto &part : value.parts)
+                shape.emplace_back(part.site, part.observed_size);
+            Key key{value.use.semantic_key(), std::move(shape)};
+            const auto decoded = string_recovery::recover_runtime_utf8_prefix(
+                value.use.bytes, minimum_length, maximum_length);
+            if (!decoded)
+            {
+                ambiguous.insert(key);
+                return true;
+            }
+            if (value.use.bytes.size() > TemporalMemory::total_byte_limit - retained)
+                return false;
+            retained += value.use.bytes.size();
+            value.value = decoded->utf8;
+            if (!values[key].emplace(identity, std::move(value)).second)
+                ambiguous.insert(key);
+            return true;
+        };
         for (const auto *pointer : records.uses)
         {
             const auto &use = *pointer;
@@ -172,11 +238,24 @@ std::vector<RuntimeUseStringCandidate> derive_streams(uint64_t context,
                 return {};
             previous = use.sequence;
             first = false;
+            if (bindings && use.producer == UseProducer::MODELED_ARGUMENT)
+            {
+                stream = {};
+                if (!valid_argument(use, records, context, *bindings))
+                    ambiguous.insert({use.semantic_key(), {{use.site, use.observed_size}}});
+                else if (!retain(Stream{use, {use}, {}}))
+                    return {};
+                continue;
+            }
             if (!valid_read(use, records, context))
             {
+                if (bindings)
+                    ambiguous.insert({use.semantic_key(), {{use.site, use.observed_size}}});
                 stream = {};
                 continue;
             }
+            if (bindings && !retain(Stream{use, {use}, {}}))
+                return {};
             if (!follows(stream, use, records))
                 stream = {};
             if (stream.parts.empty())
@@ -196,24 +275,8 @@ std::vector<RuntimeUseStringCandidate> derive_streams(uint64_t context,
             stream.parts.push_back(use);
             if (std::find(use.bytes.begin(), use.bytes.end(), 0) == use.bytes.end())
                 continue;
-            if (stream.parts.size() > 1)
-            {
-                const auto decoded = string_recovery::recover_runtime_utf8_prefix(
-                    stream.use.bytes, minimum_length, maximum_length);
-                if (decoded)
-                {
-                    if (stream.use.bytes.size() > TemporalMemory::total_byte_limit - retained)
-                        return {};
-                    retained += stream.use.bytes.size();
-                    stream.value = decoded->utf8;
-                    Shape shape;
-                    for (const auto &part : stream.parts)
-                        shape.emplace_back(part.site, part.observed_size);
-                    Key key{stream.use.semantic_key(), std::move(shape)};
-                    if (!values[key].emplace(identity, std::move(stream)).second)
-                        ambiguous.insert(key);
-                }
-            }
+            if (stream.parts.size() > 1 && !retain(std::move(stream)))
+                return {};
             stream = {};
         }
     }
@@ -235,7 +298,8 @@ std::vector<RuntimeUseStringCandidate> derive_streams(uint64_t context,
                 break;
             }
             candidate.witnesses.push_back(stream.use);
-            candidate.read_fragments.push_back(std::move(stream.parts));
+            if (stream.use.producer != UseProducer::MODELED_ARGUMENT)
+                candidate.read_fragments.push_back(std::move(stream.parts));
         }
         if (same)
             result.push_back(std::move(candidate));
@@ -334,8 +398,8 @@ hybrid_native_temporal_strings(const std::vector<NativeTemporalStringRun> &sourc
         events.push_back(&run.events);
     }
     bool valid = false;
-    result.observations =
-        derive_streams(first.context, identities, events, minimum_length, maximum_length, &valid);
+    result.observations = derive_streams(first.context, identities, events, minimum_length,
+                                         maximum_length, &valid, &first.bindings);
     if (!valid)
         return reject("invalid or over-quota event ledger");
     result.available = true;

@@ -72,6 +72,16 @@ rejected BSWAP16 semantics; full handler effects and logical VM state remain
 unknown. See `VMP_NATIVE_OBSERVATIONS.md` for assumptions, quotas, per-variant
 yield and evidence. This advances rows 6a–6c and V without completing them.
 
+Native use-snapshot checkpoint: the separate native-region projection now also
+admits single scalar reads and explicitly bound modeled arguments, preserving
+producer identity, argument/model metadata and original bytes. The Qt inspector
+distinguishes machine reads from modeled snapshots without inventing data-event
+sequences. A new native fixture passes independent positive/negative byte
+oracles, 82 console/Qt checks, 183 protected regressions, 24 ordinary regressions
+and all 20 CTest suites; see `VMP_USE_SNAPSHOTS.md`. Protected modeled-use coverage,
+interleaved algorithms, wider architectures, protected ctree display and full
+lifecycle/performance coverage remain incomplete.
+
 Protected read-stream checkpoint: a separate four-run projection now recovers
 both erased values from mutation seeds 0 and 12648430, retaining 16 protected
 capture/lifetime witnesses. The original also recovers both values; seven

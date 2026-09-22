@@ -747,10 +747,13 @@ std::string inspect_native_temporal_strings(uint64_t function, const std::string
                                 {"producer", use_producer_name(value.use.producer)},
                                 {"eligible_runs", std::to_string(value.eligible_runs)},
                                 {"truth", "named-model observation"}});
-        for (size_t r = 0; r < value.read_fragments.size(); ++r)
+        for (size_t r = 0; r < value.witnesses.size(); ++r)
         {
-            const auto &parts = value.read_fragments[r];
             const auto &use = value.witnesses[r];
+            const bool modeled = use.producer == UseProducer::MODELED_ARGUMENT;
+            const std::vector<UseSnapshot> argument =
+                modeled ? std::vector<UseSnapshot>{use} : std::vector<UseSnapshot>{};
+            const auto &parts = modeled ? argument : value.read_fragments.at(r);
             const auto capture = projection.captures.at({use.run_id, use.seed});
             witnesses.push_back(
                 {{"observation", std::to_string(index)},
@@ -766,21 +769,28 @@ std::string inspect_native_temporal_strings(uint64_t function, const std::string
                  {"object_occurrence", std::to_string(use.object_occurrence)},
                  {"object_size", std::to_string(use.object_size)},
                  {"offset", std::to_string(use.offset)},
+                 {"producer", use_producer_name(use.producer)},
+                 {"callee", hex(use.callee)},
+                 {"argument", std::to_string(use.argument)},
+                 {"model_kind", std::to_string(use.model_kind)},
                  {"first_sequence", std::to_string(parts.front().sequence)},
                  {"last_sequence", std::to_string(parts.back().sequence)},
-                 {"read_count", std::to_string(parts.size())},
+                 {"read_count", std::to_string(modeled ? 0 : parts.size())},
+                 {"snapshot_count", std::to_string(parts.size())},
                  {"observed_bytes", std::to_string(use.observed_size)},
                  {"fragments_omitted", std::to_string(parts.size() > 16 ? parts.size() - 16 : 0)}});
             for (size_t p = 0; p < std::min<size_t>(16, parts.size()); ++p)
             {
                 const auto &part = parts[p];
-                fragments.push_back({{"observation", std::to_string(index)},
-                                     {"capture", std::to_string(capture)},
-                                     {"site", hex(part.site)},
-                                     {"address", hex(part.address)},
-                                     {"sequence", std::to_string(part.sequence)},
-                                     {"data_sequence", std::to_string(part.sequence + 1)},
-                                     {"bytes", bytes(part.bytes)}});
+                fragments.push_back(
+                    {{"observation", std::to_string(index)},
+                     {"capture", std::to_string(capture)},
+                     {"site", hex(part.site)},
+                     {"address", hex(part.address)},
+                     {"sequence", std::to_string(part.sequence)},
+                     {"producer", use_producer_name(part.producer)},
+                     {"data_sequence", modeled ? "" : std::to_string(part.sequence + 1)},
+                     {"bytes", bytes(part.bytes)}});
             }
         }
     }
@@ -793,7 +803,7 @@ std::string inspect_native_temporal_strings(uint64_t function, const std::string
         << ",\"reason\":" << inspection_json_quote(projection.reason)
         << ",\"observations_omitted\":" << (projection.observations.size() - count)
         << ",\"function_evidence_published\":false,\"vm_identity_proved\":false"
-        << ",\"contract\":\"four seeded runs under explicit named ABI models; immutable read witnesses; no unique-input or callee-equivalence proof\"";
+        << ",\"contract\":\"four seeded runs under explicit named ABI models; immutable byte snapshots; no unique-input or callee-equivalence proof\"";
     inspection_json_rows(out, "observations", observations);
     inspection_json_rows(out, "witnesses", witnesses);
     inspection_json_rows(out, "fragments", fragments);
