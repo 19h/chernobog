@@ -1,12 +1,15 @@
 #include "vm_test_candidates.hpp"
 #include "vm/transition.hpp"
 #include "common/solver_evidence.hpp"
+#include <chrono>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 using namespace chernobog;
 namespace
 {
 unsigned checks = 0;
+std::string last_transition;
 void check(bool b, const char *name)
 {
     ++checks;
@@ -98,7 +101,32 @@ Fixture fixture(unsigned mode, bool backward, bool keyed, uint8_t encoded, bool 
 }
 vm::TransitionCheck run(const Fixture &f, unsigned timeout = 100, unsigned resource = 200000)
 {
-    return vm::check_transition(f.c, f.entry, f.output, f.data, timeout, resource);
+    const auto started = std::chrono::steady_clock::now();
+    const auto result = vm::check_transition(f.c, f.entry, f.output, f.data, timeout, resource);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - started);
+    std::ostringstream detail;
+    detail << "last transition: mode=" << f.c.address_bits << "; entry=" << f.entry.pc
+           << "; dispatch=" << f.c.dispatch << "; target=" << f.output.pc
+           << "; direction=" << int(f.c.direction) << "; key_register=" << f.c.key
+           << "; stack_dispatch=" << f.c.stack_dispatch << "; timeout_ms=" << timeout
+           << "; rlimit=" << resource << "; elapsed_us=" << elapsed.count()
+           << "; queries=" << result.queries
+           << "; result=" << vm::transition_result_name(result.result)
+           << "; reason=" << result.reason << '\n';
+    for (const auto &state : {&f.entry, &f.output})
+    {
+        detail << (state == &f.entry ? "input" : "output") << " registers:";
+        for (const auto &reg : state->regs)
+            detail << ' ' << reg.reg << ':' << unsigned(reg.width) << ':' << reg.value;
+        detail << '\n';
+    }
+    detail << "accesses (site,address,value,bytes,kind,sequence):";
+    for (const auto &access : f.data)
+        detail << ' ' << access.from << ',' << access.addr << ',' << access.value << ','
+               << access.size << ',' << access.kind << ',' << access.sequence;
+    last_transition = detail.str();
+    return result;
 }
 struct Collector : solver_evidence::Collector
 {
@@ -251,7 +279,8 @@ int main()
     }
     catch (const std::exception &e)
     {
-        std::cerr << e.what() << '\n';
+        std::cerr << "VM transition failure at check " << checks << ": " << e.what() << '\n'
+                  << last_transition << '\n';
         return 1;
     }
 }

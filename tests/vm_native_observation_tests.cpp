@@ -1,14 +1,17 @@
 #include "vm_test_candidates.hpp"
 #include "vm/native_observations.hpp"
 #include "common/solver_evidence.hpp"
+#include <chrono>
 #include <iostream>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 
 using namespace chernobog;
 namespace
 {
 unsigned checks = 0;
+std::string last_projection;
 void check(bool value, const char *name)
 {
     ++checks;
@@ -151,8 +154,29 @@ Fixture fixture(unsigned mode, bool split = false, unsigned repeats = 1)
 }
 vm::NativeObservationView project(const Fixture &f, bool validate = true, uint64_t capture = 7)
 {
-    return vm::project_native_observations(f.region, f.instructions, f.events, f.outcome,
-                                           f.region.address_bits(), capture, 0x1000, validate);
+    const auto started = std::chrono::steady_clock::now();
+    auto view = vm::project_native_observations(f.region, f.instructions, f.events, f.outcome,
+                                                f.region.address_bits(), capture, 0x1000, validate);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - started);
+    std::ostringstream detail;
+    detail << "last projection: mode=" << f.region.address_bits() << "; capture=" << capture
+           << "; validate=" << validate << "; instructions=" << f.instructions.size()
+           << "; entered=" << f.events.execution.size() << "; elapsed_us=" << elapsed.count()
+           << "; available=" << view.available << "; records=" << view.records.size()
+           << "; visits=" << view.candidate_visits << "; omitted=" << view.omitted
+           << "; attempts=" << view.transition_attempts << "; queries=" << view.queries
+           << "; reason=" << view.reason << '\n';
+    for (const auto &row : view.records)
+    {
+        for (const char *key : {"vm_state", "transition_check", "transition_queries",
+                                "semantic_validation", "transition_reason"})
+            if (const auto found = row.find(key); found != row.end())
+                detail << key << '=' << found->second << "; ";
+        detail << '\n';
+    }
+    last_projection = detail.str();
+    return view;
 }
 struct Collector : solver_evidence::Collector
 {
@@ -163,6 +187,24 @@ struct Collector : solver_evidence::Collector
         origins.push_back(origin);
     }
 };
+void check_repeated_verdicts(const vm::NativeObservationView &view, size_t different = SIZE_MAX)
+{
+    for (size_t i = 0; i < view.records.size(); ++i)
+    {
+        const auto &row = view.records[i];
+        if (i < 16)
+            check(row.at("semantic_validation") == (i == different
+                                                        ? "modeled transition counterexample"
+                                                        : "corroborated for captured transition") &&
+                      row.at("transition_queries") == "2" && !row.at("transition_check").empty(),
+                  "each attempted visit retains its own semantic verdict");
+        else
+            check(row.at("semantic_validation") == "transition not checked" &&
+                      row.at("transition_reason") == "transition attempt budget exhausted" &&
+                      row.count("transition_queries") == 0 && row.count("transition_check") == 0,
+                  "every over-budget visit remains unchecked");
+    }
+}
 }
 int main()
 {
@@ -259,6 +301,19 @@ int main()
                           v.records.back().at("transition_reason") ==
                               "transition attempt budget exhausted",
                       "separate repeated visits and solver budget");
+                check_repeated_verdicts(v);
+                auto different = many;
+                unsigned dispatch_visit = 0;
+                for (auto &state : different.events.states)
+                    if (state.kind == hybrid::StatePoint::Kind::TransferTarget &&
+                        different.instructions.at(state.source).op == vm::Op::jump &&
+                        dispatch_visit++ == 8)
+                        state.regs[1].value ^= 1;
+                const auto different_view = project(different);
+                check(different_view.records.size() == 17 &&
+                          different_view.transition_attempts == 16 && different_view.queries == 32,
+                      "one later counterexample preserves visit and query counts");
+                check_repeated_verdicts(different_view, 8);
                 std::set<std::string> identities;
                 for (const auto &row : v.records)
                     identities.insert(row.at("vm_state"));
@@ -281,6 +336,7 @@ int main()
             check(view.records.size() == 128 && view.omitted == 2 && view.candidate_visits == 130 &&
                       view.transition_attempts == 16 && view.queries == 32,
                   "native row and solver quotas remain separate");
+            check_repeated_verdicts(view);
             auto dense = fixture(64);
             const auto sample = dense.events.states.front();
             dense.instructions.clear();
@@ -327,7 +383,9 @@ int main()
     }
     catch (const std::exception &error)
     {
-        std::cerr << "native observation failure: " << error.what() << '\n';
+        std::cerr << "native observation failure at check " << checks << ": " << error.what()
+                  << '\n'
+                  << last_projection << '\n';
         return 1;
     }
 }

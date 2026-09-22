@@ -19,5 +19,7 @@
   explicit file names.
 - Commit it with `red -m --staged --run file1 file2 ...` using the same file list,
   verify the resulting commit, and push it.
+- After every commit, run `make install -j 20` to build and install the plugin.
+  Verify installation before reporting the changeset complete.
 - Keep reported paths repository-relative; do not include personal absolute
   paths in committed files, tool output, or user-facing messages.

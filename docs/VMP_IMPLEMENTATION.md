@@ -72,6 +72,14 @@ rejected BSWAP16 semantics; full handler effects and logical VM state remain
 unknown. See `VMP_NATIVE_OBSERVATIONS.md` for assumptions, quotas, per-variant
 yield and evidence. This advances rows 6a–6c and V without completing them.
 
+Repeated-visit verification checkpoint: quota tests now check every retained
+semantic verdict and distinguish a ninth-visit counterexample despite unchanged
+visit/attempt/query counts. Failure diagnostics retain solver results, rejection
+reasons, budgets and fixture context. All 20 CTest suites pass, including 362
+native-observation and 1,328 transition checks; see `VMP_VISIT_VERDICTS.md`.
+The preceding lifecycle checkpoint's two full-suite failures remain unexplained;
+this run does not retroactively establish their causes or complete the review.
+
 Native-string lifecycle checkpoint: a saved-database/restart counterexample
 reproduced equal numeric tickets validating different captured values. Freshness
 requests now require a per-capture opaque lease, and the client also checks its

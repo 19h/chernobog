@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "scope": "repeated native-visit semantic verdict checks and solver-test failure diagnostics; production implementation unchanged",
+  "parent_commit": "787a9c4624420fc6d13fe918f18b0de631313587",
+  "source_sha256": {
+    "AGENTS.md": "f3941fdc7d429480c7f093ea4181d53add9eed741cd28feca8f4a8000ca4e0e3",
+    "tests/vm_transition_tests.cpp": "13310a073fcff02e85b538012378c755b300ef1e6c6f439070c5e71d59f00f50",
+    "tests/vm_native_observation_tests.cpp": "6b5ad4f98164e1908245087c843dfbf10fc97287d729d749bc2e76120dcf2f3f",
+    "tests/vm_test_candidates.hpp": "b2c78ebbe3812abade1e119ef48d927c1aab5e522a7583d90a3a04e366cfe532",
+    "src/vm/transition.cpp": "240b49ba547d2cd362ec018658b594d666b97c97b31743f0b0cd88b10f6fc776",
+    "src/vm/transition.hpp": "4ebbb88d33a457623d7617afd7f3241c92b2c098a0a600d46d08df377ae9c85e",
+    "src/vm/native_observations.cpp": "742748625f22be2a934cf42163d2539f88fc81c0afc3fc6d7781e73bc7e269ad",
+    "src/vm/native_observations.hpp": "be4227f331111db900ef1ff135d828636c00f3f8969c3ba785361a2383c9655f",
+    "src/vm/observations.hpp": "8766f07ee74932a2276640c07f04bc5930cbd66928aa1737e9adf976c3bbe1a0",
+    "src/vm/region.cpp": "16391c0c3cae068c55f6201050f329eb6d9e2f930903f2dc31066853f578f927",
+    "src/vm/region.hpp": "516cb7b6e602a2727849e66d86e6227af28dbb75d65bf3b8c9d22adabd4d0739",
+    "src/vm/native_region.cpp": "1c8a3f8ded9567fe3c687df6dcf32283247d9e49c5013769db9313a6ca418ecc",
+    "src/vm/native_region.hpp": "ad138de4ac49f56b6bb4a5d8f5dfa40d0df2185e5f7ce53c0543c0587d5eb664",
+    "src/vm/semantics.cpp": "1c73913fc07c306b9ef757ebd888964820ecfde1cd4511de701320704ba79b33",
+    "src/vm/semantics.hpp": "d995f5246dea521b1708da081bcaa97d9099fddda8f25349cdf76aecfa167822",
+    "src/common/solver_evidence.hpp": "8f6b3923c0b61748742135c18b36064c5d71913cb66fe30972fa69788e8ebd6b",
+    "src/hybrid/emu_driver.hpp": "ade88433691e578f46c2f569afbecb9b7fdb1140bac97195828a9e04d78c609d",
+    "CMakeLists.txt": "ab2184c977ed444bfd85b514f9d405e2cb5e4bdd71035d4c3bbbb2bb90c11b52",
+    ".clang-format": "931a11f0ad45f8af202d2a4ea9dc47b5c1654c6a7fc911ddbff172207d67ac1d",
+    "docs/VMP_VISIT_VERDICTS.md": "8507642a31fd5aecbbc4b8fbd2f07e4ee0b2d05e442ef603cc9ace028934551a",
+    "docs/VMP_IMPLEMENTATION.md": "b912a16477ea9332910db004adee4bf82f6752cbb7d98cf0199b1addbc385ae2"
+  },
+  "runtime_sha256": {
+    "z3_static_library": "5506732261581f83425394278ab810f8060ec894f66dee94143a70f902a0e514"
+  },
+  "runner_architecture": "arm64",
+  "accepted_artifact_sha256": {
+    "build/vmp-visit-verdicts-build.log": "a7c84bfbb6275a299ed92c2124c49283be3c47484a0d81df98bc6f6a5340cb1f",
+    "build/vmp-visit-verdicts-ctest.log": "b44c94980a2da7095b102fc23371e3cae98e1d398c260725ad0f5de2fc38bfb2",
+    "build/chernobog_vm_transition_tests": "8b9ad39ed43d1cd5dc7f82d2c88de14561bbc77bcea2df021369ca3a369f269c",
+    "build/chernobog_vm_native_observation_tests": "49cba9451a62fb651423fe2ee436803ed1e6fa3a83747ed67858b00c58aa4a87"
+  },
+  "accepted_results": {
+    "ctest_suites": 20,
+    "ctest_failures": 0,
+    "ctest_elapsed_seconds": 11.07,
+    "transition_checks": 1328,
+    "native_observation_checks": 362,
+    "previous_native_observation_checks": 94,
+    "added_native_observation_checks": 268,
+    "corrupted_visit_index_zero_based": 8,
+    "architecture_path_combinations": 4,
+    "quota_controls": {
+      "attempted_visits": 16,
+      "retained_rows": 128,
+      "large_fixture_visits": 130
+    },
+    "default_timeout_ms": 100,
+    "default_resource_limit": 200000,
+    "solver_acceptance_relaxed": false,
+    "automatic_retries": false,
+    "clang_format_files": 2,
+    "build": "passed"
+  },
+  "deliberate_failure_controls": {
+    "artifact_sha256": {
+      "build/vmp-verdict-negative-transition.cpp": "205ba520e0c5cf61b1e78404cb3a879a08adc01e6768dab814758b8151374171",
+      "build/vmp-verdict-negative-transition": "bb89e9792903eafcb9a349d1de10e3ec213cb935604750c982d1a8c2f12580cc",
+      "build/vmp-verdict-negative-transition.log": "e3a169a5dfa4ba52b81c65d6d55246c86e740303aa45eb0551fc408bf92baa4e",
+      "build/vmp-verdict-negative-native.cpp": "d3dc2e47316151de9bcf526167931a3bda9151971f335094adf96f72ae5e144c",
+      "build/vmp-verdict-negative-native": "47f0418d53dbe9b6944280d9087d1d1e157640890fc4fc757de7c2ffda571f52",
+      "build/vmp-verdict-negative-native.log": "c88eaafecd2fb33fa9f4c31167a6941c592cfb28c4f269f346c23be7fcc8a05b"
+    },
+    "transition": {
+      "exit_code": 1,
+      "failure_check_index": 1325,
+      "timeout_ms": 1,
+      "resource_limit": 1,
+      "queries": 1,
+      "result": "solver unresolved",
+      "reason": "max. resource limit exceeded"
+    },
+    "native_projection": {
+      "exit_code": 1,
+      "failure_check_index": 48,
+      "records": 17,
+      "attempts": 16,
+      "queries": 32,
+      "corroborated": 15,
+      "counterexamples": 1,
+      "unchecked": 1
+    },
+    "note": "Copies deliberately invert one expected verdict each; both diagnostic exits and output contents were checked. These are not accepted-regression failures."
+  },
+  "historical_failures": {
+    "artifact_sha256": {
+      "build/vmp-string-lifecycle-ctest.log": "0b1afdeb06debc1e2ce497c2f4d4b8ba86fcc1ac4af366529ef9117ad947a829",
+      "build/vmp-string-lifecycle-isolated-ctest.log": "c03d6404b2e73e9e92b1629ff514e8447dfead5342145133a799e03295a2a973"
+    },
+    "results": [
+      {
+        "log": "build/vmp-string-lifecycle-ctest.log",
+        "passed": 19,
+        "total": 20,
+        "elapsed_seconds": 116.2,
+        "failed_suite": "chernobog.vm_transitions",
+        "assertion": "every output GPR checked",
+        "concurrent_ida_jobs": true
+      },
+      {
+        "log": "build/vmp-string-lifecycle-isolated-ctest.log",
+        "passed": 19,
+        "total": 20,
+        "elapsed_seconds": 75.09,
+        "failed_suite": "chernobog.vm_native_observations",
+        "assertion": "separate repeated visits and solver budget",
+        "concurrent_ida_jobs": false
+      }
+    ],
+    "failure_cause": "unknown; later passes do not establish a cause"
+  },
+  "intermediate_diagnostic_run": {
+    "artifact_sha256": {
+      "build/vmp-solver-diagnostics-ctest.log": "ae7bcbbc790b863c8ac82553c504930a36e027ed3f24c03eee0cd6629d1bbcbc"
+    },
+    "ctest_suites": 20,
+    "ctest_failures": 0,
+    "elapsed_seconds": 10.92,
+    "note": "Intermediate diagnostics-only tests preceded strengthened visit assertions; final source hashes do not describe this intermediate run."
+  },
+  "limitations": [
+    "finite fixture coverage, not universal VM correctness",
+    "historical CTest failure causes remain unknown",
+    "no host-load stress guarantee",
+    "full VMP review remains incomplete"
+  ]
+}
