@@ -695,6 +695,75 @@ void native_read_stream_regressions()
     source.events.allocations.insert(source.events.allocations.end(),memory.allocations.begin(),memory.allocations.end());
   }
   const auto result=hybrid_consensus_use_strings(source);
+  {
+    std::vector<NativeTemporalStringRun> native;
+    for(const auto &run:source.runs)
+    {
+      NativeTemporalStringRun copy;
+      copy.capture=run.provenance.run_id+100;copy.context=0x1000;copy.image_hash=123;copy.generation=1;
+      copy.run_id=run.provenance.run_id;copy.seed=run.provenance.seed;copy.ran=true;
+      copy.outcome=run.outcome;copy.outcome.temporal_capture_complete=false;
+      copy.outcome.native_region=copy.outcome.native_temporal_requested=copy.outcome.native_temporal_complete=true;
+      copy.outcome.returned=copy.outcome.stop_valid=true;copy.outcome.stop_reason=RAX_STOP_UNTIL;
+      copy.outcome.region_identity=copy.capture;
+      copy.bindings={{0x2000,EmuSummaryKind::ALLOCATE,"malloc"},{0x2010,EmuSummaryKind::DEALLOCATE,"free"}};
+      for(const auto &u:source.events.uses)if(u.run_id==copy.run_id)copy.events.uses.push_back(u);
+      for(const auto &d:source.events.data)if(d.run_id==copy.run_id)copy.events.data.push_back(d);
+      for(const auto &a:source.events.allocations)if(a.run_id==copy.run_id)copy.events.allocations.push_back(a);
+      native.push_back(std::move(copy));
+    }
+    const auto projected=hybrid_native_temporal_strings(native);
+    check(projected.available && projected.observations.size()==2 && projected.captures.size()==2
+          && projected.observations[0].read_fragments.size()==2,
+          "separate native projection retains every capture and raw fragment without ordinary proof flags");
+    auto forged_function=source;
+    forged_function.runs[0].outcome.native_region=true;
+    check(hybrid_consensus_use_strings(forged_function).empty(),
+          "native scope cannot enter ordinary use publication even with forged function completeness");
+    auto oversized=native;oversized.resize(17);
+    check(!hybrid_native_temporal_strings({}).available && !hybrid_native_temporal_strings(oversized).available
+          && !hybrid_native_temporal_strings(native,0).available
+          && !hybrid_native_temporal_strings(native,4,4097).available,
+          "native corpus and payload policy have hard bounds");
+    std::reverse(native[1].bindings.begin(),native[1].bindings.end());
+    check(hybrid_native_temporal_strings(native).observations.size()==2,"binding order does not change model contract");
+    for(unsigned failure=0;failure<21;++failure)
+    {
+      auto bad=native;auto &run=bad[1];
+      switch(failure)
+      {
+        case 0:run.outcome.native_temporal_complete=false;break;
+        case 1:run.outcome.temporal_capture_complete=true;break;
+        case 2:run.capture=bad[0].capture;break;
+        case 3:run.seed=bad[0].seed;run.run_id=bad[0].run_id;break;
+        case 4:run.image_hash++;break;
+        case 5:run.generation++;break;
+        case 6:run.context++;break;
+        case 7:run.bindings[0].kind=EmuSummaryKind::MEMSET;break;
+        case 8:run.bindings[0].name="renamed";break;
+        case 9:run.bindings.push_back(run.bindings[0]);break;
+        case 10:run.events.uses[0].seed++;break;
+        case 11:run.outcome.region_code_changed=true;break;
+        case 12:run.outcome.native_region=false;break;
+        case 13:run.outcome.stop_valid=false;break;
+        case 14:run.outcome.data_trace_filtered=true;break;
+        case 15:run.outcome.environment_model_failure=true;break;
+        case 16:run.outcome.consumed_context_complete=true;break;
+        case 17:run.events.data.push_back(run.events.data.front());break;
+        case 18:run.events.uses.push_back(run.events.uses.front());break;
+        case 19:run.outcome.temporal_capture_truncated=true;break;
+        case 20:run.ran=false;break;
+      }
+      const auto rejected=hybrid_native_temporal_strings(bad);
+      check(!rejected.available && rejected.observations.empty() && rejected.captures.empty(),
+            "native corpus cannot shrink around an incompatible, duplicate or incomplete capture");
+    }
+    auto divergent=native;
+    divergent[1].events.uses[0].bytes[0]='x';divergent[1].events.data[0].value='x';
+    const auto partial=hybrid_native_temporal_strings(divergent);
+    check(partial.available && partial.observations.size()==1,
+          "a disagreeing native use is omitted without losing an unrelated matching lifetime");
+  }
   check(result.size()==2,"scalar byte reads form two distinct lifetime-specific strings");
   for(const auto &candidate:result)
     check(candidate.value=="secret!" && candidate.use.producer==UseProducer::EXECUTED_READ_STREAM

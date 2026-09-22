@@ -3,6 +3,7 @@
 #include "native_observations.hpp"
 #include "ida_regions.hpp"
 #include "../hybrid/emu_driver.hpp"
+#include "../hybrid/evidence.hpp"
 #include "../hybrid/call_summary_policy.hpp"
 #include "../common/inspection_json.hpp"
 #include "../common/warn_off.h"
@@ -20,11 +21,43 @@
 #include <atomic>
 #include <algorithm>
 #include <map>
+#include <memory>
 #include <set>
 #include <sstream>
 
 namespace chernobog::vm {
 namespace {
+struct StringLease
+{
+  uint64_t ticket=0,context=0;
+  int64_t database=0;
+  int filetype=0;
+  hybrid::ProgramImage image;
+  std::string bindings;
+};
+std::unique_ptr<StringLease> string_lease;
+
+bool same_image(const hybrid::ProgramImage &a,const hybrid::ProgramImage &b)
+{
+  if(std::tie(a.arch,a.big_endian,a.lo,a.hi)!=std::tie(b.arch,b.big_endian,b.lo,b.hi)
+      || a.segs.size()!=b.segs.size() || a.entries.size()!=b.entries.size())return false;
+  for(size_t i=0;i<a.segs.size();++i)
+  {
+    const auto &x=a.segs[i],&y=b.segs[i];
+    if(std::tie(x.start,x.end,x.perm,x.bitness,x.kind,x.bytes,x.mask)
+        !=std::tie(y.start,y.end,y.perm,y.bitness,y.kind,y.bytes,y.mask))return false;
+  }
+  for(size_t i=0;i<a.entries.size();++i)
+  {
+    const auto &x=a.entries[i],&y=b.entries[i];const auto &p=x.profile,&q=y.profile;
+    if(std::tie(x.start,x.end,x.entry_mode,p.flavor,p.name,p.objc_selector,p.explicit_arguments,p.explicit_arguments_known)
+        !=std::tie(y.start,y.end,y.entry_mode,q.flavor,q.name,q.objc_selector,q.explicit_arguments,q.explicit_arguments_known)
+        || x.chunks.size()!=y.chunks.size())return false;
+    for(size_t c=0;c<x.chunks.size();++c)
+      if(std::tie(x.chunks[c].start,x.chunks[c].end)!=std::tie(y.chunks[c].start,y.chunks[c].end))return false;
+  }
+  return true;
+}
 std::string hex(uint64_t value){std::ostringstream out;out<<"0x"<<std::hex<<value;return out.str();}
 std::string bytes(const std::vector<uint8_t> &data)
 {
@@ -178,7 +211,8 @@ bool parse_bindings(const std::string &request,std::vector<hybrid::EmuCallSummar
 }
 }
 static std::string trace_native_region_impl(uint64_t function,uint64_t seed,const hybrid::EmuInput *explicit_input,
-    bool walk=false,bool check=false,const std::vector<hybrid::EmuCallSummary> *bindings=nullptr)
+    bool walk=false,bool check=false,const std::vector<hybrid::EmuCallSummary> *bindings=nullptr,
+    hybrid::NativeTemporalStringRun *retained=nullptr,hybrid::ProgramImage *retained_image=nullptr)
 {
   using namespace hybrid;
   const auto *api=rax_load();
@@ -351,7 +385,16 @@ static std::string trace_native_region_impl(uint64_t function,uint64_t seed,cons
        <<",\"queries\":"<<observations.queries;
     inspection_json_rows(out,"records",observations.records);out<<'}';
   }
-  out<<'}';return out.str();
+  out<<'}';
+  if(retained)
+  {
+    retained->capture=capture;retained->context=function;retained->image_hash=region.image_hash();
+    retained->generation=region.generation();retained->run_id=input.run_id;retained->seed=input.seed;
+    retained->ran=ran;retained->outcome=std::move(outcome);retained->events=std::move(events);
+    if(bindings)retained->bindings=*bindings;
+  }
+  if(retained_image)*retained_image=std::move(image);
+  return out.str();
 }
 std::string trace_native_region(uint64_t function,uint64_t seed)
 {return trace_native_region_impl(function,seed,nullptr);}
@@ -380,5 +423,103 @@ std::string trace_native_region_temporal(uint64_t function,uint64_t seed,const s
   if(!parse_input(request,input) || !input.native_objects.empty())return unavailable("invalid bounded temporal input");
   if(!parse_bindings(models,bindings))return unavailable("invalid named environment bindings");
   return trace_native_region_impl(function,seed,&input,true,false,&bindings);
+}
+
+void clear_native_temporal_strings(){string_lease.reset();}
+
+std::string native_temporal_string_state(uint64_t ticket)
+{
+  using namespace hybrid;
+  if(!string_lease || !ticket || ticket!=string_lease->ticket
+      || string_lease->database!=int64_t(get_dbctx_id()) || string_lease->filetype!=inf_get_filetype())
+    return "{\"available\":false,\"fresh\":false}";
+  HybridConfig config;config.max_image_bytes=64ull*1024*1024;
+  ProgramImage current;std::vector<EmuCallSummary> bindings;
+  const bool fresh=parse_bindings(string_lease->bindings,bindings)
+      && hybrid_snapshot_function(current,config,string_lease->context).complete
+      && same_image(string_lease->image,current);
+  return std::string("{\"available\":true,\"fresh\":")+(fresh?"true":"false")
+      +",\"ticket\":"+std::to_string(ticket)+"}";
+}
+
+std::string inspect_native_temporal_strings(uint64_t function,const std::string &request,const std::string &models)
+{
+  using namespace hybrid;
+  clear_native_temporal_strings();
+  EmuInput input;std::vector<EmuCallSummary> bindings;
+  if(!parse_input(request,input) || !input.native_objects.empty())return unavailable("invalid bounded temporal input");
+  if(!parse_bindings(models,bindings))return unavailable("invalid named environment bindings");
+  std::vector<NativeTemporalStringRun> runs;
+  ProgramImage reference;
+  for(uint64_t seed:{UINT64_C(0),UINT64_C(1),UINT64_C(17),UINT64_C(0xc0ffee)})
+  {
+    NativeTemporalStringRun run;ProgramImage current;
+    trace_native_region_impl(function,seed,&input,true,false,&bindings,&run,&current);
+    if(!run.capture)return unavailable("native capture unavailable");
+    if(runs.empty())reference=std::move(current);
+    else if(!same_image(reference,current))return unavailable("capture inputs changed between runs");
+    runs.push_back(std::move(run));
+  }
+  std::vector<EmuCallSummary> final_bindings;
+  if(!parse_bindings(models,final_bindings))return unavailable("model bindings changed during capture");
+  const auto projection=hybrid_native_temporal_strings(runs);
+  auto lease=std::make_unique<StringLease>();
+  lease->ticket=runs.back().capture;lease->context=function;lease->database=int64_t(get_dbctx_id());
+  lease->filetype=inf_get_filetype();lease->bindings=models;lease->image=std::move(reference);
+  using Row=std::map<std::string,std::string>;
+  std::vector<Row> observations,witnesses,fragments,stops,contracts,arguments;
+  for(size_t index=0;index<input.args.size();++index)
+    arguments.push_back({{"index",std::to_string(index)},{"value",hex(input.args[index])}});
+  for(const auto &binding:bindings)contracts.push_back({{"address",hex(binding.address)},
+      {"name",binding.name},{"kind",std::to_string(unsigned(binding.kind))}});
+  for(const auto &run:runs)stops.push_back({{"capture",std::to_string(run.capture)},
+      {"run",std::to_string(run.run_id)},{"seed",hex(run.seed)},
+      {"complete",run.outcome.native_temporal_complete?"true":"false"},
+      {"stop",hybrid_emu_outcome_name(run.outcome)},{"site",hex(run.outcome.stop_pc)},
+      {"instructions",std::to_string(run.outcome.instruction_count)}});
+  const size_t count=std::min<size_t>(64,projection.observations.size());
+  for(size_t index=0;index<count;++index)
+  {
+    const auto &value=projection.observations[index];
+    observations.push_back({{"index",std::to_string(index)},{"value",value.value},{"site",hex(value.use.site)},
+        {"context",hex(value.use.context)},{"producer",use_producer_name(value.use.producer)},
+        {"eligible_runs",std::to_string(value.eligible_runs)},{"truth","named-model observation"}});
+    for(size_t r=0;r<value.read_fragments.size();++r)
+    {
+      const auto &parts=value.read_fragments[r];const auto &use=value.witnesses[r];
+      const auto capture=projection.captures.at({use.run_id,use.seed});
+      witnesses.push_back({{"observation",std::to_string(index)},{"capture",std::to_string(capture)},
+        {"run",std::to_string(use.run_id)},{"seed",hex(use.seed)},
+        {"site",hex(use.site)},{"address",hex(use.address)},{"allocation",hex(use.allocation_id)},
+        {"generation",hex(use.generation)},{"object_site",hex(use.object_site)},
+        {"object_callee",hex(use.object_callee)},{"object_occurrence",std::to_string(use.object_occurrence)},
+        {"object_size",std::to_string(use.object_size)},{"offset",std::to_string(use.offset)},
+        {"first_sequence",std::to_string(parts.front().sequence)},
+        {"last_sequence",std::to_string(parts.back().sequence)},
+        {"read_count",std::to_string(parts.size())},{"observed_bytes",std::to_string(use.observed_size)},
+        {"fragments_omitted",std::to_string(parts.size()>16?parts.size()-16:0)}});
+      for(size_t p=0;p<std::min<size_t>(16,parts.size());++p)
+      {
+        const auto &part=parts[p];
+        fragments.push_back({{"observation",std::to_string(index)},{"capture",std::to_string(capture)},
+          {"site",hex(part.site)},{"address",hex(part.address)},{"sequence",std::to_string(part.sequence)},
+          {"data_sequence",std::to_string(part.sequence+1)},{"bytes",bytes(part.bytes)}});
+      }
+    }
+  }
+  std::ostringstream out;
+  out<<"{\"schema\":1,\"available\":true,\"scope\":\"native-region-strings\",\"ticket\":"<<lease->ticket
+     <<",\"database\":"<<inspection_json_quote(std::to_string(lease->database))
+     <<",\"function\":"<<inspection_json_quote(hex(function))
+     <<",\"consensus_available\":"<<(projection.available?"true":"false")
+     <<",\"reason\":"<<inspection_json_quote(projection.reason)
+     <<",\"observations_omitted\":"<<(projection.observations.size()-count)
+     <<",\"function_evidence_published\":false,\"vm_identity_proved\":false"
+     <<",\"contract\":\"four seeded runs under explicit named ABI models; immutable read witnesses; no unique-input or callee-equivalence proof\"";
+  inspection_json_rows(out,"observations",observations);inspection_json_rows(out,"witnesses",witnesses);
+  inspection_json_rows(out,"fragments",fragments);inspection_json_rows(out,"runs",stops);
+  inspection_json_rows(out,"bindings",contracts);inspection_json_rows(out,"input_arguments",arguments);
+  out<<'}';string_lease=std::move(lease);
+  return out.str();
 }
 } // namespace chernobog::vm

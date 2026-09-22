@@ -72,6 +72,15 @@ rejected BSWAP16 semantics; full handler effects and logical VM state remain
 unknown. See `VMP_NATIVE_OBSERVATIONS.md` for assumptions, quotas, per-variant
 yield and evidence. This advances rows 6a–6c and V without completing them.
 
+Protected read-stream checkpoint: a separate four-run projection now recovers
+both erased values from mutation seeds 0 and 12648430, retaining 16 protected
+capture/lifetime witnesses. The original also recovers both values; seven
+incomplete binaries publish none. An actual Qt view links values, captures and
+read/data events under exact snapshot/profile/model freshness. All 239 production
+checks and 20 CTest suites pass; see `VMP_REGION_STRINGS.md`. Protected ctree
+annotations, interleaved/single-read/modeled-argument region strings, wider
+architectures and the full lifecycle/performance matrix remain incomplete.
+
 Modeled native-region checkpoint: an explicit temporal API now binds named ABI
 models and retains allocation/use/release observations across owners. A checked
 CALL followed by one JMP thunk preserves source and return provenance. Twelve

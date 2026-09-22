@@ -1,0 +1,256 @@
+{
+  "schema": 1,
+  "scope": "four-run named-model native-region read-stream consensus, original witnesses and exact snapshot freshness; no function publication or VM identity proof",
+  "source_sha256": {
+    "tests/run_vmp_region_temporal.py": "32663ea7f8eec5fba6f03040cb4c03b199a10eb0ec407375a6d555addc0b303e",
+    "tests/ida_region_strings_probe.py": "0c5c83197928c5180f2aeaa1d8fb2960572b4a717945198e684815437c9aa7d5",
+    "tests/run_ida_smoke.py": "a78b66445049c633243b93f1569e9e8ec01541f9958cdf5ef03aa70a3903d151",
+    "tests/run_vmp_corpus.py": "b8adfe9ce39e643b551c1e4d29f64cf023914bb0d6cf1516c0e3971a5fdc376a",
+    "src/vm/native_region.hpp": "9bd0a2006941f27bb944303fa1c90112b631895f8d1845bfcc7c64ef20c9d30b",
+    "src/vm/native_region.cpp": "0d0f00254ef44cab9fabe29fae50c6d2b2ac092ed937767cfa24574ee515abf8",
+    "src/vm/ida_native_trace.hpp": "439365738782f626889febe293f7eacce05bd99475bc8d982c4a6569433ba38f",
+    "src/vm/ida_native_trace.cpp": "413685395c9b2797eed6c98aa4d9cd4d67d7b8808b113b281c49b0aff619bebb",
+    "src/hybrid/emu_driver.hpp": "8a523e71993b5e8a0c456cc9f7013d4d30a6d1a365dab1ca920d5134ed98ec96",
+    "src/hybrid/emu_driver.cpp": "1a5091617972b566318388c06b6c9a3a7ad69041e98705d3daee2c9111ed4dde",
+    "src/hybrid/temporal_memory.hpp": "96d13dbad0767fa4abfbf5a04d182a86864684f8ddf780ff02234f4263b0bed6",
+    "src/hybrid/call_summary_policy.cpp": "2fec2be1118f5544efc0e88acf38f4cefce8992a21ff0d7d63581d15f5e839d5",
+    "src/plugin/idc_api.cpp": "f03301011bedb8f202691d48931206733505faadf7143796653cd22c4a96af2d",
+    "src/plugin/deobf_plugin.cpp": "d38b171539586e7b3490d721d978e04640c48926da1745621c15b4c3b6ca0d71",
+    "tests/hybrid_tests.cpp": "c39185d551b89d3aebd2a00a5133018f35ffb899a75e31466520d4ba34c6b8e5",
+    "src/hybrid/evidence.hpp": "3f9a2173a5c42e2a3af9385a888d21a7b4cb59ef9c4eb409913a089c9653a30e",
+    "src/hybrid/evidence.cpp": "4d4dd65e18250359910873cb82fada2e9f6e542b0f0f5c416a363a202bca9327",
+    "src/hybrid/native_read_strings.cpp": "3742b279ade40bc0470aeaa561d473d6bb3025f32383fcd7e9bb9edaab6e4553",
+    "python/chernobog_temporal_strings.py": "49d604e1f867e98d4d53dd12fa8b079f5f07a2c9cd10dd58a641a97d2be395ef",
+    "tests/evidence_tests.cpp": "47c1af7a91f2d0e45ba602716ff3f2bd5964adbc5838ab288b5e702a9d7c02a1",
+    "tests/ida_native_read_strings_probe.py": "1fedaf7fc1e92ddf35989b4c55aefe01baebd4dde3928625c603e3fee5bbe774",
+    "python/chernobog_evidence.py": "fb5fb23d8080e8c2ef464627491dd4ab9965a6d0013bcb0b12f1c5df6320d0b6",
+    "src/common/string_recovery.h": "9e6d4cc5a342abffc75ba49c8a8343524259a25d3957db889b0016a88a5def7e",
+    "docs/VMP_REGION_STRINGS.md": "d68c5eb1f29be017dd1a1bf0fdd820e682821f959bda9dbbfe30aed30cd30530",
+    "docs/VMP_IMPLEMENTATION.md": "956d314a6eea174777549818235ce183b8c6931b1fe2e62b59bc1822e7e2c0e9",
+    "RAX_HYBRID.md": "b3db1d97b554346f1254fec94df81ed1329f0bac4c97a6eaf7d086b81399d111"
+  },
+  "primary_reference_sha256": {
+    "vmp/core/intel.cc": "ce0edd303f1b20d12affaf1bb4646b684a056babe724f36af24340fefe7cb17c",
+    "vmp/core/macfile.cc": "dbb12f7ccb34000734f552e8f917612674df04ba15f1d0923a6afd61c199d7e6",
+    "vmp/core/core.cc": "cd97023bcdcc9f24d238bdd325362817212e512d461264a225b94f7ee5e2510e",
+    "vmp/core/script.cc": "284c671019c30bb982534a8bb9b7fa4b46c60f4e50fbbddbe9f326dd46ad7313",
+    "vmp/runtime/string_manager.cc": "ea4ec11e0317a6508c2d14c4032e368259c98b1955072987171c7306718e3c4d"
+  },
+  "runtime_sha256": {
+    "plugin": "fe451bc0d106be0e146b9663ed982deb57619e2fb9d1b57393b21d8093330f30",
+    "ida": "2cf9bab3f967af98a8eda93349598ac3d4a0a26c63671684f0aa73535033f12a",
+    "protector": "3fe722d21d5c8d9661f12b3b04f5863c4d9b93557692c1318dbf8f1c45c23568",
+    "protector_sdk": "92c6d56dc8d6092233ffd1d56d1969e272528dfeb98b9f0e1a27067883e74381",
+    "ida_gui": "87285d7d96bde3bb431aa80e9d9666320e127ca3b2f02aad7a599cb8c781d33b"
+  },
+  "accepted_artifact_sha256": {
+    "build/vmp-region-strings-release/region_strings_analysis.json": "cf063581cf3d08419a465333af0d0b137838e6b0a6eb19c1be60ef6f166a7583",
+    "build/vmp-region-strings-release/original/run.json": "79bd620bfb7ea36475cd3471ed2baef40243412e8f08cdbc5b85020e095aaf36",
+    "build/vmp-region-strings-release/original/region_strings.json": "34f7c56d4aa2151b88958c0ebf98c2a8b487fbc2cf5ce3761807a9127f11d887",
+    "build/vmp-region-strings-release/mutation-0/run.json": "a8e36e284bf000c404a2a723c49bb7442536e34df1dcf6a8ad3b8bef0a7cf968",
+    "build/vmp-region-strings-release/mutation-0/region_strings.json": "c342e8b95c24168c5880bf96a18142e0d7ee0bcf7b60e2cedc8655a7a305be20",
+    "build/vmp-region-strings-release/mutation-1/run.json": "adb49fd412cfb6d2a86541fbb832cbed2fd594cbb9b91874b4e7e4ee57fc4afc",
+    "build/vmp-region-strings-release/mutation-1/region_strings.json": "9b3753c7f651a1d5cdf9bb0708acb89d1b93e93e3fc5dc5c73d7cd6ac89caaee",
+    "build/vmp-region-strings-release/mutation-12648430/run.json": "5c8eab788c7016f9b03f511f47de13b4e96ea309d52a43bf0646f8d9efc45aa3",
+    "build/vmp-region-strings-release/mutation-12648430/region_strings.json": "1b149e5d99dc2aa078f5876023df0822102103352029bf671aa118d3c123471f",
+    "build/vmp-region-strings-release/virtualization-0/run.json": "c7d7f98d6da80c47181d3e8b9e0c6248168b7eb3316dc8eaa4b315654676d338",
+    "build/vmp-region-strings-release/virtualization-0/region_strings.json": "7a2c3344d592f6d350a2b3c89910f1293b38db91270c2f3cfd4532722b8bbd2c",
+    "build/vmp-region-strings-release/virtualization-1/run.json": "a5a772a74d4ae03510ca40029c8ad1b9ee57bd49b302b7d38f8d247e2375219a",
+    "build/vmp-region-strings-release/virtualization-1/region_strings.json": "5c6adc6b3d7f97ecb509a52bdce3d27acee232ab0ae6840e7c66c242efe2be81",
+    "build/vmp-region-strings-release/virtualization-12648430/run.json": "80b205651fd1d331f6afb6e567cc15802ae72cae3e5fed1738d968fe373fe37c",
+    "build/vmp-region-strings-release/virtualization-12648430/region_strings.json": "d352bfd0db6fdc2b6e4c7bbb9bf90141aaf8654db76385e694d35c9026b80146",
+    "build/vmp-region-strings-release/combined-0/run.json": "a17f01e2e76bde691dc63400f86fc05c29901fbe14480e522be3377ca94a62b1",
+    "build/vmp-region-strings-release/combined-0/region_strings.json": "b6143d3caa2f58d71ee34f34160799adf0a61fc129a16519b3bbb289fdbffd81",
+    "build/vmp-region-strings-release/combined-1/run.json": "63a7e0dca74a642cbd55cb94a492e8aa5ba415923265001d9c083a533d1b754e",
+    "build/vmp-region-strings-release/combined-1/region_strings.json": "89c1d901aa5b9347948d2c621904e27873e55a0bc89c66c2441dcb78bac5cf70",
+    "build/vmp-region-strings-release/combined-12648430/run.json": "cedbfe087fd4097a26d1d72d75ae4716731e626051e6bc8f4bb838edd9c8975a",
+    "build/vmp-region-strings-release/combined-12648430/region_strings.json": "969962c75c5afc9fef115a673385abfb6b2cc0313dfc2c0559c03f95aa8ef60e",
+    "build/vmp-region-strings-release-gui/region_strings.json": "457503a2296ebf625ed2a5c9fe24719c50ff2b7d39d8dd38cbfed07d1981f456",
+    "build/vmp-region-strings-release-gui/run.json": "4be747389a8bdb84511cb1c29f59ede894c5898ae33fcddf0dd50a3dc72cf225",
+    "build/vmp-region-strings-release-gui/region_strings.png": "13e3446e69a21ca9f865d74df896528e03b7e3b52e165874dd0363ffdb3faaf9",
+    "build/vmp-region-strings-release-ordinary/native_read_strings.json": "c3db3599e044509844c06adb5218e1d4089db8587b67bd342ce7c6cd043ebc63",
+    "build/vmp-region-strings-release-ordinary/run.json": "b391e72a5bed223c9b2467ac346640c6e4b4c17b180f818b0f22e140c2b993e5",
+    "build/vmp-region-strings-accepted-build.log": "adc86a1edf1a0141d178e728f0fcfafccdd2336f45332f0d22d1fe5e9a2292ab",
+    "build/vmp-region-strings-tests-build.log": "7929e8edf6e544fb5c58b4cd8ae290989b1986c1d097189b8670bb61a00974d6",
+    "build/vmp-region-strings-release-ctest.log": "fe2506cdf1e4383ec31881d26d1397fd557be94e64ee13f0a964ae10d828c8b3",
+    "build/vmp-protected-strings-release/strings.json": "cb24ac135a3726ee16ae4ae70a19af00774fe8a9da24f2a161009a1047293f17"
+  },
+  "accepted_results": {
+    "binaries": 10,
+    "primary_scheduled_captures": 40,
+    "supersession_captures": 40,
+    "primary_completed_captures": 12,
+    "reported_values_including_original": 6,
+    "protected_expected_value_occurrences": 18,
+    "protected_reported_value_occurrences": 4,
+    "witnesses_including_original": 24,
+    "original_byte_fragments": 192,
+    "console_checks": 183,
+    "gui_checks": 32,
+    "ordinary_regression_checks": 24,
+    "total_production_checks": 239,
+    "ctest_suites": 20,
+    "ctest_failures": 0,
+    "ctest_elapsed_seconds": 10.98,
+    "full_snapshot_freshness_checks": 80,
+    "full_snapshot_freshness_elapsed_ns_min": 292667,
+    "full_snapshot_freshness_elapsed_ns_max": 420799792,
+    "fast_rejection_checks": 20,
+    "process_elapsed_ns_min": 2942055916,
+    "process_elapsed_ns_max": 4588564000,
+    "peak_resident_bytes_min": 192987136,
+    "peak_resident_bytes_max": 294043648,
+    "gui_visual_inspection": "passed"
+  },
+  "per_binary": {
+    "original": {
+      "input_sha256": "44245e21de031582c987ff52dd969a4df64e8fec678be44fbf991b9342eb7134",
+      "checks": 26,
+      "completed": 4,
+      "instructions": [
+        171,
+        171,
+        171,
+        171
+      ],
+      "strings": [
+        "secret!",
+        "second!"
+      ],
+      "witnesses": 8
+    },
+    "mutation-0": {
+      "input_sha256": "95140f47a0de35906578026b038bf1c1572f641421bf3657962ff0ba5481a835",
+      "checks": 26,
+      "completed": 4,
+      "instructions": [
+        303,
+        303,
+        303,
+        303
+      ],
+      "strings": [
+        "second!",
+        "secret!"
+      ],
+      "witnesses": 8
+    },
+    "mutation-1": {
+      "input_sha256": "02cd90fa45364f0431b1b1a68472243326de0c1a0900ed791ad3d364d8fe1ec2",
+      "checks": 15,
+      "completed": 0,
+      "instructions": [
+        336,
+        336,
+        336,
+        336
+      ],
+      "strings": [],
+      "witnesses": 0
+    },
+    "mutation-12648430": {
+      "input_sha256": "5aab31336dbd8e956281a3d1c1c7f3159961976b197488c46c9c43d2a522316b",
+      "checks": 26,
+      "completed": 4,
+      "instructions": [
+        331,
+        331,
+        331,
+        331
+      ],
+      "strings": [
+        "secret!",
+        "second!"
+      ],
+      "witnesses": 8
+    },
+    "virtualization-0": {
+      "input_sha256": "f94eddb8f3430fe9e286630b47ff2c8922e7044beaa410fe4a4b65ba8b155f57",
+      "checks": 15,
+      "completed": 0,
+      "instructions": [
+        50,
+        50,
+        50,
+        50
+      ],
+      "strings": [],
+      "witnesses": 0
+    },
+    "virtualization-1": {
+      "input_sha256": "97aa6e2f1f35870c5b668bb8d3ada19156bc7e8a703c99dd88e4c0f7b74aae6f",
+      "checks": 15,
+      "completed": 0,
+      "instructions": [
+        14,
+        14,
+        14,
+        14
+      ],
+      "strings": [],
+      "witnesses": 0
+    },
+    "virtualization-12648430": {
+      "input_sha256": "d55fd9683b1c854efe1ec0ee44cd8b2d4101647d1310b3e05e5073c5d14853e5",
+      "checks": 15,
+      "completed": 0,
+      "instructions": [
+        40,
+        40,
+        40,
+        40
+      ],
+      "strings": [],
+      "witnesses": 0
+    },
+    "combined-0": {
+      "input_sha256": "6400997543605e7f6464d8d18ec0b588c083d098918d543b1b3252807355f57b",
+      "checks": 15,
+      "completed": 0,
+      "instructions": [
+        18,
+        18,
+        18,
+        18
+      ],
+      "strings": [],
+      "witnesses": 0
+    },
+    "combined-1": {
+      "input_sha256": "b379a8388f2416dfa2ef4b7d5d57090880c6ee2b639dbded5bb2da70c91f1833",
+      "checks": 15,
+      "completed": 0,
+      "instructions": [
+        276,
+        276,
+        276,
+        276
+      ],
+      "strings": [],
+      "witnesses": 0
+    },
+    "combined-12648430": {
+      "input_sha256": "03f786c1ab630fbe06fa19c6172a2bd6e2a97b7f48d1b98ad643302933202a23",
+      "checks": 15,
+      "completed": 0,
+      "instructions": [
+        250,
+        250,
+        250,
+        250
+      ],
+      "strings": [],
+      "witnesses": 0
+    }
+  },
+  "limitations": [
+    "name binding is an explicit ABI-model assumption; callee equivalence unknown",
+    "finite seed consensus does not establish universal values",
+    "source-to-protector build attestation unknown",
+    "seven incomplete binaries publish no strings; BSWAP16 remains unresolved",
+    "protected ctree annotation, single-read and modeled-argument native projections remain",
+    "interleaved algorithms and wider architecture corpus remain",
+    "full close/reopen/rebase lifecycle and 64 MiB worst-case latency remain unknown",
+    "full review objective remains active"
+  ]
+}

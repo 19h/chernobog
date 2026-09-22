@@ -24,6 +24,7 @@
 #include "../ida_analysis/early_hexrays.hpp"
 #include "../ida_analysis/native_engine.hpp"
 #include "../hybrid/solver_inspection.hpp"
+#include "../vm/ida_native_trace.hpp"
 
 #include <map>
 #include <set>
@@ -1183,6 +1184,7 @@ static ssize_t idaapi idb_callback(void *ud, int event_id, va_list arguments)
             self->ida_analysis->on_database_event(event_id, arguments);
         if ( event_id == idb_event::closebase )
         {
+            chernobog::vm::clear_native_temporal_strings();
             self->clear_processing_state();
             if ( self->ida_analysis )
                 self->ida_analysis->reset();

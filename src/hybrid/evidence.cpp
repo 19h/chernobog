@@ -386,7 +386,7 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(
   for ( const auto &run : evidence.runs )
   {
     // Never shrink the corpus to its successful/observable subset.
-    if ( !run.ran || !run.outcome.temporal_observation_available
+    if ( !run.ran || run.outcome.native_region || !run.outcome.temporal_observation_available
       || !run.outcome.temporal_capture_complete
       || run.outcome.temporal_capture_truncated ) return result;
     eligible.emplace(run.provenance.run_id, run.provenance.seed);

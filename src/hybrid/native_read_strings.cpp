@@ -69,27 +69,19 @@ bool follows(const Stream &stream,const UseSnapshot &next,const Records &records
         && first.offset+int64_t(first.observed_size)==next.offset;
   return true;
 }
-}
-
-std::vector<RuntimeUseStringCandidate> hybrid_consensus_native_read_strings(
-    const TargetEvidence &evidence,size_t minimum_length,size_t maximum_length)
+std::vector<RuntimeUseStringCandidate> derive_streams(uint64_t context,
+    const std::vector<Run> &identities,const std::vector<const EmuEvents *> &events,
+    size_t minimum_length,size_t maximum_length,bool *valid=nullptr)
 {
+  if(valid)*valid=false;
   std::vector<RuntimeUseStringCandidate> result;
-  if(!minimum_length || maximum_length<minimum_length || evidence.runs.empty())return result;
+  if(!minimum_length || maximum_length<minimum_length || identities.empty())return result;
   std::map<Run,Records> runs;
-  for(const auto &run:evidence.runs)
+  for(const auto &identity:identities)
+    if(!runs.emplace(identity,Records{}).second)return {};
+  for(const auto *ledger:events)
   {
-    const auto &out=run.outcome;
-    if(!run.ran || !out.temporal_observation_available || !out.temporal_capture_complete
-        || out.temporal_capture_truncated || !out.memory_observation_available
-        || out.data_trace_filtered || out.data_trace_truncated)return result;
-    // data_trace_complete additionally forbids every environment model, even
-    // malloc/free. Temporal evidence has its own completed-model contract;
-    // require lossless recorded memory order without promoting that evidence
-    // to the model-free proof contract. Calls and lifetime changes are barriers.
-    if(!runs.emplace(Run{run.provenance.run_id,run.provenance.seed},Records{}).second)return result;
-  }
-  for(const auto &use:evidence.events.uses)
+  for(const auto &use:ledger->uses)
   {
     const auto run=runs.find({use.run_id,use.seed});if(run==runs.end())return {};
     auto &r=run->second;
@@ -97,21 +89,21 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_native_read_strings(
     r.uses.push_back(&use);
     if(use.producer!=UseProducer::EXECUTED_READ)r.barriers.insert(use.sequence);
   }
-  for(const auto &data:evidence.events.data)
+  for(const auto &data:ledger->data)
   {
     const auto run=runs.find({data.run_id,data.seed});if(run==runs.end())return {};
     auto &r=run->second;
     if(r.data.size()==65536 || !r.data.emplace(data.sequence,&data).second)return {};
     if(data.kind!=RAX_MEM_READ)r.barriers.insert(data.sequence);
   }
-  for(const auto &a:evidence.events.allocations)
+  for(const auto &a:ledger->allocations)
   {
     const auto run=runs.find({a.run_id,a.seed});if(run==runs.end())return {};
     auto &r=run->second;
     if(r.objects.size()==TemporalMemory::allocation_limit || !r.objects.emplace(a.id,&a).second)return {};
     r.barriers.insert(a.allocated);if(!a.live)r.barriers.insert(a.released);
   }
-  for(const auto &edge:evidence.events.edges)
+  for(const auto &edge:ledger->edges)
   {
     const auto run=runs.find({edge.run_id,edge.seed});if(run==runs.end())return {};
     if(edge.kind==ExecEdge::Kind::Call || edge.kind==ExecEdge::Kind::Unknown)
@@ -119,6 +111,7 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_native_read_strings(
       if(run->second.barriers.size()>=81920)return {};
       run->second.barriers.insert(edge.sequence);
     }
+  }
   }
   std::map<Key,std::map<Run,Stream>> values;
   std::set<Key> ambiguous;
@@ -132,7 +125,7 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_native_read_strings(
       const auto &use=*pointer;
       if(!first && use.sequence<=previous)return {};
       previous=use.sequence;first=false;
-      if(!valid_read(use,records,evidence.scope.function_start)){stream={};continue;}
+      if(!valid_read(use,records,context)){stream={};continue;}
       if(!follows(stream,use,records))stream={};
       if(stream.parts.empty())
       {
@@ -174,6 +167,83 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_native_read_strings(
     }
     if(same)result.push_back(std::move(candidate));
   }
+  if(valid)*valid=true;
   return result;
 }
 }
+
+std::vector<RuntimeUseStringCandidate> hybrid_consensus_native_read_strings(
+    const TargetEvidence &evidence,size_t minimum_length,size_t maximum_length)
+{
+  std::vector<Run> runs;
+  for(const auto &run:evidence.runs)
+  {
+    const auto &out=run.outcome;
+    if(!run.ran || out.native_region || !out.temporal_observation_available || !out.temporal_capture_complete
+        || out.temporal_capture_truncated || !out.memory_observation_available
+        || out.data_trace_filtered || out.data_trace_truncated)return {};
+    runs.emplace_back(run.provenance.run_id,run.provenance.seed);
+  }
+  // Completed environment models may supply malloc/free semantics. This
+  // admits temporal observations, never the model-free proof contract.
+  return derive_streams(evidence.scope.function_start,runs,{&evidence.events},minimum_length,maximum_length);
+}
+
+NativeTemporalStringProjection hybrid_native_temporal_strings(
+    const std::vector<NativeTemporalStringRun> &source,size_t minimum_length,size_t maximum_length)
+{
+  NativeTemporalStringProjection result;
+  auto reject=[&](const char *reason){result.reason=reason;result.captures.clear();return result;};
+  if(source.empty() || source.size()>16 || !minimum_length || maximum_length<minimum_length
+      || maximum_length>TemporalMemory::snapshot_limit)return reject("invalid bounded corpus");
+  using Binding=std::tuple<uint64_t,EmuSummaryKind,std::string>;
+  std::vector<Binding> expected;
+  std::vector<Run> identities;std::vector<const EmuEvents *> events;std::set<uint64_t> captures;
+  const auto &first=source.front();
+  for(const auto &run:source)
+  {
+    const auto &out=run.outcome;
+    if(!run.capture || !captures.insert(run.capture).second
+        || !result.captures.emplace(Run{run.run_id,run.seed},run.capture).second)
+      return reject("duplicate or absent capture/run identity");
+    if(!run.context || !run.image_hash || !run.generation || run.context!=first.context
+        || run.image_hash!=first.image_hash || run.generation!=first.generation)
+      return reject("incompatible capture scopes");
+    if(!run.ran || !out.native_region || !out.region_identity || !out.native_temporal_requested
+        || !out.native_temporal_complete || !out.returned || !out.stop_valid
+        || out.stop_reason!=RAX_STOP_UNTIL || out.stop_status!=RAX_OK || out.conclusive()
+        || out.temporal_capture_complete || out.consumed_context_complete
+        || !out.temporal_observation_available || !out.memory_observation_available
+        || out.temporal_capture_truncated || out.data_trace_truncated || out.data_trace_filtered
+        || out.region_boundary || out.region_code_changed || out.function_boundary
+        || out.permission_violation || out.cancelled || out.escaped_image
+        || out.unmodeled_external || out.environment_model_failure)
+      return reject("incomplete or incompatible temporal capture");
+    if(run.bindings.empty() || run.bindings.size()>32)return reject("invalid model contract");
+    std::vector<Binding> actual;std::set<uint64_t> addresses;
+    for(const auto &binding:run.bindings)
+    {
+      if(!binding.address || binding.kind==EmuSummaryKind::UNMODELED || binding.kind>EmuSummaryKind::STRNLEN
+          || binding.name.empty() || binding.name.size()>128
+          || !addresses.insert(binding.address).second)return reject("invalid model contract");
+      actual.emplace_back(binding.address,binding.kind,binding.name);
+    }
+    std::sort(actual.begin(),actual.end());
+    if(expected.empty())expected=actual;
+    else if(actual!=expected)return reject("incompatible model contracts");
+    const auto matching=[&](const auto &row){return row.run_id==run.run_id && row.seed==run.seed;};
+    if(!std::all_of(run.events.uses.begin(),run.events.uses.end(),matching)
+        || !std::all_of(run.events.data.begin(),run.events.data.end(),matching)
+        || !std::all_of(run.events.allocations.begin(),run.events.allocations.end(),matching)
+        || !std::all_of(run.events.edges.begin(),run.events.edges.end(),matching))
+      return reject("foreign event identity");
+    identities.emplace_back(run.run_id,run.seed);events.push_back(&run.events);
+  }
+  bool valid=false;
+  result.observations=derive_streams(first.context,identities,events,minimum_length,maximum_length,&valid);
+  if(!valid)return reject("invalid or over-quota event ledger");
+  result.available=true;
+  result.reason="completed named-model observations; no function or VM proof publication";
+  return result;
+}
+} // namespace chernobog::hybrid

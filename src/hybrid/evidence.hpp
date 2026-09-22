@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -287,6 +288,30 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(
 std::vector<RuntimeUseStringCandidate> hybrid_consensus_native_read_strings(
     const TargetEvidence &evidence, size_t minimum_length = 4,
     size_t maximum_length = 4096);
+
+// Separate capture family: never convert a native region to TargetEvidence or
+// set ordinary temporal/proof completeness to admit its observations.
+struct NativeTemporalStringRun
+{
+  uint64_t capture=0, context=0, image_hash=0, generation=0;
+  uint32_t run_id=0;
+  uint64_t seed=0;
+  bool ran=false;
+  EmuOutcome outcome;
+  EmuEvents events;
+  std::vector<EmuCallSummary> bindings;
+};
+struct NativeTemporalStringProjection
+{
+  bool available=false;
+  std::string reason;
+  // Values remain observations under the explicit model contract. The type of
+  // the containing projection distinguishes them from function publication.
+  std::vector<RuntimeUseStringCandidate> observations;
+  std::map<std::pair<uint32_t,uint64_t>,uint64_t> captures;
+};
+NativeTemporalStringProjection hybrid_native_temporal_strings(
+    const std::vector<NativeTemporalStringRun> &,size_t minimum_length=4,size_t maximum_length=4096);
 
 TargetEvidence hybrid_build_target_evidence(
     const ProgramImage &image, const FuncRange &function,

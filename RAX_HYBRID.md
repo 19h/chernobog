@@ -330,6 +330,8 @@ and returns a code that `chernobog_rax_result_name()` renders as
 | `chernobog_vm_regions(ea)` | Read-only local VM-region candidates with register roles, support bytes and unresolved effects; no execution admission or semantic reuse |
 | `chernobog_vm_summaries(ea)` | Explicit bounded normal-completion local-effect summaries; shared references require UNSAT over registers, defined flags, memory and ordered accesses |
 | `chernobog_vm_trace_temporal(ea, seed, input_json, bindings_json)` | Explicit named ABI models and bounded temporal observations across native owners; separate completeness, no ordinary function publication. See `docs/VMP_REGION_TEMPORAL.md` |
+| `chernobog_vm_temporal_strings(ea, input_json, bindings_json)` | Four-run native read-stream observations with capture/lifetime/byte witnesses; separate exact freshness lease and Qt companion. See `docs/VMP_REGION_STRINGS.md` |
+| `chernobog_vm_temporal_string_state(ticket)` | Re-snapshot and compare exact input bytes, metadata, profile and model names for source navigation; no execution |
 | `chernobog_vm_states(ea)` | Fresh captured registers associated with current VM-candidate role hypotheses; repeated visits, partial state, ordered captured accesses and function-boundary exits remain inspectable without admitting execution or merging states |
 | `chernobog_vm_transitions(ea)` | Explicit checks of at most 16 complete captured local transitions against symbolic summaries; SAT input consistency precedes output-mismatch checking, and query identities link to capture/run/sequence |
 | `chernobog_rax_cancel()` / `chernobog_rax_clear()` | Cancel queued runs / discard the session |
