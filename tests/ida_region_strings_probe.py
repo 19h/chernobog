@@ -140,7 +140,9 @@ try:
 
     def fresh():
         started = time.perf_counter_ns()
-        value = api("chernobog_vm_temporal_string_state", ticket).get("fresh", False)
+        value = api("chernobog_vm_temporal_string_state", ticket, snapshot["lease"]).get(
+            "fresh", False
+        )
         freshness_elapsed_ns.append(time.perf_counter_ns() - started)
         return value
 
@@ -237,7 +239,9 @@ try:
         "replacement supersedes only old lease",
         not fresh()
         and replacement["ticket"] != ticket
-        and api("chernobog_vm_temporal_string_state", replacement["ticket"])["fresh"],
+        and api("chernobog_vm_temporal_string_state", replacement["ticket"], replacement["lease"])[
+            "fresh"
+        ],
     )
     if form:
         form.poll()

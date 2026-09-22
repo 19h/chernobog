@@ -72,6 +72,15 @@ rejected BSWAP16 semantics; full handler effects and logical VM state remain
 unknown. See `VMP_NATIVE_OBSERVATIONS.md` for assumptions, quotas, per-variant
 yield and evidence. This advances rows 6a–6c and V without completing them.
 
+Native-string lifecycle checkpoint: a saved-database/restart counterexample
+reproduced equal numeric tickets validating different captured values. Freshness
+requests now require a per-capture opaque lease, and the client also checks its
+database identity. Capture/reopen/Qt, malformed/legacy requests, both rebase
+modes, exact restoration and failed-recapture controls pass 67 checks; snapshot
+and protected regressions add 265. See `VMP_STRING_LIFECYCLE.md` for the identity
+assumption, historical counterexample, test outcomes and remaining lifecycle
+limits. The full review remains incomplete.
+
 Native use-snapshot checkpoint: the separate native-region projection now also
 admits single scalar reads and explicitly bound modeled arguments, preserving
 producer identity, argument/model metadata and original bytes. The Qt inspector

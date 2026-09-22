@@ -1231,7 +1231,10 @@ error_t idaapi idc_vm_temporal_strings(idc_value_t *argv, idc_value_t *r)
 }
 error_t idaapi idc_vm_temporal_string_state(idc_value_t *argv, idc_value_t *r)
 {
-    r->set_string(vm::native_temporal_string_state(uint64_t(argv[0].num)).c_str());
+    const auto identity = arg_string(argv[1]);
+    r->set_string(vm::native_temporal_string_state(uint64_t(argv[0].num),
+                                                   std::string(identity.c_str(), identity.length()))
+                      .c_str());
     return eOk;
 }
 
@@ -1668,6 +1671,7 @@ const char args_none[] = {0};
 const char args_ea[] = {VT_LONG, 0};
 const char args_long[] = {VT_LONG, 0};
 const char args_str[] = {VT_STR, 0};
+const char args_ea_str[] = {VT_LONG, VT_STR, 0};
 // Variadic so the option value reaches the handler unconverted.
 const char args_str_value[] = {VT_STR, VT_WILD, 0};
 const char args_ea_ea[] = {VT_LONG, VT_LONG, 0};
@@ -1788,8 +1792,8 @@ const idc_entry_t idc_entries[] = {
     {"chernobog_vm_temporal_strings", idc_vm_temporal_strings, args_ea_str_str,
      "chernobog_vm_temporal_strings(ea, input_json, bindings_json)",
      "Four-run named-model native string observations with immutable read witnesses and separate freshness lease"},
-    {"chernobog_vm_temporal_string_state", idc_vm_temporal_string_state, args_ea,
-     "chernobog_vm_temporal_string_state(ticket)",
+    {"chernobog_vm_temporal_string_state", idc_vm_temporal_string_state, args_ea_str,
+     "chernobog_vm_temporal_string_state(ticket, lease)",
      "Exact snapshot/profile/name revalidation for native string inspection; does not rerun execution"},
     {"chernobog_vm_states", idc_vm_states, args_ea, "chernobog_vm_states(ea)",
      "Fresh captured VM-role observations; partial states remain distinct, no execution admission"},

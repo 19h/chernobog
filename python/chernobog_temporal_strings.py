@@ -29,6 +29,10 @@ def current(snapshot, state):
         and state.get("fresh")
         and snapshot.get("ticket")
         and state.get("ticket") == snapshot["ticket"]
+        and snapshot.get("lease")
+        and state.get("lease") == snapshot["lease"]
+        and snapshot.get("database") is not None
+        and state.get("database") == snapshot["database"]
     )
 
 
@@ -203,7 +207,11 @@ if QtWidgets is not None:
             try:
                 self.current = current(
                     self.snapshot,
-                    api("chernobog_vm_temporal_string_state", self.snapshot["ticket"]),
+                    api(
+                        "chernobog_vm_temporal_string_state",
+                        self.snapshot["ticket"],
+                        self.snapshot["lease"],
+                    ),
                 )
             except (RuntimeError, ValueError, KeyError):
                 self.current = False

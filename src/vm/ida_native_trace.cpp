@@ -35,7 +35,7 @@ struct StringLease
     int64_t database = 0;
     int filetype = 0;
     hybrid::ProgramImage image;
-    std::string bindings;
+    std::string bindings, identity;
 };
 std::unique_ptr<StringLease> string_lease;
 
@@ -665,11 +665,11 @@ std::string trace_native_region_temporal(uint64_t function, uint64_t seed,
 
 void clear_native_temporal_strings() { string_lease.reset(); }
 
-std::string native_temporal_string_state(uint64_t ticket)
+std::string native_temporal_string_state(uint64_t ticket, const std::string &identity)
 {
     using namespace hybrid;
-    if (!string_lease || !ticket || ticket != string_lease->ticket ||
-        string_lease->database != int64_t(get_dbctx_id()) ||
+    if (!string_lease || !ticket || ticket != string_lease->ticket || identity.size() != 64 ||
+        identity != string_lease->identity || string_lease->database != int64_t(get_dbctx_id()) ||
         string_lease->filetype != inf_get_filetype())
         return "{\"available\":false,\"fresh\":false}";
     HybridConfig config;
@@ -680,7 +680,9 @@ std::string native_temporal_string_state(uint64_t ticket)
                        hybrid_snapshot_function(current, config, string_lease->context).complete &&
                        same_image(string_lease->image, current);
     return std::string("{\"available\":true,\"fresh\":") + (fresh ? "true" : "false") +
-           ",\"ticket\":" + std::to_string(ticket) + "}";
+           ",\"ticket\":" + std::to_string(ticket) +
+           ",\"lease\":" + inspection_json_quote(string_lease->identity) +
+           ",\"database\":" + inspection_json_quote(std::to_string(string_lease->database)) + "}";
 }
 
 std::string inspect_native_temporal_strings(uint64_t function, const std::string &request,
@@ -695,6 +697,11 @@ std::string inspect_native_temporal_strings(uint64_t function, const std::string
     if (!parse_bindings(models, bindings))
         return unavailable("invalid named environment bindings");
     std::vector<NativeTemporalStringRun> runs;
+    // Counters and database context IDs can repeat after restarting IDA.
+    std::vector<uint8_t> identity(32);
+    if (!gen_rand_buf(identity.data(), identity.size()) ||
+        std::all_of(identity.begin(), identity.end(), [](uint8_t value) { return value == 0; }))
+        return unavailable("capture identity unavailable");
     ProgramImage reference;
     for (uint64_t seed : {UINT64_C(0), UINT64_C(1), UINT64_C(17), UINT64_C(0xc0ffee)})
     {
@@ -714,6 +721,7 @@ std::string inspect_native_temporal_strings(uint64_t function, const std::string
         return unavailable("model bindings changed during capture");
     const auto projection = hybrid_native_temporal_strings(runs);
     auto lease = std::make_unique<StringLease>();
+    lease->identity = bytes(identity);
     lease->ticket = runs.back().capture;
     lease->context = function;
     lease->database = int64_t(get_dbctx_id());
@@ -796,7 +804,7 @@ std::string inspect_native_temporal_strings(uint64_t function, const std::string
     }
     std::ostringstream out;
     out << "{\"schema\":1,\"available\":true,\"scope\":\"native-region-strings\",\"ticket\":"
-        << lease->ticket
+        << lease->ticket << ",\"lease\":" << inspection_json_quote(lease->identity)
         << ",\"database\":" << inspection_json_quote(std::to_string(lease->database))
         << ",\"function\":" << inspection_json_quote(hex(function))
         << ",\"consensus_available\":" << (projection.available ? "true" : "false")
