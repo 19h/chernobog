@@ -3,6 +3,7 @@
 #include "../../common/solver_evidence.hpp"
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -43,7 +44,9 @@ struct InstanceTranslator
             return reject("unsupported operand width or value properties");
         const unsigned bits = unsigned(value.size * 8);
         if (value.t == mop_n && value.nnn)
-            return context.bv_val(value.nnn->value, bits);
+            // uint64 is unsigned long long, which is distinct from uint64_t on LP64 targets and
+            // makes every bv_val() overload an equally ranked conversion. Name the width exactly.
+            return context.bv_val(std::uint64_t(value.nnn->value), bits);
         if (value.t == mop_d && value.d)
         {
             if (value.size != value.d->d.size)
