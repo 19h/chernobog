@@ -15,15 +15,20 @@ The obfuscation dissolves. The algorithm emerges.
 </h5>
 
 > [!NOTE]
-> **Chernobog 6.2** — new since 6.1.0:
+> **Chernobog 6.3** — new since 6.2.0:
 >
-> - **Range-guarded recurrent-switch CFF recovery** — unflattens dispatchers with unsigned range-check self-loops and restored selector registers, using exact Z3 transition proofs while preserving dispatcher side effects
-> - **Runtime UTF-8 string recovery** — materializes byte-exact, cross-run consensus strings as transient pseudocode literals, including non-Latin text and supplementary Unicode characters
-> - **Numeric CFString annotations** — displays recovered plaintext at supported AArch64 numeric-address uses while preserving the original object address and integer type
-> - **Extended rax call summaries** — bounded memchr and strnlen emulation with consumed-byte provenance
-> - **Analysis performance improvements** — faster image hashing, sparse-segment traversal, and evidence validation; bounded static-analysis and split-block searches; cached Z3 path witnesses and fewer redundant native decodes
-> - **Constant-folding correctness fixes** — early database-memory folding now requires a proven effective address and readable, nonwritable storage, preserving mutable globals and unresolved indexed switch-table loads
-> - **Expanded regression infrastructure** — isolated IDA smoke runs with timing and artifact reports, architecture-aware test compilation, and additional native-reference checks for dispatcher recovery and string display
+> - **Per-flag x86 abstract interpretation** — models the six arithmetic status flags, partial-register slices, and all sixteen condition codes; bounded dataflow joins register, flag, and stack facts across direct branches and loop fixed points to resolve Jcc outcomes, fold SETcc/CMOV values in microcode, and recover exact PUSH/RET targets from immediate, register, and immutable-memory operands
+> - **Get-PC and call-as-jump recovery** — classifies 32-bit PUSH-continuation and x64 PUSH/LEA/XCHG address materialization with exact stack effects; call-context returns now lower to a natural-width pop and goto, preserving stack-pointer semantics across continuations
+> - **Direct-jump decoding into data-classified code** — decodes exact near-jump targets in executable segments that IDA classified as data, recovering entry code emitted by sectionless Mach-O protectors
+> - **Persistent native proof ownership** — generated edges and comments carry database receipts with their instruction and memory dependencies, and are revoked on byte patches, rebasing, undo/redo, external fallthrough, and function-topology changes while preserving analyst annotations and overrides
+> - **Use-time string evidence** — rax captures string bytes at each use across heap allocation lifetimes and address reuse, reaches cross-run consensus by semantic origin rather than heap address, and annotates direct calls transiently
+> - **Rotating string decryption** — proves bounded rotate/add/XOR decryption loops for every admitted index and input, validates UTF-8 or UTF-16LE plaintext, and annotates pseudocode without modifying the database
+> - **Typed MBA instance proofs** — catalog, chain, and affine rewrites are proven in Z3 on the concrete typed microcode operands before mutation; a bounded bottom-up pass catches identities exposed under zero-extension and other conversions
+> - **Native VM-region analysis** — a separate VM model recognizes read/decode/dispatch handlers across register renaming, cloning, table/relative and push/ret dispatch, and guarded immediate-push handlers; symbolic summaries are reused only after Z3 equivalence and checked against captured transitions. This is recognition and validation, not devirtualization
+> - **Native-region tracing and strings** — bounded execution of regions outside function ownership under explicit ABI call models; four-run consensus reconstructs strings from interleaved read streams, scalar reads, modeled call arguments, and prefixes stopped at unsupported instructions, guarded by opaque freshness leases
+> - **Evidence workspace** — 20 new IDC inspection APIs and IDAPython companion views link execution events, allocation lifetimes, native conclusions, ownerless-region facts, and SMT transcripts with independently replayable SAT counterexamples
+> - **Platform fixes** — ARM64 register-tracker INTERR 2947 on SIMD arguments, LP64 Z3 overload ambiguity on Linux, and an MSVC link failure from mismatched SDK class keys
+> - **Expanded regression infrastructure** — paired x64 Mach-O and i386 ELF protected corpora with native behavior oracles, a Windows build container, and repository-wide clang-format and Black formatting
 >
 > **Chernobog 6** is a major release. New since 5.3.0:
 >
