@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <optional>
 
-struct insn_t;
+class insn_t;
 
 namespace chernobog::ida_analysis
 {

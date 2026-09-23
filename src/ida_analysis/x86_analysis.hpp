@@ -8,8 +8,8 @@
 #include <string>
 #include <vector>
 
-struct insn_t;
-struct op_t;
+class insn_t;
+class op_t;
 
 namespace chernobog::ida_analysis
 {
