@@ -241,16 +241,23 @@ EntryInputPlan hybrid_build_entry_inputs(HybridArch arch, uint64_t function_star
 
         // Explicit/custom register locations from type information. For standard
         // ABIs this merely corroborates the positional collection above; on i386
-        // it additionally handles common fastcall ECX/EDX entry values.
+        // it additionally handles common fastcall ECX/EDX entry values. Other
+        // locations (e.g. ARM64 V0-V7 for floating-point arguments) are never
+        // consumed, and IDA's register tracker raises INTERR 2947 when asked to
+        // follow a SIMD register, so they are skipped before tracking.
         for (int ida_register : type_plan.register_arguments)
         {
+            const int position = positional_register(regs, ida_register);
+            const int rax_register =
+                plan.abi == HybridAbi::X86_32 ? x86_rax_register(ida_register) : -1;
+            if (position < 0 && rax_register < 0)
+                continue;
             qstring name;
             if (get_reg_name(&name, ida_register, inf_is_64bit() ? 8 : 4) < 0)
                 continue;
             uint64_t value = 0;
             if (!tracker_value(xb.from, name.c_str(), &value))
                 continue;
-            const int position = positional_register(regs, ida_register);
             if (position >= 0)
             {
                 const auto duplicate =
@@ -261,14 +268,10 @@ EntryInputPlan hybrid_build_entry_inputs(HybridArch arch, uint64_t function_star
                     input.arg_overrides.push_back({uint32_t(position), value});
                 signature.emplace_back(0, uint32_t(position), value);
             }
-            else if (plan.abi == HybridAbi::X86_32)
+            else
             {
-                const int rax_register = x86_rax_register(ida_register);
-                if (rax_register >= 0)
-                {
-                    input.register_overrides.push_back({rax_register, value});
-                    signature.emplace_back(1, uint32_t(rax_register), value);
-                }
+                input.register_overrides.push_back({rax_register, value});
+                signature.emplace_back(1, uint32_t(rax_register), value);
             }
         }
 
