@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "scope": "one no-argument supplied protected Mach-O main-entry prefix",
+  "inputs_sha256": {
+    "samples/foo_x86_orig": "443b0a464d7de68c5a26a3e31a92e694356ccd1eef3127d522309ac672ecc7c7",
+    "samples/foo_x86_vmp": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "restored_window": "b9e3295c519d3f937c884f6cbab4e1e708ba16cd94314c15e4e962ddc081a023"
+  },
+  "sources_sha256": {
+    "tests/lldb_vmp_hello_main_states.py": "1164f9b086eaa256d68c048dad6b98de2085283823be6b303294df198e2754eb",
+    "tests/ida_vmp_hello_entry_replay_probe.py": "89dbf200c9d7e9cf729e7172dfe83b3ff28e19dc7cabe5e0570f974a4e0ab039",
+    "tests/verify_vmp_hello_entry_replay.py": "058a67e4dc18d458ba52ce840ecd281251e699abcfabeb2517e30d1dddacef87"
+  },
+  "tools": {
+    "llvm_lldb": "23.0.0git",
+    "llvm_lldb_sha256": "e60dc3d39131252767b0c27fae60dc4286e73cd641f9a93b224e0cf159a5e027",
+    "apple_lldb": "2103.0.34.103",
+    "apple_lldb_sha256": "1685f2c90307faa05ef5ae8f707d3a18a519c9dad75882768f66abb475f1b3d7",
+    "ida": "9.4 SP1",
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "installed_plugin_sha256": "4e90491e490f8a0812cfde676b9cfbccc72475f7556883f35a531b3c60439113",
+    "capstone": "5.0.7"
+  },
+  "runtime_reports_sha256": {
+    "llvm_main": "6fc62cfbff754efade00f586293e3050e82f3fa821bfa8558f38b5469b6f76bd",
+    "apple_main": "c0697a6eab3a6e5ba3758729b8cffee687153c3733fc157da0c07b13ff8e5ccb",
+    "llvm_printf": "0f56d35fd17e9c48c7a4ef44e23b81eb6eff8ece76b7a3cf3414b58453bae0fa",
+    "apple_printf": "e36527141167383c012a309340322add0d39666c783b760d9ff181f0d04544fb"
+  },
+  "ida_reports_sha256": {
+    "llvm_probe": "8f7b373facb76db9173cd4d4fde2049e6d87f799e22893d6dea4d0ea7dcf2b9d",
+    "apple_probe": "f061dd181bfd2358b9c5f3782acca0a4d4f9b9628662ee725d443be565d39722",
+    "llvm_run": "55c88c9c6d0fabd60188684638bfd8def960a8643361e5ad5a6f8a9794f1bf75",
+    "apple_run": "b54298ab1f800ebc2fd61748821931dc3edbec7ca375e1a1032c7609c3e36037"
+  },
+  "independent_verifier": {
+    "report_sha256": "ebc42f963ef53faf372f83a9323f92f09fd26a8a50ef24ab4562254149a6f457",
+    "passed": true,
+    "scalar_values_per_debugger": 108,
+    "scalar_values_total": 216,
+    "scalar_mismatches": 0,
+    "stack_written_bytes_per_debugger": 16,
+    "runtime_register_candidate_pc_and_stack_write_mutations_detected": true
+  },
+  "trace": {
+    "entry": "0x100001440",
+    "instruction_entries": 6,
+    "import_stub": "0x100001456",
+    "stop": "environment-model-failure",
+    "stack_relative_gpr_indices": [1, 2, 3, 4, 5, 6, 12],
+    "stack_relative_word_offsets": [64, 72, 80, 96, 104],
+    "entry_stack_bytes": 128,
+    "runtime_window_bytes": 40,
+    "function_evidence_published": false,
+    "vm_identity_proved": false
+  },
+  "regression": {
+    "ctest_suites_passed": 21,
+    "ctest_suites_total": 21,
+    "checked_ida_inventory_unchanged": true,
+    "full_review_complete": false
+  }
+}

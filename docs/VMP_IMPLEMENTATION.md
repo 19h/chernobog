@@ -63,6 +63,17 @@ The trace stops at the indirect import environment frontier. See
 `VMP_HELLO_RUNTIME_SHADOW.md` and its evidence JSON. Full protected-path and
 VM recovery remain in progress.
 
+Supplied VMP hello observed-entry checkpoint for rows 0b, 6a and V: LLVM
+and Apple LLDB stop at the protected entry stub after restoration, then at
+`_main`, and single-step six instruction entries. Two fresh IDA replays use
+the observed entry registers, flags and 128 stack bytes with explicit
+stack-relative annotations. All 108 GPR/RIP/RFLAGS values per debugger match
+after stack translation, 216/216 total; the 16-byte call/frame stack write
+also matches each process. Negative requests, three verifier mutations and
+selected IDA inventory controls pass. The replay stops at the indirect
+import stub, while LLDB reaches `printf`; later paths and VM recovery remain
+unknown. See `VMP_HELLO_OBSERVED_ENTRY_REPLAY.md` and its evidence JSON.
+
 Packed-keygen runtime checkpoint: two fixed-seed Morok protected processes
 start at the recorded ELF entry, reach the application callback with live stack
 arguments, and match all 4,096 addresses and entered instruction bytes of the
