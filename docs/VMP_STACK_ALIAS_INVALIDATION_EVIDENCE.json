@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "scope": "i386 PUSHA/POPA and x86-64 PUSH/POP writable-memory invalidation",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "817e2083e2297d93be54e7f1194d5565f3c7c78bea9c994ab8c2b1b0cc205ffc",
+    "tests/vmp_native/dataflow.S": "d1753c0ea10abc7fb215ac8160a1078de2cda9b2af4b82391f4defac6d8649e3",
+    "tests/vmp_native/dataflow_main.c": "6630fa351ee79bcc2abdf4045fa22e5d3844f8e3564d13510b14556b7a623353",
+    "tests/run_native_dataflow.py": "345b36cbf69e243436afc50a7eff4910e306262f4319f790ddff403db1e8f80f",
+    "tests/ida_dataflow_probe.py": "7a60b7982a87d2637064aef59ab164c5ac528eae9c527c35ce7cdff05a87418d",
+    "tests/ida_ownerless_dataflow_probe.py": "c19c7a55bd1f1d28d55109e17297816a64dbbc9e93cd834539fdfa917eac86b4"
+  },
+  "tools": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "linux32_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+    "previous_plugin_sha256": "59ed6fcfad5f8138a129e1ca1c1db6e658d14e964a01857eddfbb859df764d2b",
+    "installed_plugin_sha256": "d13ccdbd63e7b174f5f9de54db6e793a413508c7ede107ec7e7846dbe15e0fc5"
+  },
+  "fixture_sha256": {
+    "owned_x86_64": "cea2b6966fd990b3c214211d33a87496a3ae562cc348c40355e003ab63247001",
+    "owned_i386": "977aa2ddb358937f8eb5ab623b6a6f96bc6d38f7e3e1db5bafe4762c094d3794",
+    "ownerless_x86_64": "aeed1e2d1f3b474d24b9ce58c1e8f3be25883224c7e5fe28db8169a8ab3e9a63",
+    "ownerless_i386": "f8060b670e37536e292e6b029d215898bb90c573274f5ea4a194817857b96a34"
+  },
+  "results": {
+    "owned_native_checks_per_architecture": 8958,
+    "owned_ida_checks_per_architecture": 132,
+    "ownerless_native_checks_per_architecture": 4094,
+    "ownerless_ida_checks_per_architecture": 572,
+    "corrupt_ownerless_oracle_rejected": true,
+    "matched_input_probe_ida_per_pair": true,
+    "previous_x86_64_probe_errors_per_mode": 0,
+    "previous_i386_owned_probe_errors": 2,
+    "previous_i386_ownerless_probe_errors": 1,
+    "current_probe_errors_per_mode_and_architecture": 0,
+    "initial_parallel_ctest_failures": 1,
+    "isolated_ctest_passed": 1,
+    "final_ctest_passed": 21
+  },
+  "raw_report_sha256": {
+    "build/vmp-stack-alias-verified2-owned/dataflow_analysis.json": "af753bfee16cdcb60eb809b0c27121b33c6e04ac6b431de5243e3c16cd499feb",
+    "build/vmp-stack-alias-direct-ownerless/ownerless_dataflow_analysis.json": "9f739a17b97985ef9f2554dcbdf2a9f926cc9ccfc48a8ff916aac7e335c52594",
+    "build/vmp-stack-alias-verified2-owned/x86_64/inspection/run.json": "6615b39c0ff727330e1e0c179cf31314851737b699f489a92e21cf12b6ebe585",
+    "build/vmp-stack-alias-verified2-owned/i386/inspection/run.json": "5b95a4b83bec29eb1e24b36e24020a7edf1852338f1a728a826b65cbd6b7028f",
+    "build/vmp-stack-alias-direct-ownerless/x86_64/inspection/run.json": "01e7f5cb2a957a4298f735cd21fe0da03cf8285221d25dd407aa8359be30f7fe",
+    "build/vmp-stack-alias-direct-ownerless/i386/inspection/run.json": "ede369f0427d78ffd6ffa6b2f8df30d92495ee2da11ab5c5310aa9993a28ad3a",
+    "build/vmp-stack-alias-verified2-owned/x86_64/inspection/dataflow.json": "b4b250353b8a5c0faac8545dec97f42fdf16aa1941bffbc43cb56629c419e1e9",
+    "build/vmp-stack-alias-verified2-owned/i386/inspection/dataflow.json": "54c80f724e3d4bb3cb27015e2638dbe0cdf80305300f626930253ebd32960cd1",
+    "build/vmp-stack-alias-direct-ownerless/x86_64/inspection/ownerless_dataflow.json": "c26ecb5e850faef8c58f4b6f1371c41261ee482aa56125083592030d97b7ef18",
+    "build/vmp-stack-alias-direct-ownerless/i386/inspection/ownerless_dataflow.json": "36c547bb1c844ecde8e98468938da35dc629934e9c4815b8e614643472463707",
+    "build/vmp-stack-alias-prior2-owned-x86_64/run.json": "4c07bebbf8e67f6f49dcd4ab5a94fa6b6a290c4b068469b0eb88a09dd917132b",
+    "build/vmp-stack-alias-prior2-owned-i386/run.json": "7752566187af7f3e2224d5de9beb6e465c21d67cfabf023045199078a80e6828",
+    "build/vmp-stack-alias-prior2-ownerless-x86_64/run.json": "adc9d01d4464ee55536657ee742970e1e34250b112aa33fe5e3b099d71676e71",
+    "build/vmp-stack-alias-prior2-ownerless-i386/run.json": "c88740c877708f6bb15566797e20f990d4e1f7f171c3727be60c9cdad5d64ff0",
+    "build/vmp-stack-alias-prior2-owned-x86_64/dataflow.json": "b4b250353b8a5c0faac8545dec97f42fdf16aa1941bffbc43cb56629c419e1e9",
+    "build/vmp-stack-alias-prior2-owned-i386/dataflow.json": "26bbf033f4bf1a69f79ea16f94b464425cceb38234f34183a466fd0420f713de",
+    "build/vmp-stack-alias-prior2-ownerless-x86_64/ownerless_dataflow.json": "c26ecb5e850faef8c58f4b6f1371c41261ee482aa56125083592030d97b7ef18",
+    "build/vmp-stack-alias-prior2-ownerless-i386/ownerless_dataflow.json": "bbbf3f59cdd6048344f7682955f4f5fdcb51d20dff84c1577da324bed00def11",
+    "build/Testing/Temporary/LastTest.log": "0c50b385a9a631045595167a133379049d2412817786d326959cc53d9301b86a",
+    "build/Testing/Temporary/LastTestsFailed.log": "d72bab289d3e93c8756ea51a72205b2e1e81f03a2eed751975ee27e0511998b5"
+  }
+}

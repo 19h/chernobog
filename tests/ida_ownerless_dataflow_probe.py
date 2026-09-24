@@ -553,6 +553,7 @@ def main():
             ("df_memory_repaired_byte", True),
             ("df_memory_missing_byte", False),
             ("df_memory_conflicting_byte", False),
+            ("df_memory_stack_round_trip", False),
             ("df_memory_initial_word", False),
             ("df_memory_equal_stores", True),
             ("df_memory_disjoint_store", True),
@@ -567,9 +568,12 @@ def main():
                 for instruction in instructions
                 if instruction.get_canon_mnem() == "push"
             ]
-            check(name + " one memory PUSH", len(pushes) == 1)
-            assert len(pushes) == 1
-            row = row_at(result, pushes[0].ea, "push-return")
+            expected_pushes = (
+                2 if name == "df_memory_stack_round_trip" and result["address_bits"] == 64 else 1
+            )
+            check(name + " expected PUSH count", len(pushes) == expected_pushes)
+            assert len(pushes) == expected_pushes
+            row = row_at(result, pushes[-1].ea, "push-return")
             check(
                 name + " ownerless writable-memory target",
                 result["converged"]

@@ -15,6 +15,7 @@ extern int df_memory_direct_store(int);
 extern int df_memory_split_store(int), df_memory_known_byte_overwrite(int);
 extern int df_memory_repaired_byte(int), df_memory_missing_byte(int);
 extern int df_memory_conflicting_byte(int);
+extern int df_memory_stack_round_trip(int);
 
 int main(void)
 {
@@ -39,9 +40,10 @@ int main(void)
             df_memory_direct_store(input) != 7 || df_memory_split_store(input) != 7 ||
             df_memory_known_byte_overwrite(input) != 7 || df_memory_repaired_byte(input) != 7 ||
             df_memory_missing_byte(input) != 7 ||
-            df_memory_conflicting_byte(input) != (input == 0 ? 7 : 8))
+            df_memory_conflicting_byte(input) != (input == 0 ? 7 : 8) ||
+            df_memory_stack_round_trip(input) != 7)
             return 1;
-        checks += 32;
+        checks += 33;
         if (input > 0)
         {
             if (df_loop(input) != 1 || df_loop_changes(input) != ((input & 1) == 0))

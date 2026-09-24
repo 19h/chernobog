@@ -121,6 +121,16 @@ pass. The supplied VMP initializer retains three unresolved facts. See
 `VMP_PARTIAL_WRITABLE_MEMORY.md` and its evidence JSON; the earlier full-word
 checkpoint and its recorded hashes remain historical.
 
+Stack alias invalidation follow-up: a direct global `PUSH memory; RET` after
+i386 `PUSHA; POPA` now remains unresolved because the stack writes have no
+proved disjoint address. A matched earlier plugin instead publishes a target
+and user edge in the same i386 fixture; x86-64 outcomes are unchanged. Each
+architecture passes 8,958 owned native checks, 132 owned IDA assertions,
+4,094 existing ownerless native checks and 572 ownerless IDA assertions. The
+final four-worker CTest run passes 21/21 after one initial 20-way failure of
+an unrelated suite with unknown cause. See `VMP_STACK_ALIAS_INVALIDATION.md`
+and its evidence JSON.
+
 Guarded immediate-push checkpoint: payload/store effects, virtual-stack role
 hypotheses and source-ordered taken stack checks now have conditional summaries.
 Equivalence compares nonempty input domains and complete effects; observations

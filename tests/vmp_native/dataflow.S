@@ -532,6 +532,26 @@ BEGIN NAME(df_memory_conflicting_byte)
 #endif
     ret
 
+/* Register-preserving stack traffic cannot retain a writable-memory must-fact:
+ * the abstract stack address may alias the previously established slot. */
+BEGIN NAME(df_memory_stack_round_trip)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    pushal
+    popal
+    pushl NAME(df_memory_slot)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    pushq %rax
+    popq %rax
+    pushq NAME(df_memory_slot)(%rip)
+#endif
+    ret
+
 BEGIN NAME(df_memory_initial_word)
 #ifdef __i386__
     movl $NAME(df_memory_initial_slot), %edx

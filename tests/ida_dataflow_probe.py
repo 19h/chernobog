@@ -412,6 +412,7 @@ try:
         ("df_memory_repaired_byte", True),
         ("df_memory_missing_byte", False),
         ("df_memory_conflicting_byte", False),
+        ("df_memory_stack_round_trip", False),
         ("df_memory_initial_word", False),
         ("df_memory_equal_stores", True),
         ("df_memory_disjoint_store", True),
