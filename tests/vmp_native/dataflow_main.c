@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdint.h>
 
 extern int df_equal(int), df_different(int), df_flags(int), df_direction(int), df_loop(int),
     df_loop_changes(int), df_stack(int), df_stack_changes(int), df_jump(int), df_target(int),
@@ -8,7 +9,7 @@ extern int df_flags_saved(int), df_flags_literal(int), df_flags_overwrite(int),
 extern int df_stack_top_transfer(int), df_stack_top_overwrite(int);
 extern int df_stack_top_dynamic(int);
 extern int df_memory_store_transfer(int), df_memory_disjoint_store(int);
-extern int df_memory_overlapping_store(int), df_memory_unknown_alias(int, int *);
+extern int df_memory_overlapping_store(int), df_memory_unknown_alias(int, void *);
 extern int df_memory_conflicting_store(int);
 extern int df_memory_initial_word(int), df_memory_equal_stores(int);
 extern int df_memory_direct_store(int);
@@ -20,25 +21,30 @@ extern int df_memory_xchg_store(int), df_memory_xchg_partial(int), df_memory_xch
 extern int df_memory_xchg_byte(int);
 extern int df_memory_xchg_unknown_source(int, int (*)(void));
 extern int df_memory_mov_load(int), df_memory_mov_load_byte(int);
-extern int df_memory_mov_load_initial(int), df_memory_mov_load_alias(int, int *);
+extern int df_memory_mov_load_initial(int), df_memory_mov_load_alias(int, void *);
 extern int df_memory_movzx_byte(int), df_memory_movsx_byte(int);
 extern int df_memory_movzx_word(int), df_memory_movsx_word(int);
-extern int df_memory_movzx_initial(int), df_memory_movzx_alias(int, int *);
+extern int df_memory_movzx_initial(int), df_memory_movzx_alias(int, void *);
 extern int df_memory_movsx_negative(int), df_memory_movsx_initial_negative(int);
 extern int df_memory_movsxd_negative(int), df_memory_movsxd_initial_negative(int);
 extern int df_memory_movsx_word_negative(int), df_memory_movsx_initial_word_negative(int);
 extern int df_memory_alu_add(int), df_memory_alu_xor_byte(int), df_memory_alu_source(int);
-extern int df_memory_alu_initial(int), df_memory_alu_alias(int, int *);
+extern int df_memory_alu_initial(int), df_memory_alu_alias(int, void *);
 extern int df_memory_alu_compare(int);
-extern int df_memory_alu_rmw_initial(int), df_memory_alu_rmw_alias(int, int *);
+extern int df_memory_alu_rmw_initial(int), df_memory_alu_rmw_alias(int, void *);
 extern int df_memory_alu_compare_initial(int);
 extern int df_memory_alu_flags(int), df_memory_alu_flags_initial(int);
+extern int df_rep_movs_cf(int), df_rep_movs_zf(int), df_movs_plain_cf(int);
+extern int df_cmps_flags_changed(int);
+extern int df_rep_movs_alias(int, void *);
+extern int df_rep_movs_register_target(int), df_movs_plain_count_target(int);
+extern int df_rep_movs_count_unknown(int);
 extern int df_memory_target(void);
 
 int main(void)
 {
     unsigned checks = 0;
-    int disjoint = 0;
+    uint64_t disjoint = 0;
     for (int input = 0; input < 256; ++input)
     {
         if (df_equal(input) != 1 || df_different(input) != (input == 0) || df_flags(input) != 1 ||
@@ -77,9 +83,13 @@ int main(void)
             df_memory_alu_compare(input) != 1 || df_memory_alu_rmw_initial(input) != 7 ||
             df_memory_alu_rmw_alias(input, &disjoint) != 7 ||
             df_memory_alu_compare_initial(input) != 1 || df_memory_alu_flags(input) != 1 ||
-            df_memory_alu_flags_initial(input) != 1)
+            df_memory_alu_flags_initial(input) != 1 || df_rep_movs_cf(input) != 1 ||
+            df_rep_movs_zf(input) != 1 || df_movs_plain_cf(input) != 1 ||
+            df_cmps_flags_changed(input) != 0 || df_rep_movs_alias(input, &disjoint) != 7 ||
+            df_rep_movs_register_target(input) != 7 || df_movs_plain_count_target(input) != 7 ||
+            df_rep_movs_count_unknown(input) != 7)
             return 1;
-        checks += 65;
+        checks += 73;
         if (input > 0)
         {
             if (df_loop(input) != 1 || df_loop_changes(input) != ((input & 1) == 0))

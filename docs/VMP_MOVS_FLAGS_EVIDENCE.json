@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "scope": "status flags and unaffected registers through plain and repeated x86 MOVS under normal completion",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "2a3463840dae4e19dd6da1eefcc964dbaeaf1f9ea7162aa8f514008d09bec3af",
+    "tests/vmp_native/dataflow.S": "477506c073417cc62ac2e3cd30c0d4f30614df850d550eaeba3c7382822ada83",
+    "tests/vmp_native/dataflow_main.c": "e97f81bf4b83fd17bfdf2f94fd6f4211e19642794fd4abf0efdf6681778476d4",
+    "tests/ida_dataflow_probe.py": "e7548308cea7f57c39ded704c7463ed70c80cfc426c50a9af9a13e96822b73ee",
+    "tests/ida_ownerless_dataflow_probe.py": "4ec1673d4a4356534c9f3b01e56cd44f895a40410d7f533a5c502590461d0e91",
+    "tests/run_native_dataflow.py": "9ce8d3a304195a8b7afeeba24a0ecb595198b4b9de5be68fa73fc45a7674d510"
+  },
+  "tools": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "linux32_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+    "previous_installed_plugin_sha256": "bedc74ef90143c722c82404bc1320b8520f00359551729d373257823ccf7c556",
+    "new_built_plugin_sha256": "996ae4804f65f1ad4dc3b1e2139a7bdc6703c6f30dbad7b4840dee3237c6557d"
+  },
+  "fixture_sha256": {
+    "owned_x86_64": "d39e75b6682807de43e08e8dec0b873b9bb7c34d22122aef214907c87d112688",
+    "owned_i386": "397be2c999331026c97267edfff5c4048eb88de5994039e417308a34e140a68d",
+    "ownerless_x86_64": "ef23f13e96937c3f6a1257cb7e011fa3d0e6d00b59829c09b3faf9b5c47ada04",
+    "ownerless_i386": "c01cf5113ad8ae3b04db731cbeb1ee3c8b19b5bf894498c1b52188a0d011b962",
+    "protected_input": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "results": {
+    "owned_native_checks_per_architecture": 19198,
+    "owned_ida_checks_per_architecture": 248,
+    "ownerless_native_checks_per_architecture": 4094,
+    "ownerless_ida_checks_per_architecture": 972,
+    "focused_ownerless_checks_per_run": 28,
+    "new_condition_facts_per_architecture": 3,
+    "new_transfer_targets_per_architecture": 2,
+    "unchanged_abstention_shapes_per_architecture": 3,
+    "corrupt_ownerless_oracle_rejected": true,
+    "matched_input_probe_ida_per_pair": true,
+    "baseline_expectation_environment_difference": true,
+    "probe_errors_all_eight_matched_runs": 0,
+    "prior_alu_focused_regression_checks": 37,
+    "ctest_passed": 21,
+    "protected_nodes": 75,
+    "protected_edges": 77,
+    "protected_unresolved": 3,
+    "protected_prior_current_records_equal": true,
+    "protected_inventory_unchanged": true
+  },
+  "raw_report_sha256": {
+    "build/native-dataflow-movs-precise-final/dataflow_analysis.json": "65c4b363d200463c329633467ffe3f54301314f810b1a8cb4a46bc6e00a1ff9f",
+    "build/ownerless-dataflow-movs-precise-final/ownerless_dataflow_analysis.json": "0c2023de3ce044185767e17c7006f9e5796491897c46492abf360d9476252c9e",
+    "build/native-dataflow-movs-precise-final/x86_64/inspection/dataflow.json": "cdaf20fd876f287950a84da202bb137fa4853be04d71f08c5be05712be7672a2",
+    "build/native-dataflow-movs-precise-final/i386/inspection/dataflow.json": "a7a28c6a5f8b21bffb3056ada81d4583a192be6524f01817c2484ce75c5f6085",
+    "build/ownerless-dataflow-movs-precise-final/x86_64/inspection/ownerless_dataflow.json": "602785d5eb1d10dab53303a770df084d56bc3e3cf1832d0ce84a2188eed493df",
+    "build/ownerless-dataflow-movs-precise-final/i386/inspection/ownerless_dataflow.json": "020172a5839870ab0dfe55de500a43ad30a5ae56e5b7e9d09680a3d90df82fc5",
+    "build/native-movs-precise-baseline-owned-x64/dataflow.json": "3c39383a288ce17df3fa055ecf9b4497af4a36614a929056332988d478abd49b",
+    "build/native-movs-precise-baseline-owned-i386/dataflow.json": "164e1a9a05c743195c7e884f629cc68640f110c5177ce467fba0013af1f0355d",
+    "build/native-movs-precise-baseline-ownerless-x86_64/ownerless_dataflow.json": "163b47b66e5335d2fe3ca3e637c3c02c2c961db1d0b4a8c6fae7ae94fc30b040",
+    "build/native-movs-precise-current-ownerless-x86_64/ownerless_dataflow.json": "b4dc4d3c96b0f2d36d33a1500bf8bb0b63c8f283cfe254eeb69405d43398ee9e",
+    "build/native-movs-precise-baseline-ownerless-i386/ownerless_dataflow.json": "ea2c1e3fae22db3886c3d1873fc1ea19ba11070a2d66cd38d39a41a151036068",
+    "build/native-movs-precise-current-ownerless-i386/ownerless_dataflow.json": "f8b4a92b230714e15de521017afa53f7dcce9d89977b69ef47d5c97c1d2af3f7",
+    "build/native-movs-precise-alu-focused-regression/run.json": "d617214ff48fd06ca15eb315b4c3e66fcab139d986fa0b35cf100d0c44aff203",
+    "build/native-movs-precise-alu-focused-regression/ownerless_dataflow.json": "807a4c922b6398790f783426d76eb606074c2b197d5342385207fc5c3cf3a9d6",
+    "build/native-movs-precise-protected/run.json": "82f0fa6f3982c2ef0bad4bf3b57effd049f1d51ea256eafc556fadbb0b8a77b6",
+    "build/native-movs-precise-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/native-movs-protected-baseline/run.json": "b93670fa95254fd02f6d857f7e1ed14a41a806bb832ebac9a029b884bfabe228",
+    "build/native-movs-protected-baseline/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/Testing/Temporary/LastTest.log": "600f611755d918419bd4561ef8d83879f7c1564fb0fc44d82711f0d70763ec7a"
+  }
+}

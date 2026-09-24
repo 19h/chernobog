@@ -256,6 +256,7 @@ try:
     assert ida_loader.load_plugin(os.environ["CHERNOBOG_PLUGIN_PATH"])
     ida_auto.auto_wait()
     alu_proofs = os.environ.get("CHERNOBOG_ALU_BASELINE") != "1"
+    movs_proofs = os.environ.get("CHERNOBOG_MOVS_BASELINE") != "1"
     expected = {
         "df_equal": True,
         "df_different": False,
@@ -276,6 +277,10 @@ try:
         "df_memory_alu_compare_initial": False,
         "df_memory_alu_flags": alu_proofs,
         "df_memory_alu_flags_initial": False,
+        "df_rep_movs_cf": movs_proofs,
+        "df_rep_movs_zf": movs_proofs,
+        "df_movs_plain_cf": movs_proofs,
+        "df_cmps_flags_changed": False,
         "df_loop": True,
         "df_loop_changes": False,
         "df_stack": True,
@@ -438,6 +443,7 @@ try:
         ("df_memory_alu_xor_byte", alu_proofs),
         ("df_memory_alu_rmw_initial", False),
         ("df_memory_alu_rmw_alias", False),
+        ("df_rep_movs_alias", False),
     ):
         root = address(name)
         reanalyze(root)
@@ -524,6 +530,9 @@ try:
         ("df_memory_alu_source", alu_proofs),
         ("df_memory_alu_initial", False),
         ("df_memory_alu_alias", False),
+        ("df_rep_movs_register_target", movs_proofs),
+        ("df_movs_plain_count_target", movs_proofs),
+        ("df_rep_movs_count_unknown", False),
     ):
         root = address(name)
         reanalyze(root)

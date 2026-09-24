@@ -1087,6 +1087,186 @@ BEGIN NAME(df_memory_alu_flags_initial)
 #endif
     ret
 
+BEGIN NAME(df_rep_movs_cf)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_string_source), %esi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_string_source)(%rip), %rsi
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    movl $4, %ecx
+    stc
+    rep movsb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_rep_movs_zf)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_string_source), %esi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_string_source)(%rip), %rsi
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    movl $4, %ecx
+    xorl %eax, %eax
+    rep movsb
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_movs_plain_cf)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_string_source), %esi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_string_source)(%rip), %rsi
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    stc
+    movsb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_cmps_flags_changed)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_string_source), %esi
+    movl $NAME(df_string_source), %edi
+#else
+    leaq NAME(df_string_source)(%rip), %rsi
+    leaq NAME(df_string_source)(%rip), %rdi
+#endif
+    stc
+    cmpsb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_rep_movs_alias)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    pushl %esi
+    pushl %edi
+    movl 16(%esp), %edi
+    movl $NAME(df_string_source), %esi
+    movl $1, %ecx
+    rep movsb
+    popl %edi
+    popl %esi
+    movl $NAME(df_memory_slot), %edx
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    movq %rsi, %rdi
+    leaq NAME(df_string_source)(%rip), %rsi
+    movl $1, %ecx
+    rep movsb
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_rep_movs_register_target)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_string_source), %esi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_string_source)(%rip), %rsi
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    movl $1, %ecx
+    rep movsb
+#ifdef __i386__
+    popl %edi
+    popl %esi
+    pushl %eax
+#else
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_movs_plain_count_target)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %ecx
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_string_source), %esi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_memory_target)(%rip), %rcx
+    leaq NAME(df_string_source)(%rip), %rsi
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    movsb
+#ifdef __i386__
+    popl %edi
+    popl %esi
+    pushl %ecx
+#else
+    pushq %rcx
+#endif
+    ret
+
+BEGIN NAME(df_rep_movs_count_unknown)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_string_source), %esi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_string_source)(%rip), %rsi
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    movl $1, %ecx
+    rep movsb
+#ifdef __i386__
+    popl %edi
+    popl %esi
+    movl $NAME(df_memory_target), %eax
+    addl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    addq %rcx, %rax
+    pushq %rax
+#endif
+    ret
+
 BEGIN NAME(df_memory_initial_word)
 #ifdef __i386__
     movl $NAME(df_memory_initial_slot), %edx
@@ -1259,6 +1439,13 @@ NAME(df_memory_initial_dword):
 .globl NAME(df_memory_alu_initial_flag_slot)
 NAME(df_memory_alu_initial_flag_slot):
     .long -1
+.p2align 2
+.globl NAME(df_string_source)
+NAME(df_string_source):
+    .long 0x12345678
+.globl NAME(df_string_dest)
+NAME(df_string_dest):
+    .long 0
 .text
 
 /* The probe assigns the remote body as a tail of df_flow_root. The CLC

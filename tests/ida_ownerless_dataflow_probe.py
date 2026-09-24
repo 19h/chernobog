@@ -387,7 +387,7 @@ def metadata_controls(labels):
     )
 
 
-def alu_only_main():
+def focused_main():
     try:
         assert ida_loader.load_plugin(os.environ["CHERNOBOG_PLUGIN_PATH"])
         ida_auto.auto_wait()
@@ -395,27 +395,45 @@ def alu_only_main():
         assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
         ida_auto.auto_wait()
         ida_auto.enable_auto(False)
-        gain = os.environ.get("CHERNOBOG_ALU_BASELINE") != "1"
-        for name, basis in (
-            ("df_memory_alu_add", "memory-definition"),
-            ("df_memory_alu_xor_byte", "memory-definition"),
-            ("df_memory_alu_source", "register-definition"),
-            ("df_memory_alu_initial", "unresolved"),
-            ("df_memory_alu_alias", "unresolved"),
-            ("df_memory_alu_compare", "condition"),
-            ("df_memory_alu_rmw_initial", "unresolved"),
-            ("df_memory_alu_rmw_alias", "unresolved"),
-            ("df_memory_alu_compare_initial", "condition-initial"),
-            ("df_memory_alu_flags", "condition"),
-            ("df_memory_alu_flags_initial", "condition-initial"),
-        ):
+        movs_only = os.environ.get("CHERNOBOG_MOVS_ONLY") == "1"
+        gain = (
+            os.environ.get("CHERNOBOG_MOVS_BASELINE" if movs_only else "CHERNOBOG_ALU_BASELINE")
+            != "1"
+        )
+        fixtures = (
+            (
+                ("df_rep_movs_cf", "condition"),
+                ("df_rep_movs_zf", "condition"),
+                ("df_movs_plain_cf", "condition"),
+                ("df_cmps_flags_changed", "condition-unknown"),
+                ("df_rep_movs_alias", "unresolved"),
+                ("df_rep_movs_register_target", "register-definition"),
+                ("df_movs_plain_count_target", "register-definition"),
+                ("df_rep_movs_count_unknown", "unresolved"),
+            )
+            if movs_only
+            else (
+                ("df_memory_alu_add", "memory-definition"),
+                ("df_memory_alu_xor_byte", "memory-definition"),
+                ("df_memory_alu_source", "register-definition"),
+                ("df_memory_alu_initial", "unresolved"),
+                ("df_memory_alu_alias", "unresolved"),
+                ("df_memory_alu_compare", "condition"),
+                ("df_memory_alu_rmw_initial", "unresolved"),
+                ("df_memory_alu_rmw_alias", "unresolved"),
+                ("df_memory_alu_compare_initial", "condition-initial"),
+                ("df_memory_alu_flags", "condition"),
+                ("df_memory_alu_flags_initial", "condition-initial"),
+            )
+        )
+        for name, basis in fixtures:
             root, instructions = prepare_prefix(name)
             before = inventory()
             result = api(f"chernobog_native_region_facts({root})")
             after = inventory()
             check(name + " read-only IDB inventory", before == after)
             check(name + " converged", result["available"] and result["converged"])
-            if basis in ("condition", "condition-initial"):
+            if basis.startswith("condition"):
                 site = next(
                     instruction.ea
                     for instruction in instructions
@@ -425,7 +443,7 @@ def alu_only_main():
             else:
                 site = next(
                     instruction.ea
-                    for instruction in instructions
+                    for instruction in reversed(instructions)
                     if instruction.get_canon_mnem() == "push"
                 )
                 row = row_at(result, site, "push-return")
@@ -454,13 +472,14 @@ def alu_only_main():
 
 
 def main():
-    if os.environ.get("CHERNOBOG_ALU_ONLY") == "1":
-        return alu_only_main()
+    if os.environ.get("CHERNOBOG_ALU_ONLY") == "1" or os.environ.get("CHERNOBOG_MOVS_ONLY") == "1":
+        return focused_main()
     global ordinary
     try:
         assert ida_loader.load_plugin(os.environ["CHERNOBOG_PLUGIN_PATH"])
         ida_auto.auto_wait()
         alu_proofs = os.environ.get("CHERNOBOG_ALU_BASELINE") != "1"
+        movs_proofs = os.environ.get("CHERNOBOG_MOVS_BASELINE") != "1"
         value = ida_expr.idc_value_t()
         assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
         ida_auto.auto_wait()
@@ -558,6 +577,10 @@ def main():
             ("df_memory_alu_compare_initial", None),
             ("df_memory_alu_flags", True if alu_proofs else None),
             ("df_memory_alu_flags_initial", None),
+            ("df_rep_movs_cf", True if movs_proofs else None),
+            ("df_rep_movs_zf", True if movs_proofs else None),
+            ("df_movs_plain_cf", True if movs_proofs else None),
+            ("df_cmps_flags_changed", None),
         ):
             root, instructions = prepare_prefix(name)
             site = next(
@@ -680,6 +703,25 @@ def main():
                 and row["target"] == (hex(symbol("df_memory_target")) if expected else "unknown"),
             )
 
+        root, instructions = prepare_prefix("df_rep_movs_alias")
+        result = inspect("df_rep_movs_alias", root)
+        pushes = [
+            instruction for instruction in instructions if instruction.get_canon_mnem() == "push"
+        ]
+        check(
+            "REP MOVS alias expected PUSH count",
+            len(pushes) == (1 if result["address_bits"] == 64 else 3),
+        )
+        row = row_at(result, pushes[-1].ea, "push-return")
+        check(
+            "REP MOVS invalidates possibly aliased writable bytes",
+            result["converged"]
+            and not result["truncated"]
+            and row["status"] == "unresolved"
+            and row["target_proof"] == "unresolved"
+            and row["target"] == "unknown",
+        )
+
         root, instructions = prepare_prefix("df_memory_xchg_load")
         result = inspect("df_memory_xchg_load", root)
         pushes = [
@@ -711,6 +753,9 @@ def main():
             ("df_memory_alu_source", alu_proofs),
             ("df_memory_alu_initial", False),
             ("df_memory_alu_alias", False),
+            ("df_rep_movs_register_target", movs_proofs),
+            ("df_movs_plain_count_target", movs_proofs),
+            ("df_rep_movs_count_unknown", False),
         ):
             root, instructions = prepare_prefix(name)
             result = inspect(name, root)
@@ -719,9 +764,20 @@ def main():
                 for instruction in instructions
                 if instruction.get_canon_mnem() == "push"
             ]
-            check(name + " has one PUSH", len(pushes) == 1)
-            assert len(pushes) == 1
-            row = row_at(result, pushes[0].ea, "push-return")
+            expected_pushes = (
+                3
+                if result["address_bits"] == 32
+                and name
+                in (
+                    "df_rep_movs_register_target",
+                    "df_movs_plain_count_target",
+                    "df_rep_movs_count_unknown",
+                )
+                else 1
+            )
+            check(name + " expected PUSH count", len(pushes) == expected_pushes)
+            assert len(pushes) == expected_pushes
+            row = row_at(result, pushes[-1].ea, "push-return")
             check(
                 name + " ownerless register target",
                 result["converged"]

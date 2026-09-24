@@ -734,6 +734,17 @@ struct State
         case NN_std:
             // DF is outside this state; the six tracked status flags are unchanged.
             return;
+        case NN_movs:
+            // MOVS, including REP MOVS, leaves the six status flags unchanged.
+            // The implicit destination may alias any retained memory or stack
+            // word; only the pointer registers and, for REP, count are changed.
+            stack.clear();
+            memory.clear();
+            regs[6] = {};
+            regs[7] = {};
+            if (insn.auxpref & (aux_rep | aux_repne))
+                regs[1] = {};
+            return;
         case NN_bswap:
         {
             const auto input = read(insn.Op1);
