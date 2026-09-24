@@ -554,6 +554,10 @@ def main():
             ("df_memory_missing_byte", False),
             ("df_memory_conflicting_byte", False),
             ("df_memory_stack_round_trip", False),
+            ("df_memory_xchg_store", True),
+            ("df_memory_xchg_partial", True),
+            ("df_memory_xchg_byte", True),
+            ("df_memory_xchg_unknown_source", False),
             ("df_memory_initial_word", False),
             ("df_memory_equal_stores", True),
             ("df_memory_disjoint_store", True),
@@ -582,6 +586,23 @@ def main():
                 and row["target_proof"] == ("memory-definition" if expected else "unresolved")
                 and row["target"] == (hex(symbol("df_memory_target")) if expected else "unknown"),
             )
+
+        root, instructions = prepare_prefix("df_memory_xchg_load")
+        result = inspect("df_memory_xchg_load", root)
+        pushes = [
+            instruction for instruction in instructions if instruction.get_canon_mnem() == "push"
+        ]
+        check("XCHG register-load has one PUSH", len(pushes) == 1)
+        assert len(pushes) == 1
+        row = row_at(result, pushes[0].ea, "push-return")
+        check(
+            "XCHG loads prior writable bytes into register target",
+            result["converged"]
+            and not result["truncated"]
+            and row["status"] == "proved"
+            and row["target_proof"] == "register-definition"
+            and row["target"] == hex(symbol("df_memory_target")),
+        )
 
         root, source, join, end = (
             symbol("od_adjacent_" + suffix) for suffix in ("root", "external", "join", "end")

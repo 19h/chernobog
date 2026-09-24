@@ -552,6 +552,89 @@ BEGIN NAME(df_memory_stack_round_trip)
 #endif
     ret
 
+/* Atomic register/memory exchange under the flat normal-completion model. */
+BEGIN NAME(df_memory_xchg_store)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    xchgl %eax, (%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    xchgq %rax, (%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_xchg_partial)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    xchgw %ax, (%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    xchgl %eax, (%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_xchg_byte)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    xchgb %al, (%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    xchgb %al, (%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_xchg_load)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl $NAME(df_memory_target_eight), %eax
+    xchgl %eax, (%edx)
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    leaq NAME(df_memory_target_eight)(%rip), %rax
+    xchgq %rax, (%rdx)
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_memory_xchg_unknown_source)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl 8(%esp), %eax
+    xchgl %eax, (%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    movq %rsi, %rax
+    xchgq %rax, (%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
 BEGIN NAME(df_memory_initial_word)
 #ifdef __i386__
     movl $NAME(df_memory_initial_slot), %edx

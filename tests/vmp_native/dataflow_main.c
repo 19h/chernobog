@@ -16,6 +16,10 @@ extern int df_memory_split_store(int), df_memory_known_byte_overwrite(int);
 extern int df_memory_repaired_byte(int), df_memory_missing_byte(int);
 extern int df_memory_conflicting_byte(int);
 extern int df_memory_stack_round_trip(int);
+extern int df_memory_xchg_store(int), df_memory_xchg_partial(int), df_memory_xchg_load(int);
+extern int df_memory_xchg_byte(int);
+extern int df_memory_xchg_unknown_source(int, int (*)(void));
+extern int df_memory_target(void);
 
 int main(void)
 {
@@ -41,9 +45,12 @@ int main(void)
             df_memory_known_byte_overwrite(input) != 7 || df_memory_repaired_byte(input) != 7 ||
             df_memory_missing_byte(input) != 7 ||
             df_memory_conflicting_byte(input) != (input == 0 ? 7 : 8) ||
-            df_memory_stack_round_trip(input) != 7)
+            df_memory_stack_round_trip(input) != 7 || df_memory_xchg_store(input) != 7 ||
+            df_memory_xchg_partial(input) != 7 || df_memory_xchg_load(input) != 7 ||
+            df_memory_xchg_byte(input) != 7 ||
+            df_memory_xchg_unknown_source(input, df_memory_target) != 7)
             return 1;
-        checks += 33;
+        checks += 38;
         if (input > 0)
         {
             if (df_loop(input) != 1 || df_loop_changes(input) != ((input & 1) == 0))

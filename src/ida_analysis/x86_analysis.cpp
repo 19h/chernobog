@@ -398,6 +398,11 @@ struct State
             local_memory_store ? memory_address(insn, insn.Op1) : std::nullopt;
         const auto store_value = local_memory_store ? read(insn.Op2, width) : std::nullopt;
         const op_t *exchange_reg = nullptr;
+        const op_t *memory_exchange_reg = nullptr;
+        std::optional<uint64_t> memory_exchange_address;
+        std::optional<uint64_t> memory_exchange_old;
+        std::optional<uint64_t> memory_exchange_new;
+        unsigned memory_exchange_width = 0;
         if (insn.itype == NN_xchg)
         {
             if (insn.Op1.type == o_reg && stack_top(insn, insn.Op2))
@@ -409,6 +414,47 @@ struct State
                 const auto slice = register_slice(*exchange_reg);
                 if (slice.reg < 0 || slice.reg == 4 || slice.width != word_bits)
                     exchange_reg = nullptr;
+            }
+            if (exchange_reg == nullptr)
+            {
+                const auto memory_operand = [](const op_t &operand)
+                {
+                    return operand.type == o_mem || operand.type == o_displ ||
+                           operand.type == o_phrase;
+                };
+                const op_t *mem = nullptr;
+                if (insn.Op1.type == o_reg && memory_operand(insn.Op2))
+                {
+                    memory_exchange_reg = &insn.Op1;
+                    mem = &insn.Op2;
+                }
+                else if (insn.Op2.type == o_reg && memory_operand(insn.Op1))
+                {
+                    memory_exchange_reg = &insn.Op2;
+                    mem = &insn.Op1;
+                }
+                if (mem != nullptr)
+                {
+                    memory_exchange_width = unsigned(get_dtype_size(mem->dtype) * 8);
+                    const Slice reg = register_slice(*memory_exchange_reg);
+                    if (!valid_width(memory_exchange_width) || reg.reg < 0 || reg.reg == 4 ||
+                        reg.width != memory_exchange_width)
+                        memory_exchange_reg = nullptr;
+                    else
+                    {
+                        memory_exchange_address = memory_address(insn, *mem);
+                        if (memory_exchange_address &&
+                            writable_range(*memory_exchange_address, memory_exchange_width / 8,
+                                           word_bits))
+                        {
+                            memory_exchange_old =
+                                read_memory(*memory_exchange_address, memory_exchange_width);
+                            memory_exchange_new = read(*memory_exchange_reg);
+                        }
+                        else
+                            memory_exchange_reg = nullptr;
+                    }
+                }
             }
         }
         const uint32_t features = insn.get_canon_feature(PH);
@@ -520,6 +566,15 @@ struct State
                 else
                     stack.back() = replacement;
                 write(*exchange_reg, old_top, is64);
+                return;
+            }
+            if (memory_exchange_reg != nullptr)
+            {
+                invalidate_memory(memory_exchange_address, memory_exchange_width / 8);
+                write(*memory_exchange_reg, memory_exchange_old, is64);
+                if (memory_exchange_new)
+                    store_memory(*memory_exchange_address, memory_exchange_width,
+                                 *memory_exchange_new);
                 return;
             }
             const auto a = read(insn.Op1), b = read(insn.Op2);

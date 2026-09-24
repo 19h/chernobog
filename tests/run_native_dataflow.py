@@ -96,7 +96,7 @@ def main():
                 and not native["output_exceeded"]
             )
             row["native_result"] = json.loads(stdout)
-            assert row["native_result"] == {"checks": 8958, "passed": True}
+            assert row["native_result"] == {"checks": 10238, "passed": True}
             row["binary_sha256"] = digest(binary)
             measurement, _, _ = execute(
                 [
@@ -138,7 +138,7 @@ def main():
                 json.dumps(
                     {
                         "architecture": architecture,
-                        "native_checks": 8958,
+                        "native_checks": 10238,
                         "inspection_checks": row["checks"],
                     }
                 ),

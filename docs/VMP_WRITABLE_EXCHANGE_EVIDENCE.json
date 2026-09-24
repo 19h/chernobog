@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "scope": "bounded local register/memory XCHG sources for x86 PUSH/RET",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "f16227ab37b73c44662751f7eaafac21f9514e6a42edfeddb157fed2011035a7",
+    "src/ida_analysis/x86_analysis.hpp": "5e4c3a41262fba4858dd2c3952e95ab41ab621062b54f81f4ab47f28d9390390",
+    "tests/ida_dataflow_probe.py": "e816a42c1810b71e65bc97cd9ea4015c13da6e22c42bfba9ea5cfd83b1edeecc",
+    "tests/ida_ownerless_dataflow_probe.py": "3946d8e68e93c5d3258f73379f05481984e13e8b44bee3743cabd5996f420d77",
+    "tests/run_native_dataflow.py": "95121c4b614ca8e37b7d82795a114ebb2650cdfc5132a05ea234c1d2967ef7ee",
+    "tests/vmp_native/dataflow.S": "dea2f3d96b5a80042e0173af57cd4cb712cbc6661e0ee3fa019d0b469152409c",
+    "tests/vmp_native/dataflow_main.c": "8d0b6ec80fdd748e86851a86bc8badcb0147927c056d2ea0803aea808e765856"
+  },
+  "tools": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "linux32_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+    "previous_plugin_sha256": "76012c18c8567b06606746f78a12c84e59d885376a2fabf2bc8e981e1a2d2922",
+    "new_built_plugin_sha256": "cea4009d2c6dad723d4e5425482c1b74f46533b3288cc4dcf01eaeda55d2a8b1"
+  },
+  "fixture_sha256": {
+    "owned_x86_64": "110ee6e575e8daed1ec85b5cd4a4e55081d9474b8a01a1c2633696d07423a193",
+    "owned_i386": "c71deb5d7d9f0242ffcb571bc0475ccf719068cfc9f6c631d9c174fff213e7dc",
+    "ownerless_x86_64": "52cc316fff7f11f2a3c3fbeaa9aeb7822e60742581cf97a5bcbf3fc72d3f722e",
+    "ownerless_i386": "ff893382b248eab6f074d50d520eb762c02e30805be164a446b93721dfeba299",
+    "protected_input": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "results": {
+    "owned_native_checks_per_architecture": 10238,
+    "owned_ida_checks_per_architecture": 150,
+    "ownerless_native_checks_per_architecture": 4094,
+    "ownerless_ida_checks_per_architecture": 622,
+    "new_exact_targets_per_architecture_and_mode": 4,
+    "new_unknown_source_abstentions_per_architecture_and_mode": 1,
+    "corrupt_ownerless_oracle_rejected": true,
+    "matched_input_probe_ida_per_pair": true,
+    "previous_owned_probe_errors_per_architecture": 8,
+    "previous_ownerless_probe_errors_per_architecture": 4,
+    "ctest_passed": 21,
+    "protected_nodes": 75,
+    "protected_edges": 77,
+    "protected_unresolved": 3,
+    "protected_inventory_unchanged": true
+  },
+  "raw_report_sha256": {
+    "build/vmp-xchg-verified-owned/dataflow_analysis.json": "1c52cff416f7f253199d49ba0cc5bb7918517de6b377d191ede4058a5d23f273",
+    "build/vmp-xchg-verified-ownerless/ownerless_dataflow_analysis.json": "e61094253199b3a3ec15c47eb222fd616566e1155cfba97133860bc8d3f47dc5",
+    "build/vmp-xchg-verified-owned/x86_64/inspection/run.json": "0e37e8978f675269e04bbdde6e8e6c2031314fb82a27026989c249342d5578b8",
+    "build/vmp-xchg-verified-owned/i386/inspection/run.json": "816b1145b679f100a60f891d6df48b3ddee498e7b4fc8922f1d01dc077e74c28",
+    "build/vmp-xchg-verified-ownerless/x86_64/inspection/run.json": "2864eabf49fd573712c4365f8261ac47285cbf24326f7c7ce510f7b224ccd2c8",
+    "build/vmp-xchg-verified-ownerless/i386/inspection/run.json": "845477717011dc70ce746516143a5a4666fee7dcb4ea1d0adcf5f58b5318a050",
+    "build/vmp-xchg-verified-owned/x86_64/inspection/dataflow.json": "399325b2f23a310c5a49602ff57f4b3d903cd5967a5e05903e432f0b13b3630e",
+    "build/vmp-xchg-verified-owned/i386/inspection/dataflow.json": "850b5243fc6729d25a5357b3ff81c479defb2dc8f303a8478e188302b97cefc8",
+    "build/vmp-xchg-verified-ownerless/x86_64/inspection/ownerless_dataflow.json": "cb436c2774f9c9f5c5061a5896516a29a00ba23ef51c1478f468d5cc6be36695",
+    "build/vmp-xchg-verified-ownerless/i386/inspection/ownerless_dataflow.json": "39fa67914338133cff889b43b292a4b6174d98ee0090f064a680916d10ae9ad4",
+    "build/vmp-xchg-prior-owned-x86_64/run.json": "addfbdc11f4a67819f3058bc7892eaa1a6e026641198cb1fcf64f08f4721d44c",
+    "build/vmp-xchg-prior-owned-i386/run.json": "54251b51a540cac4349194ec18199c982e977768f07a62a4bd8e7d82d41fd75a",
+    "build/vmp-xchg-prior-ownerless-x86_64/run.json": "a08d9f9e703f4407fd7c59000826956c7162af89a8025e74b3cb51f0c5513edd",
+    "build/vmp-xchg-prior-ownerless-i386/run.json": "ec94c778c601448ef3a3ca47448f877a060de32eb9b56487117de5c43a0b9649",
+    "build/vmp-xchg-prior-owned-x86_64/dataflow.json": "17137cf2f30ede9bddc0ce4b83e6c3a363595f87ab934f7ac914f6354d587914",
+    "build/vmp-xchg-prior-owned-i386/dataflow.json": "a99ef0fa1ffeeaa84b15b428876782c539da6c62a8bfddc80c1141f7edfa56b0",
+    "build/vmp-xchg-prior-ownerless-x86_64/ownerless_dataflow.json": "0e7ece1c34fbcd30ba996dbd8c7bb9821b33b58935161892c19d0f51b38c4795",
+    "build/vmp-xchg-prior-ownerless-i386/ownerless_dataflow.json": "3cfa75338e03ac35d4871a10daeefd4dd816484142d4b9a56b1a6766510b0463",
+    "build/vmp-xchg-verified-protected/run.json": "b939f347ae02732ffb81d2966cb50c23e89b7cce706796c56f3429856fababaf",
+    "build/vmp-xchg-verified-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/Testing/Temporary/LastTest.log": "68509f36ac8c0cccb0be474f9760b0ea1bba3c1e0a2cc53d22c39eadaa59f160"
+  }
+}

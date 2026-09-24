@@ -31,7 +31,8 @@ std::optional<X86Condition> x86_condition(uint16_t instruction_type);
 // Bounded owned-function must-analysis with architectural direct successors and
 // conservative joins. Incomplete/unsupported graphs fall back to the contiguous
 // single-entry prefix. No dynamic witnesses or initial writable bytes are
-// folded; only bounded local stores can establish writable facts.
+// folded; only bounded local MOV stores and register/memory exchanges can
+// establish writable facts.
 x86_abstract::Flags analyze_x86_flags_before(const insn_t &instruction, size_t depth);
 
 struct X86FlagFact

@@ -413,6 +413,10 @@ try:
         ("df_memory_missing_byte", False),
         ("df_memory_conflicting_byte", False),
         ("df_memory_stack_round_trip", False),
+        ("df_memory_xchg_store", True),
+        ("df_memory_xchg_partial", True),
+        ("df_memory_xchg_byte", True),
+        ("df_memory_xchg_unknown_source", False),
         ("df_memory_initial_word", False),
         ("df_memory_equal_stores", True),
         ("df_memory_disjoint_store", True),
@@ -461,6 +465,31 @@ try:
                 )
                 == expected,
             )
+    exchange_root = address("df_memory_xchg_load")
+    reanalyze(exchange_root)
+    captures["df_memory_xchg_load"] = inspect(exchange_root)
+    exchange_rows = [
+        row
+        for row in captures["df_memory_xchg_load"]["records"]
+        if row["kind"] == "stack-transfer" and row["fresh"] == "true"
+    ]
+    check(
+        "XCHG loads the prior writable word into its register",
+        len(exchange_rows) == 1
+        and exchange_rows[0]["truth"] == "native-proof"
+        and exchange_rows[0]["edge"] == "true"
+        and exchange_rows[0]["target_basis"] == "register-definition"
+        and exchange_rows[0]["target"] == hex(address("df_memory_target"))
+        and exchange_rows[0]["stack_delta_bytes"] == "0",
+    )
+    if exchange_rows:
+        check(
+            "XCHG register target has an owned user edge",
+            any(
+                x.iscode and x.to == address("df_memory_target") and x.user
+                for x in idautils.XrefsFrom(int(exchange_rows[0]["site"], 0))
+            ),
+        )
     memory_root = address("df_memory_store_transfer")
     original_memory_rows = [
         row
