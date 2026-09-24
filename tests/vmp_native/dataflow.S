@@ -1169,6 +1169,143 @@ BEGIN NAME(df_cmps_flags_changed)
 #endif
     ret
 
+BEGIN NAME(df_rep_stos_cf)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    movl $4, %ecx
+    movb $0x5a, %al
+    stc
+    rep stosb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+#endif
+    ret
+
+BEGIN NAME(df_lods_plain_cf)
+#ifdef __i386__
+    pushl %esi
+    movl $NAME(df_string_source), %esi
+#else
+    leaq NAME(df_string_source)(%rip), %rsi
+#endif
+    stc
+    lodsb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_rep_lods_zf)
+#ifdef __i386__
+    pushl %esi
+    movl $NAME(df_string_source), %esi
+#else
+    leaq NAME(df_string_source)(%rip), %rsi
+#endif
+    movl $4, %ecx
+    xorl %eax, %eax
+    rep lodsb
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_scas_flags_changed)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+    movb $0x5a, (%edi)
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+    movb $0x5a, (%rdi)
+#endif
+    movb $0x5a, %al
+    stc
+    scasb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+#endif
+    ret
+
+BEGIN NAME(df_stos_alias)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    pushl %edi
+    movl 12(%esp), %edi
+    movb $0, %al
+    stosb
+    popl %edi
+    movl $NAME(df_memory_slot), %edx
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    movq %rsi, %rdi
+    movb $0, %al
+    stosb
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_stos_register_target)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %edx
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_memory_target)(%rip), %rdx
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    movl $1, %ecx
+    movb $0, %al
+    rep stosb
+#ifdef __i386__
+    popl %edi
+    pushl %edx
+#else
+    pushq %rdx
+#endif
+    ret
+
+BEGIN NAME(df_lods_memory_target)
+#ifdef __i386__
+    pushl %esi
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl $NAME(df_string_source), %esi
+    lodsb
+    movl (%esp), %esi
+    leal 4(%esp), %esp
+    movl $NAME(df_memory_slot), %edx
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    leaq NAME(df_string_source)(%rip), %rsi
+    lodsb
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    pushq (%rdx)
+#endif
+    ret
+
 BEGIN NAME(df_rep_movs_alias)
 #ifdef __i386__
     movl $NAME(df_memory_target), %eax

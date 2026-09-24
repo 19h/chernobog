@@ -480,6 +480,7 @@ def main():
         ida_auto.auto_wait()
         alu_proofs = os.environ.get("CHERNOBOG_ALU_BASELINE") != "1"
         movs_proofs = os.environ.get("CHERNOBOG_MOVS_BASELINE") != "1"
+        string_io_proofs = os.environ.get("CHERNOBOG_STRING_IO_BASELINE") != "1"
         value = ida_expr.idc_value_t()
         assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
         ida_auto.auto_wait()
@@ -581,6 +582,10 @@ def main():
             ("df_rep_movs_zf", True if movs_proofs else None),
             ("df_movs_plain_cf", True if movs_proofs else None),
             ("df_cmps_flags_changed", None),
+            ("df_rep_stos_cf", True if string_io_proofs else None),
+            ("df_lods_plain_cf", True if string_io_proofs else None),
+            ("df_rep_lods_zf", True if string_io_proofs else None),
+            ("df_scas_flags_changed", None),
         ):
             root, instructions = prepare_prefix(name)
             site = next(
@@ -680,6 +685,7 @@ def main():
             ("df_memory_alu_xor_byte", alu_proofs),
             ("df_memory_alu_rmw_initial", False),
             ("df_memory_alu_rmw_alias", False),
+            ("df_lods_memory_target", string_io_proofs),
         ):
             root, instructions = prepare_prefix(name)
             result = inspect(name, root)
@@ -688,8 +694,9 @@ def main():
                 for instruction in instructions
                 if instruction.get_canon_mnem() == "push"
             ]
-            expected_pushes = (
-                2 if name == "df_memory_stack_round_trip" and result["address_bits"] == 64 else 1
+            expected_pushes = 1 + int(
+                (name == "df_memory_stack_round_trip" and result["address_bits"] == 64)
+                or (name == "df_lods_memory_target" and result["address_bits"] == 32)
             )
             check(name + " expected PUSH count", len(pushes) == expected_pushes)
             assert len(pushes) == expected_pushes
@@ -703,24 +710,27 @@ def main():
                 and row["target"] == (hex(symbol("df_memory_target")) if expected else "unknown"),
             )
 
-        root, instructions = prepare_prefix("df_rep_movs_alias")
-        result = inspect("df_rep_movs_alias", root)
-        pushes = [
-            instruction for instruction in instructions if instruction.get_canon_mnem() == "push"
-        ]
-        check(
-            "REP MOVS alias expected PUSH count",
-            len(pushes) == (1 if result["address_bits"] == 64 else 3),
-        )
-        row = row_at(result, pushes[-1].ea, "push-return")
-        check(
-            "REP MOVS invalidates possibly aliased writable bytes",
-            result["converged"]
-            and not result["truncated"]
-            and row["status"] == "unresolved"
-            and row["target_proof"] == "unresolved"
-            and row["target"] == "unknown",
-        )
+        for name, i386_pushes in (("df_rep_movs_alias", 3), ("df_stos_alias", 2)):
+            root, instructions = prepare_prefix(name)
+            result = inspect(name, root)
+            pushes = [
+                instruction
+                for instruction in instructions
+                if instruction.get_canon_mnem() == "push"
+            ]
+            check(
+                name + " alias expected PUSH count",
+                len(pushes) == (1 if result["address_bits"] == 64 else i386_pushes),
+            )
+            row = row_at(result, pushes[-1].ea, "push-return")
+            check(
+                name + " invalidates possibly aliased writable bytes",
+                result["converged"]
+                and not result["truncated"]
+                and row["status"] == "unresolved"
+                and row["target_proof"] == "unresolved"
+                and row["target"] == "unknown",
+            )
 
         root, instructions = prepare_prefix("df_memory_xchg_load")
         result = inspect("df_memory_xchg_load", root)
@@ -756,6 +766,7 @@ def main():
             ("df_rep_movs_register_target", movs_proofs),
             ("df_movs_plain_count_target", movs_proofs),
             ("df_rep_movs_count_unknown", False),
+            ("df_stos_register_target", string_io_proofs),
         ):
             root, instructions = prepare_prefix(name)
             result = inspect(name, root)
@@ -773,7 +784,7 @@ def main():
                     "df_movs_plain_count_target",
                     "df_rep_movs_count_unknown",
                 )
-                else 1
+                else 2 if result["address_bits"] == 32 and name == "df_stos_register_target" else 1
             )
             check(name + " expected PUSH count", len(pushes) == expected_pushes)
             assert len(pushes) == expected_pushes

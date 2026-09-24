@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "scope": "normal-completion STOS and LODS status, register, and memory facts on x86-64 and i386",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "bea90f3f6f9cccadf75c52b23a9f6a698a7dfc64ffc7aacf70ad57041b67287b",
+    "tests/vmp_native/dataflow.S": "56e5fc153e098768ac328fbbe9093eacda137c71dad4efefdac397f7c96bd0b0",
+    "tests/vmp_native/dataflow_main.c": "d4e3522f2dbf3d1152817a95b8888fa55499c47154d1d0db478ac80ba4c554ce",
+    "tests/ida_dataflow_probe.py": "fb9bcdbb09e0954ce8d146636b0b9ba675d091e109c32536a7c1ca3a97530131",
+    "tests/ida_ownerless_dataflow_probe.py": "0327a37995e317958b66cb9cf5c24a749c7f4eacaa56183323379c74407ea637",
+    "tests/run_native_dataflow.py": "67100ba8000e9731a26c841de4afcc9ccb45f56fadbaf6faf74458f16ffadbee",
+    "tests/run_ownerless_dataflow.py": "91a6ce5cdbe6743d373c3af389bfdd2b2627d729805aa1c865165600fe9ba3bf",
+    "tests/ida_protected_region_inspect.py": "b68a41d2011f232808974d7b155b84a43e4f13a8f3eb157a0d204cf6f04548d2"
+  },
+  "tool_sha256": {
+    "ida_9_4_sp1_idat": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "previous_installed_plugin": "7c2003d87d40267421b259596e9779e6703921a07df7be11400a37e0883a926f",
+    "new_precommit_build_plugin": "4ad077a924e78331dd3ea30e0be73a85ef93b3d1184b5814d72761998d0d5c6c",
+    "linux32_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654"
+  },
+  "fixture_sha256": {
+    "owned_x86_64": "43cb301f32e3ef9a21b25fb5b2139ac71931f71c28a9597c81ecfe5c7f4bb51f",
+    "owned_i386": "1560759037ff13a5d83f87085846a05b378480d195a5d33676496eb3a75bc24b",
+    "ownerless_x86_64": "793afdcfe833a4b5b4378d98ef090397c1e018bb4e8e6257a2349624b5773cf2",
+    "ownerless_i386": "5fd11a924e1dc59a9e3e26bdd42885b14fef0a6383e4ba73f580c57d1118bc50",
+    "supplied_protected": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "results": {
+    "owned_native_checks_per_architecture": 20990,
+    "owned_ida_assertions_per_architecture": 269,
+    "ownerless_native_checks_per_architecture": 4094,
+    "ownerless_ida_assertions_per_architecture": 1042,
+    "previous_to_new_condition_facts_per_architecture": 3,
+    "previous_to_new_transfer_targets_per_architecture": 2,
+    "unchanged_negative_shapes_per_architecture": 2,
+    "matched_fixture_probe_ida_per_pair": true,
+    "previous_expectation_marker_differs": true,
+    "ownerless_corrupt_oracle_rejected": true,
+    "ctest_passed": 21,
+    "protected_nodes": 75,
+    "protected_edges": 77,
+    "protected_unresolved": 3,
+    "protected_report_equal_to_prior_checkpoint": true
+  },
+  "raw_report_sha256": {
+    "build/vmp-string-io-owned-second/dataflow_analysis.json": "9ce42d9fd73a858d3a8b7d5e5c1c1d0e96906017723062fa373745802f1959c3",
+    "build/vmp-string-io-ownerless-first/ownerless_dataflow_analysis.json": "eabac667b4a076331498aed937ee081a96857df724de5146d985f960a629e04f",
+    "build/vmp-string-io-owned-second/x86_64/inspection/dataflow.json": "c1b30f4faf0b6ed486369a0f06920e5efabdb9d9fe15a044e3f9111eef00c25a",
+    "build/vmp-string-io-owned-second/i386/inspection/dataflow.json": "8acac7100e3133063a21b623ab31b4ba69a52e9630b534f3295cff69692a5ca6",
+    "build/vmp-string-io-ownerless-first/x86_64/inspection/ownerless_dataflow.json": "0bd0f91a5051be5dcdd4ed4b846a7e8e341eb7ac20b6996618093afc151366a4",
+    "build/vmp-string-io-ownerless-first/i386/inspection/ownerless_dataflow.json": "29c2637550ace142e06a10e87ba8a8d90b4d1fe7d812725d9b3c9558feece397",
+    "build/vmp-string-io-prior-owned-x86_64/dataflow.json": "8585383a91e8d8e4851310dcfec76110a08fece2f93ecc857bbdc8c60ebdbe71",
+    "build/vmp-string-io-prior-owned-i386/dataflow.json": "79b8d36dfc9daece191e229840ae8725aba1ad575ec95c64b9ab46f2f50d24a5",
+    "build/vmp-string-io-prior-ownerless-x86_64/ownerless_dataflow.json": "f9b1963f0501993e8717d9aa9a576fa05edc21252b338c8e0fa02b5e451377ee",
+    "build/vmp-string-io-prior-ownerless-i386/ownerless_dataflow.json": "c7f8dcda4b2d59c954f956bc43c26a09264773008ad555c21aa96d4a69ff3ae5",
+    "build/vmp-string-io-protected-first/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa"
+  }
+}

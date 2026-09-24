@@ -745,6 +745,23 @@ struct State
             if (insn.auxpref & (aux_rep | aux_repne))
                 regs[1] = {};
             return;
+        case NN_stos:
+            // The implicit destination may alias every retained byte. STOS
+            // reads but does not change the accumulator or status flags.
+            stack.clear();
+            memory.clear();
+            regs[7] = {};
+            if (insn.auxpref & (aux_rep | aux_repne))
+                regs[1] = {};
+            return;
+        case NN_lods:
+            // LODS reads memory without writing it or the status flags. Even
+            // a byte load invalidates the accumulator's known full value.
+            regs[0] = {};
+            regs[6] = {};
+            if (insn.auxpref & (aux_rep | aux_repne))
+                regs[1] = {};
+            return;
         case NN_bswap:
         {
             const auto input = read(insn.Op1);

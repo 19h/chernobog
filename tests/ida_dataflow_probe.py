@@ -257,6 +257,7 @@ try:
     ida_auto.auto_wait()
     alu_proofs = os.environ.get("CHERNOBOG_ALU_BASELINE") != "1"
     movs_proofs = os.environ.get("CHERNOBOG_MOVS_BASELINE") != "1"
+    string_io_proofs = os.environ.get("CHERNOBOG_STRING_IO_BASELINE") != "1"
     expected = {
         "df_equal": True,
         "df_different": False,
@@ -281,6 +282,10 @@ try:
         "df_rep_movs_zf": movs_proofs,
         "df_movs_plain_cf": movs_proofs,
         "df_cmps_flags_changed": False,
+        "df_rep_stos_cf": string_io_proofs,
+        "df_lods_plain_cf": string_io_proofs,
+        "df_rep_lods_zf": string_io_proofs,
+        "df_scas_flags_changed": False,
         "df_loop": True,
         "df_loop_changes": False,
         "df_stack": True,
@@ -444,6 +449,8 @@ try:
         ("df_memory_alu_rmw_initial", False),
         ("df_memory_alu_rmw_alias", False),
         ("df_rep_movs_alias", False),
+        ("df_stos_alias", False),
+        ("df_lods_memory_target", string_io_proofs),
     ):
         root = address(name)
         reanalyze(root)
@@ -533,6 +540,7 @@ try:
         ("df_rep_movs_register_target", movs_proofs),
         ("df_movs_plain_count_target", movs_proofs),
         ("df_rep_movs_count_unknown", False),
+        ("df_stos_register_target", string_io_proofs),
     ):
         root = address(name)
         reanalyze(root)
