@@ -49,6 +49,14 @@ graph returns `node_limit` and no partial facts. All 21 existing CTest suites
 pass. Historical 64-node measurements and hashes in
 `VMP_OWNERLESS_DATAFLOW.md` are retained unchanged.
 
+The historical protected-corpus plan also records a 97-node root as exceeding
+its original 64-node budget. Its inspection harness now interprets that same
+frozen plan under the 128-node bound and will require exact head and condition
+coverage for that root. The archived protected binaries and corpus report are
+absent from this workspace, so the current result for that 97-node root is
+**unknown**. The 75-node supplied-sample result above is a separate observed
+measurement.
+
 ## Assumption register and falsification probes
 
 | ID | Assumption and dependent result | Stress test / falsification probe |
@@ -57,6 +65,7 @@ pass. Historical 64-node measurements and hashes in
 | B2 | IDA's existing decoded spans and ownerless labels describe the local graph. The 75-node result depends on those inputs. | Recompute in fresh databases; check every admitted owner and the whole checked IDB inventory before/after; alter the decode switch and require abstention. Unknown remote predecessors still prevent global publication. |
 | B3 | The flat unchanged-code, normal-return model applies only up to represented frontiers. The convergence label depends on this scope. | Require visible call and unsupported-control frontiers; do not infer their successors. Dynamic unpacking, exceptions and reentry would falsify a whole-program interpretation. |
 | B4 | Node-bound behavior is exact and architecture independent. The resource conclusion depends on this boundary. | Execute independent x64/i386 128-node and 129-node oracles; require an admitted fact at 128 and no partial facts at 129. |
+| B5 | The archived 97-node plan's historical 64-node classification remains immutable. Any future current-limit corpus result depends on having its exact binary and report. | Retain the frozen plan field and hash; require the 97-node graph under the 128-node current limit when the hash-matched archived inputs are available. Until then its current condition yield is unknown. |
 
 ## Bounds, cost and impact
 
@@ -74,9 +83,10 @@ memory were not used to infer a performance gain.
 - **High impact:** the zero proved conditions and unsupported frontier prevent
   this local completion from being counted as protected semantic recovery.
 - **Medium impact:** predecessor discovery, larger graphs, ordinary proof
-  publication and supported indirect control remain open requirements.
+  publication and supported indirect control remain open requirements. The
+  archived 97-node protected result is unmeasured under the new limit.
 
-QG1: technical scope. QG2: B1–B4 and their probes. QG3: both architectures,
+QG1: technical scope. QG2: B1–B5 and their probes. QG3: both architectures,
 protected prior/new/decode-off controls and installation are covered. QG4:
 counts, limits and complexity bounds are explicit. QG5: node exhaustion and
 frontiers retain uncertainty. QG6: original protected bytes, independently

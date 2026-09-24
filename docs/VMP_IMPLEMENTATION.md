@@ -55,7 +55,9 @@ direct-jump decoding. Its two SETcc and one branch facts remain unresolved;
 the read-only IDB inventory is unchanged. Exact 128/129-node synthetic controls
 pass on x64/i386, with 3,582 native checks and 332 IDA assertions per
 architecture; all 21 CTest suites pass. See `VMP_OWNERLESS_128.md`. The earlier
-64-node checkpoint and its recorded hashes remain historical evidence.
+64-node checkpoint and its recorded hashes remain historical evidence. The
+historical 97-node protected corpus root has not been rerun under the new bound
+because its archived inputs are absent from this workspace.
 
 Guarded immediate-push checkpoint: payload/store effects, virtual-stack role
 hypotheses and source-ordered taken stack checks now have conditional summaries.

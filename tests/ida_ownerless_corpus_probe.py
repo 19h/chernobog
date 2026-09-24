@@ -138,13 +138,14 @@ try:
         )
         check(
             label + " bounded output",
-            len(current["nodes"]) <= 64
-            and current["incoming_examined"] <= 64 * 256
+            current["limits"] == {"nodes": 128, "rounds": 128, "incoming_per_node": 256}
+            and len(current["nodes"]) <= 128
+            and current["incoming_examined"] <= 128 * 256
             and (current["converged"] or not current["records"]),
         )
-        if frozen["node_limit_exceeded"]:
+        if frozen["node_count"] > 128:
             check(
-                label + " oversized graph abstains",
+                label + " current-limit oversized graph abstains",
                 current["truncated"]
                 and not current["converged"]
                 and not current["records"]

@@ -139,6 +139,7 @@ def baseline(corpus_path):
                     "selection": selection,
                     "nodes": [hex(ea) for ea in sorted(seen)],
                     "node_count": len(seen),
+                    # Historical 64-node plan field: retain its archived hash.
                     "node_limit_exceeded": len(seen) > 64,
                     "condition_sites": sorted(row["site"] for row in conditions),
                     "conditions": sorted(conditions, key=lambda row: row["site"]),
@@ -195,6 +196,18 @@ def main():
         "passed": False,
         "scope": plan["scope"],
         "plan_sha256": digest(plan_path),
+        "current_node_limit": 128,
+        "current_admitted_condition_sites": {
+            label: sorted(
+                {
+                    site
+                    for root in case["roots"]
+                    if root["node_count"] <= 128
+                    for site in root["condition_sites"]
+                }
+            )
+            for label, case in plan["cases"].items()
+        },
         "source_sha256": source_hashes,
         "plugin_sha256": digest(args.plugin),
         "ida_sha256": digest(args.ida),

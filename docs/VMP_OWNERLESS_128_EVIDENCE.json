@@ -73,5 +73,25 @@
     "decode_on_prior_and_new": "06057fc0eaf67b39521f259a547815cb931369fe0618b7be3d55b06136770e2d",
     "decode_off": "b4afefea667e6e82507a27ec2f0c59553349cd48f4f1fe5f1a36ed4abb038ab9"
   },
+  "postinstall_first_commit": {
+    "plugin_sha256": "7a2bda1dc1e7fdf786cb3357c1497da1734a9a27e0713c5b01aaca0bf5b6754b",
+    "run": "build/vmp-protected-region-postinstall/run.json",
+    "run_sha256": "16493def41e93cf5ee1059c4853ae57a3e7fa69559f368b99d80d769f425fe0c",
+    "capture": "build/vmp-protected-region-postinstall/protected_region.json",
+    "capture_sha256": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "checks_passed": 8,
+    "signed": true
+  },
+  "archived_harness_followup": {
+    "historical_node_limit": 64,
+    "current_node_limit": 128,
+    "historical_plan_generator_ast_unchanged": true,
+    "archived_binary_and_report_available": false,
+    "current_97_node_result": "unknown",
+    "source_sha256": {
+      "tests/run_ownerless_corpus.py": "3cd8beabdb0a64f230622d10c7265e261ba214089f7505a6e8747eb7b14077f3",
+      "tests/ida_ownerless_corpus_probe.py": "1bf4596380e5e39e2f733ba00669fbfd3926a4eaa24e2f588f28f44acbe1aec3"
+    }
+  },
   "ctest": {"passed": 21, "total": 21}
 }
