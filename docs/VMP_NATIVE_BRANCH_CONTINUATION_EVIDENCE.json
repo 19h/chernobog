@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "scope": "fresh fixed-seed Morok keygen, two observed input-dependent native continuations",
+  "measurement_parent_revision": "c6c07227c492210284b44071554ec8a79f5cfefb",
+  "inputs_sha256": {
+    "protected_binary_each": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+    "version_14_1_stdin": "e19b1a7e7df224c8d242640e0a7b491ef593b37f9cdc49e597f813412502614f",
+    "version_14_0_stdin": "4115827e67efb477877223d5908bec1debf6d7b027842313a9b1704cd5977e32",
+    "unpacked_code_65536_bytes": "5fd0de1c7f61df57706d918f19af3f956a520e6484e156809bead053307d845d",
+    "checkpoint_shadow_suffix": "39a390b19a476ffc747cd052c7ae6522e175a9a66ccebba6a6fc3cb40092a5c0"
+  },
+  "source_sha256": {
+    "src/vm/ida_native_trace.cpp": "a5fe3724775678138ce7b473b02153c8eca02e9811b93b30eceeb18a8d513d73",
+    "src/hybrid/emu_driver.cpp": "84ce582f66bbf59b7b93e674038f220e80dbfb42972e355b91260d87caeb20c6",
+    "src/hybrid/emu_input.hpp": "64724d637d552c1758ea2eeba9bbf9fcf415e94be8c5f445e9fec367eb8a33b3",
+    "src/plugin/idc_api.cpp": "7ed54e8c86c355290806dd6c04ba9d6247941e7f386c49d4c619588b9598d23d",
+    "tests/morok_qemu_packed_branch_continuation.py": "f36750b35236ff897a97674d01856cf7ac2b35830150669a68e80839c3b7cc47",
+    "tests/ida_native_branch_continuation_probe.py": "d28635f80fea22404450b5f86c1993d2aefa9a805512da875d36f26b9b2325a4",
+    "tests/verify_native_branch_continuation.py": "7d28706170db8e3e5ff9d05d546fd3991f21627d1a06c5db33a857a1194a5ab6"
+  },
+  "tools": {
+    "container_image_id": "sha256:b27cd74d026e02bdcdd8bac7c97447fe0d598174f76e252f106239aeb9722cfa",
+    "qemu_x86_64_executable_sha256": "9af86352fd463ad9ec25bdd6a4b891ac6b6a7f3d46a7db3da6f23e2c09094a59",
+    "gdb_multiarch_executable_sha256": "fd04ac26fcce27a0a4ce33ea5f39ebc9052a350eb8be82e23db28fd0e7e0ae40",
+    "gdb_version": "16.3",
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "installed_plugin_sha256": "55609d66b70af9a22ea089aa5d070a6c1767e070c32d28f850484812ff87316f",
+    "capstone_version": "5.0.7"
+  },
+  "raw_reports_sha256": {
+    "build/morok-keygen-evidence-final/report.json": "6447c7b5bc4e01f0bfccc5aa1e3f93059a1b3da8fd83107aed2fb62b3e379e31",
+    "build/morok-runtime-probe/packed-long-v14-1-32768.json": "e94ed7f9afc87b4d6c9b1fa121671471acc633213039373645baa8a74af64fd7",
+    "build/morok-runtime-probe/packed-long-v14-0-32768.json": "4262263716f3f3265161b9e928ec94991655571b23dc2f34030b6ff9139a356e",
+    "build/morok-runtime-probe/packed-branch-continuation-v14-1-pinned.json": "e4cce519ad99394ecf5afdeab9f3690ad78292f5e78b7dfa5cb4d24f9d1f0214",
+    "build/morok-runtime-probe/packed-branch-continuation-v14-0-pinned.json": "6db6da307f7263f3460322e23ff559d283f861149f7a97a39203fe7a45026006",
+    "build/morok-runtime-probe/gdb-packed-branch-continuation-v14-1-pinned.log": "5ffd20e1259d5c931df372b6c1c06d8952df972ee2edd2ea236abb18150175c4",
+    "build/morok-runtime-probe/gdb-packed-branch-continuation-v14-0-pinned.log": "526ec7377f79375a141f88d63e35653089dc35336b3a4e196b60c6172b150f90",
+    "build/ida-branch-continuation-v14-1-pinned/branch_continuation.json": "d40942b4127d1157f4e9cb5db0c94d30521beb6b1334a0c192d9c1e0ffc89930",
+    "build/ida-branch-continuation-v14-0-pinned/branch_continuation.json": "cdb096823b30535672a53514120efdc2a13bc648706925c1acb280bba341ca50",
+    "build/ida-branch-continuation-v14-1-pinned/run.json": "9af36bbd214285320a1150ade2c7beb631d5fd6e51b543f65079d02a7c554120",
+    "build/ida-branch-continuation-v14-0-pinned/run.json": "289c414b92e488f159a6772e4ee2e52462ed506c0fc042aeed7320db40ab4b3e",
+    "build/morok-runtime-probe/branch-continuation-verification-pinned.json": "4b455ac4aff96d3d8e417daee628f11f41bb07f424c9890ace3139482951f3c6"
+  },
+  "observations": {
+    "version_14_1_instruction_entries": 1181,
+    "version_14_0_instruction_entries": 785,
+    "planned_heads_per_input": 10174,
+    "exact_gpr_values_total": 31456,
+    "exact_rip_values_total": 1966,
+    "exact_defined_status_bits_total": 10891,
+    "raw_rflags_differing_entries_each": [32, 32],
+    "undefined_differing_status_bits_each": [39, 40],
+    "exact_selected_boundary_bytes_total": 10752,
+    "final_written_bytes_each": [179, 156],
+    "observed_data_changed_bytes_each": [45, 22],
+    "observed_stack_changed_bytes_each": [52, 52],
+    "narrow_data_bytes": 1696,
+    "wide_data_bytes": 4096,
+    "omitted_rng_word_address": "0x444b08",
+    "observed_rng_word": "0x6553f0ff",
+    "narrow_replay_rng_word": "0x0",
+    "first_rng_dependent_rax_entry_index": 16,
+    "first_rng_dependent_rax_runtime": "0xd87380906cbaddd3",
+    "first_rng_dependent_rax_narrow": "0x0",
+    "stop_reason": "native-region-boundary",
+    "boundary_source": "0x41b882",
+    "boundary_target": "0x41d6c9",
+    "function_evidence_published": false,
+    "vm_identity_proved": false
+  },
+  "controls": {
+    "runtime_register_mutation_rejected": true,
+    "candidate_final_write_mutation_rejected": true,
+    "candidate_head_byte_mutation_rejected": true,
+    "narrow_data_overlay_falsifies_rax": true,
+    "ida_inventory_unchanged_each": true,
+    "ctest_suites_passed": 21,
+    "ctest_suites_total": 21,
+    "full_review_complete": false
+  },
+  "passed": true
+}

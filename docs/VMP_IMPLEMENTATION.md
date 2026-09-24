@@ -177,6 +177,17 @@ The local two-instruction result does not establish whole-path replay or
 logical VM-state identity. See `VMP_NATIVE_BRANCH_CHECKPOINT.md` and its
 evidence JSON.
 
+Protected branch continuation for rows 0b, 6a and V: two new same-process
+QEMU/GDB captures seed bounded IDA replays after the input-dependent branch.
+The 14.1 and 14.0 paths match 1,181 and 785 entered PCs and instruction
+bytes respectively, 31,456 GPR values, 1,966 RIP values, 10,891
+architecturally defined status bits, and 10,752 selected boundary data/stack
+bytes. A narrower data overlay misses the live RNG state at `0x444b08` and
+falsifies RAX at instruction 16, while the 4,096-byte overlay matches. Both
+replays stop at the same cross-region CALL target `0x41d6c9`; they do not
+establish its callee path or logical VM-state identity. See
+`VMP_NATIVE_BRANCH_CONTINUATION.md` and its evidence JSON.
+
 Ownerless native graph checkpoint: an explicit-root read-only inspector now
 propagates register, flag and stack facts across existing decoded ownerless
 branches and loops, with architectural successors, entry auditing and visible
