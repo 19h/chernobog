@@ -159,16 +159,17 @@ inline EvidenceView project_evidence_view(const TargetEvidence &source)
             std::string fragments;
             for (size_t i = 0; i < std::min<size_t>(parts.size(), 16); ++i)
                 fragments += view_hex(parts[i].site) + ":" + view_hex(parts[i].sequence) + ":" +
+                             view_hex(parts[i].address) + ":" +
                              std::to_string(parts[i].observed_size) + ";";
             const auto &use = candidate.witnesses[run];
             EvidenceViewRow row{
                 {"producer", "executed-read-stream"},
                 {"truth", "observation"},
                 {"assumption",
-                 "contiguous recorded reads; only disjoint heap writes may interleave; no unknown memory effect, call or lifetime boundary; completed temporal model"},
+                 "exact recorded reads cover contiguous addresses; heap reads may arrive in any order; only disjoint heap writes may interleave; no unknown memory effect, call or lifetime boundary; completed temporal model"},
                 {"first_sequence", view_hex(first.sequence)},
                 {"last_sequence", view_hex(last.sequence)},
-                {"address", view_hex(first.address)},
+                {"address", view_hex(use.address)},
                 {"allocation", view_hex(first.allocation_id)},
                 {"generation", view_hex(first.generation)},
                 {"read_count", std::to_string(parts.size())},

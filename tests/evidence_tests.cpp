@@ -1666,6 +1666,93 @@ void native_interleaved_read_regressions()
     std::cout << "interleaved read checks: " << checks << '\n';
 }
 
+void native_permuted_read_regressions()
+{
+    constexpr uint8_t value[8] = {'s', 'e', 'c', 'r', 'e', 't', '!', 0};
+    constexpr unsigned order[8] = {3, 1, 6, 0, 7, 2, 5, 4};
+    TargetEvidence evidence;
+    evidence.scope.function_start = 0x1000;
+    uint64_t first_address = 0;
+    for (uint32_t id : {1u, 2u})
+    {
+        TemporalMemory memory;
+        memory.enabled = true;
+        memory.context = 0x1000;
+        memory.run_id = id;
+        memory.seed = id + 20;
+        memory.heap_begin = 0x8000 + 0x1000 * id;
+        memory.heap_end = memory.heap_begin + 0x1000;
+        const uint64_t address = memory.allocate(32, 0x1100, 0x2000, 1);
+        if (id == 1)
+            first_address = address;
+        uint64_t sequence = 10;
+        for (const unsigned offset : order)
+        {
+            memory.capture(0x1200, 0, -1, UseProducer::EXECUTED_READ, DataScope::HEAP,
+                           address + offset, value + offset, 1, 1, sequence);
+            evidence.events.data.push_back({0x1200, address + offset, value[offset], 1,
+                                            RAX_MEM_READ, DataScope::HEAP, sequence + 1, id,
+                                            memory.seed});
+            sequence += 4;
+        }
+        check(memory.release(address, 100), "release permuted read allocation");
+        evidence.events.uses.insert(evidence.events.uses.end(), memory.uses.begin(),
+                                    memory.uses.end());
+        evidence.events.allocations.insert(evidence.events.allocations.end(),
+                                           memory.allocations.begin(), memory.allocations.end());
+        RunObservation run;
+        run.ran = true;
+        run.provenance.run_id = id;
+        run.provenance.seed = memory.seed;
+        run.outcome.temporal_observation_available = true;
+        run.outcome.temporal_capture_complete = true;
+        run.outcome.memory_observation_available = true;
+        evidence.runs.push_back(run);
+    }
+    const auto candidates = hybrid_consensus_native_read_strings(evidence);
+    check(candidates.size() == 1 && candidates[0].value == "secret!" &&
+              candidates[0].use.address == first_address &&
+              candidates[0].read_fragments.size() == 2 &&
+              candidates[0].read_fragments[0].size() == 8 &&
+              candidates[0].read_fragments[0][0].address == first_address + order[0] &&
+              candidates[0].read_fragments[0][3].address == first_address,
+          "permuted reads reconstruct address order while preserving execution order");
+    const auto view = project_evidence_view(evidence);
+    check(view.read_streams.size() == 2 && view.read_streams[0].at("address") == "0x9000" &&
+              view.read_streams[0].at("first_sequence") == "0xa" &&
+              view.read_streams[0].at("fragments").find("0x9003") != std::string::npos,
+          "permuted evidence reports span start and the original first read address");
+    auto overlap = evidence;
+    overlap.events.data.push_back(
+        {0x1300, first_address + 5, 0, 1, RAX_MEM_WRITE, DataScope::HEAP, 16, 1, 21});
+    check(hybrid_consensus_native_read_strings(overlap).empty(),
+          "write to future permuted byte vetoes reconstruction");
+    auto disjoint = evidence;
+    disjoint.events.data.push_back(
+        {0x1300, first_address + 24, 0, 1, RAX_MEM_WRITE, DataScope::HEAP, 16, 1, 21});
+    check(hybrid_consensus_native_read_strings(disjoint).size() == 1,
+          "disjoint same-allocation write retains permuted reconstruction");
+    auto duplicate = evidence;
+    duplicate.events.uses[1].address = duplicate.events.uses[0].address;
+    duplicate.events.uses[1].offset = duplicate.events.uses[0].offset;
+    duplicate.events.uses[1].bytes = duplicate.events.uses[0].bytes;
+    duplicate.events.data[1].addr = duplicate.events.data[0].addr;
+    duplicate.events.data[1].value = duplicate.events.data[0].value;
+    check(hybrid_consensus_native_read_strings(duplicate).empty(),
+          "duplicate read address does not select an arbitrary byte");
+    auto hole = evidence;
+    hole.events.uses[1].address += 8;
+    hole.events.uses[1].offset += 8;
+    hole.events.data[1].addr += 8;
+    check(hybrid_consensus_native_read_strings(hole).empty(),
+          "hole in permuted address span rejects reconstruction");
+    auto internal_zero = evidence;
+    internal_zero.events.uses[1].bytes[0] = 0;
+    internal_zero.events.data[1].value = 0;
+    check(hybrid_consensus_native_read_strings(internal_zero).empty(),
+          "embedded NUL cannot turn trailing permuted bytes into a prefix candidate");
+}
+
 int main(int argc, char **argv)
 {
     evidence_view_regressions();
@@ -1674,6 +1761,7 @@ int main(int argc, char **argv)
     temporal_memory_regressions();
     native_read_stream_regressions();
     native_interleaved_read_regressions();
+    native_permuted_read_regressions();
 #ifndef CHERNOBOG_LEGACY_EVIDENCE
     runtime_string_regressions();
 #endif

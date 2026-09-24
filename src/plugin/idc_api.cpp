@@ -1563,7 +1563,9 @@ error_t idaapi idc_rax_use_string(idc_value_t *argv, idc_value_t *r)
     set_u64(r, "occurrence", use.occurrence);
     set_u64(r, "argument", uint64_t(int64_t(use.argument)));
     set_str(r, "producer", hybrid::use_producer_name(use.producer));
-    set_u64(r, "first_sequence", use.sequence);
+    set_u64(r, "first_sequence",
+            candidate.read_fragments.empty() ? use.sequence
+                                             : candidate.read_fragments.front().front().sequence);
     set_u64(r, "last_sequence",
             candidate.read_fragments.empty() ? use.sequence
                                              : candidate.read_fragments.front().back().sequence);

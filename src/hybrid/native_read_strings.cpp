@@ -19,6 +19,13 @@ struct Stream
     std::vector<UseSnapshot> parts;
     std::string value;
 };
+struct PermutedGroup
+{
+    Stream stream;
+    std::map<uint64_t, uint8_t> bytes;
+    bool invalid = false;
+};
+using PermutedKey = std::tuple<uint64_t, uint64_t, uint64_t, uint64_t>;
 using Endpoint = std::tuple<DataScope, uint64_t, uint64_t, uint64_t>;
 Endpoint endpoint(const UseSnapshot &use, uint64_t address)
 {
@@ -275,6 +282,7 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
         std::sort(records.uses.begin(), records.uses.end(),
                   [](const auto *a, const auto *b) { return a->sequence < b->sequence; });
         std::map<Endpoint, Stream> pending;
+        std::map<PermutedKey, PermutedGroup> permuted;
         uint64_t previous = 0;
         bool first = true;
         size_t retained = 0;
@@ -305,6 +313,55 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
                 ambiguous.insert(key);
             return true;
         };
+        const auto finish_permuted = [&]()
+        {
+            for (auto &[key, group] : permuted)
+            {
+                (void)key;
+                const auto &parts = group.stream.parts;
+                if (group.invalid || parts.size() < 2 || group.bytes.empty())
+                    continue;
+                bool ascending = true;
+                uint64_t next_address = parts.front().address;
+                for (const auto &part : parts)
+                {
+                    if (part.address != next_address ||
+                        next_address > UINT64_MAX - part.observed_size)
+                    {
+                        ascending = false;
+                        break;
+                    }
+                    next_address += part.observed_size;
+                }
+                if (ascending)
+                    continue; // The existing forward stream owns this shape.
+                const uint64_t start = group.bytes.begin()->first;
+                const uint64_t last = group.bytes.rbegin()->first;
+                if (last == UINT64_MAX || last - start + 1 != group.bytes.size() ||
+                    group.bytes.rbegin()->second != 0)
+                    continue;
+                if (std::any_of(group.bytes.begin(), std::prev(group.bytes.end()),
+                                [](const auto &entry) { return entry.second == 0; }))
+                    continue;
+                const auto anchor =
+                    std::find_if(parts.begin(), parts.end(),
+                                 [start](const auto &part) { return part.address == start; });
+                if (anchor == parts.end())
+                    continue;
+                Stream stream;
+                stream.use = *anchor;
+                stream.use.producer = UseProducer::EXECUTED_READ_STREAM;
+                stream.use.bytes.clear();
+                stream.use.observed_size = group.bytes.size();
+                stream.parts = parts; // Execution order is kept for source witnesses.
+                for (const auto &entry : group.bytes)
+                    stream.use.bytes.push_back(entry.second);
+                if (!retain(std::move(stream)))
+                    return false;
+            }
+            permuted.clear();
+            return true;
+        };
         for (const auto *pointer : records.uses)
         {
             const auto &use = *pointer;
@@ -312,7 +369,11 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
                 return {};
             const auto barrier = records.barriers.upper_bound(previous);
             if (barrier != records.barriers.end() && *barrier <= use.sequence)
+            {
+                if (!finish_permuted())
+                    return {};
                 pending.clear();
+            }
             previous = use.sequence;
             first = false;
             if (bindings && use.producer == UseProducer::MODELED_ARGUMENT)
@@ -329,10 +390,31 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
                 if (bindings)
                     ambiguous.insert({use.semantic_key(), {{use.site, use.observed_size}}});
                 pending.clear();
+                permuted.clear();
                 continue;
             }
             if (bindings && !retain(Stream{use, {use}, {}}))
                 return {};
+            if (use.scope == DataScope::HEAP)
+            {
+                const PermutedKey key{use.context, use.site, use.allocation_id, use.generation};
+                auto &group = permuted[key];
+                if (group.stream.parts.empty())
+                    group.stream.use = use;
+                else if (!uninterrupted(group.stream, use.sequence, records))
+                    group.invalid = true;
+                if (!group.invalid &&
+                    use.bytes.size() > TemporalMemory::snapshot_limit - group.bytes.size())
+                    group.invalid = true;
+                if (!group.invalid)
+                    for (size_t index = 0; index < use.bytes.size(); ++index)
+                        if (!group.bytes.emplace(use.address + index, use.bytes[index]).second)
+                        {
+                            group.invalid = true;
+                            break;
+                        }
+                group.stream.parts.push_back(use);
+            }
             Stream stream;
             if (const auto found = pending.find(endpoint(use, use.address)); found != pending.end())
             {
@@ -371,6 +453,8 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
             if (stream.parts.size() > 1 && !retain(std::move(stream)))
                 return {};
         }
+        if (!finish_permuted())
+            return {};
     }
     for (auto &[key, witnesses] : values)
     {

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "source_sha256": {
+    "src/hybrid/native_read_strings.cpp": "c350602eda45e86628815a71bf953cc72b30410e1bb92b0331ec54c84a65331a",
+    "src/hybrid/evidence_view.hpp": "d5898f5f81945c21e4987c2e0e8eddcb93ca1646496b0f102ac0dcc3213d74d1",
+    "src/plugin/idc_api.cpp": "b48e772f87206003fac45aa2e5590729cd904e4ced43b28d9be1faf796cb66ff",
+    "tests/evidence_tests.cpp": "5c4b1e41e40ed51ecf9ab79d033fc247d4796f7f4d39c2281e3b59e6ecb7b49b",
+    "tests/vmp_native/native_permuted_strings.c": "b3fbd3c67c2ad89649ed4ea68a674cd8b655d803c40c6460875b4a8c632506a4",
+    "tests/ida_permuted_read_stream_probe.py": "b04b521ad6dc69e842d90a3ff21cddcf713bce4ddac2cd44c65d88cacad72d99",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248"
+  },
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "previous_plugin_sha256": "5cac4a167799f8cc309a26f707a138c8fc49adbda491de27afbf35f37f5c0817",
+  "modified_plugin_sha256": "56b763fb1fef08ae7d9de3668fffbecd659e560fc377ee16941b534881823104",
+  "fixtures": {
+    "positive": "73eb60924dfbe1f69e9dc440a96e7f34035fa23f3b44e1e69ec3e87da194a52e",
+    "disjoint_write": "40755906aaa066ee8230ffee2fbf7e499aeec69a72bf56d83cebb49c64a8a55a",
+    "wrong_oracle": "ec84171445c5c26f527874be6680124a36ed60fadbb9e1af516aea3457e195f0"
+  },
+  "native_exit_codes": {
+    "positive": 0,
+    "disjoint_write": 0,
+    "wrong_oracle": 1
+  },
+  "positive_literal_in_strings_output": false,
+  "ida_profiles": {
+    "previous_positive": {
+      "candidates": 0,
+      "run_sha256": "cef17be707117ef6461007e675198d1224865ca58f7e55f2b51be41877ca5218",
+      "probe_sha256": "4c4b7f78d58752f22e272a2fd9a39a82aefefb4bdf781f3ba8ba570c62efb579"
+    },
+    "modified_positive": {
+      "candidates": 1,
+      "value": "secret!",
+      "read_fragments_per_run": 8,
+      "run_sha256": "44274d9bcdc29f053c538cd543d41f5e61214f9fbc2e3b91226fa747c2572a34",
+      "probe_sha256": "0c008346147ea812ea1a800b2831b8aadc2573674462fffbc1c5c833c2e82833"
+    },
+    "modified_disjoint_write": {
+      "candidates": 1,
+      "value": "secret!",
+      "read_fragments_per_run": 8,
+      "run_sha256": "d9607ccb36ba7641c27ff6e52710ba1bf5f87b72526a29c2da69cabc275e2a7d",
+      "probe_sha256": "307350d6d58e1283f0319bc7938b5ae63d8eaa4881161ff3aad521a9ece4cf12"
+    }
+  },
+  "ida_checks_per_profile": 9,
+  "ida_profile_errors": 0,
+  "complete_returned_runs_per_profile": 4,
+  "ctest": {"passed": 21, "total": 21}
+}
