@@ -222,6 +222,36 @@ class CorpusTests(unittest.TestCase):
         self.assertTrue(measurement["output_exceeded"])
         self.assertLessEqual(len(out), 2 * 1024 * 1024)
 
+    def test_process_output_limit_survives_failed_group_signal(self):
+        command = [
+            sys.executable,
+            "-c",
+            "import sys,time; sys.stdout.write('x' * (2*1024*1024+1)); "
+            "sys.stdout.flush(); time.sleep(1)",
+        ]
+        for error in (PermissionError("denied"), ProcessLookupError("missing group")):
+            with self.subTest(error=type(error).__name__):
+                with patch.object(corpus.os, "killpg", side_effect=error) as group:
+                    measurement, output, _ = corpus.execute(command)
+                group.assert_called_once()
+                self.assertTrue(measurement["output_exceeded"])
+                self.assertLess(measurement["exit_code"], 0)
+                self.assertGreater(measurement["peak_resident_bytes"], 0)
+                self.assertEqual(len(output), 2 * 1024 * 1024)
+
+    def test_process_limit_never_signals_another_group(self):
+        with (
+            patch.object(corpus.os, "getpgid", return_value=corpus.os.getpgrp()),
+            patch.object(corpus.os, "killpg") as group,
+        ):
+            measurement, _, _ = corpus.execute(
+                [sys.executable, "-c", "import time; time.sleep(1)"], timeout=0.05
+            )
+        group.assert_not_called()
+        self.assertTrue(measurement["timed_out"])
+        self.assertLess(measurement["exit_code"], 0)
+        self.assertGreater(measurement["peak_resident_bytes"], 0)
+
     def test_macho_bounds_and_initialized_text(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "image"

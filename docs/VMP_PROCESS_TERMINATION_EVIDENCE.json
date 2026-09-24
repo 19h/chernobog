@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "process_api_references": {
+    "subprocess": "https://docs.python.org/3/library/subprocess.html",
+    "os": "https://docs.python.org/3/library/os.html"
+  },
+  "source_sha256": {
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/vmp_corpus_tests.py": "8f45279ca9ed0056c6f45905365f81cdeabefea34b1be9c7728b0afef94b33d0",
+    "tests/run_supplied_hello_pair.py": "8d48c9d9f2cbd586cab3f376ae4f6fa6b5600ff7a398a2d33041b8efb7895a32"
+  },
+  "rejected_runner_controls": {
+    "prior_permission_error": "uncaught PermissionError from os.killpg on output limit",
+    "prior_wrong_group": "os.killpg called despite mismatched child group",
+    "fixed_injected_errors": ["PermissionError", "ProcessLookupError"],
+    "fixed_wrong_group_killpg_calls": 0,
+    "fixed_signal_exit_negative": true,
+    "fixed_captured_stdout_limit_bytes": 2097152,
+    "direct_pid_fallback_descendant_cleanup": "unknown"
+  },
+  "ctest": {
+    "passed": 21,
+    "total": 21,
+    "corpus_python_cases": 21,
+    "log": "build/Testing/Temporary/LastTest.log",
+    "log_sha256": "466813ec179628730df3234d3a23c08dd797a75349c691f1f5ebcd7f78f3ee8a"
+  },
+  "supplied_pair": {
+    "report": "build/vmp-process-termination-hello-final/paired_process.json",
+    "report_sha256": "6c6ca1c49ce80f42c3d137ad0c7de7b3f8fa8cdb6f0048e66a3c5a4b7a2f9c27",
+    "original": "samples/foo_x86_orig",
+    "original_sha256": "443b0a464d7de68c5a26a3e31a92e694356ccd1eef3127d522309ac672ecc7c7",
+    "protected": "samples/foo_x86_vmp",
+    "protected_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "trials": 3,
+    "exit_code": 0,
+    "equal_stdout_hex": "48656c6c6f20576f726c64",
+    "stderr_bytes": 0
+  }
+}

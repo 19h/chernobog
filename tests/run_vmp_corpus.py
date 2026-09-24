@@ -165,8 +165,26 @@ def function_bytes(path, section, address, size):
     return Path(path).read_bytes()[start : start + size]
 
 
+def terminate_bounded_process(process):
+    """Signal the child's verified group, falling back to its PID."""
+    try:
+        own_group = os.getpgid(process.pid) == process.pid
+    except (ProcessLookupError, PermissionError):
+        own_group = False
+    if own_group:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+            return
+        except (ProcessLookupError, PermissionError):
+            pass
+    try:
+        os.kill(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
 def execute(args, cwd=None, env=None, timeout=30):
-    """Per-process wait4 accounting; bounded output and termination of own group."""
+    """Per-process wait4 accounting; bounded output and scoped termination."""
     started = time.perf_counter_ns()
     timed_out = output_exceeded = False
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
@@ -189,7 +207,7 @@ def execute(args, cwd=None, env=None, timeout=30):
             )
             timed_out = time.perf_counter_ns() - started > timeout * 1_000_000_000
             if timed_out or output_exceeded:
-                os.killpg(process.pid, signal.SIGKILL)
+                terminate_bounded_process(process)
                 _, status, usage = os.wait4(process.pid, 0)
                 break
             time.sleep(0.02)

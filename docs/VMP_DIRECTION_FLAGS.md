@@ -43,9 +43,9 @@ the local result does not measure other protected functions or dynamic paths.
 The production build and all 21 CTest suites pass. One concurrent CTest run
 encountered `PermissionError` in the existing process runner's `killpg` path;
 the isolated failing suite and a subsequent complete 21-suite run passed.
-The cause of that process-runner error is unknown. It is outside the flag
-transfer and remains a separate reliability issue. Exact source, fixture,
-probe, plugin and report hashes are
+The cause of that process-runner error was unknown at this checkpoint. A later
+bounded shutdown correction is recorded in `VMP_PROCESS_TERMINATION.md`.
+Exact source, fixture, probe, plugin and report hashes are
 recorded in `VMP_DIRECTION_FLAGS_EVIDENCE.json`.
 
 ## Assumption register and falsification probes
