@@ -648,7 +648,11 @@ def main():
 
         for name, expected, destination in (
             ("df_stack_top_transfer", True, "df_stack_top_destination"),
-            ("df_stack_top_overwrite", False, "df_stack_top_overwritten_destination"),
+            (
+                "df_stack_top_overwrite",
+                os.environ.get("CHERNOBOG_STACK_STORE_BASELINE") != "1",
+                "df_stack_top_overwritten_destination",
+            ),
             ("df_stack_top_dynamic", False, "df_stack_top_dynamic_seven"),
         ):
             root, instructions = prepare_prefix(name)
@@ -669,6 +673,31 @@ def main():
                 and row["target_proof"] == ("stack-definition" if expected else "unresolved")
                 and row["target"] == (hex(symbol(destination)) if expected else "unknown"),
             )
+            if name == "df_stack_top_overwrite":
+                store = next(
+                    instruction
+                    for instruction in instructions
+                    if ida_bytes.get_bytes(instruction.ea, instruction.size)
+                    in (b"\x89\x04\x24", b"\x48\x89\x04\x24")
+                )
+                opcode = store.ea + (store.size == 4)
+                assert ida_bytes.get_byte(opcode) == 0x89
+                assert ida_bytes.patch_byte(opcode, 0x88)
+                partial = inspect("df_stack_top_partial_store", root)
+                partial_row = row_at(partial, pushes[-1].ea, "push-return")
+                check(
+                    "partial stack-top write leaves ownerless target unresolved",
+                    partial_row["status"] == "unresolved" and partial_row["target"] == "unknown",
+                )
+                assert ida_bytes.patch_byte(opcode, 0x89)
+                restored = inspect("df_stack_top_overwrite_restored", root)
+                restored_row = row_at(restored, pushes[-1].ea, "push-return")
+                check(
+                    "restored stack-top store recomputes ownerless target",
+                    restored_row["status"] == ("proved" if expected else "unresolved")
+                    and restored_row["target"]
+                    == (hex(symbol(destination)) if expected else "unknown"),
+                )
 
         for name, expected in (
             ("df_memory_store_transfer", True),

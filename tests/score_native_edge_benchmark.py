@@ -17,8 +17,8 @@ SOURCE_PINS = {
     "tests/vmp_native/dataflow_main.c": "d4e3522f2dbf3d1152817a95b8888fa55499c47154d1d0db478ac80ba4c554ce",
 }
 PROBE_PINS = {
-    "tests/ida_dataflow_probe.py": "26543c9acef760590ec728a9195c35e81c097599c3e1ecef38527b4abc3d4163",
-    "tests/ida_ownerless_dataflow_probe.py": "09a3e994ff917bfc4954f568891a17168d96dd56c3019565bcfe7a4bb4cad0c4",
+    "tests/ida_dataflow_probe.py": "e6f85b82cc257b72a91495d6b21bb73fb05996d75457dfa6f295e90fb7bd0738",
+    "tests/ida_ownerless_dataflow_probe.py": "68a6c26631bfd0eed0420f56240200e32b4b69b07310922a3550f494fcc9562b",
 }
 
 # Targets are globally named labels in dataflow.S. Each edge is one distinct

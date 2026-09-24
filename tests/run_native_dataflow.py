@@ -17,6 +17,7 @@ def main():
     parser.add_argument("--linux32-image")
     parser.add_argument("--docker-context", default="orbstack")
     parser.add_argument("--rep-count-baseline", action="store_true")
+    parser.add_argument("--stack-store-baseline", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     output = args.output_dir.resolve()
@@ -119,6 +120,11 @@ def main():
                     *(
                         ["--set", "CHERNOBOG_REP_COUNT_BASELINE=1"]
                         if args.rep_count_baseline
+                        else []
+                    ),
+                    *(
+                        ["--set", "CHERNOBOG_STACK_STORE_BASELINE=1"]
+                        if args.stack_store_baseline
                         else []
                     ),
                 ],

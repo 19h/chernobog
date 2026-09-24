@@ -421,6 +421,9 @@ struct State
         const auto store_address =
             local_memory_store ? memory_address(insn, insn.Op1) : std::nullopt;
         const auto store_value = local_memory_store ? read(insn.Op2, width) : std::nullopt;
+        const bool local_stack_store = local_memory_store && stack_top(insn, insn.Op1) &&
+                                       insn.Op2.type == o_reg &&
+                                       register_slice(insn.Op2).width == word_bits;
         const unsigned load_width = unsigned(get_dtype_size(insn.Op2.dtype) * 8);
         const Slice load_register = register_slice(insn.Op1);
         const bool local_memory_load =
@@ -500,7 +503,8 @@ struct State
             if (has_cf_chg(features, index) && type == o_reg &&
                 register_slice(insn.ops[index]).reg < 0)
                 stack.clear();
-            if (exchange_reg == nullptr && has_cf_chg(features, index) &&
+            if (exchange_reg == nullptr && !(local_stack_store && index == 0) &&
+                has_cf_chg(features, index) &&
                 (type == o_mem || type == o_displ || type == o_phrase))
                 stack.clear();
             if (has_cf_chg(features, index) &&
@@ -536,6 +540,15 @@ struct State
             else
                 move_value = read(insn.Op2, width);
             write(insn.Op1, move_value, is64);
+            if (local_stack_store)
+            {
+                Word replacement;
+                replacement.write(word_bits, 0, store_value, is64);
+                if (stack.empty())
+                    stack.push_back(replacement);
+                else
+                    stack.back() = replacement;
+            }
             if (store_address && store_value &&
                 writable_range(*store_address, width / 8, word_bits))
                 store_memory(*store_address, width, *store_value);

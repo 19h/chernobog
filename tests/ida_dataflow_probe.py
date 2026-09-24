@@ -406,17 +406,70 @@ try:
         for row in captures["df_stack_top_overwrite"]["records"]
         if row["kind"] == "stack-transfer" and row["fresh"] == "true"
     ]
+    stack_store_proofs = os.environ.get("CHERNOBOG_STACK_STORE_BASELINE") != "1"
     check(
-        "overwritten stack top retains an unresolved candidate",
+        "overwritten stack top has expected transfer status",
         len(overwrite_rows) == 1
-        and overwrite_rows[0]["truth"] == "candidate"
-        and overwrite_rows[0]["edge"] == "false"
-        and overwrite_rows[0]["target_basis"] == "unresolved",
+        and overwrite_rows[0]["truth"] == ("native-proof" if stack_store_proofs else "candidate")
+        and overwrite_rows[0]["edge"] == ("true" if stack_store_proofs else "false")
+        and overwrite_rows[0]["target_basis"]
+        == ("stack-definition" if stack_store_proofs else "unresolved")
+        and overwrite_rows[0].get("target", "unknown")
+        == (
+            hex(address("df_stack_top_overwritten_destination"))
+            if stack_store_proofs
+            else "unknown"
+        ),
+    )
+    check(
+        "overwritten stack top IDB user edge",
+        any(
+            x.iscode and x.to == address("df_stack_top_overwritten_destination") and x.user
+            for x in idautils.XrefsFrom(int(overwrite_rows[0]["site"], 0))
+        )
+        == stack_store_proofs,
     )
     check(
         "overwritten stack candidate retains its stack-source scope",
         len(overwrite_rows) == 1
         and "bounded prior stack word" in overwrite_rows[0]["memory_model"],
+    )
+    overwrite_store = next(
+        item
+        for item in captures["df_stack_top_overwrite"]["native_inventory"]
+        if item["bytes"] in ("890424", "48890424")
+    )
+    store_opcode = int(overwrite_store["site"], 0) + (overwrite_store["bytes"].startswith("48"))
+    assert ida_bytes.get_byte(store_opcode) == 0x89
+    assert ida_bytes.patch_byte(store_opcode, 0x88)
+    reanalyze(overwrite_root)
+    captures["df_stack_top_partial_store"] = inspect(overwrite_root)
+    partial_rows = [
+        row
+        for row in captures["df_stack_top_partial_store"]["records"]
+        if row["kind"] == "stack-transfer" and row["fresh"] == "true"
+    ]
+    check(
+        "partial stack-top write abstains and revokes its user edge",
+        len(partial_rows) == 1
+        and partial_rows[0]["truth"] == "candidate"
+        and partial_rows[0]["edge"] == "false"
+        and captures["df_stack_top_partial_store"]["user_edges"].get(partial_rows[0]["site"]) == [],
+    )
+    assert ida_bytes.patch_byte(store_opcode, 0x89)
+    reanalyze(overwrite_root)
+    captures["df_stack_top_overwrite_restored"] = inspect(overwrite_root)
+    restored_rows = [
+        row
+        for row in captures["df_stack_top_overwrite_restored"]["records"]
+        if row["kind"] == "stack-transfer" and row["fresh"] == "true"
+    ]
+    check(
+        "restored stack-top store recomputes the expected edge",
+        len(restored_rows) == 1
+        and restored_rows[0]["truth"] == ("native-proof" if stack_store_proofs else "candidate")
+        and captures["df_stack_top_overwrite_restored"]["user_edges"].get(restored_rows[0]["site"])
+        == ([hex(address("df_stack_top_overwritten_destination"))] if stack_store_proofs else []),
     )
     dynamic_root = address("df_stack_top_dynamic")
     reanalyze(dynamic_root)

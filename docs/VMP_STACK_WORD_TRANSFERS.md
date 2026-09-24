@@ -2,9 +2,13 @@
 
 Review rows 1a and 1b require exact targets for stack-mediated transfers while
 retaining their native stack effects. A `PUSH [SP]; RET` pair can read a word
-established by a preceding local `PUSH`. The x86 adapter now admits that target
-only when a bounded must-analysis proves the complete word at the current
-stack top. The portable classifier gives it a distinct `stack_definition`
+established by a preceding local `PUSH`. This is the historical prior-word
+checkpoint; the later exact full-word overwrite result is recorded in
+`VMP_STACK_TOP_STORES.md`.
+
+The x86 adapter admits that target only when a bounded must-analysis proves
+the complete word at the current stack top. The portable classifier gives it
+a distinct `stack_definition`
 proof kind, bound to a full-width, no-displacement, no-index stack read.
 Unlike an immutable-image target, the proof depends on prior instruction bytes
 and on the absence of an intervening modeled write. The original memory read,
