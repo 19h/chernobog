@@ -3,7 +3,9 @@
  */
 #pragma once
 
+#include <array>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace chernobog::hybrid
@@ -13,6 +15,19 @@ namespace chernobog::hybrid
 // values are absent the deterministic seed corpus remains the fallback.
 struct EmuInput
 {
+    // Caller-observed x86-64 instruction-entry state. Only bounded native
+    // region state capture accepts it. Explicit stack-relative fields are
+    // translated into the isolated scratch stack; other values stay literal.
+    struct NativeEntryState
+    {
+        uint64_t observed_sp = 0;
+        std::array<uint64_t, 16> gprs{}; // RAX order: RAX, RCX, ..., R15
+        uint64_t rflags = 0;
+        std::vector<uint8_t> stack_above;
+        uint16_t stack_relative_gpr_mask = 0;
+        std::vector<uint32_t> stack_relative_word_offsets;
+    };
+    std::optional<NativeEntryState> native_entry;
     // Explicit native-region scratch objects. Ordinary function execution rejects
     // these; no pointer inference, image patching, or allocator model is implied.
     struct NativeObject

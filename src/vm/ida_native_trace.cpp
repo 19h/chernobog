@@ -211,6 +211,110 @@ bool parse_input(const std::string &request, hybrid::EmuInput &input)
     }
     return true;
 }
+bool parse_hex_u64(const qstring &text, uint64_t &value)
+{
+    if (text.length() < 3 || text.length() > 18 || text[0] != '0' || text[1] != 'x')
+        return false;
+    value = 0;
+    for (size_t index = 2; index < text.length(); ++index)
+    {
+        const int nibble = digit(text[index]);
+        if (nibble < 0)
+            return false;
+        value = (value << 4) | unsigned(nibble);
+    }
+    return true;
+}
+bool parse_entry_replay(const std::string &request, std::string &shadow_path,
+                        hybrid::EmuInput &input)
+{
+    if (request.empty() || request.size() > 8192 || request.find('\0') != std::string::npos)
+        return false;
+    unsigned depth = 0;
+    bool quoted = false, escaped = false;
+    for (char c : request)
+    {
+        if (quoted)
+        {
+            if (escaped)
+                escaped = false;
+            else if (c == '\\')
+                escaped = true;
+            else if (c == '"')
+                quoted = false;
+            continue;
+        }
+        if (c == '"')
+            quoted = true;
+        else if (c == '[' || c == '{')
+        {
+            if (++depth > 2)
+                return false;
+        }
+        else if (c == ']' || c == '}')
+        {
+            if (!depth)
+                return false;
+            --depth;
+        }
+    }
+    if (depth || quoted)
+        return false;
+    jvalue_t root;
+    if (parse_json_string(&root, request.c_str()) != eOk || root.type() != JT_OBJ ||
+        !keys(root.obj(), {"shadow_file", "observed_sp", "gprs", "rflags", "stack_above",
+                           "stack_relative_gprs", "stack_relative_words"}))
+        return false;
+    const auto *path = root.obj().get_value("shadow_file", JT_STR);
+    const auto *sp = root.obj().get_value("observed_sp", JT_STR);
+    const auto *gprs = root.obj().get_value("gprs", JT_ARR);
+    const auto *flags = root.obj().get_value("rflags", JT_STR);
+    const auto *stack = root.obj().get_value("stack_above", JT_STR);
+    const auto *relative_gprs = root.obj().get_value("stack_relative_gprs", JT_ARR);
+    const auto *relative_words = root.obj().get_value("stack_relative_words", JT_ARR);
+    if (!path || !sp || !gprs || !flags || !stack || !relative_gprs || !relative_words ||
+        path->qstr().empty() || path->qstr().length() > 4096 || gprs->arr().values.size() != 16 ||
+        relative_gprs->arr().values.size() > 16 || relative_words->arr().values.size() > 64)
+        return false;
+    shadow_path.assign(path->qstr().c_str(), path->qstr().length());
+    hybrid::EmuInput::NativeEntryState state;
+    if (!parse_hex_u64(sp->qstr(), state.observed_sp) ||
+        !parse_hex_u64(flags->qstr(), state.rflags))
+        return false;
+    for (size_t index = 0; index < 16; ++index)
+    {
+        const auto &value = gprs->arr().values[index];
+        if (value.type() != JT_STR || !parse_hex_u64(value.qstr(), state.gprs[index]))
+            return false;
+    }
+    const auto &hex_stack = stack->qstr();
+    if (hex_stack.empty() || hex_stack.length() > 1024 || hex_stack.length() % 16)
+        return false;
+    for (size_t index = 0; index < hex_stack.length(); index += 2)
+    {
+        const int hi = digit(hex_stack[index]), lo = digit(hex_stack[index + 1]);
+        if (hi < 0 || lo < 0)
+            return false;
+        state.stack_above.push_back(uint8_t(hi * 16 + lo));
+    }
+    for (const auto &value : relative_gprs->arr().values)
+    {
+        if (value.type() != JT_NUM || value.num() < 0 || value.num() >= 16 ||
+            (state.stack_relative_gpr_mask & (uint16_t(1) << value.num())))
+            return false;
+        state.stack_relative_gpr_mask |= uint16_t(1) << value.num();
+    }
+    std::set<uint32_t> used;
+    for (const auto &value : relative_words->arr().values)
+    {
+        if (value.type() != JT_NUM || value.num() < 0 || value.num() > 504 ||
+            !used.insert(uint32_t(value.num())).second)
+            return false;
+        state.stack_relative_word_offsets.push_back(uint32_t(value.num()));
+    }
+    input.native_entry = std::move(state);
+    return true;
+}
 bool read_runtime_shadow(const std::string &path, std::vector<uint8_t> &bytes)
 {
     if (path.empty() || path.size() > 4096 || path.find('\0') != std::string::npos)
@@ -661,7 +765,9 @@ static std::string trace_native_region_impl(
         << ",\"backend_compatibility\":\"32-bit legacy INC/DEC materializes current EFLAGS before backend execution to preserve pending carry\""
         << ",\"contract\":"
         << inspection_json_quote(
-               runtime_shadow
+               runtime_shadow && input.native_entry
+                   ? "ephemeral native entry replay over caller-supplied executable shadow bytes, scalar registers and translated stack-relative fields; external runtime provenance is not verified by this API; no function evidence or VM identity"
+               : runtime_shadow
                    ? "ephemeral synthetic entry over caller-supplied executable shadow bytes; external runtime provenance is not verified by this API; no function evidence or VM identity"
                : candidate_entry
                    ? "ephemeral synthetic entry at an explicitly selected executable data head; exact fetched instruction bytes; neither observed program reachability nor runtime unpacked contents; no function evidence or VM identity"
@@ -674,6 +780,12 @@ static std::string trace_native_region_impl(
             << ",\"shadow_changed_bytes\":" << shadow_changed << ",\"shadow_fingerprint\":"
             << inspection_json_quote(hex(runtime_shadow_fingerprint(*runtime_shadow)))
             << ",\"shadow_instruction_states\":" << (sample_states ? "true" : "false");
+    if (input.native_entry)
+        out << ",\"entry_state_replay\":true,\"observed_entry_sp\":"
+            << inspection_json_quote(hex(input.native_entry->observed_sp))
+            << ",\"entry_stack_bytes\":" << input.native_entry->stack_above.size()
+            << ",\"stack_relative_gpr_mask\":" << input.native_entry->stack_relative_gpr_mask
+            << ",\"entry_translation\":\"explicit stack-relative register and word fields translated to an isolated scratch stack, preserving the observed SP page offset\"";
     inspection_json_rows(out, "heads", heads);
     inspection_json_rows(out, "frontiers", frontiers);
     inspection_json_rows(out, "execution", execution);
@@ -759,6 +871,17 @@ std::string trace_native_candidate_shadow_states(uint64_t root, uint64_t seed,
     if (!read_runtime_shadow(path, shadow))
         return unavailable("invalid bounded runtime shadow file", true);
     return trace_native_region_impl(root, seed, nullptr, false, false, nullptr, nullptr, nullptr,
+                                    true, &shadow, true);
+}
+std::string trace_native_candidate_shadow_replay(uint64_t root, uint64_t seed,
+                                                 const std::string &request)
+{
+    std::string path;
+    hybrid::EmuInput input;
+    std::vector<uint8_t> shadow;
+    if (!parse_entry_replay(request, path, input) || !read_runtime_shadow(path, shadow))
+        return unavailable("invalid bounded native entry replay", true);
+    return trace_native_region_impl(root, seed, &input, false, false, nullptr, nullptr, nullptr,
                                     true, &shadow, true);
 }
 std::string trace_native_region_input(uint64_t function, uint64_t seed, const std::string &request)

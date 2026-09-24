@@ -2162,6 +2162,21 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
     }
     const uint64_t effective_seed = input != nullptr ? input->seed : seed;
     const uint32_t effective_run = input != nullptr ? input->run_id : run_id;
+    const EmuInput::NativeEntryState *native_entry =
+        input && input->native_entry ? &*input->native_entry : nullptr;
+    if (native_entry &&
+        (!region || !sample_native_instructions || expanding || native_temporal ||
+         img_.arch != HybridArch::X86_64 || !input->args.empty() || !input->arg_overrides.empty() ||
+         !input->register_overrides.empty() || !input->stack_args.empty() ||
+         !input->native_objects.empty() || input->positional_argument_offset ||
+         input->stack_arg_offset || native_entry->observed_sp % 16 != 8 ||
+         native_entry->gprs[4] != native_entry->observed_sp ||
+         native_entry->stack_relative_gpr_mask == 0 ||
+         !(native_entry->stack_relative_gpr_mask & (uint16_t(1) << 4)) ||
+         native_entry->stack_above.empty() || native_entry->stack_above.size() > 512 ||
+         native_entry->stack_above.size() % 8 ||
+         native_entry->stack_relative_word_offsets.size() > 64))
+        return false;
     // Keep caller-provided objects out of the ordinary publication contract.
     EmuInput resolved_input;
     if (input && !input->native_objects.empty())
@@ -2235,6 +2250,8 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
     uint64_t sp = (stack_base_ + stack_size_ - 0x400) & ~align;
     if (img_.arch == HybridArch::X86_64)
         sp |= 0x8; // x86-64 ABI: rsp%16 == 8 at entry (after the call pushed retaddr)
+    if (native_entry)
+        sp = stack_base_ + 0xc0000 + (native_entry->observed_sp & 0xfff);
     const uint64_t sp_entry = sp;
     if (outcome)
         outcome->entry_sp = sp_entry;
@@ -2274,6 +2291,64 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
     if (input != nullptr)
     {
         if (!apply_input(*input, sp))
+            return false;
+    }
+    if (native_entry)
+    {
+        constexpr uint64_t kRelativeLimit = 0x8000;
+        const auto near_observed_sp = [&](uint64_t value)
+        {
+            return value >= native_entry->observed_sp
+                       ? value - native_entry->observed_sp <= kRelativeLimit
+                       : native_entry->observed_sp - value <= kRelativeLimit;
+        };
+        const auto translate = [&](uint64_t value, uint64_t &translated)
+        {
+            if (!near_observed_sp(value))
+                return false;
+            const uint64_t displacement = value >= native_entry->observed_sp
+                                              ? value - native_entry->observed_sp
+                                              : native_entry->observed_sp - value;
+            translated = value >= native_entry->observed_sp ? sp + displacement : sp - displacement;
+            return translated >= stack_base_ && translated < stack_base_ + stack_size_;
+        };
+        std::vector<uint8_t> stack = native_entry->stack_above;
+        std::set<uint32_t> offsets;
+        for (uint32_t offset : native_entry->stack_relative_word_offsets)
+            if (offset % 8 || offset > stack.size() - 8 || !offsets.insert(offset).second)
+                return false;
+        for (uint32_t offset = 0; offset < stack.size(); offset += 8)
+        {
+            uint64_t value = 0;
+            for (unsigned byte = 0; byte < 8; ++byte)
+                value |= uint64_t(stack[offset + byte]) << (8 * byte);
+            const bool marked = offsets.count(offset) != 0;
+            if (marked != near_observed_sp(value))
+                return false;
+            if (marked)
+            {
+                uint64_t translated = 0;
+                if (!translate(value, translated))
+                    return false;
+                for (unsigned byte = 0; byte < 8; ++byte)
+                    stack[offset + byte] = uint8_t(translated >> (8 * byte));
+            }
+        }
+        if (api_->mem_write(engine_, sp, stack.data(), stack.size()) != RAX_OK)
+            return false;
+        for (unsigned index = 0; index < native_entry->gprs.size(); ++index)
+        {
+            uint64_t value = native_entry->gprs[index];
+            const bool marked =
+                (native_entry->stack_relative_gpr_mask & (uint16_t(1) << index)) != 0;
+            if (marked != near_observed_sp(value))
+                return false;
+            if (marked && !translate(value, value))
+                return false;
+            if (api_->reg_write_u64(engine_, RAX_X86_GPR64(int(index)), value) != RAX_OK)
+                return false;
+        }
+        if (api_->reg_write_u64(engine_, RAX_X86_REG_RFLAGS, native_entry->rflags) != RAX_OK)
             return false;
     }
     const bool synthetic_entry_context = function != nullptr &&

@@ -284,6 +284,72 @@ void test_native_regions(const RaxApi *api)
             }
         check(region_sample_entries == region_sample_events.execution.size(),
               "region state capture covers every executed instruction");
+        if (is64)
+        {
+            auto replay_image = branch_image();
+            std::fill(replay_image.segs[0].bytes.begin(), replay_image.segs[0].bytes.end(), 0xcc);
+            const uint8_t code[] = {0x48, 0x8b, 0x44, 0x24, 0x10, // mov rax,[rsp+16]
+                                    0x48, 0x31, 0xe8,             // xor rax,rbp
+                                    0xc3};                        // ret
+            std::copy(std::begin(code), std::end(code), replay_image.segs[0].bytes.begin());
+            replay_image.entries[0].end = replay_image.lo + sizeof(code);
+            replay_image.entries[0].chunks = {{replay_image.lo, replay_image.lo + sizeof(code)}};
+            replay_image.entries[0].byte_hash =
+                hybrid_function_byte_hash(replay_image, replay_image.entries[0]);
+            replay_image.content_hash = hybrid_program_content_hash(replay_image);
+            const auto replay_region = plan_native_region(replay_image, api, replay_image.lo);
+            check(replay_region.available() && replay_region.heads().size() == 3,
+                  "native entry replay fixture has three exact heads");
+            EmuDriver replay_driver(api, replay_image, true);
+            EmuInput replay_input;
+            replay_input.native_entry.emplace();
+            auto &entry_state = *replay_input.native_entry;
+            entry_state.observed_sp = UINT64_C(0x7fff00000be8);
+            entry_state.gprs[4] = entry_state.observed_sp;
+            entry_state.gprs[5] = entry_state.observed_sp + 0x40;
+            entry_state.gprs[13] = entry_state.observed_sp + 0x50;
+            entry_state.rflags = 0x246;
+            entry_state.stack_above.assign(32, 0);
+            const uint64_t stack_pointer = entry_state.observed_sp + 0x20;
+            for (unsigned byte = 0; byte < 8; ++byte)
+                entry_state.stack_above[16 + byte] = uint8_t(stack_pointer >> (8 * byte));
+            entry_state.stack_relative_gpr_mask = (1u << 4) | (1u << 5) | (1u << 13);
+            entry_state.stack_relative_word_offsets = {16};
+            EmuEvents replay_events;
+            EmuOutcome replay_outcome;
+            check(replay_driver.emulate_region_states(replay_region, short_run_config(),
+                                                      replay_events, replay_outcome, &replay_input),
+                  "explicit native entry replays through the bounded region");
+            const uint64_t translated_sp = replay_outcome.entry_sp;
+            check((translated_sp & 0xfff) == (entry_state.observed_sp & 0xfff),
+                  "native entry replay preserves observed SP page offset");
+            auto sampled_register = [&](uint64_t pc, int reg)
+            {
+                for (const auto &state : replay_events.states)
+                    if (state.kind == StatePoint::Kind::NativeInstructionEntry && state.pc == pc)
+                        for (const auto &value : state.regs)
+                            if (value.reg == reg)
+                                return value.value;
+                return uint64_t(0);
+            };
+            check(sampled_register(replay_image.lo, RAX_X86_REG_RBP) == translated_sp + 0x40 &&
+                      sampled_register(replay_image.lo, RAX_X86_REG_R13) == translated_sp + 0x50 &&
+                      sampled_register(replay_image.lo + 5, RAX_X86_REG_RAX) ==
+                          translated_sp + 0x20 &&
+                      sampled_register(replay_image.lo + 8, RAX_X86_REG_RAX) ==
+                          ((translated_sp + 0x20) ^ (translated_sp + 0x40)),
+                  "translated registers and caller stack word affect executed instructions");
+            entry_state.stack_relative_word_offsets.clear();
+            EmuEvents rejected_replay;
+            EmuOutcome rejected_outcome;
+            check(!replay_driver.emulate_region_states(replay_region, short_run_config(),
+                                                       rejected_replay, rejected_outcome,
+                                                       &replay_input) &&
+                      !replay_driver.emulate_region(replay_region, short_run_config(),
+                                                    rejected_replay, rejected_outcome,
+                                                    &replay_input),
+                  "unmarked stack pointers and ordinary region runs reject entry replay");
+        }
         const unsigned width = is64 ? 8 : 4;
         const uint64_t pushed = is64 ? UINT64_C(0xffffffffffffffef) : UINT64_C(0xffffffef);
         bool seed_write = false, call_write = false, callee_input = false, return_value = false;

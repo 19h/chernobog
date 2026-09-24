@@ -1216,6 +1216,16 @@ error_t idaapi idc_vm_trace_candidate_shadow_states(idc_value_t *argv, idc_value
     return eOk;
 }
 
+error_t idaapi idc_vm_trace_candidate_shadow_replay(idc_value_t *argv, idc_value_t *r)
+{
+    const auto request = arg_string(argv[2]);
+    const auto json =
+        vm::trace_native_candidate_shadow_replay(uint64_t(arg_ea(argv[0])), uint64_t(argv[1].num),
+                                                 std::string(request.c_str(), request.length()));
+    r->set_string(json.c_str());
+    return eOk;
+}
+
 error_t idaapi idc_vm_trace_input(idc_value_t *argv, idc_value_t *r)
 {
     const auto request = arg_string(argv[2]);
@@ -1898,6 +1908,9 @@ const idc_entry_t idc_entries[] = {
      args_ea_long_str,
      "chernobog_vm_trace_candidate_shadow_states(data_head_ea, seed, local_file_path)",
      "Read-only synthetic shadow capture with bounded register states at every entered instruction; no function evidence or VM identity claim"},
+    {"chernobog_vm_trace_candidate_shadow_replay", idc_vm_trace_candidate_shadow_replay,
+     args_ea_long_str, "chernobog_vm_trace_candidate_shadow_replay(data_head_ea, seed, entry_json)",
+     "Read-only bounded x86-64 shadow replay from caller-supplied entry registers and stack; explicit stack pointer translation, no function evidence or VM identity claim"},
     {"chernobog_vm_trace_input", idc_vm_trace_input, args_ea_long_str,
      "chernobog_vm_trace_input(ea, seed, input_json)",
      "Native-region capture with explicit scalar arguments and bounded initialized scratch objects"},

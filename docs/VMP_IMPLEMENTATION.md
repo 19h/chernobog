@@ -80,6 +80,17 @@ mutations reject, all 21 CTest suites pass, and the IDB inventory is unchanged.
 See `VMP_NATIVE_RUNTIME_STATES.md` and its evidence JSON. Complete VM state,
 memory effects, other inputs and ordinary function publication remain open.
 
+Runtime-shadow entry replay checkpoint for rows 6a and V: a separate bounded
+read-only API accepts a same-process register and entry-stack observation with
+explicit stack-relative annotations. Two fresh IDA captures and two protected
+QEMU/GDB runs match all 16 general-purpose registers at 4,094 aligned entries
+per run after reversing the declared stack translation: 131,008 exact values.
+The two known debugger gaps remain, raw RFLAGS bits differ, and the supplied
+128-byte stack snapshot is not read in this prefix. Negative annotation and
+register mutations reject; the measured IDB inventory is unchanged. See
+`VMP_NATIVE_ENTRY_REPLAY.md` and its evidence JSON. The complete review remains
+in progress.
+
 Ownerless native graph checkpoint: an explicit-root read-only inspector now
 propagates register, flag and stack facts across existing decoded ownerless
 branches and loops, with architectural successors, entry auditing and visible
