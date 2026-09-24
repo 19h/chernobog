@@ -2,9 +2,17 @@
 
 Five additional files are present under `samples/`. The two Mach-O x86-64
 `foo` files have the same hashes as the original/protected candidate pair in
-`VMP_HELLO_FIXTURE.md`. The remaining binary labels and protector settings are
-not independently attested. These files are untracked local inputs; this
-document records hashes so subsequent analysis can reject a changed sample.
+`VMP_HELLO_FIXTURE.md`. The user identifies the two Linux ELF files as output
+from their Morok obfuscator. Each matches the identically named binary in the
+local Morok source checkout byte for byte by SHA-256. That checkout's
+`morok-audit.json` records the keygen ELF's exact hash and 52 sealed manifests;
+the audit does not list the `boo` ELF. Two local, byte-identical candidate
+configuration files have SHA-256
+`81a735e6df2335105073701eb4dfc212d31e72fe58f76899d63b1a35d9bcaf06`
+and specify preset `max`, 74 pass tables and 72 enabled passes. No recorded
+per-binary build invocation links those files to either ELF, so their effective
+settings remain unknown. These files are untracked local inputs; this document
+records hashes so subsequent analysis can reject a changed sample.
 
 | Local input | Bytes | SHA-256 | Format and bounded static observation |
 |---|---:|---|---|
@@ -145,6 +153,7 @@ specificity measurements, and is excluded from VMP recovery denominators.
 | S4 | Linux container failures reflect the tested backends, not necessarily the samples' architectural behavior. No Linux behavior oracle is derived from them. | Run on physical x86-64 Linux or another verified engine with recorded inputs; capture decoder/process state at the stop. |
 | S5 | The Hikari file is a distinct architecture/control candidate. Any negative-control claim depends on non-VMP provenance. | Obtain source/build attestation and run the VMP recognizer with a stated candidate threshold; no false-positive rate is claimed here. |
 | S6 | The two fresh IDA profiles are comparable except for the direct jump decoder setting. The observed initializer traversal difference depends on this. | Verify `run.json` input, plugin, IDA and probe hashes; compare the controlled environment, then repeat with identical IDA settings and a second IDA version. The independently run profiles do not establish a protected-edge oracle. |
+| S7 | The two Linux ELF samples are Morok outputs, as identified by the user. Protector-family attribution depends on that statement and the matching checkout binaries; effective settings do not follow from the nearby candidate configurations. | Recheck both checkout and sample hashes; the local audit independently names and hashes the keygen ELF. A per-binary build command or manifest linking the config hash to each output would establish settings. Neither is currently recorded. |
 
 High impact: the real protected `foo` pair can anchor startup and output checks,
 but its exact transformation matrix and code visibility after initialization
@@ -153,14 +162,16 @@ code heads in a fresh database while the packed original `_main` stays absent;
 this separates reachable loader code from application recovery. Medium impact:
 an emulator's internal failure cannot be scored
 as an application failure. Low impact: section names suggest packaging families
-but do not prove protector version or exact settings.
+but do not prove protector version or exact settings. The local Morok audit
+strengthens keygen provenance while the build configuration of both ELF files
+remains unknown.
 
-QG1: technical scope. QG2: S1–S6 include falsification probes. QG3: this
+QG1: technical scope. QG2: S1–S7 include falsification probes. QG3: this
 inventory and bounded process check advance review rows 0b and V; the complete
 benchmark and implementation ledger remain open. QG4: byte counts, SI seconds,
 integer nanoseconds and size units are explicit. QG5: process equality, static
 packing observations, IDA code inventory and compiler/protector lineage are
 distinct claims.
-QG6: exact local input/runner/report hashes and direct binary/process
-observations are recorded. QG7: adjacent backend and specificity limits are
+QG6: exact local input/runner/report and Morok configuration hashes, and direct
+binary/process observations are recorded. QG7: adjacent backend and specificity limits are
 bounded above.
