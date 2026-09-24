@@ -91,6 +91,16 @@ register mutations reject; the measured IDB inventory is unchanged. See
 `VMP_NATIVE_ENTRY_REPLAY.md` and its evidence JSON. The complete review remains
 in progress.
 
+Protected boundary-memory checkpoint for rows 6a and V: two fresh QEMU/GDB
+processes step to the same Morok keygen stop PC and confirm the candidate's
+16 final general-purpose registers, RIP and RFLAGS after stack translation.
+The candidate's 68 writes occupy seven ranges and 142 distinct bytes. Applying
+those final values to each process's independently captured entry data/stack
+windows reproduces all 2,848 boundary bytes per run (5,696 byte comparisons
+across both). The process entry data already differs from file-backed bytes;
+emulator initial-memory identity and memory outside the captured windows
+remain unverified. See `VMP_NATIVE_BOUNDARY_MEMORY.md` and its evidence JSON.
+
 Ownerless native graph checkpoint: an explicit-root read-only inspector now
 propagates register, flag and stack facts across existing decoded ownerless
 branches and loops, with architectural successors, entry auditing and visible
