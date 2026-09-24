@@ -13,7 +13,7 @@ falsification probes remain those in `VMP_REVIEW.md`.
 |---|---|---|
 | 0a. Correct Boolean, select-mask, SETcc, and x64-width mapping errors | Corrected `ATHENA_MAPPING.md`; exhaustive identities, select counterexample, and executed SETcc control in `x86_abstract_tests.cpp` | Implemented |
 | 0b. Independent paired corpus; provenance, seeds, held-out seeds, native oracle | Nine variants per architecture now cover x64 Mach-O and x86 ELF, with repeated deterministic generation, reserved seeds and 33,600 primary behavior records. ELF32 executes under independent QEMU translation; see `VMP_PAIRED_CORPUS.md` and `VMP_ELF32_CORPUS.md`. The packed hello-world remains separate. Broader fixture shapes, source-build attestation and recovery metrics remain | In progress |
-| 1a. Portable stack-transfer classification with widths, stack effects, dependencies | `classify_push_return`, 32/64-bit core controls, x64 and linked ELF32 IDA fixtures; matched ELF32 rejected-case baseline. Dedicated 32-bit stack/get-PC execution controls and wider paired cases remain; see `VMP_GET_PC.md` | In progress |
+| 1a. Portable stack-transfer classification with widths, stack effects, dependencies | `classify_push_return`, 32/64-bit core controls, x64 and linked ELF32 IDA fixtures; matched ELF32 rejected-case baseline. A separate i386 ELF32 process now checks get-PC/stack positive shapes and a negative result control under pinned QEMU (`VMP_GET_PC32_EXECUTION.md`). The current plugin loses one PUSH-next materialization annotation on the unchanged analysis fixture; wider paired and rejected-case execution controls remain | In progress |
 | 1b. Exact register and memory target recovery; unknown candidates preserved | Bounded local replay, immutable-memory dependencies, and persisted ownership receipts implemented. Separate-process save/reopen, both tested rebase modes, Jcc undo/redo, and stack-pointer replacement controls pass; see `NATIVE_PROOF_OWNERSHIP.md`. Bounded owned-function joins and loop fixed points now support register targets (`VMP_NATIVE_DATAFLOW.md`). Larger/ownerless regions, complete topology coverage, and legacy/plugin-absent metadata attribution remain | In progress |
 | 1c. Push-based get-PC forms and call-as-jump summaries | Both source-emitted forms, stack replay, return-address provenance/effects, and owned native facts implemented (`VMP_GET_PC.md`). RET lowering now preserves the POP; 1,792 scoped IR-effect comparisons and six entry/region guards pass (`VMP_MICROCODE.md`). Automatic region ownership, stale inferred noreturn repair, structural rollback, and the full lifecycle/corpus matrix remain | In progress |
 | 2a. Per-flag abstract interpretation and complete condition evaluation | `x86_abstract.h`, production `x86_analysis.cpp`; exhaustive 8-bit arithmetic, defined shift flags, 729 partial flag profiles, width/alias controls. Owned-function direct CFG joins and loop fixed points are integrated (`VMP_NATIVE_DATAFLOW.md`); larger/ownerless graphs and protected effectiveness remain | In progress |
@@ -217,6 +217,14 @@ inventory. Two local VM prefixes have complete models, including one reserved-se
 push/near-return path, without recognizer changes for this evaluation. Native
 stack-transfer records remain unresolved candidates. See `VMP_ELF32_CORPUS.md`;
 full protected-edge rates and dynamic VM recovery are still incomplete.
+
+ELF32 get-PC execution checkpoint: a separate static i386 process verifies the
+PUSH-next address, preserved defined flags, stack restoration, and six positive
+materialization/transfer shapes. It exits 0 under the pinned QEMU image; a
+target-result mutation exits 1. Re-running the unchanged IDA fixture with the
+current plugin exposes one missing materialization annotation (15/16 assertions)
+under both tested IDA versions. See `VMP_GET_PC32_EXECUTION.md`. The annotation
+regression and the remaining review requirements are open.
 
 First implementation checkpoint: source changes, executable semantic checks,
 and production IDA validation constitute progress. The complete objective is

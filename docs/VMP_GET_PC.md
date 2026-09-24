@@ -12,6 +12,11 @@ contracts. The source hashes and native-run results in this earlier checkpoint
 remain historical; structural ownership and automatic noreturn freshness are
 still incomplete.
 
+The later [ELF32 execution control](VMP_GET_PC32_EXECUTION.md) verifies 32-bit
+get-PC and stack behavior under QEMU. It also records a current-plugin
+regression in the separate IDA materialization annotation; the 16/16 IDA result
+below remains evidence for its original plugin artifact only.
+
 The primary transformation source is `vmp/core/intel.cc:16218–16248`: a near
 CALL-next becomes a 32-bit PUSH of its continuation, or a full-width x64
 PUSH-register / LEA-address / XCHG-stack sequence. Source, fixture, plugin,
