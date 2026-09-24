@@ -366,6 +366,23 @@ void test_native_regions(const RaxApi *api)
                                                        rejected_replay, rejected_outcome,
                                                        &replay_input),
                   "unmarked pointer below entry SP rejects native replay");
+            entry_state.stack_relative_below_word_offsets = {24};
+            auto checkpoint_input = replay_input;
+            auto &checkpoint = *checkpoint_input.native_entry;
+            checkpoint.observed_sp += 8;
+            checkpoint.gprs[4] = checkpoint.observed_sp;
+            EmuEvents checkpoint_events;
+            EmuOutcome checkpoint_outcome;
+            check(!replay_driver.emulate_region_states(replay_region, short_run_config(),
+                                                       checkpoint_events, checkpoint_outcome,
+                                                       &checkpoint_input),
+                  "ordinary native entry rejects non-ABI SP alignment");
+            checkpoint.observed_checkpoint = true;
+            check(replay_driver.emulate_region_states(replay_region, short_run_config(),
+                                                      checkpoint_events, checkpoint_outcome,
+                                                      &checkpoint_input) &&
+                      (checkpoint_outcome.entry_sp & 0xfff) == (checkpoint.observed_sp & 0xfff),
+                  "explicit observed checkpoint admits recorded non-ABI SP alignment");
         }
         const unsigned width = is64 ? 8 : 4;
         const uint64_t pushed = is64 ? UINT64_C(0xffffffffffffffef) : UINT64_C(0xffffffef);

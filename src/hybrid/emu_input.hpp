@@ -28,6 +28,7 @@ struct EmuInput
         std::vector<uint8_t> stack_above;
         uint16_t stack_relative_gpr_mask = 0;
         std::vector<uint32_t> stack_relative_word_offsets;
+        bool observed_checkpoint = false;
     };
     std::optional<NativeEntryState> native_entry;
     // Explicit native-region scratch objects. Ordinary function execution rejects

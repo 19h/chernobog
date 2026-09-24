@@ -2169,7 +2169,8 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
          img_.arch != HybridArch::X86_64 || !input->args.empty() || !input->arg_overrides.empty() ||
          !input->register_overrides.empty() || !input->stack_args.empty() ||
          !input->native_objects.empty() || input->positional_argument_offset ||
-         input->stack_arg_offset || native_entry->observed_sp % 16 != 8 ||
+         input->stack_arg_offset ||
+         (!native_entry->observed_checkpoint && native_entry->observed_sp % 16 != 8) ||
          native_entry->gprs[4] != native_entry->observed_sp ||
          native_entry->stack_relative_gpr_mask == 0 ||
          !(native_entry->stack_relative_gpr_mask & (uint16_t(1) << 4)) ||

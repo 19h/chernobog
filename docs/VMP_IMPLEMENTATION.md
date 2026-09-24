@@ -155,6 +155,17 @@ path are identical across both inputs. Later input-dependent execution and
 VM-region identity remain open. See `VMP_NATIVE_SECOND_INPUT.md` and its
 evidence JSON.
 
+Observed protected branch checkpoint for rows 6a and V: two longer QEMU/GDB
+paths first differ after 21,979 reported instruction entries at the successor
+of a shared `CMP; JNE`. A bounded read-only replay now accepts an explicit
+runtime state at an executable packed-data tail and non-ABI stack alignment.
+On two distinct inputs it matches 108 same-process GPR/RIP/RFLAGS values,
+two stack reads and both branch successors. Stack-word mutation reverses
+each replayed successor; invalid budgets and executable data patches reject.
+The local two-instruction result does not establish whole-path replay or
+logical VM-state identity. See `VMP_NATIVE_BRANCH_CHECKPOINT.md` and its
+evidence JSON.
+
 Ownerless native graph checkpoint: an explicit-root read-only inspector now
 propagates register, flag and stack facts across existing decoded ownerless
 branches and loops, with architectural successors, entry auditing and visible

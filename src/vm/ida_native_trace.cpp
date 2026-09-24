@@ -230,6 +230,8 @@ struct RuntimeDataPatch
 {
     uint64_t start = 0;
     std::vector<uint8_t> bytes;
+    uint64_t instruction_budget = 4096;
+    bool instruction_budget_explicit = false;
 };
 bool parse_entry_replay(const std::string &request, std::string &shadow_path,
                         hybrid::EmuInput &input, RuntimeDataPatch *data_patch = nullptr)
@@ -272,10 +274,24 @@ bool parse_entry_replay(const std::string &request, std::string &shadow_path,
         return false;
     if (data_patch)
     {
-        if (!keys(root.obj(), {"shadow_file", "observed_sp", "gprs", "rflags", "stack_above",
-                               "stack_relative_gprs", "stack_relative_words", "stack_below",
-                               "stack_relative_below_words", "data_start", "data_hex"}))
+        const bool bounded = root.obj().size() == 12;
+        if (!(bounded
+                  ? keys(root.obj(),
+                         {"shadow_file", "observed_sp", "gprs", "rflags", "stack_above",
+                          "stack_relative_gprs", "stack_relative_words", "stack_below",
+                          "stack_relative_below_words", "data_start", "data_hex", "max_insns"})
+                  : keys(root.obj(), {"shadow_file", "observed_sp", "gprs", "rflags", "stack_above",
+                                      "stack_relative_gprs", "stack_relative_words", "stack_below",
+                                      "stack_relative_below_words", "data_start", "data_hex"})))
             return false;
+        if (bounded)
+        {
+            const auto *maximum = root.obj().get_value("max_insns", JT_NUM);
+            if (!maximum || maximum->num() < 1 || maximum->num() > 4096)
+                return false;
+            data_patch->instruction_budget = uint64_t(maximum->num());
+            data_patch->instruction_budget_explicit = true;
+        }
     }
     else if (!keys(root.obj(), {"shadow_file", "observed_sp", "gprs", "rflags", "stack_above",
                                 "stack_relative_gprs", "stack_relative_words"}))
@@ -662,12 +678,21 @@ static std::string trace_native_region_impl(
     const auto *api = rax_load();
     if (!api || !api->decode)
         return unavailable("native decoder/emulator unavailable", candidate_entry);
-    bool shadow_unloaded_entry = false;
+    bool shadow_unloaded_entry = false, observed_tail_checkpoint = false;
     if (candidate_entry)
     {
         const auto *segment = getseg(ea_t(function));
         const auto flags = get_flags(ea_t(function));
         const bool data_head = is_data(flags) && is_head(flags) && is_loaded(ea_t(function));
+        // A caller-observed process checkpoint can start within a packed
+        // data item. Only the explicit memory replay carries the full entry
+        // state and shadow bytes needed for this read-only exception.
+        const ea_t item_start = get_item_head(ea_t(function));
+        observed_tail_checkpoint =
+            runtime_shadow && runtime_data && runtime_data->instruction_budget_explicit &&
+            explicit_input && explicit_input->native_entry && segment && is_tail(flags) &&
+            item_start != BADADDR && is_data(get_flags(item_start)) &&
+            getseg(item_start) == segment && is_loaded(ea_t(function)) && !has_user_name(flags);
         // A protected loader can restore a zero-fill executable target only
         // after process startup. Admit it solely through an explicit shadow
         // request and an existing code xref to the exact unloaded root.
@@ -691,7 +716,7 @@ static std::string trace_native_region_impl(
         if (PH.id != PLFM_386 || function == BADADDR || uint64_t(ea_t(function)) != function ||
             !segment || segment->type == SEG_XTRN || !(segment->perm & SEGPERM_EXEC) ||
             (segment->bitness != 1 && segment->bitness != 2) ||
-            !(data_head || shadow_unloaded_entry) ||
+            !(data_head || shadow_unloaded_entry || observed_tail_checkpoint) ||
             (!shadow_unloaded_entry && has_user_name(flags)) || get_func(ea_t(function)))
             return unavailable(runtime_shadow ? "not_unlabeled_executable_shadow_entry"
                                               : "not_unlabeled_executable_data_head",
@@ -705,7 +730,7 @@ static std::string trace_native_region_impl(
     }
     HybridConfig config;
     config.max_image_bytes = 64ull * 1024 * 1024;
-    config.max_insns = 4096;
+    config.max_insns = runtime_data ? runtime_data->instruction_budget : 4096;
     config.timeout_ms = sample_states ? 1000 : 250;
     config.want_runtime_strings = false;
     config.want_import_summaries = false;
@@ -805,6 +830,8 @@ static std::string trace_native_region_impl(
     EmuDriver driver(api, image, true, inf_get_filetype() == f_PE,
                      bindings ? *bindings : std::vector<EmuCallSummary>{});
     EmuInput input = explicit_input ? *explicit_input : EmuInput{};
+    if (input.native_entry)
+        input.native_entry->observed_checkpoint = observed_tail_checkpoint;
     input.seed = seed;
     input.run_id = 1;
     EmuEvents events;
@@ -971,11 +998,13 @@ static std::string trace_native_region_impl(
                                      : "IDA mode-aware native decoder, snapshot bytes checked")
         << ",\"planned_heads\":" << region.heads().size()
         << ",\"plan_truncated\":" << (region.truncated() ? "true" : "false")
+        << ",\"observed_tail_checkpoint\":" << (observed_tail_checkpoint ? "true" : "false")
         << ",\"ran\":" << (ran ? "true" : "false") << ",\"stop\":"
         << inspection_json_quote(ran ? hybrid_emu_outcome_name(outcome) : "capture-unavailable")
         << ",\"stop_status\":" << outcome.stop_status
         << ",\"stop_pc\":" << inspection_json_quote(hex(outcome.stop_pc))
         << ",\"instruction_count\":" << outcome.instruction_count
+        << ",\"instruction_budget\":" << config.max_insns
         << ",\"entry_sp\":" << inspection_json_quote(hex(outcome.entry_sp))
         << ",\"explicit_input\":" << (explicit_input ? "true" : "false")
         << ",\"sp_valid\":" << (outcome.sp_valid ? "true" : "false")
