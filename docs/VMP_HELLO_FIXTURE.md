@@ -7,12 +7,17 @@ source tree. Compiler/protector commands, protection settings, random seed,
 and source-to-protector build attestation are unknown. No executable was run
 and no existing IDA database was opened or modified during this inspection.
 
+A later [bounded process comparison](VMP_SUPPLIED_SAMPLES.md) uses the same
+original/protected file hashes and records three matching no-argument exits and
+output byte streams. The static observations below retain the scope of the
+2026-09-21 inspection.
+
 ## Observations
 
 `foo.c` calls `printf("Hello World")` from `main`. The adjacent `foo_x86`
 is a Mach-O x86-64 executable whose 22-byte `_main` loads that literal,
-calls the `_printf` stub, and returns zero. This is a candidate original /
-protected pair; behavioral equivalence has not been measured.
+calls the `_printf` stub, and returns zero. At that static-inspection date, this
+was a candidate original/protected pair whose behavior had not been compared.
 
 | Property | `foo_x86` | `foo_x86_vmp` |
 |---|---|---|

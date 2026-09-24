@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "scope": "Fresh IDA databases from the supplied protected Mach-O; selected startup-entry code/xref inventory only",
+  "input": {
+    "path": "samples/foo_x86_vmp",
+    "sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "tools": {
+    "ida_console_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "plugin_sha256": "29a49df64771f1144a01d71a208e755a2223c445827a574e54e0a9b29858fca2",
+    "smoke_runner_sha256": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "probe_sha256": "36545d73050046ed650db91a8319edae21652bf1b686b9fb4dbbb8237b0f7af3"
+  },
+  "configuration": {
+    "rax_enabled": false,
+    "profiles_differ_by": "CHERNOBOG_IDA_DIRECT_JUMP_DECODE=0 or 1",
+    "selected_entries": {
+      "LC_MAIN": "0x100001436",
+      "__mod_init_func": "0x10000143b"
+    },
+    "head_limit_per_entry": 4096,
+    "owner_limit_per_entry": 64
+  },
+  "profiles": {
+    "disabled": {
+      "environment_sha256": "f18791d144d7ece23eee5d909fa342e355fa2a04b0857a1e902f8e5de67afa96",
+      "run_report": "build/supplied-foo-ida-disabled/run.json",
+      "run_report_sha256": "6eff93c8b82527266135c344b0d84cd117e146e7035b04ecce0a8b8ef717ca4f",
+      "inspection_report": "build/supplied-foo-ida-disabled/corpus_inspection.json",
+      "inspection_report_sha256": "c7c36ee5e0a0ef0053e5cc369d552bfddc02c400f59a6d4a1bb708a3dac1655a",
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "native_stats": {
+        "direct_jump_decode_attempts": 0,
+        "direct_jump_targets_decoded": 0,
+        "direct_jump_decode_truncated": 0
+      },
+      "entries": {
+        "LC_MAIN": {"reachable_heads": 2, "code_heads": 1, "unknown_heads": 1, "native_records": 0, "vm_records": 0, "solver_records": 0},
+        "__mod_init_func": {"reachable_heads": 2, "code_heads": 1, "unknown_heads": 1, "native_records": 0, "vm_records": 0, "solver_records": 0}
+      }
+    },
+    "enabled": {
+      "environment_sha256": "f3dd8b6a8e93c25f2dd19b34b16f66e1ae2b931b64deaf475d00261d793f03a1",
+      "run_report": "build/supplied-foo-ida-enabled/run.json",
+      "run_report_sha256": "b34336a6b2ec800facbc4a3f2ecad157a1083c6adfdf9c89ab766af383f1247a",
+      "inspection_report": "build/supplied-foo-ida-enabled/corpus_inspection.json",
+      "inspection_report_sha256": "6de57e6890997b49ffa269713544356bf3ed4b36a2222699184ac3d8047c5078",
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "native_stats": {
+        "direct_jump_decode_attempts": 18,
+        "direct_jump_targets_decoded": 1,
+        "direct_jump_decode_truncated": 0
+      },
+      "entries": {
+        "LC_MAIN": {"reachable_heads": 2, "code_heads": 1, "unknown_heads": 1, "native_records": 0, "vm_records": 0, "solver_records": 0},
+        "__mod_init_func": {"reachable_heads": 76, "code_heads": 76, "unknown_heads": 0, "native_records": 0, "vm_records": 0, "solver_records": 0}
+      }
+    }
+  },
+  "common_checks": {
+    "probe_passed": true,
+    "entry_traversals_not_truncated": true,
+    "owner_inspections_not_truncated": true,
+    "inspection_preserved_code_and_xrefs": true,
+    "no_ida_internal_error_diagnostic": true
+  },
+  "limits": [
+    "Native statistics are database-wide; only selected-entry inventories localize the observed decoded path.",
+    "No independent complete protected-control-flow oracle is available; recovered and false edge rates are unknown.",
+    "No post-initialization application-byte snapshot, literal recovery, or full VM summary was measured."
+  ]
+}

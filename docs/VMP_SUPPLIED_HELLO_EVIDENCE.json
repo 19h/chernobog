@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "scope": "Three bounded no-argument macOS process comparisons; exit status and stdout/stderr only",
+  "runner_source_sha256": "8d48c9d9f2cbd586cab3f376ae4f6fa6b5600ff7a398a2d33041b8efb7895a32",
+  "host_system": "Darwin",
+  "host_machine": "arm64",
+  "inputs": {
+    "original": {
+      "path": "samples/foo_x86_orig",
+      "sha256": "443b0a464d7de68c5a26a3e31a92e694356ccd1eef3127d522309ac672ecc7c7",
+      "bytes": 12456
+    },
+    "protected": {
+      "path": "samples/foo_x86_vmp",
+      "sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+      "bytes": 2618368
+    }
+  },
+  "stdout_hex": "48656c6c6f20576f726c64",
+  "stdout_sha256": "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "runs": [
+    {
+      "trial": 0,
+      "behavior_equal": true,
+      "original": {"exit_code": 0, "elapsed_ns": 29014750, "peak_resident_bytes": 3457024},
+      "protected": {"exit_code": 0, "elapsed_ns": 356918625, "peak_resident_bytes": 14094336}
+    },
+    {
+      "trial": 1,
+      "behavior_equal": true,
+      "original": {"exit_code": 0, "elapsed_ns": 28040416, "peak_resident_bytes": 3391488},
+      "protected": {"exit_code": 0, "elapsed_ns": 384195041, "peak_resident_bytes": 14180352}
+    },
+    {
+      "trial": 2,
+      "behavior_equal": true,
+      "original": {"exit_code": 0, "elapsed_ns": 29275667, "peak_resident_bytes": 3416064},
+      "protected": {"exit_code": 0, "elapsed_ns": 392444166, "peak_resident_bytes": 13955072}
+    }
+  ],
+  "checks": {
+    "normal_exit_all": true,
+    "same_stdout_stderr_and_status_each_trial": true,
+    "repeat_equal_within_each_binary": true,
+    "inputs_unchanged_after_each_trial": true,
+    "no_timeout_or_output_cap": true
+  },
+  "negative_control": {
+    "input": "build/vmp-get-pc",
+    "input_sha256": "1142cf1154e97106fca4b43e9f5e6dc626943599e3c97fcc70f5485e003065b6",
+    "source": "tests/vmp_native/get_pc.S",
+    "runs": 1,
+    "original_exit_code": 0,
+    "candidate_exit_code": 0,
+    "candidate_stdout_hex": "",
+    "behavior_equal": false,
+    "runner_exit_code": 1,
+    "report": "build/supplied-foo-negative/paired_process.json"
+  },
+  "limits": [
+    "No arguments or interactive input were supplied.",
+    "No selected memory, stack, flags, oracle edges, literal recovery or IDA behavior were measured.",
+    "Compiler/protector commands, protection settings, random seed and source-build attestation are unknown.",
+    "The host is arm64; the x86-64 execution mechanism and physical-x86 behavior are not independently attested."
+  ]
+}

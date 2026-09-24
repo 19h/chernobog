@@ -12,7 +12,7 @@ falsification probes remain those in `VMP_REVIEW.md`.
 | Requirement | Implementation / evidence | Status |
 |---|---|---|
 | 0a. Correct Boolean, select-mask, SETcc, and x64-width mapping errors | Corrected `ATHENA_MAPPING.md`; exhaustive identities, select counterexample, and executed SETcc control in `x86_abstract_tests.cpp` | Implemented |
-| 0b. Independent paired corpus; provenance, seeds, held-out seeds, native oracle | Nine variants per architecture now cover x64 Mach-O and x86 ELF, with repeated deterministic generation, reserved seeds and 33,600 primary behavior records. ELF32 executes under independent QEMU translation; see `VMP_PAIRED_CORPUS.md` and `VMP_ELF32_CORPUS.md`. The packed hello-world remains separate. Broader fixture shapes, source-build attestation and recovery metrics remain | In progress |
+| 0b. Independent paired corpus; provenance, seeds, held-out seeds, native oracle | Nine variants per architecture cover x64 Mach-O and x86 ELF, with repeated deterministic generation, reserved seeds and 33,600 primary behavior records. ELF32 executes under independent QEMU translation; see `VMP_PAIRED_CORPUS.md` and `VMP_ELF32_CORPUS.md`. The supplied packed hello-world pair now has three matched no-argument process observations (`VMP_SUPPLIED_SAMPLES.md`), separate from the generated matrix. Broader fixture shapes, source-build attestation, protected edge oracles and recovery metrics remain | In progress |
 | 1a. Portable stack-transfer classification with widths, stack effects, dependencies | `classify_push_return`, 32/64-bit core controls, x64 and linked ELF32 IDA fixtures; matched ELF32 rejected-case baseline. A separate i386 ELF32 process checks get-PC/stack positive shapes and a negative result control under pinned QEMU (`VMP_GET_PC32_EXECUTION.md`). A second same-binary process/IDA control checks dynamic register/memory targets, alternate entry, and RET adjustment (`VMP_GET_PC32_REJECTIONS.md`). The IDA block-end regression is repaired (`VMP_GET_PC32_BLOCK_END.md`); wider paired, width/far, and exceptional execution controls remain | In progress |
 | 1b. Exact register and memory target recovery; unknown candidates preserved | Bounded local replay, immutable-memory dependencies, and persisted ownership receipts implemented. Separate-process save/reopen, both tested rebase modes, Jcc undo/redo, and stack-pointer replacement controls pass; see `NATIVE_PROOF_OWNERSHIP.md`. Bounded owned-function joins and loop fixed points now support register targets (`VMP_NATIVE_DATAFLOW.md`). A same-binary i386 oracle reaches two register and two writable-memory targets while production IDA retains both as unresolved candidates (`VMP_GET_PC32_REJECTIONS.md`). Larger/ownerless regions, complete topology coverage, and legacy/plugin-absent metadata attribution remain | In progress |
 | 1c. Push-based get-PC forms and call-as-jump summaries | Both source-emitted forms, stack replay, return-address provenance/effects, and owned native facts implemented (`VMP_GET_PC.md`). The 32-bit PUSH-next proof survives IDA's block-end metadata (`VMP_GET_PC32_BLOCK_END.md`). RET lowering preserves the POP; 1,792 scoped IR-effect comparisons and six entry/region guards pass (`VMP_MICROCODE.md`). Automatic region ownership, stale inferred noreturn repair, structural rollback, and the full lifecycle/corpus matrix remain | In progress |
@@ -27,7 +27,7 @@ falsification probes remain those in `VMP_REVIEW.md`.
 | 6a. Separate bounded VM-region and logical-state model | Separate `src/vm` descriptors and logical-state comparison; local recognition supports role permutations, both directions, clones, table/relative dispatch and stateful decoding. Boundary auditing distinguishes side entries and shared/foreign ownership (`VMP_REGION_BOUNDARIES.md`). A separate native-region capture API now executes bounded prefixes across existing owners with exact-byte admission and no ordinary function publication; 120 paired captures include 72 checked PUSH/CALL prefixes, and an independent decoder verifies 5,325 entered instruction records (`VMP_NATIVE_REGION_CAPTURE.md`). Virtual stack, VM context, complete memory identity, logical VM ownership and persistent lifecycle remain unresolved; see also `VMP_VM_REGIONS.md` and `VMP_VM_OBSERVATIONS.md` | In progress |
 | 6b. Candidate recognition, visualization, and validated semantic summaries | Candidate inspection includes local normal-completion register/flag/memory/dispatch summaries. A symbolic array retains data aliasing and ordered stack writes; independent executed x64 oracle cases and x86/x64 IDA probes validate admitted scaffolds. Complete captured table/relative/boundary transitions now receive nonvacuous SMT checks, linked to their exact visit and query identities. Full-handler effects, VM input-state recovery, exceptions and admitted VM-region transitions remain; see `VMP_VM_SEMANTICS.md` and `VMP_VM_TRANSITIONS.md` | In progress |
 | 6c. Proven normalized-summary reuse | Local modeled-effect references are shared only after UNSAT under a bijective register-role map; SAT, UNKNOWN and incompatible access/flag contracts prevent reuse. Production clone and distinct-syntax controls pass. Whole-handler summaries, cross-region ownership and persistent execution-cache reuse remain; see `VMP_VM_SEMANTICS.md` | In progress |
-| V. Complete benchmark and completion audit | Paired x64 and x86 result/selected-memory/stack/defined-flag checks and scoped process elapsed time/peak bytes are recorded in `VMP_PAIRED_CORPUS.md` and `VMP_ELF32_CORPUS.md`. Recovery/error/abstention rates, literal accuracy, solver diagnostics, broader fixtures and full completion audit remain | In progress |
+| V. Complete benchmark and completion audit | Paired x64 and x86 result/selected-memory/stack/defined-flag checks and scoped process elapsed time/peak bytes are recorded in `VMP_PAIRED_CORPUS.md` and `VMP_ELF32_CORPUS.md`. The supplied hello-world pair adds exact process output/exit comparisons and scoped elapsed/peak measurements (`VMP_SUPPLIED_SAMPLES.md`). Recovery/error/abstention rates, literal accuracy, solver diagnostics, broader fixtures and full completion audit remain | In progress |
 
 The review explicitly treats full bytecode lifting as a subsequent project;
 this ledger retains the requested separate VM model, recognition, and validated
@@ -242,6 +242,22 @@ exits 1. Production and disabled-plugin IDA runs on that same binary each pass
 edges for the variable targets, while the matched disabled run has the same
 edge sets. See `VMP_GET_PC32_REJECTIONS.md`. Width/far fault paths and the
 broader protected-corpus requirements remain open.
+
+Supplied-sample checkpoint: five local binaries are inventoried by exact hash,
+format and byte length. The previously inspected `foo` original/protected
+candidate pair has three matching no-argument macOS process observations,
+each with exit 0, identical 11-byte stdout and empty stderr; scoped elapsed
+seconds and peak resident bytes are retained in
+`VMP_SUPPLIED_HELLO_EVIDENCE.json`. The static Linux samples lack valid
+independent behavior oracles in the tested translators, and the arm64 Hikari
+sample remains a separate control candidate. See `VMP_SUPPLIED_SAMPLES.md`.
+Fresh IDA profiles on the protected `foo` input show 76 reachable initializer
+code heads with direct jump decoding versus one entry code head plus an
+unknown target without it, while the zero-filled original main remains
+undecodable. The per-profile hashes and limits are in
+`VMP_SUPPLIED_HELLO_IDA_EVIDENCE.json`.
+Compiler/protector lineage, wider inputs and protected recovery rates remain
+unknown.
 
 First implementation checkpoint: source changes, executable semantic checks,
 and production IDA validation constitute progress. The complete objective is
