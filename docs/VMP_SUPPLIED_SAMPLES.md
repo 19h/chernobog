@@ -145,6 +145,15 @@ VM records at the two inspected owners; the solver API is unavailable. See
 `VMP_MOROK_ENTRY_CONTROL.md` and its raw-report manifest. The selected paths
 do not establish full-binary specificity or application recovery.
 
+A separate exact-file audit using the user's Morok checkout passes the supplied
+keygen's native-pack and sealed-manifest checks (262,144 protected bytes and
+52 sealed manifests). The supplied `boo` file has a native-pack-named section,
+but its GNU build ID does not match its current bytes and the audit finds no
+recognized sealed manifests. Correcting only the note in a disposable copy
+still leaves no finalized native-pack manifest. These static results do not
+identify the cause of the earlier process failure. See
+`VMP_SUPPLIED_MOROK_AUDIT.md` and its evidence JSON.
+
 The arm64 Hikari file exits 0 and repeats the same 90-byte stdout with empty
 stderr in three no-argument macOS runs; stdout SHA-256 is
 `ffa6745f736de22dc84fe556a570d0f262bc22f17fb3f207ad18ec82d8dbd349`.

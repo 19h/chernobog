@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "source_sha256": {
+    "morok_audit_py": "3df04f46b682ff35b20ce1fb07e496e1de97197e3fd705e988320bd74eefb2ed",
+    "native_pack_cpp": "c8630c2c5f5d54cf4f0b4343e83236c3f93c37b194a0d196b95727001638c5e9"
+  },
+  "tool_sha256": {
+    "morok_native_pack": "f64f0218bd964e1e7ea6db272c3a073a501a205e203ada5bd73eed075cf0c9ae"
+  },
+  "adjacent_checkout": {
+    "audit_json_sha256": "50ada89cf93c8167b384a835277ccf8ab2d9be636e27968be59ff16ef6fba149",
+    "derived_boo_toml_sha256": "81a735e6df2335105073701eb4dfc212d31e72fe58f76899d63b1a35d9bcaf06",
+    "derived_keygen_toml_sha256": "81a735e6df2335105073701eb4dfc212d31e72fe58f76899d63b1a35d9bcaf06"
+  },
+  "artifacts": [
+    {
+      "path": "samples/boo-linux-x86_64-static",
+      "sha256": "730f6adfba4cb7179320c96a3a5b24856059f1c4ba24bad25b969d74e4054a27",
+      "size_bytes": 1049528,
+      "adjacent_checkout_sha256_equal": true,
+      "entry": "0x40025b",
+      "executable_pack_section": ".morok_npack_rx",
+      "executable_pack_section_bytes": 393216,
+      "companion_section": ".morok_npack_ro",
+      "companion_section_bytes": 128,
+      "build_id_note": "bd87f92dc8f576184400b54d41438ec46a97930d",
+      "build_id_recomputed": "73a256d7962b6d6b7d807709cfff906b8690ed3f",
+      "native_pack_verify_exit": 1,
+      "native_pack_verify_output": "morok-native-pack: GNU build ID does not describe the finalized artifact",
+      "release_audit_exit": 1,
+      "release_audit_findings": [
+        "missing-native-pack: morok-native-pack: GNU build ID does not describe the finalized artifact",
+        "missing-sealed-manifest: release binary contains no recognized post-link seal manifests"
+      ],
+      "build_id_only_diagnostic_copy_sha256": "825bde11c3f383d466da8ca2871da4ca0ab705f226b0a582562d59c3525e5d13",
+      "diagnostic_native_pack_verify_exit": 1,
+      "diagnostic_native_pack_verify_output": "morok-native-pack: no finalized native-pack manifest found"
+    },
+    {
+      "path": "samples/int_woma_keygen-linux-x86_64-static",
+      "sha256": "7d1971b1db221174caac0a5922a7452e1bebe214ca2355ab36c889a635699fd9",
+      "size_bytes": 1250120,
+      "adjacent_checkout_sha256_equal": true,
+      "entry": "0x40025b",
+      "executable_pack_section": ".hdmoh1mxteam2f",
+      "executable_pack_section_bytes": 262144,
+      "companion_section": ".2bd6qbmi3zbr4i",
+      "companion_section_bytes": 128,
+      "build_id_note": "512ab07d6df839cbfa1a3c46cdfe23c771d54492",
+      "build_id_recomputed": "512ab07d6df839cbfa1a3c46cdfe23c771d54492",
+      "native_pack_verify_exit": 0,
+      "native_pack_verify_output": "native-pack: protected_bytes=262144",
+      "release_audit_exit": 0,
+      "release_audit_output": "OK morok-audit files=1 binaries=1 sealed_manifests=52"
+    }
+  ],
+  "build_id_note_offset": "0x210",
+  "build_id_note_bytes": 20
+}
