@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "scope": "paired static Hikari arm64 selected-entry inspection",
+  "input": {
+    "path": "samples/hikari-console-max-stable.uu",
+    "sha256": "20824d7dfdc0d8353bb31e9ab1b8aed24ca506da3ef7e2df40f89a9c24598faa"
+  },
+  "tools": {
+    "tests/ida_vmp_corpus_probe.py": "36545d73050046ed650db91a8319edae21652bf1b686b9fb4dbbb8237b0f7af3",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "installed_plugin_sha256": "a6a1897ada46ce6955cde439636afad75a25c389659490e383ff8bf038e15063"
+  },
+  "selected_entries": {
+    "corpus_transform": "0x100000598",
+    "corpus_branch": "0x10013c880"
+  },
+  "results": {
+    "main_heads": 2643,
+    "wrapper_heads": 7,
+    "overlapping_heads": 0,
+    "owners_per_entry": 1,
+    "native_records_per_entry": 0,
+    "vm_api_available": false,
+    "solver_api_available": false,
+    "enabled_disabled_inventories_equal": true,
+    "read_only_inspection": true,
+    "probe_errors": 0
+  },
+  "raw_report_sha256": {
+    "build/vmp-hikari-entry-enabled/corpus_inspection.json": "0b9b2bf5ca2798692d43c7c6d470f484afdae97dc45d2f436be55261a59e61db",
+    "build/vmp-hikari-entry-disabled/corpus_inspection.json": "68d480fd77a508f7d7b48524056990ee86c69172a25290fd49d3300f51466751",
+    "build/vmp-hikari-entry-enabled/run.json": "2a601df19a1870695a61a25cf402656e0b1befba583151b1c3e7ff47301369f8",
+    "build/vmp-hikari-entry-disabled/run.json": "e402bc801dec88b4a9a6f714a7cb1a90a5b7fbb5b7cacb35bfff4e56d05dc855"
+  }
+}

@@ -149,8 +149,12 @@ The arm64 Hikari file exits 0 and repeats the same 90-byte stdout with empty
 stderr in three no-argument macOS runs; stdout SHA-256 is
 `ffa6745f736de22dc84fe556a570d0f262bc22f17fb3f207ad18ec82d8dbd349`.
 No original counterpart or expected semantic result is supplied. It is an
-architecture-distinct negative-control candidate for future recognizer
-specificity measurements, and is excluded from VMP recovery denominators.
+architecture-distinct control, excluded from VMP recovery denominators. A
+subsequent matched enabled/disabled IDA inspection records identical
+2,643/7-head `_main`/wrapper inventories and zero native records at the two
+selected owners. The VM and solver APIs are unavailable for this arm64 input;
+see `VMP_HIKARI_ENTRY_CONTROL.md`. This does not establish binary-wide
+specificity.
 
 ## Assumption register and quality gates
 
