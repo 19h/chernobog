@@ -14,6 +14,7 @@ import ida_kernwin
 
 ACTION = "chernobog:evidence_view"
 REGION_ACTION = "chernobog:native_region_facts"
+CANDIDATE_ACTION = "chernobog:native_candidate_region"
 
 
 def api(name, ea):
@@ -166,7 +167,7 @@ if ida_kernwin.is_idaq():
             self.owner, self.row = owner, row
             color = {"witness": "#267db8", "native-proof": "#49a875"}.get(row["truth"], "#b67e2b")
             pen = QtGui.QPen(QtGui.QColor(color), 2)
-            if row["truth"] == "encoding":
+            if row["truth"] in ("encoding", "conditional-byte-decode"):
                 pen.setStyle(QtCore.Qt.PenStyle.DashLine)
             self.setPen(pen)
             self.setZValue(-1)
@@ -934,9 +935,10 @@ if ida_kernwin.is_idaq():
     class NativeRegionForm(ida_kernwin.PluginForm):
         """Root-scoped facts and decoded edges with exact recomputation guards."""
 
-        def __init__(self, root, snapshot):
+        def __init__(self, root, snapshot, api_name="chernobog_native_region_facts"):
             super().__init__()
             self.root, self.snapshot = root, snapshot
+            self.api_name = api_name
             self.current = self.closed = False
             self.selected = {}
 
@@ -946,9 +948,15 @@ if ida_kernwin.is_idaq():
             layout = QtWidgets.QVBoxLayout(self.parent)
             self.status = QtWidgets.QLabel()
             self.status.setWordWrap(True)
+            self.status.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Maximum
+            )
             layout.addWidget(self.status)
             self.scope = QtWidgets.QLabel(self.snapshot.get("scope", ""))
             self.scope.setWordWrap(True)
+            self.scope.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Maximum
+            )
             layout.addWidget(self.scope)
             controls = QtWidgets.QHBoxLayout()
             self.reload_button = QtWidgets.QPushButton("Recompute graph")
@@ -986,7 +994,7 @@ if ida_kernwin.is_idaq():
             right.setSizes([280, 260])
             splitter.addWidget(right)
             splitter.setSizes([480, 620])
-            layout.addWidget(splitter)
+            layout.addWidget(splitter, 1)
             self.rebuild()
             self.poll()
             self.timer = QtCore.QTimer(self.parent)
@@ -1020,7 +1028,15 @@ if ida_kernwin.is_idaq():
                 self.nodes[site] = node
             displayed_edges = []
             for edge in self.snapshot.get("edges", []):
-                row = dict(edge, site=edge["source"], truth="encoding")
+                row = dict(
+                    edge,
+                    site=edge["source"],
+                    truth=(
+                        "conditional-byte-decode"
+                        if self.snapshot.get("candidate_decode")
+                        else "encoding"
+                    ),
+                )
                 displayed_edges.append(row)
                 start, end = self.nodes.get(row["source"]), self.nodes.get(row["target"])
                 if start is not None and end is not None:
@@ -1052,6 +1068,7 @@ if ida_kernwin.is_idaq():
                     ("Source", "source"),
                     ("Target", "target"),
                     ("Kind", "kind"),
+                    ("Basis", "truth"),
                     ("Frontier reason", "reason"),
                 ],
                 displayed_edges,
@@ -1084,7 +1101,12 @@ if ida_kernwin.is_idaq():
                 json.dumps(
                     {
                         "root": self.snapshot.get("root"),
-                        "current_exact_graph": self.current,
+                        (
+                            "current_conditional_graph"
+                            if self.snapshot.get("candidate_decode")
+                            else "current_exact_graph"
+                        ): self.current,
+                        "candidate_decode": self.snapshot.get("candidate_decode", False),
                         "flag_encoding": self.snapshot.get("flag_encoding"),
                         "published": False,
                         "scope": self.snapshot.get("scope"),
@@ -1100,12 +1122,20 @@ if ida_kernwin.is_idaq():
 
         def poll(self):
             try:
-                state = api("chernobog_native_region_facts", self.root)
+                state = api(self.api_name, self.root)
                 self.current = current_native_region(self.snapshot, state)
             except (RuntimeError, ValueError):
                 self.current = False
             self.status.setText(
-                ("Current exact graph" if self.current else "Unavailable or stale graph; recompute")
+                (
+                    "Current conditional byte graph"
+                    if self.current and self.snapshot.get("candidate_decode")
+                    else (
+                        "Current exact graph"
+                        if self.current
+                        else "Unavailable or stale graph; recompute"
+                    )
+                )
                 + " | root "
                 + self.snapshot.get("root", "unknown")
                 + " | nodes "
@@ -1121,7 +1151,7 @@ if ida_kernwin.is_idaq():
 
         def reload(self):
             try:
-                state = api("chernobog_native_region_facts", self.root)
+                state = api(self.api_name, self.root)
                 if (state.get("database"), state.get("context")) != (
                     self.snapshot.get("database"),
                     self.snapshot.get("context"),
@@ -1148,19 +1178,33 @@ if ida_kernwin.is_idaq():
 
 
 class NativeRegionAction(ida_kernwin.action_handler_t):
-    def __init__(self, owner):
+    def __init__(self, owner, api_name="chernobog_native_region_facts"):
         super().__init__()
         self.owner = owner
+        self.api_name = api_name
 
     def activate(self, context):
         root = context.cur_ea
         try:
-            snapshot = api("chernobog_native_region_facts", root)
-            key = (snapshot["database"], snapshot["context"], snapshot["root"])
+            snapshot = api(self.api_name, root)
+            if self.api_name == "chernobog_native_candidate_region" and not snapshot.get(
+                "candidate_decode"
+            ):
+                raise ValueError("candidate result missing conditional marker")
+            if self.api_name == "chernobog_native_candidate_region" and not snapshot.get(
+                "available"
+            ):
+                raise ValueError("selected candidate root unavailable")
+            key = (snapshot["database"], snapshot["context"], snapshot["root"], self.api_name)
+            title = (
+                "Chernobog candidate bytes "
+                if snapshot.get("candidate_decode")
+                else "Chernobog native region "
+            ) + snapshot["root"]
             existing = self.owner.region_forms.get(key)
             if existing is not None and not existing.closed:
                 existing.Show(
-                    "Chernobog native region " + snapshot["root"],
+                    title,
                     options=ida_kernwin.PluginForm.WOPN_PERSIST,
                 )
                 return 1
@@ -1168,10 +1212,10 @@ class NativeRegionAction(ida_kernwin.action_handler_t):
                 oldest = self.owner.region_forms.pop(next(iter(self.owner.region_forms)))
                 if not oldest.closed:
                     oldest.Close(ida_kernwin.PluginForm.WCLS_SAVE)
-            form = NativeRegionForm(root, snapshot)
+            form = NativeRegionForm(root, snapshot, self.api_name)
             self.owner.region_forms[key] = form
             form.Show(
-                "Chernobog native region " + snapshot["root"],
+                title,
                 options=ida_kernwin.PluginForm.WOPN_PERSIST,
             )
             return 1
@@ -1270,6 +1314,21 @@ class EvidencePlugin(ida_idaapi.plugin_t):
             ida_kernwin.attach_action_to_menu(
                 "View/Open subviews/", REGION_ACTION, ida_kernwin.SETMENU_APP
             )
+        self.candidate_action = NativeRegionAction(self, "chernobog_native_candidate_region")
+        self.candidate_registered = ida_kernwin.register_action(
+            ida_kernwin.action_desc_t(
+                CANDIDATE_ACTION,
+                "Chernobog candidate byte region",
+                self.candidate_action,
+                None,
+                "Inspect conditional bytes from the selected executable data head",
+                -1,
+            )
+        )
+        if self.candidate_registered:
+            ida_kernwin.attach_action_to_menu(
+                "View/Open subviews/", CANDIDATE_ACTION, ida_kernwin.SETMENU_APP
+            )
         return ida_idaapi.PLUGIN_KEEP
 
     def run(self, _argument):
@@ -1281,6 +1340,8 @@ class EvidencePlugin(ida_idaapi.plugin_t):
                 form.Close(ida_kernwin.PluginForm.WCLS_SAVE)
         if getattr(self, "region_registered", False):
             ida_kernwin.unregister_action(REGION_ACTION)
+        if getattr(self, "candidate_registered", False):
+            ida_kernwin.unregister_action(CANDIDATE_ACTION)
         for form in getattr(self, "forms", {}).values():
             if not form.closed:
                 form.Close(ida_kernwin.PluginForm.WCLS_SAVE)

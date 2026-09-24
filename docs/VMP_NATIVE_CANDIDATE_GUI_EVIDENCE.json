@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "checkpoint": "conditional packed-entry Qt graph",
+  "measurement_parent_revision": "82d3c48e28a2a8feb4e86cf18a237b2af693a07a",
+  "source_sha256": {
+    "python/chernobog_evidence.py": "030167376ea94f4e8c2c759e19738fc4ee85fd236c2e98255e3c1937311141aa",
+    "tests/ida_native_candidate_gui_probe.py": "3804ed4aad8cbe38b1752f70721a4692bd73a9b9c3a3232fba74da01e1ca97a9",
+    "tests/ida_native_region_gui_smoke.py": "de670298a85c6be1b312b5547acb892c22aa556f08ce65b7fd4fb093ce69c1f9",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "prechange_installed_view": "63d3015662af2cccd3e2ea0ea8d37f52f7ce0aeb49f9dac5b483520f1674f486"
+  },
+  "artifacts_sha256": {
+    "protected_keygen_first": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+    "protected_keygen_second": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+    "supplied_vmp_initializer": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "legacy_ownerless_fixture": "c6c8f62962dbc6701d14b616ef98a0abbb393303a9c06be8e19be6c164c27f6b",
+    "ida_gui": "c0ada391b4d241fdef7d28bcbf8a9315f2bcbd94b397227331d3bc38a510e71d",
+    "measured_native_plugin": "9f9ee2df077461b62d0ec67558681bcc77a7f5af56ef77f39173586f5254c109"
+  },
+  "raw_reports_sha256": {
+    "build/keygen-candidate-gui-confirm-first/candidate_gui.json": "af2d4cf6a857d0dd501aa817c8a0e6c62eb6c21826860146ffe54e6fc24b6eb7",
+    "build/keygen-candidate-gui-confirm-first/run.json": "8b23483f71af62fb71b826afe7a54f6b977a46451df0eeaca4fff4242e915160",
+    "build/keygen-candidate-gui-confirm-second/candidate_gui.json": "af2d4cf6a857d0dd501aa817c8a0e6c62eb6c21826860146ffe54e6fc24b6eb7",
+    "build/keygen-candidate-gui-confirm-second/run.json": "9d8e9dd9aa50ca675cc1916ac30f33c579427dc3723bd70ddca7a6770f9e2f58",
+    "build/protected-region-gui-confirm/ordinary_gui.json": "cda663d018218facf2cf91abae5d32349122abfa9174730f34668a0844d8a574",
+    "build/protected-region-gui-confirm/run.json": "36d25d9bbde626de15fb0d2616df38b0c1274bcac54ec298ff154d691ef10928",
+    "build/ownerless-candidate-gui-regression/ownerless_dataflow_gui.json": "da4b2301f44ffcc98a926f78b18cb147af19391e544bdc159f9454166966ce3d",
+    "build/ownerless-candidate-gui-regression/run.json": "633884e2074fe6314c14ab172a170227027cad017d4d79610160fcef2a6873e5",
+    "build/ownerless-candidate-gui-baseline/ownerless_dataflow_gui.json": "00513affac27e6c8b439359bbeadb4d9498a07b25e90b598ca3d45ef21db9e57",
+    "build/ownerless-candidate-gui-baseline/run.json": "779250dd0923b33b46283a29ffed1aa1cd0cdce133e59df66856dd34bc2b5e6c"
+  },
+  "screenshots_sha256": {
+    "build/keygen-candidate-gui-confirm-first/candidate_graph.png": "f94c3335df5695266a0fe99faeddf6dd09d9f0615a8a7eef00fe4cdd25633ac1",
+    "build/keygen-candidate-gui-confirm-second/candidate_graph.png": "f94c3335df5695266a0fe99faeddf6dd09d9f0615a8a7eef00fe4cdd25633ac1",
+    "build/protected-region-gui-confirm/ordinary_graph.png": "2bb503a2301e2f4b81e69d95babc3f02968c7593a736b94b200a8bcf081b648a"
+  },
+  "candidate_checks_each": 12,
+  "ordinary_checks": 5,
+  "legacy_failed_check_names_both_views": [
+    "open_equal_form preserves whole IDB inventory",
+    "fresh Qt button invokes actual IDA navigation",
+    "registered action uses the exact ownerless cursor root"
+  ],
+  "candidate_inventory_before_after_sha256": "330c75eb900024e13c78080b7aeb3abf235074e92832daad467e52453f56de4e",
+  "candidate_inventory_heads": 38006,
+  "candidate_inventory_references": 40917,
+  "ctest_passed": 21
+}
