@@ -267,6 +267,7 @@ try:
     movs_proofs = os.environ.get("CHERNOBOG_MOVS_BASELINE") != "1"
     rep_count_proofs = os.environ.get("CHERNOBOG_REP_COUNT_BASELINE") != "1"
     string_io_proofs = os.environ.get("CHERNOBOG_STRING_IO_BASELINE") != "1"
+    string_count_proofs = os.environ.get("CHERNOBOG_STRING_COUNT_BASELINE") != "1"
     expected = {
         "df_equal": True,
         "df_different": False,
@@ -603,6 +604,8 @@ try:
         ("df_movs_plain_count_target", movs_proofs),
         ("df_rep_movs_count_unknown", movs_proofs and rep_count_proofs),
         ("df_stos_register_target", string_io_proofs),
+        ("df_rep_stos_count_target", string_io_proofs and string_count_proofs),
+        ("df_rep_lods_count_target", string_io_proofs and string_count_proofs),
     ):
         root = address(name)
         reanalyze(root)

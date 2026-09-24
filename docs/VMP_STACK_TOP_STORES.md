@@ -1,5 +1,10 @@
 # Exact full-word stack-top stores before PUSH/RET
 
+This is the historical 28/34 checkpoint. The later
+`VMP_STRING_REPEAT_COUNT.md` expands the native oracle to 36 edges and records
+the current 30/36 result. The hashes and measurements below remain tied to
+this earlier revision.
+
 Review rows 1a and 1b require exact stack-mediated transfer targets with
 unchanged stack effects. The bounded x86 state now models `MOV [SP], register`
 when the decoded destination is exactly a natural-address-size, full machine

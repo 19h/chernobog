@@ -1,8 +1,9 @@
 # Natural-address-size REP MOVS completion count
 
 This is the historical 27/34 checkpoint at commit
-`f071baa4764cca358516f7dbe8bf59a8a64f4afc`; the later exact stack-store
-result is recorded in `VMP_STACK_TOP_STORES.md`.
+`f071baa4764cca358516f7dbe8bf59a8a64f4afc`; later exact stack-store and
+string-repeat results are recorded in `VMP_STACK_TOP_STORES.md` and
+`VMP_STRING_REPEAT_COUNT.md`.
 
 The native x86 state transfer now writes zero to the full RCX/ECX repeat-count
 register after normally completed `REP MOVS` with natural address size. Intel's

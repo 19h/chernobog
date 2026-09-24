@@ -489,6 +489,7 @@ def main():
         movs_proofs = os.environ.get("CHERNOBOG_MOVS_BASELINE") != "1"
         rep_count_proofs = os.environ.get("CHERNOBOG_REP_COUNT_BASELINE") != "1"
         string_io_proofs = os.environ.get("CHERNOBOG_STRING_IO_BASELINE") != "1"
+        string_count_proofs = os.environ.get("CHERNOBOG_STRING_COUNT_BASELINE") != "1"
         value = ida_expr.idc_value_t()
         assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
         ida_auto.auto_wait()
@@ -804,6 +805,8 @@ def main():
             ("df_movs_plain_count_target", movs_proofs),
             ("df_rep_movs_count_unknown", movs_proofs and rep_count_proofs),
             ("df_stos_register_target", string_io_proofs),
+            ("df_rep_stos_count_target", string_io_proofs and string_count_proofs),
+            ("df_rep_lods_count_target", string_io_proofs and string_count_proofs),
         ):
             root, instructions = prepare_prefix(name)
             result = inspect(name, root)
@@ -821,7 +824,17 @@ def main():
                     "df_movs_plain_count_target",
                     "df_rep_movs_count_unknown",
                 )
-                else 2 if result["address_bits"] == 32 and name == "df_stos_register_target" else 1
+                else (
+                    2
+                    if result["address_bits"] == 32
+                    and name
+                    in (
+                        "df_stos_register_target",
+                        "df_rep_stos_count_target",
+                        "df_rep_lods_count_target",
+                    )
+                    else 1
+                )
             )
             check(name + " expected PUSH count", len(pushes) == expected_pushes)
             assert len(pushes) == expected_pushes

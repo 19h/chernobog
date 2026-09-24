@@ -385,6 +385,18 @@ struct State
         }
     }
 
+    void finish_unconditional_repeat(const insn_t &insn, bool is64)
+    {
+        if (!(insn.auxpref & (aux_rep | aux_repne)))
+            return;
+        regs[1] = {};
+        // REP MOVS, STOS and LODS terminate only when the address-size count
+        // reaches zero on normal completion. REPNE and non-natural address
+        // sizes remain unknown in this state model.
+        if ((insn.auxpref & aux_rep) && !(insn.auxpref & aux_repne) && natad(insn))
+            regs[1].write(is64 ? 64 : 32, 0, 0, is64);
+    }
+
     void step(const insn_t &insn)
     {
         const bool is64 = mode64(insn);
@@ -756,12 +768,7 @@ struct State
             memory.clear();
             regs[6] = {};
             regs[7] = {};
-            if (insn.auxpref & (aux_rep | aux_repne))
-            {
-                regs[1] = {};
-                if ((insn.auxpref & aux_rep) && !(insn.auxpref & aux_repne) && natad(insn))
-                    regs[1].write(word_bits, 0, 0, is64);
-            }
+            finish_unconditional_repeat(insn, is64);
             return;
         case NN_stos:
             // The implicit destination may alias every retained byte. STOS
@@ -769,16 +776,14 @@ struct State
             stack.clear();
             memory.clear();
             regs[7] = {};
-            if (insn.auxpref & (aux_rep | aux_repne))
-                regs[1] = {};
+            finish_unconditional_repeat(insn, is64);
             return;
         case NN_lods:
             // LODS reads memory without writing it or the status flags. Even
             // a byte load invalidates the accumulator's known full value.
             regs[0] = {};
             regs[6] = {};
-            if (insn.auxpref & (aux_rep | aux_repne))
-                regs[1] = {};
+            finish_unconditional_repeat(insn, is64);
             return;
         case NN_bswap:
         {

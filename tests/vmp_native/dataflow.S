@@ -1187,6 +1187,28 @@ BEGIN NAME(df_rep_stos_cf)
 #endif
     ret
 
+BEGIN NAME(df_rep_stos_count_target)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    andl $1, %ecx
+    movb $0x5a, %al
+    rep stosb
+#ifdef __i386__
+    popl %edi
+    movl $NAME(df_memory_target), %eax
+    addl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    addq %rcx, %rax
+    pushq %rax
+#endif
+    ret
+
 BEGIN NAME(df_lods_plain_cf)
 #ifdef __i386__
     pushl %esi
@@ -1217,6 +1239,27 @@ BEGIN NAME(df_rep_lods_zf)
     movzbl %al, %eax
 #ifdef __i386__
     popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_rep_lods_count_target)
+#ifdef __i386__
+    pushl %esi
+    movl $NAME(df_string_source), %esi
+#else
+    leaq NAME(df_string_source)(%rip), %rsi
+#endif
+    andl $1, %ecx
+    rep lodsb
+#ifdef __i386__
+    popl %esi
+    movl $NAME(df_memory_target), %eax
+    addl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    addq %rcx, %rax
+    pushq %rax
 #endif
     ret
 

@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "scope": "matched prior/current natural-address-size REP STOS and REP LODS count transfer on native x86-64 and i386 fixtures",
+  "prior_transfer_source_sha256": "02aa06e02db814e552c28fcc3229ce3a72c62ec4a1eec6fb751aeef1cb0e050c",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "dd51522623025b9b8b49a8452818d4b8f5f178394c24cf6ef75915ca68d6b068",
+    "tests/vmp_native/dataflow.S": "8557b6cee158ce39460b562b2aeb1bc3f7fb05cc00ddb3ce4802eb5b71763134",
+    "tests/vmp_native/dataflow_main.c": "6214064e7a682a4fc20b11ae736fce117c3766627e86a19f120f5f1227e0de2e",
+    "tests/ida_dataflow_probe.py": "e74415b60602fbff97d4ca2bf711b84466b08481634b7544f1dc382512dd9f01",
+    "tests/ida_ownerless_dataflow_probe.py": "899d94a9f4bb51c3db26db584a4d770858ee497cec10e4a3b09bf5706169f415",
+    "tests/run_native_dataflow.py": "571f98c261fdd11af6a440c2692d10c331cc57f5d3002c777c2f90254fd613b2",
+    "tests/run_ownerless_dataflow.py": "332f39278ae04a7adaacc987bb7cee641c57574b2e083a1fe5d0f6433aee5277",
+    "tests/score_native_edge_benchmark.py": "020dd84ee3a7390da94dd0dce168b7436e1849b4d853ecfe2b78feca2d461ff9"
+  },
+  "tool_sha256": {
+    "ida": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "llvm-nm": "42da2421bff98120a4a2857285db866bfc327fdcc8713b1a0e104a0b8550850f",
+    "prior_signed_plugin": "7575b11af39482a040b6e664cee15a0ce45ee223b9389e913ef591d69a72cb80",
+    "current_signed_plugin": "a973383629c913a82b0ae51e24fdf2bd162d9de66d2fbbfa1251df97b4e6ee36"
+  },
+  "report_sha256": {
+    "build/vmp-string-count-prior-owned/dataflow_analysis.json": "a362ad6cfcb34f8d835caa652d08d708d1430fe205aa45cbfc2130a53eb46d6a",
+    "build/vmp-string-count-prior-ownerless/ownerless_dataflow_analysis.json": "14b6af0a4d39f3b322edd59cf38e52fbb9b95ef2d13e22b6414ce0a04a546f31",
+    "build/vmp-string-count-prior-score/native_edge_benchmark.json": "3d1f29923a2ff66d2453a946d194e97b190267976bc965304500283ea349c83e",
+    "build/vmp-string-count-current-owned/dataflow_analysis.json": "30ead67c28d898e4cc1fe3fa96432e28e2b7addb8805bd981ff4f81bb7eaa8fd",
+    "build/vmp-string-count-current-ownerless/ownerless_dataflow_analysis.json": "c6da9f2f2bcb23acc6ba64eeebdf8df2785db11a29d0a3851cc1fe49e9e608a8",
+    "build/vmp-string-count-current-score/native_edge_benchmark.json": "768fb67c1c322dd56865b30e2f271ff87dfc9b2d5500c45d57af79b5904f7aa1"
+  },
+  "binary_sha256": {
+    "x86_64": {
+      "owned": "9807e16664caaee8afcd42cf04a04c948eba38c6a9b74bc36cae352c0c7cbc76",
+      "ownerless": "be93334a93b7351bb9666f1e6bd4378443bbc4e8e858e4dd7d099aadc3a4aae1"
+    },
+    "i386": {
+      "owned": "fff32ba41b1ea4608d088b36ea213cfa74151c9d6d8ae03eb4a1a95a6312ffc7",
+      "ownerless": "4a419c584ea774c19e00f47902fed447b1cfa56837c7ffc38c9e62c50b2037dd"
+    }
+  },
+  "checks_per_architecture": {
+    "owned_native": 21502,
+    "owned_ida": 278,
+    "ownerless_native": 4094,
+    "ownerless_ida": 1080,
+    "ownerless_corrupted_oracle_rejected": true
+  },
+  "per_architecture_and_path": {
+    "oracle_edges": 36,
+    "fixed_sites": 30,
+    "conditional_sites": 3,
+    "prior_correct_edges": 28,
+    "current_correct_edges": 30,
+    "prior_unresolved_eligible_sites": 5,
+    "current_unresolved_eligible_sites": 3,
+    "prior_false_edges": 0,
+    "current_false_edges": 0,
+    "concrete_only_unresolved": 15,
+    "changed_sites": ["df_rep_stos_count_target", "df_rep_lods_count_target"]
+  },
+  "wrapper_measurements": {
+    "x86_64": {
+      "prior_owned": {"elapsed_ns": 5789864500, "peak_resident_bytes": 178470912},
+      "prior_ownerless": {"elapsed_ns": 11314239125, "peak_resident_bytes": 192413696},
+      "current_owned": {"elapsed_ns": 5249130584, "peak_resident_bytes": 179109888},
+      "current_ownerless": {"elapsed_ns": 11215134166, "peak_resident_bytes": 190611456}
+    },
+    "i386": {
+      "prior_owned": {"elapsed_ns": 6046136916, "peak_resident_bytes": 144326656},
+      "prior_ownerless": {"elapsed_ns": 7397374417, "peak_resident_bytes": 154304512},
+      "current_owned": {"elapsed_ns": 6129193167, "peak_resident_bytes": 145555456},
+      "current_ownerless": {"elapsed_ns": 7384243333, "peak_resident_bytes": 156254208}
+    }
+  },
+  "resource_scope": "outer wait4 launcher process including IDA startup; no isolated plugin time or peak memory"
+}

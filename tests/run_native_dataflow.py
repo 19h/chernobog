@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--docker-context", default="orbstack")
     parser.add_argument("--rep-count-baseline", action="store_true")
     parser.add_argument("--stack-store-baseline", action="store_true")
+    parser.add_argument("--string-count-baseline", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     output = args.output_dir.resolve()
@@ -98,7 +99,7 @@ def main():
                 and not native["output_exceeded"]
             )
             row["native_result"] = json.loads(stdout)
-            assert row["native_result"] == {"checks": 20990, "passed": True}
+            assert row["native_result"] == {"checks": 21502, "passed": True}
             row["binary_sha256"] = digest(binary)
             measurement, _, _ = execute(
                 [
@@ -127,6 +128,11 @@ def main():
                         if args.stack_store_baseline
                         else []
                     ),
+                    *(
+                        ["--set", "CHERNOBOG_STRING_COUNT_BASELINE=1"]
+                        if args.string_count_baseline
+                        else []
+                    ),
                 ],
                 timeout=120,
             )
@@ -150,7 +156,7 @@ def main():
                 json.dumps(
                     {
                         "architecture": architecture,
-                        "native_checks": 20990,
+                        "native_checks": 21502,
                         "inspection_checks": row["checks"],
                     }
                 ),

@@ -13,12 +13,12 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_PINS = {
-    "tests/vmp_native/dataflow.S": "5c6b123e7ba5e2c1d331ff50ad839a84608088e49228b11b17e8b6b35886c5bb",
-    "tests/vmp_native/dataflow_main.c": "d4e3522f2dbf3d1152817a95b8888fa55499c47154d1d0db478ac80ba4c554ce",
+    "tests/vmp_native/dataflow.S": "8557b6cee158ce39460b562b2aeb1bc3f7fb05cc00ddb3ce4802eb5b71763134",
+    "tests/vmp_native/dataflow_main.c": "6214064e7a682a4fc20b11ae736fce117c3766627e86a19f120f5f1227e0de2e",
 }
 PROBE_PINS = {
-    "tests/ida_dataflow_probe.py": "e6f85b82cc257b72a91495d6b21bb73fb05996d75457dfa6f295e90fb7bd0738",
-    "tests/ida_ownerless_dataflow_probe.py": "68a6c26631bfd0eed0420f56240200e32b4b69b07310922a3550f494fcc9562b",
+    "tests/ida_dataflow_probe.py": "e74415b60602fbff97d4ca2bf711b84466b08481634b7544f1dc382512dd9f01",
+    "tests/ida_ownerless_dataflow_probe.py": "899d94a9f4bb51c3db26db584a4d770858ee497cec10e4a3b09bf5706169f415",
 }
 
 # Targets are globally named labels in dataflow.S. Each edge is one distinct
@@ -52,6 +52,8 @@ FIXED = {
     "df_movs_plain_count_target": "df_memory_target",
     "df_rep_movs_count_unknown": "df_memory_target",
     "df_stos_register_target": "df_memory_target",
+    "df_rep_stos_count_target": "df_memory_target",
+    "df_rep_lods_count_target": "df_memory_target",
 }
 
 # Both targets occur in the 256-input native driver. The plugin's single

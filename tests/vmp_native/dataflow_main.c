@@ -37,6 +37,7 @@ extern int df_memory_alu_flags(int), df_memory_alu_flags_initial(int);
 extern int df_rep_movs_cf(int), df_rep_movs_zf(int), df_movs_plain_cf(int);
 extern int df_cmps_flags_changed(int);
 extern int df_rep_stos_cf(int), df_lods_plain_cf(int), df_rep_lods_zf(int);
+extern int df_rep_stos_count_target(int), df_rep_lods_count_target(int);
 extern int df_scas_flags_changed(int), df_stos_alias(int, void *);
 extern int df_stos_register_target(int), df_lods_memory_target(int);
 extern int df_rep_movs_alias(int, void *);
@@ -91,11 +92,12 @@ int main(void)
             df_cmps_flags_changed(input) != 0 || df_rep_movs_alias(input, &disjoint) != 7 ||
             df_rep_movs_register_target(input) != 7 || df_movs_plain_count_target(input) != 7 ||
             df_rep_movs_count_unknown(input) != 7 || df_rep_stos_cf(input) != 1 ||
-            df_lods_plain_cf(input) != 1 || df_rep_lods_zf(input) != 1 ||
+            df_rep_stos_count_target(input) != 7 || df_lods_plain_cf(input) != 1 ||
+            df_rep_lods_zf(input) != 1 || df_rep_lods_count_target(input) != 7 ||
             df_scas_flags_changed(input) != 0 || df_stos_alias(input, &disjoint) != 7 ||
             df_stos_register_target(input) != 7 || df_lods_memory_target(input) != 7)
             return 1;
-        checks += 80;
+        checks += 82;
         if (input > 0)
         {
             if (df_loop(input) != 1 || df_loop_changes(input) != ((input & 1) == 0))

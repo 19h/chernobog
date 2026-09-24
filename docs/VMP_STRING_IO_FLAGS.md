@@ -1,5 +1,10 @@
 # Status flags across x86 string stores and loads
 
+This is a historical checkpoint for repeat-count handling. The later
+`VMP_STRING_REPEAT_COUNT.md` establishes zero after normally completed
+natural-address-size `REP STOS` and `REP LODS`; hashes and counts below refer
+to the earlier revision.
+
 Review rows 1b and 2a require the native abstract state to retain facts through
 instructions with known architectural effects. Intel specifies that `STOS` and
 `LODS`, including repeat forms, leave flags unchanged
