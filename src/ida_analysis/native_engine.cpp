@@ -32,10 +32,7 @@
 #include <regfinder.hpp>
 #include <typeinf.hpp>
 #include <kernwin.hpp>
-#ifndef ALLINS_HPP_INCLUDED
-#define ALLINS_HPP_INCLUDED
-#include <allins.hpp>
-#endif
+#include <intel.hpp>
 #include "../common/warn_on.h"
 
 #include <algorithm>
@@ -446,6 +443,7 @@ struct NativeProof
     std::vector<NativeProofDependency> dependencies;
     std::vector<existing_code_edge_t> owned_edges;
     std::string owned_comment;
+    ea_t owned_noreturn_function = BADADDR;
     std::string conclusion;
 };
 
@@ -972,6 +970,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         receipt.source_node = ea2node(proof.source);
         receipt.site_node = ea2node(proof.site);
         receipt.comment = proof.owned_comment;
+        if (proof.owned_noreturn_function != BADADDR)
+            receipt.noreturn_function_node = uint64_t(ea2node(proof.owned_noreturn_function));
         for (const auto &edge : proof.owned_edges)
             receipt.edges.push_back(
                 {uint64_t(ea2node(edge.target)), uint8_t(edge.type), edge.user});
@@ -1011,6 +1011,12 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 proof.site = node2ea(nodeidx_t(receipt->site_node));
                 proof.owned_comment = receipt->comment;
                 valid = proof.source != BADADDR && proof.site != BADADDR;
+                if (receipt->noreturn_function_node)
+                {
+                    proof.owned_noreturn_function =
+                        node2ea(nodeidx_t(*receipt->noreturn_function_node));
+                    valid = valid && proof.owned_noreturn_function != BADADDR;
+                }
                 for (const auto &edge : receipt->edges)
                 {
                     const ea_t target = node2ea(nodeidx_t(edge.target_node));
@@ -1193,6 +1199,22 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                                           candidate->resumed_at &&
                                           *candidate->resumed_at == proof.intended_edge->target
                                     : candidate->gadget == proof.intended_edge->target;
+                if (current && !returning && proof.owned_noreturn_function != BADADDR)
+                {
+                    func_t *function = get_func(proof.owned_noreturn_function);
+                    std::vector<ea_t> path;
+                    current =
+                        function != nullptr &&
+                        function->start_ea == proof.owned_noreturn_function &&
+                        (function->flags & FUNC_NORET) == 0 &&
+                        !is_noret(proof.owned_noreturn_function) &&
+                        !is_userti(proof.owned_noreturn_function) && candidate->resumed_at &&
+                        func_contains(function, ea_t(candidate->return_instruction)) &&
+                        has_balanced_linear_return(function, ea_t(*candidate->resumed_at), &path);
+                    if (current)
+                        for (ea_t address : path)
+                            current = current && covered({uint64_t(address)});
+                }
                 row["context_call"] = hex(candidate->call);
                 row["scan_depth"] = std::to_string(config.pop_ret_depth);
                 row["width_bits"] = std::to_string(candidate->width_bits);
@@ -1363,6 +1385,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     void revoke_proof(NativeProof proof, bool schedule)
     {
         NativeMutationGuard guard(native_mutation_depth);
+        bool restored_noreturn = true;
         for (const auto &owned : proof.owned_edges)
             for (const auto &current : collect_code_edges(proof.site))
                 if (current.target == owned.target && current.type == owned.type &&
@@ -1372,7 +1395,31 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                     break;
                 }
         remove_owned_comment(proof.site, proof.owned_comment);
-        if (ownership_ready)
+        if (proof.owned_noreturn_function != BADADDR)
+        {
+            qstring trace;
+            if (qgetenv("CHERNOBOG_IDA_GET_PC_TRACE", &trace) && !trace.empty() && trace[0] != '0')
+                msg("[chernobog][ida-analysis][get-pc-trace] noreturn-repair revoked "
+                    "source=%a root=%a schedule=%d\n",
+                    proof.source, proof.owned_noreturn_function, schedule ? 1 : 0);
+            func_t *function = get_func(proof.owned_noreturn_function);
+            if (function != nullptr && function->start_ea == proof.owned_noreturn_function &&
+                (function->flags & FUNC_NORET) == 0 && !is_userti(proof.owned_noreturn_function) &&
+                !is_noret(proof.owned_noreturn_function))
+            {
+                restored_noreturn = set_func_flag(proof.owned_noreturn_function, FUNC_NORET, true);
+                if (restored_noreturn && schedule)
+                    plan_ea(proof.owned_noreturn_function);
+            }
+        }
+        if (!restored_noreturn)
+        {
+            ownership_publication_disabled = true;
+            msg("[chernobog][ida-analysis] native noreturn flag restoration failed at %a; "
+                "ownership receipt retained\n",
+                proof.owned_noreturn_function);
+        }
+        if (ownership_ready && restored_noreturn)
             ownership_node.supdel(ea2node(proof.source));
         pending_flag_fallthroughs.erase(proof.source);
         emulated.sub(proof.source);
@@ -1402,10 +1449,21 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     {
         for (auto it = native_proofs.begin(); it != native_proofs.end();)
         {
-            if (proof_is_fresh(it->second) && current_proof_conclusion(it->second))
+            const bool fresh = proof_is_fresh(it->second);
+            const bool conclusion = fresh && current_proof_conclusion(it->second);
+            if (fresh && conclusion)
             {
                 ++it;
                 continue;
+            }
+            if (it->second.owned_noreturn_function != BADADDR)
+            {
+                qstring trace;
+                if (qgetenv("CHERNOBOG_IDA_GET_PC_TRACE", &trace) && !trace.empty() &&
+                    trace[0] != '0')
+                    msg("[chernobog][ida-analysis][get-pc-trace] noreturn-repair stale "
+                        "source=%a fresh=%d conclusion=%d\n",
+                        it->first, fresh ? 1 : 0, conclusion ? 1 : 0);
             }
             NativeProof proof = std::move(it->second);
             it = native_proofs.erase(it);
@@ -1461,6 +1519,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         {
             proof.owned_edges = old->second.owned_edges;
             proof.owned_comment = old->second.owned_comment;
+            proof.owned_noreturn_function = old->second.owned_noreturn_function;
         }
         if (!proof.owned_comment.empty() &&
             proof.owned_comment != std::string(kCommentPrefix) + comment)
@@ -1547,6 +1606,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             // Recompute conclusions after a topology update, including support
             // coverage; equal values with newly introduced dependencies are stale.
             revalidate_proofs();
+            repair_get_pc_noreturn_flags();
             return;
         }
         if (event == idb_event::closebase)
@@ -2391,6 +2451,122 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         }
     }
 
+    bool has_balanced_linear_return(func_t *function, ea_t continuation,
+                                    std::vector<ea_t> *support = nullptr) const
+    {
+        if (function == nullptr)
+            return false;
+        std::vector<ea_t> path;
+        for (size_t index = 0; index < 16; ++index)
+        {
+            if (!func_contains(function, continuation) || !is_code(get_flags(continuation)) ||
+                !is_head(get_flags(continuation)))
+                return false;
+            insn_t instruction;
+            if (decode_insn(&instruction, continuation) <= 0 || instruction.size == 0)
+                return false;
+            path.push_back(continuation);
+            if (instruction.itype == NN_retn && instruction.Op1.type == o_void)
+            {
+                if (get_spd(function, continuation) != 0)
+                    return false;
+                if (support)
+                    *support = std::move(path);
+                return true;
+            }
+            if (instruction.itype == NN_mov)
+            {
+                if (instruction.Op1.type != o_reg || instruction.Op1.reg == R_sp ||
+                    (instruction.Op2.type != o_imm && instruction.Op2.type != o_reg))
+                    return false;
+            }
+            else if (instruction.itype == NN_lea)
+            {
+                if (instruction.Op1.type != o_reg || instruction.Op1.reg != R_sp ||
+                    instruction.Op2.type != o_displ || instruction.Op2.addr > 64 ||
+                    x86_base_reg(instruction, instruction.Op2) != R_sp ||
+                    x86_index_reg(instruction, instruction.Op2) != R_none)
+                    return false;
+            }
+            else if (instruction.itype != NN_nop)
+                return false;
+            if (continuation > BADADDR - instruction.size)
+                return false;
+            continuation += instruction.size;
+        }
+        return false;
+    }
+
+    void repair_get_pc_noreturn_flags()
+    {
+        qstring trace;
+        const bool diagnostic =
+            qgetenv("CHERNOBOG_IDA_GET_PC_TRACE", &trace) && !trace.empty() && trace[0] != '0';
+        if (diagnostic)
+            msg("[chernobog][ida-analysis][get-pc-trace] noreturn-repair proofs=%zu\n",
+                native_proofs.size());
+        for (auto &[source, proof] : native_proofs)
+        {
+            if (proof.kind != NativeProof::Kind::Call || proof.owned_noreturn_function != BADADDR)
+                continue;
+            func_t *function = get_func(source);
+            if (function == nullptr || function->start_ea != source ||
+                (function->flags & FUNC_NORET) == 0 || is_noret(source) || is_userti(source))
+                continue;
+            insn_t call;
+            if (decode_insn(&call, source) <= 0)
+                continue;
+            const auto gadget = classify_ida_get_pc_call(call, size_t(config.pop_ret_depth), true);
+            if (diagnostic)
+                msg("[chernobog][ida-analysis][get-pc-trace] noreturn-repair source=%a "
+                    "gadget=%d ret=%a resumed=%a contained=%d linear=%d\n",
+                    source, gadget ? 1 : 0, gadget ? ea_t(gadget->return_instruction) : BADADDR,
+                    gadget && gadget->resumed_at ? ea_t(*gadget->resumed_at) : BADADDR,
+                    gadget && func_contains(function, ea_t(gadget->return_instruction)) ? 1 : 0,
+                    gadget && gadget->resumed_at &&
+                            has_balanced_linear_return(function, ea_t(*gadget->resumed_at))
+                        ? 1
+                        : 0);
+            std::vector<ea_t> path;
+            if (!gadget || !gadget->resumed_at ||
+                gadget->return_instruction == classifier::k_bad_address ||
+                !func_contains(function, ea_t(gadget->return_instruction)) ||
+                !has_balanced_linear_return(function, ea_t(*gadget->resumed_at), &path))
+                continue;
+            NativeProof repaired = proof;
+            bool complete = true;
+            for (ea_t address : path)
+                complete = complete && add_instruction_dependency(repaired, address);
+            if (!complete)
+                continue;
+            repaired.owned_noreturn_function = source;
+            if (!persist_ownership(repaired))
+            {
+                if (diagnostic)
+                    msg("[chernobog][ida-analysis][get-pc-trace] noreturn-repair receipt failed\n");
+                ownership_publication_disabled = true;
+                continue;
+            }
+            NativeMutationGuard guard(native_mutation_depth);
+            if (!set_func_flag(source, FUNC_NORET, false))
+            {
+                if (diagnostic)
+                    msg("[chernobog][ida-analysis][get-pc-trace] noreturn-repair flag update failed\n");
+                if (!persist_ownership(proof))
+                {
+                    ownership_publication_disabled = true;
+                    msg("[chernobog][ida-analysis] native noreturn receipt rollback failed at %a; "
+                        "new proof publication disabled\n",
+                        source);
+                }
+                continue;
+            }
+            proof = std::move(repaired);
+            if (diagnostic)
+                msg("[chernobog][ida-analysis][get-pc-trace] noreturn-repair cleared %a\n", source);
+        }
+    }
+
     size_t expand_get_pc_function_tails()
     {
         size_t appended_count = 0;
@@ -2745,6 +2921,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             reported_orphan_functions = statistics.orphan_functions;
             reported_outlined_wrappers = statistics.outlined_wrappers;
         }
+        repair_get_pc_noreturn_flags();
         post_analysis_running = false;
     }
 };

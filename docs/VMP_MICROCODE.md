@@ -13,10 +13,15 @@ entered CALL context contained in the function. A tail may precede the function
 entry address; the bounded search now handles that layout. Flowchart repair
 also requires the uniquely entered context.
 
-This is a further implementation checkpoint for requirement 1c. The full review
-remains **incomplete and active**. Automatic region ownership, structural
-rollback, stale inferred noreturn flags, and the wider lifecycle/corpus matrix
-are still required. The earlier native checkpoint and its historical artifact
+Later checkpoint: bounded production repair of the stale inferred noreturn
+flag described below is verified in [VMP_GET_PC_NORETURN.md](VMP_GET_PC_NORETURN.md).
+The historical failing and explicitly overridden runs in this document remain
+evidence for this revision's lowering test.
+
+At this lowering checkpoint, the full review remained **incomplete and active**.
+Automatic region ownership, structural rollback, stale inferred noreturn flags,
+and the wider lifecycle/corpus matrix were still required. The earlier native
+checkpoint and its historical artifact
 remain documented in [VMP_GET_PC.md](VMP_GET_PC.md).
 
 **Verified behavior**
@@ -85,7 +90,7 @@ not be counted as a successful end-to-end result.
 | M1 | The fixture's admitted native region is the decompiler's intended input | Record staged admission; test tails before the entry and nonzero SP deltas. Automatic admission and rollback remain separate obligations |
 | M2 | A unique current CALL context supplies the return target | Alternate-entry and cross-function controls retain indirect transfers; ambiguous or unsupported contexts are rejected |
 | M3 | Standard Hex-Rays scalar IR defines the comparison memory model | Independent bounded interpreter, explicit supported-operation set, stack-byte comparison, and legacy counterexamples. Faults, segmentation, concurrency, and physical dead-slot writes remain outside this IR claim |
-| M4 | A returning fixture contract is available when requesting the ELF32 pseudocode result | Record original `FUNC_NORET` and explicit override; retain the failing unassisted run. Production noreturn freshness remains unresolved |
+| M4 | A returning fixture contract is available when requesting the ELF32 pseudocode result | Record original `FUNC_NORET` and explicit override; retain the failing unassisted run. Production noreturn freshness was unresolved at this checkpoint; see the later repair linked above |
 | M5 | The executed x64 oracle is independent evidence at its measured scope | Capture physical SP, stack bytes, result, and six flags. Distinguish translated execution from physical x86 hardware and from ELF32 decode-only tests |
 
 Primary implementation references are the local SDK's `m_push`, `m_pop`,

@@ -76,6 +76,7 @@ try:
             ea = call.Op1.addr
         function = ida_funcs.get_func(ea)
         assert function is not None, "missing function " + name
+        initial_function_flags = int(function.flags)
         if callee_only:
             assert not ida_funcs.function_contains(
                 ea, caller_ea
@@ -179,6 +180,7 @@ try:
                 "returning_contract": returning_contract,
                 "callee_only": callee_only,
                 "original_function_flags": original_function_flags,
+                "initial_function_flags": initial_function_flags,
                 "function_flags": int(ida_funcs.get_func(ea).flags),
                 "noret_attribute": bool(ida_nalt.is_noret(ea)),
                 "user_type": bool(ida_nalt.is_userti(ea)),

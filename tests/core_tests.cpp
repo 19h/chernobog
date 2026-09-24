@@ -37,12 +37,13 @@ void test_native_proof_receipts()
     Receipt original{0x0123456789ABCDEFULL,
                      0xFEDCBA9876543210ULL,
                      {{0x100000001ULL, 19, true}, {0x1010, 21, false}},
-                     "[chernobog][ida-analysis] test receipt"};
+                     "[chernobog][ida-analysis] test receipt",
+                     std::nullopt};
     const auto bytes = encode(original);
     check(bytes.has_value(), "ownership receipt encodes");
     if (!bytes)
         return;
-    check((*bytes)[4] == 0xEF && (*bytes)[11] == 0x01,
+    check((*bytes)[3] == 1 && (*bytes)[4] == 0xEF && (*bytes)[11] == 0x01,
           "receipt IDs use explicit little-endian encoding");
     const auto decoded = decode(bytes->data(), bytes->size());
     check(decoded && decoded->source_node == original.source_node &&
@@ -50,15 +51,15 @@ void test_native_proof_receipts()
               decoded->edges[0].target_node == original.edges[0].target_node &&
               decoded->edges[0].type == 19 && decoded->edges[0].user &&
               decoded->edges[1].type == 21 && !decoded->edges[1].user &&
-              decoded->comment == original.comment,
-          "ownership receipt preserves IDs, types, user bits, and exact comment");
+              decoded->comment == original.comment && !decoded->noreturn_function_node,
+          "legacy ownership receipt preserves IDs, types, user bits, and exact comment");
     for (size_t size = 0; size < bytes->size(); ++size)
         check(!decode(bytes->data(), size), "every truncated receipt is rejected");
     auto altered = *bytes;
     altered.push_back(0);
     check(!decode(altered.data(), altered.size()), "receipt trailing data rejected");
     altered = *bytes;
-    altered[3] = 2;
+    altered[3] = 3;
     check(!decode(altered.data(), altered.size()), "unknown receipt schema rejected");
     altered = *bytes;
     altered[20] = 255;
@@ -68,9 +69,15 @@ void test_native_proof_receipts()
     check(!decode(altered.data(), altered.size()), "invalid user bit rejected");
     original.comment = std::string(maximum_comment, 'x');
     original.edges.resize(maximum_edges);
+    original.noreturn_function_node = 0x123456789ABCDEF0ULL;
     const auto largest = encode(original);
-    check(largest && largest->size() == maximum_size && decode(largest->data(), largest->size()),
-          "maximum bounded receipt admitted");
+    const auto decoded_largest = largest ? decode(largest->data(), largest->size()) : std::nullopt;
+    check(largest && (*largest)[3] == 2 && largest->size() == maximum_size && decoded_largest &&
+              decoded_largest->noreturn_function_node == original.noreturn_function_node,
+          "bounded noreturn ownership receipt admitted");
+    if (largest)
+        for (size_t size = 0; size < largest->size(); ++size)
+            check(!decode(largest->data(), size), "every truncated noreturn receipt is rejected");
     original.edges.push_back({});
     check(!encode(original), "too many owned edges rejected");
     original.edges.clear();

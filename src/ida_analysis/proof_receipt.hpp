@@ -24,11 +24,12 @@ struct Receipt
     uint64_t site_node = 0;
     std::vector<Edge> edges;
     std::string comment;
+    std::optional<uint64_t> noreturn_function_node;
 };
 
 constexpr size_t maximum_edges = 8;
 constexpr size_t maximum_comment = 512;
-constexpr size_t maximum_size = 4 + 8 + 8 + 1 + maximum_edges * 10 + 2 + maximum_comment;
+constexpr size_t maximum_size = 4 + 8 + 8 + 1 + maximum_edges * 10 + 2 + maximum_comment + 8;
 
 inline bool valid_comment(const std::string &comment)
 {
@@ -40,7 +41,7 @@ inline std::optional<std::vector<uint8_t>> encode(const Receipt &receipt)
 {
     if (receipt.edges.size() > maximum_edges || !valid_comment(receipt.comment))
         return std::nullopt;
-    std::vector<uint8_t> result{'N', 'P', 'R', 1};
+    std::vector<uint8_t> result{'N', 'P', 'R', uint8_t(receipt.noreturn_function_node ? 2 : 1)};
     const auto put = [&](uint64_t value, unsigned size)
     {
         for (unsigned i = 0; i < size; ++i)
@@ -59,14 +60,17 @@ inline std::optional<std::vector<uint8_t>> encode(const Receipt &receipt)
     }
     put(receipt.comment.size(), 2);
     result.insert(result.end(), receipt.comment.begin(), receipt.comment.end());
+    if (receipt.noreturn_function_node)
+        put(*receipt.noreturn_function_node, 8);
     return result;
 }
 
 inline std::optional<Receipt> decode(const uint8_t *bytes, size_t size)
 {
     if (bytes == nullptr || size < 23 || size > maximum_size || bytes[0] != 'N' ||
-        bytes[1] != 'P' || bytes[2] != 'R' || bytes[3] != 1)
+        bytes[1] != 'P' || bytes[2] != 'R' || (bytes[3] != 1 && bytes[3] != 2))
         return std::nullopt;
+    const bool noreturn_receipt = bytes[3] == 2;
     size_t cursor = 4;
     const auto get = [&](unsigned count)
     {
@@ -93,11 +97,14 @@ inline std::optional<Receipt> decode(const uint8_t *bytes, size_t size)
         result.edges.push_back(edge);
     }
     const size_t length = size_t(get(2));
-    if (length > maximum_comment || size - cursor != length)
+    if (length > maximum_comment || size - cursor != length + (noreturn_receipt ? 8 : 0))
         return std::nullopt;
     result.comment.assign(reinterpret_cast<const char *>(bytes + cursor), length);
     if (!valid_comment(result.comment))
         return std::nullopt;
+    cursor += length;
+    if (noreturn_receipt)
+        result.noreturn_function_node = get(8);
     return result;
 }
 
