@@ -43,9 +43,9 @@ The owned native totals are `97 × 256 + 2 × 255 = 25,342` on x86-64 and
 `95 × 256 + 2 × 255 = 24,830` on i386; counts are dimensionless, exact
 integers. Every ownerless runner also rejects its deliberately corrupted
 oracle. Prior/current runs share source, probes, executable binaries and IDA
-bytes; only the signed plugin differs. The expectation-only
-`CHERNOBOG_CMPS_BASELINE=1` setting admits unresolved prior conditions.
-Comparison of every captured SETcc outcome finds exactly the seven x86-64
+bytes. The signed production plugin and expectation-only
+`CHERNOBOG_CMPS_BASELINE=1` setting differ. Comparison of every captured SETcc
+outcome finds exactly the seven x86-64
 changes above in each path and zero i386 changes. The fixed 36-edge transfer
 oracle remains 30 correct, zero false and three unresolved eligible sites on
 both architectures and paths. All 21 CTest suites pass. These native fixtures
