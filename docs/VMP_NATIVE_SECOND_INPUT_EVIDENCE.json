@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "checkpoint": "Morok protected native prefix under two valid keygen inputs",
+  "measurement_parent_revision": "680db409ddc722c4b35e6b92fb152613cc7575a4",
+  "protected_binary_sha256_each": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+  "unpacked_code_sha256_each": "5fd0de1c7f61df57706d918f19af3f956a520e6484e156809bead053307d845d",
+  "input_sha256": {
+    "valid_v14_1": "e19b1a7e7df224c8d242640e0a7b491ef593b37f9cdc49e597f813412502614f",
+    "valid_v14_0": "4115827e67efb477877223d5908bec1debf6d7b027842313a9b1704cd5977e32"
+  },
+  "stdout_sha256": {
+    "valid_v14_1": "2ff6c69467f441be9b4db70e72dc935503171785b53d1d60f54ed290db965855",
+    "valid_v14_0": "6d6ec2414eb630e62d27a240f76bf794a659ab58fa3c160aba0ca359125edea9"
+  },
+  "ida_capture_plugin_sha256": "dbae0b883cc2e328cc98e5889d9646f7fa91e3f84a2570d14417dbcd331ae9a8",
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "container_image_id": "sha256:b27cd74d026e02bdcdd8bac7c97447fe0d598174f76e252f106239aeb9722cfa",
+  "qemu_x86_64_version": "10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)",
+  "gdb_multiarch_version": "16.3 (Debian 16.3-1)",
+  "capstone_version": "5.0.7",
+  "source_sha256": {
+    "tests/verify_native_shadow_second_input.py": "150ba2ee7e9978abdc8e3263d6a5c03b727ba22f0ce26e5c60074b0634e4bbbb",
+    "tests/verify_native_shadow_defined_flags.py": "4ca2e4ab857ea7b30d0bd8008b645ad6c74728996036371171f07d3e871a2e63",
+    "tests/morok_qemu_packed_entry_memory_states.py": "fc31f83ebabd6e3b341aeab0141c797b696238d941a2cbd9225333777262cd9e",
+    "tests/ida_native_shadow_replay_memory_probe.py": "695c770fbaf4dea514c6cd352b1944c39bdfeaa543aa604f5116fc0727ab1b7d"
+  },
+  "raw_reports_sha256": {
+    "build/morok-keygen-evidence-final/report.json": "6447c7b5bc4e01f0bfccc5aa1e3f93059a1b3da8fd83107aed2fb62b3e379e31",
+    "build/morok-runtime-probe/valid-v14-0.stdin": "4115827e67efb477877223d5908bec1debf6d7b027842313a9b1704cd5977e32",
+    "build/morok-runtime-probe/packed-entry-memory-states-v14-0-first.json": "09f2fc49f760442dcb506df13397dcd58ea31578a534b21f6d736abbe90c1ccf",
+    "build/morok-runtime-probe/packed-entry-memory-states-v14-0-second.json": "305d1fea91311e2116e72754cc73866b11dc1fb910ab95daea8b2265c50a9452",
+    "build/morok-runtime-probe/gdb-packed-memory-v14-0-first.log": "1528bd80181c52653ac516dfa24f3da0e8417f853fbabfedfa6a686b62ee8e6d",
+    "build/morok-runtime-probe/gdb-packed-memory-v14-0-second.log": "1528bd80181c52653ac516dfa24f3da0e8417f853fbabfedfa6a686b62ee8e6d",
+    "build/ida-shadow-memory-v14-0-rax-first/shadow_memory_replay.json": "633fac72aeec75afb92a11d9b17592d6bd87b89f22da84289e7efc44ad96c13c",
+    "build/ida-shadow-memory-v14-0-rax-second/shadow_memory_replay.json": "be0ec81de15b675866e6b1f9ebcf626da4e3f199d964f4dc16118a821f25775a",
+    "build/ida-shadow-memory-v14-0-rax-first/run.json": "07f8ffdc106d78a64b44f0687da67c682ce74506ffae18d2ad36524a21bb2e87",
+    "build/ida-shadow-memory-v14-0-rax-second/run.json": "57a11229f2957acfecc68768a838d22ccc9ca2daf919ba15db33ce945f9a5d6a",
+    "build/morok-runtime-probe/second-input-verification.json": "97725be99fba1c01587c6ab59cf9e3ec7a18e55f172c262ae599f150194539c7"
+  },
+  "entry_pc": "0x430000",
+  "boundary_pc": "0x40c89b",
+  "protected_runs": 4,
+  "input_cases": 2,
+  "completed_process_observations": 12,
+  "candidate_instructions_per_run": 4096,
+  "gdb_aligned_entries_per_run": 4094,
+  "gdb_observation_gaps": ["0x40d63f", "0x40c1a2"],
+  "exact_gprs_total": 262016,
+  "defined_status_bits_exact_total": 75244,
+  "undefined_differing_status_bits_per_run": 901,
+  "exact_boundary_scalar_registers_total": 72,
+  "exact_boundary_window_bytes_total": 11392,
+  "same_observed_unpacked_code": true,
+  "same_entry_and_boundary_data": true,
+  "same_reported_path": true,
+  "wrong_input_binding_rejected": true,
+  "database_inventory_unchanged_each_new_run": true,
+  "ida_process_elapsed_ns_new_runs": [4950994334, 4972296375],
+  "passed": true
+}

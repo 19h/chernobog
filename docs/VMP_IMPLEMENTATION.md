@@ -144,6 +144,17 @@ the pair. Raw RFLAGS still differ at 676 entries per run, all in undefined
 bits. Mutation controls reject a changed defined bit, and the IDB inventory
 is unchanged. See `VMP_NATIVE_DEFINED_FLAGS.md` and its evidence JSON.
 
+Second protected input checkpoint for rows 0b, 6a and V: the fixed-seed
+Morok keygen version-14.0 input has a different completed-process output from
+version 14.1 while preserving exact clean/protected output equality within
+each input. Two more protected QEMU/GDB processes and two fresh IDA replays
+raise the bounded totals to 262,016 exact aligned GPR values, 75,244 exact
+defined status bits and 11,392 exact boundary-window bytes across four runs.
+The observed unpacked code, writable-data windows and 4,094-entry reported
+path are identical across both inputs. Later input-dependent execution and
+VM-region identity remain open. See `VMP_NATIVE_SECOND_INPUT.md` and its
+evidence JSON.
+
 Ownerless native graph checkpoint: an explicit-root read-only inspector now
 propagates register, flag and stack facts across existing decoded ownerless
 branches and loops, with architectural successors, entry auditing and visible
