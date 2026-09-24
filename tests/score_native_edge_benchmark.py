@@ -13,12 +13,12 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_PINS = {
-    "tests/vmp_native/dataflow.S": "7c3b7c10e3fe9a3cb3f94b6fc92101f74d66a27c58a27a7594ee17f029fb83be",
-    "tests/vmp_native/dataflow_main.c": "7c3f62787ab93663f39cddfff48b82f9a358b8f664efa356552e0bbbf806a1d0",
+    "tests/vmp_native/dataflow.S": "3333784f179140a7a09293266b8b0071dad45d3d03474817be83c9608f9632d5",
+    "tests/vmp_native/dataflow_main.c": "bab6c278426898917bbf892c51ce15791b66c43c9b846bf1b4ed6fff1eac4a1a",
 }
 PROBE_PINS = {
-    "tests/ida_dataflow_probe.py": "f5b4431be410efa7dd04440c1ef79ac30923e2f57002e63f68711b5ed30c28d7",
-    "tests/ida_ownerless_dataflow_probe.py": "49307b7fd172c481467e1a9fa45afaa1bfcdd194e582019eb014877d50d635a4",
+    "tests/ida_dataflow_probe.py": "29e27cd97ce9621a3638dd384721f606c280abd3f5b958cd9aa98fa1ad1e6b1c",
+    "tests/ida_ownerless_dataflow_probe.py": "4160f480e4e2462935742f8c8b1c6869117d9415eeaa5b112e624c15e1be7d69",
 }
 
 # Targets are globally named labels in dataflow.S. Each edge is one distinct

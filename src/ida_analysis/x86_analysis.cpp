@@ -320,7 +320,7 @@ struct State
         return address & mask(bits);
     }
 
-    static bool writable_range(uint64_t address, size_t bytes, unsigned address_bits)
+    static bool readable_range(uint64_t address, size_t bytes, unsigned address_bits)
     {
         if ((bytes != 1 && bytes != 2 && bytes != 4 && bytes != 8) ||
             (address_bits != 32 && address_bits != 64) || address > BADADDR - bytes ||
@@ -328,8 +328,14 @@ struct State
             return false;
         const auto *segment = getseg(ea_t(address));
         return segment && getseg(ea_t(address + bytes - 1)) == segment &&
-               segment->type != SEG_XTRN && (segment->perm & SEGPERM_READ) &&
-               (segment->perm & SEGPERM_WRITE);
+               segment->type != SEG_XTRN && (segment->perm & SEGPERM_READ);
+    }
+
+    static bool writable_range(uint64_t address, size_t bytes, unsigned address_bits)
+    {
+        if (!readable_range(address, bytes, address_bits))
+            return false;
+        return (getseg(ea_t(address))->perm & SEGPERM_WRITE) != 0;
     }
 
     static bool writable_word(uint64_t address, unsigned bits)
@@ -814,6 +820,47 @@ struct State
             }
             else
                 transfer(Operation::compare, width, value, compared, false, flags);
+            return;
+        }
+        case NN_cmps:
+        {
+            // Long-mode DS and ES have the same zero base. A plain CMPS
+            // compares both current memory elements before advancing SI/DI.
+            // Equal exact addresses give equal values even when the initial
+            // byte is unknown. Repetition may execute zero comparisons.
+            const bool repeated = (insn.auxpref & (aux_rep | aux_repne)) != 0;
+            const bool matched_operands =
+                insn.Op1.type == o_phrase && insn.Op2.type == o_phrase &&
+                x86_base_reg(insn, insn.Op1) == R_si && x86_index_reg(insn, insn.Op1) == R_none &&
+                x86_base_reg(insn, insn.Op2) == R_di && x86_index_reg(insn, insn.Op2) == R_none &&
+                get_dtype_size(insn.Op2.dtype) == get_dtype_size(insn.Op1.dtype);
+            std::optional<uint64_t> source_value, destination_value;
+            bool same_address = false;
+            if (is64 && !repeated && valid_width(width) && matched_operands)
+            {
+                const auto source = memory_address(insn, insn.Op1);
+                const auto destination = memory_address(insn, insn.Op2);
+                if (source && destination && readable_range(*source, width / 8, word_bits) &&
+                    readable_range(*destination, width / 8, word_bits))
+                {
+                    same_address = *source == *destination;
+                    if (!same_address)
+                    {
+                        source_value = read_memory(*source, width);
+                        destination_value = read_memory(*destination, width);
+                    }
+                }
+            }
+            regs[6] = {};
+            regs[7] = {};
+            if (repeated)
+            {
+                regs[1] = {};
+                flags.forget();
+            }
+            else
+                transfer(Operation::compare, width, source_value, destination_value, same_address,
+                         flags);
             return;
         }
         case NN_bswap:

@@ -515,6 +515,17 @@ drivers each pass 4,094 and reject their corrupted oracle. All 21 CTest suites
 pass. See `VMP_SCAS_LOCAL_FLAGS.md` and its evidence JSON. Protected-mode
 condition recovery and segment-aware i386 proofs remain open.
 
+Local CMPS flag checkpoint for rows 2a and V: plain long-mode `CMPS` now
+compares exact SI/DI addresses. Equal addresses prove comparison flags without
+an initial-byte value; distinct addresses require locally established bytes.
+Matched signed-plugin runs prove seven more x86-64 conditions in each owned and
+ownerless path, with no i386 changes. Initial distinct bytes and repeat-count
+ambiguity remain unresolved. Both native drivers pass 25,342 x86-64 and 24,830
+i386 checks; ownerless drivers pass 4,094 per architecture and reject the
+corrupted oracle. The selected transfer-edge score remains 30/36 with zero
+false edges, and all 21 CTest suites pass. See `VMP_CMPS_LOCAL_FLAGS.md` and
+its evidence JSON. The full rows remain in progress.
+
 First implementation checkpoint: source changes, executable semantic checks,
 and production IDA validation constitute progress. The complete objective is
 still active. Validation commands and limits are in `tests/VMP_NATIVE.md`.

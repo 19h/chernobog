@@ -270,6 +270,7 @@ try:
     string_io_proofs = os.environ.get("CHERNOBOG_STRING_IO_BASELINE") != "1"
     string_count_proofs = os.environ.get("CHERNOBOG_STRING_COUNT_BASELINE") != "1"
     scas_proofs = os.environ.get("CHERNOBOG_SCAS_BASELINE") != "1" and ida_ida.inf_is_64bit()
+    cmps_proofs = os.environ.get("CHERNOBOG_CMPS_BASELINE") != "1" and ida_ida.inf_is_64bit()
     expected = {
         "df_equal": True,
         "df_different": False,
@@ -293,7 +294,14 @@ try:
         "df_rep_movs_cf": movs_proofs,
         "df_rep_movs_zf": movs_proofs,
         "df_movs_plain_cf": movs_proofs,
-        "df_cmps_flags_changed": False,
+        "df_cmps_flags_changed": 0 if cmps_proofs else False,
+        "df_cmps_same_zf": cmps_proofs,
+        "df_cmps_local_cf_true": cmps_proofs,
+        "df_cmps_local_cf_false": 0 if cmps_proofs else False,
+        "df_cmps_word_cf": cmps_proofs,
+        "df_cmps_dword_zf": cmps_proofs,
+        "df_cmps_initial_unknown": False,
+        "df_rep_cmps_count_ambiguity": False,
         "df_rep_stos_cf": string_io_proofs,
         "df_lods_plain_cf": string_io_proofs,
         "df_rep_lods_zf": string_io_proofs,
@@ -312,6 +320,7 @@ try:
     }
     if ida_ida.inf_is_64bit():
         expected["df_scas_qword_zf"] = scas_proofs
+        expected["df_cmps_qword_zf"] = cmps_proofs
     for name, proved in expected.items():
         ea = address(name)
         reanalyze(ea)

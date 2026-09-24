@@ -36,6 +36,9 @@ extern int df_memory_alu_compare_initial(int);
 extern int df_memory_alu_flags(int), df_memory_alu_flags_initial(int);
 extern int df_rep_movs_cf(int), df_rep_movs_zf(int), df_movs_plain_cf(int);
 extern int df_cmps_flags_changed(int);
+extern int df_cmps_same_zf(int), df_cmps_local_cf_true(int), df_cmps_local_cf_false(int);
+extern int df_cmps_word_cf(int), df_cmps_dword_zf(int), df_cmps_initial_unknown(int);
+extern int df_rep_cmps_count_ambiguity(int);
 extern int df_rep_stos_cf(int), df_lods_plain_cf(int), df_rep_lods_zf(int);
 extern int df_rep_stos_count_target(int), df_rep_lods_count_target(int);
 extern int df_scas_flags_changed(int), df_stos_alias(int, void *);
@@ -43,6 +46,7 @@ extern int df_scas_cf_true(int), df_scas_zf_true(int), df_scas_initial_cf(int);
 extern int df_scas_word_cf(int), df_scas_dword_zf(int);
 #ifndef __i386__
 extern int df_scas_qword_zf(int);
+extern int df_cmps_qword_zf(int);
 #endif
 extern int df_rep_scas_count_ambiguity(int);
 extern int df_stos_register_target(int), df_lods_memory_target(int);
@@ -96,6 +100,10 @@ int main(void)
             df_memory_alu_flags_initial(input) != 1 || df_rep_movs_cf(input) != 1 ||
             df_rep_movs_zf(input) != 1 || df_movs_plain_cf(input) != 1 ||
             df_cmps_flags_changed(input) != 0 || df_rep_movs_alias(input, &disjoint) != 7 ||
+            df_cmps_same_zf(input) != 1 || df_cmps_local_cf_true(input) != 1 ||
+            df_cmps_local_cf_false(input) != 0 || df_cmps_word_cf(input) != 1 ||
+            df_cmps_dword_zf(input) != 1 || df_cmps_initial_unknown(input) != 1 ||
+            df_rep_cmps_count_ambiguity(input) != ((input & 1) == 0) ||
             df_rep_movs_register_target(input) != 7 || df_movs_plain_count_target(input) != 7 ||
             df_rep_movs_count_unknown(input) != 7 || df_rep_stos_cf(input) != 1 ||
             df_rep_stos_count_target(input) != 7 || df_lods_plain_cf(input) != 1 ||
@@ -107,11 +115,11 @@ int main(void)
             df_stos_alias(input, &disjoint) != 7 || df_stos_register_target(input) != 7 ||
             df_lods_memory_target(input) != 7)
             return 1;
-        checks += 88;
+        checks += 95;
 #ifndef __i386__
-        if (df_scas_qword_zf(input) != 1)
+        if (df_scas_qword_zf(input) != 1 || df_cmps_qword_zf(input) != 1)
             return 1;
-        ++checks;
+        checks += 2;
 #endif
         if (input > 0)
         {

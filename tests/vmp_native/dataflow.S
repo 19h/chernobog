@@ -4,6 +4,13 @@
 #else
 #define NAME(x) x
 #endif
+#ifdef __i386__
+#define CMPS_SI %esi
+#define CMPS_DI %edi
+#else
+#define CMPS_SI %rsi
+#define CMPS_DI %rdi
+#endif
 
 .text
 .macro BEGIN name
@@ -1169,6 +1176,161 @@ BEGIN NAME(df_cmps_flags_changed)
 #endif
     ret
 
+BEGIN NAME(df_cmps_same_zf)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_string_source), %esi
+    movl $NAME(df_string_source), %edi
+#else
+    leaq NAME(df_string_source)(%rip), %rsi
+    leaq NAME(df_string_source)(%rip), %rdi
+#endif
+    cmpsb
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_cmps_local_cf_true)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_cmps_source), %esi
+    movl $NAME(df_cmps_dest), %edi
+#else
+    leaq NAME(df_cmps_source)(%rip), %rsi
+    leaq NAME(df_cmps_dest)(%rip), %rdi
+#endif
+    movb $0x5a, (CMPS_SI)
+    movb $0x5b, (CMPS_DI)
+    cmpsb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_cmps_local_cf_false)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_cmps_source), %esi
+    movl $NAME(df_cmps_dest), %edi
+#else
+    leaq NAME(df_cmps_source)(%rip), %rsi
+    leaq NAME(df_cmps_dest)(%rip), %rdi
+#endif
+    movb $0x5b, (CMPS_SI)
+    movb $0x5a, (CMPS_DI)
+    cmpsb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_cmps_word_cf)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_cmps_source), %esi
+    movl $NAME(df_cmps_dest), %edi
+#else
+    leaq NAME(df_cmps_source)(%rip), %rsi
+    leaq NAME(df_cmps_dest)(%rip), %rdi
+#endif
+    movw $0x00ff, (CMPS_SI)
+    movw $0x0100, (CMPS_DI)
+    cmpsw
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_cmps_dword_zf)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_cmps_source), %esi
+    movl $NAME(df_cmps_dest), %edi
+#else
+    leaq NAME(df_cmps_source)(%rip), %rsi
+    leaq NAME(df_cmps_dest)(%rip), %rdi
+#endif
+    movl $0x12345678, (CMPS_SI)
+    movl $0x12345678, (CMPS_DI)
+    cmpsl
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+#ifndef __i386__
+BEGIN NAME(df_cmps_qword_zf)
+    leaq NAME(df_cmps_source)(%rip), %rsi
+    leaq NAME(df_cmps_dest)(%rip), %rdi
+    movq $0x12345678, (%rsi)
+    movq $0x12345678, (%rdi)
+    cmpsq
+    sete %al
+    movzbl %al, %eax
+    ret
+#endif
+
+BEGIN NAME(df_cmps_initial_unknown)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_cmps_initial_source), %esi
+    movl $NAME(df_cmps_initial_dest), %edi
+#else
+    leaq NAME(df_cmps_initial_source)(%rip), %rsi
+    leaq NAME(df_cmps_initial_dest)(%rip), %rdi
+#endif
+    cmpsb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_rep_cmps_count_ambiguity)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_cmps_source), %esi
+    movl $NAME(df_cmps_source), %edi
+#else
+    leaq NAME(df_cmps_source)(%rip), %rsi
+    leaq NAME(df_cmps_source)(%rip), %rdi
+#endif
+    andl $1, %ecx
+    stc
+    repe cmpsb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
 BEGIN NAME(df_rep_stos_cf)
 #ifdef __i386__
     pushl %edi
@@ -1749,6 +1911,19 @@ NAME(df_string_dest):
 .globl NAME(df_scas_qword_dest)
 NAME(df_scas_qword_dest):
     .quad 0
+.p2align 3
+.globl NAME(df_cmps_source)
+NAME(df_cmps_source):
+    .quad 0
+.globl NAME(df_cmps_dest)
+NAME(df_cmps_dest):
+    .quad 0
+.globl NAME(df_cmps_initial_source)
+NAME(df_cmps_initial_source):
+    .quad 0x5a
+.globl NAME(df_cmps_initial_dest)
+NAME(df_cmps_initial_dest):
+    .quad 0x5b
 .text
 
 /* The probe assigns the remote body as a tail of df_flow_root. The CLC

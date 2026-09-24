@@ -401,6 +401,7 @@ def focused_main():
             os.environ.get("CHERNOBOG_MOVS_BASELINE" if movs_only else "CHERNOBOG_ALU_BASELINE")
             != "1"
         )
+        cmps_proofs = os.environ.get("CHERNOBOG_CMPS_BASELINE") != "1" and ida_ida.inf_is_64bit()
         fixtures = (
             (
                 ("df_rep_movs_cf", "condition"),
@@ -440,7 +441,11 @@ def focused_main():
                     for instruction in instructions
                     if instruction.get_canon_mnem().startswith("set")
                 )
-                condition(name, result, site, True if gain and basis == "condition" else None)
+                if name == "df_cmps_flags_changed":
+                    expected = False if cmps_proofs else None
+                else:
+                    expected = True if gain and basis == "condition" else None
+                condition(name, result, site, expected)
             else:
                 site = next(
                     instruction.ea
@@ -492,6 +497,7 @@ def main():
         string_io_proofs = os.environ.get("CHERNOBOG_STRING_IO_BASELINE") != "1"
         string_count_proofs = os.environ.get("CHERNOBOG_STRING_COUNT_BASELINE") != "1"
         scas_proofs = os.environ.get("CHERNOBOG_SCAS_BASELINE") != "1" and ida_ida.inf_is_64bit()
+        cmps_proofs = os.environ.get("CHERNOBOG_CMPS_BASELINE") != "1" and ida_ida.inf_is_64bit()
         value = ida_expr.idc_value_t()
         assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
         ida_auto.auto_wait()
@@ -592,7 +598,14 @@ def main():
             ("df_rep_movs_cf", True if movs_proofs else None),
             ("df_rep_movs_zf", True if movs_proofs else None),
             ("df_movs_plain_cf", True if movs_proofs else None),
-            ("df_cmps_flags_changed", None),
+            ("df_cmps_flags_changed", False if cmps_proofs else None),
+            ("df_cmps_same_zf", True if cmps_proofs else None),
+            ("df_cmps_local_cf_true", True if cmps_proofs else None),
+            ("df_cmps_local_cf_false", False if cmps_proofs else None),
+            ("df_cmps_word_cf", True if cmps_proofs else None),
+            ("df_cmps_dword_zf", True if cmps_proofs else None),
+            ("df_cmps_initial_unknown", None),
+            ("df_rep_cmps_count_ambiguity", None),
             ("df_rep_stos_cf", True if string_io_proofs else None),
             ("df_lods_plain_cf", True if string_io_proofs else None),
             ("df_rep_lods_zf", True if string_io_proofs else None),
@@ -606,6 +619,7 @@ def main():
         )
         if ida_ida.inf_is_64bit():
             condition_cases += (("df_scas_qword_zf", True if scas_proofs else None),)
+            condition_cases += (("df_cmps_qword_zf", True if cmps_proofs else None),)
         for name, expected in condition_cases:
             root, instructions = prepare_prefix(name)
             site = next(

@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "scope": "matched native CMPS flags checkpoint; owned and ownerless x86-64/i386",
+  "source_sha256": {
+    "tests/vmp_native/dataflow.S": "3333784f179140a7a09293266b8b0071dad45d3d03474817be83c9608f9632d5",
+    "tests/vmp_native/dataflow_main.c": "bab6c278426898917bbf892c51ce15791b66c43c9b846bf1b4ed6fff1eac4a1a",
+    "tests/ida_dataflow_probe.py": "29e27cd97ce9621a3638dd384721f606c280abd3f5b958cd9aa98fa1ad1e6b1c",
+    "tests/ida_ownerless_dataflow_probe.py": "4160f480e4e2462935742f8c8b1c6869117d9415eeaa5b112e624c15e1be7d69"
+  },
+  "tool_sha256": {
+    "ida": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "llvm_nm": "42da2421bff98120a4a2857285db866bfc327fdcc8713b1a0e104a0b8550850f",
+    "prior_plugin": "ece91738282b98c97b6aa69d78aea5591ed36a6731d8b2c6bfdeaa340251785d",
+    "current_plugin": "22056f4dd4e445e4df551d56360ce5b5fa8645cfe185da4861f6fdabc6724fd5"
+  },
+  "binary_sha256": {
+    "owned_x86_64": "1e77ce45e0dbb3e714483c9fdb6c7c523cf132eebb741e7f8a8a882ccd82c9e5",
+    "owned_i386": "d3111c0495db2ae68b5d1b9841dd79c441ba74e24d7b6138ecb955fadc4daa46",
+    "ownerless_x86_64": "fddd419ecd4d2784911ad47150d1fbeb4208706aad0304f63cf18f3cbd7fb26a",
+    "ownerless_i386": "715ad6b7db22804c236dfcffcfac0b6df70780b21608b57c5b398c223aaeef98"
+  },
+  "report_sha256": {
+    "build/vmp-cmps-prior-owned/dataflow_analysis.json": "755003e0b85bb3e7007f7adf9a84c6080d7ca8c985e01a9579b5073553b6f87d",
+    "build/vmp-cmps-current-owned/dataflow_analysis.json": "149418b208fca008066286295d1de7be51dc5ae990becf3bca568ac8557f1112",
+    "build/vmp-cmps-prior-ownerless/ownerless_dataflow_analysis.json": "8eeb58c93755dcdeaff613ac163166f02b2f6a3b143c937665d36ad8961016fd",
+    "build/vmp-cmps-current-ownerless/ownerless_dataflow_analysis.json": "bc17f8b94c2d698bc1806aa0c14d136a6183810d7cc57547bf08334e9242fab7",
+    "build/vmp-cmps-prior-score/native_edge_benchmark.json": "69818956aa47220607877ff1174f3c49b51811d02c4419d83dac30986c336626",
+    "build/vmp-cmps-current-score/native_edge_benchmark.json": "f8b84630bdc4718ca8d99206188aa3b1767056e5ba4481f23139503573bed2f2"
+  },
+  "matched_source_probe_binary_ida": true,
+  "condition_changes": {
+    "owned_x86_64": 7,
+    "ownerless_x86_64": 7,
+    "owned_i386": 0,
+    "ownerless_i386": 0
+  },
+  "native_checks": {"owned_x86_64": 25342, "owned_i386": 24830, "ownerless_each": 4094},
+  "ida_assertions": {"owned_x86_64_prior": 305, "owned_x86_64_current": 319, "owned_i386_each": 291, "ownerless_x86_64_each": 1230, "ownerless_i386_each": 1210},
+  "edge_score_each_architecture_and_path": {"correct": 30, "oracle": 36, "false": 0, "unresolved_eligible_sites": 3},
+  "ctest_passed": 21
+}

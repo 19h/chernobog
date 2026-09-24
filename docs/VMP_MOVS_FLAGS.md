@@ -1,5 +1,9 @@
 # Status flags across x86 string moves
 
+This records the historical MOVS checkpoint. The later plain long-mode
+`CMPS` implementation proves the equal-address control, while i386 still
+abstains; see `VMP_CMPS_LOCAL_FLAGS.md`.
+
 Review row 2a calls for per-flag transfer through instructions that preserve
 the modeled status bits. Intel specifies that `MOVS`/`MOVSB`/`MOVSW`/
 `MOVSD`/`MOVSQ`, including the `REP` form, does not modify flags
@@ -26,7 +30,7 @@ Eight added assembly functions execute for 256 inputs on each architecture.
 Their string source and copy count are fixed; the input sweep repeats each
 operation rather than varying its operands. The process and IDA controls are:
 
-| Shape | Native result | Current owned / ownerless IDA result |
+| Shape | Native result | Owned / ownerless IDA result at this checkpoint |
 |---|---:|---|
 | `STC; REP MOVSB; SETB` | 1 | Proved CF condition |
 | `XOR` to set ZF; `REP MOVSB; SETE` | 1 | Proved ZF condition |
