@@ -39,6 +39,18 @@ abstentions; they cannot be counted as successful recovery.
 Quality gates are applied to each completed change and again to the complete
 objective. Neither baseline test success nor this ledger proves completion.
 
+Protected hello call-use checkpoint for rows 3a, 3b, 6a and V: an explicit
+bounded shadow query joins one observed CALL edge, its same-sequence argument
+register state and loaded read-only NUL-terminated bytes. Two current IDA
+runs return the 12-byte `Hello World\0` payload at `0x10000145c`; LLVM and
+Apple LLDB each observe the same pointer and bytes at `printf` in two
+protected process runs. Wrong selectors and incomplete bytes abstain, an
+in-memory shadow mutation changes the result, the independent verifier rejects
+pointer/byte/source mutations, and the matched prior plugin lacks the query.
+The native trace and selected IDA inventory remain unchanged; all 21 CTest
+suites pass. See `VMP_HELLO_CALL_USE.md` and its evidence JSON. Other calls,
+heap objects, callee semantics and the full review remain in progress.
+
 Supplied VMP hello runtime-shadow checkpoint for rows 0b, 6a and V: LLVM and
 Apple LLDB each observe two original and two protected `printf` stops. The
 protected process restores an exact 40-byte original code/stub/literal window

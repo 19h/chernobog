@@ -389,6 +389,119 @@ bool read_runtime_shadow(const std::string &path, std::vector<uint8_t> &bytes)
     const int closed = qfclose(stream);
     return count == ssize_t(length) && closed == 0;
 }
+struct ShadowUseRequest
+{
+    uint64_t source = 0, target = 0;
+    int reg = -1;
+    std::string register_name;
+    size_t max_bytes = 0;
+};
+bool parse_shadow_use_request(const std::string &request, ShadowUseRequest &use)
+{
+    if (request.empty() || request.size() > 512 || request.find('\0') != std::string::npos)
+        return false;
+    jvalue_t root;
+    if (parse_json_string(&root, request.c_str()) != eOk || root.type() != JT_OBJ ||
+        !keys(root.obj(), {"source", "target", "register", "max_bytes"}))
+        return false;
+    const auto *source = root.obj().get_value("source", JT_STR);
+    const auto *target = root.obj().get_value("target", JT_STR);
+    const auto *reg = root.obj().get_value("register", JT_STR);
+    const auto *maximum = root.obj().get_value("max_bytes", JT_NUM);
+    if (!source || !target || !reg || !maximum || !parse_hex_u64(source->qstr(), use.source) ||
+        !parse_hex_u64(target->qstr(), use.target) || use.source == use.target ||
+        maximum->num() < 1 || maximum->num() > 256)
+        return false;
+    use.max_bytes = size_t(maximum->num());
+    use.register_name.assign(reg->qstr().c_str(), reg->qstr().length());
+    for (const auto &[name, value] :
+         {std::pair{"rdi", RAX_X86_REG_RDI}, std::pair{"rsi", RAX_X86_REG_RSI},
+          std::pair{"rdx", RAX_X86_REG_RDX}, std::pair{"rcx", RAX_X86_REG_RCX},
+          std::pair{"r8", RAX_X86_REG_R8}, std::pair{"r9", RAX_X86_REG_R9}})
+        if (use.register_name == name)
+        {
+            use.reg = value;
+            return true;
+        }
+    return false;
+}
+std::string shadow_use_unavailable(const char *reason)
+{
+    return std::string("{\"available\":false,\"reason\":") + inspection_json_quote(reason) + "}";
+}
+std::string capture_shadow_use(const ShadowUseRequest &use, const NativeRegion &region,
+                               const hybrid::ProgramImage &image, const hybrid::EmuEvents &events)
+{
+    const auto *source = region.at(use.source);
+    if (!source || (source->flow != RAX_FLOW_CALL && source->flow != RAX_FLOW_INDIRECT_CALL))
+        return shadow_use_unavailable("selected source is not a planned call");
+    const hybrid::ExecEdge *edge = nullptr;
+    for (const auto &candidate : events.edges)
+        if (candidate.from == use.source && candidate.to == use.target &&
+            candidate.kind == hybrid::ExecEdge::Kind::Call)
+        {
+            if (edge)
+                return shadow_use_unavailable("selected call occurs more than once");
+            edge = &candidate;
+        }
+    if (!edge)
+        return shadow_use_unavailable("selected call transfer not observed");
+    const hybrid::StatePoint *state = nullptr;
+    for (const auto &candidate : events.states)
+        if (candidate.kind == hybrid::StatePoint::Kind::TransferTarget &&
+            candidate.source == use.source && candidate.pc == use.target &&
+            candidate.sequence == edge->sequence)
+        {
+            if (state)
+                return shadow_use_unavailable("selected call state is ambiguous");
+            state = &candidate;
+        }
+    if (!state)
+        return shadow_use_unavailable("selected call state unavailable");
+    const hybrid::RegisterValue *reg = nullptr;
+    for (const auto &candidate : state->regs)
+        if (candidate.reg == use.reg && candidate.width == 8)
+        {
+            if (reg)
+                return shadow_use_unavailable("selected argument register is ambiguous");
+            reg = &candidate;
+        }
+    if (!reg)
+        return shadow_use_unavailable("selected argument register unavailable");
+    std::vector<uint8_t> value;
+    bool terminated = false;
+    for (size_t index = 0; index < use.max_bytes; ++index)
+    {
+        if (reg->value > UINT64_MAX - index)
+            return shadow_use_unavailable("argument byte address overflow");
+        const uint64_t address = reg->value + index;
+        const auto *segment = image.segment_at(address);
+        if (!segment || segment->kind != hybrid::HybridSegmentKind::NORMAL ||
+            !segment->has_perm(hybrid::HybridSegPerm::READ) ||
+            segment->has_perm(hybrid::HybridSegPerm::WRITE) || segment->bitness != 2 ||
+            !segment->byte_loaded(address))
+            return shadow_use_unavailable("argument bytes not loaded in read-only image");
+        const uint8_t byte = segment->bytes[size_t(address - segment->start)];
+        value.push_back(byte);
+        if (!byte)
+        {
+            terminated = true;
+            break;
+        }
+    }
+    if (!terminated)
+        return shadow_use_unavailable("argument not NUL terminated within bound");
+    std::ostringstream out;
+    out << "{\"available\":true,\"source\":" << inspection_json_quote(hex(use.source))
+        << ",\"target\":" << inspection_json_quote(hex(use.target))
+        << ",\"sequence\":" << edge->sequence
+        << ",\"register\":" << inspection_json_quote(use.register_name)
+        << ",\"pointer\":" << inspection_json_quote(hex(reg->value))
+        << ",\"bytes\":" << inspection_json_quote(bytes(value))
+        << ",\"payload_bytes\":" << value.size() - 1
+        << ",\"synthetic_state\":true,\"callee_semantics_proved\":false}";
+    return out.str();
+}
 uint64_t runtime_shadow_fingerprint(const std::vector<uint8_t> &bytes)
 {
     uint64_t hash = UINT64_C(14695981039346656037);
@@ -536,9 +649,11 @@ static std::string trace_native_region_impl(
     hybrid::NativeTemporalStringRun *retained = nullptr,
     hybrid::ProgramImage *retained_image = nullptr, bool candidate_entry = false,
     const std::vector<uint8_t> *runtime_shadow = nullptr, bool sample_states = false,
-    const RuntimeDataPatch *runtime_data = nullptr)
+    const RuntimeDataPatch *runtime_data = nullptr, const ShadowUseRequest *shadow_use = nullptr)
 {
     using namespace hybrid;
+    if (shadow_use && (!candidate_entry || !runtime_shadow || sample_states || runtime_data))
+        return unavailable("invalid runtime shadow use request", candidate_entry);
     if (sample_states && (!candidate_entry || !runtime_shadow || walk || check || bindings))
         return unavailable("invalid runtime shadow state request", candidate_entry);
     if (runtime_data && (!sample_states || !explicit_input || !explicit_input->native_entry ||
@@ -917,6 +1032,8 @@ static std::string trace_native_region_impl(
             << ",\"shadow_fingerprint\":"
             << inspection_json_quote(hex(runtime_shadow_fingerprint(*runtime_shadow)))
             << ",\"shadow_instruction_states\":" << (sample_states ? "true" : "false");
+    if (shadow_use)
+        out << ",\"shadow_use\":" << capture_shadow_use(*shadow_use, region, image, events);
     if (input.native_entry)
         out << ",\"entry_state_replay\":true,\"observed_entry_sp\":"
             << inspection_json_quote(hex(input.native_entry->observed_sp))
@@ -1008,6 +1125,18 @@ std::string trace_native_candidate_shadow(uint64_t root, uint64_t seed, const st
         return unavailable("invalid bounded runtime shadow file", true);
     return trace_native_region_impl(root, seed, nullptr, false, false, nullptr, nullptr, nullptr,
                                     true, &shadow);
+}
+std::string trace_native_candidate_shadow_use(uint64_t root, uint64_t seed, const std::string &path,
+                                              const std::string &request)
+{
+    ShadowUseRequest use;
+    std::vector<uint8_t> shadow;
+    if (!parse_shadow_use_request(request, use))
+        return unavailable("invalid bounded shadow use request", true);
+    if (!read_runtime_shadow(path, shadow))
+        return unavailable("invalid bounded runtime shadow file", true);
+    return trace_native_region_impl(root, seed, nullptr, false, false, nullptr, nullptr, nullptr,
+                                    true, &shadow, false, nullptr, &use);
 }
 std::string trace_native_candidate_shadow_states(uint64_t root, uint64_t seed,
                                                  const std::string &path)

@@ -124,6 +124,8 @@ the original 40-byte main/stub/literal window in the protected process at a
 `printf` use and traces it through an ephemeral image shadow. That observation
 does not change the zero-fill file-section description or the initial IDA
 inventory measured here.
+`VMP_HELLO_CALL_USE.md` links that window's literal bytes to a bounded
+call-transfer argument snapshot and the debugger-observed pointer.
 
 ## Other supplied binaries
 

@@ -1207,6 +1207,17 @@ error_t idaapi idc_vm_trace_candidate_shadow(idc_value_t *argv, idc_value_t *r)
     return eOk;
 }
 
+error_t idaapi idc_vm_trace_candidate_shadow_use(idc_value_t *argv, idc_value_t *r)
+{
+    const auto path = arg_string(argv[2]);
+    const auto request = arg_string(argv[3]);
+    const auto json = vm::trace_native_candidate_shadow_use(
+        uint64_t(arg_ea(argv[0])), uint64_t(argv[1].num), std::string(path.c_str(), path.length()),
+        std::string(request.c_str(), request.length()));
+    r->set_string(json.c_str());
+    return eOk;
+}
+
 error_t idaapi idc_vm_trace_candidate_shadow_states(idc_value_t *argv, idc_value_t *r)
 {
     const auto path = arg_string(argv[2]);
@@ -1912,8 +1923,12 @@ const idc_entry_t idc_entries[] = {
      "chernobog_vm_trace_candidate_input(data_head_ea, seed, input_json)",
      "Synthetic candidate capture with explicit bounded native input; no reachability or VM identity claim"},
     {"chernobog_vm_trace_candidate_shadow", idc_vm_trace_candidate_shadow, args_ea_long_str,
-     "chernobog_vm_trace_candidate_shadow(data_head_ea, seed, local_file_path)",
+     "chernobog_vm_trace_candidate_shadow(root_ea, seed, local_file_path)",
      "Read-only synthetic x86-64 candidate capture over a caller-supplied bounded shadow; no runtime provenance or IDB mutation claim"},
+    {"chernobog_vm_trace_candidate_shadow_use", idc_vm_trace_candidate_shadow_use,
+     args_ea_long_str_str,
+     "chernobog_vm_trace_candidate_shadow_use(root_ea, seed, local_file_path, use_json)",
+     "Read-only bounded call-transfer register and NUL-terminated image-byte snapshot; caller-selected use contract, no callee semantics or runtime provenance claim"},
     {"chernobog_vm_trace_candidate_shadow_states", idc_vm_trace_candidate_shadow_states,
      args_ea_long_str,
      "chernobog_vm_trace_candidate_shadow_states(data_head_ea, seed, local_file_path)",

@@ -52,6 +52,10 @@ complete path through `printf`, a VM-region proof or devirtualization.
 The report contains a return frontier and an indirect-target frontier;
 neither is scored as a recovered external edge.
 
+The later `VMP_HELLO_CALL_USE.md` checkpoint adds an explicit byte snapshot
+for the call's selected argument register at this frontier. It does not
+change the original runtime-shadow report or model the external call.
+
 ## Reproduction
 
 Run the paired debugger captures with fresh output directories:

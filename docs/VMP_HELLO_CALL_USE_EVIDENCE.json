@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "inputs_sha256": {
+    "samples/foo_x86_orig": "443b0a464d7de68c5a26a3e31a92e694356ccd1eef3127d522309ac672ecc7c7",
+    "samples/foo_x86_vmp": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "runtime_window": "b9e3295c519d3f937c884f6cbab4e1e708ba16cd94314c15e4e962ddc081a023",
+    "one_byte_mutated_window": "136422b4414981ef4dd1fad512c2429997cdaf0628aa4ccaf913b01e56805c9a"
+  },
+  "sources_sha256": {
+    "src/vm/ida_native_trace.cpp": "682a52d0d238b705df63f03647489dce040146183b6cf1aa09d6c7779daa6910",
+    "src/vm/ida_native_trace.hpp": "ecdd0b548dd393d853df94da2acd38cb77051ca918b8b218ddcd6d1cf0acaaa9",
+    "src/plugin/idc_api.cpp": "f815ad62d8ce97a9cf342ae2c9ca09c7d63f2c0f257205a4c3c53b2a4480a852",
+    "tests/ida_vmp_hello_use_probe.py": "b4303078e9f5a1a089e5f207321a709e486cd496af18bd9a2e5a4d173ebc231d",
+    "tests/ida_vmp_hello_use_prior_probe.py": "3c63626a00aa1d939859ed9fd6b5bf2703d35f130cb3d2c19dc72df2e71ce6fe",
+    "tests/verify_vmp_hello_use.py": "47919fb005c5e9f82a28fe459fe83c1dab7c58e4e30406317273858e30309188"
+  },
+  "tools": {
+    "ida_version": "9.4 SP1",
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "current_built_plugin_sha256": "6d48a3da823eae95c6d83fcf68a71418f2e691eedcf4ce64d25254186a46b2f0",
+    "prior_installed_plugin_sha256": "f9fe3952d908e467ddb352537dd696cdbb47b7e93f145779f76d38e615d74853",
+    "prior_plugin_revision": "5a02881c69e5ee46e8bdc05f5e78d3c29e42305d",
+    "capstone_version": "5.0.7"
+  },
+  "debugger_reports_sha256": {
+    "llvm": "0f56d35fd17e9c48c7a4ef44e23b81eb6eff8ece76b7a3cf3414b58453bae0fa",
+    "apple": "e36527141167383c012a309340322add0d39666c783b760d9ff181f0d04544fb"
+  },
+  "ida_reports_sha256": {
+    "current_llvm_window": "205f81359794485e3487a10e318be7edf8c4c327a20a1abf58ce4ce5afae1eb5",
+    "current_apple_window": "205f81359794485e3487a10e318be7edf8c4c327a20a1abf58ce4ce5afae1eb5",
+    "prior": "20fd9d7dd661fa839d0991c287b4e57e30668a204762fa5a6873734074f7bd74"
+  },
+  "independent_verifier": {
+    "report_sha256": "5a1859571fc7c06b7c1d5a3d617a8221ba97ec88ba9db3b4c73b527d08316ddf",
+    "checks_passed": 10,
+    "pointer_byte_and_source_mutations_rejected": true
+  },
+  "selected_use": {
+    "source": "0x10000144d",
+    "target": "0x100001456",
+    "sequence": 7,
+    "register": "rdi",
+    "pointer": "0x10000145c",
+    "raw_bytes": "48656c6c6f20576f726c6400",
+    "payload_bytes": 11,
+    "terminator_bytes": 1,
+    "synthetic_state": true,
+    "callee_semantics_proved": false
+  },
+  "negative_controls": {
+    "wrong_source": "selected source is not a planned call",
+    "wrong_target": "selected call transfer not observed",
+    "wrong_register": "argument bytes not loaded in read-only image",
+    "short_bound": "argument not NUL terminated within bound",
+    "unsupported_register": "invalid bounded shadow use request",
+    "oversized_bound": "invalid bounded shadow use request",
+    "mutated_first_byte": "49"
+  },
+  "regression": {
+    "current_ida_checks_per_run": 5,
+    "prior_ida_checks": 3,
+    "ctest_suites_passed": 21,
+    "ctest_suites_total": 21,
+    "underlying_native_trace_unchanged": true,
+    "selected_ida_inventory_unchanged": true
+  },
+  "limits": {
+    "maximum_selected_bytes_including_NUL": 256,
+    "region": "one explicit root and one caller-selected call transfer",
+    "not_established": "callee behavior, other runtime uses, heap lifetime, complete VMP path, VM identity"
+  }
+}

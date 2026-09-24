@@ -10,6 +10,8 @@ std::string trace_native_candidate_region(uint64_t root, uint64_t seed);
 std::string trace_native_candidate_region_input(uint64_t root, uint64_t seed,
                                                 const std::string &request);
 std::string trace_native_candidate_shadow(uint64_t root, uint64_t seed, const std::string &path);
+std::string trace_native_candidate_shadow_use(uint64_t root, uint64_t seed, const std::string &path,
+                                              const std::string &request);
 std::string trace_native_candidate_shadow_states(uint64_t root, uint64_t seed,
                                                  const std::string &path);
 std::string trace_native_candidate_shadow_replay(uint64_t root, uint64_t seed,
