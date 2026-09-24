@@ -7,9 +7,13 @@
 #ifdef __i386__
 #define CMPS_SI %esi
 #define CMPS_DI %edi
+#define STOS_DX %edx
+#define STOS_DI %edi
 #else
 #define CMPS_SI %rsi
 #define CMPS_DI %rdi
+#define STOS_DX %rdx
+#define STOS_DI %rdi
 #endif
 
 .text
@@ -1607,6 +1611,222 @@ BEGIN NAME(df_stos_register_target)
 #endif
     ret
 
+BEGIN NAME(df_stos_disjoint_target)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl $NAME(df_stos_slot), %edi
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    leaq NAME(df_stos_slot)(%rip), %rdi
+#endif
+    movb $0x5a, %al
+    stosb
+#ifdef __i386__
+    movl (%esp), %edi
+    leal 4(%esp), %esp
+    movl $NAME(df_memory_slot), %edx
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_stos_unknown_value_disjoint_target)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl $NAME(df_stos_slot), %edi
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    leaq NAME(df_stos_slot)(%rip), %rdi
+#endif
+    movb %cl, %al
+    stosb
+#ifdef __i386__
+    movl (%esp), %edi
+    leal 4(%esp), %esp
+    movl $NAME(df_memory_slot), %edx
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_rep_stos_disjoint_target)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl $NAME(df_stos_slot), %edi
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    leaq NAME(df_stos_slot)(%rip), %rdi
+#endif
+    andl $1, %ecx
+    movb $0x5a, %al
+    rep stosb
+#ifdef __i386__
+    movl (%esp), %edi
+    leal 4(%esp), %esp
+    movl $NAME(df_memory_slot), %edx
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_stos_overlap_known_target)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl %edx, %edi
+    movb (%edx), %al
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    movq %rdx, %rdi
+    movb (%rdx), %al
+#endif
+    stosb
+#ifdef __i386__
+    movl (%esp), %edi
+    leal 4(%esp), %esp
+    movl $NAME(df_memory_slot), %edx
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_stos_byte_reload)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_stos_slot), %edi
+#else
+    leaq NAME(df_stos_slot)(%rip), %rdi
+#endif
+    movb $0x5a, %al
+    stosb
+#ifdef __i386__
+    movl $NAME(df_stos_slot), %edx
+#else
+    leaq NAME(df_stos_slot)(%rip), %rdx
+#endif
+    movzbl (STOS_DX), %eax
+    cmpl $0x5a, %eax
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %edi
+    leal 4(%esp), %esp
+#endif
+    ret
+
+BEGIN NAME(df_stos_word_reload)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_stos_slot), %edi
+#else
+    leaq NAME(df_stos_slot)(%rip), %rdi
+#endif
+    movw $0x5a5b, %ax
+    stosw
+#ifdef __i386__
+    movl $NAME(df_stos_slot), %edx
+#else
+    leaq NAME(df_stos_slot)(%rip), %rdx
+#endif
+    movzwl (STOS_DX), %eax
+    cmpl $0x5a5b, %eax
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %edi
+    leal 4(%esp), %esp
+#endif
+    ret
+
+BEGIN NAME(df_stos_dword_reload)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_stos_slot), %edi
+#else
+    leaq NAME(df_stos_slot)(%rip), %rdi
+#endif
+    movl $0x12345678, %eax
+    stosl
+#ifdef __i386__
+    movl $NAME(df_stos_slot), %edx
+#else
+    leaq NAME(df_stos_slot)(%rip), %rdx
+#endif
+    movl (STOS_DX), %eax
+    cmpl $0x12345678, %eax
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %edi
+    leal 4(%esp), %esp
+#endif
+    ret
+
+BEGIN NAME(df_stos_unknown_overlap_condition)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_stos_slot), %edi
+#else
+    leaq NAME(df_stos_slot)(%rip), %rdi
+#endif
+    movb $0x5a, (STOS_DI)
+    movb %cl, %al
+    stosb
+#ifdef __i386__
+    movl $NAME(df_stos_slot), %edx
+#else
+    leaq NAME(df_stos_slot)(%rip), %rdx
+#endif
+    movzbl (STOS_DX), %eax
+    cmpl $0x5a, %eax
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %edi
+    leal 4(%esp), %esp
+#endif
+    ret
+
+#ifndef __i386__
+BEGIN NAME(df_stos_qword_reload)
+    leaq NAME(df_stos_slot)(%rip), %rdi
+    movq $0x12345678, %rax
+    stosq
+    leaq NAME(df_stos_slot)(%rip), %rdx
+    movq (%rdx), %rax
+    cmpq $0x12345678, %rax
+    sete %al
+    movzbl %al, %eax
+    ret
+#endif
+
 BEGIN NAME(df_lods_memory_target)
 #ifdef __i386__
     pushl %esi
@@ -1910,6 +2130,10 @@ NAME(df_string_dest):
 .p2align 3
 .globl NAME(df_scas_qword_dest)
 NAME(df_scas_qword_dest):
+    .quad 0
+.p2align 3
+.globl NAME(df_stos_slot)
+NAME(df_stos_slot):
     .quad 0
 .p2align 3
 .globl NAME(df_cmps_source)

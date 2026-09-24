@@ -5,7 +5,10 @@ This is a historical checkpoint for repeat-count handling. The later
 natural-address-size `REP STOS` and `REP LODS`; hashes and counts below refer
 to the earlier revision. The later `VMP_SCAS_LOCAL_FLAGS.md` also proves exact
 local `SCAS` comparison flags in long mode; this checkpoint's `SCASB`
-abstention is historical for that admitted form.
+abstention is historical for that admitted form. The later
+`VMP_STOS_LOCAL_MEMORY.md` retains disjoint local memory through plain
+long-mode `STOS` at an exact destination; the all-memory invalidation below
+describes this earlier checkpoint.
 
 Review rows 1b and 2a require the native abstract state to retain facts through
 instructions with known architectural effects. Intel specifies that `STOS` and

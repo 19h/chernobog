@@ -271,6 +271,9 @@ try:
     string_count_proofs = os.environ.get("CHERNOBOG_STRING_COUNT_BASELINE") != "1"
     scas_proofs = os.environ.get("CHERNOBOG_SCAS_BASELINE") != "1" and ida_ida.inf_is_64bit()
     cmps_proofs = os.environ.get("CHERNOBOG_CMPS_BASELINE") != "1" and ida_ida.inf_is_64bit()
+    stos_local_proofs = (
+        os.environ.get("CHERNOBOG_STOS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
+    )
     expected = {
         "df_equal": True,
         "df_different": False,
@@ -312,6 +315,10 @@ try:
         "df_scas_dword_zf": scas_proofs,
         "df_scas_initial_cf": False,
         "df_rep_scas_count_ambiguity": False,
+        "df_stos_byte_reload": stos_local_proofs,
+        "df_stos_word_reload": stos_local_proofs,
+        "df_stos_dword_reload": stos_local_proofs,
+        "df_stos_unknown_overlap_condition": False,
         "df_loop": True,
         "df_loop_changes": False,
         "df_stack": True,
@@ -321,6 +328,7 @@ try:
     if ida_ida.inf_is_64bit():
         expected["df_scas_qword_zf"] = scas_proofs
         expected["df_cmps_qword_zf"] = cmps_proofs
+        expected["df_stos_qword_reload"] = stos_local_proofs
     for name, proved in expected.items():
         ea = address(name)
         reanalyze(ea)
@@ -535,6 +543,10 @@ try:
         ("df_memory_alu_rmw_alias", False),
         ("df_rep_movs_alias", False),
         ("df_stos_alias", False),
+        ("df_stos_disjoint_target", stos_local_proofs),
+        ("df_stos_unknown_value_disjoint_target", stos_local_proofs),
+        ("df_rep_stos_disjoint_target", False),
+        ("df_stos_overlap_known_target", stos_local_proofs),
         ("df_lods_memory_target", string_io_proofs),
     ):
         root = address(name)

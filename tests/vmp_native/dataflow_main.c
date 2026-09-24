@@ -42,11 +42,17 @@ extern int df_rep_cmps_count_ambiguity(int);
 extern int df_rep_stos_cf(int), df_lods_plain_cf(int), df_rep_lods_zf(int);
 extern int df_rep_stos_count_target(int), df_rep_lods_count_target(int);
 extern int df_scas_flags_changed(int), df_stos_alias(int, void *);
+extern int df_stos_disjoint_target(int), df_stos_unknown_value_disjoint_target(int);
+extern int df_stos_overlap_known_target(int);
+extern int df_rep_stos_disjoint_target(int);
+extern int df_stos_byte_reload(int), df_stos_word_reload(int), df_stos_dword_reload(int);
+extern int df_stos_unknown_overlap_condition(int);
 extern int df_scas_cf_true(int), df_scas_zf_true(int), df_scas_initial_cf(int);
 extern int df_scas_word_cf(int), df_scas_dword_zf(int);
 #ifndef __i386__
 extern int df_scas_qword_zf(int);
 extern int df_cmps_qword_zf(int);
+extern int df_stos_qword_reload(int);
 #endif
 extern int df_rep_scas_count_ambiguity(int);
 extern int df_stos_register_target(int), df_lods_memory_target(int);
@@ -113,13 +119,20 @@ int main(void)
             df_scas_word_cf(input) != 1 || df_scas_dword_zf(input) != 1 ||
             df_rep_scas_count_ambiguity(input) != ((input & 1) == 0) ||
             df_stos_alias(input, &disjoint) != 7 || df_stos_register_target(input) != 7 ||
+            df_stos_disjoint_target(input) != 7 ||
+            df_stos_unknown_value_disjoint_target(input) != 7 ||
+            df_rep_stos_disjoint_target(input) != 7 || df_stos_overlap_known_target(input) != 7 ||
+            df_stos_byte_reload(input) != 1 || df_stos_word_reload(input) != 1 ||
+            df_stos_dword_reload(input) != 1 ||
+            df_stos_unknown_overlap_condition(input) != (input == 0x5a) ||
             df_lods_memory_target(input) != 7)
             return 1;
-        checks += 95;
+        checks += 103;
 #ifndef __i386__
-        if (df_scas_qword_zf(input) != 1 || df_cmps_qword_zf(input) != 1)
+        if (df_scas_qword_zf(input) != 1 || df_cmps_qword_zf(input) != 1 ||
+            df_stos_qword_reload(input) != 1)
             return 1;
-        checks += 2;
+        checks += 3;
 #endif
         if (input > 0)
         {

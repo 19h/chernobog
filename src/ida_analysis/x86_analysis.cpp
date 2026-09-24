@@ -777,13 +777,38 @@ struct State
             finish_unconditional_repeat(insn, is64);
             return;
         case NN_stos:
-            // The implicit destination may alias every retained byte. STOS
-            // reads but does not change the accumulator or status flags.
+        {
+            // A plain long-mode STOS writes the accumulator to ES:[DI]. An
+            // exact destination invalidates only its byte range; repeated
+            // stores and i386 ES-relative addresses retain unknown aliases.
+            const bool repeated = (insn.auxpref & (aux_rep | aux_repne)) != 0;
+            const Slice accumulator = register_slice(insn.Op2);
+            const bool matched_accumulator =
+                accumulator.reg == 0 && accumulator.offset == 0 && accumulator.width == width;
+            const bool matched_memory =
+                insn.Op1.type == o_phrase && x86_base_reg(insn, insn.Op1) == R_di &&
+                x86_index_reg(insn, insn.Op1) == R_none &&
+                get_dtype_size(insn.Op2.dtype) == get_dtype_size(insn.Op1.dtype);
+            std::optional<uint64_t> destination;
+            if (is64 && !repeated && valid_width(width) && matched_accumulator && matched_memory)
+            {
+                destination = memory_address(insn, insn.Op1);
+                if (destination && !writable_range(*destination, width / 8, word_bits))
+                    destination.reset();
+            }
             stack.clear();
-            memory.clear();
+            if (destination)
+            {
+                invalidate_memory(destination, width / 8);
+                if (const auto value = read(insn.Op2))
+                    store_memory(*destination, width, *value);
+            }
+            else
+                memory.clear();
             regs[7] = {};
             finish_unconditional_repeat(insn, is64);
             return;
+        }
         case NN_lods:
             // LODS reads memory without writing it or the status flags. Even
             // a byte load invalidates the accumulator's known full value.

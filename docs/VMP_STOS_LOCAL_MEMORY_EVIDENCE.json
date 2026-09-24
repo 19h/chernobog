@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "scope": "matched plain long-mode STOS local-memory checkpoint; owned, ownerless, and one supplied protected root",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "a5f29b592e79e98d988496ecde8849c068eccd8c4e54366707a081c7d85a763e",
+    "tests/vmp_native/dataflow.S": "a1e7ce855e97ecbce9da9983d3d282fb003cc13390a0d109fbd367b56cf24982",
+    "tests/vmp_native/dataflow_main.c": "0762697a0bb0f9007f2e0a5ab9976d240e1e3d03f641fb8d0cbb460bc9c5b9a8",
+    "tests/ida_dataflow_probe.py": "7b56d0470d287cf2d1322d9f25c254371b920ad2f97a560d25abdb5a816d3303",
+    "tests/ida_ownerless_dataflow_probe.py": "f37fdf1dd40f8c3579d51ddcde3799fdfd6d5dac03040aca48bcca95bf153b65",
+    "tests/run_native_dataflow.py": "415253930604e50bbee5a6b7a1a290295e0f27ef49eec714b4f2983788632a2a",
+    "tests/run_ownerless_dataflow.py": "bb618fe06723172d6a5f862dc49529ab601e572e1f5f02ac7c6545e87afc5984",
+    "tests/score_native_edge_benchmark.py": "14870b0be22feb07bff0ce64085a7e299b725b61aa6f787db7d0744761a5ae8e",
+    "tests/ida_protected_region_inspect.py": "b68a41d2011f232808974d7b155b84a43e4f13a8f3eb157a0d204cf6f04548d2"
+  },
+  "tool_sha256": {
+    "ida": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "llvm_nm": "42da2421bff98120a4a2857285db866bfc327fdcc8713b1a0e104a0b8550850f",
+    "prior_plugin": "101607298c3a6271efe2bedc095f00c43ea3863d6b12a8e6c83298cc8f7f2544",
+    "current_plugin": "07661bcceef210c14e4127e99d3846ba346ca54a76f69da0f70afd5300d1ea67"
+  },
+  "binary_sha256": {
+    "owned_x86_64": "375cfe1c7160489f2bffef895b2b08ee0a754ed94dd482fce721cc0c16594694",
+    "owned_i386": "9f469e8b77ea9f95badce32aebb5926a31436ae74c8c42bdd38b0b1f436d80a4",
+    "ownerless_x86_64": "4110ddac7a6d7d687ce242273f63206a67ef2508b89ab124061e936e1a9c481b",
+    "ownerless_i386": "367a2efe26bdc259fadfaf636b7a1522375f3c8296202619893d8b80c8a566b4"
+  },
+  "protected_input_sha256": {
+    "samples/foo_x86_vmp": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "report_sha256": {
+    "build/vmp-stos-local-final-prior-owned/dataflow_analysis.json": "6d440a489e7d916cb8e37abea0e03421e2ff16b7121883a5764d273045cbf10e",
+    "build/vmp-stos-local-final-current-owned/dataflow_analysis.json": "d8a678c815dbcd206b0ec49ab4f07e2b90a27552255195e7d86ea94ed7616037",
+    "build/vmp-stos-local-final-prior-ownerless/ownerless_dataflow_analysis.json": "400d81fce7383ad533a1fd86cd10a5b9bbe145a2e05e322813f8de6e077c63ce",
+    "build/vmp-stos-local-final-current-ownerless/ownerless_dataflow_analysis.json": "2a12ed3b9d4d64a73619caa0e0bbdf16487cd61e30c35e6a24b2b373cbbc0e88",
+    "build/vmp-stos-local-final-prior-score/native_edge_benchmark.json": "a45a24687c85fb8a9183a3c684fe27e89ce6db36021295c15aed5e674b9837fe",
+    "build/vmp-stos-local-final-current-score/native_edge_benchmark.json": "d6fec950c97693f09de851383091deea472ff8b2c685bdc6bb35d02cb75933db",
+    "build/vmp-stos-local-prior-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/vmp-stos-local-current-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa"
+  },
+  "matched_source_probe_binary_ida": true,
+  "condition_changes": {"owned_x86_64": 4, "ownerless_x86_64": 4, "owned_i386": 0, "ownerless_i386": 0},
+  "transfer_changes": {"owned_x86_64": 3, "ownerless_x86_64": 3, "owned_i386": 0, "ownerless_i386": 0},
+  "native_checks": {"owned_x86_64": 27646, "owned_i386": 26878, "ownerless_each": 4094},
+  "ida_assertions": {"owned_x86_64_prior": 340, "owned_x86_64_current": 348, "owned_i386_each": 311, "ownerless_x86_64_each": 1320, "ownerless_i386_each": 1290},
+  "edge_score": {
+    "oracle_edges_each": 40,
+    "prior_correct_each": 30,
+    "current_correct_x86_64_each": 33,
+    "current_correct_i386_each": 30,
+    "false_each": 0,
+    "current_unresolved_x86_64_each": 4,
+    "current_unresolved_i386_each": 7
+  },
+  "protected_selected_root": {"nodes": 75, "edges": 77, "unresolved_records": 3, "prior_current_byte_equal": true},
+  "ctest_passed": 21
+}

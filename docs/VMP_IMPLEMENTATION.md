@@ -526,6 +526,18 @@ corrupted oracle. The selected transfer-edge score remains 30/36 with zero
 false edges, and all 21 CTest suites pass. See `VMP_CMPS_LOCAL_FLAGS.md` and
 its evidence JSON. The full rows remain in progress.
 
+Local STOS memory checkpoint for rows 1b, 2a and V: plain long-mode `STOS`
+with an exact mapped DI destination now invalidates only the written bytes and
+records a known accumulator value. Three new x86-64 memory-source targets and
+four reload conditions become proved in both owned and ownerless analysis;
+i386, unknown destinations and repeat controls remain unresolved. With four
+new fixed oracle sites, the matched x86-64 edge score rises from 30/40 to
+33/40, zero false edges; i386 remains 30/40, zero false edges. The selected
+supplied VMP initializer inspection remains byte-identical at 75 nodes, 77
+edges and three unresolved facts. All 21 CTest suites pass. See
+`VMP_STOS_LOCAL_MEMORY.md` and its evidence JSON. Wider protected coverage and
+the full review remain in progress.
+
 First implementation checkpoint: source changes, executable semantic checks,
 and production IDA validation constitute progress. The complete objective is
 still active. Validation commands and limits are in `tests/VMP_NATIVE.md`.

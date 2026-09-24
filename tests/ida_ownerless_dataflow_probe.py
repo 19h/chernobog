@@ -498,6 +498,9 @@ def main():
         string_count_proofs = os.environ.get("CHERNOBOG_STRING_COUNT_BASELINE") != "1"
         scas_proofs = os.environ.get("CHERNOBOG_SCAS_BASELINE") != "1" and ida_ida.inf_is_64bit()
         cmps_proofs = os.environ.get("CHERNOBOG_CMPS_BASELINE") != "1" and ida_ida.inf_is_64bit()
+        stos_local_proofs = (
+            os.environ.get("CHERNOBOG_STOS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
+        )
         value = ida_expr.idc_value_t()
         assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
         ida_auto.auto_wait()
@@ -616,10 +619,15 @@ def main():
             ("df_scas_dword_zf", True if scas_proofs else None),
             ("df_scas_initial_cf", None),
             ("df_rep_scas_count_ambiguity", None),
+            ("df_stos_byte_reload", True if stos_local_proofs else None),
+            ("df_stos_word_reload", True if stos_local_proofs else None),
+            ("df_stos_dword_reload", True if stos_local_proofs else None),
+            ("df_stos_unknown_overlap_condition", None),
         )
         if ida_ida.inf_is_64bit():
             condition_cases += (("df_scas_qword_zf", True if scas_proofs else None),)
             condition_cases += (("df_cmps_qword_zf", True if cmps_proofs else None),)
+            condition_cases += (("df_stos_qword_reload", True if stos_local_proofs else None),)
         for name, expected in condition_cases:
             root, instructions = prepare_prefix(name)
             site = next(
@@ -749,6 +757,10 @@ def main():
             ("df_memory_alu_rmw_initial", False),
             ("df_memory_alu_rmw_alias", False),
             ("df_lods_memory_target", string_io_proofs),
+            ("df_stos_disjoint_target", stos_local_proofs),
+            ("df_stos_unknown_value_disjoint_target", stos_local_proofs),
+            ("df_rep_stos_disjoint_target", False),
+            ("df_stos_overlap_known_target", stos_local_proofs),
         ):
             root, instructions = prepare_prefix(name)
             result = inspect(name, root)
@@ -759,7 +771,17 @@ def main():
             ]
             expected_pushes = 1 + int(
                 (name == "df_memory_stack_round_trip" and result["address_bits"] == 64)
-                or (name == "df_lods_memory_target" and result["address_bits"] == 32)
+                or (
+                    name
+                    in (
+                        "df_lods_memory_target",
+                        "df_stos_disjoint_target",
+                        "df_stos_unknown_value_disjoint_target",
+                        "df_rep_stos_disjoint_target",
+                        "df_stos_overlap_known_target",
+                    )
+                    and result["address_bits"] == 32
+                )
             )
             check(name + " expected PUSH count", len(pushes) == expected_pushes)
             assert len(pushes) == expected_pushes
