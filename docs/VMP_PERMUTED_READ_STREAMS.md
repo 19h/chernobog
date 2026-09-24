@@ -40,6 +40,14 @@ inspection, no stored user comments, and removal/restoration of the displayed
 value when the key byte is patched/restored. Source, binary, plugin, tool and
 raw-report hashes are recorded in `VMP_PERMUTED_READ_STREAMS_EVIDENCE.json`.
 
+The same C fixture compiled for native arm64 also passes its independent
+process oracle (positive exit 0, corrupted expected value exit 1). An isolated
+IDA profile using the prior plugin publishes zero candidates; the installed
+plugin publishes one `secret!` candidate with eight fragments in each of four
+completed runs and one indexed-read ctree annotation. Both profiles pass the
+same nine checks. These arm64 profiles use the exact binary and prior-plugin
+hashes recorded for their matched comparison.
+
 Reproduce the positive binary and modified-plugin profile:
 
 ```sh
@@ -71,9 +79,10 @@ additional memory is `O(U + B)`. These are byte and event counts, so no unit
 conversion is needed.
 
 **High impact:** indexed and permuted heap byte reads now yield a directly
-auditable string at their actual ctree read expression. **Medium impact:**
-read order that changes anchor occurrence across runs, noncontiguous spatial
-sets, stack/image permutations, and unknown memory effects still abstain;
+auditable string at their actual ctree read expression on x86-64 and arm64.
+**Medium impact:** read order that changes anchor occurrence across runs,
+noncontiguous spatial sets, stack/image permutations, other architectures and
+unknown memory effects still abstain;
 the fragment display format gains an address field. **Low impact:** the
 additional per-run grouping is bounded by existing snapshot/use limits.
 

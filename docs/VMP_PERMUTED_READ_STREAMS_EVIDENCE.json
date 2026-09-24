@@ -15,12 +15,16 @@
   "fixtures": {
     "positive": "73eb60924dfbe1f69e9dc440a96e7f34035fa23f3b44e1e69ec3e87da194a52e",
     "disjoint_write": "40755906aaa066ee8230ffee2fbf7e499aeec69a72bf56d83cebb49c64a8a55a",
-    "wrong_oracle": "ec84171445c5c26f527874be6680124a36ed60fadbb9e1af516aea3457e195f0"
+    "wrong_oracle": "ec84171445c5c26f527874be6680124a36ed60fadbb9e1af516aea3457e195f0",
+    "arm64_positive": "c11fc0992f842c50a2de5281717d5cbff91e4ea33967f454e8424fe1f4acacf0",
+    "arm64_wrong_oracle": "259527fd047cebaacf4688b6d96c0eb48f4ec84557b9b7a7443cc79c379c53bc"
   },
   "native_exit_codes": {
     "positive": 0,
     "disjoint_write": 0,
-    "wrong_oracle": 1
+    "wrong_oracle": 1,
+    "arm64_positive": 0,
+    "arm64_wrong_oracle": 1
   },
   "positive_literal_in_strings_output": false,
   "ida_profiles": {
@@ -42,6 +46,19 @@
       "read_fragments_per_run": 8,
       "run_sha256": "d9607ccb36ba7641c27ff6e52710ba1bf5f87b72526a29c2da69cabc275e2a7d",
       "probe_sha256": "307350d6d58e1283f0319bc7938b5ae63d8eaa4881161ff3aad521a9ece4cf12"
+    },
+    "previous_arm64": {
+      "candidates": 0,
+      "run_sha256": "e952c4d34ceee152100a71e1707b8c202b2918eb0ce025022562e751c5a0682a",
+      "probe_sha256": "d187ddd3b81c856d651e4688e3390333c0072978765b5d02cec0479aa76ca161"
+    },
+    "installed_arm64": {
+      "plugin_sha256": "55b641d50cfb510a1ca3dbef6c7dc14a064f97bdeb1a439871103ecd914f27c0",
+      "candidates": 1,
+      "value": "secret!",
+      "read_fragments_per_run": 8,
+      "run_sha256": "679bb56a4ced6635b7d61522323e304ddd1d8399222cd45abaa7d15abaedb638",
+      "probe_sha256": "5acfcc93303ace45eb2e826a29d10b36935c933a780175a799080212845825d1"
     }
   },
   "ida_checks_per_profile": 9,
