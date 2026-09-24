@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "benchmark": "source-annotated native transfer sites",
+  "scorer": {
+    "path": "tests/score_native_edge_benchmark.py",
+    "sha256": "114eb0f89f71568b12f4aa5a31496343ea612bcaf40a09bd6820745ec6bbae62"
+  },
+  "score_report": {
+    "path": "build/vmp-native-edge-score-xrefs/native_edge_benchmark.json",
+    "sha256": "f17fad5fffc46031f3e63def4851bfe2b00a4744db2b7af16c6aff1876f812d9"
+  },
+  "source_sha256": {
+    "tests/vmp_native/dataflow.S": "56e5fc153e098768ac328fbbe9093eacda137c71dad4efefdac397f7c96bd0b0",
+    "tests/vmp_native/dataflow_main.c": "d4e3522f2dbf3d1152817a95b8888fa55499c47154d1d0db478ac80ba4c554ce"
+  },
+  "probe_sha256": {
+    "tests/ida_dataflow_probe.py": "af660ad6f9a3b32731187e75c58228854ef3ae13f5b8ceb5d7066c8dc1c38755",
+    "tests/ida_ownerless_dataflow_probe.py": "0327a37995e317958b66cb9cf5c24a749c7f4eacaa56183323379c74407ea637"
+  },
+  "tool_sha256": {
+    "installed_plugin": "ccd86672c9c7d43c203e4534f22b3e0c1cf0f6368f1bf70d3190262ba672d733",
+    "ida": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "llvm-nm": "42da2421bff98120a4a2857285db866bfc327fdcc8713b1a0e104a0b8550850f"
+  },
+  "input_report_sha256": {
+    "build/vmp-native-edge-owned-xrefs/dataflow_analysis.json": "86c80e9849399c84b88732f4bffcfd9ea471d7e2b425b692570edf06fdc4197e",
+    "build/vmp-string-io-ownerless-installed/ownerless_dataflow_analysis.json": "8c6770cbf0ca8625d5964c45a687c685b780dd8744c22295c6e44f9fd85a2c1d"
+  },
+  "cohorts": {
+    "fixed_sites": 28,
+    "dynamic_sites": 3,
+    "dynamic_target_edges": 6,
+    "concrete_only_sites_excluded": 15
+  },
+  "architectures": [
+    {
+      "architecture": "x86_64",
+      "binary_sha256": {
+        "owned": "43cb301f32e3ef9a21b25fb5b2139ac71931f71c28a9597c81ecfe5c7f4bb51f",
+        "ownerless": "793afdcfe833a4b5b4378d98ef090397c1e018bb4e8e6257a2349624b5773cf2"
+      },
+      "raw_inspection_sha256": {
+        "owned": "08e932b45b8ff1ec7366a1ae9e9ff423b0e67acd736a41019f6729414dce7025",
+        "ownerless": "0bd0f91a5051be5dcdd4ed4b846a7e8e341eb7ac20b6996618093afc151366a4"
+      },
+      "checks": {
+        "owned_native": 20990,
+        "owned_ida": 269,
+        "ownerless_native": 4094,
+        "ownerless_ida": 1042
+      },
+      "owned": {
+        "oracle_edges": 34,
+        "correct_edges": 26,
+        "false_edges": 0,
+        "unresolved_candidates": 5,
+        "concrete_only_unresolved": 15,
+        "wrapper_elapsed_ns": 5673427916,
+        "wrapper_peak_resident_bytes": 178077696
+      },
+      "ownerless": {
+        "oracle_edges": 34,
+        "correct_edges": 26,
+        "false_edges": 0,
+        "unresolved_candidates": 5,
+        "concrete_only_unresolved": 15,
+        "wrapper_elapsed_ns": 10898404542,
+        "wrapper_peak_resident_bytes": 190431232
+      }
+    },
+    {
+      "architecture": "i386",
+      "binary_sha256": {
+        "owned": "1560759037ff13a5d83f87085846a05b378480d195a5d33676496eb3a75bc24b",
+        "ownerless": "5fd11a924e1dc59a9e3e26bdd42885b14fef0a6383e4ba73f580c57d1118bc50"
+      },
+      "raw_inspection_sha256": {
+        "owned": "70d0f37eebe5e7579d5bee5ff2892562a05165430adf3fcecf7945bff542e74d",
+        "ownerless": "29c2637550ace142e06a10e87ba8a8d90b4d1fe7d812725d9b3c9558feece397"
+      },
+      "checks": {
+        "owned_native": 20990,
+        "owned_ida": 269,
+        "ownerless_native": 4094,
+        "ownerless_ida": 1042
+      },
+      "owned": {
+        "oracle_edges": 34,
+        "correct_edges": 26,
+        "false_edges": 0,
+        "unresolved_candidates": 5,
+        "concrete_only_unresolved": 15,
+        "wrapper_elapsed_ns": 6023364834,
+        "wrapper_peak_resident_bytes": 143654912
+      },
+      "ownerless": {
+        "oracle_edges": 34,
+        "correct_edges": 26,
+        "false_edges": 0,
+        "unresolved_candidates": 5,
+        "concrete_only_unresolved": 15,
+        "wrapper_elapsed_ns": 7119957917,
+        "wrapper_peak_resident_bytes": 155222016
+      }
+    }
+  ],
+  "resource_scope": "outer wait4 runner process, including launch; not isolated IDA or plugin resource use"
+}

@@ -38,7 +38,15 @@ def address(name):
 def inspect(ea):
     value = ida_expr.idc_value_t()
     assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, f"chernobog_native_evidence({ea})")
-    return json.loads(value.c_str())
+    snapshot = json.loads(value.c_str())
+    snapshot["user_edges"] = {
+        row["site"]: sorted(
+            {hex(x.to) for x in idautils.XrefsFrom(int(row["site"], 0)) if x.iscode and x.user}
+        )
+        for row in snapshot["records"]
+        if row["kind"] == "stack-transfer" and row["fresh"] == "true"
+    }
+    return snapshot
 
 
 def reanalyze(ea):

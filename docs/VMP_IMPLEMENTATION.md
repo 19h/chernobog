@@ -27,7 +27,7 @@ falsification probes remain those in `VMP_REVIEW.md`.
 | 6a. Separate bounded VM-region and logical-state model | Separate `src/vm` descriptors and logical-state comparison; local recognition supports role permutations, both directions, clones, table/relative dispatch and stateful decoding. Boundary auditing distinguishes side entries and shared/foreign ownership (`VMP_REGION_BOUNDARIES.md`). A separate native-region capture API now executes bounded prefixes across existing owners with exact-byte admission and no ordinary function publication; 120 paired captures include 72 checked PUSH/CALL prefixes, and an independent decoder verifies 5,325 entered instruction records (`VMP_NATIVE_REGION_CAPTURE.md`). Virtual stack, VM context, complete memory identity, logical VM ownership and persistent lifecycle remain unresolved; see also `VMP_VM_REGIONS.md` and `VMP_VM_OBSERVATIONS.md` | In progress |
 | 6b. Candidate recognition, visualization, and validated semantic summaries | Candidate inspection includes local normal-completion register/flag/memory/dispatch summaries. A symbolic array retains data aliasing and ordered stack writes; independent executed x64 oracle cases and x86/x64 IDA probes validate admitted scaffolds. Complete captured table/relative/boundary transitions now receive nonvacuous SMT checks, linked to their exact visit and query identities. Full-handler effects, VM input-state recovery, exceptions and admitted VM-region transitions remain; see `VMP_VM_SEMANTICS.md` and `VMP_VM_TRANSITIONS.md` | In progress |
 | 6c. Proven normalized-summary reuse | Local modeled-effect references are shared only after UNSAT under a bijective register-role map; SAT, UNKNOWN and incompatible access/flag contracts prevent reuse. Production clone and distinct-syntax controls pass. Whole-handler summaries, cross-region ownership and persistent execution-cache reuse remain; see `VMP_VM_SEMANTICS.md` | In progress |
-| V. Complete benchmark and completion audit | Paired x64 and x86 result/selected-memory/stack/defined-flag checks and scoped process elapsed time/peak bytes are recorded in `VMP_PAIRED_CORPUS.md` and `VMP_ELF32_CORPUS.md`. The supplied hello-world pair adds exact process output/exit comparisons and scoped elapsed/peak measurements (`VMP_SUPPLIED_SAMPLES.md`). A bounded process-runner error observed during corpus validation now has a checked-group/leader fallback, deterministic failure injection and a repeated supplied-pair control (`VMP_PROCESS_TERMINATION.md`). Recovery/error/abstention rates, literal accuracy, solver diagnostics, broader fixtures and full completion audit remain | In progress |
+| V. Complete benchmark and completion audit | Paired x64 and x86 result/selected-memory/stack/defined-flag checks and scoped process elapsed time/peak bytes are recorded in `VMP_PAIRED_CORPUS.md` and `VMP_ELF32_CORPUS.md`. The supplied hello-world pair adds exact process output/exit comparisons and scoped elapsed/peak measurements (`VMP_SUPPLIED_SAMPLES.md`). A bounded process-runner error observed during corpus validation now has a checked-group/leader fallback, deterministic failure injection and a repeated supplied-pair control (`VMP_PROCESS_TERMINATION.md`). A scoped native x86-64/i386 source oracle scores 26/34 correct edges, zero false edges and five unresolved eligible sites per owned or ownerless path (`VMP_NATIVE_EDGE_BENCHMARK.md`). Protected-mode recovery/error/abstention rates, literal accuracy, solver rejection reasons, broader fixtures and full completion audit remain | In progress |
 
 The review explicitly treats full bytecode lifting as a subsequent project;
 this ledger retains the requested separate VM model, recognition, and validated
@@ -456,6 +456,17 @@ suites pass. The exact supplied VMP initializer report remains byte-identical
 at 75 nodes, 77 edges and three unresolved facts. See
 `VMP_STRING_IO_FLAGS.md` and its evidence JSON. Wider element-size process
 controls, protected effectiveness and full review coverage remain open.
+
+Native edge-benchmark checkpoint for row V: a frozen source-annotated oracle
+identifies 28 fixed and six conditional edges across 31 selected transfer
+sites; 15 additional concrete-driver-only sites are separately excluded. The
+owned and ownerless x86-64/i386 analyses each recover 26/34 edges with zero
+false edges at these sites and five unresolved eligible sites. Owned proof
+targets agree with actual IDB user xrefs. The exact report, tool and binary
+hashes, wrapper time and peak resident bytes, assumptions, and negative-score
+controls are recorded in `VMP_NATIVE_EDGE_BENCHMARK.md` and its evidence JSON.
+The archived protected corpus is unavailable for a new protected edge oracle;
+full row V remains in progress.
 
 First implementation checkpoint: source changes, executable semantic checks,
 and production IDA validation constitute progress. The complete objective is
