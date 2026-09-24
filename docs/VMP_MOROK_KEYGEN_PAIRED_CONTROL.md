@@ -87,3 +87,9 @@ lineage remain separate. QG6: local primary source and exact tool, image,
 artifact, runner and raw-report hashes are recorded. QG7: other inputs,
 physical-x86 behavior, guest memory and recovered-edge accuracy remain
 bounded unknowns.
+
+Subsequent runtime check of K4: `VMP_MOROK_UNPACKED_ENTRY.md` records the
+packed 65,536-byte region matching ELF bytes at entry and callback, then
+changing before its first execution at `0x430000` on the fixed valid-v14.1
+path. Both fixed-seed protected builds yield identical mapped bytes at that
+breakpoint. This observation remains specific to the fresh pair.

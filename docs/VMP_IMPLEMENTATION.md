@@ -47,6 +47,15 @@ bytes agree; the next PC is `0x419896` in both process traces and the candidate.
 This validates one bounded empty-input prefix, not later unpacking or protected
 recovery effectiveness. See `VMP_MOROK_RUNTIME_TRACE.md` and its evidence JSON.
 
+Packed-keygen execution-state checkpoint: on the fixed valid-v14.1 input,
+both protected processes reach `0x430000` after the callback. Their
+65,536-byte mapped packed ranges match the file at ELF entry and callback,
+then agree with each other at first packed execution while differing from the
+file in 65,274 positions. Separate completed QEMU runs of the clean and both
+protected builds match exact stdout and stderr. This supplies a runtime byte
+oracle; native edge recovery and VM semantics remain incomplete. See
+`VMP_MOROK_UNPACKED_ENTRY.md` and its evidence JSON.
+
 Ownerless native graph checkpoint: an explicit-root read-only inspector now
 propagates register, flag and stack facts across existing decoded ownerless
 branches and loops, with architectural successors, entry auditing and visible

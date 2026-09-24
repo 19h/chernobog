@@ -102,3 +102,8 @@ entry counts, limits and complexity are explicit. QG5: QEMU observation,
 synthetic execution and ISA-wide claims are distinct. QG6: primary local ELF,
 GDB/QEMU reports, source, image and exact hashes are linked. QG7: impact and
 unobserved later paths are bounded.
+
+Subsequent valid-input comparison: `VMP_MOROK_UNPACKED_ENTRY.md` records the
+first execution of the packed section at `0x430000`. Its mapped bytes still
+match the file at the callback but differ at packed entry. This later path
+does not change the empty-input prefix measured here.

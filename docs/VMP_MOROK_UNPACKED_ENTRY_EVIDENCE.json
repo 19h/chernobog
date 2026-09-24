@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "checkpoint": "Morok keygen mapped packed-code entry",
+  "measurement_parent_revision": "c368eeb9f8389283d67010b72e5bcef2df11c4bb",
+  "original_sha256": "a429003d65f05f73af04d0d6b32f7950a84daaa6a1cb5ed6a2db96db2166af94",
+  "protected_first_sha256": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+  "protected_second_sha256": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+  "valid_input_sha256": "e19b1a7e7df224c8d242640e0a7b491ef593b37f9cdc49e597f813412502614f",
+  "container_image_id": "sha256:b27cd74d026e02bdcdd8bac7c97447fe0d598174f76e252f106239aeb9722cfa",
+  "qemu_x86_64_version": "10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)",
+  "gdb_multiarch_version": "16.3 (Debian 16.3-1)",
+  "source_sha256": {
+    "tests/morok_qemu_packed_entry.py": "e72fa58455dac533570b92c49c02b077c68e6a30970f9daa997ea2bc693d1316",
+    "tests/verify_morok_packed_entry.py": "db3a8b3056a53d182bdf6c8c95bba49b39dd8dc236a0d80a6904a799f2c61be6"
+  },
+  "raw_reports_sha256": {
+    "build/morok-runtime-probe/packed-first.json": "d7499b2fa7050f948e07ca6af671a916548e8255f30ab960a175e4414b62e944",
+    "build/morok-runtime-probe/packed-second.json": "1ae56556dda210c1963235809faf4cd2a3826bdb1fcbf9bb1a295d198429f8d6",
+    "build/morok-runtime-probe/packed-first.bin": "5fd0de1c7f61df57706d918f19af3f956a520e6484e156809bead053307d845d",
+    "build/morok-runtime-probe/packed-second.bin": "5fd0de1c7f61df57706d918f19af3f956a520e6484e156809bead053307d845d",
+    "build/morok-runtime-probe/packed-verification.json": "ec522ccb72316034e380f8d7215e0336b07c841afd9c593e19556e555ca54b3a",
+    "build/morok-runtime-probe/qemu-valid.log": "34b9043fc49052f85111b12e85bc58e7056132286a32942b0e60ae69119e5f49"
+  },
+  "packed_region": ["0x430000", "0x440000"],
+  "packed_region_size_bytes": 65536,
+  "packed_file_and_callback_sha256": "bf85bf0f311c33ee8137644a8c513c3aa1582f0e225dd03a19b663cc270bd385",
+  "packed_first_execution_sha256": "5fd0de1c7f61df57706d918f19af3f956a520e6484e156809bead053307d845d",
+  "changed_byte_positions": 65274,
+  "single_byte_dump_mutation_rejected": true,
+  "valid_stdout_bytes": 255,
+  "valid_stdout_sha256": "2ff6c69467f441be9b4db70e72dc935503171785b53d1d60f54ed290db965855",
+  "valid_processes": 3,
+  "valid_exit_code_each": 0,
+  "valid_stderr_bytes_each": 0,
+  "passed": true
+}
