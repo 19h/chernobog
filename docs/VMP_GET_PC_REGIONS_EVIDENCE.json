@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-09-24",
+  "ida_sdk_version": 940,
+  "ida_release": "9.4 SP1",
+  "ida_executable_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "plugin_sha256": "5ae07dd9ed5866e9025d2bfd12b5dff09ad922fe9c878051f63c63651ceb9d18",
+  "source_sha256": {
+    "src/ida_analysis/native_engine.cpp": "f7dc8aa5fef4106080020a2ef9bfeac77406d33d3587e2c6351450dea8c3e8d5",
+    "src/ida_analysis/proof_receipt.hpp": "cb62a4453acd3421c24018b0a1fdc5b5719c4839fdd3646a358d0f58cacabc38",
+    "tests/core_tests.cpp": "a2a688e17e84175c26c384a45061ce1768529ff64299b93effe0e6eb74cca251",
+    "tests/ida_get_pc_region_probe.py": "c3eca2cd7a9b483d337a08c00b53bad8e4357816e9fa5e4e0ba4b9b076b24287",
+    "tests/vmp_native/get_pc32.S": "7b9d8fa8f6cd20f079257228c0e1275c599f7cf80843d039ac009af50af67646",
+    "tests/vmp_native/get_pc_regions32.S": "2e91c28e0a88436cc75e19b1d96514adec13355979e3fd78500ac97c65b3dbd3",
+    "tests/vmp_native/get_pc.S": "2282769d574999164c426fc0371e19f66934f4bbe837f1bc3605135b101202a9",
+    "tests/vmp_native/get_pc_regions.S": "231c7ed3ef7b37e88d24326d3c54006965bee5ee51d17659a79dd7863a09b25f"
+  },
+  "fixture_sha256": {
+    "build/vmp-get-pc-regions32-noret": "8ef4143038fa87c628f90bdd0bd3eac6beb57f5d4b487d2b4ecc71856ad16bf1",
+    "build/vmp-get-pc-regions": "bd4e2309690f4d5662005075a3bcffa8d0d1e3fe64fd0a70e7dbe69f24374387"
+  },
+  "prior_plugin_elf32_control": {
+    "plugin_sha256": "26a4b4d4c22ce84789bb5b64fcc67458202aa410dce056468eb107dfc1800f20",
+    "input_sha256": "8ef4143038fa87c628f90bdd0bd3eac6beb57f5d4b487d2b4ecc71856ad16bf1",
+    "report_path": "build/vmp-get-pc-region-baseline/get_pc_region.json",
+    "report_sha256": "9174cdadac5527ee9cd532a86d645c6babb2e541058561ec8ca711395d07ced5",
+    "separate_donors": 2
+  },
+  "production_runs": [
+    {
+      "bits": 32,
+      "stage": "write",
+      "input_sha256": "8ef4143038fa87c628f90bdd0bd3eac6beb57f5d4b487d2b4ecc71856ad16bf1",
+      "checks_passed": 11,
+      "checks_total": 11,
+      "report_path": "build/vmp-region-proof-32-write/get_pc_region.json",
+      "report_sha256": "ee067296f29aed8820538429abec4f33ae379a189ba939888cfef023070597f7",
+      "run_manifest_path": "build/vmp-region-proof-32-write/run.json",
+      "run_manifest_sha256": "93d13a5f8dc44f529a69ea427aa98ffa6a2474cf7a1674c02c10e258ccfc5a3d"
+    },
+    {
+      "bits": 32,
+      "stage": "reopen",
+      "input_sha256": "d67a14fac3818b2956e3326c9c8c90b074f4271c40b8d8c57d0e3a613ace1baa",
+      "checks_passed": 22,
+      "checks_total": 22,
+      "report_path": "build/vmp-region-proof-32-reopen/get_pc_region.json",
+      "report_sha256": "49cda8777945b25d7e8a405c332eddf1a6123fe45c0277f6f26491a16bd89d41",
+      "run_manifest_path": "build/vmp-region-proof-32-reopen/run.json",
+      "run_manifest_sha256": "e6f32fff5f7c6751b9a0cd0f5ee848c16858cde0e6ffa006d79218e06c673c3f"
+    },
+    {
+      "bits": 32,
+      "stage": "rejected_reopen",
+      "input_sha256": "21409d42326749633f3691ec00c46d20384da5c15efaf35dfb8c40f58fbe17c9",
+      "checks_passed": 7,
+      "checks_total": 7,
+      "report_path": "build/vmp-region-proof-32-rejected_reopen/get_pc_region.json",
+      "report_sha256": "34bfbb5da8252a24e5abe1adf17318f3c6faffdeafa707d505ac52788b49f49f",
+      "run_manifest_path": "build/vmp-region-proof-32-rejected_reopen/run.json",
+      "run_manifest_sha256": "3306fac00388729a3a9b39ec36f97261b0a451ebc7b718a3a03e8a42acc218a4"
+    },
+    {
+      "bits": 32,
+      "stage": "rename_owned",
+      "input_sha256": "d67a14fac3818b2956e3326c9c8c90b074f4271c40b8d8c57d0e3a613ace1baa",
+      "checks_passed": 4,
+      "checks_total": 4,
+      "report_path": "build/vmp-region-proof-32-rename_owned/get_pc_region.json",
+      "report_sha256": "618dcba137036cdd5eb7eb5cf76fc10827b6066b0af1dbf23952892635ab201b",
+      "run_manifest_path": "build/vmp-region-proof-32-rename_owned/run.json",
+      "run_manifest_sha256": "4b027c632a42111d0a6a2cec88dbde5f01948ad1324aab8fec9167931ef23dc7"
+    },
+    {
+      "bits": 32,
+      "stage": "prepare_negative",
+      "input_sha256": "8ef4143038fa87c628f90bdd0bd3eac6beb57f5d4b487d2b4ecc71856ad16bf1",
+      "checks_passed": 3,
+      "checks_total": 3,
+      "report_path": "build/vmp-region-proof-32-prepare_negative/get_pc_region.json",
+      "report_sha256": "52e72e186c7c59e6e4b962de0aa01d83897dff4888673f4dee0d1c18db3ee09c",
+      "run_manifest_path": "build/vmp-region-proof-32-prepare_negative/run.json",
+      "run_manifest_sha256": "477f8ac0e041f9623fa084b49829ead83ca8c0d9764459da54a2ce6cd2843d70"
+    },
+    {
+      "bits": 32,
+      "stage": "negative",
+      "input_sha256": "b8659eac699f49fcaf553112fde1fdca633b82b6e2442ffd3ea26fd4d8ee80c5",
+      "checks_passed": 6,
+      "checks_total": 6,
+      "report_path": "build/vmp-region-proof-32-negative/get_pc_region.json",
+      "report_sha256": "f87ce74ae99f594488b47322403d5e3a1cdaa1b37ba7a8f001b0da13b381ee21",
+      "run_manifest_path": "build/vmp-region-proof-32-negative/run.json",
+      "run_manifest_sha256": "ad87ce050fc2867f5396802b8536cca2a7231f818c7cf942f7d6defbb2b0af97"
+    },
+    {
+      "bits": 64,
+      "stage": "write",
+      "input_sha256": "bd4e2309690f4d5662005075a3bcffa8d0d1e3fe64fd0a70e7dbe69f24374387",
+      "checks_passed": 11,
+      "checks_total": 11,
+      "report_path": "build/vmp-region-proof-64-write/get_pc_region.json",
+      "report_sha256": "e7b69a93c67713e80aa44835e94328da0b222ef79c054228ee7d20f528dd6eba",
+      "run_manifest_path": "build/vmp-region-proof-64-write/run.json",
+      "run_manifest_sha256": "ed3382627ad743ffb52fcf3baf49c979fd7a179eb834f061a847632d2c951f75"
+    },
+    {
+      "bits": 64,
+      "stage": "reopen",
+      "input_sha256": "3ad0db9b06111b2ea8548e80a719cc87027cc4c7e2be482ae4c468796471c7b4",
+      "checks_passed": 22,
+      "checks_total": 22,
+      "report_path": "build/vmp-region-proof-64-reopen/get_pc_region.json",
+      "report_sha256": "b42ea15859358f31c474108e000e0b4806172b6c163847bfd4c1f42c4a7641be",
+      "run_manifest_path": "build/vmp-region-proof-64-reopen/run.json",
+      "run_manifest_sha256": "3f41e394e41a459bdbd45f822a4c4788854da8829af663899eb12d01c564923a"
+    },
+    {
+      "bits": 64,
+      "stage": "rejected_reopen",
+      "input_sha256": "a7d0bc72b13299a18ff218cf7af6bba382fa0daf05e47b75baec964a8b08be58",
+      "checks_passed": 7,
+      "checks_total": 7,
+      "report_path": "build/vmp-region-proof-64-rejected_reopen/get_pc_region.json",
+      "report_sha256": "d9444fdfdee64ad57cae926c422fceeeec1041397ba5cd03dd6697d06a669b52",
+      "run_manifest_path": "build/vmp-region-proof-64-rejected_reopen/run.json",
+      "run_manifest_sha256": "237d2e1b7a826c07a0f6e4a1e9a31c38986594d18b5d5bad641d171ea0aa242a"
+    },
+    {
+      "bits": 64,
+      "stage": "rename_owned",
+      "input_sha256": "3ad0db9b06111b2ea8548e80a719cc87027cc4c7e2be482ae4c468796471c7b4",
+      "checks_passed": 4,
+      "checks_total": 4,
+      "report_path": "build/vmp-region-proof-64-rename_owned/get_pc_region.json",
+      "report_sha256": "05a847ee2077c346d31a2312fc0d902be8002136a1e0542637a2aa01b5985ef7",
+      "run_manifest_path": "build/vmp-region-proof-64-rename_owned/run.json",
+      "run_manifest_sha256": "292b3e872497cb57fec57cabe6a9e6400abea9139da9074d366185fe86a7f99e"
+    },
+    {
+      "bits": 64,
+      "stage": "prepare_negative",
+      "input_sha256": "bd4e2309690f4d5662005075a3bcffa8d0d1e3fe64fd0a70e7dbe69f24374387",
+      "checks_passed": 3,
+      "checks_total": 3,
+      "report_path": "build/vmp-region-proof-64-prepare_negative/get_pc_region.json",
+      "report_sha256": "52e72e186c7c59e6e4b962de0aa01d83897dff4888673f4dee0d1c18db3ee09c",
+      "run_manifest_path": "build/vmp-region-proof-64-prepare_negative/run.json",
+      "run_manifest_sha256": "c4d318c202748e86d96434b214a509157a50bf3f438caee758e53130eccb344d"
+    },
+    {
+      "bits": 64,
+      "stage": "negative",
+      "input_sha256": "6f6e651c8cbf8e113c6658f082ea64727587e0dff2660a68fd7e3903f6471794",
+      "checks_passed": 6,
+      "checks_total": 6,
+      "report_path": "build/vmp-region-proof-64-negative/get_pc_region.json",
+      "report_sha256": "c1a106e8cd1f751cadf54a8cd40802c328c954c278b612105f6130113c820571",
+      "run_manifest_path": "build/vmp-region-proof-64-negative/run.json",
+      "run_manifest_sha256": "d41eee8f0304146f18505f3f5ca7e3ccf9981bf901904f41e2fe5b10417419f9"
+    }
+  ],
+  "existing_get_pc_regressions": [
+    {
+      "bits": 32,
+      "checks_passed": 16,
+      "checks_total": 16,
+      "report_path": "build/vmp-region-final-32-regression/get_pc32.json",
+      "report_sha256": "f1b01516b76a6e3c1b5e7cfd0d0d54b1433b995be5e55c7f35da0906c1fa4c83"
+    },
+    {
+      "bits": 64,
+      "checks_passed": 53,
+      "checks_total": 53,
+      "report_path": "build/vmp-region-final-64-regression/get_pc.json",
+      "report_sha256": "d42d7073851999c4f6ec2b7d300e529fc3121e1beadb2a0bb0660de2dc7844e8"
+    }
+  ],
+  "ctest": {
+    "passed": 21,
+    "total": 21
+  }
+}

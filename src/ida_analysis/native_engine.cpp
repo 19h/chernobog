@@ -38,6 +38,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <limits>
 #include <map>
 #include <set>
 #include <sstream>
@@ -444,6 +445,18 @@ struct NativeProof
     std::vector<existing_code_edge_t> owned_edges;
     std::string owned_comment;
     ea_t owned_noreturn_function = BADADDR;
+    struct DonorFunction
+    {
+        ea_t owner = BADADDR;
+        ea_t start = BADADDR;
+        ea_t entry_end = BADADDR;
+        uint32_t length = 0;
+        uint32_t flags = 0;
+        uint8_t word_bytes = 0;
+        std::vector<proof_receipt::DonorFunction::StackPoint> stack_points;
+    };
+    std::optional<DonorFunction> owned_donor_function;
+    std::vector<std::pair<ea_t, sval_t>> owned_sp_points;
     std::string conclusion;
 };
 
@@ -893,8 +906,13 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     // cleanup only; every reopen recomputes proofs from the current database.
     static constexpr size_t maximum_native_proofs = 4096;
     std::map<ea_t, NativeProof> native_proofs;
+    std::map<ea_t, ea_t> deleting_donor_tails;
+    std::set<ea_t> pending_donor_revocations;
+    std::map<ea_t, ea_t> rejected_donor_transfers;
     netnode ownership_node;
+    netnode rejected_donor_node;
     bool ownership_ready = false;
+    bool rejected_donor_ready = false;
     bool ownership_publication_disabled = false;
     bool closing_database = false;
     bool replaying_undo = false;
@@ -913,6 +931,9 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             architecture = Architecture::Arm;
         ownership_node.create("$ chernobog.native_proof_ownership.v1");
         ownership_ready = ownership_node != BADNODE;
+        rejected_donor_node.create("$ chernobog.native_donor_rejections.v1");
+        rejected_donor_ready = rejected_donor_node != BADNODE;
+        recover_rejected_donors();
         recover_ownership_receipts();
         if (config.enabled && architecture != Architecture::Unsupported)
             hooked = hook_event_listener(HT_IDP, this, this);
@@ -944,6 +965,9 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             native_proofs.clear();
         else
             invalidate_proofs(0, BADADDR);
+        deleting_donor_tails.clear();
+        pending_donor_revocations.clear();
+        rejected_donor_transfers.clear();
         post_analysis_running = false;
         prefix_decode_probe = false;
         emulated.clear();
@@ -972,6 +996,15 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         receipt.comment = proof.owned_comment;
         if (proof.owned_noreturn_function != BADADDR)
             receipt.noreturn_function_node = uint64_t(ea2node(proof.owned_noreturn_function));
+        if (proof.owned_donor_function)
+            receipt.donor_function = proof_receipt::DonorFunction{
+                uint64_t(ea2node(proof.owned_donor_function->owner)),
+                uint64_t(ea2node(proof.owned_donor_function->start)),
+                uint64_t(ea2node(proof.owned_donor_function->entry_end)),
+                proof.owned_donor_function->length,
+                proof.owned_donor_function->flags,
+                proof.owned_donor_function->word_bytes,
+                proof.owned_donor_function->stack_points};
         for (const auto &edge : proof.owned_edges)
             receipt.edges.push_back(
                 {uint64_t(ea2node(edge.target)), uint8_t(edge.type), edge.user});
@@ -979,6 +1012,40 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         static_assert(proof_receipt::maximum_size <= MAXSPECSIZE);
         return encoded && ownership_node.supset(nodeidx_t(receipt.source_node), encoded->data(),
                                                 encoded->size());
+    }
+
+    void recover_rejected_donors()
+    {
+        rejected_donor_transfers.clear();
+        if (!rejected_donor_ready)
+            return;
+        size_t count = 0;
+        for (nodeidx_t key = rejected_donor_node.supfirst();
+             key != BADNODE && count < maximum_native_proofs;
+             key = rejected_donor_node.supnext(key), ++count)
+        {
+            std::array<uint8_t, 8> bytes{};
+            if (rejected_donor_node.supval(key, bytes.data(), bytes.size()) != 8)
+                continue;
+            uint64_t node = 0;
+            for (unsigned index = 0; index < bytes.size(); ++index)
+                node |= uint64_t(bytes[index]) << (index * 8);
+            const ea_t source = node2ea(key);
+            const ea_t target = node2ea(nodeidx_t(node));
+            if (source != BADADDR && target != BADADDR)
+                rejected_donor_transfers[source] = target;
+        }
+    }
+
+    bool persist_rejected_donor(ea_t source, ea_t target)
+    {
+        if (!rejected_donor_ready)
+            return false;
+        const uint64_t node = uint64_t(ea2node(target));
+        std::array<uint8_t, 8> bytes{};
+        for (unsigned index = 0; index < bytes.size(); ++index)
+            bytes[index] = uint8_t(node >> (index * 8));
+        return rejected_donor_node.supset(ea2node(source), bytes.data(), bytes.size());
     }
 
     void recover_ownership_receipts(ea_t preserved_from = BADADDR, ea_t preserved_to = BADADDR,
@@ -990,6 +1057,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         NativeMutationGuard guard(native_mutation_depth);
         // Do not treat cached proof state as authoritative after reopen or undo.
         native_proofs.clear();
+        deleting_donor_tails.clear();
+        pending_donor_revocations.clear();
         pending_flag_fallthroughs.clear();
         size_t recovered = 0;
         nodeidx_t key = ownership_node.supfirst();
@@ -1016,6 +1085,29 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                     proof.owned_noreturn_function =
                         node2ea(nodeidx_t(*receipt->noreturn_function_node));
                     valid = valid && proof.owned_noreturn_function != BADADDR;
+                }
+                if (receipt->donor_function)
+                {
+                    const ea_t owner = node2ea(nodeidx_t(receipt->donor_function->owner_node));
+                    const ea_t start = node2ea(nodeidx_t(receipt->donor_function->start_node));
+                    const ea_t entry_end =
+                        node2ea(nodeidx_t(receipt->donor_function->entry_end_node));
+                    valid = valid && owner != BADADDR && start != BADADDR && entry_end != BADADDR &&
+                            start <= BADADDR - receipt->donor_function->length;
+                    if (valid)
+                        proof.owned_donor_function =
+                            NativeProof::DonorFunction{owner,
+                                                       start,
+                                                       entry_end,
+                                                       receipt->donor_function->length,
+                                                       receipt->donor_function->flags,
+                                                       receipt->donor_function->word_bytes,
+                                                       receipt->donor_function->stack_points};
+                    if (valid)
+                        for (const auto &point : receipt->donor_function->stack_points)
+                            proof.owned_sp_points.emplace_back(
+                                start + point.offset,
+                                sval_t(point.sp) - receipt->donor_function->word_bytes);
                 }
                 for (const auto &edge : receipt->edges)
                 {
@@ -1206,14 +1298,36 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                     current =
                         function != nullptr &&
                         function->start_ea == proof.owned_noreturn_function &&
-                        (function->flags & FUNC_NORET) == 0 &&
                         !is_noret(proof.owned_noreturn_function) &&
                         !is_userti(proof.owned_noreturn_function) && candidate->resumed_at &&
                         func_contains(function, ea_t(candidate->return_instruction)) &&
-                        has_balanced_linear_return(function, ea_t(*candidate->resumed_at), &path);
+                        has_balanced_linear_return(function, ea_t(*candidate->resumed_at), &path,
+                                                   (function->flags & FUNC_SP_READY) != 0);
                     if (current)
                         for (ea_t address : path)
                             current = current && covered({uint64_t(address)});
+                }
+                if (current && !returning && proof.owned_donor_function)
+                {
+                    const auto &donor = *proof.owned_donor_function;
+                    current = !has_user_name(get_flags(donor.start)) && !is_userti(donor.start);
+                    if (!current)
+                        break;
+                    if (donor.start == donor.entry_end)
+                    {
+                        const func_t *owner = get_func(donor.owner);
+                        current = owner != nullptr && owner->start_ea == donor.owner &&
+                                  owner->end_ea == donor.start + donor.length &&
+                                  get_func_chunknum_ea(donor.owner, donor.start) == 0;
+                    }
+                    else
+                    {
+                        func_tail_info_t tail;
+                        current = get_func_tail_info(&tail, donor.start) &&
+                                  tail.start_ea == donor.start &&
+                                  tail.end_ea == donor.start + donor.length &&
+                                  tail.get_owner() == donor.owner && tail.get_refqty() == 1;
+                    }
                 }
                 row["context_call"] = hex(candidate->call);
                 row["scan_depth"] = std::to_string(config.pop_ret_depth);
@@ -1382,10 +1496,64 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                            });
     }
 
+    bool restore_donor_function(const NativeProof &proof)
+    {
+        if (!proof.owned_donor_function)
+            return true;
+        const auto &donor = *proof.owned_donor_function;
+        const ea_t end = donor.start + donor.length;
+        func_t *current = get_func(donor.start);
+        const bool already_separate = current != nullptr && current->start_ea == donor.start;
+        if (already_separate)
+        {
+            if (current->end_ea != end)
+                return false;
+            if (has_user_name(get_flags(donor.start)) || is_userti(donor.start))
+                return true;
+        }
+        else if (current != nullptr)
+        {
+            if (donor.start == donor.entry_end)
+            {
+                if (current->start_ea != donor.owner || current->end_ea != end ||
+                    get_func_chunknum_ea(donor.owner, donor.start) != 0 ||
+                    !set_func_end(donor.owner, donor.entry_end))
+                    return false;
+            }
+            else
+            {
+                func_tail_info_t tail;
+                if (!get_func_tail_info(&tail, donor.start) || tail.start_ea != donor.start ||
+                    tail.end_ea != end || tail.get_owner() != donor.owner ||
+                    tail.get_refqty() != 1 || !remove_func_tail_ea(donor.owner, donor.start))
+                    return false;
+            }
+        }
+        if (!already_separate && !add_func(donor.start, end))
+            return false;
+        if (!set_func_flags(donor.start, donor.flags))
+            return false;
+        for (const auto &point : donor.stack_points)
+        {
+            const ea_t address = donor.start + point.offset;
+            if (get_spd(get_func(donor.start), address) == point.sp)
+                continue;
+            if (point.offset == 0)
+                del_func_stkpnt(donor.start, address);
+            if (get_spd(get_func(donor.start), address) != point.sp &&
+                !set_func_auto_spd(donor.start, address, point.sp))
+                return false;
+            if (get_spd(get_func(donor.start), address) != point.sp)
+                return false;
+        }
+        plan_ea(donor.start);
+        return true;
+    }
+
     void revoke_proof(NativeProof proof, bool schedule)
     {
         NativeMutationGuard guard(native_mutation_depth);
-        bool restored_noreturn = true;
+        bool restored_ownership = true;
         for (const auto &owned : proof.owned_edges)
             for (const auto &current : collect_code_edges(proof.site))
                 if (current.target == owned.target && current.type == owned.type &&
@@ -1407,19 +1575,20 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 (function->flags & FUNC_NORET) == 0 && !is_userti(proof.owned_noreturn_function) &&
                 !is_noret(proof.owned_noreturn_function))
             {
-                restored_noreturn = set_func_flag(proof.owned_noreturn_function, FUNC_NORET, true);
-                if (restored_noreturn && schedule)
+                restored_ownership = set_func_flag(proof.owned_noreturn_function, FUNC_NORET, true);
+                if (restored_ownership && schedule)
                     plan_ea(proof.owned_noreturn_function);
             }
         }
-        if (!restored_noreturn)
+        restored_ownership = restore_donor_function(proof) && restored_ownership;
+        if (!restored_ownership)
         {
             ownership_publication_disabled = true;
-            msg("[chernobog][ida-analysis] native noreturn flag restoration failed at %a; "
+            msg("[chernobog][ida-analysis] native ownership restoration failed at %a; "
                 "ownership receipt retained\n",
-                proof.owned_noreturn_function);
+                proof.source);
         }
-        if (ownership_ready && restored_noreturn)
+        if (ownership_ready && restored_ownership)
             ownership_node.supdel(ea2node(proof.source));
         pending_flag_fallthroughs.erase(proof.source);
         emulated.sub(proof.source);
@@ -1430,28 +1599,38 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         }
     }
 
-    void invalidate_proofs(ea_t first, ea_t end, bool schedule = true)
+    void invalidate_proofs(ea_t first, ea_t end, bool schedule = true,
+                           bool defer_donor_restore = false)
     {
         for (auto it = native_proofs.begin(); it != native_proofs.end();)
         {
-            if (!dependency_intersects(it->second, first, end))
+            if (!dependency_intersects(it->second, first, end) ||
+                deleting_donor_tails.count(it->first) != 0 ||
+                (defer_donor_restore && it->second.owned_donor_function))
             {
                 ++it;
                 continue;
             }
             NativeProof proof = std::move(it->second);
             it = native_proofs.erase(it); // Remove before callbacks can reenter.
+            pending_donor_revocations.erase(proof.source);
             revoke_proof(std::move(proof), schedule);
         }
     }
 
-    void revalidate_proofs()
+    void revalidate_proofs(bool settle_detached_donors = false)
     {
         for (auto it = native_proofs.begin(); it != native_proofs.end();)
         {
+            const bool pending = pending_donor_revocations.count(it->first) != 0;
+            if ((pending && !settle_detached_donors) || deleting_donor_tails.count(it->first) != 0)
+            {
+                ++it;
+                continue;
+            }
             const bool fresh = proof_is_fresh(it->second);
             const bool conclusion = fresh && current_proof_conclusion(it->second);
-            if (fresh && conclusion)
+            if (!pending && fresh && conclusion)
             {
                 ++it;
                 continue;
@@ -1467,6 +1646,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             }
             NativeProof proof = std::move(it->second);
             it = native_proofs.erase(it);
+            pending_donor_revocations.erase(proof.source);
             revoke_proof(std::move(proof), true);
         }
     }
@@ -1520,6 +1700,17 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             proof.owned_edges = old->second.owned_edges;
             proof.owned_comment = old->second.owned_comment;
             proof.owned_noreturn_function = old->second.owned_noreturn_function;
+            proof.owned_donor_function = old->second.owned_donor_function;
+            proof.owned_sp_points = old->second.owned_sp_points;
+            if (proof.owned_noreturn_function != BADADDR)
+                for (const auto &dependency : old->second.dependencies)
+                    if (std::none_of(proof.dependencies.begin(), proof.dependencies.end(),
+                                     [&](const NativeProofDependency &current)
+                                     {
+                                         return current.first == dependency.first &&
+                                                current.code == dependency.code;
+                                     }))
+                        proof.dependencies.push_back(dependency);
         }
         if (!proof.owned_comment.empty() &&
             proof.owned_comment != std::string(kCommentPrefix) + comment)
@@ -1574,6 +1765,16 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             event == idb_event::deleting_function || event == idb_event::deleting_function_tail
 #endif
             ;
+        const bool deleting_tail = event == idb_event::deleting_func_tail
+#if IDA_SDK_VERSION >= 940
+                                   || event == idb_event::deleting_function_tail
+#endif
+            ;
+        const bool deleted_tail = event == idb_event::func_tail_deleted
+#if IDA_SDK_VERSION >= 940
+                                  || event == idb_event::function_tail_deleted
+#endif
+            ;
         const bool topology_changed =
             event == idb_event::func_added || event == idb_event::func_updated ||
             event == idb_event::func_tail_appended || event == idb_event::func_tail_deleted ||
@@ -1585,7 +1786,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             event == idb_event::function_tail_owner_changed
 #endif
             ;
-        if (pending_ownership_recovery &&
+        if (pending_ownership_recovery && !deleting_tail &&
             (topology_changing || topology_changed || event == idb_event::byte_patched ||
              event == idb_event::destroyed_items || event == idb_event::deleting_segm ||
              event == idb_event::savebase || event == idb_event::segm_attrs_updated
@@ -1596,13 +1797,69 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             recover_ownership_receipts();
         if (topology_changing)
         {
+            if (deleting_tail)
+            {
+                ea_t owner = BADADDR;
+                if (event == idb_event::deleting_func_tail)
+                {
+                    const func_t *function = va_arg(arguments, const func_t *);
+                    if (function != nullptr)
+                        owner = function->start_ea;
+                }
+#if IDA_SDK_VERSION >= 940
+                else
+                    owner = va_arg(arguments, ea_t);
+#endif
+                const range_t *tail = va_arg(arguments, const range_t *);
+                if (tail != nullptr)
+                    for (const auto &[source, proof] : native_proofs)
+                        if (proof.owned_donor_function &&
+                            proof.owned_donor_function->owner == owner &&
+                            proof.owned_donor_function->start == tail->start_ea &&
+                            proof.owned_donor_function->length == tail->end_ea - tail->start_ea)
+                            deleting_donor_tails[source] = tail->start_ea;
+            }
             // These notifications precede the ownership mutation. Invalidate
             // conservatively while receipts still refer to the original sites.
-            invalidate_proofs(0, BADADDR);
+            invalidate_proofs(0, BADADDR, true, deleting_tail);
             return;
         }
         if (topology_changed)
         {
+            if (deleted_tail)
+            {
+                ea_t owner = BADADDR;
+                if (event == idb_event::func_tail_deleted)
+                {
+                    const func_t *function = va_arg(arguments, const func_t *);
+                    if (function != nullptr)
+                        owner = function->start_ea;
+                }
+#if IDA_SDK_VERSION >= 940
+                else
+                    owner = va_arg(arguments, ea_t);
+#endif
+                const ea_t tail_start = va_arg(arguments, ea_t);
+                for (auto it = deleting_donor_tails.begin(); it != deleting_donor_tails.end();)
+                {
+                    const auto found = native_proofs.find(it->first);
+                    if (it->second != tail_start || found == native_proofs.end() ||
+                        !found->second.owned_donor_function ||
+                        found->second.owned_donor_function->owner != owner)
+                    {
+                        ++it;
+                        continue;
+                    }
+                    const ea_t source = it->first;
+                    pending_donor_revocations.insert(source);
+                    rejected_donor_transfers[source] = tail_start;
+                    if (!persist_rejected_donor(source, tail_start))
+                        msg("[chernobog][ida-analysis] donor exclusion could not be "
+                            "persisted at %a\n",
+                            source);
+                    it = deleting_donor_tails.erase(it);
+                }
+            }
             // Recompute conclusions after a topology update, including support
             // coverage; equal values with newly introduced dependencies are stale.
             revalidate_proofs();
@@ -1628,17 +1885,22 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                     source = to + (source - from);
                 plan_ea(source);
             }
+            recover_rejected_donors();
         }
         else if (event == idb_event::allsegs_moved)
         {
             for (ea_t source : moving_proof_sources)
                 plan_ea(source);
             moving_proof_sources.clear();
+            recover_rejected_donors();
         }
         else if (event == idb_event::byte_patched)
         {
             const ea_t address = va_arg(arguments, ea_t);
             invalidate_proofs(address, address + 1);
+            rejected_donor_transfers.erase(address);
+            if (rejected_donor_ready)
+                rejected_donor_node.supdel(ea2node(address));
         }
         else if (event == idb_event::destroyed_items)
         {
@@ -2349,6 +2611,9 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             // Mutating xrefs/comments here can corrupt the undo event sequence.
             // Reload receipts at the next ordinary analysis/database interaction.
             native_proofs.clear();
+            deleting_donor_tails.clear();
+            pending_donor_revocations.clear();
+            recover_rejected_donors();
             pending_flag_fallthroughs.clear();
             pending_ownership_recovery = true;
             return 0;
@@ -2452,7 +2717,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     }
 
     bool has_balanced_linear_return(func_t *function, ea_t continuation,
-                                    std::vector<ea_t> *support = nullptr) const
+                                    std::vector<ea_t> *support = nullptr,
+                                    bool require_stack_metadata = true) const
     {
         if (function == nullptr)
             return false;
@@ -2468,7 +2734,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             path.push_back(continuation);
             if (instruction.itype == NN_retn && instruction.Op1.type == o_void)
             {
-                if (get_spd(function, continuation) != 0)
+                if (require_stack_metadata && get_spd(function, continuation) != 0)
                     return false;
                 if (support)
                     *support = std::move(path);
@@ -2567,6 +2833,163 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         }
     }
 
+    bool transfer_auto_get_pc_function(ea_t root, ea_t source, ea_t target)
+    {
+        const auto rejected = rejected_donor_transfers.find(source);
+        if (rejected != rejected_donor_transfers.end() && rejected->second == target)
+            return false;
+        const auto found = native_proofs.find(source);
+        if (found == native_proofs.end() || found->second.kind != NativeProof::Kind::Call ||
+            found->second.owned_donor_function || !found->second.intended_edge ||
+            found->second.intended_edge->target != target || !proof_is_fresh(found->second) ||
+            !current_proof_conclusion(found->second))
+            return false;
+        func_t *caller = get_func(source);
+        func_t *donor = get_func(target);
+        if (caller == nullptr || caller->start_ea != root || donor == nullptr ||
+            donor->start_ea != target || donor->start_ea == root ||
+            get_func_tail_qty(target) != 0 ||
+            (donor->flags &
+             ~(FUNC_SP_READY | FUNC_PROLOG_OK | FUNC_PURGED_OK | FUNC_NORET_PENDING)) != 0 ||
+            has_user_name(get_flags(target)) || is_userti(target) || is_noret(target) ||
+            get_first_dref_to(target) != BADADDR)
+            return false;
+        qstring comment;
+        if (get_func_cmt_ea(&comment, target, false) > 0 ||
+            get_func_cmt_ea(&comment, target, true) > 0)
+            return false;
+        insn_t call;
+        if (decode_insn(&call, source) <= 0)
+            return false;
+        const auto gadget = classify_ida_get_pc_call(call, size_t(config.pop_ret_depth), true);
+        if (!gadget || gadget->gadget != target ||
+            gadget->return_instruction == classifier::k_bad_address)
+            return false;
+        insn_t ret;
+        const ea_t return_ea = ea_t(gadget->return_instruction);
+        if (decode_insn(&ret, return_ea) <= 0 || ret.itype != NN_retn ||
+            return_ea > BADADDR - ret.size || donor->end_ea != return_ea + ret.size ||
+            donor->end_ea <= target || donor->end_ea - target > proof_receipt::maximum_donor_length)
+            return false;
+        const sval_t word = sval_t(gadget->width_bits / 8);
+        if ((donor->flags & FUNC_SP_READY) == 0 || get_spd(donor, target) != 0)
+            return false;
+        std::vector<std::pair<ea_t, sval_t>> sp_points;
+        std::vector<proof_receipt::DonorFunction::StackPoint> original_sp_points;
+        for (uint64_t address : gadget->support)
+        {
+            if (address < target || address > return_ea)
+                continue;
+            const sval_t old_sp = get_spd(donor, ea_t(address));
+            if (old_sp < -4096 || old_sp > 4096 ||
+                old_sp < std::numeric_limits<sval_t>::min() + word)
+                return false;
+            sp_points.emplace_back(ea_t(address), old_sp - word);
+            original_sp_points.push_back({uint16_t(address - target), int16_t(old_sp)});
+        }
+        if (sp_points.empty() || sp_points.front().first != target ||
+            sp_points.size() > size_t(config.pop_ret_depth) + 1 ||
+            sp_points.size() > proof_receipt::maximum_donor_stack_points)
+            return false;
+
+        NativeProof transferred = found->second;
+        transferred.owned_donor_function =
+            NativeProof::DonorFunction{root,
+                                       target,
+                                       caller->end_ea,
+                                       uint32_t(donor->end_ea - target),
+                                       uint32_t(donor->flags),
+                                       uint8_t(word),
+                                       std::move(original_sp_points)};
+        for (auto &dependency : transferred.dependencies)
+            if (dependency.code && dependency.first >= target &&
+                dependency.first < target + transferred.owned_donor_function->length)
+                dependency.owner = root;
+        transferred.owned_sp_points = std::move(sp_points);
+        if (!persist_ownership(transferred))
+        {
+            ownership_publication_disabled = true;
+            return false;
+        }
+        NativeMutationGuard guard(native_mutation_depth);
+        if (!del_func(target))
+        {
+            if (!persist_ownership(found->second))
+            {
+                found->second = std::move(transferred);
+                ownership_publication_disabled = true;
+            }
+            return false;
+        }
+        if (!append_func_tail_ea(root, target, target + transferred.owned_donor_function->length))
+        {
+            const bool restored = restore_donor_function(transferred);
+            if (!restored || !persist_ownership(found->second))
+            {
+                found->second = std::move(transferred);
+                ownership_publication_disabled = true;
+            }
+            return false;
+        }
+        found->second = std::move(transferred);
+        return true;
+    }
+
+    void repair_owned_get_pc_sp_points()
+    {
+        NativeMutationGuard guard(native_mutation_depth);
+        std::vector<ea_t> failed;
+        for (const auto &[source, proof] : native_proofs)
+        {
+            if (!proof.owned_donor_function || proof.owned_sp_points.empty())
+                continue;
+            const ea_t root = proof.owned_donor_function->owner;
+            bool complete = true;
+            for (size_t index = 0; index < proof.owned_sp_points.size(); ++index)
+            {
+                const auto [address, desired] = proof.owned_sp_points[index];
+                if (!function_contains(root, address))
+                {
+                    complete = false;
+                    break;
+                }
+                const sval_t current = get_spd(get_func(root), address);
+                if (current == desired)
+                    continue;
+                if (index == 0)
+                {
+                    if (current != 0 || !add_user_stkpnt(address, desired))
+                    {
+                        complete = false;
+                        break;
+                    }
+                }
+                else if (!set_func_auto_spd(root, address, desired) &&
+                         get_spd(get_func(root), address) != desired)
+                {
+                    complete = false;
+                    break;
+                }
+                if (get_spd(get_func(root), address) != desired)
+                {
+                    complete = false;
+                    break;
+                }
+            }
+            if (!complete)
+                failed.push_back(source);
+        }
+        for (ea_t source : failed)
+        {
+            auto found = native_proofs.find(source);
+            if (found == native_proofs.end())
+                continue;
+            NativeProof stale = std::move(found->second);
+            native_proofs.erase(found);
+            revoke_proof(std::move(stale), true);
+        }
+    }
+
     size_t expand_get_pc_function_tails()
     {
         size_t appended_count = 0;
@@ -2626,6 +3049,11 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 {
                     if (owner->start_ea == root)
                         queue_noncall_successors(target);
+                    else if (transfer_auto_get_pc_function(root, source, target))
+                    {
+                        ++appended_count;
+                        queue_noncall_successors(target);
+                    }
                     continue;
                 }
                 const flags64_t flags = get_flags(target);
@@ -2878,7 +3306,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             return;
         if (pending_ownership_recovery)
             recover_ownership_receipts();
-        revalidate_proofs();
+        deleting_donor_tails.clear();
+        revalidate_proofs(true);
         NativeMutationGuard guard(native_mutation_depth);
         post_analysis_running = true;
         fix_pending_cfg_edges();
@@ -2922,6 +3351,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             reported_outlined_wrappers = statistics.outlined_wrappers;
         }
         repair_get_pc_noreturn_flags();
+        repair_owned_get_pc_sp_points();
         post_analysis_running = false;
     }
 };

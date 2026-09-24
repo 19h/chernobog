@@ -39,6 +39,11 @@ admits the known gadget tails and invokes the public native-analysis IDC entry
 after IDA autoanalysis, so callback ordering does not affect the measurement.
 It does not demonstrate automatic region admission.
 
+A later checkpoint adds bounded automatic admission of closed, automatic
+get-PC gadget functions. Its version-three donor receipt extends the flag
+ownership described here; the historical version-two measurements and hashes
+above remain revision-specific. See [VMP_GET_PC_REGIONS.md](VMP_GET_PC_REGIONS.md).
+
 ## Assumption register
 
 | ID | Assumption and dependent result | Stress test or falsification probe |

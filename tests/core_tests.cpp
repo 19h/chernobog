@@ -38,6 +38,7 @@ void test_native_proof_receipts()
                      0xFEDCBA9876543210ULL,
                      {{0x100000001ULL, 19, true}, {0x1010, 21, false}},
                      "[chernobog][ida-analysis] test receipt",
+                     std::nullopt,
                      std::nullopt};
     const auto bytes = encode(original);
     check(bytes.has_value(), "ownership receipt encodes");
@@ -59,7 +60,7 @@ void test_native_proof_receipts()
     altered.push_back(0);
     check(!decode(altered.data(), altered.size()), "receipt trailing data rejected");
     altered = *bytes;
-    altered[3] = 3;
+    altered[3] = 4;
     check(!decode(altered.data(), altered.size()), "unknown receipt schema rejected");
     altered = *bytes;
     altered[20] = 255;
@@ -72,12 +73,63 @@ void test_native_proof_receipts()
     original.noreturn_function_node = 0x123456789ABCDEF0ULL;
     const auto largest = encode(original);
     const auto decoded_largest = largest ? decode(largest->data(), largest->size()) : std::nullopt;
-    check(largest && (*largest)[3] == 2 && largest->size() == maximum_size && decoded_largest &&
+    check(largest && (*largest)[3] == 2 &&
+              largest->size() == maximum_size - (43 + maximum_donor_stack_points * 4 - 8) &&
+              decoded_largest &&
               decoded_largest->noreturn_function_node == original.noreturn_function_node,
           "bounded noreturn ownership receipt admitted");
     if (largest)
         for (size_t size = 0; size < largest->size(); ++size)
             check(!decode(largest->data(), size), "every truncated noreturn receipt is rejected");
+    original.donor_function = DonorFunction{0x789ABCDEF0123456ULL,
+                                            0xABCDEF0123456789ULL,
+                                            0x1020304050607080ULL,
+                                            maximum_donor_length,
+                                            0x5400,
+                                            4,
+                                            {{0, 0}, {1, 4}, {2, 0}}};
+    for (uint16_t offset = 3; offset < maximum_donor_stack_points; ++offset)
+        original.donor_function->stack_points.push_back({offset, int16_t(offset)});
+    const auto donor_bytes = encode(original);
+    const auto decoded_donor =
+        donor_bytes ? decode(donor_bytes->data(), donor_bytes->size()) : std::nullopt;
+    check(donor_bytes && (*donor_bytes)[3] == 3 && donor_bytes->size() == maximum_size &&
+              decoded_donor && decoded_donor->donor_function &&
+              decoded_donor->donor_function->start_node == original.donor_function->start_node &&
+              decoded_donor->donor_function->owner_node == original.donor_function->owner_node &&
+              decoded_donor->donor_function->entry_end_node ==
+                  original.donor_function->entry_end_node &&
+              decoded_donor->donor_function->length == maximum_donor_length &&
+              decoded_donor->donor_function->flags == 0x5400 &&
+              decoded_donor->donor_function->word_bytes == 4 &&
+              decoded_donor->donor_function->stack_points.size() == maximum_donor_stack_points &&
+              decoded_donor->donor_function->stack_points[1].sp == 4 &&
+              decoded_donor->noreturn_function_node == original.noreturn_function_node,
+          "bounded donor and noreturn ownership receipt admitted");
+    if (donor_bytes)
+        for (size_t size = 0; size < donor_bytes->size(); ++size)
+            check(!decode(donor_bytes->data(), size), "every truncated donor receipt is rejected");
+    original.noreturn_function_node.reset();
+    const auto donor_only = encode(original);
+    const auto decoded_donor_only =
+        donor_only ? decode(donor_only->data(), donor_only->size()) : std::nullopt;
+    check(decoded_donor_only && !decoded_donor_only->noreturn_function_node &&
+              decoded_donor_only->donor_function,
+          "donor receipt without noreturn lease admitted");
+    original.donor_function->length = maximum_donor_length + 1;
+    check(!encode(original), "oversized donor range rejected");
+    original.donor_function->length = 0;
+    check(!encode(original), "empty donor range rejected");
+    original.donor_function->length = maximum_donor_length;
+    original.donor_function->stack_points.push_back({32, 0});
+    check(!encode(original), "oversized donor stack trace rejected");
+    original.donor_function->stack_points.pop_back();
+    original.donor_function->stack_points[1].offset = 0;
+    check(!encode(original), "duplicate donor stack offset rejected");
+    original.donor_function->stack_points[1].offset = 1;
+    original.donor_function->word_bytes = 0;
+    check(!encode(original), "invalid donor word width rejected");
+    original.donor_function->word_bytes = 4;
     original.edges.push_back({});
     check(!encode(original), "too many owned edges rejected");
     original.edges.clear();
