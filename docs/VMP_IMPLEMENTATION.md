@@ -39,6 +39,14 @@ abstentions; they cannot be counted as successful recovery.
 Quality gates are applied to each completed change and again to the complete
 objective. Neither baseline test success nor this ledger proves completion.
 
+Packed-keygen runtime checkpoint: two fixed-seed Morok protected processes
+start at the recorded ELF entry, reach the application callback with live stack
+arguments, and match all 4,096 addresses and entered instruction bytes of the
+earlier synthetic candidate prefix under QEMU/GDB. File-mapped and runtime
+bytes agree; the next PC is `0x419896` in both process traces and the candidate.
+This validates one bounded empty-input prefix, not later unpacking or protected
+recovery effectiveness. See `VMP_MOROK_RUNTIME_TRACE.md` and its evidence JSON.
+
 Ownerless native graph checkpoint: an explicit-root read-only inspector now
 propagates register, flag and stack facts across existing decoded ownerless
 branches and loops, with architectural successors, entry auditing and visible

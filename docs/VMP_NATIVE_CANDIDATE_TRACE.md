@@ -100,3 +100,8 @@ synthetic entry, entry-versus-retirement and instruction-budget limits are
 distinguished. QG6: primary local binaries and exact raw artifacts are
 hash-linked; independent Capstone decoding checks the entered spans. QG7:
 impact and runtime/semantic boundaries are labeled.
+
+Subsequent real-process comparison: `VMP_MOROK_RUNTIME_TRACE.md` records two
+QEMU/GDB executions whose first 4,096 entered addresses and instruction bytes
+agree with this synthetic candidate prefix. That later observation narrows T4
+for the empty-input path while retaining its synthetic-state and budget limits.

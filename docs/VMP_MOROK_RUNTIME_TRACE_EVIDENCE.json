@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "checkpoint": "QEMU real-process Morok keygen callback prefix",
+  "measurement_parent_revision": "7056e253fe915471721cf8749243b8e91479f6ac",
+  "protected_first_sha256": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+  "protected_second_sha256": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+  "candidate_report_sha256": "f2c5fc38ff6b01008bc1483fbc8d0c53e545120bf226e2bf45a8a83623b8f673",
+  "container_image_id": "sha256:b27cd74d026e02bdcdd8bac7c97447fe0d598174f76e252f106239aeb9722cfa",
+  "guest_base": "Debian GNU/Linux 13 arm64",
+  "qemu_x86_64_version": "10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)",
+  "gdb_multiarch_version": "16.3 (Debian 16.3-1)",
+  "source_sha256": {
+    "tests/morok_qemu_runtime_trace.py": "67771726177760428c7be3fb4cd9a366cba2ae9367b44257010cb30d372439d8",
+    "tests/verify_morok_qemu_runtime_trace.py": "3f8602851bc2234b5a4edd70de7efe26199f82acac77f42b05938a24e9bda7e9"
+  },
+  "raw_reports_sha256": {
+    "build/morok-runtime-probe/trace-first-4096.json": "c07c4cc4f99404a2108fbb902b6b589edbdd54498f2f8a49268dc747d29600fb",
+    "build/morok-runtime-probe/trace-second-4096.json": "cca68334905a4997559f7f63aa56973cd1ea7c387157985616a28f65e01725c2",
+    "build/morok-runtime-probe/verification.json": "42bc520ec7d1d6ffad14a800c74aaa291f95a63c376ec11ff3a654444b52eaa0"
+  },
+  "elf_entry": "0x40021b",
+  "callback": "0x418440",
+  "entered_instructions_per_run": 4096,
+  "next_pc_per_run": "0x419896",
+  "runtime_address_mismatches": 0,
+  "runtime_instruction_byte_mismatches": 0,
+  "elf_instruction_byte_mismatches": 0,
+  "negative_address_control_rejected": true,
+  "negative_byte_control_rejected": true,
+  "root_4096_file_and_memory_sha256": "87a0e7992dfef9ace66f2443ccb7c3b712ef619f2f3a337df24913e0c67bbe42",
+  "packed_65536_file_and_memory_sha256": "bf85bf0f311c33ee8137644a8c513c3aa1582f0e225dd03a19b663cc270bd385",
+  "passed": true
+}
