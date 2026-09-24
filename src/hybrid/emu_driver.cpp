@@ -2073,6 +2073,12 @@ bool EmuDriver::emulate_region(const vm::NativeRegion &region, const HybridConfi
     return emulate_region_impl(region, requested, out, outcome, input, nullptr, nullptr, 0);
 }
 
+bool EmuDriver::emulate_region_states(const vm::NativeRegion &region, const HybridConfig &requested,
+                                      EmuEvents &out, EmuOutcome &outcome, const EmuInput *input)
+{
+    return emulate_region_impl(region, requested, out, outcome, input, nullptr, nullptr, 0, true);
+}
+
 bool EmuDriver::emulate_region_walk(vm::NativeRegion &region, const HybridConfig &requested,
                                     EmuEvents &out, EmuOutcome &outcome,
                                     const vm::NativeDecoder &decoder, size_t maximum_extensions,

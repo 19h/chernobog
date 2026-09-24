@@ -67,6 +67,19 @@ The plan remains truncated, no ordinary function evidence is published, and
 full VM semantics remain unknown. See `VMP_NATIVE_RUNTIME_SHADOW.md` and its
 evidence JSON.
 
+Runtime-shadow instruction-state checkpoint for rows 6a and V: a separate
+read-only API captures the 16 x86-64 general-purpose registers, RIP and RFLAGS
+at each of 4,096 admitted instructions without extending the native plan.
+Two fresh protected IDA reports are byte-identical and retain the prior
+head/path/edge arrays. Two QEMU/GDB register runs align 4,094 reported entries
+after the same two observation gaps. The six registers equal at entry remain
+exact at all aligned entries in both runs (49,128 value comparisons); entry-
+relative `RSP` movement also matches 8,188 comparisons. Other registers and
+flag bits are reported without general equivalence claims. Negative state
+mutations reject, all 21 CTest suites pass, and the IDB inventory is unchanged.
+See `VMP_NATIVE_RUNTIME_STATES.md` and its evidence JSON. Complete VM state,
+memory effects, other inputs and ordinary function publication remain open.
+
 Ownerless native graph checkpoint: an explicit-root read-only inspector now
 propagates register, flag and stack facts across existing decoded ownerless
 branches and loops, with architectural successors, entry auditing and visible

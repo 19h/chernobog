@@ -375,9 +375,11 @@ static std::string trace_native_region_impl(
     bool check = false, const std::vector<hybrid::EmuCallSummary> *bindings = nullptr,
     hybrid::NativeTemporalStringRun *retained = nullptr,
     hybrid::ProgramImage *retained_image = nullptr, bool candidate_entry = false,
-    const std::vector<uint8_t> *runtime_shadow = nullptr)
+    const std::vector<uint8_t> *runtime_shadow = nullptr, bool sample_states = false)
 {
     using namespace hybrid;
+    if (sample_states && (!candidate_entry || !runtime_shadow || walk || check || bindings))
+        return unavailable("invalid runtime shadow state request", candidate_entry);
     const auto *api = rax_load();
     if (!api || !api->decode)
         return unavailable("native decoder/emulator unavailable", candidate_entry);
@@ -401,7 +403,7 @@ static std::string trace_native_region_impl(
     HybridConfig config;
     config.max_image_bytes = 64ull * 1024 * 1024;
     config.max_insns = 4096;
-    config.timeout_ms = 250;
+    config.timeout_ms = sample_states ? 1000 : 250;
     config.want_runtime_strings = false;
     config.want_import_summaries = false;
     config.max_runtime_bytes = 65536;
@@ -462,7 +464,8 @@ static std::string trace_native_region_impl(
         bindings ? driver.emulate_region_temporal(region, config, events, outcome, decoder, &input)
         : walk   ? driver.emulate_region_walk(region, config, events, outcome, decoder, 64, &input,
                                               check)
-                 : driver.emulate_region(region, config, events, outcome, &input);
+        : sample_states ? driver.emulate_region_states(region, config, events, outcome, &input)
+                        : driver.emulate_region(region, config, events, outcome, &input);
     static std::atomic<uint64_t> next_capture{1};
     uint64_t capture = next_capture.load();
     while (capture != UINT64_MAX && !next_capture.compare_exchange_weak(capture, capture + 1))
@@ -669,7 +672,8 @@ static std::string trace_native_region_impl(
         out << ",\"runtime_shadow\":true,\"shadow_start\":" << inspection_json_quote(hex(function))
             << ",\"shadow_bytes\":" << runtime_shadow->size()
             << ",\"shadow_changed_bytes\":" << shadow_changed << ",\"shadow_fingerprint\":"
-            << inspection_json_quote(hex(runtime_shadow_fingerprint(*runtime_shadow)));
+            << inspection_json_quote(hex(runtime_shadow_fingerprint(*runtime_shadow)))
+            << ",\"shadow_instruction_states\":" << (sample_states ? "true" : "false");
     inspection_json_rows(out, "heads", heads);
     inspection_json_rows(out, "frontiers", frontiers);
     inspection_json_rows(out, "execution", execution);
@@ -747,6 +751,15 @@ std::string trace_native_candidate_shadow(uint64_t root, uint64_t seed, const st
         return unavailable("invalid bounded runtime shadow file", true);
     return trace_native_region_impl(root, seed, nullptr, false, false, nullptr, nullptr, nullptr,
                                     true, &shadow);
+}
+std::string trace_native_candidate_shadow_states(uint64_t root, uint64_t seed,
+                                                 const std::string &path)
+{
+    std::vector<uint8_t> shadow;
+    if (!read_runtime_shadow(path, shadow))
+        return unavailable("invalid bounded runtime shadow file", true);
+    return trace_native_region_impl(root, seed, nullptr, false, false, nullptr, nullptr, nullptr,
+                                    true, &shadow, true);
 }
 std::string trace_native_region_input(uint64_t function, uint64_t seed, const std::string &request)
 {

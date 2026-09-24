@@ -259,6 +259,31 @@ void test_native_regions(const RaxApi *api)
         check(events.execution.size() == 7 &&
                   events.states.front().kind == StatePoint::Kind::RegionEntry,
               "native region records complete instruction path and entry state");
+        EmuEvents region_sample_events;
+        EmuOutcome region_sample_outcome;
+        check(driver.emulate_region_states(region, short_run_config(), region_sample_events,
+                                           region_sample_outcome) &&
+                  region_sample_outcome.returned &&
+                  region_sample_outcome.native_state_capture_requested &&
+                  region_sample_outcome.native_state_capture_complete &&
+                  !region_sample_outcome.native_walk && !region_sample_outcome.conclusive() &&
+                  region_sample_events.execution.size() == 7 &&
+                  region_sample_events.edges.size() == events.edges.size(),
+              "bounded region state capture retains execution without native continuation");
+        size_t region_sample_entries = 0;
+        for (const auto &state : region_sample_events.states)
+            if (state.kind == StatePoint::Kind::NativeInstructionEntry)
+            {
+                check(region_sample_entries < region_sample_events.execution.size() &&
+                          state.pc == region_sample_events.execution[region_sample_entries].pc &&
+                          state.sequence ==
+                              region_sample_events.execution[region_sample_entries].sequence &&
+                          state.regs.size() == (is64 ? 18 : 10),
+                      "region state sample identifies each exact entered instruction");
+                ++region_sample_entries;
+            }
+        check(region_sample_entries == region_sample_events.execution.size(),
+              "region state capture covers every executed instruction");
         const unsigned width = is64 ? 8 : 4;
         const uint64_t pushed = is64 ? UINT64_C(0xffffffffffffffef) : UINT64_C(0xffffffef);
         bool seed_write = false, call_write = false, callee_input = false, return_value = false;

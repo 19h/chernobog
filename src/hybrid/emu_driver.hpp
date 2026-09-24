@@ -373,6 +373,12 @@ class EmuDriver
     bool emulate_region(const vm::NativeRegion &, const HybridConfig &, EmuEvents &, EmuOutcome &,
                         const EmuInput *input = nullptr);
 
+    // Retain a scalar register snapshot before every admitted native instruction
+    // without extending the plan or promoting the result to function evidence.
+    // The existing native sample cap limits this mode to 4096 instructions.
+    bool emulate_region_states(const vm::NativeRegion &, const HybridConfig &, EmuEvents &,
+                               EmuOutcome &, const EmuInput *input = nullptr);
+
     // Opt-in observed-native continuation with one shared execution/time budget.
     // Extends the caller's plan between emulator slices, retaining machine state.
     // At most 64 extensions; no ordinary function or logical VM admission.
