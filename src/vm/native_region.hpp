@@ -59,7 +59,8 @@ class NativeRegion
 // Decode syntactic alternatives from one entry, including direct callees and
 // possible continuations. Indirect destinations are not enumerated. Stop before
 // traps, external/mixed-mode/unloaded/nonexecutecutable spans or overlapping
-// instruction interpretations. Hard limit 4096 heads, no database access.
+// instruction interpretations. Default limit 4096 and hard limit 16384 heads,
+// no database access.
 NativeRegion plan_native_region(const hybrid::ProgramImage &, const hybrid::RaxApi *,
                                 uint64_t entry, size_t maximum_heads = 4096,
                                 const NativeDecoder &decoder = {});

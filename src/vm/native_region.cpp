@@ -69,7 +69,7 @@ NativeRegion plan_native_region(const hybrid::ProgramImage &image, const hybrid:
         frontier(entry, "mode_aware_decoder_required");
         return result;
     }
-    maximum_heads = std::min(maximum_heads, size_t(4096));
+    maximum_heads = std::min(maximum_heads, size_t(16384));
     if (!maximum_heads)
     {
         result.truncated_ = true;
@@ -184,7 +184,7 @@ NativeExtension extend_native_region(const NativeRegion &previous,
         return reject("source_not_indirect_or_return");
     if (previous.at(target))
         return reject("target_already_admitted");
-    maximum_heads = std::min(maximum_heads, size_t(4096));
+    maximum_heads = std::min(maximum_heads, size_t(16384));
     if (previous.heads_.size() >= maximum_heads)
         return reject("head_limit");
     const auto addition =

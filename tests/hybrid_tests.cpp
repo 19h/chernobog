@@ -318,6 +318,25 @@ void test_native_regions(const RaxApi *api)
                   boundary_out.region_boundary && boundary.execution.size() == 1 &&
                   boundary_out.region_boundary_target == image.lo + 0x100,
               "region quota is an execution boundary before target instruction");
+        if (is64)
+        {
+            auto long_image = branch_image();
+            long_image.hi = long_image.lo + 5001;
+            long_image.segs[0].end = long_image.hi;
+            long_image.segs[0].bytes.assign(5001, 0x90);
+            long_image.segs[0].bytes.back() = 0xc3;
+            long_image.segs[0].mask.assign((5001 + 7) / 8, 0xff);
+            long_image.entries.clear();
+            long_image.content_hash = hybrid_program_content_hash(long_image);
+            const auto default_limit = plan_native_region(long_image, api, long_image.lo, 4096);
+            const auto extended_limit = plan_native_region(long_image, api, long_image.lo, 6000);
+            check(default_limit.truncated() && default_limit.heads().size() == 4096 &&
+                      !default_limit.at(long_image.lo + 5000) && !extended_limit.truncated() &&
+                      extended_limit.heads().size() == 5001 &&
+                      extended_limit.at(long_image.lo + 5000) &&
+                      extended_limit.at(long_image.lo + 5000)->flow == RAX_FLOW_RETURN,
+                  "explicit larger native plan reaches a return beyond the default head bound");
+        }
         auto changed = image;
         changed.generation++;
         check(!region.matches(changed), "region generation identity rejects stale plan");

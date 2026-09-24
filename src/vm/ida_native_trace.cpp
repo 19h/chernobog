@@ -211,6 +211,34 @@ bool parse_input(const std::string &request, hybrid::EmuInput &input)
     }
     return true;
 }
+bool read_runtime_shadow(const std::string &path, std::vector<uint8_t> &bytes)
+{
+    if (path.empty() || path.size() > 4096 || path.find('\0') != std::string::npos)
+        return false;
+    FILE *stream = qfopen(path.c_str(), "rb");
+    if (!stream)
+        return false;
+    const uint64_t length = qfsize(stream);
+    if (!length || length > 65536)
+    {
+        qfclose(stream);
+        return false;
+    }
+    bytes.resize(size_t(length));
+    const ssize_t count = qfread(stream, bytes.data(), size_t(length));
+    const int closed = qfclose(stream);
+    return count == ssize_t(length) && closed == 0;
+}
+uint64_t runtime_shadow_fingerprint(const std::vector<uint8_t> &bytes)
+{
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (uint8_t byte : bytes)
+    {
+        hash ^= byte;
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash;
+}
 bool decode_native(uint64_t ea, const uint8_t *expected, size_t offered, rax_decoded &out,
                    unsigned mode)
 {
@@ -346,7 +374,8 @@ static std::string trace_native_region_impl(
     uint64_t function, uint64_t seed, const hybrid::EmuInput *explicit_input, bool walk = false,
     bool check = false, const std::vector<hybrid::EmuCallSummary> *bindings = nullptr,
     hybrid::NativeTemporalStringRun *retained = nullptr,
-    hybrid::ProgramImage *retained_image = nullptr, bool candidate_entry = false)
+    hybrid::ProgramImage *retained_image = nullptr, bool candidate_entry = false,
+    const std::vector<uint8_t> *runtime_shadow = nullptr)
 {
     using namespace hybrid;
     const auto *api = rax_load();
@@ -381,15 +410,44 @@ static std::string trace_native_region_impl(
                                           : hybrid_snapshot_function(image, config, function);
     if (!snapshot.complete)
         return unavailable("incomplete or unsupported image snapshot", candidate_entry);
+    size_t shadow_changed = 0;
+    if (runtime_shadow)
+    {
+        if (!candidate_entry || image.arch != HybridArch::X86_64 ||
+            runtime_shadow->size() > UINT64_MAX - function)
+            return unavailable("invalid runtime shadow scope", candidate_entry);
+        const uint64_t end = function + runtime_shadow->size();
+        auto segment = std::find_if(image.segs.begin(), image.segs.end(),
+                                    [&](const SegImage &part)
+                                    {
+                                        return part.start <= function && end <= part.end &&
+                                               part.kind == HybridSegmentKind::NORMAL &&
+                                               part.has_perm(HybridSegPerm::EXEC) &&
+                                               part.bitness == 2;
+                                    });
+        if (segment == image.segs.end())
+            return unavailable("runtime shadow outside one executable segment", true);
+        const size_t offset = size_t(function - segment->start);
+        for (size_t index = 0; index < runtime_shadow->size(); ++index)
+        {
+            if (!segment->byte_loaded(function + index))
+                return unavailable("runtime shadow covers unloaded image bytes", true);
+            shadow_changed += segment->bytes[offset + index] != (*runtime_shadow)[index];
+        }
+        std::copy(runtime_shadow->begin(), runtime_shadow->end(), segment->bytes.begin() + offset);
+        image.content_hash = hybrid_program_content_hash(image);
+    }
     const unsigned mode = image.arch == HybridArch::X86_64 ? 64 : 32;
     if (explicit_input && mode == 32 &&
         std::any_of(explicit_input->args.begin(), explicit_input->args.end(),
                     [](uint64_t value) { return value > UINT32_MAX; }))
         return unavailable("argument exceeds architecture width", candidate_entry);
     const NativeDecoder decoder =
-        [mode](uint64_t ea, const uint8_t *data, size_t size, rax_decoded &decoded)
-    { return decode_native(ea, data, size, decoded, mode); };
-    auto region = plan_native_region(image, api, function, 4096, decoder);
+        runtime_shadow ? NativeDecoder{}
+                       : NativeDecoder{[mode](uint64_t ea, const uint8_t *data, size_t size,
+                                              rax_decoded &decoded)
+                                       { return decode_native(ea, data, size, decoded, mode); }};
+    auto region = plan_native_region(image, api, function, runtime_shadow ? 16384 : 4096, decoder);
     if (!region.available())
         return unavailable("entry has no admissible native instruction", candidate_entry);
     EmuDriver driver(api, image, true, inf_get_filetype() == f_PE,
@@ -554,8 +612,10 @@ static std::string trace_native_region_impl(
         << (outcome.native_state_capture_complete ? "true" : "false")
         << ",\"image_hash\":" << inspection_json_quote(hex(region.image_hash()))
         << ",\"generation\":" << inspection_json_quote(hex(region.generation()))
-        << ",\"address_bits\":" << (image.arch == HybridArch::X86_64 ? 64 : 32)
-        << ",\"decoder\":\"IDA mode-aware native decoder, snapshot bytes checked\""
+        << ",\"address_bits\":" << (image.arch == HybridArch::X86_64 ? 64 : 32) << ",\"decoder\":"
+        << inspection_json_quote(runtime_shadow
+                                     ? "RAX x86-64 decoder over caller-supplied shadow bytes"
+                                     : "IDA mode-aware native decoder, snapshot bytes checked")
         << ",\"planned_heads\":" << region.heads().size()
         << ",\"plan_truncated\":" << (region.truncated() ? "true" : "false")
         << ",\"ran\":" << (ran ? "true" : "false") << ",\"stop\":"
@@ -598,11 +658,18 @@ static std::string trace_native_region_impl(
         << ",\"backend_compatibility\":\"32-bit legacy INC/DEC materializes current EFLAGS before backend execution to preserve pending carry\""
         << ",\"contract\":"
         << inspection_json_quote(
-               candidate_entry
+               runtime_shadow
+                   ? "ephemeral synthetic entry over caller-supplied executable shadow bytes; external runtime provenance is not verified by this API; no function evidence or VM identity"
+               : candidate_entry
                    ? "ephemeral synthetic entry at an explicitly selected executable data head; exact fetched instruction bytes; neither observed program reachability nor runtime unpacked contents; no function evidence or VM identity"
                    : "ephemeral seeded native execution; exact fetched instruction bytes; separate from function evidence; logical VM state unknown");
     if (candidate_entry)
         out << ",\"candidate_decode\":true,\"synthetic_entry\":true";
+    if (runtime_shadow)
+        out << ",\"runtime_shadow\":true,\"shadow_start\":" << inspection_json_quote(hex(function))
+            << ",\"shadow_bytes\":" << runtime_shadow->size()
+            << ",\"shadow_changed_bytes\":" << shadow_changed << ",\"shadow_fingerprint\":"
+            << inspection_json_quote(hex(runtime_shadow_fingerprint(*runtime_shadow)));
     inspection_json_rows(out, "heads", heads);
     inspection_json_rows(out, "frontiers", frontiers);
     inspection_json_rows(out, "execution", execution);
@@ -672,6 +739,14 @@ std::string trace_native_candidate_region_input(uint64_t root, uint64_t seed,
         return unavailable("invalid bounded native input", true);
     return trace_native_region_impl(root, seed, &input, false, false, nullptr, nullptr, nullptr,
                                     true);
+}
+std::string trace_native_candidate_shadow(uint64_t root, uint64_t seed, const std::string &path)
+{
+    std::vector<uint8_t> shadow;
+    if (!read_runtime_shadow(path, shadow))
+        return unavailable("invalid bounded runtime shadow file", true);
+    return trace_native_region_impl(root, seed, nullptr, false, false, nullptr, nullptr, nullptr,
+                                    true, &shadow);
 }
 std::string trace_native_region_input(uint64_t function, uint64_t seed, const std::string &request)
 {
