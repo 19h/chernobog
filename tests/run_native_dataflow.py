@@ -23,6 +23,7 @@ def main():
     parser.add_argument("--cmps-baseline", action="store_true")
     parser.add_argument("--stos-local-baseline", action="store_true")
     parser.add_argument("--movs-local-baseline", action="store_true")
+    parser.add_argument("--rep-movs-local-baseline", action="store_true")
     parser.add_argument("--lods-local-baseline", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
@@ -105,7 +106,7 @@ def main():
             )
             row["native_result"] = json.loads(stdout)
             assert row["native_result"] == {
-                "checks": 32254 if architecture == "x86_64" else 30974,
+                "checks": 33278 if architecture == "x86_64" else 31998,
                 "passed": True,
             }
             row["binary_sha256"] = digest(binary)
@@ -154,6 +155,11 @@ def main():
                         else []
                     ),
                     *(
+                        ["--set", "CHERNOBOG_REP_MOVS_LOCAL_BASELINE=1"]
+                        if args.rep_movs_local_baseline
+                        else []
+                    ),
+                    *(
                         ["--set", "CHERNOBOG_LODS_LOCAL_BASELINE=1"]
                         if args.lods_local_baseline
                         else []
@@ -181,7 +187,7 @@ def main():
                 json.dumps(
                     {
                         "architecture": architecture,
-                        "native_checks": 32254 if architecture == "x86_64" else 30974,
+                        "native_checks": 33278 if architecture == "x86_64" else 31998,
                         "inspection_checks": row["checks"],
                     }
                 ),

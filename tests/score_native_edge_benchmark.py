@@ -13,12 +13,12 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_PINS = {
-    "tests/vmp_native/dataflow.S": "ddcca01d5263f1beba5aeb2bb588e28557d31da65bd56412282ae5fb54470ec9",
-    "tests/vmp_native/dataflow_main.c": "2b213f5a23ad62c4c8a141424c8f0b70d1b93042a35193f2c9e1a410dc03f223",
+    "tests/vmp_native/dataflow.S": "ff1bd516d0ff8e7e1afa0b41ab72e07449f4eb83258c34ab2c7127fc4fddc0fe",
+    "tests/vmp_native/dataflow_main.c": "44c58fd139586d37c4124a13b38307701873b5f337f1899fa4f1ba4c5d3fec5e",
 }
 PROBE_PINS = {
-    "tests/ida_dataflow_probe.py": "3be7afb066472d93d8dce3c827e0f1976d83d8ea2d20bd95588bca4d50c47f86",
-    "tests/ida_ownerless_dataflow_probe.py": "636795219d5aaeda44882c36dc44d4b555a47b636256358a89efe4f5a33dc852",
+    "tests/ida_dataflow_probe.py": "7db4bfd601c4f5420c6643b558955dfb4f08cb2b7dca5f06bbc9ac3c70a64992",
+    "tests/ida_ownerless_dataflow_probe.py": "c729c0b457dae8b7ce65bbe1403a833c9b0b31e846186b872b082fe6c18afb15",
 }
 
 # Targets are globally named labels in dataflow.S. Each edge is one distinct
@@ -62,6 +62,8 @@ FIXED = {
     "df_movs_unknown_source_disjoint_target": "df_memory_target",
     "df_movs_self_copy_target": "df_memory_target",
     "df_rep_movs_disjoint_target": "df_memory_target",
+    "df_rep_movs_zero_target": "df_memory_target",
+    "df_rep_movs_one_disjoint_target": "df_memory_target",
     "df_lods_full_target": "df_memory_target",
     "df_lods_byte_preserved_target": "df_memory_target",
 }

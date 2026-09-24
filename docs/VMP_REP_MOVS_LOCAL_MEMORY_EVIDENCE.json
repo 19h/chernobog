@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "scope": "matched exact zero/one REP MOVS local-memory checkpoint; owned, ownerless, and one supplied protected root",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "446b759bcd49d2279f22fa5c0854a90b772f9c77360046b01e1c4c3f3974af8b",
+    "tests/vmp_native/dataflow.S": "ff1bd516d0ff8e7e1afa0b41ab72e07449f4eb83258c34ab2c7127fc4fddc0fe",
+    "tests/vmp_native/dataflow_main.c": "44c58fd139586d37c4124a13b38307701873b5f337f1899fa4f1ba4c5d3fec5e",
+    "tests/ida_dataflow_probe.py": "7db4bfd601c4f5420c6643b558955dfb4f08cb2b7dca5f06bbc9ac3c70a64992",
+    "tests/ida_ownerless_dataflow_probe.py": "c729c0b457dae8b7ce65bbe1403a833c9b0b31e846186b872b082fe6c18afb15",
+    "tests/run_native_dataflow.py": "db43abcf880cfb74a96e47597da77247b5a215c1121e66b16b8a509ea62b7c8c",
+    "tests/run_ownerless_dataflow.py": "3554b3cfd69737afa884638fbb972cfb23b0cd1aa6685d3fc700f63a0432376b",
+    "tests/score_native_edge_benchmark.py": "ea51f17045b9fe576299aa7cdf18ae4a9882ae52204b3a95ed00cef262a9a3ad",
+    "tests/verify_rep_movs_local.py": "605418c9f43422c26fb9f6538a732f7b8a3ac12cd3afbef0a7c51d2b9f2f5a39",
+    "tests/ida_protected_region_inspect.py": "b68a41d2011f232808974d7b155b84a43e4f13a8f3eb157a0d204cf6f04548d2"
+  },
+  "tool_sha256": {
+    "ida": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "llvm_nm": "42da2421bff98120a4a2857285db866bfc327fdcc8713b1a0e104a0b8550850f",
+    "prior_plugin": "616c95760b2f02e68d252f5e65d527ccd26ef8e5a289c32cabacb39f9ffcc04c",
+    "current_plugin": "dc57a08333d4561627f94c611d280574d33bd07d6d7c967efbea854d0a8f9e58"
+  },
+  "binary_sha256": {
+    "owned_x86_64": "22fcb1c6b5d796e08d941276ad9762f72c0af6239e357c372747dc4432dd9382",
+    "owned_i386": "b34f552696b0efb6d78d15e008f0dcb1a6355ad58e7a48d742de4cbe532ad17b",
+    "ownerless_x86_64": "0821417c9c64c9d045a0fcc59c9742f2a0775bf373b12b7752e45f6d8800f289",
+    "ownerless_i386": "4d4cbd1048ec6c708d0231efa09f255643f8b7346397d005f624520d75246298"
+  },
+  "protected_input_sha256": {
+    "samples/foo_x86_vmp": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "report_sha256": {
+    "build/rep-movs-local-owned-final/dataflow_analysis.json": "38bf9e41fa2b034d24ff3fa4053c81df740413e35e6f9f353c27f08289a2426d",
+    "build/rep-movs-local-owned-baseline-final/dataflow_analysis.json": "98dd6b368e9180a7b438cb355d0fcff5b347d0279f7bfa70539f7477ab7599e4",
+    "build/rep-movs-local-ownerless-final/ownerless_dataflow_analysis.json": "a135e1095ed792c1ea29d1fed7bc6e7c474a064ae2fea332187e894b81188cff",
+    "build/rep-movs-local-ownerless-baseline-final/ownerless_dataflow_analysis.json": "99e10652443e612d6990227e5ab8d0cd978db8cbda5f71e6909198e335588ce8",
+    "build/rep-movs-local-score-final/native_edge_benchmark.json": "cbb342666cfbad81cdecc90bb1519930bfed8cc6550302e559124c314c1b6533",
+    "build/rep-movs-local-score-baseline-final/native_edge_benchmark.json": "3ff1341b28b98e4cc44a7f3db1354e32f8075c600ef30d84de8fc2dc723bfcd7",
+    "build/rep-movs-local-verification-final.json": "0ca6e5b3448d5c0109ec5f3dcc16f8e197d4b2d7f3adec94991f0ed978701e5e",
+    "build/rep-movs-local-protected-final/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/rep-movs-local-protected-prior/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa"
+  },
+  "matched_source_probe_binary_ida": true,
+  "changed_captures": {
+    "owned_x86_64": 4,
+    "ownerless_x86_64": 4,
+    "owned_i386": 2,
+    "ownerless_i386": 2
+  },
+  "native_checks": {
+    "owned_x86_64": 33278,
+    "owned_i386": 31998,
+    "ownerless_each": 4094
+  },
+  "ida_assertions": {
+    "owned_x86_64_prior": 410,
+    "owned_x86_64_current": 414,
+    "owned_i386_prior": 353,
+    "owned_i386_current": 355,
+    "ownerless_x86_64_each": 1540,
+    "ownerless_i386_each": 1490
+  },
+  "edge_score": {
+    "oracle_edges_each": 48,
+    "prior_correct_x86_64_each": 38,
+    "current_correct_x86_64_each": 40,
+    "prior_correct_i386_each": 30,
+    "current_correct_i386_each": 31,
+    "false_each": 0,
+    "prior_unresolved_x86_64_each": 7,
+    "current_unresolved_x86_64_each": 5,
+    "prior_unresolved_i386_each": 15,
+    "current_unresolved_i386_each": 14
+  },
+  "protected_selected_root": {
+    "nodes": 75,
+    "edges": 77,
+    "unresolved_records": 3,
+    "prior_current_byte_equal": true
+  },
+  "ctest_passed": 21
+}

@@ -504,6 +504,8 @@ def main():
         movs_local_proofs = (
             os.environ.get("CHERNOBOG_MOVS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
         )
+        rep_movs_zero_proofs = os.environ.get("CHERNOBOG_REP_MOVS_LOCAL_BASELINE") != "1"
+        rep_movs_one_proofs = rep_movs_zero_proofs and ida_ida.inf_is_64bit()
         lods_local_proofs = (
             os.environ.get("CHERNOBOG_LODS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
         )
@@ -633,6 +635,8 @@ def main():
             ("df_movs_overlap_word_reload", True if movs_local_proofs else None),
             ("df_movs_dword_reload", True if movs_local_proofs else None),
             ("df_movs_initial_source_unknown", None),
+            ("df_rep_movs_zero_preserve", True if rep_movs_zero_proofs else None),
+            ("df_rep_movs_one_reload", True if rep_movs_one_proofs else None),
             ("df_lods_byte_value", True if lods_local_proofs else None),
             ("df_lods_word_value", True if lods_local_proofs else None),
             ("df_lods_dword_value", True if lods_local_proofs else None),
@@ -783,6 +787,8 @@ def main():
             ("df_movs_unknown_source_disjoint_target", movs_local_proofs),
             ("df_movs_self_copy_target", movs_local_proofs),
             ("df_rep_movs_disjoint_target", False),
+            ("df_rep_movs_zero_target", rep_movs_zero_proofs),
+            ("df_rep_movs_one_disjoint_target", rep_movs_one_proofs),
         ):
             root, instructions = prepare_prefix(name)
             result = inspect(name, root)
@@ -812,6 +818,8 @@ def main():
                     "df_movs_unknown_source_disjoint_target",
                     "df_movs_self_copy_target",
                     "df_rep_movs_disjoint_target",
+                    "df_rep_movs_zero_target",
+                    "df_rep_movs_one_disjoint_target",
                 )
                 and result["address_bits"] == 32
             ):

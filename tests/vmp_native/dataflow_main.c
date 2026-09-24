@@ -63,6 +63,8 @@ extern int df_lods_unknown_source_high_value(int);
 extern int df_rep_movs_alias(int, void *);
 extern int df_movs_disjoint_target(int), df_movs_unknown_source_disjoint_target(int);
 extern int df_movs_self_copy_target(int), df_rep_movs_disjoint_target(int);
+extern int df_rep_movs_zero_target(int), df_rep_movs_one_disjoint_target(int);
+extern int df_rep_movs_zero_preserve(int), df_rep_movs_one_reload(int);
 extern int df_movs_byte_reload(int), df_movs_overlap_word_reload(int);
 extern int df_movs_dword_reload(int), df_movs_initial_source_unknown(int);
 extern int df_rep_movs_register_target(int), df_movs_plain_count_target(int);
@@ -121,6 +123,8 @@ int main(void)
             df_movs_disjoint_target(input) != 7 ||
             df_movs_unknown_source_disjoint_target(input) != 7 ||
             df_movs_self_copy_target(input) != 7 || df_rep_movs_disjoint_target(input) != 7 ||
+            df_rep_movs_zero_target(input) != 7 || df_rep_movs_one_disjoint_target(input) != 7 ||
+            df_rep_movs_zero_preserve(input) != 1 || df_rep_movs_one_reload(input) != 1 ||
             df_movs_byte_reload(input) != 1 || df_movs_overlap_word_reload(input) != 1 ||
             df_movs_dword_reload(input) != 1 || df_movs_initial_source_unknown(input) != 1 ||
             df_cmps_same_zf(input) != 1 || df_cmps_local_cf_true(input) != 1 ||
@@ -149,7 +153,7 @@ int main(void)
             df_rep_lods_ambiguous_value(input) != (input & 1) ||
             df_lods_unknown_source_high_value(input) != 1)
             return 1;
-        checks += 119;
+        checks += 123;
 #ifndef __i386__
         if (df_scas_qword_zf(input) != 1 || df_cmps_qword_zf(input) != 1 ||
             df_stos_qword_reload(input) != 1 || df_movs_qword_reload(input) != 1 ||

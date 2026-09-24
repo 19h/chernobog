@@ -442,7 +442,13 @@ struct State
             x86_base_reg(insn, insn.Op1) == R_di && x86_index_reg(insn, insn.Op1) == R_none &&
             x86_base_reg(insn, insn.Op2) == R_si && x86_index_reg(insn, insn.Op2) == R_none &&
             get_dtype_size(insn.Op2.dtype) == get_dtype_size(insn.Op1.dtype);
-        if (plain_movs && is64 && valid_width(width) && matched_movs)
+        const bool bounded_rep_movs = insn.itype == NN_movs && valid_width(width) && matched_movs &&
+                                      natad(insn) && insn.segpref == 0 &&
+                                      (insn.auxpref & aux_rep) && !(insn.auxpref & aux_repne);
+        const auto repeat_count = bounded_rep_movs ? regs[1].read(word_bits, 0) : std::nullopt;
+        const bool no_op_movs = repeat_count && *repeat_count == 0;
+        const bool single_movs = plain_movs || (is64 && repeat_count && *repeat_count == 1);
+        if (single_movs && is64 && valid_width(width) && matched_movs)
         {
             const auto destination = memory_address(insn, insn.Op1);
             if (destination && writable_range(*destination, width / 8, word_bits))
@@ -534,6 +540,13 @@ struct State
                     }
                 }
             }
+        }
+        // A zero-iteration REP MOVS has no implicit destination write. Return
+        // before the generic operand-write invalidation below.
+        if (no_op_movs)
+        {
+            finish_unconditional_repeat(insn, is64);
+            return;
         }
         const uint32_t features = insn.get_canon_feature(PH);
         for (int index = 0; index < UA_MAXOP; ++index)
@@ -787,9 +800,9 @@ struct State
             // DF is outside this state; the six tracked status flags are unchanged.
             return;
         case NN_movs:
-            // A plain long-mode MOVS writes one exact destination element.
-            // An unknown or repeated destination may alias every retained
-            // byte. MOVS leaves the six status flags unchanged.
+            // A natural-width REP with exact zero count changes no memory or
+            // index. Exact one count has the plain MOVS memory effect.
+            // Unknown or larger counts may alias every retained byte.
             stack.clear();
             if (movs_destination)
             {

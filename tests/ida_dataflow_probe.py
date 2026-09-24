@@ -277,6 +277,8 @@ try:
     movs_local_proofs = (
         os.environ.get("CHERNOBOG_MOVS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
     )
+    rep_movs_zero_proofs = os.environ.get("CHERNOBOG_REP_MOVS_LOCAL_BASELINE") != "1"
+    rep_movs_one_proofs = rep_movs_zero_proofs and ida_ida.inf_is_64bit()
     lods_local_proofs = (
         os.environ.get("CHERNOBOG_LODS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
     )
@@ -329,6 +331,8 @@ try:
         "df_movs_overlap_word_reload": movs_local_proofs,
         "df_movs_dword_reload": movs_local_proofs,
         "df_movs_initial_source_unknown": False,
+        "df_rep_movs_zero_preserve": rep_movs_zero_proofs,
+        "df_rep_movs_one_reload": rep_movs_one_proofs,
         "df_lods_byte_value": lods_local_proofs,
         "df_lods_word_value": lods_local_proofs,
         "df_lods_dword_value": lods_local_proofs,
@@ -564,6 +568,8 @@ try:
         ("df_movs_unknown_source_disjoint_target", movs_local_proofs),
         ("df_movs_self_copy_target", movs_local_proofs),
         ("df_rep_movs_disjoint_target", False),
+        ("df_rep_movs_zero_target", rep_movs_zero_proofs),
+        ("df_rep_movs_one_disjoint_target", rep_movs_one_proofs),
         ("df_stos_alias", False),
         ("df_stos_disjoint_target", stos_local_proofs),
         ("df_stos_unknown_value_disjoint_target", stos_local_proofs),

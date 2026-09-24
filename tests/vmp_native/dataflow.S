@@ -2166,6 +2166,125 @@ BEGIN NAME(df_rep_movs_disjoint_target)
 #endif
     ret
 
+BEGIN NAME(df_rep_movs_zero_target)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl $NAME(df_movs_source), %esi
+    movl %edx, %edi
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    leaq NAME(df_movs_source)(%rip), %rsi
+    movq %rdx, %rdi
+#endif
+    xorl %ecx, %ecx
+    rep movsb
+#ifdef __i386__
+    movl (%esp), %edi
+    movl 4(%esp), %esi
+    leal 8(%esp), %esp
+    movl $NAME(df_memory_slot), %edx
+    pushl (%edx)
+#else
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_rep_movs_one_disjoint_target)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl $NAME(df_movs_source), %esi
+    movl $NAME(df_movs_dest), %edi
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    leaq NAME(df_movs_source)(%rip), %rsi
+    leaq NAME(df_movs_dest)(%rip), %rdi
+#endif
+    movb $0x5a, (CMPS_SI)
+    movl $1, %ecx
+    rep movsb
+#ifdef __i386__
+    movl (%esp), %edi
+    movl 4(%esp), %esi
+    leal 8(%esp), %esp
+    movl $NAME(df_memory_slot), %edx
+    pushl (%edx)
+#else
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_rep_movs_zero_preserve)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_movs_source), %esi
+    movl $NAME(df_movs_dest), %edi
+#else
+    leaq NAME(df_movs_source)(%rip), %rsi
+    leaq NAME(df_movs_dest)(%rip), %rdi
+#endif
+    movb $0x5a, (CMPS_SI)
+    movb $0x33, (CMPS_DI)
+    movl $0, %ecx
+    rep movsb
+#ifdef __i386__
+    movl $NAME(df_movs_dest), %edx
+#else
+    leaq NAME(df_movs_dest)(%rip), %rdx
+#endif
+    movzbl (STOS_DX), %eax
+    cmpl $0x33, %eax
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %edi
+    movl 4(%esp), %esi
+    leal 8(%esp), %esp
+#endif
+    ret
+
+BEGIN NAME(df_rep_movs_one_reload)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_movs_source), %esi
+    movl $NAME(df_movs_dest), %edi
+#else
+    leaq NAME(df_movs_source)(%rip), %rsi
+    leaq NAME(df_movs_dest)(%rip), %rdi
+#endif
+    movb $0x5a, (CMPS_SI)
+    movb $0x33, (CMPS_DI)
+    movl $1, %ecx
+    rep movsb
+#ifdef __i386__
+    movl $NAME(df_movs_dest), %edx
+#else
+    leaq NAME(df_movs_dest)(%rip), %rdx
+#endif
+    movzbl (STOS_DX), %eax
+    cmpl $0x5a, %eax
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %edi
+    movl 4(%esp), %esi
+    leal 8(%esp), %esp
+#endif
+    ret
+
 BEGIN NAME(df_movs_byte_reload)
 #ifdef __i386__
     pushl %esi

@@ -23,6 +23,7 @@ def main():
     parser.add_argument("--cmps-baseline", action="store_true")
     parser.add_argument("--stos-local-baseline", action="store_true")
     parser.add_argument("--movs-local-baseline", action="store_true")
+    parser.add_argument("--rep-movs-local-baseline", action="store_true")
     parser.add_argument("--lods-local-baseline", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
@@ -169,6 +170,11 @@ def main():
                     *(
                         ["--set", "CHERNOBOG_MOVS_LOCAL_BASELINE=1"]
                         if args.movs_local_baseline
+                        else []
+                    ),
+                    *(
+                        ["--set", "CHERNOBOG_REP_MOVS_LOCAL_BASELINE=1"]
+                        if args.rep_movs_local_baseline
                         else []
                     ),
                     *(
