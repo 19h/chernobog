@@ -13,13 +13,17 @@ their 65,536-byte mapped dumps are identical, SHA-256
 and differ from the ELF file mapping in 65,274 byte positions. Entry, callback
 and completed-process controls are in `VMP_MOROK_UNPACKED_ENTRY.md`.
 
-`chernobog_vm_trace_candidate_shadow(data_head_ea, seed, local_file_path)`
+`chernobog_vm_trace_candidate_shadow(root_ea, seed, local_file_path)`
 reads a caller-supplied file of 1–65,536 bytes and overlays an ephemeral image
-snapshot beginning at the selected data head. It requires one loaded x86-64
-executable segment and decodes the overlaid bytes with RAX. This explicit API
-plans at most 16,384 native heads; ordinary native plans retain their 4,096-head
-default. The response records shadow length, changed-byte count and FNV-1a
-fingerprint with a synthetic-entry contract. It creates no IDA function or
+snapshot beginning at the selected root. The measured Morok run used one
+loaded x86-64 executable segment and decoded its bytes with RAX. The current
+API also admits an explicitly selected unloaded, code-referenced root and
+contiguous readable, nonwritable segments; that separate VMP fixture is in
+`VMP_HELLO_RUNTIME_SHADOW.md`. This explicit API plans at most 16,384 native
+heads; ordinary native plans retain their 4,096-head
+default. The response records shadow length, changed and newly loaded byte
+counts, segment count and FNV-1a fingerprint with a synthetic-entry contract.
+It creates no IDA function or
 ordinary function evidence and does not prove runtime provenance or VM identity
 by itself. The independently hashed GDB dumps supply the runtime link here.
 

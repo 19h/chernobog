@@ -39,6 +39,18 @@ abstentions; they cannot be counted as successful recovery.
 Quality gates are applied to each completed change and again to the complete
 objective. Neither baseline test success nor this ledger proves completion.
 
+Supplied VMP hello runtime-shadow checkpoint for rows 0b, 6a and V: LLVM and
+Apple LLDB each observe two original and two protected `printf` stops. The
+protected process restores an exact 40-byte original code/stub/literal window
+across its zero-fill file sections. An explicit unloaded, code-referenced
+root and two contiguous read-only image segments allow the current plugin to
+plan nine heads and enter six instructions in an ephemeral shadow; a matched
+prior plugin abstains. Independent Capstone decoding, byte/mask counts,
+negative controls, the Morok shadow regression and all 21 CTest suites pass.
+The trace stops at the indirect import environment frontier. See
+`VMP_HELLO_RUNTIME_SHADOW.md` and its evidence JSON. Full protected-path and
+VM recovery remain in progress.
+
 Packed-keygen runtime checkpoint: two fixed-seed Morok protected processes
 start at the recorded ELF entry, reach the application callback with live stack
 arguments, and match all 4,096 addresses and entered instruction bytes of the

@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "inputs": {
+    "samples/foo_x86_orig": "443b0a464d7de68c5a26a3e31a92e694356ccd1eef3127d522309ac672ecc7c7",
+    "samples/foo_x86_vmp": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "sources_sha256": {
+    "src/vm/ida_native_trace.cpp": "b4ad1d0df4d13d670b040d4c39a69b85824a23a98ca266cf37b53e7be7b9abe9",
+    "tests/lldb_vmp_hello_snapshot.py": "5158bbf3a4532edf19671225fbcf09d95e8af4080af14977accca1fb0373b271",
+    "tests/run_vmp_hello_runtime.py": "2c2279dfcafc01706beab414161b446a5fd995fe1c567d777e04f9b9f349c706",
+    "tests/ida_vmp_hello_shadow_probe.py": "94d12799ec34f7dfbf887ab560088956dad20dbb5441df1ea120f757f2905d36",
+    "tests/verify_vmp_hello_runtime_shadow.py": "feb90bdd435c97ef107c5b026c38ad8dbb492e398824ff9ca2eb3ab51f203871"
+  },
+  "tools": {
+    "ida_version": "9.4 SP1",
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "current_built_plugin_sha256": "65518168ad6ea807803f2a6b23100fec54492fbeca60daaa9b0d9b75bb1c2412",
+    "prior_installed_plugin_sha256": "1d3747fbbccc3b2201ab86da71f49a9d7c8d2b0ab215339a6bd04e2a137f6072",
+    "llvm_lldb_version": "23.0.0git b51054818b78dc395cd4d33f17cfb6e98a36a76d",
+    "llvm_lldb_sha256": "e60dc3d39131252767b0c27fae60dc4286e73cd641f9a93b224e0cf159a5e027",
+    "apple_lldb_version": "2103.0.34.103",
+    "apple_lldb_sha256": "1685f2c90307faa05ef5ae8f707d3a18a519c9dad75882768f66abb475f1b3d7",
+    "capstone_version": "5.0.7"
+  },
+  "runtime": {
+    "window_start": "0x100001440",
+    "window_bytes": 40,
+    "original_text_bytes": 22,
+    "stub_bytes": 6,
+    "original_literal_bytes": 12,
+    "window_sha256": "b9e3295c519d3f937c884f6cbab4e1e708ba16cd94314c15e4e962ddc081a023",
+    "llvm_report_sha256": "0f56d35fd17e9c48c7a4ef44e23b81eb6eff8ece76b7a3cf3414b58453bae0fa",
+    "apple_report_sha256": "e36527141167383c012a309340322add0d39666c783b760d9ff181f0d04544fb",
+    "process_stops": 8,
+    "all_runtime_checks_passed": true
+  },
+  "ida": {
+    "root": "0x100001440",
+    "code_xref_from": "0x100001436",
+    "newly_loaded_bytes": 34,
+    "changed_loaded_bytes": 4,
+    "shadow_segments": 2,
+    "planned_heads": 9,
+    "entered_instructions": 6,
+    "stop": "environment-model-failure",
+    "llvm_current_report_sha256": "42526154498b18c44e430730c4826945b56fac7a1497ee66ac512814d2d834da",
+    "apple_current_report_sha256": "42526154498b18c44e430730c4826945b56fac7a1497ee66ac512814d2d834da",
+    "prior_report_sha256": "cb13ee021945a34effd49d35d483fd3e65f51de722c936923a1c1b5bd1b74b86",
+    "prior_reason": "not_unlabeled_executable_data_head",
+    "current_probe_checks_per_run": 5,
+    "prior_probe_checks": 4,
+    "inventory_unchanged": true
+  },
+  "independent_verifier": {
+    "report_sha256": "f95ac3922bee714d8161d727209d09576618475399c22c7b188d0ee1500d7f67",
+    "passed": true,
+    "checks": 9,
+    "window_and_head_mutations_rejected": true
+  },
+  "regression": {
+    "ctest_suites_passed": 21,
+    "ctest_suites_total": 21,
+    "morok_current_report_sha256": "eadb7dbb35f69cb499d2d3217e47d30fc522c86e72add6796b7ac88ea40a290f",
+    "morok_prior_report_sha256": "95b5ea9e9a3e9be0a5513e93c574e2e3da1f160106727854b4b5e286fcbf2a97",
+    "morok_shadow_graph_matches_prior_snapshot": true
+  },
+  "limits": {
+    "runtime_input": "no arguments, breakpoint at printf",
+    "shadow_maximum_bytes": 65536,
+    "native_graph": "one explicit root and one observed runtime window",
+    "unproven": "external-call behavior, complete protected path and VM identity"
+  }
+}

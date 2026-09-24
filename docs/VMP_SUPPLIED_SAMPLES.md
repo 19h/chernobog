@@ -119,6 +119,12 @@ python3 -B tests/run_ida_smoke.py samples/foo_x86_vmp \
   --set 'CHERNOBOG_CORPUS_ENTRIES={"corpus_transform":"0x100001436","corpus_branch":"0x10000143b"}'
 ```
 
+The later `VMP_HELLO_RUNTIME_SHADOW.md` checkpoint independently captures
+the original 40-byte main/stub/literal window in the protected process at a
+`printf` use and traces it through an ephemeral image shadow. That observation
+does not change the zero-fill file-section description or the initial IDA
+inventory measured here.
+
 ## Other supplied binaries
 
 The two static Linux x86-64 samples were run in bounded, network-disabled,

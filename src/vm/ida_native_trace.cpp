@@ -18,6 +18,7 @@
 #include <parsejson.hpp>
 #include <name.hpp>
 #include <segment.hpp>
+#include <xref.hpp>
 #include "../common/warn_on.h"
 #include <atomic>
 #include <algorithm>
@@ -546,16 +547,40 @@ static std::string trace_native_region_impl(
     const auto *api = rax_load();
     if (!api || !api->decode)
         return unavailable("native decoder/emulator unavailable", candidate_entry);
+    bool shadow_unloaded_entry = false;
     if (candidate_entry)
     {
         const auto *segment = getseg(ea_t(function));
         const auto flags = get_flags(ea_t(function));
+        const bool data_head = is_data(flags) && is_head(flags) && is_loaded(ea_t(function));
+        // A protected loader can restore a zero-fill executable target only
+        // after process startup. Admit it solely through an explicit shadow
+        // request and an existing code xref to the exact unloaded root.
+        if (runtime_shadow && function != BADADDR && segment && is_unknown(flags) &&
+            !is_loaded(ea_t(function)))
+        {
+            xrefblk_t xref;
+            size_t examined = 0;
+            for (bool found = xref.first_to(ea_t(function), XREF_ALL); found;
+                 found = xref.next_to())
+            {
+                if (++examined > 256)
+                    break;
+                if (xref.iscode)
+                {
+                    shadow_unloaded_entry = true;
+                    break;
+                }
+            }
+        }
         if (PH.id != PLFM_386 || function == BADADDR || uint64_t(ea_t(function)) != function ||
             !segment || segment->type == SEG_XTRN || !(segment->perm & SEGPERM_EXEC) ||
-            (segment->bitness != 1 && segment->bitness != 2) || !is_data(flags) ||
-            !is_head(flags) || has_user_name(flags) || !is_loaded(ea_t(function)) ||
-            get_func(ea_t(function)))
-            return unavailable("not_unlabeled_executable_data_head", true);
+            (segment->bitness != 1 && segment->bitness != 2) ||
+            !(data_head || shadow_unloaded_entry) ||
+            (!shadow_unloaded_entry && has_user_name(flags)) || get_func(ea_t(function)))
+            return unavailable(runtime_shadow ? "not_unlabeled_executable_shadow_entry"
+                                              : "not_unlabeled_executable_data_head",
+                               true);
     }
     else
     {
@@ -575,32 +600,46 @@ static std::string trace_native_region_impl(
                                           : hybrid_snapshot_function(image, config, function);
     if (!snapshot.complete)
         return unavailable("incomplete or unsupported image snapshot", candidate_entry);
-    size_t shadow_changed = 0;
+    size_t shadow_changed = 0, shadow_newly_loaded = 0, shadow_segments = 0;
     size_t data_changed = 0, data_newly_loaded = 0;
     if (runtime_shadow)
     {
         if (!candidate_entry || image.arch != HybridArch::X86_64 ||
             runtime_shadow->size() > UINT64_MAX - function)
             return unavailable("invalid runtime shadow scope", candidate_entry);
-        const uint64_t end = function + runtime_shadow->size();
-        auto segment = std::find_if(image.segs.begin(), image.segs.end(),
-                                    [&](const SegImage &part)
-                                    {
-                                        return part.start <= function && end <= part.end &&
-                                               part.kind == HybridSegmentKind::NORMAL &&
-                                               part.has_perm(HybridSegPerm::EXEC) &&
-                                               part.bitness == 2;
-                                    });
-        if (segment == image.segs.end())
-            return unavailable("runtime shadow outside one executable segment", true);
-        const size_t offset = size_t(function - segment->start);
-        for (size_t index = 0; index < runtime_shadow->size(); ++index)
+        // The observed window may cross Mach-O section boundaries: packed
+        // code, its import stub and a read-only literal can be separate IDA
+        // segments. The selected root was already checked as executable.
+        size_t index = 0;
+        while (index < runtime_shadow->size())
         {
-            if (!segment->byte_loaded(function + index))
-                return unavailable("runtime shadow covers unloaded image bytes", true);
-            shadow_changed += segment->bytes[offset + index] != (*runtime_shadow)[index];
+            const uint64_t address = function + index;
+            auto segment = std::find_if(image.segs.begin(), image.segs.end(),
+                                        [&](const SegImage &part)
+                                        {
+                                            return part.start <= address && address < part.end &&
+                                                   part.kind == HybridSegmentKind::NORMAL &&
+                                                   part.has_perm(HybridSegPerm::READ) &&
+                                                   !part.has_perm(HybridSegPerm::WRITE) &&
+                                                   part.bitness == 2;
+                                        });
+            if (segment == image.segs.end())
+                return unavailable("runtime shadow outside bounded readable image segments", true);
+            ++shadow_segments;
+            const size_t count =
+                size_t(std::min<uint64_t>(runtime_shadow->size() - index, segment->end - address));
+            for (size_t offset = 0; offset < count; ++offset)
+            {
+                const size_t at = size_t(address - segment->start) + offset;
+                if (segment->byte_loaded(address + offset))
+                    shadow_changed += segment->bytes[at] != (*runtime_shadow)[index + offset];
+                else
+                    ++shadow_newly_loaded;
+                segment->bytes[at] = (*runtime_shadow)[index + offset];
+                segment->mask[at / 8] |= uint8_t(1u << (at & 7));
+            }
+            index += count;
         }
-        std::copy(runtime_shadow->begin(), runtime_shadow->end(), segment->bytes.begin() + offset);
         image.content_hash = hybrid_program_content_hash(image);
     }
     if (runtime_data)
@@ -871,7 +910,11 @@ static std::string trace_native_region_impl(
     if (runtime_shadow)
         out << ",\"runtime_shadow\":true,\"shadow_start\":" << inspection_json_quote(hex(function))
             << ",\"shadow_bytes\":" << runtime_shadow->size()
-            << ",\"shadow_changed_bytes\":" << shadow_changed << ",\"shadow_fingerprint\":"
+            << ",\"shadow_changed_bytes\":" << shadow_changed
+            << ",\"shadow_newly_loaded_bytes\":" << shadow_newly_loaded
+            << ",\"shadow_segments\":" << shadow_segments
+            << ",\"shadow_unloaded_entry\":" << (shadow_unloaded_entry ? "true" : "false")
+            << ",\"shadow_fingerprint\":"
             << inspection_json_quote(hex(runtime_shadow_fingerprint(*runtime_shadow)))
             << ",\"shadow_instruction_states\":" << (sample_states ? "true" : "false");
     if (input.native_entry)
