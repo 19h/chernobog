@@ -19,6 +19,11 @@ entry/initializer observations, assumptions, and benchmark implications. This
 does not retroactively change the source-only baseline below or establish VM
 coverage.
 
+The later user-supplied VMP, Morok and Hikari binaries are catalogued with
+exact hashes and provenance bounds in
+[PROTECTED_SAMPLE_CORPUS.md](PROTECTED_SAMPLE_CORPUS.md). Subsequent
+fixed-seed Morok measurements use a distinct keygen binary.
+
 This review assesses native binary analysis. No supplied VMP executable was
 run, no protected-binary recovery benchmark was performed, and no production
 code was changed. The existing untracked `ATHENA_MAPPING.md` is useful context,
