@@ -235,6 +235,71 @@ try:
             check("rename restores separate donor", donor is not None and donor["start"] == target)
             check("rename retains user name", ida_name.get_name(target) == "user_owned_gadget")
             check("rename revokes donor receipt", (receipt(root) or b"")[:4] != b"NPR\x03")
+        elif stage == "reinfer_noret":
+            for name in (backward_name, nonzero_name):
+                root = report["roots"][name]["root"]
+                function = ida_funcs.get_func(root)
+                function.flags |= ida_funcs.FUNC_NORET
+                check(name + " inferred flag update requested", ida_funcs.update_func(function))
+                report.setdefault("staged_flags", {})[name] = bool(
+                    ida_funcs.get_func(root).flags & ida_funcs.FUNC_NORET
+                )
+                check(
+                    name + " user contract absent",
+                    not ida_nalt.is_noret(root) and not ida_nalt.is_userti(root),
+                )
+            refresh_native()
+            for name in (backward_name, nonzero_name):
+                root = report["roots"][name]["root"]
+                check(
+                    name + " inferred flag recleared",
+                    not (ida_funcs.get_func(root).flags & ida_funcs.FUNC_NORET),
+                )
+                check(name + " donor receipt retained", (receipt(root) or b"")[:4] == b"NPR\x03")
+                check(
+                    name + " returning pseudocode retained",
+                    "return 7;"
+                    in str(ida_hexrays.decompile(root, None, ida_hexrays.DECOMP_NO_CACHE)),
+                )
+            check("reinferred database saved", save("reinferred.i64"))
+        elif stage == "reinfer_reopen":
+            for name, row in report["roots"].items():
+                check(name + " joined after reopen", row["gadget"]["start"] == row["root"])
+                check(name + " returning after reopen", "return 7;" in (row["ctree"] or ""))
+                check(
+                    name + " inferred flag clear after reopen",
+                    not (row["caller"]["flags"] & ida_funcs.FUNC_NORET),
+                )
+                check(name + " donor receipt after reopen", row["receipt_version"] == "4e505203")
+        elif stage == "owned_user_noret":
+            row = report["roots"][nonzero_name]
+            root, target = row["root"], row["target"]
+            check(
+                "explicit noreturn type applied",
+                bool(idc.SetType(root, "void __noreturn " + nonzero_name + "(void);")),
+            )
+            refresh_native()
+            check("explicit user type retained", ida_nalt.is_userti(root))
+            check(
+                "explicit noreturn retained",
+                bool(ida_funcs.get_func(root).flags & ida_funcs.FUNC_NORET),
+            )
+            check(
+                "explicit contract revokes donor receipt", (receipt(root) or b"")[:4] != b"NPR\x03"
+            )
+            donor = function_info(target)
+            check(
+                "explicit contract restores donor", donor is not None and donor["start"] == target
+            )
+            check("user contract database saved", save("user_noret.i64"))
+        elif stage == "owned_user_noret_reopen":
+            row = report["roots"][nonzero_name]
+            check("user type survives reopen", row["caller"]["user_type"])
+            check(
+                "user noreturn survives reopen", bool(row["caller"]["flags"] & ida_funcs.FUNC_NORET)
+            )
+            check("user donor separate after reopen", row["gadget"]["start"] == row["target"])
+            check("user contract proof absent after reopen", row["receipt_version"] != "4e505203")
         elif stage == "negative":
             for name, row in report["roots"].items():
                 check(

@@ -1310,7 +1310,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 if (current && !returning && proof.owned_donor_function)
                 {
                     const auto &donor = *proof.owned_donor_function;
-                    current = !has_user_name(get_flags(donor.start)) && !is_userti(donor.start);
+                    current = !has_user_name(get_flags(donor.start)) && !is_userti(donor.start) &&
+                              !is_userti(donor.owner) && !is_noret(donor.owner);
                     if (!current)
                         break;
                     if (donor.start == donor.entry_end)
@@ -2773,8 +2774,23 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 native_proofs.size());
         for (auto &[source, proof] : native_proofs)
         {
-            if (proof.kind != NativeProof::Kind::Call || proof.owned_noreturn_function != BADADDR)
+            if (proof.kind != NativeProof::Kind::Call)
                 continue;
+            if (proof.owned_noreturn_function != BADADDR)
+            {
+                func_t *owned = get_func(proof.owned_noreturn_function);
+                if (owned != nullptr && owned->start_ea == source &&
+                    (owned->flags & FUNC_NORET) != 0 && !is_noret(source) && !is_userti(source) &&
+                    proof_is_fresh(proof) && current_proof_conclusion(proof))
+                {
+                    NativeMutationGuard guard(native_mutation_depth);
+                    if (!set_func_flag(source, FUNC_NORET, false))
+                        msg("[chernobog][ida-analysis] owned inferred noreturn flag could "
+                            "not be cleared at %a\n",
+                            source);
+                }
+                continue;
+            }
             func_t *function = get_func(source);
             if (function == nullptr || function->start_ea != source ||
                 (function->flags & FUNC_NORET) == 0 || is_noret(source) || is_userti(source))
@@ -2848,7 +2864,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         func_t *donor = get_func(target);
         if (caller == nullptr || caller->start_ea != root || donor == nullptr ||
             donor->start_ea != target || donor->start_ea == root ||
-            get_func_tail_qty(target) != 0 ||
+            get_func_tail_qty(target) != 0 || is_userti(root) || is_noret(root) ||
             (donor->flags &
              ~(FUNC_SP_READY | FUNC_PROLOG_OK | FUNC_PURGED_OK | FUNC_NORET_PENDING)) != 0 ||
             has_user_name(get_flags(target)) || is_userti(target) || is_noret(target) ||

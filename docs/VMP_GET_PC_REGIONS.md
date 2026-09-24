@@ -32,6 +32,10 @@ an exact source/target exclusion, and the completed analysis pass restores
 the donor. The exclusion survives a second process reopen and is removed by
 a source-byte patch. A failed tail deletion has no completed-event exclusion.
 
+A later lifecycle checkpoint re-clears a re-inferred `FUNC_NORET` under an
+unchanged owned proof and revokes donor ownership when an explicit caller
+noreturn type appears. See [VMP_GET_PC_LEASES.md](VMP_GET_PC_LEASES.md).
+
 | Production IDA 9.4 SP1 control | ELF32 | x86-64 Mach-O |
 |---|---:|---:|
 | Initial transfer, exact joined offsets, returning pseudocode, saved IDB | 11/11 | 11/11 |
