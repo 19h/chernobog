@@ -665,12 +665,18 @@ static std::string trace_native_region_impl(
     hybrid::NativeTemporalStringRun *retained = nullptr,
     hybrid::ProgramImage *retained_image = nullptr, bool candidate_entry = false,
     const std::vector<uint8_t> *runtime_shadow = nullptr, bool sample_states = false,
-    const RuntimeDataPatch *runtime_data = nullptr, const ShadowUseRequest *shadow_use = nullptr)
+    const RuntimeDataPatch *runtime_data = nullptr, const ShadowUseRequest *shadow_use = nullptr,
+    bool owned_checkpoint = false)
 {
     using namespace hybrid;
+    if (owned_checkpoint &&
+        (candidate_entry || !runtime_shadow || !sample_states || !runtime_data || !explicit_input ||
+         !runtime_data->instruction_budget_explicit || walk || check || bindings || shadow_use))
+        return unavailable("invalid owned checkpoint request");
     if (shadow_use && (!candidate_entry || !runtime_shadow || sample_states || runtime_data))
         return unavailable("invalid runtime shadow use request", candidate_entry);
-    if (sample_states && (!candidate_entry || !runtime_shadow || walk || check || bindings))
+    if (sample_states &&
+        (!(candidate_entry || owned_checkpoint) || !runtime_shadow || walk || check || bindings))
         return unavailable("invalid runtime shadow state request", candidate_entry);
     if (runtime_data && (!sample_states || !explicit_input || !explicit_input->native_entry ||
                          runtime_data->bytes.empty() || runtime_data->bytes.size() > 4096))
@@ -727,6 +733,15 @@ static std::string trace_native_region_impl(
         const auto *owner = get_func(ea_t(function));
         if (!owner || owner->start_ea != function)
             return unavailable("selected function unavailable");
+        if (owned_checkpoint)
+        {
+            const auto *segment = getseg(ea_t(function));
+            const auto flags = get_flags(ea_t(function));
+            if (PH.id != PLFM_386 || !segment || segment->type == SEG_XTRN ||
+                !(segment->perm & SEGPERM_EXEC) || segment->bitness != 2 || !is_code(flags) ||
+                !is_head(flags) || !is_loaded(ea_t(function)))
+                return unavailable("not_loaded_x86_64_function_head");
+        }
     }
     HybridConfig config;
     config.max_image_bytes = 64ull * 1024 * 1024;
@@ -744,7 +759,7 @@ static std::string trace_native_region_impl(
     size_t data_changed = 0, data_newly_loaded = 0;
     if (runtime_shadow)
     {
-        if (!candidate_entry || image.arch != HybridArch::X86_64 ||
+        if (!(candidate_entry || owned_checkpoint) || image.arch != HybridArch::X86_64 ||
             runtime_shadow->size() > UINT64_MAX - function)
             return unavailable("invalid runtime shadow scope", candidate_entry);
         // The observed window may cross Mach-O section boundaries: packed
@@ -764,7 +779,8 @@ static std::string trace_native_region_impl(
                                                    part.bitness == 2;
                                         });
             if (segment == image.segs.end())
-                return unavailable("runtime shadow outside bounded readable image segments", true);
+                return unavailable("runtime shadow outside bounded readable image segments",
+                                   candidate_entry);
             ++shadow_segments;
             const size_t count =
                 size_t(std::min<uint64_t>(runtime_shadow->size() - index, segment->end - address));
@@ -799,7 +815,7 @@ static std::string trace_native_region_impl(
                                                    part.bitness == 2;
                                         });
             if (segment == image.segs.end())
-                return unavailable("runtime data outside writable segments", true);
+                return unavailable("runtime data outside writable segments", candidate_entry);
             const uint64_t limit = std::min(end, segment->end);
             while (cursor < limit)
             {
@@ -831,7 +847,7 @@ static std::string trace_native_region_impl(
                      bindings ? *bindings : std::vector<EmuCallSummary>{});
     EmuInput input = explicit_input ? *explicit_input : EmuInput{};
     if (input.native_entry)
-        input.native_entry->observed_checkpoint = observed_tail_checkpoint;
+        input.native_entry->observed_checkpoint = observed_tail_checkpoint || owned_checkpoint;
     input.seed = seed;
     input.run_id = 1;
     EmuEvents events;
@@ -999,6 +1015,7 @@ static std::string trace_native_region_impl(
         << ",\"planned_heads\":" << region.heads().size()
         << ",\"plan_truncated\":" << (region.truncated() ? "true" : "false")
         << ",\"observed_tail_checkpoint\":" << (observed_tail_checkpoint ? "true" : "false")
+        << ",\"observed_function_checkpoint\":" << (owned_checkpoint ? "true" : "false")
         << ",\"ran\":" << (ran ? "true" : "false") << ",\"stop\":"
         << inspection_json_quote(ran ? hybrid_emu_outcome_name(outcome) : "capture-unavailable")
         << ",\"stop_status\":" << outcome.stop_status
@@ -1198,6 +1215,19 @@ std::string trace_native_candidate_shadow_replay_memory(uint64_t root, uint64_t 
         return unavailable("invalid bounded native memory replay", true);
     return trace_native_region_impl(root, seed, &input, false, false, nullptr, nullptr, nullptr,
                                     true, &shadow, true, &data);
+}
+std::string trace_native_owned_shadow_replay_memory(uint64_t function, uint64_t seed,
+                                                    const std::string &request)
+{
+    std::string path;
+    hybrid::EmuInput input;
+    RuntimeDataPatch data;
+    std::vector<uint8_t> shadow;
+    if (!parse_entry_replay(request, path, input, &data) || !data.instruction_budget_explicit ||
+        !read_runtime_shadow(path, shadow))
+        return unavailable("invalid bounded owned checkpoint replay");
+    return trace_native_region_impl(function, seed, &input, false, false, nullptr, nullptr, nullptr,
+                                    false, &shadow, true, &data, nullptr, true);
 }
 std::string trace_native_region_input(uint64_t function, uint64_t seed, const std::string &request)
 {

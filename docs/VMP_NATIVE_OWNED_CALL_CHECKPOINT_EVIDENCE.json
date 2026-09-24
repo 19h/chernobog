@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "binary_sha256": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+  "plugin_sha256": "dfe9a8794c6d88f76537c7eefd5fe26a3f3cf5c153fbd41995c78d9e1fc0b2d2",
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "capstone_version": "5.0.7",
+  "qemu_executable_sha256": "9af86352fd463ad9ec25bdd6a4b891ac6b6a7f3d46a7db3da6f23e2c09094a59",
+  "gdb_executable_sha256": "fd04ac26fcce27a0a4ce33ea5f39ebc9052a350eb8be82e23db28fd0e7e0ae40",
+  "gdb_version": "16.3",
+  "sources_sha256": {
+    "tests/morok_qemu_owned_call_checkpoint.py": "39593df49569bfa57de7526fba09358bfaa5cd9c868e22abeba3e05a85c25c74",
+    "tests/ida_native_owned_call_probe.py": "a1e0c7ba12b26aa0b506acb800abca2ea9eb5491b2f50fd7905d21d60a8daea9",
+    "tests/verify_native_owned_call_checkpoint.py": "e7ecf77f68830c0599820338fd350ec85e3f9de302c9d53ff98d974c106a0d13",
+    "tests/verify_native_branch_continuation.py": "7d28706170db8e3e5ff9d05d546fd3991f21627d1a06c5db33a857a1194a5ab6",
+    "tests/verify_native_candidate_trace.py": "171fdb2c909a576948fea4111db33477fa7c01a18163171c0bcd0fa0d481df61",
+    "tests/verify_native_shadow_boundary_memory.py": "4bc422197d55ccf5f21c082e7d2a039b4ad98effe80554037d2948228483ad07",
+    "tests/verify_native_shadow_defined_flags.py": "4ca2e4ab857ea7b30d0bd8008b645ad6c74728996036371171f07d3e871a2e63",
+    "tests/verify_native_shadow_states.py": "88eda81f3741621296c2fe8a02111a866042f72439eb831357cdf9f7eb64f8d3"
+  },
+  "cases": [
+    {
+      "variant": "v14-1",
+      "input_sha256": "e19b1a7e7df224c8d242640e0a7b491ef593b37f9cdc49e597f813412502614f",
+      "branch_capture_sha256": "a8ca09d4017f7b0a602466e46bfe2ad367938ed048ce1d3b51e7d6663489340a",
+      "runtime_report_sha256": "3c17ed965955553e2552421480a166356f1a79a1d696bbd53b969b2eb81d84b9",
+      "shadow_sha256": "59d644a938ccdb9a007234d328e770fa06ec7a2fcee36e104e8b6b2785695de0",
+      "ida_report_sha256": "489fb9a0fe40a84bff63ab92b4bf360b62f9ea09e3dc811a39a87bd2d5bce13f",
+      "ida_run_sha256": "e7b88ffec55479d75e2eeafccfbac8e04f960ff4dfabf91dcf0a60a2e2181500",
+      "entered_instructions": 26,
+      "exact_gprs": 416,
+      "exact_rip": 26,
+      "exact_rflags": 26,
+      "exact_defined_flag_bits": 156,
+      "exact_boundary_bytes": 5376,
+      "database_inventory_unchanged": true,
+      "mutations_rejected": true
+    },
+    {
+      "variant": "v14-0",
+      "input_sha256": "4115827e67efb477877223d5908bec1debf6d7b027842313a9b1704cd5977e32",
+      "branch_capture_sha256": "118ae2d109d0322050d194cac2fc0a14f5c9ab61ab664ce9d986803d09c8ce8f",
+      "runtime_report_sha256": "b5168f9b223a73b5c8815a6854bcc6b2c599349fa110233070d2418610968eaa",
+      "shadow_sha256": "59d644a938ccdb9a007234d328e770fa06ec7a2fcee36e104e8b6b2785695de0",
+      "ida_report_sha256": "0fc73038fcc02e1978325b2e853afe64e13a4c7f029ffdb51cf005af270f29c8",
+      "ida_run_sha256": "62a36c3fa0ba84c010c604d4d07659297b1e38bf198132f310469d3e5f1a2e26",
+      "entered_instructions": 26,
+      "exact_gprs": 416,
+      "exact_rip": 26,
+      "exact_rflags": 26,
+      "exact_defined_flag_bits": 156,
+      "exact_boundary_bytes": 5376,
+      "database_inventory_unchanged": true,
+      "mutations_rejected": true
+    }
+  ],
+  "totals": {
+    "entered_instructions": 52,
+    "exact_gprs": 832,
+    "exact_rip": 52,
+    "exact_rflags": 52,
+    "exact_defined_flag_bits": 312,
+    "exact_boundary_bytes": 10752
+  },
+  "passed": true
+}

@@ -1247,6 +1247,16 @@ error_t idaapi idc_vm_trace_candidate_shadow_replay_memory(idc_value_t *argv, id
     return eOk;
 }
 
+error_t idaapi idc_vm_trace_owned_shadow_replay_memory(idc_value_t *argv, idc_value_t *r)
+{
+    const auto request = arg_string(argv[2]);
+    const auto json = vm::trace_native_owned_shadow_replay_memory(
+        uint64_t(arg_ea(argv[0])), uint64_t(argv[1].num),
+        std::string(request.c_str(), request.length()));
+    r->set_string(json.c_str());
+    return eOk;
+}
+
 error_t idaapi idc_vm_trace_input(idc_value_t *argv, idc_value_t *r)
 {
     const auto request = arg_string(argv[2]);
@@ -1940,6 +1950,10 @@ const idc_entry_t idc_entries[] = {
      idc_vm_trace_candidate_shadow_replay_memory, args_ea_long_str,
      "chernobog_vm_trace_candidate_shadow_replay_memory(data_head_or_observed_tail_ea, seed, entry_json)",
      "Read-only bounded x86-64 replay with caller-supplied executable shadow, writable data and stack; an observed data-tail checkpoint requires explicit max_insns (1..4096); no function evidence or VM identity claim"},
+    {"chernobog_vm_trace_owned_shadow_replay_memory", idc_vm_trace_owned_shadow_replay_memory,
+     args_ea_long_str,
+     "chernobog_vm_trace_owned_shadow_replay_memory(function_start_ea, seed, entry_json)",
+     "Read-only bounded x86-64 observed checkpoint at a loaded owned function start with explicit code, writable data, stack and instruction budget; no function evidence or VM identity claim"},
     {"chernobog_vm_trace_input", idc_vm_trace_input, args_ea_long_str,
      "chernobog_vm_trace_input(ea, seed, input_json)",
      "Native-region capture with explicit scalar arguments and bounded initialized scratch objects"},
