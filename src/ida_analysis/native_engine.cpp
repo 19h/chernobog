@@ -1480,7 +1480,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         return result;
     }
 
-    X86RegionInspection inspect_region(uint64_t root) const
+    X86RegionInspection inspect_region(uint64_t root, bool candidate_decode) const
     {
         X86RegionInspection result;
         result.database = int64_t(get_dbctx_id());
@@ -1493,7 +1493,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             result.reason = "native analysis context unavailable";
             return result;
         }
-        result = analyze_x86_region(root);
+        result = analyze_x86_region(root, 128, 128, candidate_decode);
         result.database = int64_t(get_dbctx_id());
         result.context = region_context;
         return result;
@@ -3422,9 +3422,9 @@ NativeInspection NativeAnalysisEngine::inspect(uint64_t function_start) const
     return impl_ != nullptr ? impl_->inspect(function_start) : NativeInspection{};
 }
 
-X86RegionInspection NativeAnalysisEngine::inspect_region(uint64_t root) const
+X86RegionInspection NativeAnalysisEngine::inspect_region(uint64_t root, bool candidate_decode) const
 {
-    return impl_ != nullptr ? impl_->inspect_region(root) : X86RegionInspection{};
+    return impl_ != nullptr ? impl_->inspect_region(root, candidate_decode) : X86RegionInspection{};
 }
 
 } // namespace chernobog::ida_analysis

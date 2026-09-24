@@ -1303,13 +1303,14 @@ error_t idaapi idc_native_evidence(idc_value_t *argv, idc_value_t *r)
     return eOk;
 }
 
-error_t idaapi idc_native_region_facts(idc_value_t *argv, idc_value_t *r)
+error_t native_region_facts(idc_value_t *argv, idc_value_t *r, bool candidate_decode)
 {
     const ea_t root = arg_ea(argv[0]);
     Host *host = current_host();
     const auto *engine = host ? host->native_analysis_engine() : nullptr;
-    auto view = engine && root != BADADDR ? engine->inspect_region(uint64_t(root))
+    auto view = engine && root != BADADDR ? engine->inspect_region(uint64_t(root), candidate_decode)
                                           : ida_analysis::X86RegionInspection{};
+    view.candidate_decode = candidate_decode;
     if (!engine || root == BADADDR)
     {
         view.root = uint64_t(root);
@@ -1331,14 +1332,28 @@ error_t idaapi idc_native_region_facts(idc_value_t *argv, idc_value_t *r)
         << ",\"limits\":{\"nodes\":128,\"rounds\":128,\"incoming_per_node\":256}"
         << ",\"scope\":"
         << inspection_json_quote(
-               "Static must-facts conditional on entry at the selected ownerless root, before a region exit; known external entries start unknown; flat unchanged-code normal-completion model, calls require normal return; no whole-program reachability, IDA publication or VM identity")
+               candidate_decode
+                   ? "Conditional byte-decode candidate at an explicit executable data head; no IDA code classification, reachability, publication or VM identity; known external entries start unknown; flat unchanged-code normal-completion model, calls require normal return"
+                   : "Static must-facts conditional on entry at the selected ownerless root, before a region exit; known external entries start unknown; flat unchanged-code normal-completion model, calls require normal return; no whole-program reachability, IDA publication or VM identity")
         << ",\"published\":false";
+    if (candidate_decode)
+        out << ",\"candidate_decode\":true";
     inspection_json_rows(out, "nodes", view.nodes);
     inspection_json_rows(out, "edges", view.edges);
     inspection_json_rows(out, "records", view.records);
     out << '}';
     r->set_string(out.str().c_str());
     return eOk;
+}
+
+error_t idaapi idc_native_region_facts(idc_value_t *argv, idc_value_t *r)
+{
+    return native_region_facts(argv, r, false);
+}
+
+error_t idaapi idc_native_candidate_region(idc_value_t *argv, idc_value_t *r)
+{
+    return native_region_facts(argv, r, true);
 }
 
 error_t idaapi idc_evidence_state(idc_value_t *argv, idc_value_t *r)
@@ -1823,6 +1838,9 @@ const idc_entry_t idc_entries[] = {
     {"chernobog_native_region_facts", idc_native_region_facts, args_ea,
      "chernobog_native_region_facts(root_ea)",
      "Read-only root-scoped ownerless graph facts; preserves both direct successors and never publishes IDA edges"},
+    {"chernobog_native_candidate_region", idc_native_candidate_region, args_ea,
+     "chernobog_native_candidate_region(data_head_ea)",
+     "Read-only conditional byte decode from one executable data head; never retypes IDA items or publishes edges"},
     {"chernobog_solver_evidence", idc_solver_evidence, args_ea, "chernobog_solver_evidence(ea)",
      "Actual bounded SMT queries/models; current IR applicability is not inferred"},
     {"chernobog_vm_regions", idc_vm_regions, args_ea, "chernobog_vm_regions(ea)",

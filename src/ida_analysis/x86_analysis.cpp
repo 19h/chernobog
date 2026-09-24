@@ -1242,10 +1242,12 @@ X86RegisterFact analyze_x86_memory_before(const insn_t &insn, uint64_t address, 
     return result;
 }
 
-X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t round_limit)
+X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t round_limit,
+                                       bool candidate_decode)
 {
     X86RegionInspection result;
     result.root = root;
+    result.candidate_decode = candidate_decode;
     node_limit = std::min<size_t>(node_limit, 128);
     round_limit = std::min<size_t>(round_limit, 128);
     const auto hex = [](uint64_t value)
@@ -1283,6 +1285,28 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         return result;
     }
     result.address_bits = segment->bitness == 2 ? 64 : 32;
+    const auto candidate_item = [](ea_t address)
+    {
+        const auto flags = get_flags(address);
+        if (is_code(flags) || has_user_name(flags))
+            return false;
+        if (is_tail(flags))
+        {
+            const auto head = get_item_head(address);
+            const auto head_flags = get_flags(head);
+            return is_data(head_flags) && !has_user_name(head_flags);
+        }
+        return is_data(flags) || is_unknown(flags);
+    };
+    if (candidate_decode)
+    {
+        const auto flags = get_flags(ea_t(root));
+        if (!is_data(flags) || !is_head(flags) || has_user_name(flags))
+        {
+            result.reason = "not_unlabeled_data_head";
+            return result;
+        }
+    }
     const auto decode = [&](ea_t address, insn_t &instruction) -> std::string
     {
         if (address == BADADDR || getseg(address) != segment)
@@ -1290,13 +1314,15 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         if (get_func(address))
             return "owned_code";
         const auto flags = get_flags(address);
-        if (!is_code(flags) || !is_head(flags))
+        if (!candidate_decode && (!is_code(flags) || !is_head(flags)))
             return is_tail(flags) && is_code(get_flags(get_item_head(address)))
                        ? "interior_instruction_target"
                        : "not_existing_code_head";
+        if (candidate_decode && !candidate_item(address))
+            return "candidate_item_boundary";
         if (decode_insn(&instruction, address) <= 0 || !instruction.size || instruction.size > 15 ||
             address > BADADDR - instruction.size || address + instruction.size > segment->end_ea ||
-            get_item_end(address) != address + instruction.size)
+            (!candidate_decode && get_item_end(address) != address + instruction.size))
             return "invalid_instruction_span";
         if ((result.address_bits == 64 && !mode64(instruction)) ||
             (result.address_bits == 32 &&
@@ -1307,7 +1333,9 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         {
             if (get_func(address + offset))
                 return "owned_code";
-            if (!is_loaded(address + offset) || get_item_head(address + offset) != address)
+            if (!is_loaded(address + offset) ||
+                (candidate_decode ? !candidate_item(address + offset)
+                                  : get_item_head(address + offset) != address))
                 return "invalid_instruction_span";
         }
         return {};
@@ -1564,6 +1592,8 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
                                 {"adjacent_bytes", adjacent_bytes},
                                 {"flags_known", "0x0"},
                                 {"flags_value", "0x0"}});
+        if (candidate_decode)
+            result.nodes.back()["item"] = "candidate-bytes";
     }
     if (failed)
         return result;
@@ -1583,7 +1613,7 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         return result;
     }
     result.converged = true;
-    result.reason = "complete_bounded_region";
+    result.reason = candidate_decode ? "complete_candidate_byte_region" : "complete_bounded_region";
     for (size_t i = 0; i < instructions.size(); ++i)
     {
         const auto &instruction = instructions[i];
@@ -1597,7 +1627,7 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
             const auto outcome = evaluate(condition->condition, state.flags);
             std::map<std::string, std::string> row{
                 {"site", hex(instruction.ea)},
-                {"truth", "static-region-fact"},
+                {"truth", candidate_decode ? "conditional-byte-decode" : "static-region-fact"},
                 {"status", outcome ? "proved" : "unresolved"},
                 {"outcome", outcome ? (*outcome ? "true" : "false") : "unknown"},
                 {"kind", condition->use == X86ConditionUse::branch     ? "branch-condition"
@@ -1706,7 +1736,7 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         result.records.push_back(
             {{"site", hex(instruction.ea)},
              {"kind", "push-return"},
-             {"truth", "static-region-fact"},
+             {"truth", candidate_decode ? "conditional-byte-decode" : "static-region-fact"},
              {"status", target.value ? "proved" : "unresolved"},
              {"transfer", hex(ret.ea)},
              {"target", target.value ? hex(*target.value) : "unknown"},

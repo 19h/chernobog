@@ -62,7 +62,7 @@ class NativeAnalysisEngine
     void on_database_event(int event, va_list arguments);
     const NativeAnalysisStats &stats() const;
     NativeInspection inspect(uint64_t function_start) const;
-    X86RegionInspection inspect_region(uint64_t root) const;
+    X86RegionInspection inspect_region(uint64_t root, bool candidate_decode = false) const;
 
   private:
     struct Impl;

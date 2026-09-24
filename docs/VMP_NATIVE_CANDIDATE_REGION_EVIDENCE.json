@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "checkpoint": "read-only explicit-root packed candidate",
+  "measurement_plugin_state": "precommit source build at 40f6eddc4e6177b07bc61016519ad3cdf233ad24; exact source hashes below",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "3c9230b5037420c0a02460bdc929d29ccfcbf70e47c31f44720c18559fed5ccd",
+    "src/ida_analysis/x86_analysis.hpp": "f1178278b4854b182b7ce7099eb5a8681d2d31567b760d9cd4ac1e23998a5128",
+    "src/ida_analysis/native_engine.cpp": "392afafa4a25c15627b889d9c4f6afc2506332a4feb1e5fff4ffe804d8cf5be3",
+    "src/ida_analysis/native_engine.hpp": "723025cf6519415d906227c29ab679e7557085648ef9bca21eb9f70e78ae88bb",
+    "src/plugin/idc_api.cpp": "f913c79e65f2f453421a854f5dc9dc78a682e022c0d896b5c4969a7c083c499a",
+    "tests/ida_native_candidate_region_probe.py": "928e16b7e30cb3044aca1a31b65ef0bbd21bf72562f46202398ff28a3a294edc",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248"
+  },
+  "artifacts": {
+    "protected_first_sha256": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+    "protected_second_sha256": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "installed_plugin_sha256": "cb2359ee1c433ac5ea4103c6a3cc07a3785b1c5c2af73f213ee0a6d28f4ef639"
+  },
+  "raw_reports": {
+    "build/keygen-candidate-final/candidate_region.json": "8d993edab1f3c7aa00b108c293429fddaeacff60e3f037dbc90b30ecc51ab14e",
+    "build/keygen-candidate-final/run.json": "11c2d94d6d13d2e36c98f730a124b2719a44de3bdee2b277884529a0f649ff0d",
+    "build/keygen-candidate-final-repeat/candidate_region.json": "8d993edab1f3c7aa00b108c293429fddaeacff60e3f037dbc90b30ecc51ab14e",
+    "build/keygen-candidate-final-repeat/run.json": "1972e8155204e5ec4fb6da42c9da625aa8fe8fd33f509b8a66bff4ab614a2e85",
+    "build/ownerless-candidate-final/ownerless_dataflow_analysis.json": "efefa899d053a14e69fd3625a9d5afc4360336c8c562c09b4d501a85d4b58179",
+    "build/protected-candidate-final/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/protected-candidate-final/run.json": "4e38cb8f34aacd55c5e83695c6ac6bfafba845e270b247209651e981f31e0956"
+  },
+  "candidate_root": "0x418440",
+  "candidate_nodes": 9,
+  "candidate_edges": 11,
+  "candidate_records": 1,
+  "proved_protected_conditions": 0,
+  "before_after_idb_inventory_sha256": "aced12a072b293db11c869da5bc803a7fed070a05cce39f6119a84d8d09c2118",
+  "before_after_idb_heads": 38006,
+  "before_after_idb_references": 40917,
+  "native_oracle_checks_per_architecture": 4094,
+  "ida_ownerless_checks": {"x86_64": 1500, "i386": 1450},
+  "ctest_passed": 21
+}

@@ -65,7 +65,7 @@ X86RegisterFact analyze_x86_memory_before(const insn_t &instruction, uint64_t ad
 // Calls clear state at their syntactic continuation under normal return.
 struct X86RegionInspection
 {
-    bool available = false, converged = false, truncated = false;
+    bool available = false, converged = false, truncated = false, candidate_decode = false;
     int64_t database = -1;
     uint64_t context = 0, root = 0;
     unsigned address_bits = 0;
@@ -76,8 +76,10 @@ struct X86RegionInspection
 
 // Budgets are clamped to 128 nodes, 128 rounds and 256 incoming references per
 // instruction (including interior bytes). Resource or structural failures
-// retain diagnostics but return no facts. The root input is unknown.
+// retain diagnostics but return no facts. The root input is unknown. Explicit
+// candidate decoding reads a data-head root in an executable segment without
+// changing IDB items and labels every fact conditional on that byte decode.
 X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit = 128,
-                                       size_t round_limit = 128);
+                                       size_t round_limit = 128, bool candidate_decode = false);
 
 } // namespace chernobog::ida_analysis
