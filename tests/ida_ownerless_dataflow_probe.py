@@ -463,6 +463,21 @@ def main():
             )
             condition(name + " preserves arithmetic flags", inspect(name, root), site, True)
 
+        for name, expected in (
+            ("df_flags_saved", True),
+            ("df_flags_full", True),
+            ("df_flags_literal", True),
+            ("df_flags_overwrite", None),
+            ("df_flags_dynamic", None),
+        ):
+            root, instructions = prepare_prefix(name)
+            site = next(
+                instruction.ea
+                for instruction in instructions
+                if instruction.get_canon_mnem().startswith("set")
+            )
+            condition(name + " ownerless saved flags", inspect(name, root), site, expected)
+
         for name, expected in (("df_loop", True), ("df_loop_changes", None)):
             root, instructions = prepare_prefix(name)
             site = next(

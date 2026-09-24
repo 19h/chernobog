@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "scope": "saved status flags in explicit-root ownerless native regions",
+  "source_sha256": {
+    "tests/ida_ownerless_dataflow_probe.py": "720f7c7da733305370e44056e9c94336b071f02cdfad8de41ca501d255eec4c8"
+  },
+  "tools": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "installed_plugin_sha256": "31d7d90a6672a665b6dff44918c004b7a1bbc1d916b5317fef15c91a9414f19f",
+    "linux32_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654"
+  },
+  "fixture_sha256": {
+    "x86_64": "343c87afa2aea2752c3e023b1c4590ac6a61f35868e050d1349aa083c6318d2d",
+    "i386": "922d8c42604f46a94fe512c3035a3dbc55cb87eabc7e9db1fde2db9ba781fcc1"
+  },
+  "results": {
+    "ida_checks_per_architecture": 402,
+    "native_checks_per_architecture": 4094,
+    "ownerless_proved_per_architecture": 3,
+    "ownerless_unresolved_per_architecture": 2,
+    "corrupt_native_oracle_rejected": true,
+    "final_ctest_passed": 21,
+    "intermittent_vm_observation_failure_cause": "unknown"
+  },
+  "raw_report_sha256": {
+    "build/vmp-popf-ownerless-both/ownerless_dataflow_analysis.json": "2ad0d4a4f0edd6df96a6fc249fa1b09c582156522e8f5b78d5930437f4862efd",
+    "build/vmp-popf-ownerless-both/x86_64/inspection/ownerless_dataflow.json": "fac05455cbd541063cd9056e83fe2c4f5d12479c5cf09225b94855cc974ab5d0",
+    "build/vmp-popf-ownerless-both/i386/inspection/ownerless_dataflow.json": "0f0a40a3ade13e3d7e1ea0c6488bc1090e5283df0aeb8d42ea673ff1ab64e475",
+    "build/Testing/Temporary/LastTest.log": "a14c58b8a3ba18371a099d5e02bba4ab44617f459163bc5fb0cc74c27ecde78e"
+  }
+}
