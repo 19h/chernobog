@@ -1335,6 +1335,114 @@ BEGIN NAME(df_rep_cmps_count_ambiguity)
 #endif
     ret
 
+BEGIN NAME(df_repe_cmps_zero_preserve)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_cmps_source), %esi
+    movl $NAME(df_cmps_dest), %edi
+#else
+    leaq NAME(df_cmps_source)(%rip), %rsi
+    leaq NAME(df_cmps_dest)(%rip), %rdi
+#endif
+    movl $0, %ecx
+    stc
+    repe cmpsb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_repne_cmps_two_early_stop)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_cmps_source), %esi
+    movl %esi, %edi
+#else
+    leaq NAME(df_cmps_source)(%rip), %rsi
+    movq %rsi, %rdi
+#endif
+    movl $2, %ecx
+    repne cmpsb
+    setz %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_repne_cmps_one_cf)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_cmps_source), %esi
+    movl $NAME(df_cmps_dest), %edi
+#else
+    leaq NAME(df_cmps_source)(%rip), %rsi
+    leaq NAME(df_cmps_dest)(%rip), %rdi
+#endif
+    movb $0x10, (CMPS_SI)
+    movb $0x20, (CMPS_DI)
+    movl $1, %ecx
+    repne cmpsb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_repe_cmps_one_zf)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_cmps_source), %esi
+    movl %esi, %edi
+#else
+    leaq NAME(df_cmps_source)(%rip), %rsi
+    movq %rsi, %rdi
+#endif
+    movl $1, %ecx
+    repe cmpsb
+    setz %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+    popl %esi
+#endif
+    ret
+
+BEGIN NAME(df_repe_cmps_one_count_target)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_cmps_source), %esi
+    movl %esi, %edi
+#else
+    leaq NAME(df_cmps_source)(%rip), %rsi
+    movq %rsi, %rdi
+#endif
+    movl $1, %ecx
+    repe cmpsb
+#ifdef __i386__
+    popl %edi
+    popl %esi
+    movl $NAME(df_memory_target), %eax
+    addl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    addq %rcx, %rax
+    pushq %rax
+#endif
+    ret
+
 BEGIN NAME(df_rep_stos_cf)
 #ifdef __i386__
     pushl %edi
@@ -1564,6 +1672,99 @@ BEGIN NAME(df_rep_scas_count_ambiguity)
     movzbl %al, %eax
 #ifdef __i386__
     popl %edi
+#endif
+    ret
+
+BEGIN NAME(df_repne_scas_zero_preserve)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    movl $0, %ecx
+    stc
+    repne scasb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+#endif
+    ret
+
+BEGIN NAME(df_repe_scas_two_early_stop)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    movb $0x20, (CMPS_DI)
+    movb $0x10, %al
+    movl $2, %ecx
+    repe scasb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+#endif
+    ret
+
+BEGIN NAME(df_repe_scas_one_cf)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    movb $0x20, (CMPS_DI)
+    movb $0x10, %al
+    movl $1, %ecx
+    repe scasb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+#endif
+    ret
+
+BEGIN NAME(df_repne_scas_one_zf)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    movb $0x5a, (CMPS_DI)
+    movb $0x5a, %al
+    movl $1, %ecx
+    repne scasb
+    setz %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+#endif
+    ret
+
+BEGIN NAME(df_repne_scas_one_count_target)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    movb $0x5a, %al
+    movl $1, %ecx
+    repne scasb
+#ifdef __i386__
+    popl %edi
+    movl $NAME(df_memory_target), %eax
+    addl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    addq %rcx, %rax
+    pushq %rax
 #endif
     ret
 

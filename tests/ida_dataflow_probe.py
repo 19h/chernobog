@@ -279,6 +279,8 @@ try:
     )
     rep_movs_zero_proofs = os.environ.get("CHERNOBOG_REP_MOVS_LOCAL_BASELINE") != "1"
     rep_movs_one_proofs = rep_movs_zero_proofs and ida_ida.inf_is_64bit()
+    rep_compare_zero_proofs = os.environ.get("CHERNOBOG_REP_COMPARE_LOCAL_BASELINE") != "1"
+    rep_compare_one_proofs = rep_compare_zero_proofs and ida_ida.inf_is_64bit()
     lods_local_proofs = (
         os.environ.get("CHERNOBOG_LODS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
     )
@@ -313,6 +315,10 @@ try:
         "df_cmps_dword_zf": cmps_proofs,
         "df_cmps_initial_unknown": False,
         "df_rep_cmps_count_ambiguity": False,
+        "df_repe_cmps_zero_preserve": rep_compare_zero_proofs,
+        "df_repne_cmps_one_cf": rep_compare_one_proofs,
+        "df_repe_cmps_one_zf": rep_compare_one_proofs,
+        "df_repne_cmps_two_early_stop": False,
         "df_rep_stos_cf": string_io_proofs,
         "df_lods_plain_cf": string_io_proofs,
         "df_rep_lods_zf": string_io_proofs,
@@ -323,6 +329,10 @@ try:
         "df_scas_dword_zf": scas_proofs,
         "df_scas_initial_cf": False,
         "df_rep_scas_count_ambiguity": False,
+        "df_repne_scas_zero_preserve": rep_compare_zero_proofs,
+        "df_repe_scas_one_cf": rep_compare_one_proofs,
+        "df_repne_scas_one_zf": rep_compare_one_proofs,
+        "df_repe_scas_two_early_stop": False,
         "df_stos_byte_reload": stos_local_proofs,
         "df_stos_word_reload": stos_local_proofs,
         "df_stos_dword_reload": stos_local_proofs,
@@ -668,6 +678,8 @@ try:
         ("df_stos_register_target", string_io_proofs),
         ("df_rep_stos_count_target", string_io_proofs and string_count_proofs),
         ("df_rep_lods_count_target", string_io_proofs and string_count_proofs),
+        ("df_repe_cmps_one_count_target", rep_compare_zero_proofs),
+        ("df_repne_scas_one_count_target", rep_compare_zero_proofs),
         ("df_lods_full_target", lods_local_proofs),
         ("df_lods_byte_preserved_target", lods_local_proofs),
     ):

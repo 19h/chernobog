@@ -448,6 +448,27 @@ struct State
         const auto repeat_count = bounded_rep_movs ? regs[1].read(word_bits, 0) : std::nullopt;
         const bool no_op_movs = repeat_count && *repeat_count == 0;
         const bool single_movs = plain_movs || (is64 && repeat_count && *repeat_count == 1);
+        const bool repeated_compare = (insn.itype == NN_scas || insn.itype == NN_cmps) &&
+                                      (insn.auxpref & (aux_rep | aux_repne)) &&
+                                      !(insn.auxpref & aux_rep && insn.auxpref & aux_repne);
+        const bool matched_compare =
+            insn.itype == NN_scas
+                ? insn.Op1.type == o_phrase && x86_base_reg(insn, insn.Op1) == R_di &&
+                      x86_index_reg(insn, insn.Op1) == R_none &&
+                      register_slice(insn.Op2).reg == 0 && register_slice(insn.Op2).offset == 0 &&
+                      register_slice(insn.Op2).width == width
+                : insn.itype == NN_cmps && insn.Op1.type == o_phrase && insn.Op2.type == o_phrase &&
+                      x86_base_reg(insn, insn.Op1) == R_si &&
+                      x86_index_reg(insn, insn.Op1) == R_none &&
+                      x86_base_reg(insn, insn.Op2) == R_di &&
+                      x86_index_reg(insn, insn.Op2) == R_none &&
+                      get_dtype_size(insn.Op2.dtype) == get_dtype_size(insn.Op1.dtype);
+        const auto compare_count = repeated_compare && matched_compare && valid_width(width) &&
+                                           natad(insn) && insn.segpref == 0
+                                       ? regs[1].read(word_bits, 0)
+                                       : std::nullopt;
+        const bool zero_compare = compare_count && *compare_count == 0;
+        const bool single_compare = compare_count && *compare_count == 1;
         if (single_movs && is64 && valid_width(width) && matched_movs)
         {
             const auto destination = memory_address(insn, insn.Op1);
@@ -548,6 +569,10 @@ struct State
             finish_unconditional_repeat(insn, is64);
             return;
         }
+        // REPE/REPNE SCAS and CMPS with count zero do not compare, advance
+        // indexes or change flags. Skip canonical implicit-write invalidation.
+        if (zero_compare)
+            return;
         const uint32_t features = insn.get_canon_feature(PH);
         for (int index = 0; index < UA_MAXOP; ++index)
         {
@@ -881,7 +906,8 @@ struct State
             // SCAS compares the accumulator against ES:[DI] and advances DI.
             // ES and DS have the same zero base in long mode. In i386, ES may
             // differ from the segment used for a local store, so no retained
-            // byte can supply the comparison. A repeat may execute zero times.
+            // byte can supply the comparison. One exact repeated iteration
+            // has the plain SCAS comparison effect.
             const bool repeated = (insn.auxpref & (aux_rep | aux_repne)) != 0;
             const Slice accumulator = register_slice(insn.Op2);
             const bool matched_accumulator =
@@ -890,7 +916,8 @@ struct State
                                         x86_base_reg(insn, insn.Op1) == R_di &&
                                         x86_index_reg(insn, insn.Op1) == R_none;
             std::optional<uint64_t> compared;
-            if (is64 && !repeated && valid_width(width) && matched_accumulator && matched_memory)
+            if (is64 && (!repeated || single_compare) && valid_width(width) &&
+                matched_accumulator && matched_memory)
             {
                 const auto address = memory_address(insn, insn.Op1);
                 if (address && writable_range(*address, width / 8, word_bits))
@@ -900,10 +927,15 @@ struct State
             regs[7] = {};
             if (repeated)
             {
-                regs[1] = {};
-                flags.forget();
+                if (single_compare)
+                    regs[1].write(word_bits, 0, 0, is64);
+                else
+                {
+                    regs[1] = {};
+                    flags.forget();
+                }
             }
-            else
+            if (!repeated || single_compare)
                 transfer(Operation::compare, width, value, compared, false, flags);
             return;
         }
@@ -912,7 +944,8 @@ struct State
             // Long-mode DS and ES have the same zero base. A plain CMPS
             // compares both current memory elements before advancing SI/DI.
             // Equal exact addresses give equal values even when the initial
-            // byte is unknown. Repetition may execute zero comparisons.
+            // byte is unknown. One exact repeated iteration has the plain
+            // CMPS comparison effect.
             const bool repeated = (insn.auxpref & (aux_rep | aux_repne)) != 0;
             const bool matched_operands =
                 insn.Op1.type == o_phrase && insn.Op2.type == o_phrase &&
@@ -921,7 +954,7 @@ struct State
                 get_dtype_size(insn.Op2.dtype) == get_dtype_size(insn.Op1.dtype);
             std::optional<uint64_t> source_value, destination_value;
             bool same_address = false;
-            if (is64 && !repeated && valid_width(width) && matched_operands)
+            if (is64 && (!repeated || single_compare) && valid_width(width) && matched_operands)
             {
                 const auto source = memory_address(insn, insn.Op1);
                 const auto destination = memory_address(insn, insn.Op2);
@@ -940,10 +973,15 @@ struct State
             regs[7] = {};
             if (repeated)
             {
-                regs[1] = {};
-                flags.forget();
+                if (single_compare)
+                    regs[1].write(word_bits, 0, 0, is64);
+                else
+                {
+                    regs[1] = {};
+                    flags.forget();
+                }
             }
-            else
+            if (!repeated || single_compare)
                 transfer(Operation::compare, width, source_value, destination_value, same_address,
                          flags);
             return;

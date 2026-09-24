@@ -506,6 +506,8 @@ def main():
         )
         rep_movs_zero_proofs = os.environ.get("CHERNOBOG_REP_MOVS_LOCAL_BASELINE") != "1"
         rep_movs_one_proofs = rep_movs_zero_proofs and ida_ida.inf_is_64bit()
+        rep_compare_zero_proofs = os.environ.get("CHERNOBOG_REP_COMPARE_LOCAL_BASELINE") != "1"
+        rep_compare_one_proofs = rep_compare_zero_proofs and ida_ida.inf_is_64bit()
         lods_local_proofs = (
             os.environ.get("CHERNOBOG_LODS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
         )
@@ -617,6 +619,10 @@ def main():
             ("df_cmps_dword_zf", True if cmps_proofs else None),
             ("df_cmps_initial_unknown", None),
             ("df_rep_cmps_count_ambiguity", None),
+            ("df_repe_cmps_zero_preserve", True if rep_compare_zero_proofs else None),
+            ("df_repne_cmps_one_cf", True if rep_compare_one_proofs else None),
+            ("df_repe_cmps_one_zf", True if rep_compare_one_proofs else None),
+            ("df_repne_cmps_two_early_stop", None),
             ("df_rep_stos_cf", True if string_io_proofs else None),
             ("df_lods_plain_cf", True if string_io_proofs else None),
             ("df_rep_lods_zf", True if string_io_proofs else None),
@@ -627,6 +633,10 @@ def main():
             ("df_scas_dword_zf", True if scas_proofs else None),
             ("df_scas_initial_cf", None),
             ("df_rep_scas_count_ambiguity", None),
+            ("df_repne_scas_zero_preserve", True if rep_compare_zero_proofs else None),
+            ("df_repe_scas_one_cf", True if rep_compare_one_proofs else None),
+            ("df_repne_scas_one_zf", True if rep_compare_one_proofs else None),
+            ("df_repe_scas_two_early_stop", None),
             ("df_stos_byte_reload", True if stos_local_proofs else None),
             ("df_stos_word_reload", True if stos_local_proofs else None),
             ("df_stos_dword_reload", True if stos_local_proofs else None),
@@ -895,6 +905,8 @@ def main():
             ("df_stos_register_target", string_io_proofs),
             ("df_rep_stos_count_target", string_io_proofs and string_count_proofs),
             ("df_rep_lods_count_target", string_io_proofs and string_count_proofs),
+            ("df_repe_cmps_one_count_target", rep_compare_zero_proofs),
+            ("df_repne_scas_one_count_target", rep_compare_zero_proofs),
             ("df_lods_full_target", lods_local_proofs),
             ("df_lods_byte_preserved_target", lods_local_proofs),
         ):
@@ -913,6 +925,7 @@ def main():
                     "df_rep_movs_register_target",
                     "df_movs_plain_count_target",
                     "df_rep_movs_count_unknown",
+                    "df_repe_cmps_one_count_target",
                 )
                 else (
                     2
@@ -922,6 +935,7 @@ def main():
                         "df_stos_register_target",
                         "df_rep_stos_count_target",
                         "df_rep_lods_count_target",
+                        "df_repne_scas_one_count_target",
                         "df_lods_full_target",
                         "df_lods_byte_preserved_target",
                     )
