@@ -31,6 +31,7 @@ struct Records
     std::map<uint64_t, const DataAcc *> data;
     std::map<uint64_t, const AllocationLifetime *> objects;
     std::set<uint64_t> barriers;
+    std::map<uint64_t, const DataAcc *> heap_writes;
     size_t snapshot_bytes = 0;
 };
 
@@ -112,21 +113,51 @@ bool valid_argument(const UseSnapshot &use, const Records &records, uint64_t con
     }
 }
 
-bool follows(const Stream &stream, const UseSnapshot &next, const Records &records)
+bool uninterrupted(const Stream &stream, uint64_t sequence, const Records &records)
 {
     if (stream.parts.empty())
         return false;
     const auto &first = stream.use;
     const auto &last = stream.parts.back();
-    if (last.sequence + 1 >= next.sequence || first.context != next.context ||
-        first.scope != next.scope || first.address > UINT64_MAX - first.observed_size ||
-        first.address + first.observed_size != next.address)
+    if (last.sequence + 1 >= sequence)
         return false;
     auto barrier = records.barriers.upper_bound(last.sequence);
-    if (barrier != records.barriers.end() && *barrier <= next.sequence)
+    if (barrier != records.barriers.end() && *barrier <= sequence)
         return false;
-    // Read-only interleaving does not change the observed bytes. Writes,
-    // calls, modeled uses and lifetime changes remain global barriers.
+    auto write = records.heap_writes.upper_bound(last.sequence);
+    if (write == records.heap_writes.end() || write->first > sequence)
+        return true;
+    if (first.scope != DataScope::HEAP)
+        return false;
+    const auto object = records.objects.find(first.allocation_id);
+    if (object == records.objects.end() || object->second->generation != first.generation)
+        return false;
+    const auto &allocation = *object->second;
+    if (allocation.address > UINT64_MAX - allocation.size)
+        return false;
+    size_t examined = 0;
+    for (; write != records.heap_writes.end() && write->first <= sequence; ++write)
+    {
+        if (++examined > 256)
+            return false;
+        const auto &access = *write->second;
+        if (access.addr > UINT64_MAX - access.size ||
+            !(access.addr + access.size <= allocation.address ||
+              access.addr >= allocation.address + allocation.size))
+            return false;
+    }
+    return true;
+}
+
+bool follows(const Stream &stream, const UseSnapshot &next, const Records &records)
+{
+    if (!uninterrupted(stream, next.sequence, records))
+        return false;
+    const auto &first = stream.use;
+    if (first.context != next.context || first.scope != next.scope ||
+        first.address > UINT64_MAX - first.observed_size ||
+        first.address + first.observed_size != next.address)
+        return false;
     if (first.scope == DataScope::HEAP)
         return first.allocation_id == next.allocation_id && first.generation == next.generation;
     if (first.scope == DataScope::STACK)
@@ -175,7 +206,10 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
             auto &r = run->second;
             if (r.data.size() == 65536 || !r.data.emplace(data.sequence, &data).second)
                 return {};
-            if (data.kind != RAX_MEM_READ)
+            if (data.kind == RAX_MEM_WRITE && data.scope == DataScope::HEAP && data.size &&
+                data.size <= 8 && data.addr <= UINT64_MAX - data.size)
+                r.heap_writes.emplace(data.sequence, &data);
+            else if (data.kind != RAX_MEM_READ)
                 r.barriers.insert(data.sequence);
         }
         for (const auto &a : ledger->allocations)
@@ -290,6 +324,9 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
             {
                 const auto key =
                     endpoint(stream.use, stream.use.address + stream.use.observed_size);
+                if (const auto old = pending.find(key);
+                    old != pending.end() && !uninterrupted(old->second, use.sequence, records))
+                    pending.erase(old);
                 const auto [found, inserted] = pending.emplace(key, std::move(stream));
                 if (!inserted)
                     pending.erase(found); // No arbitrary choice between overlapping prefixes.

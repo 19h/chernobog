@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "scope": "Bounded native read streams across writes to disjoint heap allocations; independent fixture, not VMP-emitted code",
+  "source_sha256": {
+    "src/hybrid/native_read_strings.cpp": "4cb6cb76ac2b4442373cf73c496bd56bdf819e34fa55be593a498d250d54763a",
+    "src/hybrid/evidence_view.hpp": "f7365c708c268e85b03e103a0fdfcd2e76fec24620f5fa40d8cf76c21190c09f",
+    "tests/evidence_tests.cpp": "97c35606e60379c5e843089eeebdfe1a511b8dd0da5df6f515e8279f4160121b",
+    "tests/vmp_native/native_interleaved_strings.c": "eecf9ff6a73c840858d29f63c6c2f587ee29fc144eb41645b9311fd8782f075c",
+    "tests/ida_heap_write_strings_probe.py": "17698fd2f8d3ae95bd71ec3fb236503453b716593d803b922ca993211d42f6ee",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248"
+  },
+  "tools": {
+    "ida_console_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "baseline_plugin_sha256": "65da3e8dd6d9f077d20b4504039fc52757226b1e0eff4252d930f19d6d35f301",
+    "enabled_plugin_sha256": "b577aab29ad7ab9e6bb7b58e79685aa909edc17d1e7290fa3ad0e445fa267244"
+  },
+  "native": {
+    "compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2); -arch x86_64",
+    "common_flags": ["-O1", "-g0", "-fno-builtin", "-fno-unroll-loops", "-D_FORTIFY_SOURCE=0", "-Wl,-no_fixup_chains", "-Wl,-no_data_const"],
+    "separate_positive": {
+      "path": "build/vmp-native-interleaved-writes",
+      "sha256": "e7e2cf6e38a3224e048971aa943c990eb95d4df60e86055d145fd035963974a1",
+      "defines": ["WRITE_FIRST_ALLOCATION=1"],
+      "exit_code": 0
+    },
+    "shared_positive": {
+      "path": "build/vmp-native-interleaved-writes-shared",
+      "sha256": "72ca4f375e34204770cfab399fd5f2c8ec70ca69678d7f59faf5a05df048b562",
+      "defines": ["WRITE_FIRST_ALLOCATION=1", "SHARED_ALLOCATION=1"],
+      "exit_code": 0
+    },
+    "first_oracle_negative": {
+      "path": "build/vmp-native-interleaved-writes-first-negative",
+      "sha256": "64c0c0e2683b742255fa00ac377476219e566a9ec584cafd5a55f02f34b63cac",
+      "defines": ["WRITE_FIRST_ALLOCATION=1", "SNAPSHOT_ORACLE_FIRST=0x5a7b2e3f28393f28ULL"],
+      "exit_code": 1
+    },
+    "second_oracle_negative": {
+      "path": "build/vmp-native-interleaved-writes-second-negative",
+      "sha256": "48d9aa2819a5330ebb437a0542fac7eef696139a72ce9f82185a31e57820d9fd",
+      "defines": ["WRITE_FIRST_ALLOCATION=1", "SNAPSHOT_ORACLE_SECOND=0x5a7b3e3435393f28ULL"],
+      "exit_code": 1
+    }
+  },
+  "ida": {
+    "baseline": {
+      "run_report": "build/heap-write-strings-final-baseline/run.json",
+      "run_report_sha256": "cc7e37100ee264c6689beab6e53cf05b42f13fe2a5872f1f57c8957a88ddee4e",
+      "probe_report": "build/heap-write-strings-final-baseline/heap_write_strings.json",
+      "probe_report_sha256": "618f4e9a39590849c82697e1c890d478876bb4170e052ef9f5944322455a325b",
+      "input": "separate_positive",
+      "plugin": "baseline_plugin_sha256",
+      "runs": 4,
+      "allocation_lifetimes": 8,
+      "use_snapshots": 108,
+      "retained_heap_writes": 48,
+      "candidate_count": 0,
+      "ctree_annotations": 0
+    },
+    "enabled": {
+      "run_report": "build/heap-write-strings-final-enabled/run.json",
+      "run_report_sha256": "2207bd063dd9bf010fa7bb38b3d389d513c10e84e585d6099526822955c70916",
+      "probe_report": "build/heap-write-strings-final-enabled/heap_write_strings.json",
+      "probe_report_sha256": "8dc32bd3f63b0aaccc96f060c7b4937effd1f37c1dca2e5bcb8052ae8c537c05",
+      "input": "separate_positive",
+      "plugin": "enabled_plugin_sha256",
+      "runs": 4,
+      "allocation_lifetimes": 8,
+      "use_snapshots": 108,
+      "retained_heap_writes": 48,
+      "candidate_count": 1,
+      "candidate_value": "second!",
+      "ctree_annotations": 1
+    },
+    "shared": {
+      "run_report": "build/heap-write-strings-final-shared/run.json",
+      "run_report_sha256": "fbe63fa0f91fdbb8ad989d60400488c071f978705eb356f267fc6854ea211cf6",
+      "probe_report": "build/heap-write-strings-final-shared/heap_write_strings.json",
+      "probe_report_sha256": "bf6eee54d67402ea023269ccc8ad6847ae4e4d8fc9d6ffb71646254e1e03cd13",
+      "input": "shared_positive",
+      "plugin": "enabled_plugin_sha256",
+      "runs": 4,
+      "allocation_lifetimes": 4,
+      "use_snapshots": 108,
+      "retained_heap_writes": 44,
+      "candidate_count": 0,
+      "ctree_annotations": 0
+    }
+  },
+  "existing_regressions": {
+    "separate": {
+      "report": "build/interleaved-reads-final-separate/snapshot_analysis.json",
+      "sha256": "3bf5a9e6baee46f80af869f350a89ae668848b727a642d99a2bb4d65eed582c2",
+      "console_assertions": 35
+    },
+    "shared": {
+      "report": "build/interleaved-reads-final-shared/snapshot_analysis.json",
+      "sha256": "7b3c4926ce05e37a8361f8bdcd6e892cf5fe8620534ca750d09b1341fd05ad70",
+      "console_assertions": 35
+    }
+  },
+  "checks": {
+    "portable_interleaved_read_assertions": 404,
+    "portable_disjoint_write_quota": "256 admitted; 257 rejected",
+    "existing_separate_console_assertions": 35,
+    "existing_shared_console_assertions": 35,
+    "ctest_suites_passed": 21,
+    "ctest_suites_total": 21,
+    "raw_ida_runner_return_codes": [0, 0, 0],
+    "raw_ida_artifacts_unchanged": [true, true, true]
+  },
+  "limits": [
+    "The new fixture is independent native code; no VMP-emitted write-interleaved string was measured.",
+    "Captured x86-64 processes executed on an arm64 macOS host; physical x86-64 behavior is unmeasured.",
+    "Retained heap-write event counts reflect the evidence view's 1024-event display cap, not all executed writes.",
+    "Address-disjoint writes are admitted only for heap streams under the completed flat-memory ledger. Other write scopes and unknown effects remain barriers.",
+    "IDA process elapsed time is not isolated string-aggregation latency."
+  ]
+}

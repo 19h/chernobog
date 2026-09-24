@@ -1,5 +1,9 @@
 # Strings from interleaved native reads
 
+The later [disjoint heap-write checkpoint](VMP_HEAP_WRITE_STREAMS.md) permits
+writes to separate heap allocations between read fragments. The global write
+barrier described below is the historical scope of this earlier checkpoint.
+
 The previous aggregator retained one pending stream and required consecutive
 memory-read events. Alternating reads from two buffers therefore discarded both
 prefixes. The counterexample fixture completed all four production captures but

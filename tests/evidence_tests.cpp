@@ -1468,6 +1468,7 @@ void native_interleaved_read_regressions()
             const auto scope = layout < 2    ? DataScope::HEAP
                                : layout == 2 ? DataScope::IMAGE
                                              : DataScope::STACK;
+            uint64_t first_address = 0, second_address = 0;
             for (uint32_t id : {1u, 2u})
             {
                 TemporalMemory memory;
@@ -1489,6 +1490,11 @@ void native_interleaved_read_regressions()
                 {
                     addresses[0] = layout == 2 ? 0x4000 : memory.entry_sp - 64;
                     addresses[1] = addresses[0] + 16;
+                }
+                if (id == 1)
+                {
+                    first_address = addresses[0];
+                    second_address = addresses[1];
                 }
                 uint64_t sequence = 10;
                 for (unsigned offset = 0; offset < 8; offset += width)
@@ -1563,11 +1569,49 @@ void native_interleaved_read_regressions()
                 verify(hybrid_consensus_native_read_strings(changed).empty(),
                        "interleaved streams cannot cross a write or control-effect barrier");
             }
+            auto invalid_heap_write = evidence;
+            invalid_heap_write.events.data.push_back(
+                {0x1300, UINT64_MAX, 0, 8, RAX_MEM_WRITE, DataScope::HEAP, 16, 1, 11});
+            verify(hybrid_consensus_native_read_strings(invalid_heap_write).empty(),
+                   "overflowing heap write remains a global barrier");
             auto extra_read = evidence;
             extra_read.events.data.push_back(
                 {0x1300, 0x5000, 0, 1, RAX_MEM_READ, DataScope::IMAGE, 16, 1, 11});
             verify(hybrid_consensus_native_read_strings(extra_read).size() == 2,
                    "unrelated read-only data does not erase interleaved witnesses");
+            if (layout < 2)
+            {
+                auto unrelated_heap_write = evidence;
+                unrelated_heap_write.events.data.push_back(
+                    {0x1300, first_address + 24, 0, 1, RAX_MEM_WRITE, DataScope::HEAP, 16, 1, 11});
+                const auto unaffected = hybrid_consensus_native_read_strings(unrelated_heap_write);
+                verify(unaffected.size() == (layout == 0 ? 1u : 0u) &&
+                           (layout != 0 || unaffected[0].value == "second!"),
+                       "heap write preserves only a disjoint allocation stream");
+            }
+            if (layout == 0 && width == 1)
+            {
+                auto quota = evidence;
+                for (auto &use : quota.events.uses)
+                    if (use.run_id == 1 && use.sequence >= 18)
+                        use.sequence += 300;
+                for (auto &data : quota.events.data)
+                    if (data.run_id == 1 && data.sequence >= 18)
+                        data.sequence += 300;
+                for (auto &object : quota.events.allocations)
+                    if (object.run_id == 1 && !object.live)
+                        object.released += 300;
+                for (uint64_t sequence = 16; sequence < 272; ++sequence)
+                    quota.events.data.push_back({0x1300, second_address + 24, 0, 1, RAX_MEM_WRITE,
+                                                 DataScope::HEAP, sequence, 1, 11});
+                const auto at_limit = hybrid_consensus_native_read_strings(quota);
+                verify(at_limit.size() == 1 && at_limit[0].value == "secret!",
+                       "256 disjoint heap writes preserve the bounded stream");
+                quota.events.data.push_back({0x1300, second_address + 24, 0, 1, RAX_MEM_WRITE,
+                                             DataScope::HEAP, 272, 1, 11});
+                verify(hybrid_consensus_native_read_strings(quota).empty(),
+                       "257 intervening heap writes exceed the stream scan limit");
+            }
             auto divergent = evidence;
             divergent.events.uses[0].bytes[0] = 'X';
             divergent.events.data[0].value =

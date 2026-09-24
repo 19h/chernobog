@@ -165,7 +165,7 @@ inline EvidenceView project_evidence_view(const TargetEvidence &source)
                 {"producer", "executed-read-stream"},
                 {"truth", "observation"},
                 {"assumption",
-                 "contiguous recorded reads; no other memory access, call or lifetime boundary between fragments; completed temporal model"},
+                 "contiguous recorded reads; only disjoint heap writes may interleave; no unknown memory effect, call or lifetime boundary; completed temporal model"},
                 {"first_sequence", view_hex(first.sequence)},
                 {"last_sequence", view_hex(last.sequence)},
                 {"address", view_hex(first.address)},
