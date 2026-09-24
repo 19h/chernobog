@@ -259,6 +259,7 @@ try:
         "df_equal": True,
         "df_different": False,
         "df_flags": True,
+        "df_direction": True,
         "df_loop": True,
         "df_loop_changes": False,
         "df_stack": True,

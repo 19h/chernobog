@@ -451,6 +451,9 @@ struct State
             return;
         }
         case NN_nop:
+        case NN_cld:
+        case NN_std:
+            // DF is outside this state; the six tracked status flags are unchanged.
             return;
         case NN_bswap:
         {

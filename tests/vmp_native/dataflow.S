@@ -48,6 +48,52 @@ BEGIN NAME(df_flags)
 1:  stc
 2:  RESULT setb
 
+BEGIN NAME(df_direction)
+    testl %ecx, %ecx
+    jz 1f
+    stc
+    std
+    cld
+    jmp 2f
+1:  stc
+    std
+    cld
+2:  RESULT setb
+
+/* Native status-bit oracle: compare all six modeled flags around STD and CLD. */
+BEGIN NAME(df_direction_status)
+    testl $1, %ecx
+    jz 1f
+    subl $0x55, %ecx
+    jmp 2f
+1:  subl $0x80000000, %ecx
+2:
+#ifdef __i386__
+    pushfl
+    popl %eax
+    std
+    pushfl
+    popl %edx
+    cld
+    pushfl
+    popl %ecx
+#else
+    pushfq
+    popq %rax
+    std
+    pushfq
+    popq %rdx
+    cld
+    pushfq
+    popq %rcx
+#endif
+    xorl %eax, %edx
+    xorl %eax, %ecx
+    orl %ecx, %edx
+    andl $0x8d5, %edx
+    movl %edx, %eax
+    ret
+
 BEGIN NAME(df_loop)
     stc
 1:  decl %ecx

@@ -454,6 +454,15 @@ def main():
             and not excess["records"],
         )
 
+        for name in ("od_cld", "od_std"):
+            root, instructions = prepare_prefix(name)
+            site = next(
+                instruction.ea
+                for instruction in instructions
+                if instruction.get_canon_mnem().startswith("set")
+            )
+            condition(name + " preserves arithmetic flags", inspect(name, root), site, True)
+
         for name, expected in (("df_loop", True), ("df_loop_changes", None)):
             root, instructions = prepare_prefix(name)
             site = next(

@@ -66,6 +66,21 @@ DIAMOND NAME(od_budget128), 0, 117
 DIAMOND NAME(od_budget129), 0, 118
 
 .p2align 4
+LABEL NAME(od_cld)
+    stc
+    cld
+    RESULT
+GAP NAME(od_cld_end)
+
+.p2align 4
+LABEL NAME(od_std)
+    stc
+    std
+    cld
+    RESULT
+GAP NAME(od_std_end)
+
+.p2align 4
 LABEL NAME(od_adjacent_root)
     stc
     jmp NAME(od_adjacent_join)

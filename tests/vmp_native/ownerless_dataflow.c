@@ -1,7 +1,8 @@
 #include <stdio.h>
 
 extern int od_equal(int), od_conflict(int), od_budget64(int), od_budget65(int), od_budget128(int),
-    od_budget129(int), od_adjacent_root(int), od_adjacent_external(int), od_call_root(int);
+    od_budget129(int), od_cld(int), od_std(int), od_adjacent_root(int), od_adjacent_external(int),
+    od_call_root(int);
 extern int df_equal(int), df_loop(int), df_loop_changes(int), df_target(int),
     df_target_changes(int);
 
@@ -33,6 +34,8 @@ int main(void)
             !expect("od_budget65", od_budget65(input), 1, &checks) ||
             !expect("od_budget128", od_budget128(input), 1, &checks) ||
             !expect("od_budget129", od_budget129(input), 1, &checks) ||
+            !expect("od_cld", od_cld(input), 1, &checks) ||
+            !expect("od_std", od_std(input), 1, &checks) ||
             !expect("od_adjacent_root", od_adjacent_root(input), 1, &checks) ||
             !expect("od_adjacent_external", od_adjacent_external(input), 0, &checks) ||
             !expect("od_call_root", od_call_root(input), 0, &checks) ||

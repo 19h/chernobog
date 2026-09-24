@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "instruction_reference": {
+    "cld": "https://cdrdv2-public.intel.com/782156/325383-sdm-vol-2abcd.pdf",
+    "std": "https://cdrdv2-public.intel.com/774492/325383-sdm-vol-2abcd.pdf",
+    "tracked_status_mask": "0x8d5"
+  },
+  "sources_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "18a665e8f69a3ba9caf8309b6e9532e2ba5ac011bceef82b4ba53c2a180f3c34",
+    "tests/vmp_native/dataflow.S": "bd3858827ca40cc6193e615929047651dfc60add60c256b09a6ac26d06d995e1",
+    "tests/vmp_native/dataflow_main.c": "e60c6b989d2b573e6a61160211c24c9d2476ee8125a11d979b0b8f63fd42bf91",
+    "tests/vmp_native/ownerless_dataflow.S": "0672805b786c4874db2488f44d8b91bd54941d10afe9aca6ef5a8a2c69a30959",
+    "tests/vmp_native/ownerless_dataflow.c": "49179d42de4f0c91070c1a965343672017fe5d12f163f00b8949dbbea245094e",
+    "tests/ida_dataflow_probe.py": "901fc770b258297b49a312bfcf7e637eb858050c9e781395d6ec2f2c7454063a",
+    "tests/ida_ownerless_dataflow_probe.py": "d12c780c6a7c258554363110afa05183bf90572a40123085cf5c9c32edbfe6f8",
+    "tests/run_native_dataflow.py": "b8e24deebf7cf836abd1941d3665a2442add638c2be26dc2c32ec3ff8f7df3f3",
+    "tests/run_ownerless_dataflow.py": "91a6ce5cdbe6743d373c3af389bfdd2b2627d729805aa1c865165600fe9ba3bf"
+  },
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "plugins_sha256": {
+    "prior": "6c49d3c7539c0368411361c377134023dac99030f576af3d535b23107cdf00e5",
+    "new_build": "aba4efed3aee9b1c419b93d2adf22569b209499b55820ac3f8a745b2fec7ad39"
+  },
+  "matched_x64": {
+    "owned_binary_sha256": "a10eff726c66aa9f55c2f49e57907768c4ae12d038d59ec84e235c9b596d2172",
+    "owned_probe_sha256": "901fc770b258297b49a312bfcf7e637eb858050c9e781395d6ec2f2c7454063a",
+    "owned_prior_report": "build/vmp-direction-status-prior-owned/dataflow_analysis.json",
+    "owned_prior_report_sha256": "95a84315db2b1ee19a8977eb721bf11fabec22604317899343e87312f11e1f1a",
+    "owned_prior_errors": ["df_direction exact admission"],
+    "owned_new_report": "build/vmp-direction-status-fixed-owned/dataflow_analysis.json",
+    "owned_new_report_sha256": "e75bc752e5cdf84a469aefa2311a2d0a9885fa3308c72c46b6d208b892b6716d",
+    "ownerless_binary_sha256": "b02551c80e073dfde2f14e534948d0e856468c8d37ec609e7b3dfbb7d5120ecf",
+    "ownerless_probe_sha256": "d12c780c6a7c258554363110afa05183bf90572a40123085cf5c9c32edbfe6f8",
+    "ownerless_prior_report": "build/vmp-direction-status-prior-ownerless/ownerless_dataflow_analysis.json",
+    "ownerless_prior_report_sha256": "a8cc62da9f69d24956a4f1cedab15a4f54cf4d0f8dd1858e82a6d7db1da37ae0",
+    "ownerless_prior_errors": ["od_cld preserves arithmetic flags condition", "od_std preserves arithmetic flags condition"],
+    "ownerless_new_report": "build/vmp-direction-status-fixed-ownerless/ownerless_dataflow_analysis.json",
+    "ownerless_new_report_sha256": "087f1734dcabeea58aa3f663a5ecdae4769f28b1207602620ac15801e43e0122"
+  },
+  "fixed_both_architectures": {
+    "owned_report": "build/vmp-direction-status-fixed-owned/dataflow_analysis.json",
+    "ownerless_report": "build/vmp-direction-status-fixed-ownerless/ownerless_dataflow_analysis.json",
+    "architectures": ["x86_64", "i386"],
+    "owned_native_checks_per_architecture": 3070,
+    "owned_ida_assertions_per_architecture": 56,
+    "ownerless_native_checks_per_architecture": 4094,
+    "ownerless_ida_assertions_per_architecture": 352,
+    "corrupted_ownerless_oracle_rejected": true,
+    "linux32_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654"
+  },
+  "supplied_protected_control": {
+    "input": "samples/foo_x86_vmp",
+    "input_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "run": "build/vmp-direction-protected-supplied/run.json",
+    "run_sha256": "ce5324f45c93ad2b392af9576ca8b5a3ff2e5e508c06a0b2b55eaf5289e5bc57",
+    "capture": "build/vmp-direction-protected-supplied/protected_region.json",
+    "capture_sha256": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "nodes": 75,
+    "unresolved_records": 3,
+    "proved_records": 0,
+    "idb_inventory_unchanged": true
+  },
+  "ctest": {
+    "complete_rerun": "21/21",
+    "initial_concurrent_failure": "chernobog.vmp_corpus: PermissionError in run_vmp_corpus.execute killpg",
+    "isolated_failing_suite_rerun": "1/1"
+  }
+}
