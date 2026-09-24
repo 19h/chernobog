@@ -207,7 +207,7 @@ struct State
     std::array<Word, 16> regs{};
     // Only words established by this single-entry replay are retained. No
     // initial stack memory or absolute stack address is assumed known.
-    std::vector<std::optional<uint64_t>> stack;
+    std::vector<Word> stack;
 
     void join(const State &other)
     {
@@ -216,18 +216,23 @@ struct State
             regs[i].join(other.regs[i]);
         // Both vectors describe a suffix above otherwise unknown stack bytes.
         const size_t count = std::min(stack.size(), other.stack.size());
-        std::vector<std::optional<uint64_t>> suffix(count);
+        std::vector<Word> suffix(count);
         for (size_t i = 0; i < count; ++i)
-            if (stack[stack.size() - count + i] == other.stack[other.stack.size() - count + i])
-                suffix[i] = stack[stack.size() - count + i];
+        {
+            suffix[i] = stack[stack.size() - count + i];
+            suffix[i].join(other.stack[other.stack.size() - count + i]);
+        }
         stack = std::move(suffix);
     }
 
     bool operator==(const State &other) const
     {
         if (flags.known != other.flags.known || flags.value != other.flags.value ||
-            stack != other.stack)
+            stack.size() != other.stack.size())
             return false;
+        for (size_t i = 0; i < stack.size(); ++i)
+            if (stack[i].known != other.stack[i].known || stack[i].value != other.stack[i].value)
+                return false;
         for (size_t i = 0; i < regs.size(); ++i)
             if (regs[i].known != other.regs[i].known || regs[i].value != other.regs[i].value)
                 return false;
@@ -330,8 +335,9 @@ struct State
         {
         case NN_mov:
             write(insn.Op1,
-                  stack_top(insn, insn.Op2) ? (stack.empty() ? std::nullopt : stack.back())
-                                            : read(insn.Op2, width),
+                  stack_top(insn, insn.Op2)
+                      ? (stack.empty() ? std::nullopt : stack.back().read(word_bits))
+                      : read(insn.Op2, width),
                   is64);
             return;
         case NN_movzx:
@@ -392,11 +398,13 @@ struct State
             if (exchange_reg != nullptr)
             {
                 const auto value = read(*exchange_reg);
-                const auto old_top = stack.empty() ? std::nullopt : stack.back();
+                const auto old_top = stack.empty() ? std::nullopt : stack.back().read(word_bits);
+                Word replacement;
+                replacement.write(word_bits, 0, value, is64);
                 if (stack.empty())
-                    stack.push_back(value);
+                    stack.push_back(replacement);
                 else
-                    stack.back() = value;
+                    stack.back() = replacement;
                 write(*exchange_reg, old_top, is64);
                 return;
             }
@@ -413,8 +421,9 @@ struct State
                 regs[4] = {};
                 return;
             }
-            auto value = stack_top(insn, insn.Op1) ? (stack.empty() ? std::nullopt : stack.back())
-                                                   : read(insn.Op1, word_bits);
+            auto value = stack_top(insn, insn.Op1)
+                             ? (stack.empty() ? std::nullopt : stack.back().read(word_bits))
+                             : read(insn.Op1, word_bits);
             // A long-mode PUSH has no imm64 encoding. Normalize the
             // decoder's immediate representation to its signed imm32
             // architectural value after any imm8 extension in read().
@@ -424,16 +433,44 @@ struct State
                 *value &= mask(word_bits);
             if (stack.size() == 64)
                 stack.erase(stack.begin());
-            stack.push_back(value);
+            Word pushed;
+            pushed.write(word_bits, 0, value, is64);
+            stack.push_back(pushed);
             adjust_sp(-int64_t(word_bits / 8), is64);
             return;
         }
         case NN_pushf:
         case NN_pushfd:
         case NN_pushfq:
-            stack.clear();
-            regs[4] = {};
+        {
+            if (!natad(insn) || (is64 ? !op64(insn) : !op32(insn)))
+            {
+                stack.clear();
+                regs[4] = {};
+                return;
+            }
+            Word pushed;
+            for (const auto [abstract_bit, architectural_bit] :
+                 {std::pair<uint8_t, unsigned>{CF, 0},
+                  {PF, 2},
+                  {AF, 4},
+                  {ZF, 6},
+                  {SF, 7},
+                  {OF, 11}})
+            {
+                if (const auto bit = flags.get(abstract_bit))
+                {
+                    pushed.known |= uint64_t{1} << architectural_bit;
+                    if (*bit)
+                        pushed.value |= uint64_t{1} << architectural_bit;
+                }
+            }
+            if (stack.size() == 64)
+                stack.erase(stack.begin());
+            stack.push_back(pushed);
+            adjust_sp(-int64_t(word_bits / 8), is64);
             return;
+        }
         case NN_pop:
         {
             if (insn.Op1.type != o_reg || !natad(insn) || (is64 ? !op64(insn) : !op32(insn)))
@@ -443,11 +480,39 @@ struct State
                 regs[4] = {};
                 return;
             }
-            const auto value = stack.empty() ? std::nullopt : stack.back();
+            const auto value = stack.empty() ? std::nullopt : stack.back().read(word_bits);
             if (!stack.empty())
                 stack.pop_back();
             adjust_sp(int64_t(word_bits / 8), is64);
             write(insn.Op1, value, is64);
+            return;
+        }
+        case NN_popf:
+        case NN_popfd:
+        case NN_popfq:
+        {
+            if (!natad(insn) || (is64 ? !op64(insn) : !op32(insn)))
+            {
+                stack.clear();
+                regs[4] = {};
+                flags = {};
+                return;
+            }
+            const Word popped = stack.empty() ? Word{} : stack.back();
+            if (!stack.empty())
+                stack.pop_back();
+            adjust_sp(int64_t(word_bits / 8), is64);
+            flags = {};
+            for (const auto [abstract_bit, architectural_bit] :
+                 {std::pair<uint8_t, unsigned>{CF, 0},
+                  {PF, 2},
+                  {AF, 4},
+                  {ZF, 6},
+                  {SF, 7},
+                  {OF, 11}})
+                if (popped.known & (uint64_t{1} << architectural_bit))
+                    flags.set(abstract_bit,
+                              (popped.value & (uint64_t{1} << architectural_bit)) != 0);
             return;
         }
         case NN_nop:
@@ -480,7 +545,7 @@ struct State
         const auto op = operation(insn.itype);
         if (op == Operation::unknown)
         {
-            // Covers implicit writes, calls, POPF, and unsupported instructions.
+            // Covers implicit writes, calls, and unsupported instructions.
             // No assumption about a destination list's completeness is needed.
             *this = {};
             return;

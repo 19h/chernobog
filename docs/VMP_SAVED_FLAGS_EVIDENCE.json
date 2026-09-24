@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "scope": "saved x86 status flags in bounded native stack replay",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "d4aba97ad718c94fd01207c9aec892926e75cabf23ec4294097314e4833f9540",
+    "tests/vmp_native/dataflow.S": "8d9b69932ea3446a3d0e81507c8017e474b078152f6bd6f389983eadae15b9be",
+    "tests/vmp_native/dataflow_main.c": "a5b463b8d02c6de7a33c4f558621f7760ef7fd4e5e9e82fa75720a19f5cc30e9",
+    "tests/ida_dataflow_probe.py": "be194741e351c95b7601fdb1209c58e5626b0a957dc720073fd45467861911b0",
+    "tests/run_native_dataflow.py": "a372e493ddf5524d785518ed00f58a2d63da98939e856950ecb60a5db30a8da4"
+  },
+  "tools": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "linux32_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+    "prior_installed_plugin_sha256": "d27405fa86ed6e36a18fac705b4e6babb909a8ad6ef0d1838f2ece5757e4962a",
+    "new_built_plugin_sha256": "6befcb43a4caff431580fc3025233562b4466567233e94e2f06dc3ba6ffa9947"
+  },
+  "matched_fixtures": {
+    "x86_64_sha256": "bfa1de3e44b20d59654d47999c7e89265f0afef0fd695eeefdb91e6c203475d9",
+    "i386_sha256": "a5457b6e2a4f077494c3f4636b6f372481f9ca4d922c7583f84d82e6cbc17669"
+  },
+  "results": {
+    "native_checks_per_architecture": 4606,
+    "new_ida_checks_per_architecture": 67,
+    "prior_missing_facts_per_architecture": 3,
+    "new_proved_facts_per_architecture": 3,
+    "negative_controls_per_architecture": 2,
+    "ctest_passed": 21,
+    "protected_nodes": 75,
+    "protected_edges": 77,
+    "protected_unresolved": 3
+  },
+  "raw_report_sha256": {
+    "build/vmp-popf-final-both/dataflow_analysis.json": "0f0acea8f3c658bf073b48276f1eb51c2cac3e35287795dc379ab89b7fdc773a",
+    "build/vmp-popf-final-both/x86_64/inspection/dataflow.json": "32c7e0177ab7dbd02da468e4cb5f80efd47863fd439c460ea347b3ff10dd56ac",
+    "build/vmp-popf-final-both/i386/inspection/dataflow.json": "67c851d374fdda0abdfcc433419c163f976381ec9d73ea85f9edf8c273ec103d",
+    "build/vmp-popf-prior-final-x64/dataflow.json": "2f67f1c5bb5ca81a6a07affe1c12f22e4782dbb3be2789ac6ab30040d1f29a34",
+    "build/vmp-popf-prior-final-i386/dataflow.json": "8bad99a0d2b45f4743def0dea71f4fc234bd9f5167c86669b1a30700f41e5795",
+    "build/vmp-popf-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/Testing/Temporary/LastTest.log": "a2066ad1114d8f0810f3a979858f671d258047a0e197efe440d5a6bf1077ebc1"
+  }
+}

@@ -60,6 +60,100 @@ BEGIN NAME(df_direction)
     cld
 2:  RESULT setb
 
+BEGIN NAME(df_flags_saved)
+    stc
+#ifdef __i386__
+    pushfl
+#else
+    pushfq
+#endif
+    clc
+#ifdef __i386__
+    popfl
+#else
+    popfq
+#endif
+    RESULT setb
+
+BEGIN NAME(df_flags_full)
+    movl $0x7fffffff, %eax
+    addl $1, %eax
+#ifdef __i386__
+    pushfl
+#else
+    pushfq
+#endif
+    xorl %eax, %eax
+#ifdef __i386__
+    popfl
+#else
+    popfq
+#endif
+    RESULT seto
+
+BEGIN NAME(df_flags_status)
+    movl %ecx, %eax
+    subl $0x55, %eax
+#ifdef __i386__
+    pushfl
+    popl %edx
+    pushfl
+#else
+    pushfq
+    popq %rdx
+    pushfq
+#endif
+    clc
+#ifdef __i386__
+    popfl
+    pushfl
+    popl %eax
+#else
+    popfq
+    pushfq
+    popq %rax
+#endif
+    xorl %edx, %eax
+    andl $0x8d5, %eax
+    ret
+
+BEGIN NAME(df_flags_literal)
+    push $1
+#ifdef __i386__
+    popfl
+#else
+    popfq
+#endif
+    RESULT setb
+
+BEGIN NAME(df_flags_overwrite)
+    stc
+#ifdef __i386__
+    pushfl
+    movl $0, (%esp)
+#else
+    pushfq
+    movq $0, (%rsp)
+#endif
+    clc
+#ifdef __i386__
+    popfl
+#else
+    popfq
+#endif
+    RESULT setb
+
+BEGIN NAME(df_flags_dynamic)
+    andl $1, %ecx
+#ifdef __i386__
+    pushl %ecx
+    popfl
+#else
+    pushq %rcx
+    popfq
+#endif
+    RESULT setb
+
 /* Native status-bit oracle: compare all six modeled flags around STD and CLD. */
 BEGIN NAME(df_direction_status)
     testl $1, %ecx
