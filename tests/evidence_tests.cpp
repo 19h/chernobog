@@ -1762,6 +1762,41 @@ void native_permuted_read_regressions()
     divergent.events.data[12].value = 'X';
     check(hybrid_consensus_native_read_strings(divergent).empty(),
           "same spatial span with different run value cannot reach consensus");
+    auto multisite = evidence;
+    unsigned occurrences[2][2] = {};
+    for (size_t index = 0; index < multisite.events.uses.size(); ++index)
+    {
+        auto &use = multisite.events.uses[index];
+        const unsigned channel = unsigned(use.offset) & 1;
+        use.site = 0x1200 + 0x10 * channel;
+        use.occurrence = ++occurrences[use.run_id - 1][channel];
+        multisite.events.data[index].from = use.site;
+    }
+    const auto combined = hybrid_consensus_native_read_strings(multisite);
+    check(
+        combined.size() == 1 && combined[0].value == "secret!" && combined[0].use.site == 0x1200 &&
+            combined[0].witnesses[0].occurrence == 2 && combined[0].witnesses[1].occurrence == 4 &&
+            combined[0].read_fragments[0].size() == 8 && combined[0].read_fragments[1].size() == 8,
+        "two exact read sites reconstruct one permuted heap span across runs");
+    auto unrelated = multisite;
+    auto extra = unrelated.events.uses.front();
+    extra.site = 0x1220;
+    extra.occurrence = 1;
+    extra.address = first_address + 24;
+    extra.offset = 24;
+    extra.bytes = {'Z'};
+    extra.sequence = 16;
+    unrelated.events.uses.push_back(extra);
+    unrelated.events.data.push_back(
+        {extra.site, extra.address, 'Z', 1, RAX_MEM_READ, DataScope::HEAP, 17, 1, 21});
+    check(hybrid_consensus_native_read_strings(unrelated).empty(),
+          "an unrelated same-allocation read leaves a spatial hole and vetoes the mixed group");
+    auto divergent_site = multisite;
+    divergent_site.events.uses[8].site = 0x1230;
+    divergent_site.events.uses[8].occurrence = 1;
+    divergent_site.events.data[8].from = 0x1230;
+    check(hybrid_consensus_native_read_strings(divergent_site).empty(),
+          "one changed source site cannot match the other run's spatial read shape");
 }
 
 int main(int argc, char **argv)

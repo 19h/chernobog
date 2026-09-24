@@ -26,6 +26,7 @@ struct PermutedGroup
     bool invalid = false;
 };
 using PermutedKey = std::tuple<uint64_t, uint64_t, uint64_t, uint64_t>;
+using AllocationGroupKey = std::tuple<uint64_t, uint64_t, uint64_t>;
 using Endpoint = std::tuple<DataScope, uint64_t, uint64_t, uint64_t>;
 Endpoint endpoint(const UseSnapshot &use, uint64_t address)
 {
@@ -284,6 +285,7 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
                   [](const auto *a, const auto *b) { return a->sequence < b->sequence; });
         std::map<Endpoint, Stream> pending;
         std::map<PermutedKey, PermutedGroup> permuted;
+        std::map<AllocationGroupKey, PermutedGroup> multisite;
         uint64_t previous = 0;
         bool first = true;
         size_t retained = 0;
@@ -291,10 +293,15 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
         const auto retain = [&](Stream value)
         {
             UseSnapshot semantic_use = value.use;
-            // A stream's stable occurrence is its first executed read. The
-            // lowest-address read can execute at a different position in each
-            // run when an indexed loop changes its read permutation.
-            semantic_use.occurrence = value.parts.front().occurrence;
+            // The occurrence must refer to the anchor site, even when a read
+            // at another site executed first. The lowest-address read can
+            // execute at a different position in each run.
+            const auto first_at_site =
+                std::find_if(value.parts.begin(), value.parts.end(),
+                             [&](const auto &part) { return part.site == value.use.site; });
+            if (first_at_site == value.parts.end())
+                return false;
+            semantic_use.occurrence = first_at_site->occurrence;
             std::vector<const UseSnapshot *> spatial;
             spatial.reserve(value.parts.size());
             for (const auto &part : value.parts)
@@ -325,53 +332,66 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
                 ambiguous.insert(key);
             return true;
         };
+        const auto retain_group = [&](PermutedGroup &group, bool require_multiple_sites)
+        {
+            const auto &parts = group.stream.parts;
+            if (group.invalid || parts.size() < 2 || group.bytes.empty())
+                return true;
+            if (require_multiple_sites &&
+                std::all_of(parts.begin(), parts.end(),
+                            [&](const auto &part) { return part.site == parts.front().site; }))
+                return true;
+            bool ascending = true;
+            uint64_t next_address = parts.front().address;
+            for (const auto &part : parts)
+            {
+                if (part.address != next_address || next_address > UINT64_MAX - part.observed_size)
+                {
+                    ascending = false;
+                    break;
+                }
+                next_address += part.observed_size;
+            }
+            if (ascending)
+                return true; // The existing forward stream owns this shape.
+            const uint64_t start = group.bytes.begin()->first;
+            const uint64_t last = group.bytes.rbegin()->first;
+            if (last == UINT64_MAX || last - start + 1 != group.bytes.size() ||
+                group.bytes.rbegin()->second != 0)
+                return true;
+            if (std::any_of(group.bytes.begin(), std::prev(group.bytes.end()),
+                            [](const auto &entry) { return entry.second == 0; }))
+                return true;
+            const auto anchor = std::find_if(parts.begin(), parts.end(), [start](const auto &part)
+                                             { return part.address == start; });
+            if (anchor == parts.end())
+                return true;
+            Stream stream;
+            stream.use = *anchor;
+            stream.use.producer = UseProducer::EXECUTED_READ_STREAM;
+            stream.use.bytes.clear();
+            stream.use.observed_size = group.bytes.size();
+            stream.parts = parts; // Execution order is kept for source witnesses.
+            for (const auto &entry : group.bytes)
+                stream.use.bytes.push_back(entry.second);
+            return retain(std::move(stream));
+        };
         const auto finish_permuted = [&]()
         {
             for (auto &[key, group] : permuted)
             {
                 (void)key;
-                const auto &parts = group.stream.parts;
-                if (group.invalid || parts.size() < 2 || group.bytes.empty())
-                    continue;
-                bool ascending = true;
-                uint64_t next_address = parts.front().address;
-                for (const auto &part : parts)
-                {
-                    if (part.address != next_address ||
-                        next_address > UINT64_MAX - part.observed_size)
-                    {
-                        ascending = false;
-                        break;
-                    }
-                    next_address += part.observed_size;
-                }
-                if (ascending)
-                    continue; // The existing forward stream owns this shape.
-                const uint64_t start = group.bytes.begin()->first;
-                const uint64_t last = group.bytes.rbegin()->first;
-                if (last == UINT64_MAX || last - start + 1 != group.bytes.size() ||
-                    group.bytes.rbegin()->second != 0)
-                    continue;
-                if (std::any_of(group.bytes.begin(), std::prev(group.bytes.end()),
-                                [](const auto &entry) { return entry.second == 0; }))
-                    continue;
-                const auto anchor =
-                    std::find_if(parts.begin(), parts.end(),
-                                 [start](const auto &part) { return part.address == start; });
-                if (anchor == parts.end())
-                    continue;
-                Stream stream;
-                stream.use = *anchor;
-                stream.use.producer = UseProducer::EXECUTED_READ_STREAM;
-                stream.use.bytes.clear();
-                stream.use.observed_size = group.bytes.size();
-                stream.parts = parts; // Execution order is kept for source witnesses.
-                for (const auto &entry : group.bytes)
-                    stream.use.bytes.push_back(entry.second);
-                if (!retain(std::move(stream)))
+                if (!retain_group(group, false))
+                    return false;
+            }
+            for (auto &[key, group] : multisite)
+            {
+                (void)key;
+                if (!retain_group(group, true))
                     return false;
             }
             permuted.clear();
+            multisite.clear();
             return true;
         };
         for (const auto *pointer : records.uses)
@@ -403,29 +423,33 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
                     ambiguous.insert({use.semantic_key(), {{use.site, use.observed_size}}});
                 pending.clear();
                 permuted.clear();
+                multisite.clear();
                 continue;
             }
             if (bindings && !retain(Stream{use, {use}, {}}))
                 return {};
             if (use.scope == DataScope::HEAP)
             {
-                const PermutedKey key{use.context, use.site, use.allocation_id, use.generation};
-                auto &group = permuted[key];
-                if (group.stream.parts.empty())
-                    group.stream.use = use;
-                else if (!uninterrupted(group.stream, use.sequence, records))
-                    group.invalid = true;
-                if (!group.invalid &&
-                    use.bytes.size() > TemporalMemory::snapshot_limit - group.bytes.size())
-                    group.invalid = true;
-                if (!group.invalid)
-                    for (size_t index = 0; index < use.bytes.size(); ++index)
-                        if (!group.bytes.emplace(use.address + index, use.bytes[index]).second)
-                        {
-                            group.invalid = true;
-                            break;
-                        }
-                group.stream.parts.push_back(use);
+                const auto append = [&](PermutedGroup &group)
+                {
+                    if (group.stream.parts.empty())
+                        group.stream.use = use;
+                    else if (!uninterrupted(group.stream, use.sequence, *stream_records))
+                        group.invalid = true;
+                    if (!group.invalid &&
+                        use.bytes.size() > TemporalMemory::snapshot_limit - group.bytes.size())
+                        group.invalid = true;
+                    if (!group.invalid)
+                        for (size_t index = 0; index < use.bytes.size(); ++index)
+                            if (!group.bytes.emplace(use.address + index, use.bytes[index]).second)
+                            {
+                                group.invalid = true;
+                                break;
+                            }
+                    group.stream.parts.push_back(use);
+                };
+                append(permuted[{use.context, use.site, use.allocation_id, use.generation}]);
+                append(multisite[{use.context, use.allocation_id, use.generation}]);
             }
             Stream stream;
             if (const auto found = pending.find(endpoint(use, use.address)); found != pending.end())

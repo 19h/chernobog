@@ -2508,7 +2508,34 @@ int ctree_string_decrypt_handler_t::annotate_runtime_use_strings(cfunc_t *cfunc)
     std::map<uint64_t, std::vector<const candidate_t *>> sites;
     for (const auto &candidate : candidates)
         if (candidate.use.context == uint64_t(cfunc->entry_ea))
-            sites[candidate.use.site].push_back(&candidate);
+        {
+            std::set<uint64_t> read_sites{candidate.use.site};
+            if (!candidate.read_fragments.empty())
+            {
+                std::set<uint64_t> common;
+                bool first_run = true;
+                for (const auto &fragments : candidate.read_fragments)
+                {
+                    std::set<uint64_t> current;
+                    for (const auto &fragment : fragments)
+                        current.insert(fragment.site);
+                    if (first_run)
+                    {
+                        common = std::move(current);
+                        first_run = false;
+                    }
+                    else
+                        for (auto iterator = common.begin(); iterator != common.end();)
+                            if (!current.count(*iterator))
+                                iterator = common.erase(iterator);
+                            else
+                                ++iterator;
+                }
+                read_sites.insert(common.begin(), common.end());
+            }
+            for (const auto site : read_sites)
+                sites[site].push_back(&candidate);
+        }
 
     struct annotator_t : public ctree_visitor_t
     {
@@ -2516,6 +2543,7 @@ int ctree_string_decrypt_handler_t::annotate_runtime_use_strings(cfunc_t *cfunc)
         const std::map<uint64_t, std::vector<const candidate_t *>> &sites;
         std::map<int, std::set<qstring>> lines;
         std::set<int> omitted;
+        std::set<const candidate_t *> annotated;
         annotator_t(cfunc_t *cf, const std::map<uint64_t, std::vector<const candidate_t *>> &values)
             : ctree_visitor_t(CV_FAST), function(cf), sites(values)
         {
@@ -2530,6 +2558,8 @@ int ctree_string_decrypt_handler_t::annotate_runtime_use_strings(cfunc_t *cfunc)
                 call->op == cot_call && runtime_use_indirect_call_site(call->ea);
             for (const auto *candidate : found->second)
             {
+                if (annotated.count(candidate))
+                    continue;
                 const auto &use = candidate->use;
                 const bool native =
                     use.producer == chernobog::hybrid::UseProducer::EXECUTED_READ ||
@@ -2599,6 +2629,7 @@ int ctree_string_decrypt_handler_t::annotate_runtime_use_strings(cfunc_t *cfunc)
                         " [alloc 0x%llX#%llu, offset %lld]", (unsigned long long)use.object_site,
                         (unsigned long long)use.object_occurrence, (long long)use.offset);
                 lines[y].insert(text);
+                annotated.insert(candidate);
             }
             return 0;
         }

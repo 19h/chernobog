@@ -78,3 +78,8 @@ remains open. QG4: byte/event limits, exact counts and complexity are stated.
 QG5: divergent values, malformed spans and writes retain veto behavior.
 QG6: local primary source, binaries, plugin, IDA and raw reports are hashed.
 QG7: remaining stream shapes and sorting cost are bounded above.
+
+Subsequent implementation: exact reads from two static sites within one
+allocation generation are now grouped and displayed through a surviving exact
+fragment-site ctree expression. See `VMP_MULTISITE_READ_STREAMS.md`. The
+hashes and measurements above remain the historical variable-order checkpoint.
