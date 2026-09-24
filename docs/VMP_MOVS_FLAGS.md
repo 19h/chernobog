@@ -2,7 +2,10 @@
 
 This records the historical MOVS checkpoint. The later plain long-mode
 `CMPS` implementation proves the equal-address control, while i386 still
-abstains; see `VMP_CMPS_LOCAL_FLAGS.md`.
+abstains; see `VMP_CMPS_LOCAL_FLAGS.md`. A later plain long-mode `MOVS`
+transfer retains exact disjoint local bytes and copies known source elements;
+see `VMP_MOVS_LOCAL_MEMORY.md`. The all-memory invalidation below describes
+this historical checkpoint.
 
 Review row 2a calls for per-flag transfer through instructions that preserve
 the modeled status bits. Intel specifies that `MOVS`/`MOVSB`/`MOVSW`/

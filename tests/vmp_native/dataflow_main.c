@@ -57,9 +57,16 @@ extern int df_stos_qword_reload(int);
 extern int df_rep_scas_count_ambiguity(int);
 extern int df_stos_register_target(int), df_lods_memory_target(int);
 extern int df_rep_movs_alias(int, void *);
+extern int df_movs_disjoint_target(int), df_movs_unknown_source_disjoint_target(int);
+extern int df_movs_self_copy_target(int), df_rep_movs_disjoint_target(int);
+extern int df_movs_byte_reload(int), df_movs_overlap_word_reload(int);
+extern int df_movs_dword_reload(int), df_movs_initial_source_unknown(int);
 extern int df_rep_movs_register_target(int), df_movs_plain_count_target(int);
 extern int df_rep_movs_count_unknown(int);
 extern int df_memory_target(void);
+#ifndef __i386__
+extern int df_movs_qword_reload(int);
+#endif
 
 int main(void)
 {
@@ -106,6 +113,11 @@ int main(void)
             df_memory_alu_flags_initial(input) != 1 || df_rep_movs_cf(input) != 1 ||
             df_rep_movs_zf(input) != 1 || df_movs_plain_cf(input) != 1 ||
             df_cmps_flags_changed(input) != 0 || df_rep_movs_alias(input, &disjoint) != 7 ||
+            df_movs_disjoint_target(input) != 7 ||
+            df_movs_unknown_source_disjoint_target(input) != 7 ||
+            df_movs_self_copy_target(input) != 7 || df_rep_movs_disjoint_target(input) != 7 ||
+            df_movs_byte_reload(input) != 1 || df_movs_overlap_word_reload(input) != 1 ||
+            df_movs_dword_reload(input) != 1 || df_movs_initial_source_unknown(input) != 1 ||
             df_cmps_same_zf(input) != 1 || df_cmps_local_cf_true(input) != 1 ||
             df_cmps_local_cf_false(input) != 0 || df_cmps_word_cf(input) != 1 ||
             df_cmps_dword_zf(input) != 1 || df_cmps_initial_unknown(input) != 1 ||
@@ -127,12 +139,12 @@ int main(void)
             df_stos_unknown_overlap_condition(input) != (input == 0x5a) ||
             df_lods_memory_target(input) != 7)
             return 1;
-        checks += 103;
+        checks += 111;
 #ifndef __i386__
         if (df_scas_qword_zf(input) != 1 || df_cmps_qword_zf(input) != 1 ||
-            df_stos_qword_reload(input) != 1)
+            df_stos_qword_reload(input) != 1 || df_movs_qword_reload(input) != 1)
             return 1;
-        checks += 3;
+        checks += 4;
 #endif
         if (input > 0)
         {

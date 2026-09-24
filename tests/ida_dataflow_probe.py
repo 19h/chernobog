@@ -274,6 +274,9 @@ try:
     stos_local_proofs = (
         os.environ.get("CHERNOBOG_STOS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
     )
+    movs_local_proofs = (
+        os.environ.get("CHERNOBOG_MOVS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
+    )
     expected = {
         "df_equal": True,
         "df_different": False,
@@ -319,6 +322,10 @@ try:
         "df_stos_word_reload": stos_local_proofs,
         "df_stos_dword_reload": stos_local_proofs,
         "df_stos_unknown_overlap_condition": False,
+        "df_movs_byte_reload": movs_local_proofs,
+        "df_movs_overlap_word_reload": movs_local_proofs,
+        "df_movs_dword_reload": movs_local_proofs,
+        "df_movs_initial_source_unknown": False,
         "df_loop": True,
         "df_loop_changes": False,
         "df_stack": True,
@@ -329,6 +336,7 @@ try:
         expected["df_scas_qword_zf"] = scas_proofs
         expected["df_cmps_qword_zf"] = cmps_proofs
         expected["df_stos_qword_reload"] = stos_local_proofs
+        expected["df_movs_qword_reload"] = movs_local_proofs
     for name, proved in expected.items():
         ea = address(name)
         reanalyze(ea)
@@ -542,6 +550,10 @@ try:
         ("df_memory_alu_rmw_initial", False),
         ("df_memory_alu_rmw_alias", False),
         ("df_rep_movs_alias", False),
+        ("df_movs_disjoint_target", movs_local_proofs),
+        ("df_movs_unknown_source_disjoint_target", movs_local_proofs),
+        ("df_movs_self_copy_target", movs_local_proofs),
+        ("df_rep_movs_disjoint_target", False),
         ("df_stos_alias", False),
         ("df_stos_disjoint_target", stos_local_proofs),
         ("df_stos_unknown_value_disjoint_target", stos_local_proofs),

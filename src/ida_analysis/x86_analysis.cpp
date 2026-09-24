@@ -432,6 +432,27 @@ struct State
             algebra == Operation::unknown ? std::nullopt : algebra_read(insn.Op1);
         const auto algebra_right =
             algebra == Operation::unknown ? std::nullopt : algebra_read(insn.Op2);
+        // MOVS reads its source before writing its destination. Preserve that
+        // pre-write value when the two exact ranges overlap.
+        std::optional<uint64_t> movs_destination;
+        std::optional<uint64_t> movs_value;
+        const bool plain_movs = insn.itype == NN_movs && !(insn.auxpref & (aux_rep | aux_repne));
+        const bool matched_movs =
+            insn.Op1.type == o_phrase && insn.Op2.type == o_phrase &&
+            x86_base_reg(insn, insn.Op1) == R_di && x86_index_reg(insn, insn.Op1) == R_none &&
+            x86_base_reg(insn, insn.Op2) == R_si && x86_index_reg(insn, insn.Op2) == R_none &&
+            get_dtype_size(insn.Op2.dtype) == get_dtype_size(insn.Op1.dtype);
+        if (plain_movs && is64 && valid_width(width) && matched_movs)
+        {
+            const auto destination = memory_address(insn, insn.Op1);
+            if (destination && writable_range(*destination, width / 8, word_bits))
+            {
+                movs_destination = destination;
+                const auto source = memory_address(insn, insn.Op2);
+                if (source && readable_range(*source, width / 8, word_bits))
+                    movs_value = read_memory(*source, width);
+            }
+        }
         const bool local_memory_store =
             insn.itype == NN_mov &&
             (insn.Op1.type == o_mem || insn.Op1.type == o_displ || insn.Op1.type == o_phrase) &&
@@ -766,12 +787,18 @@ struct State
             // DF is outside this state; the six tracked status flags are unchanged.
             return;
         case NN_movs:
-            // MOVS, including REP MOVS, leaves the six status flags unchanged.
-            // The implicit destination may alias any retained memory or stack
-            // word. After a normally completed, natural-address-size REP MOVS,
-            // the full count register is zero, regardless of its input value.
+            // A plain long-mode MOVS writes one exact destination element.
+            // An unknown or repeated destination may alias every retained
+            // byte. MOVS leaves the six status flags unchanged.
             stack.clear();
-            memory.clear();
+            if (movs_destination)
+            {
+                invalidate_memory(movs_destination, width / 8);
+                if (movs_value)
+                    store_memory(*movs_destination, width, *movs_value);
+            }
+            else
+                memory.clear();
             regs[6] = {};
             regs[7] = {};
             finish_unconditional_repeat(insn, is64);

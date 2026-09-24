@@ -501,6 +501,9 @@ def main():
         stos_local_proofs = (
             os.environ.get("CHERNOBOG_STOS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
         )
+        movs_local_proofs = (
+            os.environ.get("CHERNOBOG_MOVS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
+        )
         value = ida_expr.idc_value_t()
         assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
         ida_auto.auto_wait()
@@ -623,11 +626,16 @@ def main():
             ("df_stos_word_reload", True if stos_local_proofs else None),
             ("df_stos_dword_reload", True if stos_local_proofs else None),
             ("df_stos_unknown_overlap_condition", None),
+            ("df_movs_byte_reload", True if movs_local_proofs else None),
+            ("df_movs_overlap_word_reload", True if movs_local_proofs else None),
+            ("df_movs_dword_reload", True if movs_local_proofs else None),
+            ("df_movs_initial_source_unknown", None),
         )
         if ida_ida.inf_is_64bit():
             condition_cases += (("df_scas_qword_zf", True if scas_proofs else None),)
             condition_cases += (("df_cmps_qword_zf", True if cmps_proofs else None),)
             condition_cases += (("df_stos_qword_reload", True if stos_local_proofs else None),)
+            condition_cases += (("df_movs_qword_reload", True if movs_local_proofs else None),)
         for name, expected in condition_cases:
             root, instructions = prepare_prefix(name)
             site = next(
@@ -761,6 +769,10 @@ def main():
             ("df_stos_unknown_value_disjoint_target", stos_local_proofs),
             ("df_rep_stos_disjoint_target", False),
             ("df_stos_overlap_known_target", stos_local_proofs),
+            ("df_movs_disjoint_target", movs_local_proofs),
+            ("df_movs_unknown_source_disjoint_target", movs_local_proofs),
+            ("df_movs_self_copy_target", movs_local_proofs),
+            ("df_rep_movs_disjoint_target", False),
         ):
             root, instructions = prepare_prefix(name)
             result = inspect(name, root)
@@ -783,6 +795,17 @@ def main():
                     and result["address_bits"] == 32
                 )
             )
+            if (
+                name
+                in (
+                    "df_movs_disjoint_target",
+                    "df_movs_unknown_source_disjoint_target",
+                    "df_movs_self_copy_target",
+                    "df_rep_movs_disjoint_target",
+                )
+                and result["address_bits"] == 32
+            ):
+                expected_pushes = 3
             check(name + " expected PUSH count", len(pushes) == expected_pushes)
             assert len(pushes) == expected_pushes
             row = row_at(result, pushes[-1].ea, "push-return")

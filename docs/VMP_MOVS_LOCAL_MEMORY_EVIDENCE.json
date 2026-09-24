@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "scope": "matched plain long-mode MOVS local-memory checkpoint; owned, ownerless, and one supplied protected root",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "48a5c747d2e54058cbede5671edf1553997639fd38e4ea29069a9b0fd5b7a553",
+    "tests/vmp_native/dataflow.S": "9a9abbd5949e7cc665ce002b2d6ada3fa288747d636f278899fe0a5391e3f91e",
+    "tests/vmp_native/dataflow_main.c": "d407a41cfaff7771971486f1e2392d93c4ba588dba30046d9515a4bbd99bbf13",
+    "tests/ida_dataflow_probe.py": "bbc6302e8b727e074bf9dbaf808aeb2cefd0e6740cfbd0e61aa56359f02ddd66",
+    "tests/ida_ownerless_dataflow_probe.py": "618d9c20b87f0689f7c6207c91a22e515579e17d2b3d607ac7dca24b8ee3c666",
+    "tests/run_native_dataflow.py": "ac70d4cf8bde1d53e1b6064cf2a815ff4c96ebb4153fb7b4f55a604c558a4287",
+    "tests/run_ownerless_dataflow.py": "b5e87651eb324f1aeb2b27b6ff2ff762faa4e89beeb50e9033bff8f7f93726e9",
+    "tests/score_native_edge_benchmark.py": "ad7a69dbbd8386122f30057ef38b7d4b5859f725a2851426b125e1d416f64725",
+    "tests/ida_protected_region_inspect.py": "b68a41d2011f232808974d7b155b84a43e4f13a8f3eb157a0d204cf6f04548d2"
+  },
+  "tool_sha256": {
+    "ida": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "llvm_nm": "42da2421bff98120a4a2857285db866bfc327fdcc8713b1a0e104a0b8550850f",
+    "prior_plugin": "abbe60fbddb60334ac061780ddca80e024c3375e9af19f5d88d8ff70031676e7",
+    "current_plugin": "537a6d18a0d14cb69b153f0bef38f30495870edb75061f80e83563be8bdde9a6"
+  },
+  "binary_sha256": {
+    "owned_x86_64": "cd6c304fe4c20208c0e115561616f18947ce3f22e8e368c9182d477bb32373a2",
+    "owned_i386": "e1eb56ab6d2f14522264da6e706a7c172b38b88a7a6c7038d725da569ec39628",
+    "ownerless_x86_64": "92762988eea390dbc20c8b1ad01b5ac3c1772732454073d9e13b994952817e6b",
+    "ownerless_i386": "f5fc6c891359b775f4d82445cc729a1096642f7b832a3d8b909bf7c5d9588786"
+  },
+  "protected_input_sha256": {
+    "samples/foo_x86_vmp": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "report_sha256": {
+    "build/vmp-movs-local-final-prior-owned/dataflow_analysis.json": "5550382028fce904381841ee741ee9903a710a9ddc334ae74455a4c746b077ca",
+    "build/vmp-movs-local-final-current-owned/dataflow_analysis.json": "09cfdc431bd97f73b3280d345359c12f6372ccffefe8d45e9202f3c16a565348",
+    "build/vmp-movs-local-final-prior-ownerless/ownerless_dataflow_analysis.json": "a7328d6fa8810cea07d7123dfefc97ed7424325f05db85c5326097a1dd218bd2",
+    "build/vmp-movs-local-final-current-ownerless/ownerless_dataflow_analysis.json": "175f872702d13128f429f1044b581efa73d32b12ef3f2b49fcd24791b739d80a",
+    "build/vmp-movs-local-final-prior-score/native_edge_benchmark.json": "a3496fd1ec477663de6699fd3a9b0b992d792137e9ead464c68093e956e49e99",
+    "build/vmp-movs-local-final-current-score/native_edge_benchmark.json": "4e95a879863cd47ae8855e09c2dae8e0c5cea5761c99e778173430129f042db6",
+    "build/vmp-movs-local-prior-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/vmp-movs-local-current-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa"
+  },
+  "matched_source_probe_binary_ida": true,
+  "condition_changes": {"owned_x86_64": 4, "ownerless_x86_64": 4, "owned_i386": 0, "ownerless_i386": 0},
+  "transfer_changes": {"owned_x86_64": 3, "ownerless_x86_64": 3, "owned_i386": 0, "ownerless_i386": 0},
+  "native_checks": {"owned_x86_64": 29950, "owned_i386": 28926, "ownerless_each": 4094},
+  "ida_assertions": {"owned_x86_64_prior": 369, "owned_x86_64_current": 377, "owned_i386_each": 331, "ownerless_x86_64_each": 1410, "ownerless_i386_each": 1370},
+  "edge_score": {
+    "oracle_edges_each": 44,
+    "prior_correct_x86_64_each": 33,
+    "current_correct_x86_64_each": 36,
+    "current_correct_i386_each": 30,
+    "false_each": 0,
+    "current_unresolved_x86_64_each": 5,
+    "current_unresolved_i386_each": 11
+  },
+  "protected_selected_root": {"nodes": 75, "edges": 77, "unresolved_records": 3, "prior_current_byte_equal": true},
+  "ctest_passed": 21
+}

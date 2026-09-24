@@ -1878,6 +1878,245 @@ BEGIN NAME(df_rep_movs_alias)
 #endif
     ret
 
+BEGIN NAME(df_movs_disjoint_target)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl $NAME(df_movs_source), %esi
+    movl $NAME(df_movs_dest), %edi
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    leaq NAME(df_movs_source)(%rip), %rsi
+    leaq NAME(df_movs_dest)(%rip), %rdi
+#endif
+    movb $0x5a, (CMPS_SI)
+    movsb
+#ifdef __i386__
+    movl (%esp), %edi
+    movl 4(%esp), %esi
+    leal 8(%esp), %esp
+    movl $NAME(df_memory_slot), %edx
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_movs_unknown_source_disjoint_target)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl $NAME(df_movs_initial_source), %esi
+    movl $NAME(df_movs_dest), %edi
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    leaq NAME(df_movs_initial_source)(%rip), %rsi
+    leaq NAME(df_movs_dest)(%rip), %rdi
+#endif
+    movsb
+#ifdef __i386__
+    movl (%esp), %edi
+    movl 4(%esp), %esi
+    leal 8(%esp), %esp
+    movl $NAME(df_memory_slot), %edx
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_movs_self_copy_target)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl %edx, %esi
+    movl %edx, %edi
+    movsl
+    movl (%esp), %edi
+    movl 4(%esp), %esi
+    leal 8(%esp), %esp
+    movl $NAME(df_memory_slot), %edx
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    movq %rdx, %rsi
+    movq %rdx, %rdi
+    movsq
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_rep_movs_disjoint_target)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl $NAME(df_movs_source), %esi
+    movl $NAME(df_movs_dest), %edi
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    leaq NAME(df_movs_source)(%rip), %rsi
+    leaq NAME(df_movs_dest)(%rip), %rdi
+#endif
+    movb $0x5a, (CMPS_SI)
+    andl $1, %ecx
+    rep movsb
+#ifdef __i386__
+    movl (%esp), %edi
+    movl 4(%esp), %esi
+    leal 8(%esp), %esp
+    movl $NAME(df_memory_slot), %edx
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_movs_byte_reload)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_movs_source), %esi
+    movl $NAME(df_movs_dest), %edi
+#else
+    leaq NAME(df_movs_source)(%rip), %rsi
+    leaq NAME(df_movs_dest)(%rip), %rdi
+#endif
+    movb $0x5a, (CMPS_SI)
+    movsb
+#ifdef __i386__
+    movl $NAME(df_movs_dest), %edx
+#else
+    leaq NAME(df_movs_dest)(%rip), %rdx
+#endif
+    movzbl (STOS_DX), %eax
+    cmpl $0x5a, %eax
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %edi
+    movl 4(%esp), %esi
+    leal 8(%esp), %esp
+#endif
+    ret
+
+BEGIN NAME(df_movs_overlap_word_reload)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_movs_overlap), %edx
+    movl %edx, %esi
+    leal 1(%edx), %edi
+#else
+    leaq NAME(df_movs_overlap)(%rip), %rdx
+    movq %rdx, %rsi
+    leaq 1(%rdx), %rdi
+#endif
+    movw $0x1234, (STOS_DX)
+    movsw
+    movzwl 1(STOS_DX), %eax
+    cmpl $0x1234, %eax
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %edi
+    movl 4(%esp), %esi
+    leal 8(%esp), %esp
+#endif
+    ret
+
+BEGIN NAME(df_movs_dword_reload)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_movs_source), %esi
+    movl $NAME(df_movs_dest), %edi
+#else
+    leaq NAME(df_movs_source)(%rip), %rsi
+    leaq NAME(df_movs_dest)(%rip), %rdi
+#endif
+    movl $0x12345678, (CMPS_SI)
+    movsl
+#ifdef __i386__
+    movl $NAME(df_movs_dest), %edx
+#else
+    leaq NAME(df_movs_dest)(%rip), %rdx
+#endif
+    movl (STOS_DX), %eax
+    cmpl $0x12345678, %eax
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %edi
+    movl 4(%esp), %esi
+    leal 8(%esp), %esp
+#endif
+    ret
+
+BEGIN NAME(df_movs_initial_source_unknown)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_movs_initial_source), %esi
+    movl $NAME(df_movs_dest), %edi
+#else
+    leaq NAME(df_movs_initial_source)(%rip), %rsi
+    leaq NAME(df_movs_dest)(%rip), %rdi
+#endif
+    movsb
+#ifdef __i386__
+    movl $NAME(df_movs_dest), %edx
+#else
+    leaq NAME(df_movs_dest)(%rip), %rdx
+#endif
+    movzbl (STOS_DX), %eax
+    cmpl $0x5a, %eax
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %edi
+    movl 4(%esp), %esi
+    leal 8(%esp), %esp
+#endif
+    ret
+
+#ifndef __i386__
+BEGIN NAME(df_movs_qword_reload)
+    leaq NAME(df_movs_source)(%rip), %rsi
+    leaq NAME(df_movs_dest)(%rip), %rdi
+    movq $0x12345678, (%rsi)
+    movsq
+    leaq NAME(df_movs_dest)(%rip), %rdx
+    movq (%rdx), %rax
+    cmpq $0x12345678, %rax
+    sete %al
+    movzbl %al, %eax
+    ret
+#endif
+
 BEGIN NAME(df_rep_movs_register_target)
 #ifdef __i386__
     movl $NAME(df_memory_target), %eax
@@ -2135,6 +2374,20 @@ NAME(df_scas_qword_dest):
 .globl NAME(df_stos_slot)
 NAME(df_stos_slot):
     .quad 0
+.p2align 3
+.globl NAME(df_movs_source)
+NAME(df_movs_source):
+    .quad 0
+.globl NAME(df_movs_dest)
+NAME(df_movs_dest):
+    .quad 0
+.globl NAME(df_movs_overlap)
+NAME(df_movs_overlap):
+    .quad 0
+    .quad 0
+.globl NAME(df_movs_initial_source)
+NAME(df_movs_initial_source):
+    .quad 0x5a
 .p2align 3
 .globl NAME(df_cmps_source)
 NAME(df_cmps_source):

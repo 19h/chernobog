@@ -538,6 +538,19 @@ edges and three unresolved facts. All 21 CTest suites pass. See
 `VMP_STOS_LOCAL_MEMORY.md` and its evidence JSON. Wider protected coverage and
 the full review remain in progress.
 
+Local MOVS memory checkpoint for rows 1b, 2a and V: plain long-mode `MOVS`
+with exact mapped SI and DI addresses now captures source bytes before
+invalidating the exact destination range. Three new x86-64 memory-source
+targets and four reload conditions become proved in both owned and ownerless
+analysis; unknown source bytes retain disjoint facts. i386, unknown
+destinations, initial source bytes and repeat controls remain unresolved.
+With four new fixed oracle sites, the matched x86-64 edge score rises from
+33/44 to 36/44, zero false edges; i386 remains 30/44, zero false edges. The
+selected supplied VMP initializer remains byte-identical at 75 nodes, 77
+edges and three unresolved facts. All 21 CTest suites pass. See
+`VMP_MOVS_LOCAL_MEMORY.md` and its evidence JSON. The full review remains in
+progress.
+
 First implementation checkpoint: source changes, executable semantic checks,
 and production IDA validation constitute progress. The complete objective is
 still active. Validation commands and limits are in `tests/VMP_NATIVE.md`.

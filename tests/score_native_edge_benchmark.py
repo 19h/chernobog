@@ -13,12 +13,12 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_PINS = {
-    "tests/vmp_native/dataflow.S": "a1e7ce855e97ecbce9da9983d3d282fb003cc13390a0d109fbd367b56cf24982",
-    "tests/vmp_native/dataflow_main.c": "0762697a0bb0f9007f2e0a5ab9976d240e1e3d03f641fb8d0cbb460bc9c5b9a8",
+    "tests/vmp_native/dataflow.S": "9a9abbd5949e7cc665ce002b2d6ada3fa288747d636f278899fe0a5391e3f91e",
+    "tests/vmp_native/dataflow_main.c": "d407a41cfaff7771971486f1e2392d93c4ba588dba30046d9515a4bbd99bbf13",
 }
 PROBE_PINS = {
-    "tests/ida_dataflow_probe.py": "7b56d0470d287cf2d1322d9f25c254371b920ad2f97a560d25abdb5a816d3303",
-    "tests/ida_ownerless_dataflow_probe.py": "f37fdf1dd40f8c3579d51ddcde3799fdfd6d5dac03040aca48bcca95bf153b65",
+    "tests/ida_dataflow_probe.py": "bbc6302e8b727e074bf9dbaf808aeb2cefd0e6740cfbd0e61aa56359f02ddd66",
+    "tests/ida_ownerless_dataflow_probe.py": "618d9c20b87f0689f7c6207c91a22e515579e17d2b3d607ac7dca24b8ee3c666",
 }
 
 # Targets are globally named labels in dataflow.S. Each edge is one distinct
@@ -58,6 +58,10 @@ FIXED = {
     "df_stos_unknown_value_disjoint_target": "df_memory_target",
     "df_stos_overlap_known_target": "df_memory_target",
     "df_rep_stos_disjoint_target": "df_memory_target",
+    "df_movs_disjoint_target": "df_memory_target",
+    "df_movs_unknown_source_disjoint_target": "df_memory_target",
+    "df_movs_self_copy_target": "df_memory_target",
+    "df_rep_movs_disjoint_target": "df_memory_target",
 }
 
 # Both targets occur in the 256-input native driver. The plugin's single
