@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "source_sha256": {
+    "tests/vmp_native/indirect_temporal_strings.c": "315d3083f52a902820be1699fe3e972bb5cc4b85151b1c638342cb291b4c7ad9",
+    "tests/ida_indirect_temporal_string_probe.py": "76dabf0f23410b161710f60b9cfe5ec4d51a82ddf46dc84003be1c5add63f9b8"
+  },
+  "fixture": {
+    "path": "build/vmp-indirect-temporal-arm64",
+    "sha256": "b4d55f21235a21f44db0a322ac852c8acc61c2fd02e1280483963e348b5a6a09",
+    "native_exit_code": 0,
+    "wrong_first_oracle_exit_code": 1,
+    "wrong_second_oracle_exit_code": 1,
+    "plaintext_in_strings_output": false
+  },
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "baseline": {
+    "plugin_sha256": "eb39b093acfc6029cf3af046d71c5651e039f7a70f71b55f9cfb33ebd26aafa6",
+    "run_record_sha256": "39a4564da8c878bef2eff7d88d4170eed48b8c30b57257295d3dbf38adfd1738",
+    "probe_record_sha256": "3c553f2760a41b5c5c077f90beb288407b60d40a1916fdcb0cac6154c7b8824a",
+    "runner_return_code": 0,
+    "runs": 4,
+    "returned_runs": 4,
+    "temporal_capture_complete_runs": 4,
+    "allocation_lifetimes": 8,
+    "modeled_candidates": 2,
+    "modeled_annotations": 0,
+    "probe_errors": []
+  },
+  "enabled": {
+    "plugin_sha256": "129b8ff1fbb72714726f5e5ce106f21c2c4965d03145c28d184ef38a9031a2b1",
+    "run_record_sha256": "2a542a678b7e1bea11601569afd35cd2667d8c9686c95114d1ace8a84b609ba7",
+    "probe_record_sha256": "e8fcbc49512a9dac2dd3b9867143083159235ef0f8ede331f3112beecad28f36",
+    "runner_return_code": 0,
+    "runs": 4,
+    "returned_runs": 4,
+    "temporal_capture_complete_runs": 4,
+    "allocation_lifetimes": 8,
+    "modeled_candidates": 2,
+    "modeled_annotations": 2,
+    "key_and_dispatch_patch_invalidation": true,
+    "probe_errors": []
+  }
+}

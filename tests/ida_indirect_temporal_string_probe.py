@@ -124,7 +124,7 @@ try:
             or candidate["observations"] != 4
             or candidate["eligible_runs"] != 4
             or candidate["callee"] == 0
-            or candidate["decoded"] != 2
+            or candidate["decoded"] not in (2, 4)
             or candidate["operand_type"] != ida_ua.o_reg
             or sum(call["site"] == candidate["site"] for call in calls.rows) != 1
             for candidate in modeled

@@ -61,7 +61,7 @@ python3 tests/run_ida_smoke.py build/vmp-indirect-temporal \
 | Impact | Finding |
 |---|---|
 | Medium | The same native fixture publishes three executed-read candidates, but only one has an exact surviving pointer expression in its ctree. The unmatched read sites remain without display. |
-| Medium | The probe covers x86-64 register-indirect calls through one global pointer. ARM64 `BLR`, memory-indirect x86 calls, multiple observed targets, and protected binaries remain unmeasured. |
+| Medium | The original probe covers x86-64 register-indirect calls through one global pointer. A later ARM64 `BLR` control is in `VMP_INDIRECT_USE_STRINGS_ARM64.md`; memory-indirect x86 calls, multiple observed targets, and protected binaries remain unmeasured. |
 | Low | Ctree text identifies an observed target for the scheduled runs; it does not claim a static or universal dispatch target. |
 
 ## Quality gates
