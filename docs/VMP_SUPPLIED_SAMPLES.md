@@ -136,6 +136,15 @@ for `boo` or the keygen's valid-input behavior. Their expected inputs, original
 counterparts, exact protector configuration and physical-x86 outcomes are
 **unknown**.
 
+The local Morok checkout also contains plausible `boo.c` and
+`programs/int_woma_keygen.c` source counterparts, but no source-to-output build
+record establishes that either file produced the supplied ELF. A subsequent
+matched enabled/disabled IDA 9.4 SP1 inspection of each ELF's entry and direct
+jump target finds identical 47/35-head startup inventories and zero native or
+VM records at the two inspected owners; the solver API is unavailable. See
+`VMP_MOROK_ENTRY_CONTROL.md` and its raw-report manifest. The selected paths
+do not establish full-binary specificity or application recovery.
+
 The arm64 Hikari file exits 0 and repeats the same 90-byte stdout with empty
 stderr in three no-argument macOS runs; stdout SHA-256 is
 `ffa6745f736de22dc84fe556a570d0f262bc22f17fb3f207ad18ec82d8dbd349`.
@@ -154,6 +163,7 @@ specificity measurements, and is excluded from VMP recovery denominators.
 | S5 | The Hikari file is a distinct architecture/control candidate. Any negative-control claim depends on non-VMP provenance. | Obtain source/build attestation and run the VMP recognizer with a stated candidate threshold; no false-positive rate is claimed here. |
 | S6 | The two fresh IDA profiles are comparable except for the direct jump decoder setting. The observed initializer traversal difference depends on this. | Verify `run.json` input, plugin, IDA and probe hashes; compare the controlled environment, then repeat with identical IDA settings and a second IDA version. The independently run profiles do not establish a protected-edge oracle. |
 | S7 | The two Linux ELF samples are Morok outputs, as identified by the user. Protector-family attribution depends on that statement and the matching checkout binaries; effective settings do not follow from the nearby candidate configurations. | Recheck both checkout and sample hashes; the local audit independently names and hashes the keygen ELF. A per-binary build command or manifest linking the config hash to each output would establish settings. Neither is currently recorded. |
+| S8 | The two inspected Morok startup paths bound only selected entry behavior. The matched inventory and zero-record result depend on this scope. | Recheck source, sample, plugin, IDA and report hashes in `VMP_MOROK_ENTRY_CONTROL_EVIDENCE.json`; inspect more owners and runtime-entered bytes before estimating binary-wide recovery or specificity. |
 
 High impact: the real protected `foo` pair can anchor startup and output checks,
 but its exact transformation matrix and code visibility after initialization
@@ -166,7 +176,7 @@ but do not prove protector version or exact settings. The local Morok audit
 strengthens keygen provenance while the build configuration of both ELF files
 remains unknown.
 
-QG1: technical scope. QG2: S1–S7 include falsification probes. QG3: this
+QG1: technical scope. QG2: S1–S8 include falsification probes. QG3: this
 inventory and bounded process check advance review rows 0b and V; the complete
 benchmark and implementation ledger remain open. QG4: byte counts, SI seconds,
 integer nanoseconds and size units are explicit. QG5: process equality, static
@@ -175,3 +185,7 @@ distinct claims.
 QG6: exact local input/runner/report and Morok configuration hashes, and direct
 binary/process observations are recorded. QG7: adjacent backend and specificity limits are
 bounded above.
+
+Subsequent static control: the Morok entry-path profiles and candidate source
+hashes are recorded in `VMP_MOROK_ENTRY_CONTROL.md`. This does not alter the
+historical process outcomes or establish source-build lineage.

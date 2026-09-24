@@ -12,7 +12,7 @@ falsification probes remain those in `VMP_REVIEW.md`.
 | Requirement | Implementation / evidence | Status |
 |---|---|---|
 | 0a. Correct Boolean, select-mask, SETcc, and x64-width mapping errors | Corrected `ATHENA_MAPPING.md`; exhaustive identities, select counterexample, and executed SETcc control in `x86_abstract_tests.cpp` | Implemented |
-| 0b. Independent paired corpus; provenance, seeds, held-out seeds, native oracle | Nine variants per architecture cover x64 Mach-O and x86 ELF, with repeated deterministic generation, reserved seeds and 33,600 primary behavior records. ELF32 executes under independent QEMU translation; see `VMP_PAIRED_CORPUS.md` and `VMP_ELF32_CORPUS.md`. The supplied packed hello-world pair now has three matched no-argument process observations (`VMP_SUPPLIED_SAMPLES.md`), separate from the generated matrix. Broader fixture shapes, source-build attestation, protected edge oracles and recovery metrics remain | In progress |
+| 0b. Independent paired corpus; provenance, seeds, held-out seeds, native oracle | Nine variants per architecture cover x64 Mach-O and x86 ELF, with repeated deterministic generation, reserved seeds and 33,600 primary behavior records. ELF32 executes under independent QEMU translation; see `VMP_PAIRED_CORPUS.md` and `VMP_ELF32_CORPUS.md`. The supplied packed hello-world pair has three matched no-argument process observations (`VMP_SUPPLIED_SAMPLES.md`), separate from the generated matrix. Two Morok packed ELFs provide matched enabled/disabled entry-path inventories with exact hashes and zero findings at the inspected owners (`VMP_MOROK_ENTRY_CONTROL.md`). Broader fixture shapes, source-build attestation, protected edge oracles and recovery metrics remain | In progress |
 | 1a. Portable stack-transfer classification with widths, stack effects, dependencies | `classify_push_return`, 32/64-bit core controls, x64 and linked ELF32 IDA fixtures; matched ELF32 rejected-case baseline. A separate i386 ELF32 process checks get-PC/stack positive shapes and a negative result control under pinned QEMU (`VMP_GET_PC32_EXECUTION.md`). A second same-binary process/IDA control checks dynamic register/memory targets, alternate entry, and RET adjustment (`VMP_GET_PC32_REJECTIONS.md`). The IDA block-end regression is repaired (`VMP_GET_PC32_BLOCK_END.md`); wider paired, width/far, and exceptional execution controls remain | In progress |
 | 1b. Exact register and memory target recovery; unknown candidates preserved | Bounded local replay, immutable-memory dependencies, and persisted ownership receipts implemented. Separate-process save/reopen, both tested rebase modes, Jcc undo/redo, and stack-pointer replacement controls pass; see `NATIVE_PROOF_OWNERSHIP.md`. Bounded owned-function joins and loop fixed points now support register targets (`VMP_NATIVE_DATAFLOW.md`). A same-binary i386 oracle reaches two register and two writable-memory targets while production IDA retains both as unresolved candidates (`VMP_GET_PC32_REJECTIONS.md`). Larger/ownerless regions, complete topology coverage, and legacy/plugin-absent metadata attribution remain | In progress |
 | 1c. Push-based get-PC forms and call-as-jump summaries | Both source-emitted forms, stack replay, return-address provenance/effects, and owned native facts implemented (`VMP_GET_PC.md`). The 32-bit PUSH-next proof survives IDA's block-end metadata (`VMP_GET_PC32_BLOCK_END.md`). RET lowering preserves the POP; 1,792 scoped IR-effect comparisons and six entry/region guards pass (`VMP_MICROCODE.md`). Automatic region ownership, stale inferred noreturn repair, structural rollback, and the full lifecycle/corpus matrix remain | In progress |
@@ -258,6 +258,16 @@ undecodable. The per-profile hashes and limits are in
 `VMP_SUPPLIED_HELLO_IDA_EVIDENCE.json`.
 Compiler/protector lineage, wider inputs and protected recovery rates remain
 unknown.
+
+Morok packed-entry control: the two supplied ELF files match the
+user-identified Morok checkout by hash. Plausible source counterparts are
+present but their source-to-binary lineage and effective settings remain
+unknown. Four matched IDA 9.4 SP1 profiles inspect each entry and its direct
+jump target. Enabled and disabled inventories agree exactly (47 and 35 heads
+per ELF); the two inspected owners per ELF yield zero native and VM records,
+while the solver API is unavailable. See `VMP_MOROK_ENTRY_CONTROL.md` and its
+evidence JSON. This is a startup-path control, not a binary-wide specificity or application-recovery
+estimate.
 
 Disjoint heap-write checkpoint: the string aggregator now retains a read stream
 across bounded writes to a separate heap allocation while same-allocation,

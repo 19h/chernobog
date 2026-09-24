@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "sample_sha256": {
+    "samples/boo-linux-x86_64-static": "730f6adfba4cb7179320c96a3a5b24856059f1c4ba24bad25b969d74e4054a27",
+    "samples/int_woma_keygen-linux-x86_64-static": "7d1971b1db221174caac0a5922a7452e1bebe214ca2355ab36c889a635699fd9"
+  },
+  "morok_checkout_sha256": {
+    "boo.c": "3c0c301481a4a25930426cd6a6e84b03ad4b23a9925b9b4eeac804c33444fd5b",
+    "programs/int_woma_keygen.c": "988a6144b6b3924c7ed432486d114c327f837e4ef424abb29c220fe6ee4f3628",
+    ".morok-static-boo.toml": "81a735e6df2335105073701eb4dfc212d31e72fe58f76899d63b1a35d9bcaf06",
+    ".morok-static-int_woma_keygen.toml": "81a735e6df2335105073701eb4dfc212d31e72fe58f76899d63b1a35d9bcaf06",
+    "morok-audit.json": "50ada89cf93c8167b384a835277ccf8ab2d9be636e27968be59ff16ef6fba149"
+  },
+  "probe_sha256": "36545d73050046ed650db91a8319edae21652bf1b686b9fb4dbbb8237b0f7af3",
+  "runner_sha256": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "installed_plugin_sha256": "f1327d5b94a1b1c9e966c808ab3efb8b811b9f2698dc33a3bad3d023d3591919",
+  "profiles": {
+    "boo_enabled": {
+      "run_sha256": "00f3bb25ed04aec4adc7dff89ab6e3edcd458c7b300c76bfd2a1305361218ce0",
+      "probe_report_sha256": "91d9ad0eb9629dcd9978929bb2774fc05cc270628bfcfe76f3afd6c2fe126a39",
+      "entry_heads": 47,
+      "jump_target_heads": 35,
+      "native_records": 0,
+      "vm_records": 0,
+      "solver_records": 0,
+      "solver_available": false
+    },
+    "boo_disabled": {
+      "run_sha256": "695f422c036f519c7c0f5c7c3b10a188ee97f2f3fcc3255860e538808282226c",
+      "probe_report_sha256": "baaa2b9d7b93399ebdd66a32633c1df544e2d1f621c164a733ccaab987b46a9c",
+      "entry_heads": 47,
+      "jump_target_heads": 35
+    },
+    "keygen_enabled": {
+      "run_sha256": "146fe501260fd1e2291831f11e6b23407f1f4962f54542b00be858fa0030b1fc",
+      "probe_report_sha256": "2316c3f115825a18793ddddf01f09b601624b5fac05deb8584684ef0752ac800",
+      "entry_heads": 47,
+      "jump_target_heads": 35,
+      "native_records": 0,
+      "vm_records": 0,
+      "solver_records": 0,
+      "solver_available": false
+    },
+    "keygen_disabled": {
+      "run_sha256": "5f8708867c55ea61796f7b3746b80096292a55c324dbf5f0eac8bb148adb408c",
+      "probe_report_sha256": "fb5c71bd8e64d50af00996a343b3df0bbef2316ab45d49ab5d60dd010d144589",
+      "entry_heads": 47,
+      "jump_target_heads": 35
+    }
+  },
+  "head_limit_per_selected_entry": 4096,
+  "owner_limit_per_selected_entry": 64,
+  "enabled_disabled_entry_inventories_equal": true,
+  "ida_profile_errors": 0
+}
