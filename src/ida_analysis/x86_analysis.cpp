@@ -397,6 +397,18 @@ struct State
         const auto store_address =
             local_memory_store ? memory_address(insn, insn.Op1) : std::nullopt;
         const auto store_value = local_memory_store ? read(insn.Op2, width) : std::nullopt;
+        const bool local_memory_load =
+            insn.itype == NN_mov && insn.Op1.type == o_reg &&
+            (insn.Op2.type == o_mem || insn.Op2.type == o_displ || insn.Op2.type == o_phrase) &&
+            valid_width(width) && unsigned(get_dtype_size(insn.Op2.dtype) * 8) == width &&
+            register_slice(insn.Op1).reg >= 0 && register_slice(insn.Op1).reg != 4;
+        std::optional<uint64_t> load_value;
+        if (local_memory_load)
+        {
+            const auto address = memory_address(insn, insn.Op2);
+            if (address && writable_range(*address, width / 8, word_bits))
+                load_value = read_memory(*address, width);
+        }
         const op_t *exchange_reg = nullptr;
         const op_t *memory_exchange_reg = nullptr;
         std::optional<uint64_t> memory_exchange_address;
@@ -491,15 +503,20 @@ struct State
         switch (insn.itype)
         {
         case NN_mov:
-            write(insn.Op1,
-                  stack_top(insn, insn.Op2)
-                      ? (stack.empty() ? std::nullopt : stack.back().read(word_bits))
-                      : read(insn.Op2, width),
-                  is64);
+        {
+            std::optional<uint64_t> move_value;
+            if (stack_top(insn, insn.Op2))
+                move_value = stack.empty() ? std::nullopt : stack.back().read(word_bits);
+            else if (local_memory_load)
+                move_value = load_value;
+            else
+                move_value = read(insn.Op2, width);
+            write(insn.Op1, move_value, is64);
             if (store_address && store_value &&
                 writable_range(*store_address, width / 8, word_bits))
                 store_memory(*store_address, width, *store_value);
             return;
+        }
         case NN_movzx:
         case NN_movsx:
         case NN_movsxd:

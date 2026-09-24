@@ -561,7 +561,7 @@ def main():
             ("df_memory_initial_word", False),
             ("df_memory_equal_stores", True),
             ("df_memory_disjoint_store", True),
-            ("df_memory_overlapping_store", False),
+            ("df_memory_overlapping_store", True),
             ("df_memory_unknown_alias", False),
             ("df_memory_conflicting_store", False),
         ):
@@ -603,6 +603,31 @@ def main():
             and row["target_proof"] == "register-definition"
             and row["target"] == hex(symbol("df_memory_target")),
         )
+
+        for name, expected in (
+            ("df_memory_mov_load", True),
+            ("df_memory_mov_load_byte", True),
+            ("df_memory_mov_load_initial", False),
+            ("df_memory_mov_load_alias", False),
+        ):
+            root, instructions = prepare_prefix(name)
+            result = inspect(name, root)
+            pushes = [
+                instruction
+                for instruction in instructions
+                if instruction.get_canon_mnem() == "push"
+            ]
+            check(name + " has one PUSH", len(pushes) == 1)
+            assert len(pushes) == 1
+            row = row_at(result, pushes[0].ea, "push-return")
+            check(
+                name + " ownerless register target",
+                result["converged"]
+                and not result["truncated"]
+                and row["status"] == ("proved" if expected else "unresolved")
+                and row["target_proof"] == ("register-definition" if expected else "unresolved")
+                and row["target"] == (hex(symbol("df_memory_target")) if expected else "unknown"),
+            )
 
         root, source, join, end = (
             symbol("od_adjacent_" + suffix) for suffix in ("root", "external", "join", "end")

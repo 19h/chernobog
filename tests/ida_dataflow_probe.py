@@ -420,7 +420,7 @@ try:
         ("df_memory_initial_word", False),
         ("df_memory_equal_stores", True),
         ("df_memory_disjoint_store", True),
-        ("df_memory_overlapping_store", False),
+        ("df_memory_overlapping_store", True),
         ("df_memory_unknown_alias", False),
         ("df_memory_conflicting_store", False),
     ):
@@ -490,6 +490,39 @@ try:
                 for x in idautils.XrefsFrom(int(exchange_rows[0]["site"], 0))
             ),
         )
+    for name, expected in (
+        ("df_memory_mov_load", True),
+        ("df_memory_mov_load_byte", True),
+        ("df_memory_mov_load_initial", False),
+        ("df_memory_mov_load_alias", False),
+    ):
+        root = address(name)
+        reanalyze(root)
+        captures[name] = inspect(root)
+        rows = [
+            row
+            for row in captures[name]["records"]
+            if row["kind"] == "stack-transfer" and row["fresh"] == "true"
+        ]
+        check(name + " has one current transfer", len(rows) == 1)
+        if rows:
+            row = rows[0]
+            check(
+                name + " register target status",
+                row["truth"] == ("native-proof" if expected else "candidate")
+                and row["edge"] == ("true" if expected else "false")
+                and row["target_basis"] == ("register-definition" if expected else "unresolved")
+                and row.get("target", "unknown")
+                == (hex(address("df_memory_target")) if expected else "unknown"),
+            )
+            check(
+                name + " IDB user edge",
+                any(
+                    x.iscode and x.to == address("df_memory_target") and x.user
+                    for x in idautils.XrefsFrom(int(row["site"], 0))
+                )
+                == expected,
+            )
     memory_root = address("df_memory_store_transfer")
     original_memory_rows = [
         row

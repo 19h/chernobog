@@ -635,6 +635,75 @@ BEGIN NAME(df_memory_xchg_unknown_source)
 #endif
     ret
 
+/* A local writable store can supply a subsequent MOV register load. */
+BEGIN NAME(df_memory_mov_load)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    xorl %eax, %eax
+    movl (%edx), %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    xorq %rax, %rax
+    movq (%rdx), %rax
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_memory_mov_load_byte)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    xorb $1, %al
+    movb (%edx), %al
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    xorb $1, %al
+    movb (%rdx), %al
+    pushq %rax
+#endif
+    ret
+
+/* Initial image bytes and an entry-supplied alias remain unknown to replay. */
+BEGIN NAME(df_memory_mov_load_initial)
+#ifdef __i386__
+    movl $NAME(df_memory_initial_slot), %edx
+    movl (%edx), %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_initial_slot)(%rip), %rdx
+    movq (%rdx), %rax
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_memory_mov_load_alias)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl 8(%esp), %ecx
+    movl $0, (%ecx)
+    movl (%edx), %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    movq $0, (%rsi)
+    movq (%rdx), %rax
+    pushq %rax
+#endif
+    ret
+
 BEGIN NAME(df_memory_initial_word)
 #ifdef __i386__
     movl $NAME(df_memory_initial_slot), %edx

@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "scope": "bounded exact local writable-memory MOV loads for x86 PUSH/RET",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "6bc78018b043b3cddfdd52a58241d435e0f79d5f8b7c7d8b70ec127e1989e980",
+    "src/ida_analysis/x86_analysis.hpp": "0431650ba5bdf3fb939ce5714f61444188b33fe8f3850318de808b821c439269",
+    "tests/ida_dataflow_probe.py": "bab8478cfab3d6350e7ba33c01313c25d1634e2dac5196d44151da9a2945e87c",
+    "tests/ida_ownerless_dataflow_probe.py": "8b5738836a3d8fc6d796f48c0f15bcc1b932299adab585e4013cadf96044b9d9",
+    "tests/run_native_dataflow.py": "35de19a5dac00908c26e5b917cdfda1f0361649a15cffda599d93a4408ec446f",
+    "tests/vmp_native/dataflow.S": "f7a72601788f2bb2930c659f63b4a7a84af7b57ca1c8294bc3951ececa2742a6",
+    "tests/vmp_native/dataflow_main.c": "2cad2a4dd5e98f3beb6da2e5b70e59a882841e4bfe9bbec3a4fd72c80870166c"
+  },
+  "tools": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "linux32_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+    "previous_plugin_sha256": "b44951d5a04e502e0cea41b4c7721f01fee9924b70d51eaea6988bba89e9b36b",
+    "new_built_plugin_sha256": "09b9d35dfd3295b3d86c0684cbc6fd6eeebc18ddfa687590765e810b3b15f362"
+  },
+  "fixture_sha256": {
+    "owned_x86_64": "318b96c7ff5468986a55dd934b33829ea71f059d79cbf733c13e90db0ad38420",
+    "owned_i386": "7048dbd725ffed917fd1535b3eb49aad63731952b0e076ea017ce14f40f0a8f9",
+    "ownerless_x86_64": "e6f3fa18558ef4d9d967990ce012d52940f945d429563f98527b3a55675cfb8e",
+    "ownerless_i386": "22c0e2614cde9f06e7546aa4061207b811e450fa4084893e2fccece7dc41d235",
+    "protected_input": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "results": {
+    "owned_native_checks_per_architecture": 11262,
+    "owned_ida_checks_per_architecture": 162,
+    "ownerless_native_checks_per_architecture": 4094,
+    "ownerless_ida_checks_per_architecture": 662,
+    "new_exact_targets_per_architecture_and_mode": 3,
+    "new_initial_or_alias_abstentions_per_architecture_and_mode": 2,
+    "corrupt_ownerless_oracle_rejected": true,
+    "matched_input_probe_ida_per_pair": true,
+    "previous_owned_probe_errors_per_architecture": 6,
+    "previous_ownerless_probe_errors_per_architecture": 3,
+    "ctest_passed": 21,
+    "protected_nodes": 75,
+    "protected_edges": 77,
+    "protected_unresolved": 3,
+    "protected_inventory_unchanged": true
+  },
+  "raw_report_sha256": {
+    "build/vmp-mov-load-verified-owned/dataflow_analysis.json": "339400c93cf8279f06b81535d5661f0112bd673f6cff48c0e1d77d1155ec94c0",
+    "build/vmp-mov-load-verified-ownerless/ownerless_dataflow_analysis.json": "459ac53bf9128e22d59633c9b29b2e6c221b537a031b4991fb49432943ba5131",
+    "build/vmp-mov-load-matched-prior-owned-x86_64/run.json": "55948a8101b60758484a2661460217f845a736d86331c0debf888c5b80ba2353",
+    "build/vmp-mov-load-matched-prior-owned-x86_64/dataflow.json": "92845846a89302f005f38bae0372a8bd757ae123c16facc7cd18b25776dbde46",
+    "build/vmp-mov-load-verified-owned/x86_64/inspection/run.json": "f48cf448bc0966b3641b9c1b54a0d6047ab4048bc13cbaddaa92b2bf62e1d513",
+    "build/vmp-mov-load-verified-owned/x86_64/inspection/dataflow.json": "333302b060966a7870af444b0d6fbe66f324ebdd1a8b999bf7da00999a3d8d3b",
+    "build/vmp-mov-load-matched-prior-owned-i386/run.json": "85cdd4f473cd8f35a5a9f61a934966105dc0b0c6447eb06a1743b6699fb1261b",
+    "build/vmp-mov-load-matched-prior-owned-i386/dataflow.json": "de8b7dd97d8fd1e400b341f839a1314e4ed683f82bfe984f962e81f1d8aa01eb",
+    "build/vmp-mov-load-verified-owned/i386/inspection/run.json": "0c1ff0eeb6ca86ce7d4b821e1f272995c1b16e742c91d36dfac1ad43cf22e061",
+    "build/vmp-mov-load-verified-owned/i386/inspection/dataflow.json": "a1ff5f6fedb3421fc37d9fbee8ee9fbb1e7d8919e1eaa1fe247ddfca99dac6aa",
+    "build/vmp-mov-load-matched-prior-ownerless-x86_64/run.json": "d9c2b2721681922a1a50238b49bc4b28a11fffbfbf76288cd416d0034c770e2b",
+    "build/vmp-mov-load-matched-prior-ownerless-x86_64/ownerless_dataflow.json": "a096d6dc2cee5175646144e8b15ae28e4523d8dea41efa3faef327d8643fe209",
+    "build/vmp-mov-load-verified-ownerless/x86_64/inspection/run.json": "e837d176b013385c817d54349c33bdf717996de0bd7db15d702e837ecf36b987",
+    "build/vmp-mov-load-verified-ownerless/x86_64/inspection/ownerless_dataflow.json": "addd00becb048448318cb00e904fd0abe5aa27809bd022fa168218d2fd8411dd",
+    "build/vmp-mov-load-matched-prior-ownerless-i386/run.json": "1deef040815c9838d9d1781d3ea314bfdd21e6e8c51b6157ec76fa9f3738ee06",
+    "build/vmp-mov-load-matched-prior-ownerless-i386/ownerless_dataflow.json": "b34e74b1f8665ffefcd6c6488796053df2dd0812b4674791a969e796fe42d905",
+    "build/vmp-mov-load-verified-ownerless/i386/inspection/run.json": "20e943bb47ad00e6984399d7115a254780318c309b937c4563279110a0d362f5",
+    "build/vmp-mov-load-verified-ownerless/i386/inspection/ownerless_dataflow.json": "13c4472403ddd059bc77b4991350e699aa4750afb18b6317037ed6f268d5890c",
+    "build/vmp-mov-load-protected/run.json": "48783226db3f43b933e0a38882bbd93c2f3506c4426362e13f8d5119da8cf219",
+    "build/vmp-mov-load-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/Testing/Temporary/LastTest.log": "7657b0064340b58138445d6cb81220643aec12db7aed5852996460d0cac1a35d"
+  }
+}
