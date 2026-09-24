@@ -265,6 +265,7 @@ try:
     ida_auto.auto_wait()
     alu_proofs = os.environ.get("CHERNOBOG_ALU_BASELINE") != "1"
     movs_proofs = os.environ.get("CHERNOBOG_MOVS_BASELINE") != "1"
+    rep_count_proofs = os.environ.get("CHERNOBOG_REP_COUNT_BASELINE") != "1"
     string_io_proofs = os.environ.get("CHERNOBOG_STRING_IO_BASELINE") != "1"
     expected = {
         "df_equal": True,
@@ -547,7 +548,7 @@ try:
         ("df_memory_alu_alias", False),
         ("df_rep_movs_register_target", movs_proofs),
         ("df_movs_plain_count_target", movs_proofs),
-        ("df_rep_movs_count_unknown", False),
+        ("df_rep_movs_count_unknown", movs_proofs and rep_count_proofs),
         ("df_stos_register_target", string_io_proofs),
     ):
         root = address(name)

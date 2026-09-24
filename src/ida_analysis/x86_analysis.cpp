@@ -737,13 +737,18 @@ struct State
         case NN_movs:
             // MOVS, including REP MOVS, leaves the six status flags unchanged.
             // The implicit destination may alias any retained memory or stack
-            // word; only the pointer registers and, for REP, count are changed.
+            // word. After a normally completed, natural-address-size REP MOVS,
+            // the full count register is zero, regardless of its input value.
             stack.clear();
             memory.clear();
             regs[6] = {};
             regs[7] = {};
             if (insn.auxpref & (aux_rep | aux_repne))
+            {
                 regs[1] = {};
+                if ((insn.auxpref & aux_rep) && !(insn.auxpref & aux_repne) && natad(insn))
+                    regs[1].write(word_bits, 0, 0, is64);
+            }
             return;
         case NN_stos:
             // The implicit destination may alias every retained byte. STOS

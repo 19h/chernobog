@@ -6,6 +6,10 @@ artifacts and protector source tree used in earlier reports are absent from this
 workspace. This checkpoint scores **46 source-annotated transfer sites** in the
 existing executable x86-64 and i386 native fixtures. It measures the selected
 native recognizer, not VMP-protected recovery or whole-binary CFG accuracy.
+This is the historical checkpoint at commit
+`0b91fc548e915461790da1d7146cab812df65fcb`; its frozen source and
+scorer must be checked out at that revision to reproduce its 26/34 result.
+The later count-transfer result is in `VMP_REP_MOVS_COUNT.md`.
 
 `tests/score_native_edge_benchmark.py` freezes the reviewed assembly and C
 execution-driver hashes. Its oracle names target labels independently of plugin

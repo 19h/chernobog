@@ -13,12 +13,12 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_PINS = {
-    "tests/vmp_native/dataflow.S": "56e5fc153e098768ac328fbbe9093eacda137c71dad4efefdac397f7c96bd0b0",
+    "tests/vmp_native/dataflow.S": "5c6b123e7ba5e2c1d331ff50ad839a84608088e49228b11b17e8b6b35886c5bb",
     "tests/vmp_native/dataflow_main.c": "d4e3522f2dbf3d1152817a95b8888fa55499c47154d1d0db478ac80ba4c554ce",
 }
 PROBE_PINS = {
-    "tests/ida_dataflow_probe.py": "af660ad6f9a3b32731187e75c58228854ef3ae13f5b8ceb5d7066c8dc1c38755",
-    "tests/ida_ownerless_dataflow_probe.py": "0327a37995e317958b66cb9cf5c24a749c7f4eacaa56183323379c74407ea637",
+    "tests/ida_dataflow_probe.py": "26543c9acef760590ec728a9195c35e81c097599c3e1ecef38527b4abc3d4163",
+    "tests/ida_ownerless_dataflow_probe.py": "09a3e994ff917bfc4954f568891a17168d96dd56c3019565bcfe7a4bb4cad0c4",
 }
 
 # Targets are globally named labels in dataflow.S. Each edge is one distinct

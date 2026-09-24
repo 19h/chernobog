@@ -409,7 +409,7 @@ def focused_main():
                 ("df_rep_movs_alias", "unresolved"),
                 ("df_rep_movs_register_target", "register-definition"),
                 ("df_movs_plain_count_target", "register-definition"),
-                ("df_rep_movs_count_unknown", "unresolved"),
+                ("df_rep_movs_count_unknown", "register-definition"),
             )
             if movs_only
             else (
@@ -447,7 +447,14 @@ def focused_main():
                     if instruction.get_canon_mnem() == "push"
                 )
                 row = row_at(result, site, "push-return")
-                proved = gain and basis != "unresolved"
+                proved = (
+                    gain
+                    and basis != "unresolved"
+                    and (
+                        name != "df_rep_movs_count_unknown"
+                        or os.environ.get("CHERNOBOG_REP_COUNT_BASELINE") != "1"
+                    )
+                )
                 check(
                     name + " target status",
                     row["status"] == ("proved" if proved else "unresolved")
@@ -480,6 +487,7 @@ def main():
         ida_auto.auto_wait()
         alu_proofs = os.environ.get("CHERNOBOG_ALU_BASELINE") != "1"
         movs_proofs = os.environ.get("CHERNOBOG_MOVS_BASELINE") != "1"
+        rep_count_proofs = os.environ.get("CHERNOBOG_REP_COUNT_BASELINE") != "1"
         string_io_proofs = os.environ.get("CHERNOBOG_STRING_IO_BASELINE") != "1"
         value = ida_expr.idc_value_t()
         assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
@@ -765,7 +773,7 @@ def main():
             ("df_memory_alu_alias", False),
             ("df_rep_movs_register_target", movs_proofs),
             ("df_movs_plain_count_target", movs_proofs),
-            ("df_rep_movs_count_unknown", False),
+            ("df_rep_movs_count_unknown", movs_proofs and rep_count_proofs),
             ("df_stos_register_target", string_io_proofs),
         ):
             root, instructions = prepare_prefix(name)

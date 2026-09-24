@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--linux32-image")
     parser.add_argument("--docker-context", default="orbstack")
+    parser.add_argument("--rep-count-baseline", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     output = args.output_dir.resolve()
@@ -136,6 +137,11 @@ def main():
                     "CHERNOBOG_IDA_FLAG_SCAN_DEPTH=64",
                     "--set",
                     "CHERNOBOG_IDA_REGISTER_SCAN_DEPTH=64",
+                    *(
+                        ["--set", "CHERNOBOG_REP_COUNT_BASELINE=1"]
+                        if args.rep_count_baseline
+                        else []
+                    ),
                 ],
                 timeout=180,
             )

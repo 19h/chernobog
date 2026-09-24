@@ -1389,7 +1389,7 @@ BEGIN NAME(df_rep_movs_count_unknown)
     leaq NAME(df_string_source)(%rip), %rsi
     leaq NAME(df_string_dest)(%rip), %rdi
 #endif
-    movl $1, %ecx
+    andl $1, %ecx
     rep movsb
 #ifdef __i386__
     popl %edi
