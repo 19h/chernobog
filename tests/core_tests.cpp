@@ -392,6 +392,23 @@ void test_stack_transfer_classifier()
               "unknown stack top remains an unresolved transfer candidate");
         push.source_is_stack_pointer = false;
         proof = {};
+        proof.kind = target_proof_kind_t::memory_definition;
+        proof.value = 0x2000;
+        proof.definitions = {0xFF0};
+        check(!classify_push_return(push, ret, mode, proof),
+              "writable target requires an established source address");
+        proof.source_address = 0x3000;
+        result = classify_push_return(push, ret, mode, proof);
+        check(result && result->target.kind == target_proof_kind_t::memory_definition,
+              "writable target retains its address and defining instructions");
+        proof.definitions.clear();
+        check(!classify_push_return(push, ret, mode, proof),
+              "initial writable bytes cannot supply a target");
+        proof.definitions = {0xFF0};
+        proof.memory.push_back(memory);
+        check(!classify_push_return(push, ret, mode, proof),
+              "writable target cannot borrow immutable image-byte evidence");
+        proof = {};
         proof.value = 0x2000;
         check(!classify_push_return(push, ret, mode, proof), "unproven supplied value rejected");
         proof = {};

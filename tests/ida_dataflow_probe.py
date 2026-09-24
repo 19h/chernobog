@@ -404,6 +404,108 @@ try:
         and dynamic_rows[0]["target_basis"] == "unresolved"
         and "bounded prior stack word" in dynamic_rows[0]["memory_model"],
     )
+    for name, expected in (
+        ("df_memory_store_transfer", True),
+        ("df_memory_direct_store", True),
+        ("df_memory_initial_word", False),
+        ("df_memory_equal_stores", True),
+        ("df_memory_disjoint_store", True),
+        ("df_memory_overlapping_store", False),
+        ("df_memory_unknown_alias", False),
+        ("df_memory_conflicting_store", False),
+    ):
+        root = address(name)
+        reanalyze(root)
+        captures[name] = inspect(root)
+        rows = [
+            row
+            for row in captures[name]["records"]
+            if row["kind"] == "stack-transfer" and row["fresh"] == "true"
+        ]
+        check(name + " has one current transfer", len(rows) == 1)
+        if rows:
+            row = rows[0]
+            check(
+                name + " local writable-memory proof scope",
+                row.get("memory_address")
+                == hex(
+                    address(
+                        "df_memory_initial_slot"
+                        if name == "df_memory_initial_word"
+                        else "df_memory_slot"
+                    )
+                )
+                and "bounded prior writable-memory store" in row["memory_model"]
+                and row["stack_delta_bytes"] == "0"
+                and int(row["stack_write_bytes"]) * 8 == int(row["width_bits"]),
+            )
+            check(
+                name + " target status",
+                row["truth"] == ("native-proof" if expected else "candidate")
+                and row["edge"] == ("true" if expected else "false")
+                and row["target_basis"] == ("memory-definition" if expected else "unresolved")
+                and row.get("target", "unknown")
+                == (hex(address("df_memory_target")) if expected else "unknown"),
+            )
+            check(
+                name + " IDB user edge",
+                any(
+                    x.iscode and x.to == address("df_memory_target") and x.user
+                    for x in idautils.XrefsFrom(int(row["site"], 0))
+                )
+                == expected,
+            )
+    memory_root = address("df_memory_store_transfer")
+    original_memory_rows = [
+        row
+        for row in captures["df_memory_store_transfer"]["records"]
+        if row["kind"] == "stack-transfer"
+        and row["fresh"] == "true"
+        and row["truth"] == "native-proof"
+    ]
+    assert len(original_memory_rows) == 1
+    store_site = next(
+        site
+        for site in idautils.FuncItems(memory_root)
+        if (instruction := idautils.DecodeInstruction(site))
+        and instruction.get_canon_mnem() == "mov"
+        and instruction.Op1.type in (ida_ua.o_mem, ida_ua.o_displ, ida_ua.o_phrase)
+    )
+    store_raw = ida_bytes.get_bytes(store_site, ida_bytes.get_item_size(store_site))
+    store_opcode = 1 if store_raw[0] == 0x48 else 0
+    assert store_raw[store_opcode] == 0x89
+    assert ida_bytes.patch_byte(store_site + store_opcode, 0x8B)
+    reanalyze(memory_root)
+    captures["df_memory_store_removed"] = inspect(memory_root)
+    memory_ret = int(original_memory_rows[0]["site"], 0)
+    memory_target = address("df_memory_target")
+    check(
+        "removing the writable store revokes the target and user edge",
+        not any(
+            row["kind"] == "stack-transfer"
+            and row["fresh"] == "true"
+            and row["truth"] == "native-proof"
+            for row in captures["df_memory_store_removed"]["records"]
+        )
+        and not any(
+            x.iscode and x.to == memory_target and x.user for x in idautils.XrefsFrom(memory_ret)
+        ),
+    )
+    assert ida_bytes.patch_byte(store_site + store_opcode, 0x89)
+    reanalyze(memory_root)
+    captures["df_memory_store_restored"] = inspect(memory_root)
+    restored_memory_rows = [
+        row
+        for row in captures["df_memory_store_restored"]["records"]
+        if row["kind"] == "stack-transfer" and row["fresh"] == "true"
+    ]
+    check(
+        "restoring the writable store recomputes the exact target",
+        len(restored_memory_rows) == 1
+        and restored_memory_rows[0]["truth"] == "native-proof"
+        and restored_memory_rows[0]["target_basis"] == "memory-definition"
+        and restored_memory_rows[0]["publication"] != original_memory_rows[0]["publication"],
+    )
     if stack_rows:
         ret_site = int(stack_rows[0]["site"], 0)
         destination = address("df_stack_top_destination")

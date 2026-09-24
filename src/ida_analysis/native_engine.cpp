@@ -1269,6 +1269,9 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 case classifier::target_proof_kind_t::stack_definition:
                     row["target_basis"] = "stack-definition";
                     break;
+                case classifier::target_proof_kind_t::memory_definition:
+                    row["target_basis"] = "memory-definition";
+                    break;
                 default:
                     row["target_basis"] = "unresolved";
                     break;
@@ -1277,7 +1280,11 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 row["memory_model"] =
                     candidate->target.stack_top_source
                         ? "bounded prior stack word; intervening writes invalidate; external runtime mutations unmodeled"
+                    : candidate->target.source_address
+                        ? "bounded prior writable-memory store; aliasing writes invalidate; external runtime mutations unmodeled"
                         : "IDA loaded immutable bytes and current write-reference checks; external runtime mutations unmodeled";
+                if (candidate->target.source_address)
+                    row["memory_address"] = hex(*candidate->target.source_address);
                 if (!proof.intended_edge)
                     row["truth"] = "candidate";
                 break;

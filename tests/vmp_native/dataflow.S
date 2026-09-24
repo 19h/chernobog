@@ -403,6 +403,183 @@ NAME(df_stack_top_dynamic_eight):
     movl $8, %eax
     ret
 
+/* The writable slot starts unknown to analysis. Each transfer establishes
+ * its address and value with a local store before the memory-source PUSH. */
+BEGIN NAME(df_memory_store_transfer)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_direct_store)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl %eax, NAME(df_memory_slot)
+    pushl NAME(df_memory_slot)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    movq %rax, NAME(df_memory_slot)(%rip)
+    pushq NAME(df_memory_slot)(%rip)
+#endif
+    ret
+
+BEGIN NAME(df_memory_initial_word)
+#ifdef __i386__
+    movl $NAME(df_memory_initial_slot), %edx
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_initial_slot)(%rip), %rdx
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_equal_stores)
+#ifdef __i386__
+    movl $NAME(df_memory_slot), %edx
+#else
+    leaq NAME(df_memory_slot)(%rip), %rdx
+#endif
+    testl %ecx, %ecx
+    jz 1f
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl %eax, (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    movq %rax, (%rdx)
+#endif
+    jmp 2f
+1:
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl %eax, (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    movq %rax, (%rdx)
+#endif
+2:
+#ifdef __i386__
+    pushl (%edx)
+#else
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_disjoint_store)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl $0, 8(%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    movq $0, 8(%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_overlapping_store)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movb 1(%edx), %cl
+    movb %cl, 1(%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    movb 1(%rdx), %cl
+    movb %cl, 1(%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+/* The second argument is disjoint at execution time; its entry value is
+ * unknown to static analysis and therefore may alias the pointer slot. */
+BEGIN NAME(df_memory_unknown_alias)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl 8(%esp), %ecx
+    movl $0, (%ecx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    movq $0, (%rsi)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_conflicting_store)
+    testl %ecx, %ecx
+    jz 1f
+#ifdef __i386__
+    movl $NAME(df_memory_target_eight), %eax
+#else
+    leaq NAME(df_memory_target_eight)(%rip), %rax
+#endif
+    jmp 2f
+1:
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+#endif
+2:
+#ifdef __i386__
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+.p2align 4
+.globl NAME(df_memory_target)
+NAME(df_memory_target):
+    movl $7, %eax
+    ret
+.p2align 4
+.globl NAME(df_memory_target_eight)
+NAME(df_memory_target_eight):
+    movl $8, %eax
+    ret
+
+.data
+.p2align 3
+.globl NAME(df_memory_slot)
+NAME(df_memory_slot):
+    .quad 0
+    .quad 0
+.p2align 3
+.globl NAME(df_memory_initial_slot)
+NAME(df_memory_initial_slot):
+#ifdef __i386__
+    .long NAME(df_memory_target)
+#else
+    .quad NAME(df_memory_target)
+#endif
+.text
+
 /* The probe assigns the remote body as a tail of df_flow_root. The CLC
  * immediately before that tail is deliberately outside its owned graph. */
 .p2align 4

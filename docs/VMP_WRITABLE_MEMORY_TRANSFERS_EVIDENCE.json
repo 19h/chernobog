@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "scope": "bounded exact writable-memory sources for x86 PUSH/RET",
+  "source_sha256": {
+    "src/ida_analysis/native_classifier.hpp": "075e76d8e55fd54eaba74ae2205ec92472327fea8a08265d40874fc462c89492",
+    "src/ida_analysis/native_classifier.cpp": "97dd01739ca51295b5875d289d43f203670876931cdc2291b4ff4e5140467d13",
+    "src/ida_analysis/x86_analysis.hpp": "7f4b32f7768d5d9d57b94bca387c9b9b96f811fbe486ce51e049fe080885b1b7",
+    "src/ida_analysis/x86_analysis.cpp": "1dc92a33977504e9b0db0d2579cb1252433d5e927ea68e8aba4a75907756cecb",
+    "src/ida_analysis/get_pc_ida.cpp": "0f53b3b3c65e3a07cc6446ed5c10f57928137db62aed49bd4462d3bdf19b115c",
+    "src/ida_analysis/native_engine.cpp": "b849f4177071159bf5d58e69d7eb813d2fb6471c77b90fe3cb51eb52be722252",
+    "tests/core_tests.cpp": "9a89ff855f5efaa8704f91c36bbbe2417ee8a0a0592ad075b2480a40e5bfbb74",
+    "tests/ida_dataflow_probe.py": "574b664923748784b155f3ac1cf14e2d1a2a908c4af1c4040aee551b8236c775",
+    "tests/ida_ownerless_dataflow_probe.py": "240d5cbbc9ed61de97bee114de381da683a43092075ae476479ddf2eebc2531a",
+    "tests/run_native_dataflow.py": "35e07f0fd850f90780dd35e824f1cd1b914b031bf8d07475e3a3b4e1dd3833b5",
+    "tests/vmp_native/dataflow.S": "d57b97197a83017e4d23fa4e699c8d42de282adde84b8ace79616fe28bb8e6ab",
+    "tests/vmp_native/dataflow_main.c": "73577a338d456eb6a4ded3983c1cc7408a50c5d9abb8fc9bb95b4d281e17adbc"
+  },
+  "tools": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "linux32_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+    "prior_plugin_sha256": "e977a9335ef836323154746a79d336ba374065419144c52d13537105c3c123f5",
+    "new_built_plugin_sha256": "3cd978029c4b95d2b4a7cf7348be74290b437b97e7bd01fbdaeab47b2586751a"
+  },
+  "fixture_sha256": {
+    "owned_x86_64": "ea4ee2dd0322fbaf79b760425088019be59e1110f700d19b6b305cbdb297973a",
+    "owned_i386": "c215c03232ed482da7c8d513533741ee8f799b627888ecd47b893dd174814c41",
+    "ownerless_x86_64": "7f8e10bf090cc58d85a8b73f043bbd0264c8797b308e901f89efd7b30e8db535",
+    "ownerless_i386": "adfd4f2bcd296c2cb162107b17fa661cdd24ba9a113e5bdc2608e1ff20862171",
+    "protected_input": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "results": {
+    "owned_native_checks_per_architecture": 7422,
+    "owned_ida_checks_per_architecture": 108,
+    "ownerless_native_checks_per_architecture": 4094,
+    "ownerless_ida_checks_per_architecture": 512,
+    "exact_writable_targets_per_architecture_and_mode": 4,
+    "unresolved_writable_controls_per_architecture_and_mode": 4,
+    "corrupt_ownerless_oracle_rejected": true,
+    "prior_owned_probe_errors_per_architecture": 17,
+    "prior_ownerless_probe_errors_per_architecture": 4,
+    "ctest_passed": 21,
+    "protected_nodes": 75,
+    "protected_edges": 77,
+    "protected_unresolved": 3
+  },
+  "raw_report_sha256": {
+    "build/vmp-writable-memory-final-owned/dataflow_analysis.json": "5c98809b5f92e3d5b0bff7cdacebd0eddfce99a3f4c44a36352fb1371d42e187",
+    "build/vmp-writable-memory-final-ownerless/ownerless_dataflow_analysis.json": "b7fdfb7f1bf5bd6dab8b55d742a8a599231db3f411894fbd7083c5b08d51eef7",
+    "build/vmp-writable-memory-final-owned/x86_64/inspection/dataflow.json": "797d24fe2e31d51d46521d329bdfd8ca8ec0b567f0c3307b95fa0e991e736275",
+    "build/vmp-writable-memory-final-owned/i386/inspection/dataflow.json": "76e4b40cc9f02c13e9ceb12291c8eb59b8104547b7068865c7c5c45f8bfa4d29",
+    "build/vmp-writable-memory-final-ownerless/x86_64/inspection/ownerless_dataflow.json": "bbdcf9663ed09206212437051d817aef0162f1c72879b4ea4f24c73eed31b00e",
+    "build/vmp-writable-memory-final-ownerless/i386/inspection/ownerless_dataflow.json": "94b52b4bff7b07dfdf9b25196ed4cd56de7344ee504961b82b5d9ad5cabe7e68",
+    "build/vmp-writable-memory-final-prior-owned-x64/dataflow.json": "ec52608497c959538b2bfe5d65b5c866d0279b0c2f8991572c233be5f696bf7c",
+    "build/vmp-writable-memory-final-prior-owned-i386/dataflow.json": "846fb29368b0b718e818f2f916c51ebbe78c49c2d2117d506b950382b22fff2c",
+    "build/vmp-writable-memory-final-prior-ownerless-x64/ownerless_dataflow.json": "036a6ce006ceb266fa0daea483f34f58a70d93aadfdecce910875fd93c656e19",
+    "build/vmp-writable-memory-final-prior-ownerless-i386/ownerless_dataflow.json": "c7ab635a4e85141effe9bc040271df4c62345610d9e4bf2aac6c9ff67c34a596",
+    "build/vmp-writable-memory-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/Testing/Temporary/LastTest.log": "efd97a7006b85166eceb57cb62f2eb89c6c508c66db65ff2fc1874cf4996c983"
+  }
+}

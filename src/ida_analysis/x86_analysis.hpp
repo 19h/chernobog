@@ -52,6 +52,11 @@ X86RegisterFact analyze_x86_register_before(const insn_t &instruction, const op_
 // initial stack bytes, intervening writes, and incomplete paths abstain.
 X86RegisterFact analyze_x86_stack_top_before(const insn_t &instruction, size_t depth);
 
+// A writable address starts unknown. A complete word is available only after
+// a represented store on every admitted path, without an aliasing write.
+X86RegisterFact analyze_x86_memory_before(const insn_t &instruction, uint64_t address,
+                                          size_t depth);
+
 // Recomputed facts for an exact existing ownerless root, before the first
 // unrepresented transfer. No IDB mutation, automatic ownership or publication.
 // Calls clear state at their syntactic continuation under normal return.

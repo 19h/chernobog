@@ -180,6 +180,10 @@ std::optional<stack_transfer_t> classify_push_return(const instruction_t &push,
     if (target.kind == target_proof_kind_t::stack_definition &&
         (!target.stack_top_source || target.definitions.empty() || !target.memory.empty()))
         return std::nullopt;
+    if (target.kind == target_proof_kind_t::memory_definition &&
+        (push.kind != instruction_kind_t::push_memory || target.stack_top_source ||
+         !target.source_address || target.definitions.empty() || !target.memory.empty()))
+        return std::nullopt;
     if (target.kind == target_proof_kind_t::immutable_memory &&
         (push.kind != instruction_kind_t::push_memory || target.memory.size() != 1 ||
          target.memory.front().bytes.size() != mode / 8 ||

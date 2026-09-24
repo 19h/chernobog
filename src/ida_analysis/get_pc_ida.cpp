@@ -588,6 +588,25 @@ std::optional<classifier::stack_transfer_t> classify_ida_push_return(const insn_
                 proof.kind = target_proof_kind_t::immutable_memory;
                 proof.memory.push_back(std::move(memory));
             }
+            else
+            {
+                // Initial writable bytes are unknown. Only a complete local
+                // store on every admitted path can establish this word.
+                const auto fact = analyze_x86_memory_before(
+                    push, *address,
+                    register_scan_depth > 0 ? size_t(register_scan_depth) : size_t(64));
+                if (!fact.support.empty())
+                {
+                    proof.source_address = *address;
+                    proof.definitions.insert(proof.definitions.end(), fact.support.begin(),
+                                             fact.support.end());
+                    if (fact.value)
+                    {
+                        proof.value = *fact.value;
+                        proof.kind = target_proof_kind_t::memory_definition;
+                    }
+                }
+            }
         }
     }
     else

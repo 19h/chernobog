@@ -7,10 +7,16 @@ extern int df_flags_saved(int), df_flags_literal(int), df_flags_overwrite(int),
     df_flags_dynamic(int), df_flags_full(int), df_flags_status(int);
 extern int df_stack_top_transfer(int), df_stack_top_overwrite(int);
 extern int df_stack_top_dynamic(int);
+extern int df_memory_store_transfer(int), df_memory_disjoint_store(int);
+extern int df_memory_overlapping_store(int), df_memory_unknown_alias(int, int *);
+extern int df_memory_conflicting_store(int);
+extern int df_memory_initial_word(int), df_memory_equal_stores(int);
+extern int df_memory_direct_store(int);
 
 int main(void)
 {
     unsigned checks = 0;
+    int disjoint = 0;
     for (int input = 0; input < 256; ++input)
     {
         if (df_equal(input) != 1 || df_different(input) != (input == 0) || df_flags(input) != 1 ||
@@ -21,9 +27,15 @@ int main(void)
             df_flags_status(input) != 0 || df_flags_literal(input) != 1 ||
             df_flags_overwrite(input) != 0 || df_flags_dynamic(input) != (input & 1) ||
             df_stack_top_transfer(input) != 7 || df_stack_top_overwrite(input) != 8 ||
-            df_stack_top_dynamic(input) != (input == 0 ? 7 : 8))
+            df_stack_top_dynamic(input) != (input == 0 ? 7 : 8) ||
+            df_memory_store_transfer(input) != 7 || df_memory_disjoint_store(input) != 7 ||
+            df_memory_overlapping_store(input) != 7 ||
+            df_memory_unknown_alias(input, &disjoint) != 7 ||
+            df_memory_conflicting_store(input) != (input == 0 ? 7 : 8) ||
+            df_memory_initial_word(input) != 7 || df_memory_equal_stores(input) != 7 ||
+            df_memory_direct_store(input) != 7)
             return 1;
-        checks += 19;
+        checks += 27;
         if (input > 0)
         {
             if (df_loop(input) != 1 || df_loop_changes(input) != ((input & 1) == 0))

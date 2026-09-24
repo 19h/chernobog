@@ -208,6 +208,9 @@ struct State
     // Only words established by this single-entry replay are retained. No
     // initial stack memory or absolute stack address is assumed known.
     std::vector<Word> stack;
+    // Only full words written within this replay are retained. Initial image
+    // bytes in writable segments never enter this map.
+    std::map<uint64_t, Word> memory;
 
     void join(const State &other)
     {
@@ -223,12 +226,21 @@ struct State
             suffix[i].join(other.stack[other.stack.size() - count + i]);
         }
         stack = std::move(suffix);
+        for (auto it = memory.begin(); it != memory.end();)
+        {
+            const auto peer = other.memory.find(it->first);
+            if (peer == other.memory.end() || it->second.known != peer->second.known ||
+                it->second.value != peer->second.value)
+                it = memory.erase(it);
+            else
+                ++it;
+        }
     }
 
     bool operator==(const State &other) const
     {
         if (flags.known != other.flags.known || flags.value != other.flags.value ||
-            stack.size() != other.stack.size())
+            stack.size() != other.stack.size() || memory.size() != other.memory.size())
             return false;
         for (size_t i = 0; i < stack.size(); ++i)
             if (stack[i].known != other.stack[i].known || stack[i].value != other.stack[i].value)
@@ -236,6 +248,13 @@ struct State
         for (size_t i = 0; i < regs.size(); ++i)
             if (regs[i].known != other.regs[i].known || regs[i].value != other.regs[i].value)
                 return false;
+        for (const auto &[address, word] : memory)
+        {
+            const auto peer = other.memory.find(address);
+            if (peer == other.memory.end() || word.known != peer->second.known ||
+                word.value != peer->second.value)
+                return false;
+        }
         return true;
     }
 
@@ -279,6 +298,70 @@ struct State
         return stack.empty() ? std::nullopt : stack.back().read(bits);
     }
 
+    std::optional<uint64_t> memory_address(const insn_t &insn, const op_t &operand) const
+    {
+        if (!natad(insn) || insn.segpref != 0 ||
+            (operand.type != o_mem && operand.type != o_displ && operand.type != o_phrase))
+            return std::nullopt;
+        const unsigned bits = mode64(insn) ? 64 : mode32(insn) ? 32 : 0;
+        if (!bits)
+            return std::nullopt;
+        if (operand.type == o_mem && !operand.hasSIB)
+            return operand.addr & mask(bits);
+        uint64_t address = operand.type == o_phrase ? 0 : operand.addr;
+        for (const auto &part : {std::make_pair(x86_base_reg(insn, operand), 0),
+                                 std::make_pair(x86_index_reg(insn, operand), x86_scale(operand))})
+        {
+            if (part.first == R_none)
+                continue;
+            if (part.second < 0 || part.second > 3)
+                return std::nullopt;
+            op_t reg;
+            reg.type = o_reg;
+            reg.reg = uint16_t(part.first);
+            reg.dtype = bits == 64 ? dt_qword : dt_dword;
+            const auto value = read(reg);
+            if (!value)
+                return std::nullopt;
+            address += *value << unsigned(part.second);
+        }
+        return address & mask(bits);
+    }
+
+    static bool writable_word(uint64_t address, unsigned bits)
+    {
+        if ((bits != 32 && bits != 64) || address > BADADDR - bits / 8)
+            return false;
+        const auto *segment = getseg(ea_t(address));
+        return segment && getseg(ea_t(address + bits / 8 - 1)) == segment &&
+               segment->type != SEG_XTRN && (segment->perm & SEGPERM_READ) &&
+               (segment->perm & SEGPERM_WRITE);
+    }
+
+    std::optional<uint64_t> read_memory(uint64_t address, unsigned bits) const
+    {
+        const auto found = memory.find(address);
+        return found == memory.end() ? std::nullopt : found->second.read(bits);
+    }
+
+    void invalidate_memory(std::optional<uint64_t> address, size_t bytes, unsigned bits)
+    {
+        if (!address || bytes == 0 || *address > BADADDR - bytes)
+        {
+            memory.clear();
+            return;
+        }
+        for (auto it = memory.begin(); it != memory.end();)
+        {
+            const uint64_t stored_end = it->first + bits / 8;
+            const uint64_t write_end = *address + bytes;
+            if (it->first < write_end && *address < stored_end)
+                it = memory.erase(it);
+            else
+                ++it;
+        }
+    }
+
     void write(const op_t &operand, std::optional<uint64_t> value, bool mode64)
     {
         const Slice s = register_slice(operand);
@@ -295,6 +378,13 @@ struct State
         const bool is64 = mode64(insn);
         const unsigned width = unsigned(get_dtype_size(insn.Op1.dtype) * 8);
         const unsigned word_bits = is64 ? 64 : 32;
+        const bool full_memory_store =
+            insn.itype == NN_mov &&
+            (insn.Op1.type == o_mem || insn.Op1.type == o_displ || insn.Op1.type == o_phrase) &&
+            width == word_bits;
+        const auto store_address =
+            full_memory_store ? memory_address(insn, insn.Op1) : std::nullopt;
+        const auto store_value = full_memory_store ? read(insn.Op2, width) : std::nullopt;
         const op_t *exchange_reg = nullptr;
         if (insn.itype == NN_xchg)
         {
@@ -319,6 +409,10 @@ struct State
             if (exchange_reg == nullptr && has_cf_chg(features, index) &&
                 (type == o_mem || type == o_displ || type == o_phrase))
                 stack.clear();
+            if (has_cf_chg(features, index) &&
+                (type == o_mem || type == o_displ || type == o_phrase))
+                invalidate_memory(memory_address(insn, insn.ops[index]),
+                                  get_dtype_size(insn.ops[index].dtype), word_bits);
         }
         const auto cond = x86_condition(insn.itype);
         if (cond && cond->use != X86ConditionUse::branch)
@@ -344,6 +438,14 @@ struct State
                       ? (stack.empty() ? std::nullopt : stack.back().read(word_bits))
                       : read(insn.Op2, width),
                   is64);
+            if (store_address && store_value && writable_word(*store_address, word_bits))
+            {
+                if (memory.size() == 16 && !memory.count(*store_address))
+                    memory.erase(memory.begin());
+                Word stored;
+                stored.write(word_bits, 0, store_value, is64);
+                memory[*store_address] = stored;
+            }
             return;
         case NN_movzx:
         case NN_movsx:
@@ -420,6 +522,7 @@ struct State
         }
         case NN_push:
         {
+            memory.clear();
             if (!natad(insn) || (is64 ? !op64(insn) : !op32(insn)))
             {
                 stack.clear();
@@ -448,6 +551,7 @@ struct State
         case NN_pushfd:
         case NN_pushfq:
         {
+            memory.clear();
             if (!natad(insn) || (is64 ? !op64(insn) : !op32(insn)))
             {
                 stack.clear();
@@ -478,6 +582,7 @@ struct State
         }
         case NN_pop:
         {
+            memory.clear();
             if (insn.Op1.type != o_reg || !natad(insn) || (is64 ? !op64(insn) : !op32(insn)))
             {
                 stack.clear();
@@ -496,6 +601,7 @@ struct State
         case NN_popfd:
         case NN_popfq:
         {
+            memory.clear();
             if (!natad(insn) || (is64 ? !op64(insn) : !op32(insn)))
             {
                 stack.clear();
@@ -805,6 +911,25 @@ X86RegisterFact analyze_x86_stack_top_before(const insn_t &insn, size_t depth)
         result.support.push_back(it->ea);
     }
     result.value = state.read_stack_top(bits);
+    return result;
+}
+
+X86RegisterFact analyze_x86_memory_before(const insn_t &insn, uint64_t address, size_t depth)
+{
+    const unsigned bits = mode64(insn) ? 64 : mode32(insn) ? 32 : 0;
+    if (!bits || !natad(insn) || !State::writable_word(address, bits))
+        return {};
+    if (const auto flow = flow_before(insn, depth))
+        return {flow->state.read_memory(address, bits), flow->support};
+    const auto prefix = prefix_before(insn, depth);
+    State state;
+    X86RegisterFact result;
+    for (auto it = prefix.rbegin(); it != prefix.rend(); ++it)
+    {
+        state.step(*it);
+        result.support.push_back(it->ea);
+    }
+    result.value = state.read_memory(address, bits);
     return result;
 }
 
@@ -1250,6 +1375,18 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
                         target.definitions.push_back(definition.ea);
                 }
             }
+            else if (const auto address = state.memory_address(instruction, instruction.Op1);
+                     address && State::writable_word(*address, result.address_bits))
+            {
+                target.source_address = *address;
+                target.value = state.read_memory(*address, result.address_bits);
+                if (target.value)
+                {
+                    target.kind = classifier::target_proof_kind_t::memory_definition;
+                    for (const auto &definition : instructions)
+                        target.definitions.push_back(definition.ea);
+                }
+            }
         }
         else
             continue;
@@ -1270,6 +1407,8 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
                                   ? "register-definition"
                               : target.kind == classifier::target_proof_kind_t::stack_definition
                                   ? "stack-definition"
+                              : target.kind == classifier::target_proof_kind_t::memory_definition
+                                  ? "memory-definition"
                                   : "unresolved"},
              {"width_bits", std::to_string(transfer->width_bits)},
              {"stack_delta_bytes", std::to_string(transfer->stack_delta_bytes)},
