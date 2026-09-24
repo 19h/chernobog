@@ -62,8 +62,12 @@ and IDA 9.4 executable (SHA-256
 The missing assertion is the PUSH-next materialization comment; the other
 target, rejection, call-context, and database checks pass. The earlier 16/16
 result in `VMP_GET_PC.md` belongs to its historical plugin hash and is not a
-claim for the current artifact. Root cause and repair of this annotation
-regression remain open.
+claim for the current artifact. At this checkpoint, root cause and repair of
+this annotation regression were open.
+
+Subsequent work identified and repaired this regression; see
+[VMP_GET_PC32_BLOCK_END.md](VMP_GET_PC32_BLOCK_END.md). The observations and
+hashes above remain the pre-repair execution and IDA measurements.
 
 ## Bounds and quality gates
 

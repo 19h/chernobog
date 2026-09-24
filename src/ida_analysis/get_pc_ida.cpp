@@ -203,7 +203,9 @@ instruction_t translate_instruction(const insn_t &instruction, const register_sl
             result.target = instruction.Op1.addr;
         return result;
     }
-    if (is_basic_block_end(instruction, false))
+    // IDA may mark PUSH-next as a block end after following its immediate
+    // address. That metadata does not change the instruction's stack effect.
+    if (instruction.itype != NN_push && is_basic_block_end(instruction, false))
     {
         result.kind = instruction_kind_t::conditional_branch;
         for (int index = 0; index < UA_MAXOP; ++index)
