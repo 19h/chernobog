@@ -26,7 +26,9 @@ __attribute__((noinline)) int native_interleaved_strings(void)
     {
         first_value |= (uint64_t)((volatile unsigned char *)first)[i] << (8 * i);
         second_value |= (uint64_t)((volatile unsigned char *)second)[i] << (8 * i);
-#ifdef WRITE_FIRST_ALLOCATION
+#ifdef WRITE_FIRST_STRING_BYTE
+        ((volatile unsigned char *)first)[0] = (unsigned char)i;
+#elif defined(WRITE_FIRST_ALLOCATION)
         ((volatile unsigned char *)first)[24] = (unsigned char)i;
 #endif
     }

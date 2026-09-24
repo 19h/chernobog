@@ -141,9 +141,39 @@ bool uninterrupted(const Stream &stream, uint64_t sequence, const Records &recor
         if (++examined > 256)
             return false;
         const auto &access = *write->second;
+        if (access.addr > UINT64_MAX - access.size)
+            return false;
+        const uint64_t write_end = access.addr + access.size;
+        const uint64_t allocation_end = allocation.address + allocation.size;
+        if (write_end <= allocation.address || access.addr >= allocation_end)
+            continue;
+        // A write wholly inside the same allocation is checked against the
+        // completed string span before publication. A partial overlap with
+        // the allocation cannot be attributed to one object.
+        if (access.addr < allocation.address || write_end > allocation_end)
+            return false;
+    }
+    return true;
+}
+
+bool completed_stream_avoids_writes(const Stream &stream, const Records &records)
+{
+    if (stream.use.scope != DataScope::HEAP || stream.parts.size() < 2)
+        return true;
+    const uint64_t start = stream.use.address;
+    if (start > UINT64_MAX - stream.use.observed_size)
+        return false;
+    const uint64_t end = start + stream.use.observed_size;
+    const uint64_t last_sequence = stream.parts.back().sequence;
+    size_t examined = 0;
+    for (auto write = records.heap_writes.upper_bound(stream.parts.front().sequence);
+         write != records.heap_writes.end() && write->first <= last_sequence; ++write)
+    {
+        if (++examined > 256)
+            return false;
+        const auto &access = *write->second;
         if (access.addr > UINT64_MAX - access.size ||
-            !(access.addr + access.size <= allocation.address ||
-              access.addr >= allocation.address + allocation.size))
+            !(access.addr + access.size <= start || access.addr >= end))
             return false;
     }
     return true;
@@ -248,12 +278,18 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
         uint64_t previous = 0;
         bool first = true;
         size_t retained = 0;
+        const Records *const stream_records = &records;
         const auto retain = [&](Stream value)
         {
             Shape shape;
             for (const auto &part : value.parts)
                 shape.emplace_back(part.site, part.observed_size);
             Key key{value.use.semantic_key(), std::move(shape)};
+            if (!completed_stream_avoids_writes(value, *stream_records))
+            {
+                ambiguous.insert(key);
+                return true;
+            }
             const auto decoded = string_recovery::recover_runtime_utf8_prefix(
                 value.use.bytes, minimum_length, maximum_length);
             if (!decoded)

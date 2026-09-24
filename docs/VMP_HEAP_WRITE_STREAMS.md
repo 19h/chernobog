@@ -1,5 +1,9 @@
 # Read streams across disjoint heap writes
 
+This records the allocation-disjoint admission rule and its measured plugin
+revision. The later same-allocation byte-span refinement is recorded in
+`VMP_SAME_OBJECT_WRITE_STREAMS.md`; the hashes in this report remain historical.
+
 Review requirements 3a and 3b require use-time string evidence to retain
 allocation identity and memory order. The earlier interleaved-read aggregator
 cleared every active stream at any write. A write to one heap allocation thus

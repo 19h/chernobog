@@ -1585,9 +1585,32 @@ void native_interleaved_read_regressions()
                 unrelated_heap_write.events.data.push_back(
                     {0x1300, first_address + 24, 0, 1, RAX_MEM_WRITE, DataScope::HEAP, 16, 1, 11});
                 const auto unaffected = hybrid_consensus_native_read_strings(unrelated_heap_write);
-                verify(unaffected.size() == (layout == 0 ? 1u : 0u) &&
-                           (layout != 0 || unaffected[0].value == "second!"),
-                       "heap write preserves only a disjoint allocation stream");
+                verify(unaffected.size() == 2 &&
+                           std::any_of(unaffected.begin(), unaffected.end(),
+                                       [](const auto &item) { return item.value == "secret!"; }) &&
+                           std::any_of(unaffected.begin(), unaffected.end(),
+                                       [](const auto &item) { return item.value == "second!"; }),
+                       "heap write outside both string spans preserves both streams");
+                for (uint64_t address : {first_address, first_address + 6})
+                {
+                    auto overlap = evidence;
+                    overlap.events.data.push_back(
+                        {0x1300, address, 0, 1, RAX_MEM_WRITE, DataScope::HEAP, 16, 1, 11});
+                    const auto retained = hybrid_consensus_native_read_strings(overlap);
+                    verify(retained.size() == 1 && retained[0].value == "second!",
+                           "write to an observed or future first-string byte vetoes its stream");
+                }
+                auto second_overlap = evidence;
+                second_overlap.events.data.push_back(
+                    {0x1300, second_address + 3, 0, 1, RAX_MEM_WRITE, DataScope::HEAP, 16, 1, 11});
+                const auto first_only = hybrid_consensus_native_read_strings(second_overlap);
+                verify(first_only.size() == 1 && first_only[0].value == "secret!",
+                       "write within the second string leaves the disjoint first span");
+                auto crossing = evidence;
+                crossing.events.data.push_back(
+                    {0x1300, first_address + 63, 0, 2, RAX_MEM_WRITE, DataScope::HEAP, 16, 1, 11});
+                verify(hybrid_consensus_native_read_strings(crossing).empty(),
+                       "partially overlapping allocation write cannot be assigned one object");
             }
             if (layout == 0 && width == 1)
             {
@@ -1605,8 +1628,8 @@ void native_interleaved_read_regressions()
                     quota.events.data.push_back({0x1300, second_address + 24, 0, 1, RAX_MEM_WRITE,
                                                  DataScope::HEAP, sequence, 1, 11});
                 const auto at_limit = hybrid_consensus_native_read_strings(quota);
-                verify(at_limit.size() == 1 && at_limit[0].value == "secret!",
-                       "256 disjoint heap writes preserve the bounded stream");
+                verify(at_limit.size() == 2,
+                       "256 writes outside both string spans preserve both bounded streams");
                 quota.events.data.push_back({0x1300, second_address + 24, 0, 1, RAX_MEM_WRITE,
                                              DataScope::HEAP, 272, 1, 11});
                 verify(hybrid_consensus_native_read_strings(quota).empty(),
