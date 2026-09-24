@@ -255,6 +255,7 @@ def adjacent_external_flow():
 try:
     assert ida_loader.load_plugin(os.environ["CHERNOBOG_PLUGIN_PATH"])
     ida_auto.auto_wait()
+    alu_proofs = os.environ.get("CHERNOBOG_ALU_BASELINE") != "1"
     expected = {
         "df_equal": True,
         "df_different": False,
@@ -271,6 +272,10 @@ try:
         "df_memory_movsxd_initial_negative": False,
         "df_memory_movsx_word_negative": True,
         "df_memory_movsx_initial_word_negative": False,
+        "df_memory_alu_compare": alu_proofs,
+        "df_memory_alu_compare_initial": False,
+        "df_memory_alu_flags": alu_proofs,
+        "df_memory_alu_flags_initial": False,
         "df_loop": True,
         "df_loop_changes": False,
         "df_stack": True,
@@ -429,6 +434,10 @@ try:
         ("df_memory_overlapping_store", True),
         ("df_memory_unknown_alias", False),
         ("df_memory_conflicting_store", False),
+        ("df_memory_alu_add", alu_proofs),
+        ("df_memory_alu_xor_byte", alu_proofs),
+        ("df_memory_alu_rmw_initial", False),
+        ("df_memory_alu_rmw_alias", False),
     ):
         root = address(name)
         reanalyze(root)
@@ -447,7 +456,12 @@ try:
                 == hex(
                     address(
                         "df_memory_initial_slot"
-                        if name in ("df_memory_initial_word", "df_memory_missing_byte")
+                        if name
+                        in (
+                            "df_memory_initial_word",
+                            "df_memory_missing_byte",
+                            "df_memory_alu_rmw_initial",
+                        )
                         else "df_memory_slot"
                     )
                 )
@@ -507,6 +521,9 @@ try:
         ("df_memory_movsx_word", True),
         ("df_memory_movzx_initial", False),
         ("df_memory_movzx_alias", False),
+        ("df_memory_alu_source", alu_proofs),
+        ("df_memory_alu_initial", False),
+        ("df_memory_alu_alias", False),
     ):
         root = address(name)
         reanalyze(root)

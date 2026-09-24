@@ -387,11 +387,80 @@ def metadata_controls(labels):
     )
 
 
+def alu_only_main():
+    try:
+        assert ida_loader.load_plugin(os.environ["CHERNOBOG_PLUGIN_PATH"])
+        ida_auto.auto_wait()
+        value = ida_expr.idc_value_t()
+        assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
+        ida_auto.auto_wait()
+        ida_auto.enable_auto(False)
+        gain = os.environ.get("CHERNOBOG_ALU_BASELINE") != "1"
+        for name, basis in (
+            ("df_memory_alu_add", "memory-definition"),
+            ("df_memory_alu_xor_byte", "memory-definition"),
+            ("df_memory_alu_source", "register-definition"),
+            ("df_memory_alu_initial", "unresolved"),
+            ("df_memory_alu_alias", "unresolved"),
+            ("df_memory_alu_compare", "condition"),
+            ("df_memory_alu_rmw_initial", "unresolved"),
+            ("df_memory_alu_rmw_alias", "unresolved"),
+            ("df_memory_alu_compare_initial", "condition-initial"),
+            ("df_memory_alu_flags", "condition"),
+            ("df_memory_alu_flags_initial", "condition-initial"),
+        ):
+            root, instructions = prepare_prefix(name)
+            before = inventory()
+            result = api(f"chernobog_native_region_facts({root})")
+            after = inventory()
+            check(name + " read-only IDB inventory", before == after)
+            check(name + " converged", result["available"] and result["converged"])
+            if basis in ("condition", "condition-initial"):
+                site = next(
+                    instruction.ea
+                    for instruction in instructions
+                    if instruction.get_canon_mnem().startswith("set")
+                )
+                condition(name, result, site, True if gain and basis == "condition" else None)
+            else:
+                site = next(
+                    instruction.ea
+                    for instruction in instructions
+                    if instruction.get_canon_mnem() == "push"
+                )
+                row = row_at(result, site, "push-return")
+                proved = gain and basis != "unresolved"
+                check(
+                    name + " target status",
+                    row["status"] == ("proved" if proved else "unresolved")
+                    and row["target_proof"] == (basis if proved else "unresolved")
+                    and row["target"] == (hex(symbol("df_memory_target")) if proved else "unknown"),
+                )
+            captures[name] = {"facts": result, "inventory_before": before, "inventory_after": after}
+    except BaseException as error:
+        errors.append(type(error).__name__)
+        captures["exception"] = {
+            "type": type(error).__name__,
+            "frames": [
+                {"function": frame.name, "line": frame.lineno}
+                for frame in traceback.extract_tb(error.__traceback__)
+            ],
+        }
+    (Path(os.environ["IDAUSR"]).parent / "ownerless_dataflow.json").write_text(
+        json.dumps({"checks": checks, "errors": errors, "captures": captures}, indent=2) + "\n"
+    )
+    print("[chernobog][ownerless-dataflow] " + ("FAIL" if errors else "PASS"), flush=True)
+    return 2 if errors else 0
+
+
 def main():
+    if os.environ.get("CHERNOBOG_ALU_ONLY") == "1":
+        return alu_only_main()
     global ordinary
     try:
         assert ida_loader.load_plugin(os.environ["CHERNOBOG_PLUGIN_PATH"])
         ida_auto.auto_wait()
+        alu_proofs = os.environ.get("CHERNOBOG_ALU_BASELINE") != "1"
         value = ida_expr.idc_value_t()
         assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
         ida_auto.auto_wait()
@@ -485,6 +554,10 @@ def main():
             ("df_memory_movsxd_initial_negative", None),
             ("df_memory_movsx_word_negative", True),
             ("df_memory_movsx_initial_word_negative", None),
+            ("df_memory_alu_compare", True if alu_proofs else None),
+            ("df_memory_alu_compare_initial", None),
+            ("df_memory_alu_flags", True if alu_proofs else None),
+            ("df_memory_alu_flags_initial", None),
         ):
             root, instructions = prepare_prefix(name)
             site = next(
@@ -580,6 +653,10 @@ def main():
             ("df_memory_overlapping_store", True),
             ("df_memory_unknown_alias", False),
             ("df_memory_conflicting_store", False),
+            ("df_memory_alu_add", alu_proofs),
+            ("df_memory_alu_xor_byte", alu_proofs),
+            ("df_memory_alu_rmw_initial", False),
+            ("df_memory_alu_rmw_alias", False),
         ):
             root, instructions = prepare_prefix(name)
             result = inspect(name, root)
@@ -631,6 +708,9 @@ def main():
             ("df_memory_movsx_word", True),
             ("df_memory_movzx_initial", False),
             ("df_memory_movzx_alias", False),
+            ("df_memory_alu_source", alu_proofs),
+            ("df_memory_alu_initial", False),
+            ("df_memory_alu_alias", False),
         ):
             root, instructions = prepare_prefix(name)
             result = inspect(name, root)

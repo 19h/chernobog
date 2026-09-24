@@ -909,6 +909,184 @@ BEGIN NAME(df_memory_movsxd_initial_negative)
 #endif
     RESULT sete
 
+/* Arithmetic reads locally established bytes before replacing them. */
+BEGIN NAME(df_memory_alu_add)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    subl $1, %eax
+    movl %eax, (%edx)
+    addl $1, (%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    subq $1, %rax
+    movq %rax, (%rdx)
+    addq $1, (%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_alu_xor_byte)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    xorl $0x5a, %eax
+    movl %eax, (%edx)
+    xorb $0x5a, (%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    xorq $0x5a, %rax
+    movq %rax, (%rdx)
+    xorb $0x5a, (%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_alu_source)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    xorl %eax, %eax
+    addl (%edx), %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    xorq %rax, %rax
+    addq (%rdx), %rax
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_memory_alu_initial)
+#ifdef __i386__
+    movl $NAME(df_memory_initial_slot), %edx
+    xorl %eax, %eax
+    addl (%edx), %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_initial_slot)(%rip), %rdx
+    xorq %rax, %rax
+    addq (%rdx), %rax
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_memory_alu_alias)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl 8(%esp), %ecx
+    movl %eax, (%ecx)
+    xorl %eax, %eax
+    addl (%edx), %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    movl %eax, (%rsi)
+    xorq %rax, %rax
+    addq (%rdx), %rax
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_memory_alu_compare)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    cmpl %eax, (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    cmpq %rax, (%rdx)
+#endif
+    RESULT sete
+
+BEGIN NAME(df_memory_alu_rmw_initial)
+#ifdef __i386__
+    movl $NAME(df_memory_initial_slot), %edx
+    addl $0, (%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_initial_slot)(%rip), %rdx
+    addq $0, (%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_alu_rmw_alias)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    subl $1, %eax
+    movl %eax, (%edx)
+    movl 8(%esp), %ecx
+    movl %eax, (%ecx)
+    addl $1, (%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    subq $1, %rax
+    movq %rax, (%rdx)
+    movl %eax, (%rsi)
+    addq $1, (%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_alu_compare_initial)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_initial_slot), %edx
+    cmpl %eax, (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_initial_slot)(%rip), %rdx
+    cmpq %rax, (%rdx)
+#endif
+    RESULT sete
+
+BEGIN NAME(df_memory_alu_flags)
+#ifdef __i386__
+    movl $NAME(df_memory_slot), %edx
+    movl $-1, (%edx)
+    addl $1, (%edx)
+#else
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movl $-1, (%rdx)
+    addl $1, (%rdx)
+#endif
+    RESULT sete
+
+BEGIN NAME(df_memory_alu_flags_initial)
+#ifdef __i386__
+    movl $NAME(df_memory_alu_initial_flag_slot), %edx
+    addl $1, (%edx)
+#else
+    leaq NAME(df_memory_alu_initial_flag_slot)(%rip), %rdx
+    addl $1, (%rdx)
+#endif
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl $-1, (%edx)
+#else
+    movl $-1, (%rdx)
+#endif
+    ret
+
 BEGIN NAME(df_memory_initial_word)
 #ifdef __i386__
     movl $NAME(df_memory_initial_slot), %edx
@@ -1077,6 +1255,10 @@ NAME(df_memory_initial_signed_word):
 .globl NAME(df_memory_initial_dword)
 NAME(df_memory_initial_dword):
     .long 0x80000000
+.p2align 2
+.globl NAME(df_memory_alu_initial_flag_slot)
+NAME(df_memory_alu_initial_flag_slot):
+    .long -1
 .text
 
 /* The probe assigns the remote body as a tail of df_flow_root. The CLC

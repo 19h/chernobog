@@ -420,6 +420,17 @@ fixed- and variable-order probes and all 21 CTest suites pass. See
 `VMP_MULTISITE_READ_STREAMS.md` and its evidence JSON. Protected-sample
 coverage and spatially noncontiguous algorithms remain unknown.
 
+Writable-memory arithmetic checkpoint: exact locally established bytes now
+feed modeled x86-64/i386 arithmetic, read-modify-write results and status
+flags. Three new transfer targets and two conditions per architecture gain
+owned proofs and explicit-root ownerless facts; six initial-byte and alias
+controls remain unresolved. Per architecture, 17,150 owned native checks, 225
+owned IDA assertions, 4,094 existing ownerless native checks and 892
+ownerless IDA assertions pass. Matched prior/current runs isolate the five
+new facts, all 21 CTest suites pass, and the selected supplied VMP initializer
+still has three unresolved facts. See `VMP_WRITABLE_ALU.md` and its evidence
+JSON. Other writable-memory forms and protected effectiveness remain open.
+
 First implementation checkpoint: source changes, executable semantic checks,
 and production IDA validation constitute progress. The complete objective is
 still active. Validation commands and limits are in `tests/VMP_NATIVE.md`.

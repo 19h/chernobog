@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "scope": "exact locally established writable-memory arithmetic operands and results",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "f002cf3aa5e5f6e313a9ee0b9814de8ff469099b337be144f902692e5f3be330",
+    "tests/vmp_native/dataflow.S": "21d3fbf5200d0f9e979fd84e36ab0af7ad009f70f02f3fc4a1061f83c6e2c071",
+    "tests/vmp_native/dataflow_main.c": "9777c35a1fb86d8b93e311492c15d0515ba63c3dfe7bdff4e639189dc8b6ffbd",
+    "tests/run_native_dataflow.py": "3436b415c3f9bfc498de0543be48e4b50853d6e88516431a32fda55e04088a12",
+    "tests/ida_dataflow_probe.py": "1db2a8392b068f4461225f00cbbc24feb7dbc1c716026bea5d07d4bb32263bec",
+    "tests/ida_ownerless_dataflow_probe.py": "6f840d030b14f333921dd2f36d5ccbb492ea77cf3d66ec36c1a2a1005772f16a",
+    "tests/run_ownerless_dataflow.py": "91a6ce5cdbe6743d373c3af389bfdd2b2627d729805aa1c865165600fe9ba3bf"
+  },
+  "tools": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "linux32_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+    "previous_plugin_sha256": "5b0ffd78d452d84436eaf910321c24ac862dfe3a8735f574fbce23b8fc58ad57",
+    "new_built_plugin_sha256": "fbb9fd9c9158d89353313ed5557b9afda7c0a20207565de415a01a11ac2e87f0"
+  },
+  "fixture_sha256": {
+    "owned_x86_64": "5228a038c5b990a8b5a5336fd92e88ba2ce432e8ddbe92091e99b05983922cc6",
+    "owned_i386": "11cff2bb3d0349efdd8e79521a894f383567342804b25252f9d05a0124a012db",
+    "ownerless_x86_64": "e4a9c6cdf240b2d1b0885798978dfb0fd29d5a44ce528b6e5cf16b9281208f62",
+    "ownerless_i386": "c74b90821be1ab08a374e8b6ecfc8aa83b36a9ae9c57d0ab7b91a3b8b43981df",
+    "protected_input": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "results": {
+    "owned_native_checks_per_architecture": 17150,
+    "owned_ida_checks_per_architecture": 225,
+    "ownerless_native_checks_per_architecture": 4094,
+    "ownerless_ida_checks_per_architecture": 892,
+    "focused_ownerless_checks_per_run": 37,
+    "new_exact_transfer_targets_per_architecture": 3,
+    "new_condition_facts_per_architecture": 2,
+    "new_unresolved_control_shapes_per_architecture": 6,
+    "corrupt_ownerless_oracle_rejected": true,
+    "matched_input_probe_ida_per_pair": true,
+    "baseline_expectation_environment_difference": true,
+    "probe_errors_all_eight_matched_runs": 0,
+    "ctest_passed": 21,
+    "protected_nodes": 75,
+    "protected_unresolved": 3,
+    "protected_inventory_unchanged": true
+  },
+  "raw_report_sha256": {
+    "build/native-dataflow-alu-flags-final/dataflow_analysis.json": "b1637d7b814f8a3f565b939dda5b0bc8a7a69752f08e5c3a3ab95a66c28b16f5",
+    "build/ownerless-dataflow-alu-flags-final/ownerless_dataflow_analysis.json": "862b83db35b31b63abac5a350d9f558af59fa79a0eedeaf2b75536971d1c3f0d",
+    "build/native-dataflow-alu-flags-final/x86_64/inspection/dataflow.json": "05a78dd05d8031829121e9f9632824ed5c3fe3a50ed2be9156144b14c389ee0a",
+    "build/native-dataflow-alu-flags-final/i386/inspection/dataflow.json": "59565e3e4b9d8adffe2a29cef7c12eafc5d48657298b1707629e21b79d6569b8",
+    "build/ownerless-dataflow-alu-flags-final/x86_64/inspection/ownerless_dataflow.json": "86b64fd2b2c8d46b85ecc24f6a1f9b5123312c37bb3ad866a3287589472ab119",
+    "build/ownerless-dataflow-alu-flags-final/i386/inspection/ownerless_dataflow.json": "bc25d47bcacaf87770675e45a312f3e1d85332775998f4232889510500aeddb0",
+    "build/native-alu-flags-baseline-owned-x64/dataflow.json": "8d6e60f4b46d5cb81aa639ab02e2ac9c4b743647ea2da17e255c5e82ae421854",
+    "build/native-alu-flags-baseline-owned-i386/dataflow.json": "9531e90cf31027a50258384382e80d304e7712927f82f422ec7b9251bc5b16cc",
+    "build/native-alu-flags-baseline-ownerless-x86_64/ownerless_dataflow.json": "aa3930558852b35e0382a5aefb69dc1077319d92ebab8da3fa7941ae5d262d12",
+    "build/native-alu-flags-current-ownerless-x86_64/ownerless_dataflow.json": "f6b959665244a170200a63fea90567d5ea35e8ce3b7115c53faa08e92954b965",
+    "build/native-alu-flags-baseline-ownerless-i386/ownerless_dataflow.json": "eac7631dbdb7b6609194806266f98a201bf4ba9fe176f0428823ff797c304bf3",
+    "build/native-alu-flags-current-ownerless-i386/ownerless_dataflow.json": "a3e48f240bf9d18880853635703436b65d33c9ac9baa4e7eb61f2468afb17de0",
+    "build/native-alu-nine-protected/run.json": "ac0073afcda267f1e2edcfa3f5402633b47b05b6f2edcc5f7f7c80293cd6615d",
+    "build/native-alu-nine-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/Testing/Temporary/LastTest.log": "fe252a10a80be1bbbeafb2cdcccd87063f83983da21fd0c6b291d1085f734e2b"
+  }
+}

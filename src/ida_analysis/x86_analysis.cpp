@@ -390,6 +390,30 @@ struct State
         const bool is64 = mode64(insn);
         const unsigned width = unsigned(get_dtype_size(insn.Op1.dtype) * 8);
         const unsigned word_bits = is64 ? 64 : 32;
+        const auto algebra = operation(insn.itype);
+        const auto memory_operand = [](const op_t &operand)
+        { return operand.type == o_mem || operand.type == o_displ || operand.type == o_phrase; };
+        const auto algebra_address =
+            algebra != Operation::unknown && memory_operand(insn.Op1) && valid_width(width)
+                ? memory_address(insn, insn.Op1)
+                : std::nullopt;
+        const auto algebra_read = [&](const op_t &operand) -> std::optional<uint64_t>
+        {
+            if (!memory_operand(operand))
+                return read(operand, width);
+            if (unsigned(get_dtype_size(operand.dtype) * 8) != width || !valid_width(width))
+                return std::nullopt;
+            const auto address = memory_address(insn, operand);
+            return address && writable_range(*address, width / 8, word_bits)
+                       ? read_memory(*address, width)
+                       : std::nullopt;
+        };
+        // Capture both operands before the canonical memory-write invalidation.
+        // An RMW instruction reads the old bytes before it writes the result.
+        const auto algebra_left =
+            algebra == Operation::unknown ? std::nullopt : algebra_read(insn.Op1);
+        const auto algebra_right =
+            algebra == Operation::unknown ? std::nullopt : algebra_read(insn.Op2);
         const bool local_memory_store =
             insn.itype == NN_mov &&
             (insn.Op1.type == o_mem || insn.Op1.type == o_displ || insn.Op1.type == o_phrase) &&
@@ -434,11 +458,6 @@ struct State
             }
             if (exchange_reg == nullptr)
             {
-                const auto memory_operand = [](const op_t &operand)
-                {
-                    return operand.type == o_mem || operand.type == o_displ ||
-                           operand.type == o_phrase;
-                };
                 const op_t *mem = nullptr;
                 if (insn.Op1.type == o_reg && memory_operand(insn.Op2))
                 {
@@ -738,8 +757,7 @@ struct State
         default:
             break;
         }
-        const auto op = operation(insn.itype);
-        if (op == Operation::unknown)
+        if (algebra == Operation::unknown)
         {
             // Covers implicit writes, calls, and unsupported instructions.
             // No assumption about a destination list's completeness is needed.
@@ -749,10 +767,15 @@ struct State
         const Slice a = register_slice(insn.Op1), b = register_slice(insn.Op2);
         const bool same =
             a.reg >= 0 && a.reg == b.reg && a.width == b.width && a.offset == b.offset;
-        const auto result = transfer(op, width, read(insn.Op1), read(insn.Op2, width), same, flags);
-        if (op != Operation::compare && op != Operation::test && op != Operation::clear_carry &&
-            op != Operation::set_carry && op != Operation::complement_carry)
+        const auto result = transfer(algebra, width, algebra_left, algebra_right, same, flags);
+        if (algebra != Operation::compare && algebra != Operation::test &&
+            algebra != Operation::clear_carry && algebra != Operation::set_carry &&
+            algebra != Operation::complement_carry)
+        {
             write(insn.Op1, result, is64);
+            if (result && algebra_address && writable_range(*algebra_address, width / 8, word_bits))
+                store_memory(*algebra_address, width, *result);
+        }
     }
 };
 

@@ -27,6 +27,12 @@ extern int df_memory_movzx_initial(int), df_memory_movzx_alias(int, int *);
 extern int df_memory_movsx_negative(int), df_memory_movsx_initial_negative(int);
 extern int df_memory_movsxd_negative(int), df_memory_movsxd_initial_negative(int);
 extern int df_memory_movsx_word_negative(int), df_memory_movsx_initial_word_negative(int);
+extern int df_memory_alu_add(int), df_memory_alu_xor_byte(int), df_memory_alu_source(int);
+extern int df_memory_alu_initial(int), df_memory_alu_alias(int, int *);
+extern int df_memory_alu_compare(int);
+extern int df_memory_alu_rmw_initial(int), df_memory_alu_rmw_alias(int, int *);
+extern int df_memory_alu_compare_initial(int);
+extern int df_memory_alu_flags(int), df_memory_alu_flags_initial(int);
 extern int df_memory_target(void);
 
 int main(void)
@@ -65,9 +71,15 @@ int main(void)
             df_memory_movsx_initial_negative(input) != 1 || df_memory_movsxd_negative(input) != 1 ||
             df_memory_movsxd_initial_negative(input) != 1 || df_memory_movzx_word(input) != 7 ||
             df_memory_movsx_word(input) != 7 || df_memory_movsx_word_negative(input) != 1 ||
-            df_memory_movsx_initial_word_negative(input) != 1)
+            df_memory_movsx_initial_word_negative(input) != 1 || df_memory_alu_add(input) != 7 ||
+            df_memory_alu_xor_byte(input) != 7 || df_memory_alu_source(input) != 7 ||
+            df_memory_alu_initial(input) != 7 || df_memory_alu_alias(input, &disjoint) != 7 ||
+            df_memory_alu_compare(input) != 1 || df_memory_alu_rmw_initial(input) != 7 ||
+            df_memory_alu_rmw_alias(input, &disjoint) != 7 ||
+            df_memory_alu_compare_initial(input) != 1 || df_memory_alu_flags(input) != 1 ||
+            df_memory_alu_flags_initial(input) != 1)
             return 1;
-        checks += 54;
+        checks += 65;
         if (input > 0)
         {
             if (df_loop(input) != 1 || df_loop_changes(input) != ((input & 1) == 0))
