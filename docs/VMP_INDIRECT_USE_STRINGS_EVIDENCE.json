@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "source_sha256": {
+    "tests/vmp_native/indirect_temporal_strings.c": "315d3083f52a902820be1699fe3e972bb5cc4b85151b1c638342cb291b4c7ad9",
+    "tests/ida_indirect_temporal_string_probe.py": "e60fb56514fe82ee0997bd6d697ca8f2e0298ab72bcfedf5fe05dff4a0f6bea1",
+    "src/deobf/handlers/ctree_string_decrypt.cpp": "99951370f74b7cbd996a3ee63ac134f173cf34d8a9c2161c0bae20b499659a9e"
+  },
+  "fixture": {
+    "path": "build/vmp-indirect-temporal",
+    "sha256": "c5e64d03509702ec8b8cd14e731d1d8f78b1eab15442321065021e269f1949d2",
+    "native_exit_code": 0,
+    "wrong_first_oracle_exit_code": 1,
+    "wrong_second_oracle_exit_code": 1,
+    "plaintext_in_strings_output": false
+  },
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "baseline": {
+    "plugin_sha256": "eb39b093acfc6029cf3af046d71c5651e039f7a70f71b55f9cfb33ebd26aafa6",
+    "run_record_sha256": "6a4be8cccff6124f754eca71fc2dc86a45c7a6a844b4f5a2e4b60063a917b1e7",
+    "probe_record_sha256": "2f6014dcd554280c114cf5b6c96606f7ef9d461e969918b0dfa7091e2a308061",
+    "runner_return_code": 0,
+    "runs": 4,
+    "returned_runs": 4,
+    "temporal_capture_complete_runs": 4,
+    "allocation_lifetimes": 8,
+    "modeled_candidates": 2,
+    "modeled_annotations": 0,
+    "probe_errors": []
+  },
+  "modified": {
+    "plugin_sha256": "cdbe7754106564dde1e6b9ba18486943eee54c8edbd612fc8e59bbad9d381eba",
+    "run_record_sha256": "bdde01aada17cf7a9f06837eb0a6f12beaeca9fae1d98f8d976f473cb26a62af",
+    "probe_record_sha256": "ebbaf3606e19575856ca3dc3a5191ab6d8af3c4a46de2e5a1fe0273642e6e44f",
+    "runner_return_code": 0,
+    "runs": 4,
+    "returned_runs": 4,
+    "temporal_capture_complete_runs": 4,
+    "allocation_lifetimes": 8,
+    "modeled_candidates": 2,
+    "modeled_annotations": 2,
+    "key_and_dispatch_patch_invalidation": true,
+    "probe_errors": []
+  },
+  "direct_call_regression": {
+    "run_record_sha256": "34f41e34f890d223be80e348a6b2dbcb35adb9820e60da9c6c4066de36a543f7",
+    "checks": 22,
+    "errors": []
+  },
+  "ctest": {
+    "passed": 21,
+    "total": 21
+  }
+}

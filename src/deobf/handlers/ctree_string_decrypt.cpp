@@ -2477,6 +2477,25 @@ static const char *runtime_use_model_name(uint8_t kind)
     }
 }
 
+static bool runtime_use_indirect_call_site(ea_t site)
+{
+    if (site == BADADDR)
+        return false;
+    insn_t instruction;
+    if (decode_insn(&instruction, site) <= 0 || !arch::is_indirect_call(instruction.itype))
+        return false;
+    switch (instruction.Op1.type)
+    {
+    case o_reg:
+    case o_mem:
+    case o_phrase:
+    case o_displ:
+        return true;
+    default:
+        return false;
+    }
+}
+
 int ctree_string_decrypt_handler_t::annotate_runtime_use_strings(cfunc_t *cfunc)
 {
     if (cfunc == nullptr || cfunc->maturity != CMAT_FINAL || cfunc->sv.empty())
@@ -2507,6 +2526,8 @@ int ctree_string_decrypt_handler_t::annotate_runtime_use_strings(cfunc_t *cfunc)
             const auto found = sites.find(uint64_t(call->ea));
             if (found == sites.end())
                 return 0;
+            const bool indirect_call =
+                call->op == cot_call && runtime_use_indirect_call_site(call->ea);
             for (const auto *candidate : found->second)
             {
                 const auto &use = candidate->use;
@@ -2521,8 +2542,10 @@ int ctree_string_decrypt_handler_t::annotate_runtime_use_strings(cfunc_t *cfunc)
                         continue;
                 }
                 else if (call->op != cot_call || call->a == nullptr || call->x == nullptr ||
-                         call->x->op != cot_obj || use.callee != uint64_t(call->x->obj_ea) ||
-                         use.argument < 0 || size_t(use.argument) >= call->a->size())
+                         use.callee == 0 || use.argument < 0 ||
+                         size_t(use.argument) >= call->a->size() ||
+                         (!indirect_call &&
+                          (call->x->op != cot_obj || use.callee != uint64_t(call->x->obj_ea))))
                     continue;
                 int x = -1, y = -1;
                 if ((native ||
@@ -2546,6 +2569,12 @@ int ctree_string_decrypt_handler_t::annotate_runtime_use_strings(cfunc_t *cfunc)
                                    ? size_t(1)
                                    : candidate->read_fragments.front().size(),
                                (unsigned long long)use.occurrence, candidate->eligible_runs);
+                else if (indirect_call)
+                    text.sprnt(
+                        "rax-use(modeled %s,arg=%d,use=%llu,runs=%zu,observed-target=0x%llX): \"",
+                        runtime_use_model_name(use.model_kind), use.argument,
+                        (unsigned long long)use.occurrence, candidate->eligible_runs,
+                        (unsigned long long)use.callee);
                 else
                     text.sprnt("rax-use(modeled %s,arg=%d,use=%llu,runs=%zu): \"",
                                runtime_use_model_name(use.model_kind), use.argument,
