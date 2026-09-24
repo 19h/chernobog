@@ -23,6 +23,8 @@ struct EmuInput
         uint64_t observed_sp = 0;
         std::array<uint64_t, 16> gprs{}; // RAX order: RAX, RCX, ..., R15
         uint64_t rflags = 0;
+        std::vector<uint8_t> stack_below;
+        std::vector<uint32_t> stack_relative_below_word_offsets;
         std::vector<uint8_t> stack_above;
         uint16_t stack_relative_gpr_mask = 0;
         std::vector<uint32_t> stack_relative_word_offsets;

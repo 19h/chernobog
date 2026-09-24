@@ -290,6 +290,8 @@ void test_native_regions(const RaxApi *api)
             std::fill(replay_image.segs[0].bytes.begin(), replay_image.segs[0].bytes.end(), 0xcc);
             const uint8_t code[] = {0x48, 0x8b, 0x44, 0x24, 0x10, // mov rax,[rsp+16]
                                     0x48, 0x31, 0xe8,             // xor rax,rbp
+                                    0x48, 0x8b, 0x54, 0x24, 0xf8, // mov rdx,[rsp-8]
+                                    0x48, 0x31, 0xd0,             // xor rax,rdx
                                     0xc3};                        // ret
             std::copy(std::begin(code), std::end(code), replay_image.segs[0].bytes.begin());
             replay_image.entries[0].end = replay_image.lo + sizeof(code);
@@ -298,8 +300,8 @@ void test_native_regions(const RaxApi *api)
                 hybrid_function_byte_hash(replay_image, replay_image.entries[0]);
             replay_image.content_hash = hybrid_program_content_hash(replay_image);
             const auto replay_region = plan_native_region(replay_image, api, replay_image.lo);
-            check(replay_region.available() && replay_region.heads().size() == 3,
-                  "native entry replay fixture has three exact heads");
+            check(replay_region.available() && replay_region.heads().size() == 5,
+                  "native entry replay fixture has five exact heads");
             EmuDriver replay_driver(api, replay_image, true);
             EmuInput replay_input;
             replay_input.native_entry.emplace();
@@ -310,11 +312,16 @@ void test_native_regions(const RaxApi *api)
             entry_state.gprs[13] = entry_state.observed_sp + 0x50;
             entry_state.rflags = 0x246;
             entry_state.stack_above.assign(32, 0);
+            entry_state.stack_below.assign(32, 0);
             const uint64_t stack_pointer = entry_state.observed_sp + 0x20;
             for (unsigned byte = 0; byte < 8; ++byte)
                 entry_state.stack_above[16 + byte] = uint8_t(stack_pointer >> (8 * byte));
+            const uint64_t below_pointer = entry_state.observed_sp - 0x100;
+            for (unsigned byte = 0; byte < 8; ++byte)
+                entry_state.stack_below[24 + byte] = uint8_t(below_pointer >> (8 * byte));
             entry_state.stack_relative_gpr_mask = (1u << 4) | (1u << 5) | (1u << 13);
             entry_state.stack_relative_word_offsets = {16};
+            entry_state.stack_relative_below_word_offsets = {24};
             EmuEvents replay_events;
             EmuOutcome replay_outcome;
             check(replay_driver.emulate_region_states(replay_region, short_run_config(),
@@ -332,13 +339,17 @@ void test_native_regions(const RaxApi *api)
                                 return value.value;
                 return uint64_t(0);
             };
-            check(sampled_register(replay_image.lo, RAX_X86_REG_RBP) == translated_sp + 0x40 &&
-                      sampled_register(replay_image.lo, RAX_X86_REG_R13) == translated_sp + 0x50 &&
-                      sampled_register(replay_image.lo + 5, RAX_X86_REG_RAX) ==
-                          translated_sp + 0x20 &&
-                      sampled_register(replay_image.lo + 8, RAX_X86_REG_RAX) ==
-                          ((translated_sp + 0x20) ^ (translated_sp + 0x40)),
-                  "translated registers and caller stack word affect executed instructions");
+            const bool translated_registers =
+                sampled_register(replay_image.lo, RAX_X86_REG_RBP) == translated_sp + 0x40 &&
+                sampled_register(replay_image.lo, RAX_X86_REG_R13) == translated_sp + 0x50 &&
+                sampled_register(replay_image.lo + 5, RAX_X86_REG_RAX) == translated_sp + 0x20 &&
+                sampled_register(replay_image.lo + 8, RAX_X86_REG_RAX) ==
+                    ((translated_sp + 0x20) ^ (translated_sp + 0x40)) &&
+                sampled_register(replay_image.lo + 13, RAX_X86_REG_RDX) == translated_sp - 0x100 &&
+                sampled_register(replay_image.lo + 16, RAX_X86_REG_RAX) ==
+                    ((translated_sp + 0x20) ^ (translated_sp + 0x40) ^ (translated_sp - 0x100));
+            check(translated_registers,
+                  "translated registers and both caller stack windows affect execution");
             entry_state.stack_relative_word_offsets.clear();
             EmuEvents rejected_replay;
             EmuOutcome rejected_outcome;
@@ -349,6 +360,12 @@ void test_native_regions(const RaxApi *api)
                                                     rejected_replay, rejected_outcome,
                                                     &replay_input),
                   "unmarked stack pointers and ordinary region runs reject entry replay");
+            entry_state.stack_relative_word_offsets = {16};
+            entry_state.stack_relative_below_word_offsets.clear();
+            check(!replay_driver.emulate_region_states(replay_region, short_run_config(),
+                                                       rejected_replay, rejected_outcome,
+                                                       &replay_input),
+                  "unmarked pointer below entry SP rejects native replay");
         }
         const unsigned width = is64 ? 8 : 4;
         const uint64_t pushed = is64 ? UINT64_C(0xffffffffffffffef) : UINT64_C(0xffffffef);

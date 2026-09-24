@@ -225,10 +225,16 @@ bool parse_hex_u64(const qstring &text, uint64_t &value)
     }
     return true;
 }
-bool parse_entry_replay(const std::string &request, std::string &shadow_path,
-                        hybrid::EmuInput &input)
+struct RuntimeDataPatch
 {
-    if (request.empty() || request.size() > 8192 || request.find('\0') != std::string::npos)
+    uint64_t start = 0;
+    std::vector<uint8_t> bytes;
+};
+bool parse_entry_replay(const std::string &request, std::string &shadow_path,
+                        hybrid::EmuInput &input, RuntimeDataPatch *data_patch = nullptr)
+{
+    if (request.empty() || request.size() > (data_patch ? 32000 : 8192) ||
+        request.find('\0') != std::string::npos)
         return false;
     unsigned depth = 0;
     bool quoted = false, escaped = false;
@@ -261,9 +267,17 @@ bool parse_entry_replay(const std::string &request, std::string &shadow_path,
     if (depth || quoted)
         return false;
     jvalue_t root;
-    if (parse_json_string(&root, request.c_str()) != eOk || root.type() != JT_OBJ ||
-        !keys(root.obj(), {"shadow_file", "observed_sp", "gprs", "rflags", "stack_above",
-                           "stack_relative_gprs", "stack_relative_words"}))
+    if (parse_json_string(&root, request.c_str()) != eOk || root.type() != JT_OBJ)
+        return false;
+    if (data_patch)
+    {
+        if (!keys(root.obj(), {"shadow_file", "observed_sp", "gprs", "rflags", "stack_above",
+                               "stack_relative_gprs", "stack_relative_words", "stack_below",
+                               "stack_relative_below_words", "data_start", "data_hex"}))
+            return false;
+    }
+    else if (!keys(root.obj(), {"shadow_file", "observed_sp", "gprs", "rflags", "stack_above",
+                                "stack_relative_gprs", "stack_relative_words"}))
         return false;
     const auto *path = root.obj().get_value("shadow_file", JT_STR);
     const auto *sp = root.obj().get_value("observed_sp", JT_STR);
@@ -311,6 +325,47 @@ bool parse_entry_replay(const std::string &request, std::string &shadow_path,
             !used.insert(uint32_t(value.num())).second)
             return false;
         state.stack_relative_word_offsets.push_back(uint32_t(value.num()));
+    }
+    if (data_patch)
+    {
+        const auto *below = root.obj().get_value("stack_below", JT_STR);
+        const auto *relative_below = root.obj().get_value("stack_relative_below_words", JT_ARR);
+        const auto *data_start = root.obj().get_value("data_start", JT_STR);
+        const auto *data_hex = root.obj().get_value("data_hex", JT_STR);
+        if (!below || !relative_below || !data_start || !data_hex ||
+            relative_below->arr().values.size() > 512 ||
+            !parse_hex_u64(data_start->qstr(), data_patch->start))
+            return false;
+        const auto &hex_below = below->qstr();
+        if (hex_below.empty() || hex_below.length() > 8192 || hex_below.length() % 16)
+            return false;
+        for (size_t index = 0; index < hex_below.length(); index += 2)
+        {
+            const int hi = digit(hex_below[index]), lo = digit(hex_below[index + 1]);
+            if (hi < 0 || lo < 0)
+                return false;
+            state.stack_below.push_back(uint8_t(hi * 16 + lo));
+        }
+        std::set<uint32_t> below_used;
+        for (const auto &value : relative_below->arr().values)
+        {
+            if (value.type() != JT_NUM || value.num() < 0 ||
+                value.num() > int64_t(state.stack_below.size() - 8) ||
+                !below_used.insert(uint32_t(value.num())).second)
+                return false;
+            state.stack_relative_below_word_offsets.push_back(uint32_t(value.num()));
+        }
+        const auto &hex_data = data_hex->qstr();
+        if (hex_data.empty() || hex_data.length() > 8192 || hex_data.length() % 2 ||
+            data_patch->start > UINT64_MAX - hex_data.length() / 2)
+            return false;
+        for (size_t index = 0; index < hex_data.length(); index += 2)
+        {
+            const int hi = digit(hex_data[index]), lo = digit(hex_data[index + 1]);
+            if (hi < 0 || lo < 0)
+                return false;
+            data_patch->bytes.push_back(uint8_t(hi * 16 + lo));
+        }
     }
     input.native_entry = std::move(state);
     return true;
@@ -479,11 +534,15 @@ static std::string trace_native_region_impl(
     bool check = false, const std::vector<hybrid::EmuCallSummary> *bindings = nullptr,
     hybrid::NativeTemporalStringRun *retained = nullptr,
     hybrid::ProgramImage *retained_image = nullptr, bool candidate_entry = false,
-    const std::vector<uint8_t> *runtime_shadow = nullptr, bool sample_states = false)
+    const std::vector<uint8_t> *runtime_shadow = nullptr, bool sample_states = false,
+    const RuntimeDataPatch *runtime_data = nullptr)
 {
     using namespace hybrid;
     if (sample_states && (!candidate_entry || !runtime_shadow || walk || check || bindings))
         return unavailable("invalid runtime shadow state request", candidate_entry);
+    if (runtime_data && (!sample_states || !explicit_input || !explicit_input->native_entry ||
+                         runtime_data->bytes.empty() || runtime_data->bytes.size() > 4096))
+        return unavailable("invalid bounded runtime data request", candidate_entry);
     const auto *api = rax_load();
     if (!api || !api->decode)
         return unavailable("native decoder/emulator unavailable", candidate_entry);
@@ -517,6 +576,7 @@ static std::string trace_native_region_impl(
     if (!snapshot.complete)
         return unavailable("incomplete or unsupported image snapshot", candidate_entry);
     size_t shadow_changed = 0;
+    size_t data_changed = 0, data_newly_loaded = 0;
     if (runtime_shadow)
     {
         if (!candidate_entry || image.arch != HybridArch::X86_64 ||
@@ -541,6 +601,38 @@ static std::string trace_native_region_impl(
             shadow_changed += segment->bytes[offset + index] != (*runtime_shadow)[index];
         }
         std::copy(runtime_shadow->begin(), runtime_shadow->end(), segment->bytes.begin() + offset);
+        image.content_hash = hybrid_program_content_hash(image);
+    }
+    if (runtime_data)
+    {
+        const uint64_t end = runtime_data->start + runtime_data->bytes.size();
+        uint64_t cursor = runtime_data->start;
+        while (cursor < end)
+        {
+            auto segment = std::find_if(image.segs.begin(), image.segs.end(),
+                                        [&](const SegImage &part)
+                                        {
+                                            return part.start <= cursor && cursor < part.end &&
+                                                   part.kind == HybridSegmentKind::NORMAL &&
+                                                   part.has_perm(HybridSegPerm::READ) &&
+                                                   part.has_perm(HybridSegPerm::WRITE) &&
+                                                   !part.has_perm(HybridSegPerm::EXEC) &&
+                                                   part.bitness == 2;
+                                        });
+            if (segment == image.segs.end())
+                return unavailable("runtime data outside writable segments", true);
+            const uint64_t limit = std::min(end, segment->end);
+            while (cursor < limit)
+            {
+                const size_t at = size_t(cursor - segment->start);
+                const size_t source = size_t(cursor - runtime_data->start);
+                data_changed += segment->bytes[at] != runtime_data->bytes[source];
+                data_newly_loaded += (segment->mask[at / 8] & (1u << (at & 7))) == 0;
+                segment->bytes[at] = runtime_data->bytes[source];
+                segment->mask[at / 8] |= uint8_t(1u << (at & 7));
+                ++cursor;
+            }
+        }
         image.content_hash = hybrid_program_content_hash(image);
     }
     const unsigned mode = image.arch == HybridArch::X86_64 ? 64 : 32;
@@ -765,7 +857,9 @@ static std::string trace_native_region_impl(
         << ",\"backend_compatibility\":\"32-bit legacy INC/DEC materializes current EFLAGS before backend execution to preserve pending carry\""
         << ",\"contract\":"
         << inspection_json_quote(
-               runtime_shadow && input.native_entry
+               runtime_data
+                   ? "ephemeral native entry replay over caller-supplied executable shadow, writable data, scalar registers and translated stack windows; external runtime provenance is not verified by this API; no function evidence or VM identity"
+               : runtime_shadow && input.native_entry
                    ? "ephemeral native entry replay over caller-supplied executable shadow bytes, scalar registers and translated stack-relative fields; external runtime provenance is not verified by this API; no function evidence or VM identity"
                : runtime_shadow
                    ? "ephemeral synthetic entry over caller-supplied executable shadow bytes; external runtime provenance is not verified by this API; no function evidence or VM identity"
@@ -783,9 +877,17 @@ static std::string trace_native_region_impl(
     if (input.native_entry)
         out << ",\"entry_state_replay\":true,\"observed_entry_sp\":"
             << inspection_json_quote(hex(input.native_entry->observed_sp))
+            << ",\"entry_stack_below_bytes\":" << input.native_entry->stack_below.size()
             << ",\"entry_stack_bytes\":" << input.native_entry->stack_above.size()
             << ",\"stack_relative_gpr_mask\":" << input.native_entry->stack_relative_gpr_mask
             << ",\"entry_translation\":\"explicit stack-relative register and word fields translated to an isolated scratch stack, preserving the observed SP page offset\"";
+    if (runtime_data)
+        out << ",\"runtime_data\":true,\"data_start\":"
+            << inspection_json_quote(hex(runtime_data->start))
+            << ",\"data_bytes\":" << runtime_data->bytes.size()
+            << ",\"data_changed_bytes\":" << data_changed
+            << ",\"data_newly_loaded_bytes\":" << data_newly_loaded << ",\"data_fingerprint\":"
+            << inspection_json_quote(hex(runtime_shadow_fingerprint(runtime_data->bytes)));
     inspection_json_rows(out, "heads", heads);
     inspection_json_rows(out, "frontiers", frontiers);
     inspection_json_rows(out, "execution", execution);
@@ -883,6 +985,18 @@ std::string trace_native_candidate_shadow_replay(uint64_t root, uint64_t seed,
         return unavailable("invalid bounded native entry replay", true);
     return trace_native_region_impl(root, seed, &input, false, false, nullptr, nullptr, nullptr,
                                     true, &shadow, true);
+}
+std::string trace_native_candidate_shadow_replay_memory(uint64_t root, uint64_t seed,
+                                                        const std::string &request)
+{
+    std::string path;
+    hybrid::EmuInput input;
+    RuntimeDataPatch data;
+    std::vector<uint8_t> shadow;
+    if (!parse_entry_replay(request, path, input, &data) || !read_runtime_shadow(path, shadow))
+        return unavailable("invalid bounded native memory replay", true);
+    return trace_native_region_impl(root, seed, &input, false, false, nullptr, nullptr, nullptr,
+                                    true, &shadow, true, &data);
 }
 std::string trace_native_region_input(uint64_t function, uint64_t seed, const std::string &request)
 {

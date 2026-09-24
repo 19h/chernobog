@@ -2175,7 +2175,9 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
          !(native_entry->stack_relative_gpr_mask & (uint16_t(1) << 4)) ||
          native_entry->stack_above.empty() || native_entry->stack_above.size() > 512 ||
          native_entry->stack_above.size() % 8 ||
-         native_entry->stack_relative_word_offsets.size() > 64))
+         native_entry->stack_relative_word_offsets.size() > 64 ||
+         native_entry->stack_below.size() > 4096 || native_entry->stack_below.size() % 8 ||
+         native_entry->stack_relative_below_word_offsets.size() > 512))
         return false;
     // Keep caller-provided objects out of the ordinary publication contract.
     EmuInput resolved_input;
@@ -2312,29 +2314,41 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
             translated = value >= native_entry->observed_sp ? sp + displacement : sp - displacement;
             return translated >= stack_base_ && translated < stack_base_ + stack_size_;
         };
-        std::vector<uint8_t> stack = native_entry->stack_above;
-        std::set<uint32_t> offsets;
-        for (uint32_t offset : native_entry->stack_relative_word_offsets)
-            if (offset % 8 || offset > stack.size() - 8 || !offsets.insert(offset).second)
-                return false;
-        for (uint32_t offset = 0; offset < stack.size(); offset += 8)
+        const auto copy_stack = [&](const std::vector<uint8_t> &observed,
+                                    const std::vector<uint32_t> &relative_offsets, uint64_t base)
         {
-            uint64_t value = 0;
-            for (unsigned byte = 0; byte < 8; ++byte)
-                value |= uint64_t(stack[offset + byte]) << (8 * byte);
-            const bool marked = offsets.count(offset) != 0;
-            if (marked != near_observed_sp(value))
+            if (observed.empty())
+                return relative_offsets.empty();
+            if (base < stack_base_ || base > stack_base_ + stack_size_ ||
+                observed.size() > stack_base_ + stack_size_ - base)
                 return false;
-            if (marked)
-            {
-                uint64_t translated = 0;
-                if (!translate(value, translated))
+            std::vector<uint8_t> stack = observed;
+            std::set<uint32_t> offsets;
+            for (uint32_t offset : relative_offsets)
+                if (offset % 8 || offset > stack.size() - 8 || !offsets.insert(offset).second)
                     return false;
+            for (uint32_t offset = 0; offset < stack.size(); offset += 8)
+            {
+                uint64_t value = 0;
                 for (unsigned byte = 0; byte < 8; ++byte)
-                    stack[offset + byte] = uint8_t(translated >> (8 * byte));
+                    value |= uint64_t(stack[offset + byte]) << (8 * byte);
+                const bool marked = offsets.count(offset) != 0;
+                if (marked != near_observed_sp(value))
+                    return false;
+                if (marked)
+                {
+                    uint64_t translated = 0;
+                    if (!translate(value, translated))
+                        return false;
+                    for (unsigned byte = 0; byte < 8; ++byte)
+                        stack[offset + byte] = uint8_t(translated >> (8 * byte));
+                }
             }
-        }
-        if (api_->mem_write(engine_, sp, stack.data(), stack.size()) != RAX_OK)
+            return api_->mem_write(engine_, base, stack.data(), stack.size()) == RAX_OK;
+        };
+        if (!copy_stack(native_entry->stack_below, native_entry->stack_relative_below_word_offsets,
+                        sp - native_entry->stack_below.size()) ||
+            !copy_stack(native_entry->stack_above, native_entry->stack_relative_word_offsets, sp))
             return false;
         for (unsigned index = 0; index < native_entry->gprs.size(); ++index)
         {
