@@ -504,6 +504,9 @@ def main():
         movs_local_proofs = (
             os.environ.get("CHERNOBOG_MOVS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
         )
+        lods_local_proofs = (
+            os.environ.get("CHERNOBOG_LODS_LOCAL_BASELINE") != "1" and ida_ida.inf_is_64bit()
+        )
         value = ida_expr.idc_value_t()
         assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
         ida_auto.auto_wait()
@@ -630,12 +633,19 @@ def main():
             ("df_movs_overlap_word_reload", True if movs_local_proofs else None),
             ("df_movs_dword_reload", True if movs_local_proofs else None),
             ("df_movs_initial_source_unknown", None),
+            ("df_lods_byte_value", True if lods_local_proofs else None),
+            ("df_lods_word_value", True if lods_local_proofs else None),
+            ("df_lods_dword_value", True if lods_local_proofs else None),
+            ("df_lods_unknown_source_value", None),
+            ("df_rep_lods_ambiguous_value", None),
+            ("df_lods_unknown_source_high_value", True if lods_local_proofs else None),
         )
         if ida_ida.inf_is_64bit():
             condition_cases += (("df_scas_qword_zf", True if scas_proofs else None),)
             condition_cases += (("df_cmps_qword_zf", True if cmps_proofs else None),)
             condition_cases += (("df_stos_qword_reload", True if stos_local_proofs else None),)
             condition_cases += (("df_movs_qword_reload", True if movs_local_proofs else None),)
+            condition_cases += (("df_lods_qword_value", True if lods_local_proofs else None),)
         for name, expected in condition_cases:
             root, instructions = prepare_prefix(name)
             site = next(
@@ -877,6 +887,8 @@ def main():
             ("df_stos_register_target", string_io_proofs),
             ("df_rep_stos_count_target", string_io_proofs and string_count_proofs),
             ("df_rep_lods_count_target", string_io_proofs and string_count_proofs),
+            ("df_lods_full_target", lods_local_proofs),
+            ("df_lods_byte_preserved_target", lods_local_proofs),
         ):
             root, instructions = prepare_prefix(name)
             result = inspect(name, root)
@@ -902,6 +914,8 @@ def main():
                         "df_stos_register_target",
                         "df_rep_stos_count_target",
                         "df_rep_lods_count_target",
+                        "df_lods_full_target",
+                        "df_lods_byte_preserved_target",
                     )
                     else 1
                 )

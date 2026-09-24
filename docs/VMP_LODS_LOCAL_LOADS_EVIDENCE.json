@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "scope": "matched plain long-mode LODS local-load checkpoint; owned, ownerless, and one supplied protected root",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "3973207b876dfa6a5df8c473dede9245e08dfc9f2385d0c7ee1f93b934ec354c",
+    "tests/vmp_native/dataflow.S": "ddcca01d5263f1beba5aeb2bb588e28557d31da65bd56412282ae5fb54470ec9",
+    "tests/vmp_native/dataflow_main.c": "2b213f5a23ad62c4c8a141424c8f0b70d1b93042a35193f2c9e1a410dc03f223",
+    "tests/ida_dataflow_probe.py": "3be7afb066472d93d8dce3c827e0f1976d83d8ea2d20bd95588bca4d50c47f86",
+    "tests/ida_ownerless_dataflow_probe.py": "636795219d5aaeda44882c36dc44d4b555a47b636256358a89efe4f5a33dc852",
+    "tests/run_native_dataflow.py": "b61f8789333a39f6adfca30207ad43544572938e9f10b0ec560650f0e22976b0",
+    "tests/run_ownerless_dataflow.py": "18b0ecdb08b66235c7c88bcfe13b1639b1d7b6260801c501cdf4a7a6224dcc10",
+    "tests/score_native_edge_benchmark.py": "de7e312799e1a13dddc6228de69f66b7eea3554cac44d7cc1a5bded9e865f841",
+    "tests/ida_protected_region_inspect.py": "b68a41d2011f232808974d7b155b84a43e4f13a8f3eb157a0d204cf6f04548d2"
+  },
+  "tool_sha256": {
+    "ida": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "llvm_nm": "42da2421bff98120a4a2857285db866bfc327fdcc8713b1a0e104a0b8550850f",
+    "prior_plugin": "31f889bd5b6ab860bc9275769723f6ec5a2bf2ecd82408f99d76c8cd90974fc4",
+    "current_plugin": "03e791ea3dad36655b40952ef9cb3c5aa62e4d3858fd6b10b2c298b5ad3fb323"
+  },
+  "binary_sha256": {
+    "owned_x86_64": "33ab08ae1b3317cff0741675e265baa2d9ee6692757bb890cb97698ccf28bb49",
+    "owned_i386": "f8db252b83e31da1e16ef6178d10ec84b3a9a25f3a6acfb9e75e28ec8e7766fa",
+    "ownerless_x86_64": "c6c8f62962dbc6701d14b616ef98a0abbb393303a9c06be8e19be6c164c27f6b",
+    "ownerless_i386": "bb96c1c4c30e842617d27f2ad932ba0b8111364a5dfc2de573f493969cb18c87"
+  },
+  "protected_input_sha256": {
+    "samples/foo_x86_vmp": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "report_sha256": {
+    "build/vmp-lods-local-final-prior-owned/dataflow_analysis.json": "7717bd7ad2f02b274f76371928829f24f4372e34c90bc4869fa3795886e15ed2",
+    "build/vmp-lods-local-final-current-owned/dataflow_analysis.json": "3622726db8280a7fdc532b3073a79bfc9ed17c26218b19781ed149c2802fd861",
+    "build/vmp-lods-local-final-prior-ownerless/ownerless_dataflow_analysis.json": "6d9ef4a23ecf6fd024d4128ac663c3e7261855fbb368f408f5facd7de73cfe78",
+    "build/vmp-lods-local-final-current-ownerless/ownerless_dataflow_analysis.json": "08be360d94b6b5ae9badd5ddf5eab5d7fb5ebd85e8d25f299f80e8285f42ec98",
+    "build/vmp-lods-local-final-prior-score/native_edge_benchmark.json": "6b124c4bcccc4be6e1a8be279a42d1a78adc721efe8bcfbcfb817672ee4e1457",
+    "build/vmp-lods-local-final-current-score/native_edge_benchmark.json": "0b25de46c4bd2afff560d5753bbc12bcdebf80280d558421346dede15366f47b",
+    "build/vmp-lods-local-prior-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/vmp-lods-local-current-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa"
+  },
+  "matched_source_probe_binary_ida": true,
+  "condition_changes": {"owned_x86_64": 5, "ownerless_x86_64": 5, "owned_i386": 0, "ownerless_i386": 0},
+  "transfer_changes": {"owned_x86_64": 2, "ownerless_x86_64": 2, "owned_i386": 0, "ownerless_i386": 0},
+  "native_checks": {"owned_x86_64": 32254, "owned_i386": 30974, "ownerless_each": 4094},
+  "ida_assertions": {"owned_x86_64_prior": 390, "owned_x86_64_current": 400, "owned_i386_each": 343, "ownerless_x86_64_each": 1500, "ownerless_i386_each": 1450},
+  "edge_score": {
+    "oracle_edges_each": 46,
+    "prior_correct_x86_64_each": 36,
+    "current_correct_x86_64_each": 38,
+    "current_correct_i386_each": 30,
+    "false_each": 0,
+    "current_unresolved_x86_64_each": 5,
+    "current_unresolved_i386_each": 13
+  },
+  "protected_selected_root": {"nodes": 75, "edges": 77, "unresolved_records": 3, "prior_current_byte_equal": true},
+  "ctest_passed": 21
+}

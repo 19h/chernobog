@@ -837,12 +837,32 @@ struct State
             return;
         }
         case NN_lods:
-            // LODS reads memory without writing it or the status flags. Even
-            // a byte load invalidates the accumulator's known full value.
-            regs[0] = {};
+        {
+            // Plain long-mode LODS reads DS:[SI] into the accumulator slice.
+            // A known local source supplies the loaded value; an unknown
+            // source still leaves unaffected upper accumulator bits intact.
+            const bool repeated = (insn.auxpref & (aux_rep | aux_repne)) != 0;
+            const Slice accumulator = register_slice(insn.Op1);
+            const bool matched_accumulator =
+                accumulator.reg == 0 && accumulator.offset == 0 && accumulator.width == width;
+            const bool matched_memory =
+                insn.Op2.type == o_phrase && x86_base_reg(insn, insn.Op2) == R_si &&
+                x86_index_reg(insn, insn.Op2) == R_none &&
+                get_dtype_size(insn.Op2.dtype) == get_dtype_size(insn.Op1.dtype);
+            if (is64 && !repeated && valid_width(width) && matched_accumulator && matched_memory)
+            {
+                std::optional<uint64_t> loaded;
+                const auto source = memory_address(insn, insn.Op2);
+                if (source && readable_range(*source, width / 8, word_bits))
+                    loaded = read_memory(*source, width);
+                write(insn.Op1, loaded, is64);
+            }
+            else
+                regs[0] = {};
             regs[6] = {};
             finish_unconditional_repeat(insn, is64);
             return;
+        }
         case NN_scas:
         {
             // SCAS compares the accumulator against ES:[DI] and advances DI.

@@ -56,6 +56,10 @@ extern int df_stos_qword_reload(int);
 #endif
 extern int df_rep_scas_count_ambiguity(int);
 extern int df_stos_register_target(int), df_lods_memory_target(int);
+extern int df_lods_full_target(int), df_lods_byte_preserved_target(int);
+extern int df_lods_byte_value(int), df_lods_word_value(int), df_lods_dword_value(int);
+extern int df_lods_unknown_source_value(int), df_rep_lods_ambiguous_value(int);
+extern int df_lods_unknown_source_high_value(int);
 extern int df_rep_movs_alias(int, void *);
 extern int df_movs_disjoint_target(int), df_movs_unknown_source_disjoint_target(int);
 extern int df_movs_self_copy_target(int), df_rep_movs_disjoint_target(int);
@@ -66,6 +70,7 @@ extern int df_rep_movs_count_unknown(int);
 extern int df_memory_target(void);
 #ifndef __i386__
 extern int df_movs_qword_reload(int);
+extern int df_lods_qword_value(int);
 #endif
 
 int main(void)
@@ -137,14 +142,20 @@ int main(void)
             df_stos_byte_reload(input) != 1 || df_stos_word_reload(input) != 1 ||
             df_stos_dword_reload(input) != 1 ||
             df_stos_unknown_overlap_condition(input) != (input == 0x5a) ||
-            df_lods_memory_target(input) != 7)
+            df_lods_memory_target(input) != 7 || df_lods_full_target(input) != 7 ||
+            df_lods_byte_preserved_target(input) != 7 || df_lods_byte_value(input) != 1 ||
+            df_lods_word_value(input) != 1 || df_lods_dword_value(input) != 1 ||
+            df_lods_unknown_source_value(input) != 1 ||
+            df_rep_lods_ambiguous_value(input) != (input & 1) ||
+            df_lods_unknown_source_high_value(input) != 1)
             return 1;
-        checks += 111;
+        checks += 119;
 #ifndef __i386__
         if (df_scas_qword_zf(input) != 1 || df_cmps_qword_zf(input) != 1 ||
-            df_stos_qword_reload(input) != 1 || df_movs_qword_reload(input) != 1)
+            df_stos_qword_reload(input) != 1 || df_movs_qword_reload(input) != 1 ||
+            df_lods_qword_value(input) != 1)
             return 1;
-        checks += 4;
+        checks += 5;
 #endif
         if (input > 0)
         {

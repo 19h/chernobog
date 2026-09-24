@@ -551,6 +551,17 @@ edges and three unresolved facts. All 21 CTest suites pass. See
 `VMP_MOVS_LOCAL_MEMORY.md` and its evidence JSON. The full review remains in
 progress.
 
+Local LODS load checkpoint for rows 1b, 2a and V: plain long-mode `LODS`
+now loads locally established SI bytes into the exact accumulator slice,
+preserving unaffected upper bits. Two new x86-64 register-source targets and
+five conditions become proved in both owned and ownerless analysis; i386,
+initial source bytes and repeat controls remain unresolved. Two new fixed
+oracle sites raise the matched x86-64 score from 36/46 to 38/46 correct
+edges with zero false edges; i386 remains 30/46. The selected supplied VMP
+initializer remains byte-identical at 75 nodes, 77 edges and three unresolved
+facts. All 21 CTest suites pass. See `VMP_LODS_LOCAL_LOADS.md` and its evidence
+JSON. The full review remains in progress.
+
 First implementation checkpoint: source changes, executable semantic checks,
 and production IDA validation constitute progress. The complete objective is
 still active. Validation commands and limits are in `tests/VMP_NATIVE.md`.

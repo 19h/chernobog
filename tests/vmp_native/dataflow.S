@@ -1850,6 +1850,177 @@ BEGIN NAME(df_lods_memory_target)
 #endif
     ret
 
+BEGIN NAME(df_lods_full_target)
+#ifdef __i386__
+    pushl %esi
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_lods_source), %edx
+    movl %eax, (%edx)
+    movl %edx, %esi
+    lodsl
+    movl (%esp), %esi
+    leal 4(%esp), %esp
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_lods_source)(%rip), %rdx
+    movq %rax, (%rdx)
+    movq %rdx, %rsi
+    lodsq
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_lods_byte_preserved_target)
+#ifdef __i386__
+    pushl %esi
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_lods_source), %edx
+    movb %al, (%edx)
+    movl %edx, %esi
+    lodsb
+    movl (%esp), %esi
+    leal 4(%esp), %esp
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_lods_source)(%rip), %rdx
+    movb %al, (%rdx)
+    movq %rdx, %rsi
+    lodsb
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_lods_byte_value)
+#ifdef __i386__
+    pushl %esi
+    movl $NAME(df_lods_source), %edx
+    movl %edx, %esi
+#else
+    leaq NAME(df_lods_source)(%rip), %rdx
+    movq %rdx, %rsi
+#endif
+    movb $0x5a, (STOS_DX)
+    lodsb
+    cmpb $0x5a, %al
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %esi
+    leal 4(%esp), %esp
+#endif
+    ret
+
+BEGIN NAME(df_lods_word_value)
+#ifdef __i386__
+    pushl %esi
+    movl $NAME(df_lods_source), %edx
+    movl %edx, %esi
+#else
+    leaq NAME(df_lods_source)(%rip), %rdx
+    movq %rdx, %rsi
+#endif
+    movw $0x1234, (STOS_DX)
+    lodsw
+    cmpw $0x1234, %ax
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %esi
+    leal 4(%esp), %esp
+#endif
+    ret
+
+BEGIN NAME(df_lods_dword_value)
+#ifdef __i386__
+    pushl %esi
+    movl $NAME(df_lods_source), %edx
+    movl %edx, %esi
+#else
+    leaq NAME(df_lods_source)(%rip), %rdx
+    movq %rdx, %rsi
+#endif
+    movl $0x12345678, (STOS_DX)
+    lodsl
+    cmpl $0x12345678, %eax
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %esi
+    leal 4(%esp), %esp
+#endif
+    ret
+
+BEGIN NAME(df_lods_unknown_source_value)
+#ifdef __i386__
+    pushl %esi
+    movl $NAME(df_lods_initial_source), %esi
+#else
+    leaq NAME(df_lods_initial_source)(%rip), %rsi
+#endif
+    lodsb
+    cmpb $0x5a, %al
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %esi
+    leal 4(%esp), %esp
+#endif
+    ret
+
+BEGIN NAME(df_rep_lods_ambiguous_value)
+#ifdef __i386__
+    pushl %esi
+    movl $NAME(df_lods_source), %edx
+    movl %edx, %esi
+#else
+    leaq NAME(df_lods_source)(%rip), %rdx
+    movq %rdx, %rsi
+#endif
+    movb $0x5a, (STOS_DX)
+    movb $0x6b, %al
+    andl $1, %ecx
+    rep lodsb
+    cmpb $0x5a, %al
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %esi
+    leal 4(%esp), %esp
+#endif
+    ret
+
+BEGIN NAME(df_lods_unknown_source_high_value)
+#ifdef __i386__
+    pushl %esi
+    movl $NAME(df_lods_initial_source), %esi
+#else
+    leaq NAME(df_lods_initial_source)(%rip), %rsi
+#endif
+    movw $0x1234, %ax
+    lodsb
+    cmpb $0x12, %ah
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    movl (%esp), %esi
+    leal 4(%esp), %esp
+#endif
+    ret
+
+#ifndef __i386__
+BEGIN NAME(df_lods_qword_value)
+    leaq NAME(df_lods_source)(%rip), %rdx
+    movq %rdx, %rsi
+    movq $0x12345678, (%rdx)
+    lodsq
+    cmpq $0x12345678, %rax
+    sete %al
+    movzbl %al, %eax
+    ret
+#endif
+
 BEGIN NAME(df_rep_movs_alias)
 #ifdef __i386__
     movl $NAME(df_memory_target), %eax
@@ -2387,6 +2558,13 @@ NAME(df_movs_overlap):
     .quad 0
 .globl NAME(df_movs_initial_source)
 NAME(df_movs_initial_source):
+    .quad 0x5a
+.p2align 3
+.globl NAME(df_lods_source)
+NAME(df_lods_source):
+    .quad 0
+.globl NAME(df_lods_initial_source)
+NAME(df_lods_initial_source):
     .quad 0x5a
 .p2align 3
 .globl NAME(df_cmps_source)

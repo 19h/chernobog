@@ -8,7 +8,10 @@ local `SCAS` comparison flags in long mode; this checkpoint's `SCASB`
 abstention is historical for that admitted form. The later
 `VMP_STOS_LOCAL_MEMORY.md` retains disjoint local memory through plain
 long-mode `STOS` at an exact destination; the all-memory invalidation below
-describes this earlier checkpoint.
+describes this earlier checkpoint. The later `VMP_LODS_LOCAL_LOADS.md` reads
+locally established bytes through plain long-mode `LODS` and preserves
+unwritten accumulator bits; the whole-accumulator invalidation below is also
+historical for that admitted form.
 
 Review rows 1b and 2a require the native abstract state to retain facts through
 instructions with known architectural effects. Intel specifies that `STOS` and
