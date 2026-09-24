@@ -9,6 +9,7 @@ import ida_auto
 import ida_bytes
 import ida_expr
 import ida_funcs
+import ida_ida
 import ida_idaapi
 import ida_loader
 import ida_name
@@ -268,6 +269,7 @@ try:
     rep_count_proofs = os.environ.get("CHERNOBOG_REP_COUNT_BASELINE") != "1"
     string_io_proofs = os.environ.get("CHERNOBOG_STRING_IO_BASELINE") != "1"
     string_count_proofs = os.environ.get("CHERNOBOG_STRING_COUNT_BASELINE") != "1"
+    scas_proofs = os.environ.get("CHERNOBOG_SCAS_BASELINE") != "1" and ida_ida.inf_is_64bit()
     expected = {
         "df_equal": True,
         "df_different": False,
@@ -295,13 +297,21 @@ try:
         "df_rep_stos_cf": string_io_proofs,
         "df_lods_plain_cf": string_io_proofs,
         "df_rep_lods_zf": string_io_proofs,
-        "df_scas_flags_changed": False,
+        "df_scas_flags_changed": 0 if scas_proofs else False,
+        "df_scas_cf_true": scas_proofs,
+        "df_scas_zf_true": scas_proofs,
+        "df_scas_word_cf": scas_proofs,
+        "df_scas_dword_zf": scas_proofs,
+        "df_scas_initial_cf": False,
+        "df_rep_scas_count_ambiguity": False,
         "df_loop": True,
         "df_loop_changes": False,
         "df_stack": True,
         "df_stack_changes": False,
         "df_jump": True,
     }
+    if ida_ida.inf_is_64bit():
+        expected["df_scas_qword_zf"] = scas_proofs
     for name, proved in expected.items():
         ea = address(name)
         reanalyze(ea)
@@ -320,9 +330,12 @@ try:
         ]
         captures[name] = snapshot
         rows = current_set(snapshot)
-        check(name + " exact admission", bool(rows) == proved)
+        check(name + " exact admission", bool(rows) == (proved is not False))
         if rows:
-            check(name + " proven one", len(rows) == 1 and rows[0]["value"] == "0x1")
+            check(
+                name + " proven value",
+                len(rows) == 1 and rows[0]["value"] == hex(int(proved)),
+            )
             check(name + " graph source dependencies", int(rows[0]["dependency_count"]) >= 4)
     target_ea = address("df_target")
     reanalyze(target_ea)

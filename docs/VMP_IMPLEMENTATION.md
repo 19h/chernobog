@@ -502,6 +502,19 @@ Each architecture passes 21,502 owned native checks, 278 owned IDA assertions,
 suites pass. See `VMP_STRING_REPEAT_COUNT.md` and its evidence JSON. The
 protected benchmark and full review remain open.
 
+Local SCAS flag checkpoint for rows 2a and V: in long mode, ES and DS have
+architectural zero bases, so a plain `SCAS` can compare the accumulator with
+locally established writable bytes and retain exact subtraction flags. A
+matched prior/current plugin comparison proves six byte/word/doubleword/
+quadword conditions in owned and ownerless x86-64 analysis; the i386 versions
+remain unresolved because a local DS write does not establish ES:[DI]. Initial
+memory and zero-or-one-iteration repeat controls also remain unresolved. The
+selected transfer-edge score stays at 30/36 with zero false edges. The x86-64
+native driver passes 23,294 checks and the i386 driver 23,038; ownerless
+drivers each pass 4,094 and reject their corrupted oracle. All 21 CTest suites
+pass. See `VMP_SCAS_LOCAL_FLAGS.md` and its evidence JSON. Protected-mode
+condition recovery and segment-aware i386 proofs remain open.
+
 First implementation checkpoint: source changes, executable semantic checks,
 and production IDA validation constitute progress. The complete objective is
 still active. Validation commands and limits are in `tests/VMP_NATIVE.md`.

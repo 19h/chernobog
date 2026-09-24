@@ -1282,6 +1282,125 @@ BEGIN NAME(df_scas_flags_changed)
 #endif
     ret
 
+BEGIN NAME(df_scas_cf_true)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+    movb $0x5b, (%edi)
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+    movb $0x5b, (%rdi)
+#endif
+    movb $0x5a, %al
+    scasb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+#endif
+    ret
+
+BEGIN NAME(df_scas_zf_true)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+    movb $0x5a, (%edi)
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+    movb $0x5a, (%rdi)
+#endif
+    movb $0x5a, %al
+    scasb
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+#endif
+    ret
+
+BEGIN NAME(df_scas_word_cf)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+    movw $0x0100, (%edi)
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+    movw $0x0100, (%rdi)
+#endif
+    movw $0x00ff, %ax
+    scasw
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+#endif
+    ret
+
+BEGIN NAME(df_scas_dword_zf)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+    movl $0x12345678, (%edi)
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+    movl $0x12345678, (%rdi)
+#endif
+    movl $0x12345678, %eax
+    scasl
+    sete %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+#endif
+    ret
+
+#ifndef __i386__
+BEGIN NAME(df_scas_qword_zf)
+    leaq NAME(df_scas_qword_dest)(%rip), %rdi
+    movq $0x12345678, (%rdi)
+    movq $0x12345678, %rax
+    scasq
+    sete %al
+    movzbl %al, %eax
+    ret
+#endif
+
+BEGIN NAME(df_scas_initial_cf)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_source), %edi
+#else
+    leaq NAME(df_string_source)(%rip), %rdi
+#endif
+    movb $0x5a, %al
+    scasb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+#endif
+    ret
+
+BEGIN NAME(df_rep_scas_count_ambiguity)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+    movb $0x5a, (%edi)
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+    movb $0x5a, (%rdi)
+#endif
+    movb $0x5a, %al
+    andl $1, %ecx
+    stc
+    repe scasb
+    setb %al
+    movzbl %al, %eax
+#ifdef __i386__
+    popl %edi
+#endif
+    ret
+
 BEGIN NAME(df_stos_alias)
 #ifdef __i386__
     movl $NAME(df_memory_target), %eax
@@ -1626,6 +1745,10 @@ NAME(df_string_source):
 .globl NAME(df_string_dest)
 NAME(df_string_dest):
     .long 0
+.p2align 3
+.globl NAME(df_scas_qword_dest)
+NAME(df_scas_qword_dest):
+    .quad 0
 .text
 
 /* The probe assigns the remote body as a tail of df_flow_root. The CLC

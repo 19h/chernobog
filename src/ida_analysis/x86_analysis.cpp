@@ -785,6 +785,37 @@ struct State
             regs[6] = {};
             finish_unconditional_repeat(insn, is64);
             return;
+        case NN_scas:
+        {
+            // SCAS compares the accumulator against ES:[DI] and advances DI.
+            // ES and DS have the same zero base in long mode. In i386, ES may
+            // differ from the segment used for a local store, so no retained
+            // byte can supply the comparison. A repeat may execute zero times.
+            const bool repeated = (insn.auxpref & (aux_rep | aux_repne)) != 0;
+            const Slice accumulator = register_slice(insn.Op2);
+            const bool matched_accumulator =
+                accumulator.reg == 0 && accumulator.offset == 0 && accumulator.width == width;
+            const bool matched_memory = insn.Op1.type == o_phrase &&
+                                        x86_base_reg(insn, insn.Op1) == R_di &&
+                                        x86_index_reg(insn, insn.Op1) == R_none;
+            std::optional<uint64_t> compared;
+            if (is64 && !repeated && valid_width(width) && matched_accumulator && matched_memory)
+            {
+                const auto address = memory_address(insn, insn.Op1);
+                if (address && writable_range(*address, width / 8, word_bits))
+                    compared = read_memory(*address, width);
+            }
+            const auto value = matched_accumulator ? read(insn.Op2) : std::nullopt;
+            regs[7] = {};
+            if (repeated)
+            {
+                regs[1] = {};
+                flags.forget();
+            }
+            else
+                transfer(Operation::compare, width, value, compared, false, flags);
+            return;
+        }
         case NN_bswap:
         {
             const auto input = read(insn.Op1);

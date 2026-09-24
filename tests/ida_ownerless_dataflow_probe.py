@@ -11,6 +11,7 @@ import ida_auto
 import ida_bytes
 import ida_expr
 import ida_funcs
+import ida_ida
 import ida_idaapi
 import ida_loader
 import ida_name
@@ -490,6 +491,7 @@ def main():
         rep_count_proofs = os.environ.get("CHERNOBOG_REP_COUNT_BASELINE") != "1"
         string_io_proofs = os.environ.get("CHERNOBOG_STRING_IO_BASELINE") != "1"
         string_count_proofs = os.environ.get("CHERNOBOG_STRING_COUNT_BASELINE") != "1"
+        scas_proofs = os.environ.get("CHERNOBOG_SCAS_BASELINE") != "1" and ida_ida.inf_is_64bit()
         value = ida_expr.idc_value_t()
         assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
         ida_auto.auto_wait()
@@ -576,7 +578,7 @@ def main():
             )
             condition(name + " ownerless saved flags", inspect(name, root), site, expected)
 
-        for name, expected in (
+        condition_cases = (
             ("df_memory_movsx_negative", True),
             ("df_memory_movsx_initial_negative", None),
             ("df_memory_movsxd_negative", True),
@@ -594,8 +596,17 @@ def main():
             ("df_rep_stos_cf", True if string_io_proofs else None),
             ("df_lods_plain_cf", True if string_io_proofs else None),
             ("df_rep_lods_zf", True if string_io_proofs else None),
-            ("df_scas_flags_changed", None),
-        ):
+            ("df_scas_flags_changed", False if scas_proofs else None),
+            ("df_scas_cf_true", True if scas_proofs else None),
+            ("df_scas_zf_true", True if scas_proofs else None),
+            ("df_scas_word_cf", True if scas_proofs else None),
+            ("df_scas_dword_zf", True if scas_proofs else None),
+            ("df_scas_initial_cf", None),
+            ("df_rep_scas_count_ambiguity", None),
+        )
+        if ida_ida.inf_is_64bit():
+            condition_cases += (("df_scas_qword_zf", True if scas_proofs else None),)
+        for name, expected in condition_cases:
             root, instructions = prepare_prefix(name)
             site = next(
                 instruction.ea

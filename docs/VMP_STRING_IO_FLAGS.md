@@ -3,7 +3,9 @@
 This is a historical checkpoint for repeat-count handling. The later
 `VMP_STRING_REPEAT_COUNT.md` establishes zero after normally completed
 natural-address-size `REP STOS` and `REP LODS`; hashes and counts below refer
-to the earlier revision.
+to the earlier revision. The later `VMP_SCAS_LOCAL_FLAGS.md` also proves exact
+local `SCAS` comparison flags in long mode; this checkpoint's `SCASB`
+abstention is historical for that admitted form.
 
 Review rows 1b and 2a require the native abstract state to retain facts through
 instructions with known architectural effects. Intel specifies that `STOS` and

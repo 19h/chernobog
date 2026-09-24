@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--rep-count-baseline", action="store_true")
     parser.add_argument("--stack-store-baseline", action="store_true")
     parser.add_argument("--string-count-baseline", action="store_true")
+    parser.add_argument("--scas-baseline", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     output = args.output_dir.resolve()
@@ -154,6 +155,7 @@ def main():
                         if args.string_count_baseline
                         else []
                     ),
+                    *(["--set", "CHERNOBOG_SCAS_BASELINE=1"] if args.scas_baseline else []),
                 ],
                 timeout=180,
             )
