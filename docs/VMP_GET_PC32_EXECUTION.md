@@ -68,6 +68,9 @@ this annotation regression were open.
 Subsequent work identified and repaired this regression; see
 [VMP_GET_PC32_BLOCK_END.md](VMP_GET_PC32_BLOCK_END.md). The observations and
 hashes above remain the pre-repair execution and IDA measurements.
+Separate [executed rejection controls](VMP_GET_PC32_REJECTIONS.md) now test
+dynamic register and writable-memory targets, alternate entry, and RET
+adjustment on the same binary inspected by IDA.
 
 ## Bounds and quality gates
 
