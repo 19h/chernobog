@@ -720,7 +720,7 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
 {
     X86RegionInspection result;
     result.root = root;
-    node_limit = std::min<size_t>(node_limit, 64);
+    node_limit = std::min<size_t>(node_limit, 128);
     round_limit = std::min<size_t>(round_limit, 128);
     const auto hex = [](uint64_t value)
     {

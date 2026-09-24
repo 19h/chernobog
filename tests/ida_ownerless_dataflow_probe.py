@@ -136,13 +136,13 @@ def inspect(name, root):
     )
     check(
         name + " explicit bounded unpublished scope",
-        result["limits"] == {"nodes": 64, "rounds": 128, "incoming_per_node": 256}
+        result["limits"] == {"nodes": 128, "rounds": 128, "incoming_per_node": 256}
         and result["published"] is False
         and "selected ownerless root" in result["scope"]
         and "no whole-program reachability" in result["scope"],
     )
     sites = [number(node["site"]) for node in result["nodes"]]
-    check(name + " bounded unique sorted nodes", sites == sorted(set(sites)) and len(sites) <= 64)
+    check(name + " bounded unique sorted nodes", sites == sorted(set(sites)) and len(sites) <= 128)
     check(
         name + " all admitted nodes remain ownerless",
         all(ida_funcs.get_func(site) is None for site in sites),
@@ -411,6 +411,8 @@ def main():
             ("od_conflict", 11),
             ("od_budget64", 64),
             ("od_budget65", 65),
+            ("od_budget128", 128),
+            ("od_budget129", 129),
         ):
             labels, decoded = prepare_diamond(name)
             check(name + " independent decoded instruction count", len(decoded) == nodes)
@@ -429,14 +431,26 @@ def main():
             configurations["od_budget64"]["_join"],
             True,
         )
-        excess = inspect("exceeded_node_budget", configurations["od_budget65"][""])
+        condition(
+            "admitted 65-node graph",
+            inspect("admitted_65_nodes", configurations["od_budget65"][""]),
+            configurations["od_budget65"]["_join"],
+            True,
+        )
+        condition(
+            "exact 128-node budget",
+            inspect("exact_128_nodes", configurations["od_budget128"][""]),
+            configurations["od_budget128"]["_join"],
+            True,
+        )
+        excess = inspect("exceeded_node_budget", configurations["od_budget129"][""])
         check(
-            "65-node graph yields no partial facts",
+            "129-node graph yields no partial facts",
             excess["available"]
             and not excess["converged"]
             and excess["truncated"]
             and excess["reason"] == "node_limit"
-            and len(excess["nodes"]) == 64
+            and len(excess["nodes"]) == 128
             and not excess["records"],
         )
 

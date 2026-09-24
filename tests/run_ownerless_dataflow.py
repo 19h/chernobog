@@ -117,7 +117,7 @@ def main():
                     }
                 else:
                     assert native["exit_code"] == 0
-                    assert result == {"checks": 3070, "passed": True}
+                    assert result == {"checks": 3582, "passed": True}
             binary = directory / "ownerless"
             measurement, _, _ = execute(
                 [
@@ -157,7 +157,7 @@ def main():
                 json.dumps(
                     {
                         "architecture": architecture,
-                        "native_checks": 3070,
+                        "native_checks": 3582,
                         "corrupt_oracle_rejected": True,
                         "inspection_checks": row["checks"],
                     }

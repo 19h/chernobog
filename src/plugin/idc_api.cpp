@@ -1328,7 +1328,7 @@ error_t idaapi idc_native_region_facts(idc_value_t *argv, idc_value_t *r)
         << inspection_json_quote(
                "Abstract bits: CF=1, PF=2, AF=4, ZF=8, SF=16, OF=32; not EFLAGS/RFLAGS positions")
         << ",\"reason\":" << inspection_json_quote(view.reason)
-        << ",\"limits\":{\"nodes\":64,\"rounds\":128,\"incoming_per_node\":256}"
+        << ",\"limits\":{\"nodes\":128,\"rounds\":128,\"incoming_per_node\":256}"
         << ",\"scope\":"
         << inspection_json_quote(
                "Static must-facts conditional on entry at the selected ownerless root, before a region exit; known external entries start unknown; flat unchanged-code normal-completion model, calls require normal return; no whole-program reachability, IDA publication or VM identity")

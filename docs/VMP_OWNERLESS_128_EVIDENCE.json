@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "input": {
+    "path": "samples/foo_x86_vmp",
+    "sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "root": "0x1002946b5"
+  },
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "probe_sha256": "b68a41d2011f232808974d7b155b84a43e4f13a8f3eb157a0d204cf6f04548d2",
+  "sources_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "0bb813e98cc1527e2d32d4dd743d2014f26afe0945fc8c044bd3735256ad9e9c",
+    "src/ida_analysis/x86_analysis.hpp": "d3137f2fc916d3183f59619cb23fba72b61dd1fbaaf72154bdf97b713de807b7",
+    "src/plugin/idc_api.cpp": "f4aeb1ffa778d4f343beb426647e24a338e28a8afc461fb0270daa69cf524e5c",
+    "tests/vmp_native/ownerless_dataflow.S": "44a26ef97d750de20401feb711d0e68efb74c5985122776fc4267364b118bcea",
+    "tests/vmp_native/ownerless_dataflow.c": "1c1b9ba138b0658e1278b4c309c513a6728e608f439576247da6023084c79c26",
+    "tests/ida_ownerless_dataflow_probe.py": "08f959d5ab4b3590efd0142c72b48ef765232795b9bc8dabe471deb78985a965",
+    "tests/run_ownerless_dataflow.py": "c2a6f2b589e09853dde9c1b980c02cc5e1f23cce166d9e22d8c6be6e94eb840f",
+    "tests/ida_protected_region_inspect.py": "b68a41d2011f232808974d7b155b84a43e4f13a8f3eb157a0d204cf6f04548d2"
+  },
+  "native_oracle": {
+    "report": "build/vmp-ownerless-128-both/ownerless_dataflow_analysis.json",
+    "report_sha256": "89ef970fd3c54b6c633fa64fb5bcb1b1dc667f50e1636ad8e890d0d3ad2197d1",
+    "plugin_sha256": "f451c2a537083ecaf047d3c994f4b34ab35932bc88eebd4bfff7b0dd7baa05d4",
+    "passed": true,
+    "architectures": ["x86_64", "i386"],
+    "native_checks_per_architecture": 3582,
+    "ida_checks_per_architecture": 332,
+    "corrupted_oracle_rejected": true
+  },
+  "protected_profiles": {
+    "prior": {
+      "plugin_sha256": "f2c5e2f657dc47119b79108986a10fa586ee437e916f26b1aefe7f208c241a77",
+      "direct_jump_decode": true,
+      "run": "build/vmp-protected-region-verified-prior/run.json",
+      "run_sha256": "491221d368c4291786a9c899632436e6f85015fe031cdf044839a5be102b9aa9",
+      "capture": "build/vmp-protected-region-verified-prior/protected_region.json",
+      "capture_sha256": "76c734d6a01e5498c603ce20007d6dbbc6567d1b6fd789c4fc14630e75d0af5c",
+      "checks_passed": 7,
+      "nodes": 64,
+      "edges": 66,
+      "records": 0,
+      "reason": "node_limit"
+    },
+    "new": {
+      "plugin_sha256": "f451c2a537083ecaf047d3c994f4b34ab35932bc88eebd4bfff7b0dd7baa05d4",
+      "direct_jump_decode": true,
+      "run": "build/vmp-protected-region-verified-new/run.json",
+      "run_sha256": "5a5572b8037f22811d137a5eaaba5646ceb0aca7a7ed7d2ee8404a54a1cd2e9d",
+      "capture": "build/vmp-protected-region-verified-new/protected_region.json",
+      "capture_sha256": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+      "checks_passed": 8,
+      "nodes": 75,
+      "edges": 77,
+      "records": 3,
+      "proved_records": 0,
+      "reason": "complete_bounded_region"
+    },
+    "decode_off": {
+      "plugin_sha256": "f451c2a537083ecaf047d3c994f4b34ab35932bc88eebd4bfff7b0dd7baa05d4",
+      "direct_jump_decode": false,
+      "run": "build/vmp-protected-region-verified-off/run.json",
+      "run_sha256": "bfefbc86e261bb990775441ce14002af4732058c0f4e873aa8878d566c4d4425",
+      "capture": "build/vmp-protected-region-verified-off/protected_region.json",
+      "capture_sha256": "11a9005751f478db77a3c5707e3325d984391fd205cb9ac1fa85d662e3070535",
+      "checks_passed": 6,
+      "nodes": 0,
+      "edges": 0,
+      "records": 0,
+      "reason": "not_existing_code_head"
+    }
+  },
+  "inventory_sha256": {
+    "decode_on_prior_and_new": "06057fc0eaf67b39521f259a547815cb931369fe0618b7be3d55b06136770e2d",
+    "decode_off": "b4afefea667e6e82507a27ec2f0c59553349cd48f4f1fe5f1a36ed4abb038ab9"
+  },
+  "ctest": {"passed": 21, "total": 21}
+}

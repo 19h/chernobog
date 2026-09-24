@@ -62,10 +62,10 @@ struct X86RegionInspection
     std::vector<std::map<std::string, std::string>> nodes, edges, records;
 };
 
-// Budgets are clamped to 64 nodes, 128 rounds and 256 incoming references per
+// Budgets are clamped to 128 nodes, 128 rounds and 256 incoming references per
 // instruction (including interior bytes). Resource or structural failures
 // retain diagnostics but return no facts. The root input is unknown.
-X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit = 64,
+X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit = 128,
                                        size_t round_limit = 128);
 
 } // namespace chernobog::ida_analysis

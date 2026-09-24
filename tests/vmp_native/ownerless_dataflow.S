@@ -62,6 +62,8 @@ DIAMOND NAME(od_equal), 0, 0
 DIAMOND NAME(od_conflict), 1, 0
 DIAMOND NAME(od_budget64), 0, 53
 DIAMOND NAME(od_budget65), 0, 54
+DIAMOND NAME(od_budget128), 0, 117
+DIAMOND NAME(od_budget129), 0, 118
 
 .p2align 4
 LABEL NAME(od_adjacent_root)
