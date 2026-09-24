@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "checkpoint": "synthetic packed-entry native prefix",
+  "measurement_parent_revision": "6b34e609552e6a80d846bea5f5133be7dbb97620",
+  "source_sha256": {
+    "src/hybrid/program_model.cpp": "2dadcfdcbcffdebcc527932ae281b60aa2b8c5566af2549e63bbb43c38c5215f",
+    "src/hybrid/program_model.hpp": "8b3ca2f2e0b5d32ca25d7bc8486c3596b1ee20ee20d1451158a68e66a7d83726",
+    "src/vm/ida_native_trace.cpp": "47c871ac28a0a6590299ddba418e44bf40869ab310cd76034bebecd134bdc939",
+    "src/vm/ida_native_trace.hpp": "e74e6c38cd3c8978312fd2e61f7276d720780325cd7d138247dded5fffc37263",
+    "src/plugin/idc_api.cpp": "ce1067fff40882b8f6ea8899e4647a20907d53d0b345cb1bd347e98d71aa35e0",
+    "tests/ida_native_candidate_trace_probe.py": "2c82525c818e94bede8dc59281da17d79cc4776c686060275e06e741cefe95ba",
+    "tests/verify_native_candidate_trace.py": "171fdb2c909a576948fea4111db33477fa7c01a18163171c0bcd0fa0d481df61",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248"
+  },
+  "artifacts_sha256": {
+    "protected_first": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+    "protected_second": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+    "ida_console": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "measured_native_plugin": "c4cd8ef0c90825777bc291244399898e71aceaec86925debb8f009970b40284d"
+  },
+  "raw_reports_sha256": {
+    "build/keygen-candidate-trace-control-first/candidate_trace.json": "f2c5fc38ff6b01008bc1483fbc8d0c53e545120bf226e2bf45a8a83623b8f673",
+    "build/keygen-candidate-trace-control-first/run.json": "05248018da868817a27a8b2dae893705b79211b95c2f1c24bc866cba84848c8e",
+    "build/keygen-candidate-trace-control-second/candidate_trace.json": "f2c5fc38ff6b01008bc1483fbc8d0c53e545120bf226e2bf45a8a83623b8f673",
+    "build/keygen-candidate-trace-control-second/run.json": "617f0135f52f4c54e7d8fe3e4296f2a83a31c8862c4b32199b1b13ebcdda7531",
+    "build/keygen-candidate-trace-control-verification.json": "67977cdde404d39235012375245166d218e21302975418c0619d3b7abefcebdf"
+  },
+  "candidate_root": "0x418440",
+  "seed": 0,
+  "planned_heads_each": 1122,
+  "instruction_entries_each": 4096,
+  "distinct_entered_heads_each": 543,
+  "data_accesses_each": 915,
+  "final_write_ranges_each": 6,
+  "plan_frontiers_each": 15,
+  "candidate_stop": "instruction-budget",
+  "ordinary_owned_instruction_entries": 33,
+  "ordinary_owned_stop": "environment-model-failure",
+  "independent_file_byte_mismatches": 0,
+  "independent_decode_mismatches": 0,
+  "independent_linear_successor_mismatches": 0,
+  "idb_inventory_before_after_sha256": "aced12a072b293db11c869da5bc803a7fed070a05cce39f6119a84d8d09c2118",
+  "idb_heads": 38006,
+  "idb_outgoing_references": 40917,
+  "ctest_passed": 21
+}

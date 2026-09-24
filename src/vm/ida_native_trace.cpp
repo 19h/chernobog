@@ -17,6 +17,7 @@
 #include <ua.hpp>
 #include <parsejson.hpp>
 #include <name.hpp>
+#include <segment.hpp>
 #include "../common/warn_on.h"
 #include <atomic>
 #include <algorithm>
@@ -85,10 +86,11 @@ std::string bytes(const std::vector<uint8_t> &data)
     }
     return text;
 }
-std::string unavailable(const char *reason)
+std::string unavailable(const char *reason, bool candidate = false)
 {
-    return "{\"schema\":1,\"available\":false,\"scope\":\"native-region\",\"reason\":" +
-           inspection_json_quote(reason) + "}";
+    return std::string("{\"schema\":1,\"available\":false,\"scope\":") +
+           inspection_json_quote(candidate ? "native-candidate-region" : "native-region") +
+           ",\"reason\":" + inspection_json_quote(reason) + "}";
 }
 bool keys(const jobj_t &object, std::initializer_list<const char *> required)
 {
@@ -340,20 +342,33 @@ bool parse_bindings(const std::string &request, std::vector<hybrid::EmuCallSumma
     return true;
 }
 }
-static std::string
-trace_native_region_impl(uint64_t function, uint64_t seed, const hybrid::EmuInput *explicit_input,
-                         bool walk = false, bool check = false,
-                         const std::vector<hybrid::EmuCallSummary> *bindings = nullptr,
-                         hybrid::NativeTemporalStringRun *retained = nullptr,
-                         hybrid::ProgramImage *retained_image = nullptr)
+static std::string trace_native_region_impl(
+    uint64_t function, uint64_t seed, const hybrid::EmuInput *explicit_input, bool walk = false,
+    bool check = false, const std::vector<hybrid::EmuCallSummary> *bindings = nullptr,
+    hybrid::NativeTemporalStringRun *retained = nullptr,
+    hybrid::ProgramImage *retained_image = nullptr, bool candidate_entry = false)
 {
     using namespace hybrid;
     const auto *api = rax_load();
     if (!api || !api->decode)
-        return unavailable("native decoder/emulator unavailable");
-    const auto *owner = get_func(ea_t(function));
-    if (!owner || owner->start_ea != function)
-        return unavailable("selected function unavailable");
+        return unavailable("native decoder/emulator unavailable", candidate_entry);
+    if (candidate_entry)
+    {
+        const auto *segment = getseg(ea_t(function));
+        const auto flags = get_flags(ea_t(function));
+        if (PH.id != PLFM_386 || function == BADADDR || uint64_t(ea_t(function)) != function ||
+            !segment || segment->type == SEG_XTRN || !(segment->perm & SEGPERM_EXEC) ||
+            (segment->bitness != 1 && segment->bitness != 2) || !is_data(flags) ||
+            !is_head(flags) || has_user_name(flags) || !is_loaded(ea_t(function)) ||
+            get_func(ea_t(function)))
+            return unavailable("not_unlabeled_executable_data_head", true);
+    }
+    else
+    {
+        const auto *owner = get_func(ea_t(function));
+        if (!owner || owner->start_ea != function)
+            return unavailable("selected function unavailable");
+    }
     HybridConfig config;
     config.max_image_bytes = 64ull * 1024 * 1024;
     config.max_insns = 4096;
@@ -362,20 +377,21 @@ trace_native_region_impl(uint64_t function, uint64_t seed, const hybrid::EmuInpu
     config.want_import_summaries = false;
     config.max_runtime_bytes = 65536;
     ProgramImage image;
-    const auto snapshot = hybrid_snapshot_function(image, config, function);
+    const auto snapshot = candidate_entry ? hybrid_snapshot_image(image, config)
+                                          : hybrid_snapshot_function(image, config, function);
     if (!snapshot.complete)
-        return unavailable("incomplete or unsupported image snapshot");
+        return unavailable("incomplete or unsupported image snapshot", candidate_entry);
     const unsigned mode = image.arch == HybridArch::X86_64 ? 64 : 32;
     if (explicit_input && mode == 32 &&
         std::any_of(explicit_input->args.begin(), explicit_input->args.end(),
                     [](uint64_t value) { return value > UINT32_MAX; }))
-        return unavailable("argument exceeds architecture width");
+        return unavailable("argument exceeds architecture width", candidate_entry);
     const NativeDecoder decoder =
         [mode](uint64_t ea, const uint8_t *data, size_t size, rax_decoded &decoded)
     { return decode_native(ea, data, size, decoded, mode); };
     auto region = plan_native_region(image, api, function, 4096, decoder);
     if (!region.available())
-        return unavailable("entry has no admissible native instruction");
+        return unavailable("entry has no admissible native instruction", candidate_entry);
     EmuDriver driver(api, image, true, inf_get_filetype() == f_PE,
                      bindings ? *bindings : std::vector<EmuCallSummary>{});
     EmuInput input = explicit_input ? *explicit_input : EmuInput{};
@@ -395,7 +411,7 @@ trace_native_region_impl(uint64_t function, uint64_t seed, const hybrid::EmuInpu
     {
     }
     if (capture == UINT64_MAX)
-        return unavailable("capture identity exhausted");
+        return unavailable("capture identity exhausted", candidate_entry);
     NativeObservationView observations;
     if (check && ran)
     {
@@ -522,10 +538,12 @@ trace_native_region_impl(uint64_t function, uint64_t seed, const hybrid::EmuInpu
     for (const auto &write : events.final_writes)
         writes.push_back({{"address", hex(write.addr)}, {"bytes", bytes(write.bytes)}});
     std::ostringstream out;
-    out << "{\"schema\":1,\"available\":true,\"scope\":\"native-region\",\"capture\":" << capture
+    out << "{\"schema\":1,\"available\":true,\"scope\":"
+        << inspection_json_quote(candidate_entry ? "native-candidate-region" : "native-region")
+        << ",\"capture\":" << capture
         << ",\"database\":" << inspection_json_quote(std::to_string(int64_t(get_dbctx_id())))
-        << ",\"function\":" << inspection_json_quote(hex(function))
-        << ",\"seed\":" << inspection_json_quote(hex(seed))
+        << (candidate_entry ? ",\"root\":" : ",\"function\":")
+        << inspection_json_quote(hex(function)) << ",\"seed\":" << inspection_json_quote(hex(seed))
         << ",\"region_identity\":" << inspection_json_quote(hex(region.identity()))
         << ",\"initial_region_identity\":" << inspection_json_quote(hex(initial_identity))
         << ",\"native_walk\":" << (walk ? "true" : "false")
@@ -578,7 +596,13 @@ trace_native_region_impl(uint64_t function, uint64_t seed, const hybrid::EmuInpu
         << ",\"function_evidence_published\":false,\"vm_identity_proved\":false"
         << ",\"environment_contract\":\"backend-defined timestamp, randomness, processor and device state; explicit arguments do not establish replay determinism\""
         << ",\"backend_compatibility\":\"32-bit legacy INC/DEC materializes current EFLAGS before backend execution to preserve pending carry\""
-        << ",\"contract\":\"ephemeral seeded native execution; exact fetched instruction bytes; separate from function evidence; logical VM state unknown\"";
+        << ",\"contract\":"
+        << inspection_json_quote(
+               candidate_entry
+                   ? "ephemeral synthetic entry at an explicitly selected executable data head; exact fetched instruction bytes; neither observed program reachability nor runtime unpacked contents; no function evidence or VM identity"
+                   : "ephemeral seeded native execution; exact fetched instruction bytes; separate from function evidence; logical VM state unknown");
+    if (candidate_entry)
+        out << ",\"candidate_decode\":true,\"synthetic_entry\":true";
     inspection_json_rows(out, "heads", heads);
     inspection_json_rows(out, "frontiers", frontiers);
     inspection_json_rows(out, "execution", execution);
@@ -634,6 +658,20 @@ trace_native_region_impl(uint64_t function, uint64_t seed, const hybrid::EmuInpu
 std::string trace_native_region(uint64_t function, uint64_t seed)
 {
     return trace_native_region_impl(function, seed, nullptr);
+}
+std::string trace_native_candidate_region(uint64_t root, uint64_t seed)
+{
+    return trace_native_region_impl(root, seed, nullptr, false, false, nullptr, nullptr, nullptr,
+                                    true);
+}
+std::string trace_native_candidate_region_input(uint64_t root, uint64_t seed,
+                                                const std::string &request)
+{
+    hybrid::EmuInput input;
+    if (!parse_input(request, input))
+        return unavailable("invalid bounded native input", true);
+    return trace_native_region_impl(root, seed, &input, false, false, nullptr, nullptr, nullptr,
+                                    true);
 }
 std::string trace_native_region_input(uint64_t function, uint64_t seed, const std::string &request)
 {

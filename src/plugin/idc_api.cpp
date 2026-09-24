@@ -1180,6 +1180,24 @@ error_t idaapi idc_vm_trace(idc_value_t *argv, idc_value_t *r)
     return eOk;
 }
 
+error_t idaapi idc_vm_trace_candidate(idc_value_t *argv, idc_value_t *r)
+{
+    const auto json =
+        vm::trace_native_candidate_region(uint64_t(arg_ea(argv[0])), uint64_t(argv[1].num));
+    r->set_string(json.c_str());
+    return eOk;
+}
+
+error_t idaapi idc_vm_trace_candidate_input(idc_value_t *argv, idc_value_t *r)
+{
+    const auto request = arg_string(argv[2]);
+    const auto json =
+        vm::trace_native_candidate_region_input(uint64_t(arg_ea(argv[0])), uint64_t(argv[1].num),
+                                                std::string(request.c_str(), request.length()));
+    r->set_string(json.c_str());
+    return eOk;
+}
+
 error_t idaapi idc_vm_trace_input(idc_value_t *argv, idc_value_t *r)
 {
     const auto request = arg_string(argv[2]);
@@ -1849,6 +1867,12 @@ const idc_entry_t idc_entries[] = {
      "Explicit bounded normal-completion effect summaries; reuse requires UNSAT"},
     {"chernobog_vm_trace", idc_vm_trace, args_ea_long, "chernobog_vm_trace(ea, seed)",
      "Explicit bounded native-region capture across function owners; no function evidence publication"},
+    {"chernobog_vm_trace_candidate", idc_vm_trace_candidate, args_ea_long,
+     "chernobog_vm_trace_candidate(data_head_ea, seed)",
+     "Synthetic bounded native capture from an explicit executable data head; conditional entry, no IDB retyping"},
+    {"chernobog_vm_trace_candidate_input", idc_vm_trace_candidate_input, args_ea_long_str,
+     "chernobog_vm_trace_candidate_input(data_head_ea, seed, input_json)",
+     "Synthetic candidate capture with explicit bounded native input; no reachability or VM identity claim"},
     {"chernobog_vm_trace_input", idc_vm_trace_input, args_ea_long_str,
      "chernobog_vm_trace_input(ea, seed, input_json)",
      "Native-region capture with explicit scalar arguments and bounded initialized scratch objects"},

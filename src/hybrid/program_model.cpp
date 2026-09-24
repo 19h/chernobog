@@ -132,9 +132,10 @@ bool hybrid_detect_arch(HybridArch &arch_out, bool &big_endian_out)
     return arch_out != HybridArch::UNSUPPORTED;
 }
 
-ProgramSnapshotStats hybrid_snapshot_function(ProgramImage &img, const HybridConfig &cfg,
-                                              uint64_t function_address,
-                                              const ProgramSnapshotProgressCallback &progress)
+static ProgramSnapshotStats snapshot_program_image(ProgramImage &img, const HybridConfig &cfg,
+                                                   uint64_t function_address,
+                                                   const ProgramSnapshotProgressCallback &progress,
+                                                   bool require_function)
 {
     ProgramSnapshotProgress snapshot_progress;
     auto report = [&]
@@ -272,6 +273,16 @@ ProgramSnapshotStats hybrid_snapshot_function(ProgramImage &img, const HybridCon
               [](const SegImage &a, const SegImage &b) { return a.start < b.start; });
     img.content_hash = hybrid_program_content_hash(img);
 
+    if (!require_function)
+    {
+        snapshot_progress.stage = ProgramSnapshotStage::COMPLETE;
+        snapshot_progress.stats.complete = snapshot_progress.stats.segments_read_failed == 0;
+        if (!snapshot_progress.stats.complete)
+            snapshot_progress.stats.diagnostic = "one or more mapped segments could not be read";
+        report();
+        return snapshot_progress.stats;
+    }
+
     // ---- function entries ---------------------------------------------------
     constexpr size_t nfuncs = 1;
     snapshot_progress.stage = ProgramSnapshotStage::FUNCTIONS;
@@ -344,6 +355,19 @@ ProgramSnapshotStats hybrid_snapshot_function(ProgramImage &img, const HybridCon
         snapshot_progress.stats.diagnostic = "one or more mapped segments could not be read";
     report();
     return snapshot_progress.stats;
+}
+
+ProgramSnapshotStats hybrid_snapshot_function(ProgramImage &img, const HybridConfig &cfg,
+                                              uint64_t function_address,
+                                              const ProgramSnapshotProgressCallback &progress)
+{
+    return snapshot_program_image(img, cfg, function_address, progress, true);
+}
+
+ProgramSnapshotStats hybrid_snapshot_image(ProgramImage &img, const HybridConfig &cfg,
+                                           const ProgramSnapshotProgressCallback &progress)
+{
+    return snapshot_program_image(img, cfg, 0, progress, false);
 }
 
 } // namespace chernobog::hybrid

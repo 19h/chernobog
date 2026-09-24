@@ -252,4 +252,10 @@ ProgramSnapshotStats hybrid_snapshot_function(ProgramImage &img, const HybridCon
                                               uint64_t function_address,
                                               const ProgramSnapshotProgressCallback &progress = {});
 
+// Snapshot the same bounded mapped image without assigning an IDA function
+// owner. Intended for explicitly selected native-region candidate entries.
+// `entries` remains empty; this does not classify any byte as executable code.
+ProgramSnapshotStats hybrid_snapshot_image(ProgramImage &img, const HybridConfig &cfg,
+                                           const ProgramSnapshotProgressCallback &progress = {});
+
 } // namespace chernobog::hybrid
