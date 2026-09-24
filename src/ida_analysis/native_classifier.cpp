@@ -174,6 +174,12 @@ std::optional<stack_transfer_t> classify_push_return(const instruction_t &push,
         (push.kind != instruction_kind_t::push_register || target.definitions.empty() ||
          target.registers.empty()))
         return std::nullopt;
+    if (target.stack_top_source &&
+        (push.kind != instruction_kind_t::push_memory || !push.source_is_stack_pointer))
+        return std::nullopt;
+    if (target.kind == target_proof_kind_t::stack_definition &&
+        (!target.stack_top_source || target.definitions.empty() || !target.memory.empty()))
+        return std::nullopt;
     if (target.kind == target_proof_kind_t::immutable_memory &&
         (push.kind != instruction_kind_t::push_memory || target.memory.size() != 1 ||
          target.memory.front().bytes.size() != mode / 8 ||

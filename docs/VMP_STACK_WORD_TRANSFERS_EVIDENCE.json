@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "scope": "exact local stack-word source for x86 PUSH/RET",
+  "source_sha256": {
+    "src/ida_analysis/native_classifier.hpp": "cd08b2a71684f88af5e96e1dfb698ec9a45343ba9e08d74340b2e04ac3b46d0a",
+    "src/ida_analysis/native_classifier.cpp": "a174546a068f5979a0e68f8e80ee089f1e43f5248dbbd76beb855c22cdd8f195",
+    "src/ida_analysis/x86_analysis.hpp": "5201b8d33d0d62410018ed02059cbedd554566ebef5d33a031837407dc974665",
+    "src/ida_analysis/x86_analysis.cpp": "32bc51d0e87c578e8889297f1448de30c8619f70059aad9ebbc8b0fe36bfe88c",
+    "src/ida_analysis/get_pc_ida.cpp": "2c2cb7545d3cfe8855ecabd32f5fe72000bbd0dbab15dcdd04f40890e2cb3982",
+    "src/ida_analysis/native_engine.cpp": "dce5cecbed28a8cb093c2433594570f60538d849d61c5ad1a88468df689ef703",
+    "tests/core_tests.cpp": "421011001e851fee9b5e60976fcc8869c6e96cc9b6e8a31b1839a0c8429c25c2",
+    "tests/ida_dataflow_probe.py": "11a3ee396c2863c5260d73d5c8a1f2e2be71f37f45eaeab3a8af24a8136ce6d0",
+    "tests/ida_ownerless_dataflow_probe.py": "b8895d48e3ae7d868b6993d60d83200041828d4e812a80c90e9e0c6a22014122",
+    "tests/run_native_dataflow.py": "e2090e49decba18fca6e35cd69302caf3697b3499e6b221848d8f7bb1eb32b8f",
+    "tests/vmp_native/dataflow.S": "fedcd9747fea3a6c2d6522c6661350fc41881b0d7e2db98a2d27d5a275cc1422",
+    "tests/vmp_native/dataflow_main.c": "7557b6337062ef42c04705c70afbe88db4c11cf207d97221182e3492271ed598"
+  },
+  "tools": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "linux32_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+    "prior_installed_plugin_sha256": "b030a0167654e8370d33c15cf2b2cf3ef97395e5d7d1b51da2677876392ee467",
+    "new_built_plugin_sha256": "f2900627b4a917c57f72b533da6452462bef10a65d01552669962849dc2b6b94"
+  },
+  "fixture_sha256": {
+    "owned_x86_64": "9bd7567ae9936a177cd417374003be03673d6ac8aeda1c0598103bb717f04a2d",
+    "owned_i386": "d2227c625aa2e91dfe0c2e3b80d3ea4da9bf1f8992f7de76d9e77c5224618223",
+    "ownerless_x86_64": "646117cdf5aedfb3e818bdfde1d1127c146eae09bc84afde906677f64298015f",
+    "ownerless_i386": "20d609b1daefb71e712e234b689d51269665de5ce4c19ae22bb450496c39edf2"
+  },
+  "results": {
+    "owned_native_checks_per_architecture": 5374,
+    "owned_ida_checks_per_architecture": 74,
+    "ownerless_native_checks_per_architecture": 4094,
+    "ownerless_ida_checks_per_architecture": 432,
+    "exact_stack_targets_per_architecture_and_mode": 1,
+    "unresolved_stack_controls_per_architecture_and_mode": 2,
+    "corrupt_ownerless_oracle_rejected": true,
+    "ctest_passed": 21,
+    "protected_nodes": 75,
+    "protected_edges": 77,
+    "protected_unresolved": 3
+  },
+  "raw_report_sha256": {
+    "build/vmp-stack-word-accepted-owned/dataflow_analysis.json": "eeab51035b1adda8a58818f19d3980e390f6fe6ffc43e6ef94093977acbd5911",
+    "build/vmp-stack-word-accepted-ownerless/ownerless_dataflow_analysis.json": "37c821f304306692e58c95f3a861932fa9ca962c28e4bb251457ab0f3f36a444",
+    "build/vmp-stack-word-accepted-owned/x86_64/inspection/dataflow.json": "4a6cbfbff6b8bb981a3db31a060fd415d60179a84ad7432098d1a84a550799ed",
+    "build/vmp-stack-word-accepted-owned/i386/inspection/dataflow.json": "0aa999d4ca245744043f9de8a72019aa5ecb0dd69f54c260e9b9c386190cc6d1",
+    "build/vmp-stack-word-accepted-ownerless/x86_64/inspection/ownerless_dataflow.json": "cc3a181298885be693b8eef217075fb9751be13e08943b7af0849ce53bf41a92",
+    "build/vmp-stack-word-accepted-ownerless/i386/inspection/ownerless_dataflow.json": "cbbfcdcb8769f9e898b7bb14f99e9b148bbf9e8d5ebcb8fad8b320d1a53c4fc7",
+    "build/vmp-stack-word-prior-owned-x64/dataflow.json": "49a5b37bd1df1bb315f9bf340339c536e6076b39ffac7ea081c82dfb4cdc62fb",
+    "build/vmp-stack-word-prior-owned-i386/dataflow.json": "ba6b516665eb0000ea5772ded73e57033c2f43572bf331008ac2cb956e1a77ae",
+    "build/vmp-stack-word-prior-ownerless-x64/ownerless_dataflow.json": "dbceef8b5c4d5ca0e0e17919b08951fcc525894bbd3562388e6ae2c6b6bca357",
+    "build/vmp-stack-word-prior-ownerless-i386/ownerless_dataflow.json": "7de99d68b499fc9535895c5dc53d27e9ee4d75717d22420b35937b73cf3eac48",
+    "build/vmp-stack-top-accepted-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/Testing/Temporary/LastTest.log": "b6a531f0401347611e43c64e0629077b0adf0d65dbe23c4ea1f93d0c489a1e58"
+  }
+}

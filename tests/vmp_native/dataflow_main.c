@@ -5,6 +5,8 @@ extern int df_equal(int), df_different(int), df_flags(int), df_direction(int), d
     df_target_changes(int), df_direction_status(int);
 extern int df_flags_saved(int), df_flags_literal(int), df_flags_overwrite(int),
     df_flags_dynamic(int), df_flags_full(int), df_flags_status(int);
+extern int df_stack_top_transfer(int), df_stack_top_overwrite(int);
+extern int df_stack_top_dynamic(int);
 
 int main(void)
 {
@@ -17,9 +19,11 @@ int main(void)
             df_target(input) != 7 || df_target_changes(input) != (input == 0 ? 9 : 7) ||
             df_flags_saved(input) != 1 || df_flags_full(input) != 1 ||
             df_flags_status(input) != 0 || df_flags_literal(input) != 1 ||
-            df_flags_overwrite(input) != 0 || df_flags_dynamic(input) != (input & 1))
+            df_flags_overwrite(input) != 0 || df_flags_dynamic(input) != (input & 1) ||
+            df_stack_top_transfer(input) != 7 || df_stack_top_overwrite(input) != 8 ||
+            df_stack_top_dynamic(input) != (input == 0 ? 7 : 8))
             return 1;
-        checks += 16;
+        checks += 19;
         if (input > 0)
         {
             if (df_loop(input) != 1 || df_loop_changes(input) != ((input & 1) == 0))

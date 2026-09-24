@@ -292,6 +292,117 @@ BEGIN NAME(df_target_changes)
 4:  movl $9, %eax
     ret
 
+/* The second PUSH reads the prior top word before decrementing SP. The
+ * destination discards that prior word before returning to the C caller. */
+BEGIN NAME(df_stack_top_transfer)
+#ifdef __i386__
+    movl $NAME(df_stack_top_destination), %eax
+    pushl %eax
+#else
+    leaq NAME(df_stack_top_destination)(%rip), %rax
+    pushq %rax
+#endif
+#ifdef __i386__
+    pushl (%esp)
+#else
+    pushq (%rsp)
+#endif
+    ret
+.p2align 4
+.globl NAME(df_stack_top_destination)
+NAME(df_stack_top_destination):
+#ifdef __i386__
+    addl $4, %esp
+#else
+    addq $8, %rsp
+#endif
+    movl $7, %eax
+    ret
+
+BEGIN NAME(df_stack_top_overwrite)
+#ifdef __i386__
+    movl $NAME(df_stack_top_other), %eax
+    pushl %eax
+    movl $NAME(df_stack_top_overwritten_destination), %eax
+    movl %eax, (%esp)
+#else
+    leaq NAME(df_stack_top_other)(%rip), %rax
+    pushq %rax
+    leaq NAME(df_stack_top_overwritten_destination)(%rip), %rax
+    movq %rax, (%rsp)
+#endif
+#ifdef __i386__
+    pushl (%esp)
+#else
+    pushq (%rsp)
+#endif
+    ret
+.p2align 4
+.globl NAME(df_stack_top_other)
+NAME(df_stack_top_other):
+#ifdef __i386__
+    addl $4, %esp
+#else
+    addq $8, %rsp
+#endif
+    movl $7, %eax
+    ret
+.p2align 4
+.globl NAME(df_stack_top_overwritten_destination)
+NAME(df_stack_top_overwritten_destination):
+#ifdef __i386__
+    addl $4, %esp
+#else
+    addq $8, %rsp
+#endif
+    movl $8, %eax
+    ret
+
+BEGIN NAME(df_stack_top_dynamic)
+    testl %ecx, %ecx
+    jz 1f
+#ifdef __i386__
+    movl $NAME(df_stack_top_dynamic_eight), %eax
+#else
+    leaq NAME(df_stack_top_dynamic_eight)(%rip), %rax
+#endif
+    jmp 2f
+1:
+#ifdef __i386__
+    movl $NAME(df_stack_top_dynamic_seven), %eax
+#else
+    leaq NAME(df_stack_top_dynamic_seven)(%rip), %rax
+#endif
+2:
+#ifdef __i386__
+    pushl %eax
+    pushl (%esp)
+#else
+    pushq %rax
+    pushq (%rsp)
+#endif
+    ret
+.p2align 4
+.globl NAME(df_stack_top_dynamic_seven)
+NAME(df_stack_top_dynamic_seven):
+#ifdef __i386__
+    addl $4, %esp
+#else
+    addq $8, %rsp
+#endif
+    movl $7, %eax
+    ret
+.p2align 4
+.globl NAME(df_stack_top_dynamic_eight)
+NAME(df_stack_top_dynamic_eight):
+#ifdef __i386__
+    addl $4, %esp
+#else
+    addq $8, %rsp
+#endif
+    movl $8, %eax
+    ret
+
 /* The probe assigns the remote body as a tail of df_flow_root. The CLC
  * immediately before that tail is deliberately outside its owned graph. */
 .p2align 4

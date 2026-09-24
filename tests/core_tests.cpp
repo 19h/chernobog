@@ -367,6 +367,31 @@ void test_stack_transfer_classifier()
         proof.memory.front().bytes.pop_back();
         check(!classify_push_return(push, ret, mode, proof), "truncated pointer rejected");
         proof = {};
+        proof.kind = target_proof_kind_t::stack_definition;
+        proof.value = 0x2000;
+        proof.definitions = {0xFF0};
+        check(!classify_push_return(push, ret, mode, proof),
+              "stack target requires the exact stack-top source shape");
+        push.source_is_stack_pointer = true;
+        proof.stack_top_source = true;
+        result = classify_push_return(push, ret, mode, proof);
+        check(result && result->target.value == 0x2000 &&
+                  result->target.kind == target_proof_kind_t::stack_definition,
+              "stack target retains its local source proof");
+        proof.definitions.clear();
+        check(!classify_push_return(push, ret, mode, proof),
+              "stack target requires establishing instructions");
+        proof.definitions = {0xFF0};
+        proof.memory.push_back(memory);
+        check(!classify_push_return(push, ret, mode, proof),
+              "stack target cannot alias an unrelated fixed-memory proof");
+        proof = {};
+        proof.stack_top_source = true;
+        result = classify_push_return(push, ret, mode, proof);
+        check(result && !result->target.value,
+              "unknown stack top remains an unresolved transfer candidate");
+        push.source_is_stack_pointer = false;
+        proof = {};
         proof.value = 0x2000;
         check(!classify_push_return(push, ret, mode, proof), "unproven supplied value rejected");
         proof = {};

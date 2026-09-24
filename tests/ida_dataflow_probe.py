@@ -329,6 +329,126 @@ try:
             for r in changing_rows
         ),
     )
+    stack_root = address("df_stack_top_transfer")
+    reanalyze(stack_root)
+    captures["df_stack_top_transfer"] = inspect(stack_root)
+    captures["df_stack_top_transfer"]["native_inventory"] = [
+        {
+            "site": hex(site),
+            "bytes": (ida_bytes.get_bytes(site, ida_bytes.get_item_size(site)) or b"").hex(),
+            "mnemonic": idautils.DecodeInstruction(site).get_canon_mnem(),
+            "owner": hex(ida_funcs.get_func(site).start_ea),
+        }
+        for site in idautils.FuncItems(stack_root)
+        if ida_bytes.is_code(ida_bytes.get_flags(site))
+    ]
+    stack_rows = [
+        row
+        for row in captures["df_stack_top_transfer"]["records"]
+        if row["kind"] == "stack-transfer" and row["fresh"] == "true"
+    ]
+    check(
+        "tracked stack-top PUSH/RET has an exact native edge",
+        len(stack_rows) == 1
+        and stack_rows[0]["truth"] == "native-proof"
+        and stack_rows[0]["edge"] == "true"
+        and stack_rows[0]["target_basis"] == "stack-definition"
+        and "bounded prior stack word" in stack_rows[0]["memory_model"]
+        and int(stack_rows[0]["target"], 0) == address("df_stack_top_destination")
+        and stack_rows[0]["stack_delta_bytes"] == "0"
+        and int(stack_rows[0]["stack_write_bytes"]) * 8 == int(stack_rows[0]["width_bits"]),
+    )
+    overwrite_root = address("df_stack_top_overwrite")
+    reanalyze(overwrite_root)
+    captures["df_stack_top_overwrite"] = inspect(overwrite_root)
+    captures["df_stack_top_overwrite"]["native_inventory"] = [
+        {
+            "site": hex(site),
+            "bytes": (ida_bytes.get_bytes(site, ida_bytes.get_item_size(site)) or b"").hex(),
+            "mnemonic": idautils.DecodeInstruction(site).get_canon_mnem(),
+            "owner": hex(ida_funcs.get_func(site).start_ea),
+        }
+        for site in idautils.FuncItems(overwrite_root)
+        if ida_bytes.is_code(ida_bytes.get_flags(site))
+    ]
+    overwrite_rows = [
+        row
+        for row in captures["df_stack_top_overwrite"]["records"]
+        if row["kind"] == "stack-transfer" and row["fresh"] == "true"
+    ]
+    check(
+        "overwritten stack top retains an unresolved candidate",
+        len(overwrite_rows) == 1
+        and overwrite_rows[0]["truth"] == "candidate"
+        and overwrite_rows[0]["edge"] == "false"
+        and overwrite_rows[0]["target_basis"] == "unresolved",
+    )
+    check(
+        "overwritten stack candidate retains its stack-source scope",
+        len(overwrite_rows) == 1
+        and "bounded prior stack word" in overwrite_rows[0]["memory_model"],
+    )
+    dynamic_root = address("df_stack_top_dynamic")
+    reanalyze(dynamic_root)
+    captures["df_stack_top_dynamic"] = inspect(dynamic_root)
+    dynamic_rows = [
+        row
+        for row in captures["df_stack_top_dynamic"]["records"]
+        if row["kind"] == "stack-transfer" and row["fresh"] == "true"
+    ]
+    check(
+        "different branch-defined stack words remain unresolved",
+        len(dynamic_rows) == 1
+        and dynamic_rows[0]["truth"] == "candidate"
+        and dynamic_rows[0]["edge"] == "false"
+        and dynamic_rows[0]["target_basis"] == "unresolved"
+        and "bounded prior stack word" in dynamic_rows[0]["memory_model"],
+    )
+    if stack_rows:
+        ret_site = int(stack_rows[0]["site"], 0)
+        destination = address("df_stack_top_destination")
+        defining_push = next(
+            row["site"]
+            for row in captures["df_stack_top_transfer"]["native_inventory"]
+            if row["mnemonic"] == "push" and row["bytes"] == "50"
+        )
+        defining_push = int(defining_push, 0)
+        check(
+            "stack target has a published user edge",
+            any(x.iscode and x.to == destination and x.user for x in idautils.XrefsFrom(ret_site)),
+        )
+        assert ida_bytes.patch_byte(defining_push, 0x90)
+        reanalyze(stack_root)
+        captures["df_stack_top_source_removed"] = inspect(stack_root)
+        changed = captures["df_stack_top_source_removed"]["records"]
+        check(
+            "removing the establishing PUSH revokes the exact stack target",
+            not any(
+                row["kind"] == "stack-transfer"
+                and row["fresh"] == "true"
+                and row["truth"] == "native-proof"
+                for row in changed
+            )
+            and not any(
+                x.iscode and x.to == destination and x.user for x in idautils.XrefsFrom(ret_site)
+            ),
+        )
+        assert ida_bytes.patch_byte(defining_push, 0x50)
+        reanalyze(stack_root)
+        captures["df_stack_top_source_restored"] = inspect(stack_root)
+        renewed = [
+            row
+            for row in captures["df_stack_top_source_restored"]["records"]
+            if row["kind"] == "stack-transfer" and row["fresh"] == "true"
+        ]
+        check(
+            "restoring the establishing PUSH recomputes the exact stack target",
+            len(renewed) == 1
+            and renewed[0]["truth"] == "native-proof"
+            and renewed[0]["target_basis"] == "stack-definition"
+            and int(renewed[0]["target"], 0) == destination
+            and renewed[0]["publication"] != stack_rows[0]["publication"],
+        )
     ea = address("df_equal")
     instructions = []
     for site in idautils.FuncItems(ea):

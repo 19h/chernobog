@@ -274,6 +274,11 @@ struct State
         return s.reg < 0 ? std::nullopt : regs[size_t(s.reg)].read(s.width, s.offset);
     }
 
+    std::optional<uint64_t> read_stack_top(unsigned bits) const
+    {
+        return stack.empty() ? std::nullopt : stack.back().read(bits);
+    }
+
     void write(const op_t &operand, std::optional<uint64_t> value, bool mode64)
     {
         const Slice s = register_slice(operand);
@@ -784,6 +789,25 @@ X86RegisterFact analyze_x86_register_before(const insn_t &insn, const op_t &oper
     return result;
 }
 
+X86RegisterFact analyze_x86_stack_top_before(const insn_t &insn, size_t depth)
+{
+    const unsigned bits = mode64(insn) ? 64 : mode32(insn) ? 32 : 0;
+    if (!bits || !natad(insn))
+        return {};
+    if (const auto flow = flow_before(insn, depth))
+        return {flow->state.read_stack_top(bits), flow->support};
+    const auto prefix = prefix_before(insn, depth);
+    State state;
+    X86RegisterFact result;
+    for (auto it = prefix.rbegin(); it != prefix.rend(); ++it)
+    {
+        state.step(*it);
+        result.support.push_back(it->ea);
+    }
+    result.value = state.read_stack_top(bits);
+    return result;
+}
+
 X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t round_limit)
 {
     X86RegionInspection result;
@@ -1212,7 +1236,21 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         }
         else if (instruction.Op1.type == o_mem || instruction.Op1.type == o_displ ||
                  instruction.Op1.type == o_phrase)
+        {
             push_model.kind = classifier::instruction_kind_t::push_memory;
+            if (State::stack_top(instruction, instruction.Op1))
+            {
+                push_model.source_is_stack_pointer = true;
+                target.stack_top_source = true;
+                target.value = state.read_stack_top(result.address_bits);
+                if (target.value)
+                {
+                    target.kind = classifier::target_proof_kind_t::stack_definition;
+                    for (const auto &definition : instructions)
+                        target.definitions.push_back(definition.ea);
+                }
+            }
+        }
         else
             continue;
         const auto transfer =
@@ -1230,6 +1268,8 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
                                   ? "immediate"
                               : target.kind == classifier::target_proof_kind_t::register_definition
                                   ? "register-definition"
+                              : target.kind == classifier::target_proof_kind_t::stack_definition
+                                  ? "stack-definition"
                                   : "unresolved"},
              {"width_bits", std::to_string(transfer->width_bits)},
              {"stack_delta_bytes", std::to_string(transfer->stack_delta_bytes)},

@@ -521,6 +521,30 @@ def main():
                     targets == {number(row["target"])},
                 )
 
+        for name, expected, destination in (
+            ("df_stack_top_transfer", True, "df_stack_top_destination"),
+            ("df_stack_top_overwrite", False, "df_stack_top_overwritten_destination"),
+            ("df_stack_top_dynamic", False, "df_stack_top_dynamic_seven"),
+        ):
+            root, instructions = prepare_prefix(name)
+            result = inspect(name, root)
+            pushes = [
+                instruction
+                for instruction in instructions
+                if instruction.get_canon_mnem() == "push"
+            ]
+            check(name + " two ordered PUSH instructions", len(pushes) == 2)
+            assert len(pushes) == 2
+            row = row_at(result, pushes[-1].ea, "push-return")
+            check(
+                name + " ownerless stack target",
+                result["converged"]
+                and not result["truncated"]
+                and row["status"] == ("proved" if expected else "unresolved")
+                and row["target_proof"] == ("stack-definition" if expected else "unresolved")
+                and row["target"] == (hex(symbol(destination)) if expected else "unknown"),
+            )
+
         root, source, join, end = (
             symbol("od_adjacent_" + suffix) for suffix in ("root", "external", "join", "end")
         )

@@ -147,6 +147,7 @@ enum class target_proof_kind_t : uint8_t
     immediate,
     register_definition,
     immutable_memory,
+    stack_definition,
 };
 
 struct memory_dependency_t
@@ -162,6 +163,7 @@ struct target_proof_t
     std::vector<uint64_t> definitions;
     std::vector<register_slice_t> registers;
     std::vector<memory_dependency_t> memory;
+    bool stack_top_source = false;
 };
 
 struct stack_transfer_t

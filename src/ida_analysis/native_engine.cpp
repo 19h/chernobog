@@ -1266,13 +1266,18 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 case classifier::target_proof_kind_t::immutable_memory:
                     row["target_basis"] = "immutable-memory";
                     break;
+                case classifier::target_proof_kind_t::stack_definition:
+                    row["target_basis"] = "stack-definition";
+                    break;
                 default:
                     row["target_basis"] = "unresolved";
                     break;
                 }
                 row["register_scan_depth"] = std::to_string(config.register_scan_depth);
                 row["memory_model"] =
-                    "IDA loaded immutable bytes and current write-reference checks; external runtime mutations unmodeled";
+                    candidate->target.stack_top_source
+                        ? "bounded prior stack word; intervening writes invalidate; external runtime mutations unmodeled"
+                        : "IDA loaded immutable bytes and current write-reference checks; external runtime mutations unmodeled";
                 if (!proof.intended_edge)
                     row["truth"] = "candidate";
                 break;

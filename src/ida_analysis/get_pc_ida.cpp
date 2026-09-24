@@ -509,6 +509,22 @@ std::optional<classifier::stack_transfer_t> classify_ida_push_return(const insn_
     else if (push.Op1.type == o_mem || push.Op1.type == o_displ || push.Op1.type == o_phrase)
     {
         p.kind = instruction_kind_t::push_memory;
+        if (stack_pointer_deref(push, push.Op1) && get_dtype_size(push.Op1.dtype) == mode / 8)
+        {
+            // PUSH r/m reads its source using SP before the decrement. Only
+            // an already established exact top word can supply this target.
+            p.source_is_stack_pointer = true;
+            proof.stack_top_source = true;
+            const auto fact = analyze_x86_stack_top_before(
+                push, register_scan_depth > 0 ? size_t(register_scan_depth) : size_t(64));
+            proof.definitions = fact.support;
+            if (fact.value && !fact.support.empty())
+            {
+                proof.value = *fact.value;
+                proof.kind = target_proof_kind_t::stack_definition;
+            }
+            return classify_push_return(p, r, mode, proof);
+        }
         // Segment overrides require segment-base evidence, especially FS/GS.
         if (push.segpref != 0)
             return classify_push_return(p, r, mode, proof);

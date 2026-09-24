@@ -48,6 +48,10 @@ struct X86RegisterFact
 X86RegisterFact analyze_x86_register_before(const insn_t &instruction, const op_t &operand,
                                             size_t depth);
 
+// Reads only a complete machine word at the current tracked SP. Unknown
+// initial stack bytes, intervening writes, and incomplete paths abstain.
+X86RegisterFact analyze_x86_stack_top_before(const insn_t &instruction, size_t depth);
+
 // Recomputed facts for an exact existing ownerless root, before the first
 // unrepresented transfer. No IDB mutation, automatic ownership or publication.
 // Calls clear state at their syntactic continuation under normal return.
