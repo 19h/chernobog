@@ -4,7 +4,9 @@ The C++ plugin supplies a bounded immutable snapshot. This module never executes
 the analyzed program, changes the database, or upgrades observations to proofs.
 """
 
+import hashlib
 import json
+from pathlib import Path
 
 import ida_bytes
 import ida_expr
@@ -15,6 +17,7 @@ import ida_kernwin
 ACTION = "chernobog:evidence_view"
 REGION_ACTION = "chernobog:native_region_facts"
 CANDIDATE_ACTION = "chernobog:native_candidate_region"
+SHADOW_USE_ACTION = "chernobog:shadow_call_use"
 
 
 def api(name, ea):
@@ -23,6 +26,29 @@ def api(name, ea):
     if error or value.vtype != ida_expr.VT_STR:
         raise RuntimeError("evidence API unavailable")
     return json.loads(value.c_str())
+
+
+def shadow_use_api(root, seed, shadow_file, request):
+    """One explicit ephemeral query; no path or request is persisted in the IDB."""
+    value = ida_expr.idc_value_t()
+    expression = (
+        f"chernobog_vm_trace_candidate_shadow_use({int(root)},{int(seed)},"
+        f"{json.dumps(str(shadow_file))},{json.dumps(request)})"
+    )
+    if (
+        ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, expression)
+        or value.vtype != ida_expr.VT_STR
+    ):
+        raise RuntimeError("shadow call-use API unavailable")
+    return json.loads(value.c_str())
+
+
+def shadow_file_digest(path):
+    with Path(path).open("rb") as stream:
+        data = stream.read(65537)
+    if not 1 <= len(data) <= 65536:
+        raise ValueError("shadow file outside bounded size")
+    return hashlib.sha256(data).hexdigest()
 
 
 def matching_events(snapshot, site=None, run=None, allocation=None, interval=None):
@@ -77,6 +103,21 @@ def current_native_region(snapshot, state):
         and snapshot.get("context") not in (None, "0x0")
         and snapshot == state
     )
+
+
+def current_shadow_use(snapshot, state, expected_file_hash, current_file_hash):
+    """Exact result comparison except the per-query capture counter."""
+    if (
+        not snapshot.get("available")
+        or not snapshot.get("shadow_use", {}).get("available")
+        or not state.get("available")
+        or not state.get("shadow_use", {}).get("available")
+        or expected_file_hash != current_file_hash
+    ):
+        return False
+    previous = {key: value for key, value in snapshot.items() if key != "capture"}
+    latest = {key: value for key, value in state.items() if key != "capture"}
+    return previous == latest
 
 
 def current_solver_sources(snapshot, state):
@@ -932,6 +973,238 @@ if ida_kernwin.is_idaq():
             if hasattr(self, "timer"):
                 self.timer.stop()
 
+    class ShadowUseForm(ida_kernwin.PluginForm):
+        """Ephemeral call transfer, argument bytes and explicit stop frontiers."""
+
+        def __init__(self, root, seed, shadow_file, request, snapshot):
+            super().__init__()
+            self.root, self.seed = root, seed
+            self.shadow_file, self.request = shadow_file, request
+            self.file_hash = shadow_file_digest(shadow_file)
+            self.snapshot = snapshot
+            self.current = self.closed = False
+            self.selected = {}
+
+        def OnCreate(self, form):
+            self.parent = self.FormToPyQtWidget(form)
+            self.parent.setMinimumSize(1100, 680)
+            layout = QtWidgets.QVBoxLayout(self.parent)
+            self.status = QtWidgets.QLabel()
+            self.status.setWordWrap(True)
+            layout.addWidget(self.status)
+            self.scope = QtWidgets.QLabel()
+            self.scope.setWordWrap(True)
+            layout.addWidget(self.scope)
+            controls = QtWidgets.QHBoxLayout()
+            self.reload_button = QtWidgets.QPushButton("Recompute shadow use")
+            self.reload_button.clicked.connect(self.reload)
+            controls.addWidget(self.reload_button)
+            fit = QtWidgets.QPushButton("Fit flow")
+            fit.clicked.connect(self.fit_graph)
+            controls.addWidget(fit)
+            controls.addStretch()
+            layout.addLayout(controls)
+            splitter = QtWidgets.QSplitter()
+            self.graph = FlowView()
+            self.scene = QtWidgets.QGraphicsScene(self.graph)
+            self.graph.setScene(self.scene)
+            self.graph.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            splitter.addWidget(self.graph)
+            right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+            self.tabs = QtWidgets.QTabWidget()
+            self.use_table = QtWidgets.QTableWidget()
+            self.edges = QtWidgets.QTableWidget()
+            self.frontiers = QtWidgets.QTableWidget()
+            for table, title in (
+                (self.use_table, "Call argument"),
+                (self.edges, "Observed transfers"),
+                (self.frontiers, "Frontiers"),
+            ):
+                table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+                table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+                table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+                table.itemSelectionChanged.connect(lambda t=table: self.select_table(t))
+                self.tabs.addTab(table, title)
+            right.addWidget(self.tabs)
+            self.detail = QtWidgets.QPlainTextEdit()
+            self.detail.setReadOnly(True)
+            right.addWidget(self.detail)
+            right.setSizes([280, 260])
+            splitter.addWidget(right)
+            splitter.setSizes([480, 620])
+            layout.addWidget(splitter, 1)
+            self.rebuild()
+            self.poll()
+            QtCore.QTimer.singleShot(0, self.fit_graph)
+            self.timer = QtCore.QTimer(self.parent)
+            self.timer.timeout.connect(self.poll)
+            self.timer.start(5000)
+
+        def fill_table(self, table, columns, rows):
+            table.blockSignals(True)
+            table.clear()
+            table.setColumnCount(len(columns))
+            table.setHorizontalHeaderLabels([label for label, _ in columns])
+            table.setRowCount(len(rows))
+            for index, row in enumerate(rows):
+                for column, (_, key) in enumerate(columns):
+                    item = QtWidgets.QTableWidgetItem(str(row.get(key, "")))
+                    item.setData(QtCore.Qt.ItemDataRole.UserRole, row)
+                    table.setItem(index, column, item)
+            table.resizeColumnsToContents()
+            table.horizontalHeader().setStretchLastSection(True)
+            table.blockSignals(False)
+
+        def rebuild(self):
+            self.selected = self.snapshot.get("shadow_use", {})
+            self.scene.clear()
+            self.nodes = {}
+            for index, row in enumerate(self.snapshot.get("heads", [])[:256]):
+                site = row["site"]
+                node = FlowNode(self, site, (index % 2) * 190, (index // 2) * 85)
+                node.setToolTip(json.dumps(row, indent=2, sort_keys=True))
+                self.scene.addItem(node)
+                self.nodes[site] = node
+            displayed_edges = []
+            for edge in self.snapshot.get("edges", [])[:256]:
+                row = dict(edge, site=edge["source"], truth="conditional-byte-decode")
+                displayed_edges.append(row)
+                start, end = self.nodes.get(row["source"]), self.nodes.get(row["target"])
+                if start is not None and end is not None:
+                    self.scene.addItem(
+                        FlowEdge(
+                            self,
+                            row,
+                            start.sceneBoundingRect().center(),
+                            end.sceneBoundingRect().center(),
+                        )
+                    )
+            use = self.snapshot.get("shadow_use", {})
+            self.fill_table(
+                self.use_table,
+                [
+                    ("CALL", "source"),
+                    ("Target", "target"),
+                    ("Register", "register"),
+                    ("Pointer", "pointer"),
+                    ("Bytes including NUL", "bytes"),
+                ],
+                [use] if use.get("available") else [],
+            )
+            self.fill_table(
+                self.edges,
+                [
+                    ("Source", "source"),
+                    ("Target", "target"),
+                    ("Kind", "kind"),
+                    ("Sequence", "sequence"),
+                    ("Basis", "truth"),
+                ],
+                displayed_edges,
+            )
+            self.fill_table(
+                self.frontiers,
+                [("Site", "site"), ("Reason", "reason")],
+                self.snapshot.get("frontiers", [])[:256],
+            )
+            self.scope.setText(
+                "Caller-supplied shadow SHA-256 "
+                + self.file_hash
+                + " | synthetic transfer state | no callee semantics or ordinary function proof"
+            )
+            self.fit_graph()
+            self.show_detail()
+
+        def fit_graph(self):
+            if self.scene.items():
+                self.graph.fitInView(
+                    self.scene.itemsBoundingRect().adjusted(-20, -20, 20, 20),
+                    QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                )
+
+        def select_site(self, site):
+            self.select_record(
+                next((row for row in self.snapshot.get("heads", []) if row["site"] == site), {})
+            )
+
+        def select_table(self, table):
+            if table.selectedItems():
+                self.select_record(table.selectedItems()[0].data(QtCore.Qt.ItemDataRole.UserRole))
+
+        def select_record(self, row):
+            self.selected = row
+            self.show_detail()
+
+        def show_detail(self):
+            self.detail.setPlainText(
+                json.dumps(
+                    {
+                        "current_exact_shadow_use": self.current,
+                        "root": self.snapshot.get("root"),
+                        "stop": self.snapshot.get("stop"),
+                        "planned_heads": self.snapshot.get("planned_heads"),
+                        "instruction_count": self.snapshot.get("instruction_count"),
+                        "heads_omitted": max(0, len(self.snapshot.get("heads", [])) - 256),
+                        "edges_omitted": max(0, len(self.snapshot.get("edges", [])) - 256),
+                        "frontiers_omitted": max(0, len(self.snapshot.get("frontiers", [])) - 256),
+                        "synthetic_entry": self.snapshot.get("synthetic_entry"),
+                        "function_evidence_published": self.snapshot.get(
+                            "function_evidence_published"
+                        ),
+                        "vm_identity_proved": self.snapshot.get("vm_identity_proved"),
+                        "selected": self.selected,
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+
+        def poll(self):
+            try:
+                before_hash = shadow_file_digest(self.shadow_file)
+                state = shadow_use_api(self.root, self.seed, self.shadow_file, self.request)
+                after_hash = shadow_file_digest(self.shadow_file)
+                self.current = before_hash == after_hash and current_shadow_use(
+                    self.snapshot, state, self.file_hash, after_hash
+                )
+            except (RuntimeError, ValueError, OSError):
+                self.current = False
+            self.status.setText(
+                ("Current synthetic call-use capture" if self.current else "Stale shadow capture")
+                + " | root "
+                + self.snapshot.get("root", "unknown")
+                + " | planned "
+                + str(self.snapshot.get("planned_heads", 0))
+                + " | entered "
+                + str(self.snapshot.get("instruction_count", 0))
+                + " | stop "
+                + self.snapshot.get("stop", "unknown")
+            )
+            self.show_detail()
+
+        def reload(self):
+            try:
+                before_hash = shadow_file_digest(self.shadow_file)
+                state = shadow_use_api(self.root, self.seed, self.shadow_file, self.request)
+                after_hash = shadow_file_digest(self.shadow_file)
+                if before_hash != after_hash:
+                    self.poll()
+                    return
+                if not state.get("available") or not state.get("shadow_use", {}).get("available"):
+                    self.poll()
+                    return
+                self.snapshot = state
+                self.file_hash = after_hash
+                self.rebuild()
+                self.poll()
+            except (RuntimeError, ValueError, OSError):
+                self.poll()
+
+        def OnClose(self, _form):
+            self.closed = True
+            if hasattr(self, "timer"):
+                self.timer.stop()
+
     class NativeRegionForm(ida_kernwin.PluginForm):
         """Root-scoped facts and decoded edges with exact recomputation guards."""
 
@@ -1227,6 +1500,39 @@ class NativeRegionAction(ida_kernwin.action_handler_t):
         return ida_kernwin.AST_ENABLE_FOR_WIDGET
 
 
+class ShadowUseAction(ida_kernwin.action_handler_t):
+    def __init__(self, owner):
+        super().__init__()
+        self.owner = owner
+
+    def prompt(self):
+        path = ida_kernwin.ask_file(False, "*.bin", "Select captured native shadow bytes")
+        if not path:
+            return None
+        request = ida_kernwin.ask_str(
+            '{"source":"0x0","target":"0x0","register":"rdi","max_bytes":256}',
+            0,
+            "Exact CALL source/target and selected argument register",
+        )
+        if not request:
+            return None
+        return path, request
+
+    def activate(self, context):
+        selected = self.prompt()
+        if selected is None:
+            return 0
+        path, request = selected
+        try:
+            return int(self.owner.open_shadow_use(context.cur_ea, 0, path, request))
+        except (RuntimeError, ValueError, OSError, KeyError):
+            ida_kernwin.msg("[chernobog] Shadow call-use capture unavailable.\n")
+            return 0
+
+    def update(self, _context):
+        return ida_kernwin.AST_ENABLE_FOR_WIDGET
+
+
 class EvidenceAction(ida_kernwin.action_handler_t):
     def __init__(self, owner):
         super().__init__()
@@ -1286,6 +1592,7 @@ class EvidencePlugin(ida_idaapi.plugin_t):
             return ida_idaapi.PLUGIN_SKIP
         self.forms = {}
         self.region_forms = {}
+        self.shadow_forms = {}
         self.action = EvidenceAction(self)
         if not ida_kernwin.register_action(
             ida_kernwin.action_desc_t(
@@ -1329,12 +1636,52 @@ class EvidencePlugin(ida_idaapi.plugin_t):
             ida_kernwin.attach_action_to_menu(
                 "View/Open subviews/", CANDIDATE_ACTION, ida_kernwin.SETMENU_APP
             )
+        self.shadow_action = ShadowUseAction(self)
+        self.shadow_registered = ida_kernwin.register_action(
+            ida_kernwin.action_desc_t(
+                SHADOW_USE_ACTION,
+                "Chernobog shadow call use",
+                self.shadow_action,
+                None,
+                "Inspect an explicit bounded native call argument from captured shadow bytes",
+                -1,
+            )
+        )
+        if self.shadow_registered:
+            ida_kernwin.attach_action_to_menu(
+                "View/Open subviews/", SHADOW_USE_ACTION, ida_kernwin.SETMENU_APP
+            )
         return ida_idaapi.PLUGIN_KEEP
+
+    def open_shadow_use(self, root, seed, shadow_file, request):
+        digest = shadow_file_digest(shadow_file)
+        snapshot = shadow_use_api(root, seed, shadow_file, request)
+        if not snapshot.get("available") or not snapshot.get("shadow_use", {}).get("available"):
+            raise ValueError("selected shadow call use unavailable")
+        key = (int(root), int(seed), str(Path(shadow_file).resolve()), digest, request)
+        existing = self.shadow_forms.get(key)
+        title = "Chernobog shadow call use " + snapshot["root"]
+        if existing is not None and not existing.closed:
+            existing.Show(title, options=ida_kernwin.PluginForm.WOPN_PERSIST)
+            return True
+        if len(self.shadow_forms) >= 8:
+            oldest = self.shadow_forms.pop(next(iter(self.shadow_forms)))
+            if not oldest.closed:
+                oldest.Close(ida_kernwin.PluginForm.WCLS_SAVE)
+        form = ShadowUseForm(root, seed, shadow_file, request, snapshot)
+        self.shadow_forms[key] = form
+        form.Show(title, options=ida_kernwin.PluginForm.WOPN_PERSIST)
+        return True
 
     def run(self, _argument):
         ida_kernwin.process_ui_action(ACTION)
 
     def term(self):
+        for form in getattr(self, "shadow_forms", {}).values():
+            if not form.closed:
+                form.Close(ida_kernwin.PluginForm.WCLS_SAVE)
+        if getattr(self, "shadow_registered", False):
+            ida_kernwin.unregister_action(SHADOW_USE_ACTION)
         for form in getattr(self, "region_forms", {}).values():
             if not form.closed:
                 form.Close(ida_kernwin.PluginForm.WCLS_SAVE)

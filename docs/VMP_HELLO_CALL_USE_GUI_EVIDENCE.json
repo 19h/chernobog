@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "checkpoint": "protected hello shadow call-use Qt view",
+  "measurement_parent_revision": "300acee8bf52b331ffec26b8251f805d0df5fa09",
+  "source_sha256": {
+    "python/chernobog_evidence.py": "51f83d8efdb37cdd6870ce810bacd74d3d05199053c24f92758f3958da953876",
+    "tests/ida_vmp_hello_use_gui_probe.py": "b05797fffbaa6e748356fde3305366c36f64d0ad713c2a627b52b0c07cb70249",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248"
+  },
+  "artifacts_sha256": {
+    "samples/foo_x86_vmp": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "llvm_runtime_window": "b9e3295c519d3f937c884f6cbab4e1e708ba16cd94314c15e4e962ddc081a023",
+    "apple_runtime_window": "b9e3295c519d3f937c884f6cbab4e1e708ba16cd94314c15e4e962ddc081a023",
+    "ida_gui": "c0ada391b4d241fdef7d28bcbf8a9315f2bcbd94b397227331d3bc38a510e71d",
+    "installed_native_plugin": "ee1386c3b2db081f32440935f46e6c8d49b91ddd017271393d56b04333adbfb6"
+  },
+  "raw_reports_sha256": {
+    "build/vmp-hello-use-gui-final3-llvm/shadow_use_gui.json": "49c130563fcf83ee23c70f59418e3d72770ca975ed79b43e3c47cbb93f0760bf",
+    "build/vmp-hello-use-gui-final3-llvm/run.json": "61ea169f2405dd1449b0114c2fe55c4d78d9934d28400491731d6e7462d250cf",
+    "build/vmp-hello-use-gui-final3-apple/shadow_use_gui.json": "49c130563fcf83ee23c70f59418e3d72770ca975ed79b43e3c47cbb93f0760bf",
+    "build/vmp-hello-use-gui-final3-apple/run.json": "85196195c8eb68d3fb4172a207447be11628fe5317929ab0c51168fae8502f66"
+  },
+  "screenshots_sha256": {
+    "build/vmp-hello-use-gui-final3-llvm/shadow_use.png": "2d55d56632f2f583c71444fd552eb80a0c2b7d2b26d1a3346335560b68c3fe2e",
+    "build/vmp-hello-use-gui-final3-apple/shadow_use.png": "2d55d56632f2f583c71444fd552eb80a0c2b7d2b26d1a3346335560b68c3fe2e"
+  },
+  "checks_passed_each_run": 15,
+  "checks_total_each_run": 15,
+  "selected_use": {
+    "source": "0x10000144d",
+    "target": "0x100001456",
+    "sequence": 7,
+    "register": "rdi",
+    "pointer": "0x10000145c",
+    "bytes_including_nul": "48656c6c6f20576f726c6400",
+    "payload_bytes": 11,
+    "synthetic_state": true,
+    "callee_semantics_proved": false
+  },
+  "view": {
+    "planned_heads": 9,
+    "edges": 1,
+    "frontiers": 2,
+    "viewport_qt_pixels": [274, 478],
+    "scene_qt_pixels": [346, 381],
+    "fit_scale": 0.6994818652849741,
+    "file_change_invalidates": true,
+    "during_query_file_change_invalidates": true,
+    "separate_equal_byte_files_keep_separate_forms": true
+  },
+  "inventory": {
+    "before_and_after_api": {
+      "sha256": "714afa88ff0e2e7cc06be8eb7b686ff609c749a659895e4052cc1ce047350ab8",
+      "heads": 74,
+      "outgoing_references": 65
+    },
+    "after_idle_gui_pump_through_action_dispatch": {
+      "sha256": "8fed9a358391ec6ca35cd4ec53b87cd081af757a70c94d6dd1c623600d8bb7d8",
+      "heads": 278,
+      "outgoing_references": 275
+    },
+    "selected_40_byte_region_equal": true,
+    "full_idb_immutability_established": false,
+    "idle_pump_change_cause": "unknown"
+  },
+  "regression": {
+    "black_check": "passed",
+    "python_compile": "passed",
+    "ctest_passed": 21,
+    "ctest_total": 21
+  },
+  "limits": {
+    "human_prompt_parsing": "not tested",
+    "menu_selection": "not tested",
+    "other_call_sites": "not tested",
+    "database_switch_and_save_reopen": "not tested",
+    "maximum_quota_performance": "not measured"
+  }
+}
