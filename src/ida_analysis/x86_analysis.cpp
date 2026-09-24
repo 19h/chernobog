@@ -397,17 +397,22 @@ struct State
         const auto store_address =
             local_memory_store ? memory_address(insn, insn.Op1) : std::nullopt;
         const auto store_value = local_memory_store ? read(insn.Op2, width) : std::nullopt;
+        const unsigned load_width = unsigned(get_dtype_size(insn.Op2.dtype) * 8);
+        const Slice load_register = register_slice(insn.Op1);
         const bool local_memory_load =
-            insn.itype == NN_mov && insn.Op1.type == o_reg &&
+            (insn.itype == NN_mov || insn.itype == NN_movzx || insn.itype == NN_movsx ||
+             insn.itype == NN_movsxd) &&
+            insn.Op1.type == o_reg &&
             (insn.Op2.type == o_mem || insn.Op2.type == o_displ || insn.Op2.type == o_phrase) &&
-            valid_width(width) && unsigned(get_dtype_size(insn.Op2.dtype) * 8) == width &&
-            register_slice(insn.Op1).reg >= 0 && register_slice(insn.Op1).reg != 4;
+            valid_width(width) && valid_width(load_width) &&
+            (insn.itype == NN_mov ? load_width == width : load_width < width) &&
+            load_register.reg >= 0 && load_register.reg != 4 && load_register.width == width;
         std::optional<uint64_t> load_value;
         if (local_memory_load)
         {
             const auto address = memory_address(insn, insn.Op2);
-            if (address && writable_range(*address, width / 8, word_bits))
-                load_value = read_memory(*address, width);
+            if (address && writable_range(*address, load_width / 8, word_bits))
+                load_value = read_memory(*address, load_width);
         }
         const op_t *exchange_reg = nullptr;
         const op_t *memory_exchange_reg = nullptr;
@@ -521,7 +526,7 @@ struct State
         case NN_movsx:
         case NN_movsxd:
         {
-            auto v = read(insn.Op2);
+            auto v = local_memory_load ? load_value : read(insn.Op2);
             const unsigned source_width = unsigned(get_dtype_size(insn.Op2.dtype) * 8);
             if (v && valid_width(source_width) && source_width < width)
             {

@@ -265,6 +265,12 @@ try:
         "df_flags_literal": True,
         "df_flags_overwrite": False,
         "df_flags_dynamic": False,
+        "df_memory_movsx_negative": True,
+        "df_memory_movsx_initial_negative": False,
+        "df_memory_movsxd_negative": True,
+        "df_memory_movsxd_initial_negative": False,
+        "df_memory_movsx_word_negative": True,
+        "df_memory_movsx_initial_word_negative": False,
         "df_loop": True,
         "df_loop_changes": False,
         "df_stack": True,
@@ -495,6 +501,12 @@ try:
         ("df_memory_mov_load_byte", True),
         ("df_memory_mov_load_initial", False),
         ("df_memory_mov_load_alias", False),
+        ("df_memory_movzx_byte", True),
+        ("df_memory_movsx_byte", True),
+        ("df_memory_movzx_word", True),
+        ("df_memory_movsx_word", True),
+        ("df_memory_movzx_initial", False),
+        ("df_memory_movzx_alias", False),
     ):
         root = address(name)
         reanalyze(root)

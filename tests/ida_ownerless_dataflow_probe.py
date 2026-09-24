@@ -478,6 +478,22 @@ def main():
             )
             condition(name + " ownerless saved flags", inspect(name, root), site, expected)
 
+        for name, expected in (
+            ("df_memory_movsx_negative", True),
+            ("df_memory_movsx_initial_negative", None),
+            ("df_memory_movsxd_negative", True),
+            ("df_memory_movsxd_initial_negative", None),
+            ("df_memory_movsx_word_negative", True),
+            ("df_memory_movsx_initial_word_negative", None),
+        ):
+            root, instructions = prepare_prefix(name)
+            site = next(
+                instruction.ea
+                for instruction in instructions
+                if instruction.get_canon_mnem().startswith("set")
+            )
+            condition(name + " ownerless sign-extension fact", inspect(name, root), site, expected)
+
         for name, expected in (("df_loop", True), ("df_loop_changes", None)):
             root, instructions = prepare_prefix(name)
             site = next(
@@ -609,6 +625,12 @@ def main():
             ("df_memory_mov_load_byte", True),
             ("df_memory_mov_load_initial", False),
             ("df_memory_mov_load_alias", False),
+            ("df_memory_movzx_byte", True),
+            ("df_memory_movsx_byte", True),
+            ("df_memory_movzx_word", True),
+            ("df_memory_movsx_word", True),
+            ("df_memory_movzx_initial", False),
+            ("df_memory_movzx_alias", False),
         ):
             root, instructions = prepare_prefix(name)
             result = inspect(name, root)

@@ -704,6 +704,211 @@ BEGIN NAME(df_memory_mov_load_alias)
 #endif
     ret
 
+/* Zero/sign-extension loads recover a locally written low pointer byte. */
+BEGIN NAME(df_memory_movzx_byte)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    andl $-256, %eax
+    movzbl (%edx), %ecx
+    orl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    andq $-256, %rax
+    movzbl (%rdx), %ecx
+    orq %rcx, %rax
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_memory_movsx_byte)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    andl $-256, %eax
+    movsbl (%edx), %ecx
+    andl $255, %ecx
+    orl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    andq $-256, %rax
+    movsbl (%rdx), %ecx
+    andl $255, %ecx
+    orq %rcx, %rax
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_memory_movzx_word)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    andl $-65536, %eax
+    movzwl (%edx), %ecx
+    orl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    andq $-65536, %rax
+    movzwl (%rdx), %ecx
+    orq %rcx, %rax
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_memory_movsx_word)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    andl $-65536, %eax
+    movswl (%edx), %ecx
+    andl $65535, %ecx
+    orl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    andq $-65536, %rax
+    movswl (%rdx), %ecx
+    andl $65535, %ecx
+    orq %rcx, %rax
+    pushq %rax
+#endif
+    ret
+
+/* Runtime-valid inputs cannot establish an initial byte or disjoint alias. */
+BEGIN NAME(df_memory_movzx_initial)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    andl $-256, %eax
+    movl $NAME(df_memory_initial_slot), %edx
+    movzbl (%edx), %ecx
+    orl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    andq $-256, %rax
+    leaq NAME(df_memory_initial_slot)(%rip), %rdx
+    movzbl (%rdx), %ecx
+    orq %rcx, %rax
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_memory_movzx_alias)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movl 8(%esp), %ecx
+    movl $0, (%ecx)
+    andl $-256, %eax
+    movzbl (%edx), %ecx
+    orl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    movl $0, (%rsi)
+    andq $-256, %rax
+    movzbl (%rdx), %ecx
+    orq %rcx, %rax
+    pushq %rax
+#endif
+    ret
+
+/* The negative source byte verifies sign extension through a SETcc fact. */
+BEGIN NAME(df_memory_movsx_negative)
+#ifdef __i386__
+    movl $NAME(df_memory_slot), %edx
+    movb $0x80, 8(%edx)
+    movsbl 8(%edx), %ecx
+#else
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movb $0x80, 8(%rdx)
+    movsbl 8(%rdx), %ecx
+#endif
+    cmpl $-128, %ecx
+    RESULT sete
+
+BEGIN NAME(df_memory_movsx_initial_negative)
+#ifdef __i386__
+    movl $NAME(df_memory_initial_byte), %edx
+    movsbl (%edx), %ecx
+#else
+    leaq NAME(df_memory_initial_byte)(%rip), %rdx
+    movsbl (%rdx), %ecx
+#endif
+    cmpl $-128, %ecx
+    RESULT sete
+
+BEGIN NAME(df_memory_movsx_word_negative)
+#ifdef __i386__
+    movl $NAME(df_memory_slot), %edx
+    movw $0x8000, 8(%edx)
+    movswl 8(%edx), %ecx
+#else
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movw $0x8000, 8(%rdx)
+    movswl 8(%rdx), %ecx
+#endif
+    cmpl $-32768, %ecx
+    RESULT sete
+
+BEGIN NAME(df_memory_movsx_initial_word_negative)
+#ifdef __i386__
+    movl $NAME(df_memory_initial_signed_word), %edx
+    movswl (%edx), %ecx
+#else
+    leaq NAME(df_memory_initial_signed_word)(%rip), %rdx
+    movswl (%rdx), %ecx
+#endif
+    cmpl $-32768, %ecx
+    RESULT sete
+
+/* MOVSXD is a long-mode dword load; i386 uses a full-width MOV control. */
+BEGIN NAME(df_memory_movsxd_negative)
+#ifdef __i386__
+    movl $NAME(df_memory_slot), %edx
+    movl $0x80000000, 8(%edx)
+    movl 8(%edx), %ecx
+    cmpl $0x80000000, %ecx
+#else
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movl $0x80000000, 8(%rdx)
+    movslq 8(%rdx), %rcx
+    movabsq $0xffffffff80000000, %rax
+    cmpq %rax, %rcx
+#endif
+    RESULT sete
+
+BEGIN NAME(df_memory_movsxd_initial_negative)
+#ifdef __i386__
+    movl $NAME(df_memory_initial_dword), %edx
+    movl (%edx), %ecx
+    cmpl $0x80000000, %ecx
+#else
+    leaq NAME(df_memory_initial_dword)(%rip), %rdx
+    movslq (%rdx), %rcx
+    movabsq $0xffffffff80000000, %rax
+    cmpq %rax, %rcx
+#endif
+    RESULT sete
+
 BEGIN NAME(df_memory_initial_word)
 #ifdef __i386__
     movl $NAME(df_memory_initial_slot), %edx
@@ -861,6 +1066,17 @@ NAME(df_memory_initial_slot):
 #else
     .quad NAME(df_memory_target)
 #endif
+.globl NAME(df_memory_initial_byte)
+NAME(df_memory_initial_byte):
+    .byte 0x80
+.p2align 1
+.globl NAME(df_memory_initial_signed_word)
+NAME(df_memory_initial_signed_word):
+    .word 0x8000
+.p2align 2
+.globl NAME(df_memory_initial_dword)
+NAME(df_memory_initial_dword):
+    .long 0x80000000
 .text
 
 /* The probe assigns the remote body as a tail of df_flow_root. The CLC

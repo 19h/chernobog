@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "scope": "exact locally written writable-memory MOVZX/MOVSX/MOVSXD sources",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "ffb31e120c7f0c4e2f593ebdca783dedee48dbc48c9d8bc63e24f9f3b3d975d2",
+    "src/ida_analysis/x86_analysis.hpp": "7a33a623db14a065f0e8e3e58c350cdcfb2aa9ff8e666b1832e179c3e9523235",
+    "tests/ida_dataflow_probe.py": "1dd243f9e5a7e8a291771cc0485007afd75fd12a96132dded920f925d17bd5db",
+    "tests/ida_ownerless_dataflow_probe.py": "8ff2859be9c4bb9c981dd0120addd707f04b03ccc6ce3d389c9cfaeaa11db8cc",
+    "tests/run_native_dataflow.py": "32d16ac8ec6dcf6a12a022123472c6b9c0bac51be0c31259a7ce46ff92755553",
+    "tests/vmp_native/dataflow.S": "ffd89ee3e515ddb9c6ce19db43a09df43f850eeaebeaabd550c1b82c539c967b",
+    "tests/vmp_native/dataflow_main.c": "3a3667eec289c4013945bbfe8b710cb328c1085a255626bc07def7a3122b8bac"
+  },
+  "tools": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "linux32_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+    "previous_plugin_sha256": "c75eb7b4fc25666fa8e39c8a39b304ca7631aceb9a7903012e14e0ef88f8749f",
+    "new_built_plugin_sha256": "45e2ba84186daba8f3828de5d6e444f498ebda9f27797efde6da1ef41e7c1464"
+  },
+  "fixture_sha256": {
+    "owned_x86_64": "080fdccdd35c5e610ba11b3e918f9725f9c44f8f1b536f2886a5d516725e8cf3",
+    "owned_i386": "5411cd4c94a48fef8f216d1ec254d3656008cdb1650bae308863545164db1931",
+    "ownerless_x86_64": "2fe4ef1ebc9e15bf567772abfceadf87a798b65b87c43346a3312af928dfdf83",
+    "ownerless_i386": "e4e545bed44e1cf6c634837bea0ca628799044c5d97111180a0917e016165b8c",
+    "protected_input": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "results": {
+    "owned_native_checks_per_architecture": 14334,
+    "owned_ida_checks_per_architecture": 192,
+    "ownerless_native_checks_per_architecture": 4094,
+    "ownerless_ida_checks_per_architecture": 782,
+    "new_exact_transfer_targets_per_architecture": 4,
+    "new_signed_condition_facts_x86_64": 3,
+    "new_signed_condition_facts_i386": 2,
+    "corrupt_ownerless_oracle_rejected": true,
+    "matched_input_probe_ida_environment_per_pair": true,
+    "prior_probe_errors": {
+      "owned_x86_64": 11,
+      "owned_i386": 10,
+      "ownerless_x86_64": 7,
+      "ownerless_i386": 6
+    },
+    "ctest_passed": 21,
+    "protected_nodes": 75,
+    "protected_edges": 77,
+    "protected_unresolved": 3,
+    "protected_inventory_unchanged": true
+  },
+  "raw_report_sha256": {
+    "build/vmp-extend-load-word-current-owned/dataflow_analysis.json": "f26ddb1f2a817c0bbb8b8c2d3bec9cbe3500f167127f7170522486ffdf43a97d",
+    "build/vmp-extend-load-word-current-ownerless/ownerless_dataflow_analysis.json": "984a91e7e98f517c3524af5da28be23d8c8392f9fd084e67ad01a5b6cde41cfd",
+    "build/vmp-extend-load-word-matched-prior-owned-x86_64/run.json": "398550fbe858e1085c5c7de7fb470de182735a4c91f9a63304ed564412376eb3",
+    "build/vmp-extend-load-word-matched-prior-owned-x86_64/dataflow.json": "33c08081adcba0c4deb8649b3e34d4ffa9b7fe72775465519a9f7be17560a6b0",
+    "build/vmp-extend-load-word-current-owned/x86_64/inspection/run.json": "25090bc9e33303b6c3b4ce6b23fd7c551163bc3c55014c45f3ccf53967097a1e",
+    "build/vmp-extend-load-word-current-owned/x86_64/inspection/dataflow.json": "ba4b504c655acbff0758ba8280b792114be5655e344b069fe9adc70e8f6dc156",
+    "build/vmp-extend-load-word-matched-prior-owned-i386/run.json": "ba5f515cac785a9ae20a808322c8ff1f25082f9db179dcc631aca4cfe1866801",
+    "build/vmp-extend-load-word-matched-prior-owned-i386/dataflow.json": "ca45c9c0e028ff2d0609610063fef2fa01ee40a20d9ac681fa8ae94ef72d140f",
+    "build/vmp-extend-load-word-current-owned/i386/inspection/run.json": "f6b5bb3b0cc28ba66c4bb3048213a68c7e8b2a434b08e0d5b79aad4718b2c3e8",
+    "build/vmp-extend-load-word-current-owned/i386/inspection/dataflow.json": "f8ec646d41294f103ca170f2c573264bf064b33689043cc546f8f68bb0e3a818",
+    "build/vmp-extend-load-word-matched-prior-ownerless-x86_64/run.json": "0e9026fbdda7f58036fa2c6f646db24a751d78f76776fce1e88f6f4654fc111c",
+    "build/vmp-extend-load-word-matched-prior-ownerless-x86_64/ownerless_dataflow.json": "9e1f7b7a86ad0821de84ef929c8316775376df39daabbcaf9c1a54dbedee5320",
+    "build/vmp-extend-load-word-current-ownerless/x86_64/inspection/run.json": "4abc4f2995bb781e6906997c937ebb4e63e28e0e605f733a3283ab822d48e0a3",
+    "build/vmp-extend-load-word-current-ownerless/x86_64/inspection/ownerless_dataflow.json": "d05e3923855a33ba55975bd4568a36a10d1d0fd645a20d65a2842b5bf6f6325f",
+    "build/vmp-extend-load-word-matched-prior-ownerless-i386/run.json": "10da8e4f1c579d9f0c2e0052c0f5a0fb60b1d463183ff98566018d98e06054dd",
+    "build/vmp-extend-load-word-matched-prior-ownerless-i386/ownerless_dataflow.json": "1bab0fec2276f4e78ab6399299f3fe98b4f963963b9b9214e5a8c6b76abe2357",
+    "build/vmp-extend-load-word-current-ownerless/i386/inspection/run.json": "fc85e91769d95d70fee8d873f87247fa143e912bb8b5c805e407a6f2b8e90225",
+    "build/vmp-extend-load-word-current-ownerless/i386/inspection/ownerless_dataflow.json": "7cc860197b566aa6afc096c56d4a41a6d8574af6e7aecfeb6c1ccf2b9be2c336",
+    "build/vmp-extend-load-word-protected/run.json": "73fce5a15ca25b087cdfa09bde581ef4e64d20984d54b8b8d657d6af6e83fad3",
+    "build/vmp-extend-load-word-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/Testing/Temporary/LastTest.log": "81cd78f2978a8dac0572510f3a706c4a6974298e23f4ecf14ebcafbfb52fe6d6"
+  }
+}

@@ -21,6 +21,12 @@ extern int df_memory_xchg_byte(int);
 extern int df_memory_xchg_unknown_source(int, int (*)(void));
 extern int df_memory_mov_load(int), df_memory_mov_load_byte(int);
 extern int df_memory_mov_load_initial(int), df_memory_mov_load_alias(int, int *);
+extern int df_memory_movzx_byte(int), df_memory_movsx_byte(int);
+extern int df_memory_movzx_word(int), df_memory_movsx_word(int);
+extern int df_memory_movzx_initial(int), df_memory_movzx_alias(int, int *);
+extern int df_memory_movsx_negative(int), df_memory_movsx_initial_negative(int);
+extern int df_memory_movsxd_negative(int), df_memory_movsxd_initial_negative(int);
+extern int df_memory_movsx_word_negative(int), df_memory_movsx_initial_word_negative(int);
 extern int df_memory_target(void);
 
 int main(void)
@@ -53,9 +59,15 @@ int main(void)
             df_memory_xchg_unknown_source(input, df_memory_target) != 7 ||
             df_memory_mov_load(input) != 7 || df_memory_mov_load_byte(input) != 7 ||
             df_memory_mov_load_initial(input) != 7 ||
-            df_memory_mov_load_alias(input, &disjoint) != 7)
+            df_memory_mov_load_alias(input, &disjoint) != 7 || df_memory_movzx_byte(input) != 7 ||
+            df_memory_movsx_byte(input) != 7 || df_memory_movzx_initial(input) != 7 ||
+            df_memory_movzx_alias(input, &disjoint) != 7 || df_memory_movsx_negative(input) != 1 ||
+            df_memory_movsx_initial_negative(input) != 1 || df_memory_movsxd_negative(input) != 1 ||
+            df_memory_movsxd_initial_negative(input) != 1 || df_memory_movzx_word(input) != 7 ||
+            df_memory_movsx_word(input) != 7 || df_memory_movsx_word_negative(input) != 1 ||
+            df_memory_movsx_initial_word_negative(input) != 1)
             return 1;
-        checks += 42;
+        checks += 54;
         if (input > 0)
         {
             if (df_loop(input) != 1 || df_loop_changes(input) != ((input & 1) == 0))
