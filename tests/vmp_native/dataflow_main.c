@@ -12,6 +12,9 @@ extern int df_memory_overlapping_store(int), df_memory_unknown_alias(int, int *)
 extern int df_memory_conflicting_store(int);
 extern int df_memory_initial_word(int), df_memory_equal_stores(int);
 extern int df_memory_direct_store(int);
+extern int df_memory_split_store(int), df_memory_known_byte_overwrite(int);
+extern int df_memory_repaired_byte(int), df_memory_missing_byte(int);
+extern int df_memory_conflicting_byte(int);
 
 int main(void)
 {
@@ -33,9 +36,12 @@ int main(void)
             df_memory_unknown_alias(input, &disjoint) != 7 ||
             df_memory_conflicting_store(input) != (input == 0 ? 7 : 8) ||
             df_memory_initial_word(input) != 7 || df_memory_equal_stores(input) != 7 ||
-            df_memory_direct_store(input) != 7)
+            df_memory_direct_store(input) != 7 || df_memory_split_store(input) != 7 ||
+            df_memory_known_byte_overwrite(input) != 7 || df_memory_repaired_byte(input) != 7 ||
+            df_memory_missing_byte(input) != 7 ||
+            df_memory_conflicting_byte(input) != (input == 0 ? 7 : 8))
             return 1;
-        checks += 27;
+        checks += 32;
         if (input > 0)
         {
             if (df_loop(input) != 1 || df_loop_changes(input) != ((input & 1) == 0))

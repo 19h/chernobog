@@ -31,7 +31,7 @@ std::optional<X86Condition> x86_condition(uint16_t instruction_type);
 // Bounded owned-function must-analysis with architectural direct successors and
 // conservative joins. Incomplete/unsupported graphs fall back to the contiguous
 // single-entry prefix. No dynamic witnesses or initial writable bytes are
-// folded; only bounded local full-word stores can establish writable facts.
+// folded; only bounded local stores can establish writable facts.
 x86_abstract::Flags analyze_x86_flags_before(const insn_t &instruction, size_t depth);
 
 struct X86FlagFact
@@ -53,8 +53,8 @@ X86RegisterFact analyze_x86_register_before(const insn_t &instruction, const op_
 // initial stack bytes, intervening writes, and incomplete paths abstain.
 X86RegisterFact analyze_x86_stack_top_before(const insn_t &instruction, size_t depth);
 
-// A writable address starts unknown. A complete word is available only after
-// a represented store on every admitted path, without an aliasing write.
+// A writable address starts unknown. A complete word is available only when
+// every byte is known on every admitted path after modeled writes and joins.
 X86RegisterFact analyze_x86_memory_before(const insn_t &instruction, uint64_t address,
                                           size_t depth);
 

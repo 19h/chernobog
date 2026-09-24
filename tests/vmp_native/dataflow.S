@@ -431,6 +431,107 @@ BEGIN NAME(df_memory_direct_store)
 #endif
     ret
 
+/* Build a pointer from two narrower stores. The source register is shifted
+ * between stores; no initial byte of the writable slot is used. */
+BEGIN NAME(df_memory_split_store)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movw %ax, (%edx)
+    shrl $16, %eax
+    movw %ax, 2(%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movl %eax, (%rdx)
+    shrq $32, %rax
+    movl %eax, 4(%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_known_byte_overwrite)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    shrl $8, %eax
+    movb %al, 1(%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    shrq $8, %rax
+    movb %al, 1(%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_repaired_byte)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+    movb 1(%edx), %cl
+    movb %cl, 1(%edx)
+    shrl $8, %eax
+    movb %al, 1(%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+    movb 1(%rdx), %cl
+    movb %cl, 1(%rdx)
+    shrq $8, %rax
+    movb %al, 1(%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_missing_byte)
+#ifdef __i386__
+    movl $NAME(df_memory_target), %eax
+    movl $NAME(df_memory_initial_slot), %edx
+    movb %al, (%edx)
+    pushl (%edx)
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    leaq NAME(df_memory_initial_slot)(%rip), %rdx
+    movb %al, (%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
+BEGIN NAME(df_memory_conflicting_byte)
+#ifdef __i386__
+    movl $NAME(df_memory_byte_target_seven), %eax
+    movl $NAME(df_memory_slot), %edx
+    movl %eax, (%edx)
+#else
+    leaq NAME(df_memory_byte_target_seven)(%rip), %rax
+    leaq NAME(df_memory_slot)(%rip), %rdx
+    movq %rax, (%rdx)
+#endif
+    testl %ecx, %ecx
+    jz 1f
+#ifdef __i386__
+    movl $NAME(df_memory_byte_target_eight), %eax
+#else
+    leaq NAME(df_memory_byte_target_eight)(%rip), %rax
+#endif
+1:
+#ifdef __i386__
+    movb %al, (%edx)
+    pushl (%edx)
+#else
+    movb %al, (%rdx)
+    pushq (%rdx)
+#endif
+    ret
+
 BEGIN NAME(df_memory_initial_word)
 #ifdef __i386__
     movl $NAME(df_memory_initial_slot), %edx
@@ -561,6 +662,16 @@ NAME(df_memory_target):
 .p2align 4
 .globl NAME(df_memory_target_eight)
 NAME(df_memory_target_eight):
+    movl $8, %eax
+    ret
+
+.p2align 8
+.globl NAME(df_memory_byte_target_seven)
+NAME(df_memory_byte_target_seven):
+    movl $7, %eax
+    ret
+.globl NAME(df_memory_byte_target_eight)
+NAME(df_memory_byte_target_eight):
     movl $8, %eax
     ret
 

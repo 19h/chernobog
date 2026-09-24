@@ -407,6 +407,11 @@ try:
     for name, expected in (
         ("df_memory_store_transfer", True),
         ("df_memory_direct_store", True),
+        ("df_memory_split_store", True),
+        ("df_memory_known_byte_overwrite", True),
+        ("df_memory_repaired_byte", True),
+        ("df_memory_missing_byte", False),
+        ("df_memory_conflicting_byte", False),
         ("df_memory_initial_word", False),
         ("df_memory_equal_stores", True),
         ("df_memory_disjoint_store", True),
@@ -431,7 +436,7 @@ try:
                 == hex(
                     address(
                         "df_memory_initial_slot"
-                        if name == "df_memory_initial_word"
+                        if name in ("df_memory_initial_word", "df_memory_missing_byte")
                         else "df_memory_slot"
                     )
                 )

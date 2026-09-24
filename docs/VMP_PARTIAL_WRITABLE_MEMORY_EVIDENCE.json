@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "scope": "bytewise local writable-memory sources for x86 PUSH/RET",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "817e2083e2297d93be54e7f1194d5565f3c7c78bea9c994ab8c2b1b0cc205ffc",
+    "src/ida_analysis/x86_analysis.hpp": "7c57aee7c950db2b7dbd897168a0fbc81f46474c9bdc24ecf380fab51c17a95e",
+    "tests/ida_dataflow_probe.py": "32c0ecba224bb6e5f1b538a951f687afd3ec9c7dcf7fb130a9ce32caeea0a877",
+    "tests/ida_ownerless_dataflow_probe.py": "e6c0aa7cdaa8eacef1ab8046dc75069e3a28e050cd63273e80468897f5223ad4",
+    "tests/run_native_dataflow.py": "94faaa2fb090533747871f80be802224b7ac96825ece9f4eb07f7f3a400b8425",
+    "tests/vmp_native/dataflow.S": "530d4ce46fa4432d77aaeb14910996edb3118f209265bb998ad793dbb29153d2",
+    "tests/vmp_native/dataflow_main.c": "085b9dc9048353abbbaf72a05e86fd9e816d71a99d4115a593b5a8b84b13a147"
+  },
+  "tools": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "linux32_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+    "previous_plugin_sha256": "f9f85ac4e922717bbe299ce3d73f354469f7446a408f691d6217905231b0e3f7",
+    "new_built_plugin_sha256": "d814c59316d750f03614411b3e5262d9503bc2d36e0d1b36ad5bb96588a2a7d3"
+  },
+  "fixture_sha256": {
+    "owned_x86_64": "0b2c00d75ffcfe63a241b9604c453d35efb83a670a661223aafc7454b1d328ce",
+    "owned_i386": "98e47d241afab99c2a6c5265ee182a522c23b3615aca0b7b94889f9a9dc00d47",
+    "ownerless_x86_64": "70cfb216eb8d04619864876aeae2b1f4a731d8ac8014e8ea5a87ed74da004d4e",
+    "ownerless_i386": "9bda3804b4ca471ee6547bc579b707b7cfd9ed7a2996687b6d4e2383bd3c7bec",
+    "protected_input": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5"
+  },
+  "results": {
+    "owned_native_checks_per_architecture": 8702,
+    "owned_ida_checks_per_architecture": 128,
+    "ownerless_native_checks_per_architecture": 4094,
+    "ownerless_ida_checks_per_architecture": 562,
+    "exact_writable_targets_per_architecture_and_mode": 7,
+    "unresolved_writable_controls_per_architecture_and_mode": 6,
+    "corrupt_ownerless_oracle_rejected": true,
+    "previous_owned_probe_errors_per_architecture": 6,
+    "previous_ownerless_probe_errors_per_architecture": 3,
+    "matched_input_probe_ida_per_pair": true,
+    "ctest_passed": 21,
+    "protected_nodes": 75,
+    "protected_edges": 77,
+    "protected_unresolved": 3,
+    "protected_inventory_unchanged": true
+  },
+  "raw_report_sha256": {
+    "build/vmp-partial-memory-verified-owned/dataflow_analysis.json": "28743e35ae740c8f59345445b4c2319f3d29c0b5d7980a67020e6fe16d0bee0a",
+    "build/vmp-partial-memory-verified-ownerless/ownerless_dataflow_analysis.json": "acb0c9720e3e09ce57ddc9f2d51452a393847233c6145e3b232aa7849aeb8004",
+    "build/vmp-partial-memory-verified-owned/x86_64/inspection/run.json": "0f618a7ebd0d0eb62740ca4ad0bd4e5f85447793dcb9aeab5c117a3bcd6d9494",
+    "build/vmp-partial-memory-verified-owned/i386/inspection/run.json": "9bbb8a22d31768e8a75b8f48c60935ebb062e9c339a99f5692e99c7947660858",
+    "build/vmp-partial-memory-verified-ownerless/x86_64/inspection/run.json": "2365896683183fd702330178977be4b8437d72ff2dc46d372d4dcef1fb1449db",
+    "build/vmp-partial-memory-verified-ownerless/i386/inspection/run.json": "bde073ddb863e1b8e42376db5a6c68728b53b64e58f384007092fa5bc9d91ac7",
+    "build/vmp-partial-memory-verified-owned/x86_64/inspection/dataflow.json": "3d4105c79cb89a21edc4a4445f17e50fc03018fb1fc7b2019ecffcfbd324a91a",
+    "build/vmp-partial-memory-verified-owned/i386/inspection/dataflow.json": "36a7094f4d75c034e9ae098ed0d16fb2d03a6482eaad4be8bd33de400a7abbf6",
+    "build/vmp-partial-memory-verified-ownerless/x86_64/inspection/ownerless_dataflow.json": "c4957d564a3bcc8b67dcdac4260d0f6027f6824c041d3ebef62821c73cfebe37",
+    "build/vmp-partial-memory-verified-ownerless/i386/inspection/ownerless_dataflow.json": "75f6137a5bb5afedf358c5ef636cdee8a4f0b5dd33ea8fb727c1a365b0f4bd8e",
+    "build/vmp-partial-memory-prior-owned-x86_64/run.json": "3dd4a20c4af436bc2902f409fc0180f9c1a1a0eb86573f13d7ddbd0e794fab89",
+    "build/vmp-partial-memory-prior-owned-i386/run.json": "eb742d0089078aabed93142f8605904fc94f4a2b555d8069eecc68b944836f30",
+    "build/vmp-partial-memory-prior-ownerless-x86_64/run.json": "c42acd3b4609922a05c5d6c8a30934f474db6efacb0a167c9552a1336f753104",
+    "build/vmp-partial-memory-prior-ownerless-i386/run.json": "3bd550d0ce1fdef894c67f7aa800c9aa9d102b8e97384ab343a36eb3681fb13f",
+    "build/vmp-partial-memory-prior-owned-x86_64/dataflow.json": "7c196290d8f435ae5baf4aa27520e73263b7d2c3dfb7273925acc0b197936db6",
+    "build/vmp-partial-memory-prior-owned-i386/dataflow.json": "566c9b0059ec38fba5f7b4d27aec5a6f2b94214505e1de013607e7597b2e9eec",
+    "build/vmp-partial-memory-prior-ownerless-x86_64/ownerless_dataflow.json": "283916c43ebe466cba5f156923d787d0ddd0f16f342f31bffc9050e94a97c71f",
+    "build/vmp-partial-memory-prior-ownerless-i386/ownerless_dataflow.json": "488be58893d728e4cc92b9d17315c24415d2b934d6e5ddd8737e510d73ea10b1",
+    "build/vmp-partial-memory-verified-protected/run.json": "680f4a767a91a5b49c37655aecc6e0252cbdc6a157c74937d7500fa0b0ee3d90",
+    "build/vmp-partial-memory-verified-protected/protected_region.json": "fde5868e2a0d5e21a57f6837138c4358f1921964b84c5aab10a3898be141f0fa",
+    "build/Testing/Temporary/LastTest.log": "e96f4075445058b8d6af6766de5d384c461e266c6dfdbe4d1d1876d018282d82"
+  }
+}
