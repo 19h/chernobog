@@ -94,3 +94,8 @@ QG5: duplicate, hole, internal NUL, write and lifetime boundaries are
 accounted for. QG6: local source, binaries, tool and raw reports are hashed;
 no external claim is required. QG7: adjacent supported and unsupported shapes
 are bounded above.
+
+Subsequent work normalizes the stream's semantic occurrence and spatial shape
+across differing per-run read schedules. The P4 abstention case described
+above is resolved for the measured x86-64 and arm64 fixture; the original
+evidence and source hashes remain historical. See `VMP_VARIABLE_READ_ORDER.md`.

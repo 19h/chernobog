@@ -279,6 +279,7 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
     std::set<Key> ambiguous;
     for (auto &[identity, records] : runs)
     {
+        const Run run_identity = identity;
         std::sort(records.uses.begin(), records.uses.end(),
                   [](const auto *a, const auto *b) { return a->sequence < b->sequence; });
         std::map<Endpoint, Stream> pending;
@@ -289,10 +290,21 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
         const Records *const stream_records = &records;
         const auto retain = [&](Stream value)
         {
-            Shape shape;
+            UseSnapshot semantic_use = value.use;
+            // A stream's stable occurrence is its first executed read. The
+            // lowest-address read can execute at a different position in each
+            // run when an indexed loop changes its read permutation.
+            semantic_use.occurrence = value.parts.front().occurrence;
+            std::vector<const UseSnapshot *> spatial;
+            spatial.reserve(value.parts.size());
             for (const auto &part : value.parts)
-                shape.emplace_back(part.site, part.observed_size);
-            Key key{value.use.semantic_key(), std::move(shape)};
+                spatial.push_back(&part);
+            std::sort(spatial.begin(), spatial.end(),
+                      [](const auto *a, const auto *b) { return a->address < b->address; });
+            Shape shape;
+            for (const auto *part : spatial)
+                shape.emplace_back(part->site, part->observed_size);
+            Key key{semantic_use.semantic_key(), std::move(shape)};
             if (!completed_stream_avoids_writes(value, *stream_records))
             {
                 ambiguous.insert(key);
@@ -309,7 +321,7 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
                 return false;
             retained += value.use.bytes.size();
             value.value = decoded->utf8;
-            if (!values[key].emplace(identity, std::move(value)).second)
+            if (!values[key].emplace(run_identity, std::move(value)).second)
                 ambiguous.insert(key);
             return true;
         };

@@ -1670,6 +1670,7 @@ void native_permuted_read_regressions()
 {
     constexpr uint8_t value[8] = {'s', 'e', 'c', 'r', 'e', 't', '!', 0};
     constexpr unsigned order[8] = {3, 1, 6, 0, 7, 2, 5, 4};
+    constexpr unsigned reverse_order[8] = {7, 6, 5, 4, 3, 2, 1, 0};
     TargetEvidence evidence;
     evidence.scope.function_start = 0x1000;
     uint64_t first_address = 0;
@@ -1686,7 +1687,7 @@ void native_permuted_read_regressions()
         if (id == 1)
             first_address = address;
         uint64_t sequence = 10;
-        for (const unsigned offset : order)
+        for (const unsigned offset : id == 1 ? order : reverse_order)
         {
             memory.capture(0x1200, 0, -1, UseProducer::EXECUTED_READ, DataScope::HEAP,
                            address + offset, value + offset, 1, 1, sequence);
@@ -1715,8 +1716,13 @@ void native_permuted_read_regressions()
               candidates[0].read_fragments.size() == 2 &&
               candidates[0].read_fragments[0].size() == 8 &&
               candidates[0].read_fragments[0][0].address == first_address + order[0] &&
-              candidates[0].read_fragments[0][3].address == first_address,
-          "permuted reads reconstruct address order while preserving execution order");
+              candidates[0].read_fragments[0][3].address == first_address &&
+              candidates[0].witnesses[0].occurrence == 4 &&
+              candidates[0].witnesses[1].occurrence == 8 &&
+              candidates[0].read_fragments[1][0].address ==
+                  candidates[0].witnesses[1].address + reverse_order[0] &&
+              candidates[0].read_fragments[1].back().address == candidates[0].witnesses[1].address,
+          "different read permutations reconstruct one value with original per-run order");
     const auto view = project_evidence_view(evidence);
     check(view.read_streams.size() == 2 && view.read_streams[0].at("address") == "0x9000" &&
               view.read_streams[0].at("first_sequence") == "0xa" &&
@@ -1751,6 +1757,11 @@ void native_permuted_read_regressions()
     internal_zero.events.data[1].value = 0;
     check(hybrid_consensus_native_read_strings(internal_zero).empty(),
           "embedded NUL cannot turn trailing permuted bytes into a prefix candidate");
+    auto divergent = evidence;
+    divergent.events.uses[12].bytes[0] = 'X';
+    divergent.events.data[12].value = 'X';
+    check(hybrid_consensus_native_read_strings(divergent).empty(),
+          "same spatial span with different run value cannot reach consensus");
 }
 
 int main(int argc, char **argv)
