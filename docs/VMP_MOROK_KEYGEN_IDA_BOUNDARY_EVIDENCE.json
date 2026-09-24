@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "source_pair_report_sha256": "6447c7b5bc4e01f0bfccc5aa1e3f93059a1b3da8fd83107aed2fb62b3e379e31",
+  "clean_input_sha256": "a429003d65f05f73af04d0d6b32f7950a84daaa6a1cb5ed6a2db96db2166af94",
+  "packed_input_sha256": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+  "runner_sha256": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+  "probe_sha256": "36545d73050046ed650db91a8319edae21652bf1b686b9fb4dbbb8237b0f7af3",
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "plugin_sha256": "624eecbd1f12b3291c0c14c9d5d32e0e25d7c8c411db1f15983c65ec7940efb0",
+  "plugin_revision": "74f8a0418536",
+  "profiles": {
+    "clean_enabled": {
+      "run_sha256": "8135643b65de6bd6b1d897d90dfd53bd94d177dfdb575d04ce7cb4973fed9051",
+      "probe_report_sha256": "2ec2522570a19901689d419cb3db6105db567abcd47819effa4f168b2e3e2735",
+      "elf_entry": "0x40019b",
+      "application_entry": "0x4002c0",
+      "application_heads": 844,
+      "application_owners": 1,
+      "application_is_code": true,
+      "truncated": false
+    },
+    "packed_enabled": {
+      "run_sha256": "b543ce498989c6b0f0a6ea5efbb98d612e728ae1ad0305de61d12b19aa42d090",
+      "probe_report_sha256": "2742722433a9fee8f45290f5a8835e32794e4566ec42975a8fc84602b93c02b4",
+      "elf_entry": "0x40021b",
+      "application_entry": "0x418440",
+      "application_heads": 1,
+      "application_owners": 0,
+      "application_is_code": false,
+      "startup_heads": 47,
+      "direct_jump_decode_attempts": 0,
+      "truncated": false
+    },
+    "packed_disabled": {
+      "run_sha256": "8ed7b1c18cc557191e7ce25f52c017a3342d876a7672461e4d102cd45bc0c857",
+      "probe_report_sha256": "8d431194ee62fb2889e005bed909b41219c63253fd14adead7df8d2f4fd17f73",
+      "elf_entry": "0x40021b",
+      "application_entry": "0x418440",
+      "application_heads": 1,
+      "application_owners": 0,
+      "application_is_code": false,
+      "startup_heads": 47,
+      "direct_jump_decode_attempts": 0,
+      "truncated": false
+    }
+  },
+  "packed_enabled_disabled_instruction_inventory_equal": true,
+  "packed_enabled_disabled_owner_inventory_equal": true,
+  "packed_application_api_available": false,
+  "runtime_unpacked_bytes": "unknown"
+}
