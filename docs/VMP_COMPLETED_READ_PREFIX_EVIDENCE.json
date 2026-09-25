@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "previous_commit": "828a027301c3cbda2d07362d52a08b120ed95cc3",
+  "source_sha256": {
+    "src/hybrid/native_read_strings.cpp": "0b024e331e6b513970a8cafb3f1736ec7ced708f0850abbe3697831288835e6c",
+    "src/hybrid/evidence_view.hpp": "62ee39037f340b9a20a4e4fe5146a7ed2436a57ba1d7e99fc44837857f49ab38",
+    "tests/evidence_tests.cpp": "ef4cd90d2649ad2cc597607b4b1c05a971647682a212a57e410af6a5dddda714",
+    "tests/vmp_native/native_disjoint_strings.c": "1379d1f0f97eb805639a1dee82ca0cce30e016558075bbca6b6cb1d6aeab2f19",
+    "tests/ida_disjoint_string_probe.py": "30c22703dde43d2baf15659d9b100a2797009955608a5479a5d9d8303df4e03c"
+  },
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "previous_plugin_sha256": "fd7595433cb57d5e0cd630326253f0d5f4aa20c5a53ea019abccb573bef9374e",
+  "modified_plugin_sha256": "867bfe2e70fb7f214a14ab15860d497a71a1f082689edb47265e35bf34d53326",
+  "fixtures": {
+    "x86_64": "1029f331f89cedd42e67de5a280a07d475edeb465e6338134ec546058ce6ad0f",
+    "arm64": "f8d10492ae7cb929f17a6bae323e83d2e71219a2f27afbe2fed9c8e03a9ba3f7",
+    "x86_64_wrong_oracle": "d96651d2daa192acaf2a5b470daa2a667bfa1dc87dd1b4ba0d5cf5971fdb598f",
+    "arm64_wrong_oracle": "611903a7b62f3ea3bb1d4b4a527b34b04b6db281e401d2eb5c04e3237cf52efd"
+  },
+  "native_oracles": {
+    "positive_exit_codes": {"x86_64": 0, "arm64": 0},
+    "wrong_second_exit_codes": {"x86_64": 1, "arm64": 1}
+  },
+  "ida_profiles": [
+    {
+      "architecture": "x86_64",
+      "returned_complete_runs": 4,
+      "use_snapshots": 156,
+      "visible_run_zero_extra_read": {"offset": 30, "bytes_hex": "5a", "sequence": "0x25"},
+      "previous_candidates": 0,
+      "modified_values": ["secret!", "second!"],
+      "previous_streams": 0,
+      "modified_streams": 8,
+      "previous_annotations": 0,
+      "modified_annotations": 2,
+      "previous_passed_checks": 6,
+      "modified_passed_checks": 10,
+      "checks_total": 10,
+      "previous_run_sha256": "dabbbc9001e48d71d0b10a18631d77f9ff68ec950a88678ad086e9e21d3bbcc0",
+      "previous_probe_sha256": "b16bc7f068fdb8dba0d72a347c3e34e79a7028af91fcc617b9b90a56e2f058af",
+      "modified_run_sha256": "b56b1c8259af1280848c95eadad44a9b077f7e2000d028ec4e06b36ab56fe107",
+      "modified_probe_sha256": "7f0c0e79a69850363707e80c1b5e34d48fa229909194544e3a28e76abfc0c7a7"
+    },
+    {
+      "architecture": "arm64",
+      "returned_complete_runs": 6,
+      "use_snapshots": 234,
+      "visible_run_zero_extra_read": {"offset": 30, "bytes_hex": "5a", "sequence": "0x34"},
+      "previous_candidates": 0,
+      "modified_values": ["secret!", "second!"],
+      "previous_streams": 0,
+      "modified_streams": 12,
+      "previous_annotations": 0,
+      "modified_annotations": 2,
+      "previous_passed_checks": 6,
+      "modified_passed_checks": 10,
+      "checks_total": 10,
+      "previous_run_sha256": "b1a40ba3c5d60ffc05aa9a7483f9505f028a3d34fb76d31298c868124cea8026",
+      "previous_probe_sha256": "17c6b9cdf9725b602f6637aa1efa8767349f7ad1b6c0e35e7380b9a47b7a818c",
+      "modified_run_sha256": "5bcd5a4461fd6113b585c77cec7bb537c0918755647de2b8609d87fbf433bcd4",
+      "modified_probe_sha256": "06cc18c66738e208adfc95b1daba515efe84fb0671c60e0e3efa141810ae7824"
+    }
+  ],
+  "regression_probes": {
+    "stack_hash": {"passed": 10, "total": 10, "run_sha256": "64337198325d06b6230377a9c518f3e38727648136a1f7c0e12a0c1045d0f61c", "probe_sha256": "14ec5791215e487aa2fa7930af2317ff851e8fad6edb12cce4326e48e4806954"},
+    "no_stack_hash": {"passed": 9, "total": 9, "run_sha256": "8e0a1f123bb02e93d825b33347505b5cf333c7e6e8d5ef5bbbe8f9ad02af52b4", "probe_sha256": "cec068c69044c4a81fcfa00b01d90464579b088ad583395d0c25009d085410d3"},
+    "multisite": {"passed": 10, "total": 10, "run_sha256": "c2a54864c379fc30f48fe8318b9a00081516483a0632c7ade4abd5c21c7bba3f", "probe_sha256": "925f15d5d9baa8ac7411f8f53d86fbe5eaabbb0be6bf8a6e2064ae4ca9dbbbfa"},
+    "permuted_reads": {"passed": 9, "total": 9, "run_sha256": "e519775801cbb7435ea5e8762855934d2afee771dc1c81980e98c58eb819fd5f", "probe_sha256": "6acb2231b00dfb69a9bc80d62c41c0d0ebd17fee77839780e3fab3e2a937459c"},
+    "same_object_writes": {"passed": 9, "total": 9, "run_sha256": "537cb8f20815586625ecff4d62aa62e17fe7c2ca90c769b746003129744aff7e", "probe_sha256": "19fa355591bcd76f6c9dffb7521c53b0ef502e317f0075adb4c0ed76b5e4c1c8"}
+  },
+  "portable_interleaved_checks": 470,
+  "ctest": {"passed": 21, "total": 21, "parallel_jobs": 4}
+}

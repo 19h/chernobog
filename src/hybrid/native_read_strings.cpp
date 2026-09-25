@@ -343,18 +343,24 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
             // Separate complete strings only at an observed address gap. A
             // NUL followed immediately by another observed byte is an
             // ambiguous interior terminator, not permission to publish a
-            // suffix. Every component must end in NUL; an unrelated partial
-            // read continues to veto the entire allocation-wide group.
+            // suffix. An incomplete component cannot extend an earlier
+            // observed NUL across a gap. Retain only the completed spatial
+            // prefix; later bytes after the first incomplete component have
+            // no proved string start.
             std::vector<std::pair<uint64_t, uint64_t>> spans;
             uint64_t start = group.bytes.begin()->first;
             uint64_t previous_address = start;
             uint8_t previous_byte = group.bytes.begin()->second;
+            bool unresolved_suffix = false;
             for (auto at = std::next(group.bytes.begin()); at != group.bytes.end(); ++at)
             {
                 if (at->first != previous_address + 1)
                 {
                     if (previous_byte != 0)
-                        return true;
+                    {
+                        unresolved_suffix = true;
+                        break;
+                    }
                     spans.emplace_back(start, previous_address + 1);
                     start = at->first;
                 }
@@ -363,12 +369,16 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
                 previous_address = at->first;
                 previous_byte = at->second;
             }
-            if (previous_byte != 0)
+            unresolved_suffix = unresolved_suffix || previous_byte != 0;
+            if (!unresolved_suffix)
+                spans.emplace_back(start, previous_address + 1);
+            if (spans.empty())
                 return true;
-            spans.emplace_back(start, previous_address + 1);
             std::vector<std::vector<UseSnapshot>> fragments(spans.size());
             for (const auto &part : parts)
             {
+                if (unresolved_suffix && part.address >= start)
+                    continue;
                 auto found = std::upper_bound(spans.begin(), spans.end(), part.address,
                                               [](uint64_t address, const auto &span)
                                               { return address < span.first; });

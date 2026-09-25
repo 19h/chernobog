@@ -1,5 +1,10 @@
 # Two complete read strings in one heap allocation
 
+Historical checkpoint for commit `d6ffcb1b`: the evidence and admission
+description below record that revision. The later
+`VMP_COMPLETED_READ_PREFIX.md` narrows abstention for incomplete spatial
+suffixes without rewriting these measurements or their source hashes.
+
 Review requirements 3a and 3b require use-specific bytes and allocation
 identity. An allocation-wide permuted-read group previously required every
 observed byte to form one contiguous string. Two independent strings at

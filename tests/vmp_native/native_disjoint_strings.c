@@ -16,7 +16,13 @@ __attribute__((noinline)) int native_disjoint_strings(unsigned mode)
         return 2;
     buffer[0] = UINT64_C(0x5a7b2e3f28393f29) ^ native_disjoint_key;
     buffer[2] = UINT64_C(0x5a7b3e3435393f29) ^ native_disjoint_key;
+#ifdef NATIVE_DISJOINT_TRAILING_READ
+    ((volatile unsigned char *)buffer)[30] = 'Z';
+#endif
     unsigned mismatch = 0;
+#ifdef NATIVE_DISJOINT_TRAILING_READ
+    mismatch |= ((const volatile unsigned char *)buffer)[30] != 'Z';
+#endif
     for (unsigned string_index = 0; string_index < 2; ++string_index)
     {
 #ifdef NATIVE_DISJOINT_STACK_HASH

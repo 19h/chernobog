@@ -112,6 +112,16 @@ try:
         for row in view["events"]
         if row["kind"] == "use" and row["producer"] == "executed-read" and row["scope"] == "0x2"
     ]
+    if os.environ.get("CHERNOBOG_EXPECT_TRAILING_READ") == "1":
+        run_zero = [row for row in report["heap_reads"] if row["run"] == "0x0"]
+        trailing = [row for row in run_zero if row["offset"] == "30" and row["bytes_hex"] == "5a"]
+        check(
+            "spatial tail read alongside both complete strings",
+            len(trailing) == 1
+            and len(run_zero) >= 5
+            and int(trailing[0]["sequence"], 16)
+            < min(int(row["sequence"], 16) for row in run_zero if row["offset"] != "30"),
+        )
     report["heap_writes"] = [
         row
         for row in view["events"]

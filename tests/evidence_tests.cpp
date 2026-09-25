@@ -1812,8 +1812,9 @@ void native_permuted_read_regressions()
     unrelated.events.uses.push_back(extra);
     unrelated.events.data.push_back(
         {extra.site, extra.address, 'Z', 1, RAX_MEM_READ, DataScope::HEAP, 17, 1, 21});
-    check(hybrid_consensus_native_read_strings(unrelated).empty(),
-          "an unrelated same-allocation read leaves a spatial hole and vetoes the mixed group");
+    const auto retained_prefix = hybrid_consensus_native_read_strings(unrelated);
+    check(retained_prefix.size() == 1 && retained_prefix[0].value == "secret!",
+          "a complete NUL-terminated span survives a trailing unrelated partial read");
     auto divergent_site = multisite;
     divergent_site.events.uses[8].site = 0x1230;
     divergent_site.events.uses[8].occurrence = 1;
@@ -1877,8 +1878,47 @@ void native_permuted_read_regressions()
     incomplete_extra.events.uses.push_back(extra_read);
     incomplete_extra.events.data.push_back(
         {extra_read.site, extra_read.address, 'Z', 1, RAX_MEM_READ, DataScope::HEAP, 91, 1, 21});
-    check(hybrid_consensus_native_read_strings(incomplete_extra).empty(),
-          "incomplete third component vetoes the allocation-wide group");
+    const auto complete_prefix = hybrid_consensus_native_read_strings(incomplete_extra);
+    check(complete_prefix.size() == 2 && complete_prefix[0].value == "secret!" &&
+              complete_prefix[1].value == "second!",
+          "two complete spans survive a trailing incomplete component");
+    auto middle_partial = incomplete_extra;
+    middle_partial.events.uses.back().address = first_address + 12;
+    middle_partial.events.uses.back().offset = 12;
+    middle_partial.events.data.back().addr = first_address + 12;
+    const auto before_middle = hybrid_consensus_native_read_strings(middle_partial);
+    check(before_middle.size() == 1 && before_middle[0].value == "secret!",
+          "an incomplete middle component admits only the completed spatial prefix");
+    auto first_partial = two_spans;
+    unsigned changed_terminators = 0;
+    for (auto &use : first_partial.events.uses)
+        if (use.offset == 7)
+        {
+            use.bytes = {'Q'};
+            auto data =
+                std::find_if(first_partial.events.data.begin(), first_partial.events.data.end(),
+                             [&](const auto &item)
+                             {
+                                 return item.run_id == use.run_id && item.seed == use.seed &&
+                                        item.sequence == use.sequence + 1;
+                             });
+            check(data != first_partial.events.data.end(),
+                  "first component terminator has a data event");
+            data->value = 'Q';
+            ++changed_terminators;
+        }
+    check(changed_terminators == 2, "both runs have an incomplete first component");
+    check(hybrid_consensus_native_read_strings(first_partial).empty(),
+          "a first incomplete component cannot authorize a later complete span");
+    auto duplicate_partial = incomplete_extra;
+    auto duplicate_read = duplicate_partial.events.uses.back();
+    duplicate_read.site = 0x1280;
+    duplicate_read.sequence = 94;
+    duplicate_partial.events.uses.push_back(duplicate_read);
+    duplicate_partial.events.data.push_back({duplicate_read.site, duplicate_read.address, 'Z', 1,
+                                             RAX_MEM_READ, DataScope::HEAP, 95, 1, 21});
+    check(hybrid_consensus_native_read_strings(duplicate_partial).empty(),
+          "a duplicate trailing observation keeps the whole group ambiguous");
     auto first_written = two_spans;
     first_written.events.data.push_back(
         {0x1280, first_address + 5, 0, 1, RAX_MEM_WRITE, DataScope::HEAP, 16, 1, 21});

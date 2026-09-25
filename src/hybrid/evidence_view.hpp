@@ -166,7 +166,7 @@ inline EvidenceView project_evidence_view(const TargetEvidence &source)
                 {"producer", "executed-read-stream"},
                 {"truth", "observation"},
                 {"assumption",
-                 "exact recorded reads cover contiguous addresses; heap reads may arrive in any order; only disjoint heap writes may interleave; no unknown memory effect, call or lifetime boundary; completed temporal model"},
+                 "exact recorded reads cover the displayed contiguous NUL-terminated bytes; heap reads may arrive in any order; attributed writes are checked for overlap; no unknown memory effect, call or lifetime boundary; completed temporal model"},
                 {"first_sequence", view_hex(first.sequence)},
                 {"last_sequence", view_hex(last.sequence)},
                 {"address", view_hex(use.address)},

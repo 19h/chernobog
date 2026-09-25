@@ -569,6 +569,18 @@ fixed- and variable-order probes and all 21 CTest suites pass. See
 `VMP_MULTISITE_READ_STREAMS.md` and its evidence JSON. Protected-sample
 coverage and spatially noncontiguous algorithms remain unknown.
 
+Completed spatial-prefix checkpoint for rows 3a and 3b: a NUL-terminated
+component followed by a real address gap now survives an incomplete higher
+address read in the same allocation. The scan stops admitting components at
+the first incomplete spatial span. On matched x86-64/arm64 native fixtures,
+the prior plugin reports zero strings and the revised plugin reports both
+`secret!` and `second!` with two transient use annotations. The exact
+offset-30 `Z` read is visible in both bounded event views. First-incomplete,
+middle-incomplete and duplicate-suffix controls bound admission; five prior
+native-string probes and all 21 CTest suites pass. See
+`VMP_COMPLETED_READ_PREFIX.md` and its evidence JSON. Protected-sample
+coverage and proof of later string starts remain open.
+
 Writable-memory arithmetic checkpoint: exact locally established bytes now
 feed modeled x86-64/i386 arithmetic, read-modify-write results and status
 flags. Three new transfer targets and two conditions per architecture gain
