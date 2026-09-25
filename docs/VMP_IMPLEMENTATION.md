@@ -829,3 +829,14 @@ behavior and VM semantics remain unknown.
 First implementation checkpoint: source changes, executable semantic checks,
 and production IDA validation constitute progress. The complete objective is
 still active. Validation commands and limits are in `tests/VMP_NATIVE.md`.
+
+Undefined-result BSWAP checkpoint for rows 1b, 2a and V: exact unprefixed
+`BSWAP r16` byte encodings now retain a static fallthrough and unaffected
+flags while invalidating the entire destination register. Two native
+discarded-result flag paths pass 4,606 process checks per architecture;
+separate i386/x86-64 IDA controls prove two flag values and leave a
+value-dependent predicate unresolved. The supplied VMP initializer retains
+75 nodes, 77 edges and three unresolved facts under a fresh 8/8 IDA control.
+All 21 CTest suites pass. See
+`VMP_BSWAP16_ABSTRACT.md` and its evidence JSON. Concrete protected traces
+still stop before BSWAP16; post-frontier VM effects remain unknown.

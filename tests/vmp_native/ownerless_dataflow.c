@@ -2,7 +2,7 @@
 
 extern int od_equal(int), od_conflict(int), od_budget64(int), od_budget65(int), od_budget128(int),
     od_budget129(int), od_cld(int), od_std(int), od_adjacent_root(int), od_adjacent_external(int),
-    od_call_root(int);
+    od_call_root(int), od_frontier_root(int), od_bswap_flag_root(void);
 extern int df_equal(int), df_loop(int), df_loop_changes(int), df_target(int),
     df_target_changes(int);
 
@@ -26,9 +26,16 @@ int main(void)
 #else
     const int equal_expected = 1;
 #endif
+#ifdef OWNERLESS_CORRUPT_BSWAP
+    const int bswap_expected = 0;
+#else
+    const int bswap_expected = 1;
+#endif
     for (int input = 0; input < 256; ++input)
     {
         if (!expect("od_equal", od_equal(input), equal_expected, &checks) ||
+            !expect("od_bswap_flag", od_bswap_flag_root(), bswap_expected, &checks) ||
+            !expect("od_bswap_join", od_frontier_root(input), 0, &checks) ||
             !expect("od_conflict", od_conflict(input), input != 0, &checks) ||
             !expect("od_budget64", od_budget64(input), 1, &checks) ||
             !expect("od_budget65", od_budget65(input), 1, &checks) ||

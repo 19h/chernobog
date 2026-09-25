@@ -113,7 +113,7 @@ LABEL NAME(od_call_callee)
     ret
 GAP NAME(od_call_end)
 
-/* Encoding-only frontier control: BSWAP AX has no portable native result. */
+/* The BSWAP AX result is discarded in the native flag controls below. */
 BEGIN NAME(od_frontier_root)
     testl %ecx, %ecx
     jz NAME(od_frontier_unsupported)
@@ -125,6 +125,25 @@ LABEL NAME(od_frontier_unsupported)
 LABEL NAME(od_frontier_join)
     RESULT
 GAP NAME(od_frontier_end)
+
+.p2align 4
+LABEL NAME(od_bswap_flag_root)
+    stc
+    .byte 0x66, 0x0f, 0xc8
+LABEL NAME(od_bswap_flag_use)
+    RESULT
+GAP NAME(od_bswap_flag_end)
+
+.p2align 4
+LABEL NAME(od_bswap_value_root)
+    movl $1, %eax
+    .byte 0x66, 0x0f, 0xc8
+    testw %ax, %ax
+LABEL NAME(od_bswap_value_use)
+    setz %al
+    movzbl %al, %eax
+    ret
+GAP NAME(od_bswap_value_end)
 
 /* Encoding-only sign-extension controls, deliberately never executed. */
 .p2align 4

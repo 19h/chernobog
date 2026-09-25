@@ -1009,32 +1009,47 @@ def main():
         assert ida_bytes.get_bytes(unsupported, join - unsupported) == bytes.fromhex("660fc8")
         ida_xref.del_cref(unsupported, join, False)
         frontier = inspect("admitted_frontier_adjacency_encoding_only", root)
-        condition("unsupported predecessor cannot prove the join", frontier, join, None)
+        condition("undefined BSWAP result does not alter carry", frontier, join, False)
         node = next(node for node in frontier["nodes"] if number(node["site"]) == join)
         check(
-            "admitted unsupported predecessor remains an unknown adjacent entry",
-            node["unknown_entry"] == "true"
-            and number(node["adjacent"]) == unsupported
-            and node["adjacent_bytes"] == "660fc8",
-        )
-        check(
-            "BSWAP16 stops without a guessed continuation",
-            any(
-                number(edge["source"]) == unsupported
-                and edge["kind"] == "frontier"
-                and edge["reason"] == "unsupported_bswap_width"
-                for edge in frontier["edges"]
-            )
-            and not any(
+            "admitted BSWAP predecessor is an exact graph edge",
+            node["unknown_entry"] == "false"
+            and any(
                 number(edge["source"]) == unsupported
                 and number(edge["target"]) == join
-                and edge["kind"] != "frontier"
+                and edge["kind"] == "fallthrough"
                 for edge in frontier["edges"]
             ),
         )
+        check(
+            "BSWAP16 result explicitly undefined",
+            next(row for row in frontier["nodes"] if number(row["site"]) == unsupported)[
+                "abstract_effect"
+            ]
+            == "undefined-register-result",
+        )
         captures["admitted_frontier_adjacency_encoding_only"][
             "scope"
-        ] = "Unsupported encoded-instruction frontier only; deliberately not native-executed"
+        ] = "Undefined-result abstract continuation; native process checks flags only"
+
+        for name, expected in (("od_bswap_flag", True), ("od_bswap_value", None)):
+            root, use, end = (symbol(name + suffix) for suffix in ("_root", "_use", "_end"))
+            remove_owners(root, end + 3)
+            data_span(end, 3, b"\xcc" * 3)
+            decode_span(root, end)
+            result = inspect(name + "_encoding_only", root)
+            condition(name + " abstract effect", result, use, expected)
+            check(
+                name + " result is explicit",
+                any(
+                    row["abstract_effect"] == "undefined-register-result" for row in result["nodes"]
+                ),
+            )
+            captures[name + "_encoding_only"]["scope"] = (
+                "Static effect and native flag control; result discarded"
+                if expected is True
+                else "Static undefined-value control; no native execution"
+            )
 
         for name, payload in (
             ("od_negative8", bytes.fromhex("6affc3")),

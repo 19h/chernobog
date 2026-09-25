@@ -70,9 +70,15 @@ def main():
                 row["runtime"] = backend.metadata
             else:
                 row["runtime"] = "macOS x86-64 process; translated on arm64 hosts"
-            for corrupted in (False, True):
-                binary = directory / ("ownerless-corrupt" if corrupted else "ownerless")
-                defines = ["-DOWNERLESS_CORRUPT_EXPECTATION=1"] if corrupted else []
+            for corruption in ("none", "equal", "bswap"):
+                binary = directory / (
+                    "ownerless" if corruption == "none" else "ownerless-corrupt-" + corruption
+                )
+                defines = (
+                    ["-DOWNERLESS_CORRUPT_EXPECTATION=1"]
+                    if corruption == "equal"
+                    else ["-DOWNERLESS_CORRUPT_BSWAP=1"] if corruption == "bswap" else []
+                )
                 assembly = ["dataflow.S", "ownerless_dataflow.S", "ownerless_dataflow.c"]
                 if backend:
                     build, _, _ = backend.execute(
@@ -109,14 +115,15 @@ def main():
                 result = json.loads(stdout)
                 row["executions"].append(
                     {
-                        "expected_result_corrupted": corrupted,
+                        "expected_result_corrupted": corruption != "none",
+                        "corruption": corruption,
                         "build": build,
                         "native": native,
                         "result": result,
                         "binary_sha256": digest(binary),
                     }
                 )
-                if corrupted:
+                if corruption == "equal":
                     assert native["exit_code"] == 1
                     assert result == {
                         "checks": 0,
@@ -125,9 +132,18 @@ def main():
                         "actual": 1,
                         "expected": 0,
                     }
+                elif corruption == "bswap":
+                    assert native["exit_code"] == 1
+                    assert result == {
+                        "checks": 1,
+                        "passed": False,
+                        "case": "od_bswap_flag",
+                        "actual": 1,
+                        "expected": 0,
+                    }
                 else:
                     assert native["exit_code"] == 0
-                    assert result == {"checks": 4094, "passed": True}
+                    assert result == {"checks": 4606, "passed": True}
             binary = directory / "ownerless"
             measurement, _, _ = execute(
                 [
@@ -209,8 +225,8 @@ def main():
                 json.dumps(
                     {
                         "architecture": architecture,
-                        "native_checks": 4094,
-                        "corrupt_oracle_rejected": True,
+                        "native_checks": 4606,
+                        "corrupt_oracles_rejected": 2,
                         "inspection_checks": row["checks"],
                     }
                 ),

@@ -153,6 +153,17 @@ Slice register_slice(const op_t &operand)
     return {};
 }
 
+bool abstract_bswap16_fallthrough(const insn_t &insn)
+{
+    // Intel defines no 16-bit result, but this unprefixed encoding has a
+    // fallthrough and preserves flags. Keep other prefix combinations outside
+    // this deliberately narrow static transfer contract.
+    return insn.itype == NN_bswap && insn.Op1.type == o_reg &&
+           get_dtype_size(insn.Op1.dtype) == 2 && insn.size == 3 &&
+           (mode32(insn) || mode64(insn)) && get_byte(insn.ea) == 0x66 &&
+           get_byte(insn.ea + 1) == 0x0f && (get_byte(insn.ea + 2) & 0xf8) == 0xc8;
+}
+
 Operation operation(uint16_t type)
 {
     switch (type)
@@ -988,6 +999,28 @@ struct State
         }
         case NN_bswap:
         {
+            if (width != 32 && width != 64)
+            {
+                if (!abstract_bswap16_fallthrough(insn))
+                {
+                    *this = {};
+                    return;
+                }
+                const Slice target = register_slice(insn.Op1);
+                if (target.reg >= 0)
+                {
+                    regs[size_t(target.reg)] = {};
+                    if (target.reg == 4)
+                        stack.clear();
+                }
+                else
+                {
+                    regs = {};
+                    stack.clear();
+                    memory.clear();
+                }
+                return;
+            }
             const auto input = read(insn.Op1);
             std::optional<uint64_t> output;
             if (input && (width == 32 || width == 64))
@@ -1416,7 +1449,8 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         flow.call = is_call_insn(instruction);
         flow.ret = instruction.itype == NN_retn;
         if (instruction.itype == NN_bswap && get_dtype_size(instruction.Op1.dtype) != 4 &&
-            get_dtype_size(instruction.Op1.dtype) != 8)
+            get_dtype_size(instruction.Op1.dtype) != 8 &&
+            !abstract_bswap16_fallthrough(instruction))
             flow.stop = "unsupported_bswap_width";
         else if (instruction.Op1.type == o_far || instruction.itype == NN_callfi ||
                  instruction.itype == NN_jmpfi || (is_ret_insn(instruction) && !flow.ret) ||
@@ -1643,6 +1677,8 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
                                 {"adjacent_bytes", adjacent_bytes},
                                 {"flags_known", "0x0"},
                                 {"flags_value", "0x0"}});
+        result.nodes.back()["abstract_effect"] =
+            abstract_bswap16_fallthrough(instruction) ? "undefined-register-result" : "";
         if (candidate_decode)
             result.nodes.back()["item"] = "candidate-bytes";
     }

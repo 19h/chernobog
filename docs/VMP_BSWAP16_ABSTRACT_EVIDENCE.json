@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "scope": "exact 66 0F C8-CF static fallthrough with undefined destination register; discarded-result native flag controls",
+  "isa_source": "https://cdrdv2-public.intel.com/825743/325462-sdm-vol-1-2abcd-3abcd-4.pdf",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "70c0d201e5c000230008bd6f156bff73952045128db862057385028b9be3f590",
+    "tests/vmp_native/ownerless_dataflow.S": "ce2fe71813061fdb4766c84e17119b2c7a88ecb6683691916e46f14fc4d95382",
+    "tests/vmp_native/ownerless_dataflow.c": "36be13c5d99f627978999f107ad9d056418224e2ac37e9308b785e9f4f8e9f90",
+    "tests/ida_ownerless_dataflow_probe.py": "1dc6c3035520bfdc1630ab1f99f144453bcc44235b27d061bb11e2fe1d0dd10e",
+    "tests/run_ownerless_dataflow.py": "767e048aec65a6e197783b1b619129a30d0f1cd60ffcd15b7051230a886bcc8e",
+    "tests/ida_protected_region_inspect.py": "b68a41d2011f232808974d7b155b84a43e4f13a8f3eb157a0d204cf6f04548d2",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248"
+  },
+  "tool_sha256": {
+    "installed_plugin": "ebe5e3b70baf21de3c67b8f5b4d06f94c2a342aa0e8ba597a4ceda71e54f7e8a",
+    "ida_9_4_sp1_idat": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd"
+  },
+  "report_sha256": {
+    "build/bswap-abstract-executed/ownerless_dataflow_analysis.json": "b9600ee226f42793bed297c5bd43233f399d72e5bcc3448c6f3da21cd3296edf",
+    "build/bswap-abstract-executed/x86_64/inspection/ownerless_dataflow.json": "8d312ce3eb5f06d96b2b8068a4c120c3ac8b85a00817eabe4040027964e54ac9",
+    "build/bswap-abstract-executed/i386/inspection/ownerless_dataflow.json": "2b61974f3cd794245b42eeffba7e4862a11bdce48967c2fae8d87645695129d1",
+    "build/bswap-abstract-supplied-vmp/protected_region.json": "26da0a9b8e82ebd309f55a1734efd30d47cf2bfb4dc6f805f0088bebcb099eb6",
+    "build/bswap-abstract-supplied-vmp/run.json": "f392a1c381ba203d038276b2f64539ee05a85fea371a7e26a26746df649176f3"
+  },
+  "architectures": {
+    "x86_64": {
+      "binary_sha256": "2399d8470e967da17f9969aca0fe11b14c83c163f0ae4e68b0538b3e016350ca",
+      "native_checks": 4606,
+      "ida_checks": 1662,
+      "corrupt_equal_rejected": true,
+      "corrupt_bswap_rejected": true,
+      "bswap_fallthroughs": 3,
+      "proved_flag_values": [
+        false,
+        true
+      ],
+      "undefined_value_predicate": "unresolved"
+    },
+    "i386": {
+      "binary_sha256": "25f7805571d8044f0a7e291e58d7d9afc42fc54141005d3c458c3fc926cdf6d6",
+      "native_checks": 4606,
+      "ida_checks": 1612,
+      "corrupt_equal_rejected": true,
+      "corrupt_bswap_rejected": true,
+      "bswap_fallthroughs": 3,
+      "proved_flag_values": [
+        false,
+        true
+      ],
+      "undefined_value_predicate": "unresolved"
+    }
+  },
+  "ctest": {
+    "passed": 21,
+    "total": 21
+  },
+  "supplied_vmp_hello": {
+    "binary_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "ida_checks": 8,
+    "nodes": 75,
+    "edges": 77,
+    "records": 3,
+    "proved_records": 0
+  },
+  "native_trace_bswap16_continuation": false,
+  "protected_recovery_rate": "unknown"
+}
