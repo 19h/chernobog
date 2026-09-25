@@ -18,9 +18,9 @@ The `.uu` suffix does not describe the last file's encoding: its file header
 is Mach-O arm64. It should be loaded as a binary without a uuencode decode
 step.
 
-The user identified both Linux static binaries as outputs of their Morok
-obfuscator. They are byte-identical to the corresponding binaries in the
-sibling Morok checkout. That checkout contains `boo.c` (SHA-256
+The user identified both Linux static binaries as outputs of their own Morok
+obfuscator in the sibling `../morok` checkout. They are byte-identical to the
+corresponding binaries there. That checkout contains `boo.c` (SHA-256
 `3c0c301481a4a25930426cd6a6e84b03ad4b23a9925b9b4eeac804c33444fd5b`)
 and `programs/int_woma_keygen.c` (SHA-256
 `988a6144b6b3924c7ed432486d114c327f837e4ef424abb29c220fe6ee4f3628`)
