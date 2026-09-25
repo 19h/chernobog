@@ -145,6 +145,25 @@ LABEL NAME(od_bswap_value_use)
     ret
 GAP NAME(od_bswap_value_end)
 
+/* Prefix encodings are outside the exact status-into-AH transfer contract. */
+.p2align 4
+LABEL NAME(od_sahf_prefix_root)
+    movb $1, %ah
+LABEL NAME(od_sahf_prefix_instruction)
+    .byte 0x66, 0x9e
+LABEL NAME(od_sahf_prefix_use)
+    RESULT
+GAP NAME(od_sahf_prefix_end)
+
+.p2align 4
+LABEL NAME(od_lahf_prefix_root)
+    stc
+LABEL NAME(od_lahf_prefix_instruction)
+    .byte 0x66, 0x9f
+LABEL NAME(od_lahf_prefix_use)
+    RESULT
+GAP NAME(od_lahf_prefix_end)
+
 /* Encoding-only sign-extension controls, deliberately never executed. */
 .p2align 4
 LABEL NAME(od_negative8)

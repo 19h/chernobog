@@ -6,6 +6,8 @@ extern int df_equal(int), df_different(int), df_flags(int), df_direction(int), d
     df_target_changes(int), df_direction_status(int);
 extern int df_flags_saved(int), df_flags_literal(int), df_flags_overwrite(int),
     df_flags_dynamic(int), df_flags_full(int), df_flags_status(int);
+extern int df_sahf_cf(int), df_sahf_of(int), df_lahf_roundtrip(int), df_sahf_dynamic(int),
+    df_lahf_constant(int), df_sahf_full(int), df_lahf_raw(int);
 extern int df_stack_top_transfer(int), df_stack_top_overwrite(int);
 extern int df_stack_top_dynamic(int);
 extern int df_memory_store_transfer(int), df_memory_disjoint_store(int);
@@ -91,7 +93,10 @@ int main(void)
             df_stack_changes(input) != (input == 0) || df_jump(input) != 1 ||
             df_target(input) != 7 || df_target_changes(input) != (input == 0 ? 9 : 7) ||
             df_flags_saved(input) != 1 || df_flags_full(input) != 1 ||
-            df_flags_status(input) != 0 || df_flags_literal(input) != 1 ||
+            df_flags_status(input) != 0 || df_flags_literal(input) != 1 || df_sahf_cf(input) != 1 ||
+            df_sahf_of(input) != 1 || df_lahf_roundtrip(input) != 1 ||
+            df_sahf_dynamic(input) != (input & 1) || df_lahf_constant(input) != 1 ||
+            df_sahf_full(input) != 0x8d5 || df_lahf_raw(input) != 0x96 ||
             df_flags_overwrite(input) != 0 || df_flags_dynamic(input) != (input & 1) ||
             df_stack_top_transfer(input) != 7 || df_stack_top_overwrite(input) != 8 ||
             df_stack_top_dynamic(input) != (input == 0 ? 7 : 8) ||
@@ -163,7 +168,7 @@ int main(void)
             df_rep_lods_ambiguous_value(input) != (input & 1) ||
             df_lods_unknown_source_high_value(input) != 1)
             return 1;
-        checks += 133;
+        checks += 140;
 #ifndef __i386__
         if (df_scas_qword_zf(input) != 1 || df_cmps_qword_zf(input) != 1 ||
             df_stos_qword_reload(input) != 1 || df_movs_qword_reload(input) != 1 ||

@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
+#include <utility>
 
 namespace chernobog::x86_abstract
 {
@@ -182,6 +184,39 @@ struct Word
         }
     }
 };
+
+// LAHF and SAHF exchange the five low status flags with AH. OF is neither
+// encoded in AH nor changed by SAHF. Preserve knowledge of each bit separately.
+inline void load_status_into_ah(Word &accumulator, const Flags &flags)
+{
+    constexpr uint64_t ah = UINT64_C(0xff00);
+    accumulator.known = (accumulator.known & ~ah) | UINT64_C(0x2a00);
+    accumulator.value = (accumulator.value & ~ah) | UINT64_C(0x0200);
+    for (const auto [flag, bit] :
+         {std::pair<uint8_t, unsigned>{CF, 0}, {PF, 2}, {AF, 4}, {ZF, 6}, {SF, 7}})
+    {
+        if (const auto value = flags.get(flag))
+        {
+            const uint64_t mask = uint64_t{1} << (bit + 8);
+            accumulator.known |= mask;
+            if (*value)
+                accumulator.value |= mask;
+        }
+    }
+}
+
+inline void store_ah_into_status(Flags &flags, const Word &accumulator)
+{
+    for (const auto [flag, bit] :
+         {std::pair<uint8_t, unsigned>{CF, 0}, {PF, 2}, {AF, 4}, {ZF, 6}, {SF, 7}})
+    {
+        const uint64_t mask = uint64_t{1} << (bit + 8);
+        if (accumulator.known & mask)
+            flags.set(flag, (accumulator.value & mask) != 0);
+        else
+            flags.forget(flag);
+    }
+}
 
 enum class Operation : uint8_t
 {

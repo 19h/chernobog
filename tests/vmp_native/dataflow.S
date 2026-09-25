@@ -137,6 +137,59 @@ BEGIN NAME(df_flags_literal)
 #endif
     RESULT setb
 
+BEGIN NAME(df_sahf_cf)
+    movb $1, %ah
+    sahf
+    RESULT setb
+
+BEGIN NAME(df_sahf_of)
+    movl $0x7fffffff, %eax
+    addl $1, %eax
+    movb $0, %ah
+    sahf
+    RESULT seto
+
+BEGIN NAME(df_lahf_roundtrip)
+    stc
+    lahf
+    clc
+    sahf
+    RESULT setb
+
+BEGIN NAME(df_sahf_dynamic)
+    movb %cl, %ah
+    sahf
+    RESULT setb
+
+BEGIN NAME(df_lahf_constant)
+    movl $0, %eax
+    sahf
+    lahf
+    cmpl $0x200, %eax
+    RESULT sete
+
+BEGIN NAME(df_sahf_full)
+    movl $0x7fffffff, %eax
+    addl $1, %eax
+    movb $0xd5, %ah
+    sahf
+#ifdef __i386__
+    pushfl
+    popl %eax
+#else
+    pushfq
+    popq %rax
+#endif
+    andl $0x8d5, %eax
+    ret
+
+BEGIN NAME(df_lahf_raw)
+    movl $0x7fffffff, %eax
+    addl $1, %eax
+    lahf
+    movzbl %ah, %eax
+    ret
+
 BEGIN NAME(df_flags_overwrite)
     stc
 #ifdef __i386__

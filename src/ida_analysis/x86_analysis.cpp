@@ -164,6 +164,13 @@ bool abstract_bswap16_fallthrough(const insn_t &insn)
            get_byte(insn.ea + 1) == 0x0f && (get_byte(insn.ea + 2) & 0xf8) == 0xc8;
 }
 
+bool exact_status_ah_encoding(const insn_t &insn)
+{
+    return (insn.itype == NN_lahf || insn.itype == NN_sahf) && insn.size == 1 &&
+           (mode32(insn) || mode64(insn)) &&
+           get_byte(insn.ea) == (insn.itype == NN_lahf ? 0x9f : 0x9e);
+}
+
 Operation operation(uint16_t type)
 {
     switch (type)
@@ -835,6 +842,18 @@ struct State
         case NN_std:
             // DF is outside this state; the six tracked status flags are unchanged.
             return;
+        case NN_lahf:
+        case NN_sahf:
+            if (!exact_status_ah_encoding(insn))
+            {
+                *this = {};
+                return;
+            }
+            if (insn.itype == NN_lahf)
+                load_status_into_ah(regs[0], flags);
+            else
+                store_ah_into_status(flags, regs[0]);
+            return;
         case NN_movs:
             // A natural-width REP with exact zero count changes no memory or
             // index. Exact one count has the plain MOVS memory effect.
@@ -1448,9 +1467,12 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         flow.jump = instruction.itype == NN_jmp;
         flow.call = is_call_insn(instruction);
         flow.ret = instruction.itype == NN_retn;
-        if (instruction.itype == NN_bswap && get_dtype_size(instruction.Op1.dtype) != 4 &&
-            get_dtype_size(instruction.Op1.dtype) != 8 &&
-            !abstract_bswap16_fallthrough(instruction))
+        if ((instruction.itype == NN_lahf || instruction.itype == NN_sahf) &&
+            !exact_status_ah_encoding(instruction))
+            flow.stop = "unsupported_status_ah_encoding";
+        else if (instruction.itype == NN_bswap && get_dtype_size(instruction.Op1.dtype) != 4 &&
+                 get_dtype_size(instruction.Op1.dtype) != 8 &&
+                 !abstract_bswap16_fallthrough(instruction))
             flow.stop = "unsupported_bswap_width";
         else if (instruction.Op1.type == o_far || instruction.itype == NN_callfi ||
                  instruction.itype == NN_jmpfi || (is_ret_insn(instruction) && !flow.ret) ||

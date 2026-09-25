@@ -840,3 +840,15 @@ value-dependent predicate unresolved. The supplied VMP initializer retains
 All 21 CTest suites pass. See
 `VMP_BSWAP16_ABSTRACT.md` and its evidence JSON. Concrete protected traces
 still stop before BSWAP16; post-frontier VM effects remain unknown.
+
+Status-into-AH checkpoint for row 2a: exact `LAHF`/`SAHF` transfers now retain
+independent known bits in AH and SF/ZF/AF/PF/CF, including the constant AH
+bits and OF preservation. Portable checks cover 4,096 partial profiles and
+256 concrete AH values. Native x86-64/i386 processes pass 37,630/36,350
+checks; owned IDA passes 453/386 and ownerless IDA passes 1,730/1,680.
+Four new `SETcc` facts per path are proved and an input-dependent carry
+remains unresolved; prefixed `LAHF`/`SAHF` remain frontiers. The supplied VMP
+initializer remains 75 nodes, 77 edges
+and three unresolved facts. All 21 CTest suites pass. See
+`VMP_STATUS_AH_FLAGS.md` and its evidence JSON. Protected prevalence,
+other status instructions and the full review remain open.

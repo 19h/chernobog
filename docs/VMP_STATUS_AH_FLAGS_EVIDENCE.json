@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "scope": "exact LAHF/SAHF status-bit transfer under normal completion",
+  "isa_source": "https://cdrdv2-public.intel.com/874240/325462-090-sdm-vol-1-2abcd-3abcd-4.pdf",
+  "source_sha256": {
+    "src/common/x86_abstract.h": "f55498eb42b873aa667983320986d1860f7461cf92ccc8646866431153f5e666",
+    "src/ida_analysis/x86_analysis.cpp": "dfc9a78ec03b9dc7b198303a822ae8146c9cf0c4ac494c12a8f669ba5af2b8a2",
+    "tests/x86_abstract_tests.cpp": "6cdeb252169ed859199f0e9f673f9aebf4c94d4ed3374356d33d14a42548dad8",
+    "tests/vmp_native/dataflow.S": "46c95831d6f4ac820e0a00bf8682f0a6e75291ee55ab304b44ce1cea92ad7dbc",
+    "tests/vmp_native/ownerless_dataflow.S": "5709bca1aaa70864a0253f8a384d01f27bdb4410b523416374a1b99e16d8d840",
+    "tests/vmp_native/dataflow_main.c": "db34d9794cdf8d0743b620e9abd455a054ced2f0e634e4fe60c697a14ed28d73",
+    "tests/ida_dataflow_probe.py": "dd219f802bfe555ffeedcecab070f6bd6a9e4ac8bb020e23fb175668f309aa27",
+    "tests/ida_ownerless_dataflow_probe.py": "9d0bf287ae24dc8775fe373fa94f0eeafce8ede57fc41e101d74600bac6ae02f",
+    "tests/run_native_dataflow.py": "385936f899e272bd369165806afef43f1cd20c80484a3b1976d007c642fd6c04"
+  },
+  "tool_sha256": {
+    "installed_plugin": "fea0db85008ef12c053cdc612fbc90b0048557a92a22019a474b773a834945ef",
+    "ida_9_4_sp1_idat": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd"
+  },
+  "report_sha256": {
+    "build/status-ah-dataflow-complete/dataflow_analysis.json": "fc75f8479a8335a5dda1fdaee3b1b5afc0b5af8750b0f889b06f70251c855fac",
+    "build/status-ah-dataflow-complete/x86_64/inspection/dataflow.json": "a53a2b5345c8cb3548b174a68b9f0808dd36803a7a737fc4e61ba41c5f4380cd",
+    "build/status-ah-dataflow-complete/i386/inspection/dataflow.json": "097d418f80b3c258f33072bda48114d7c801f9d4d6f9424f5b853a9a171134bf",
+    "build/status-ah-ownerless-prefix/ownerless_dataflow_analysis.json": "74095774933ceee54f1c87ea61db0bdb053c57eb082a6852f61472559a8d6b83",
+    "build/status-ah-ownerless-prefix/x86_64/inspection/ownerless_dataflow.json": "f2e93a6aa85ff2417eb70317cf876317e4d198c596b5f24f6b3a5abeb2ed1431",
+    "build/status-ah-ownerless-prefix/i386/inspection/ownerless_dataflow.json": "fd11bdca98379b9574800f40e149dc97d59e790a96edbc055af40219b8af9887",
+    "build/status-ah-supplied-vmp/protected_region.json": "26da0a9b8e82ebd309f55a1734efd30d47cf2bfb4dc6f805f0088bebcb099eb6",
+    "build/status-ah-supplied-vmp/run.json": "74fc8a43f498eec2f511fa98cbcd3be6051d506044d065fd929f34d48d670988"
+  },
+  "portable_profiles": 4096,
+  "portable_concrete_ah": 256,
+  "architectures": {
+    "x86_64": {
+      "owned_native_checks": 37630,
+      "owned_ida_checks": 453,
+      "ownerless_native_checks": 4606,
+      "ownerless_ida_checks": 1730,
+      "prefixed_rejections": 2,
+      "new_proved_setcc": 4,
+      "new_unresolved_setcc": 1,
+      "owned_binary_sha256": "097d912fd7d90b3c88561f0cec5a4734b91854e1c56caeb55c76df76724fbd45",
+      "ownerless_binary_sha256": "8e0c52ec56c8b2d03e262aca4860f523ce184032b35e22b57f75e5d2f514788f"
+    },
+    "i386": {
+      "owned_native_checks": 36350,
+      "owned_ida_checks": 386,
+      "ownerless_native_checks": 4606,
+      "ownerless_ida_checks": 1680,
+      "prefixed_rejections": 2,
+      "new_proved_setcc": 4,
+      "new_unresolved_setcc": 1,
+      "owned_binary_sha256": "7ae45e9d14a087fa921a624159448c203a8e2dcb79bcbbeea2563ff136f32428",
+      "ownerless_binary_sha256": "8888b7d35ef1795c0573710a827b17b005ef64ea7f92b710c8253d6368ba01c6"
+    }
+  },
+  "supplied_vmp_hello": {
+    "binary_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "ida_checks": 8,
+    "nodes": 75,
+    "edges": 77,
+    "records": 3,
+    "proved_records": 0
+  },
+  "ctest": {
+    "passed": 21,
+    "total": 21
+  },
+  "protected_lahf_sahf_prevalence": "unknown"
+}

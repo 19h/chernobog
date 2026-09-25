@@ -588,6 +588,11 @@ def main():
             ("df_flags_literal", True),
             ("df_flags_overwrite", None),
             ("df_flags_dynamic", None),
+            ("df_sahf_cf", True),
+            ("df_sahf_of", True),
+            ("df_lahf_roundtrip", True),
+            ("df_sahf_dynamic", None),
+            ("df_lahf_constant", True),
         ):
             root, instructions = prepare_prefix(name)
             site = next(
@@ -595,7 +600,7 @@ def main():
                 for instruction in instructions
                 if instruction.get_canon_mnem().startswith("set")
             )
-            condition(name + " ownerless saved flags", inspect(name, root), site, expected)
+            condition(name + " ownerless status flags", inspect(name, root), site, expected)
 
         condition_cases = (
             ("df_memory_movsx_negative", True),
@@ -1050,6 +1055,29 @@ def main():
                 if expected is True
                 else "Static undefined-value control; no native execution"
             )
+
+        for name in ("od_sahf_prefix", "od_lahf_prefix"):
+            root, instruction, use, end = (
+                symbol(name + suffix) for suffix in ("_root", "_instruction", "_use", "_end")
+            )
+            remove_owners(root, end + 3)
+            data_span(end, 3, b"\xcc" * 3)
+            decode_span(root, end)
+            result = inspect(name + "_rejection", root)
+            check(
+                name + " unsupported prefix stops before use",
+                any(
+                    number(edge["source"]) == instruction
+                    and edge["kind"] == "frontier"
+                    and edge["reason"] == "unsupported_status_ah_encoding"
+                    for edge in result["edges"]
+                )
+                and not any(number(row["site"]) == use for row in result["records"])
+                and use not in {number(row["site"]) for row in result["nodes"]},
+            )
+            captures[name + "_rejection"][
+                "scope"
+            ] = "Prefixed status-AH encoding; no native execution"
 
         for name, payload in (
             ("od_negative8", bytes.fromhex("6affc3")),

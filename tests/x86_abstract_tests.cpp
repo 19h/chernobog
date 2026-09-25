@@ -128,6 +128,49 @@ void dataflow_regressions()
     std::puts("dataflow join concretizations: 65536; graph controls passed");
 }
 
+void status_ah_regressions()
+{
+    const auto encoded = [](unsigned flags)
+    {
+        return unsigned((flags & CF ? 0x01 : 0) | (flags & PF ? 0x04 : 0) |
+                        (flags & AF ? 0x10 : 0) | (flags & ZF ? 0x40 : 0) |
+                        (flags & SF ? 0x80 : 0));
+    };
+    const auto decoded = [](unsigned ah)
+    {
+        return unsigned((ah & 0x01 ? CF : 0) | (ah & 0x04 ? PF : 0) | (ah & 0x10 ? AF : 0) |
+                        (ah & 0x40 ? ZF : 0) | (ah & 0x80 ? SF : 0));
+    };
+    for (unsigned known = 0; known <= ALL; ++known)
+        for (unsigned value = 0; value <= ALL; ++value)
+        {
+            const Flags flags{uint8_t(known), uint8_t(value & known)};
+            Word accumulator{UINT64_MAX, UINT64_C(0x1234567890abcdef)};
+            load_status_into_ah(accumulator, flags);
+            check(((accumulator.known >> 8) & 255) == (0x2a | encoded(known)) &&
+                      ((accumulator.value >> 8) & 255) == (0x02 | encoded(value & known)) &&
+                      (accumulator.known & ~UINT64_C(0xff00)) == ~UINT64_C(0xff00) &&
+                      (accumulator.value & ~UINT64_C(0xff00)) ==
+                          (UINT64_C(0x1234567890abcdef) & ~UINT64_C(0xff00)),
+                  "LAHF maps each known flag into AH and preserves other accumulator bits");
+            Flags restored{ALL, OF};
+            store_ah_into_status(restored, accumulator);
+            check(restored.known == ((known & ~unsigned(OF)) | OF) &&
+                      restored.value == (((value & known) & ~unsigned(OF)) | OF),
+                  "SAHF restores only known AH status bits and preserves OF");
+        }
+    for (unsigned ah = 0; ah < 256; ++ah)
+    {
+        Word accumulator;
+        accumulator.write(8, 8, ah, false);
+        Flags flags{ALL, OF};
+        store_ah_into_status(flags, accumulator);
+        check(flags.known == ALL && flags.value == (OF | decoded(ah)),
+              "SAHF ignores reserved AH bits and leaves OF unchanged");
+    }
+    std::puts("LAHF/SAHF partial profiles: 4096; concrete AH values: 256");
+}
+
 uint8_t arithmetic_oracle(unsigned a, unsigned b, unsigned carry, bool sub)
 {
     const int exact = sub ? int(a) - int(b) - int(carry) : int(a + b + carry);
@@ -386,6 +429,7 @@ void mapping_counterexamples()
 int main()
 {
     dataflow_regressions();
+    status_ah_regressions();
     exhaustive_arithmetic();
     exhaustive_conditions();
     boundaries();
