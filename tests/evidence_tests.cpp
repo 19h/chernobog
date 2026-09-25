@@ -480,6 +480,8 @@ void temporal_memory_regressions()
 {
     const uint8_t value[]{'s', 'e', 'c', 'r', 'e', 't', 0};
     TargetEvidence evidence;
+    evidence.scope.function_start = 0x1000;
+    evidence.model_contract = {{0x2010, EmuSummaryKind::STRLEN, "strlen"}};
     for (uint32_t run_id = 0; run_id < 2; ++run_id)
     {
         TemporalMemory memory;
@@ -494,19 +496,23 @@ void temporal_memory_regressions()
         check(memory.identify(address, 16) == UseCaptureStatus::EXACT &&
                   memory.identify(address + 15, 2) == UseCaptureStatus::OBJECT_BOUNDARY,
               "allocation bounds must use requested object size");
+        evidence.events.edges.push_back(
+            {0x1200, 0x2010, run_id, memory.seed, ExecEdge::Kind::Call, 2});
         memory.capture(0x1200, 0x2010, 0, UseProducer::MODELED_ARGUMENT, DataScope::HEAP, address,
-                       value, sizeof(value), sizeof(value), 2);
-        check(!memory.release(address + 1, 3) && memory.release(0, 3) &&
-                  memory.release(address, 3) && !memory.release(address, 4),
+                       value, sizeof(value), sizeof(value), 3, uint8_t(EmuSummaryKind::STRLEN));
+        check(!memory.release(address + 1, 4) && memory.release(0, 4) &&
+                  memory.release(address, 4) && !memory.release(address, 5),
               "NULL free, interior free, and double free must have distinct outcomes");
         check(memory.identify(address, 1) == UseCaptureStatus::OUTSIDE_LIFETIME,
               "released storage must not retain a live allocation identity");
-        const auto reused = memory.allocate(8, 0x1100, 0x2000, 5);
+        const auto reused = memory.allocate(8, 0x1100, 0x2000, 6);
         check(reused == address && memory.allocations.back().generation == 2 &&
                   memory.allocations.back().occurrence == 2,
               "reuse must change generation and per-origin allocation occurrence");
+        evidence.events.edges.push_back(
+            {0x1200, 0x2010, run_id, memory.seed, ExecEdge::Kind::Call, 7});
         memory.capture(0x1200, 0x2010, 0, UseProducer::MODELED_ARGUMENT, DataScope::HEAP, reused,
-                       value, sizeof(value), sizeof(value), 6);
+                       value, sizeof(value), sizeof(value), 8, uint8_t(EmuSummaryKind::STRLEN));
         check(memory.uses.back().occurrence == 2 && memory.uses.front().occurrence == 1,
               "repeated calls at one site must remain distinct dynamic uses");
         RunObservation run;
@@ -515,6 +521,7 @@ void temporal_memory_regressions()
         run.provenance.seed = memory.seed;
         run.outcome.temporal_observation_available = true;
         run.outcome.temporal_capture_complete = true;
+        run.outcome.external_model_used = true;
         evidence.runs.push_back(run);
         evidence.events.allocations.insert(evidence.events.allocations.end(),
                                            memory.allocations.begin(), memory.allocations.end());
@@ -523,6 +530,53 @@ void temporal_memory_regressions()
     }
     check(hybrid_consensus_use_strings(evidence).size() == 2,
           "released first generation and live second generation must both retain use values");
+    const auto view = project_evidence_view(evidence);
+    check(view.model_bindings.size() == 1 && view.model_bindings[0].at("address") == "0x2010" &&
+              view.model_bindings[0].at("kind") == "0x6" &&
+              view.model_bindings[0].at("truth") == "model-contract" &&
+              evidence_view_json(evidence, view, true, 1).find("\"model_bindings\"") !=
+                  std::string::npos,
+          "bounded inspection identifies the named call model behind modeled uses");
+    auto absent_contract = evidence;
+    absent_contract.model_contract.clear();
+    check(hybrid_consensus_use_strings(absent_contract).empty(),
+          "modeled snapshots require the exact supplied call-model contract");
+    auto wrong_contract = evidence;
+    wrong_contract.model_contract[0].kind = EmuSummaryKind::STRCMP;
+    check(hybrid_consensus_use_strings(wrong_contract).empty(),
+          "a different named model cannot authorize a strlen snapshot");
+    auto mislabeled_contract = evidence;
+    mislabeled_contract.model_contract[0].name = "strcmp";
+    check(hybrid_consensus_use_strings(mislabeled_contract).empty(),
+          "a model kind must be classified from its recorded callee name");
+    auto ambiguous_contract = evidence;
+    ambiguous_contract.model_contract.push_back({0x2010, EmuSummaryKind::STRLEN, "other_strlen"});
+    check(hybrid_consensus_use_strings(ambiguous_contract).empty(),
+          "two model bindings at one callee cannot select an arbitrary contract");
+    auto missing_call = evidence;
+    missing_call.events.edges.erase(
+        std::remove_if(missing_call.events.edges.begin(), missing_call.events.edges.end(),
+                       [](const auto &edge) { return edge.run_id == 0; }),
+        missing_call.events.edges.end());
+    check(hybrid_consensus_use_strings(missing_call).empty(),
+          "a modeled use requires its observed call transfer in every run");
+    auto wrong_call = evidence;
+    for (auto &edge : wrong_call.events.edges)
+        edge.kind = ExecEdge::Kind::Jump;
+    check(hybrid_consensus_use_strings(wrong_call).empty(),
+          "a jump to a named callee cannot authorize a modeled call use");
+    auto duplicate_transfer = evidence;
+    duplicate_transfer.events.edges.push_back(duplicate_transfer.events.edges.front());
+    check(hybrid_consensus_use_strings(duplicate_transfer).empty(),
+          "duplicate transfer sequences cannot select an arbitrary call witness");
+    auto duplicate_run = evidence;
+    duplicate_run.runs.push_back(duplicate_run.runs.front());
+    check(hybrid_consensus_use_strings(duplicate_run).empty(),
+          "duplicate scheduled run identities cannot collapse the consensus corpus");
+    auto unreported_model = evidence;
+    unreported_model.runs[0].outcome.external_model_used = false;
+    check(hybrid_consensus_use_strings(unreported_model).empty(),
+          "modeled snapshots require the run to report external model use");
     auto different_generations = evidence;
     for (auto &allocation : different_generations.events.allocations)
         if (allocation.run_id == 1)
@@ -553,7 +607,7 @@ void temporal_memory_regressions()
             changed.events.uses[0].generation = 2;
             break;
         case 5:
-            changed.events.uses[0].sequence = 3;
+            changed.events.uses[0].sequence = 4;
             break; // free boundary
         case 6:
             changed.events.uses[0].sequence = 1;

@@ -235,6 +235,8 @@ struct TargetEvidence
     std::vector<BranchObservation> branches;
     std::vector<IndirectTargetObservation> indirect_targets;
     EmuEvents events;
+    // Exact named call models supplied to the worker for these runs.
+    std::vector<EmuCallSummary> model_contract;
     EvidenceSummary summary;
     std::string diagnostic;
 
@@ -321,7 +323,8 @@ TargetEvidence hybrid_build_target_evidence(const ProgramImage &image, const Fun
                                             uint64_t focus_address,
                                             const StaticAnalysisResult &static_analysis,
                                             const std::vector<ConcreteInput> &inputs,
-                                            const EmulationJobResult &emulation);
+                                            const EmulationJobResult &emulation,
+                                            const std::vector<EmuCallSummary> &model_contract = {});
 
 const char *hybrid_branch_verdict_name(BranchClaimVerdict verdict);
 

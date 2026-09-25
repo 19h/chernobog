@@ -193,6 +193,7 @@ struct Session::Impl
     uint64_t focus_address = 0;
     StaticAnalysisResult static_analysis;
     std::vector<ConcreteInput> inputs;
+    std::vector<EmuCallSummary> model_contract;
     EmulationJobResult accumulated;
     std::unique_ptr<EmulationWorkerPool> worker;
     std::shared_ptr<const TargetEvidence> evidence;
@@ -253,9 +254,9 @@ struct Session::Impl
         for (EmulationRunResult &run : result.runs)
             accumulated.runs.push_back(std::move(run));
 
-        std::shared_ptr<const TargetEvidence> candidate =
-            std::make_shared<TargetEvidence>(hybrid_build_target_evidence(
-                *image, function, focus_address, static_analysis, inputs, accumulated));
+        std::shared_ptr<const TargetEvidence> candidate = std::make_shared<TargetEvidence>(
+            hybrid_build_target_evidence(*image, function, focus_address, static_analysis, inputs,
+                                         accumulated, model_contract));
         if (hybrid_publish_evidence(owner->database_id(), candidate))
         {
             evidence = std::move(candidate);
@@ -790,6 +791,7 @@ bool Session::explore(vdui_t *view, uint64_t fallback_address)
         impl_->config.want_import_summaries
             ? hybrid_collect_call_summaries(impl_->function, impl_->config.max_static_instructions)
             : std::vector<EmuCallSummary>{};
+    impl_->model_contract = summaries;
     RaxWorkerOptions options;
     options.api = api;
     options.image = impl_->image;
@@ -910,6 +912,7 @@ void Session::clear()
     impl_->focus_address = 0;
     impl_->static_analysis = StaticAnalysisResult{};
     impl_->inputs.clear();
+    impl_->model_contract.clear();
     impl_->accumulated = EmulationJobResult{};
     impl_->evidence.reset();
     impl_->next_run_id = 0;

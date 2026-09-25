@@ -1,4 +1,5 @@
 #include "evidence.hpp"
+#include "call_summary_policy.hpp"
 #include "../common/string_recovery.h"
 
 #include <algorithm>
@@ -378,16 +379,82 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(const Target
     using ObjectKey = std::tuple<uint32_t, uint64_t, uint64_t>;
     using UseKey = decltype(UseSnapshot{}.semantic_key());
     std::set<RunKey> eligible;
+    std::set<RunKey> modeled_runs;
     for (const auto &run : evidence.runs)
     {
         // Never shrink the corpus to its successful/observable subset.
         if (!run.ran || run.outcome.native_region || !run.outcome.temporal_observation_available ||
             !run.outcome.temporal_capture_complete || run.outcome.temporal_capture_truncated)
             return result;
-        eligible.emplace(run.provenance.run_id, run.provenance.seed);
+        if (!eligible.emplace(run.provenance.run_id, run.provenance.seed).second)
+            return result;
+        if (run.outcome.external_model_used)
+            modeled_runs.emplace(run.provenance.run_id, run.provenance.seed);
     }
     if (eligible.empty())
         return result;
+    std::map<uint64_t, const EmuCallSummary *> bindings;
+    std::set<uint64_t> ambiguous_bindings;
+    for (const auto &binding : evidence.model_contract)
+        if (!bindings.emplace(binding.address, &binding).second)
+            ambiguous_bindings.insert(binding.address);
+    std::map<RunKey, std::vector<const ExecEdge *>> transfers;
+    std::set<RunKey> ambiguous_transfers;
+    for (const auto &edge : evidence.events.edges)
+        if (const RunKey run{edge.run_id, edge.seed}; eligible.count(run))
+            transfers[run].push_back(&edge);
+    for (auto &[run, edges] : transfers)
+    {
+        std::sort(edges.begin(), edges.end(),
+                  [](const auto *a, const auto *b) { return a->sequence < b->sequence; });
+        if (std::adjacent_find(edges.begin(), edges.end(), [](const auto *a, const auto *b)
+                               { return a->sequence == b->sequence; }) != edges.end())
+            ambiguous_transfers.insert(run);
+    }
+    const auto valid_model = [&](const UseSnapshot &use, const RunKey &run)
+    {
+        if (!modeled_runs.count(run) || !use.context ||
+            use.context != evidence.scope.function_start || !use.callee || !use.occurrence ||
+            !use.sequence || ambiguous_bindings.count(use.callee) || ambiguous_transfers.count(run))
+            return false;
+        const auto binding = bindings.find(use.callee);
+        if (binding == bindings.end() || binding->second->name.empty() ||
+            hybrid_classify_call_summary_name(binding->second->name) != binding->second->kind ||
+            uint8_t(binding->second->kind) != use.model_kind)
+            return false;
+        switch (binding->second->kind)
+        {
+        case EmuSummaryKind::STRLEN:
+        case EmuSummaryKind::STRNLEN:
+        case EmuSummaryKind::MEMCHR:
+            if (use.argument != 0)
+                return false;
+            break;
+        case EmuSummaryKind::STRCMP:
+            if (use.argument != 0 && use.argument != 1)
+                return false;
+            break;
+        case EmuSummaryKind::MEMCPY:
+        case EmuSummaryKind::MEMMOVE:
+        case EmuSummaryKind::STRCPY:
+        case EmuSummaryKind::STRNCPY:
+            if (use.argument != 1)
+                return false;
+            break;
+        default:
+            return false;
+        }
+        const auto found = transfers.find(run);
+        if (found == transfers.end())
+            return false;
+        const auto at = std::lower_bound(found->second.begin(), found->second.end(), use.sequence,
+                                         [](const ExecEdge *edge, uint64_t sequence)
+                                         { return edge->sequence < sequence; });
+        if (at == found->second.begin())
+            return false;
+        const auto &edge = **std::prev(at);
+        return edge.kind == ExecEdge::Kind::Call && edge.from == use.site && edge.to == use.callee;
+    };
     std::map<ObjectKey, const AllocationLifetime *> objects;
     std::set<ObjectKey> conflicting_objects;
     for (const auto &allocation : evidence.events.allocations)
@@ -410,7 +477,8 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(const Target
         if (eligible.count(run) == 0)
             continue;
         const auto key = use.semantic_key();
-        bool valid = use.status == UseCaptureStatus::EXACT && use.bytes.size() == use.observed_size;
+        bool valid = use.status == UseCaptureStatus::EXACT &&
+                     use.bytes.size() == use.observed_size && valid_model(use, run);
         if (use.scope == DataScope::HEAP)
         {
             const ObjectKey object{use.run_id, use.seed, use.allocation_id};
@@ -521,7 +589,8 @@ TargetEvidence hybrid_build_target_evidence(const ProgramImage &image, const Fun
                                             uint64_t focus_address,
                                             const StaticAnalysisResult &static_analysis,
                                             const std::vector<ConcreteInput> &inputs,
-                                            const EmulationJobResult &emulation)
+                                            const EmulationJobResult &emulation,
+                                            const std::vector<EmuCallSummary> &model_contract)
 {
     TargetEvidence result;
     if (std::any_of(emulation.runs.begin(), emulation.runs.end(),
@@ -547,6 +616,7 @@ TargetEvidence hybrid_build_target_evidence(const ProgramImage &image, const Fun
     result.static_analysis = static_analysis;
     result.inputs = inputs;
     result.events = emulation.merged;
+    result.model_contract = model_contract;
     result.diagnostic = emulation.diagnostic;
 
     result.summary.ida_instruction_heads = static_analysis.stats.instruction_heads;

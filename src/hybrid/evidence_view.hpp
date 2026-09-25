@@ -14,9 +14,9 @@ struct EvidenceView
 {
     static constexpr size_t edge_limit = 256, event_limit = 1024;
     static constexpr size_t lifetime_limit = 128, run_limit = 128, claim_limit = 128;
-    static constexpr size_t read_stream_limit = 128;
+    static constexpr size_t read_stream_limit = 128, model_binding_limit = 64;
     std::vector<EvidenceViewRow> edges, events, lifetimes, runs, claims;
-    std::vector<EvidenceViewRow> read_streams;
+    std::vector<EvidenceViewRow> read_streams, model_bindings;
     std::map<std::string, size_t> omitted;
 };
 
@@ -130,6 +130,14 @@ inline EvidenceView project_evidence_view(const TargetEvidence &source)
                     {"seed", view_hex(item.seed)}});
         bounded(view.lifetimes, EvidenceView::lifetime_limit, "lifetimes", std::move(row));
     }
+    for (const auto &binding : source.model_contract)
+        bounded(view.model_bindings, EvidenceView::model_binding_limit, "model_bindings",
+                {{"address", view_hex(binding.address)},
+                 {"kind", view_hex(uint8_t(binding.kind))},
+                 {"name", binding.name},
+                 {"truth", "model-contract"},
+                 {"assumption",
+                  "named call model supplied to the emulator; callee body not executed"}});
     for (const auto &item : source.events.uses)
         event("use", item.run_id, item.seed, item.sequence, item.site,
               {{"allocation", view_hex(item.allocation_id)},
@@ -312,6 +320,7 @@ inline std::string evidence_view_json(const TargetEvidence &source, const Eviden
     rows("runs", view.runs);
     rows("claims", view.claims);
     rows("read_streams", view.read_streams);
+    rows("model_bindings", view.model_bindings);
     out << ",\"omitted\":{";
     bool first = true;
     for (const auto &item : view.omitted)

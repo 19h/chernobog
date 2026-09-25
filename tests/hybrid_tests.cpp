@@ -1941,6 +1941,8 @@ void test_temporal_heap_uses(const RaxApi *api)
               "modeled region rejects caller scratch objects overlapping its heap contract");
     }
     TargetEvidence evidence;
+    evidence.scope.function_start = 0x1000;
+    evidence.model_contract = summaries;
     std::vector<uint64_t> addresses;
     for (uint32_t run_id = 0; run_id < 3; ++run_id)
     {

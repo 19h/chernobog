@@ -591,6 +591,17 @@ unavailable-data controls abstain. Both prior multi-read profiles and all 21
 CTest suites pass. See `VMP_SINGLE_READ_CORROBORATION.md` and its evidence JSON.
 Protected-sample coverage and broader lifecycle verification remain open.
 
+Modeled-call provenance checkpoint for rows 3a, 3b and 5: each modeled
+argument string now requires the exact named model supplied to the worker, a
+reported modeled run and the latest matching dynamic CALL transfer. The
+bounded evidence view exposes model bindings, and callee-name changes revoke
+strict queries and transient ctree display. On an identical native fixture,
+probe and IDA binary, the archived plugin passes 25/27 checks and the revised
+plugin passes 27/27; both x86-64 and arm64 executed-read regressions pass
+10/10, and all 21 CTest suites pass. See `VMP_MODELED_USE_CONTRACT.md` and its
+evidence JSON. Native callee semantics and protected-sample coverage remain
+unknown.
+
 Writable-memory arithmetic checkpoint: exact locally established bytes now
 feed modeled x86-64/i386 arithmetic, read-modify-write results and status
 flags. Three new transfer targets and two conditions per architecture gain

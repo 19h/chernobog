@@ -80,6 +80,7 @@ try:
     explore()
     check("two temporal candidates", count() == 2, count=count())
     values = []
+    candidates = []
     for index in range(count()):
         expression = f"chernobog_rax_use_string({target}, {index})"
         candidate = {
@@ -99,6 +100,7 @@ try:
                 "eligible_runs",
             ]
         }
+        candidates.append(candidate)
         values.append(candidate["value"])
         check(
             "modeled use provenance",
@@ -111,6 +113,34 @@ try:
             candidate=candidate,
         )
     check("use-specific plaintext", values == ["secret!", "second!"], values=values)
+    view = json.loads(evaluate(f"chernobog_evidence_view({target})"))
+    bindings = view.get("model_bindings", [])
+    check(
+        "named model contract and call transfers",
+        len(candidates) == 2
+        and len(
+            [
+                row
+                for row in bindings
+                if int(row["address"], 16) == candidates[0]["callee"]
+                and row["kind"] == "0x6"
+                and row["name"]
+                and row["truth"] == "model-contract"
+            ]
+        )
+        == 1
+        and all(
+            any(
+                edge["kind"] == "observed-transfer"
+                and edge["transfer_kind"] == "0x1"
+                and int(edge["site"], 16) == candidate["site"]
+                and int(edge["target"], 16) == candidate["callee"]
+                for edge in view["edges"]
+            )
+            for candidate in candidates
+        ),
+        bindings=bindings,
+    )
     check("no final image projection", int(evaluate(f"chernobog_rax_string_count({target})")) == 0)
     check("invalid index", int(evaluate(f"chernobog_rax_use_string({target}, 9999).ok")) == 0)
     function = ida_funcs.get_func(target)
@@ -142,6 +172,27 @@ try:
         (active_comments is None or active_comments.size() == 0)
         and (saved_comments is None or saved_comments.size() == 0),
     )
+    callee = candidates[0]["callee"]
+    callee_name = ida_name.get_name(callee)
+    assert callee_name and ida_name.set_name(callee, callee_name + "_model_edited")
+    cfunc.refresh_func_ctext()
+    check(
+        "callee model rename revokes uses and display",
+        count() == 0 and not any("rax-use(" in line for line in rendered()),
+    )
+    assert ida_name.set_name(callee, callee_name)
+    cfunc.refresh_func_ctext()
+    restored_count = count()
+    restored_annotations = [line for line in rendered() if "rax-use(" in line]
+    check(
+        "callee model name restoration recovers sealed display",
+        restored_count == 0 and len(restored_annotations) == 2,
+        count=restored_count,
+        annotations=restored_annotations,
+        name=ida_name.get_name(callee),
+    )
+    explore()
+    check("callee model re-exploration restores strict uses", count() == 2)
     check(
         "display preserves function bytes",
         ida_bytes.get_bytes(target, len(original_function)) == original_function,

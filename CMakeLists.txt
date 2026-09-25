@@ -644,7 +644,7 @@ if(BUILD_TESTING)
     add_executable(
         chernobog_evidence_tests
         tests/evidence_tests.cpp src/hybrid/evidence.cpp src/hybrid/native_read_strings.cpp
-        src/hybrid/program_model_core.cpp)
+        src/hybrid/program_model_core.cpp src/hybrid/call_summary_policy.cpp)
     target_include_directories(chernobog_evidence_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src"
                                                                 "${_chernobog_rax_capi}/include")
     target_compile_features(chernobog_evidence_tests PRIVATE cxx_std_17)

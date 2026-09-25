@@ -1,4 +1,5 @@
 #include "z3_bridge.hpp"
+#include "call_summary_policy.hpp"
 
 #include <pro.h>
 #include <ida.hpp>
@@ -297,9 +298,29 @@ bool capture_current_function_identity(const TargetEvidence &source,
     return true;
 }
 
+bool current_model_contract_matches(const TargetEvidence &evidence, std::string *reason = nullptr)
+{
+    for (const auto &binding : evidence.model_contract)
+    {
+        qstring name;
+        if (!binding.address || binding.name.empty() ||
+            get_name(&name, ea_t(binding.address)) <= 0 ||
+            std::string(name.c_str()) != binding.name ||
+            hybrid_classify_call_summary_name(name.c_str()).value_or(EmuSummaryKind::UNMODELED) !=
+                binding.kind)
+        {
+            if (reason)
+                *reason = "named call-model contract changed";
+            return false;
+        }
+    }
+    return true;
+}
+
 bool current_identity_matches(const TargetEvidence &evidence, std::string *reason = nullptr)
 {
-    if (!current_function_identity_matches(evidence, reason))
+    if (!current_function_identity_matches(evidence, reason) ||
+        !current_model_contract_matches(evidence, reason))
         return false;
     for (size_t index = 0; index < evidence.context_identity.size(); ++index)
         if (!byte_identity_matches(evidence.context_identity[index], "consumed context", index,
@@ -754,6 +775,7 @@ hybrid_current_use_strings_for_decompilation(uint64_t function_start)
     if (current_identity_matches(*evidence))
         return hybrid_consensus_use_strings(*evidence);
     if (!projection || projection->source != evidence || projection->sealing_open ||
+        !current_model_contract_matches(*evidence) ||
         !current_function_identity_matches(*evidence, evidence->function_identity,
                                            projection->function_profile,
                                            EntryProfilePolicy::REQUIRE_EXACT))

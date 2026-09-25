@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "previous_commit": "737d03383219cbaa9542245d33a672e14ef408b3",
+  "scope": "direct modeled-call use-string provenance and callee-name freshness; no native callee execution claim",
+  "source_sha256": {
+    "CMakeLists.txt": "a3c2c8e6b13622a90a17a68f85d06165b3b3ae9d8a9999a03050499afe63192d",
+    "src/hybrid/call_summary_policy.cpp": "7b6fa94842d9528de833a0ed786ba46c6bca205a05c568aefd4e36d46ad950cc",
+    "src/hybrid/evidence.cpp": "4389018729f44775b02b64a17a30601ad96ecf420bdc2b5f3269bc86c735de15",
+    "src/hybrid/evidence.hpp": "df5d91aafc6a700129853b8e291e74a11096bb47dd151b332dbec07e08d9d68d",
+    "src/hybrid/evidence_view.hpp": "38ca5b9b89623ced3cd84c21ff42f4b2e7872f7ab5c643189e6e3da673873f44",
+    "src/hybrid/session.cpp": "5c44fe3d8f3b97df1ac9c1bebcc5fd1676d3a7e32c290e9fba44b5c6c20d83a2",
+    "src/hybrid/z3_bridge.cpp": "1324dde86cf4a3d13e171b063a3fc4a95aefe3982a68b740abfd9f28ed4c8ab4",
+    "tests/evidence_tests.cpp": "f81a6f754422b6db2751191b3b1b888ea59f737c338f6ba37f5c7290f8377679",
+    "tests/hybrid_tests.cpp": "5d133f94e6fbeaa086f45c537eca94809f2103e62445f177166ee18a1c322594",
+    "tests/ida_temporal_string_smoke.py": "bb5af20a6d8c6e740f258c1e504503b48ca0f2a220c96dd4a6e334a3e5b91921",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/vmp_native/temporal_strings.S": "6f5584c7dafa7d45cb0db961a7facecba86158cf2baf4e569a2ddb3a0303c063"
+  },
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "fixture_sha256": "507889b18d3dba93ad87ce0bf149bec0802a94a427b522371bc6869927777644",
+  "native_fixture_exit_code": 0,
+  "matched_ida_profiles": {
+    "previous": {
+      "plugin_sha256": "0a3d0b866a3b71a8fe6bf94e7c5a1d83bdbb33601219c6bd450b3c2fa4e81507",
+      "runner_return_code": 2,
+      "artifacts_unchanged": true,
+      "returned_complete_runs": 4,
+      "candidates": 2,
+      "checks_passed": 25,
+      "checks_total": 27,
+      "failed_checks": [
+        "named model contract and call transfers",
+        "callee model rename revokes uses and display"
+      ],
+      "run_report": "build/ida-modeled-binding-prior-matched/run.json",
+      "run_report_sha256": "8a394e6b02dbad4e9bb7cb01b0729ad9d2791096bba3147a2ffa0655b9dcbb6b",
+      "probe_report": "build/ida-modeled-binding-prior-matched/temporal_strings.json",
+      "probe_report_sha256": "464844027c2cfca17f01d7b1838f1b67b8005f27d2b4b13eab3ad4af00ff0152"
+    },
+    "current": {
+      "plugin_sha256": "4b7c93283e30eb1725385348d22884c300e3ed7b7a8e35f17ba099613d448076",
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "returned_complete_runs": 4,
+      "allocation_lifetimes": 8,
+      "use_snapshots": 36,
+      "temporal_truncated_runs": 0,
+      "environment_model_failure_runs": 0,
+      "candidates": ["secret!", "second!"],
+      "model_bindings_visible": ["_free", "_malloc", "_memset", "_strlen"],
+      "checks_passed": 27,
+      "checks_total": 27,
+      "run_report": "build/ida-modeled-binding-current-final/run.json",
+      "run_report_sha256": "4a4de3efb7e1c283586a2b1a177faa339ef7da4d9a9629c15dba5e9718ffd94c",
+      "probe_report": "build/ida-modeled-binding-current-final/temporal_strings.json",
+      "probe_report_sha256": "5f49eb00fbb337bc65d3efd65535b36286051c4d59521799763df9cbf11ade61"
+    }
+  },
+  "executed_read_regressions": {
+    "x86_64": {
+      "fixture_sha256": "43749af705e87eaa12d8fc6d174e4c5d1a8a3306bb0ad771be88fc40d8b5b037",
+      "returned_complete_runs": 4,
+      "checks_passed": 10,
+      "checks_total": 10,
+      "run_report_sha256": "c970b93d69b78af49c82e1a1b08a0655b36a21b6d706f7565c9b040020293099",
+      "probe_report_sha256": "b6cb2246a540b1c40c753a67b98129f979d39faccf874821ff46bbfca695ffb3"
+    },
+    "arm64": {
+      "fixture_sha256": "24c93dbbe7bb5e9cf0fab64af29d9014dd6aad3e385bc1a47b352a0cf6f7fca9",
+      "returned_complete_runs": 6,
+      "checks_passed": 10,
+      "checks_total": 10,
+      "run_report_sha256": "814cca9ae119ae7a25c706528bad6b3f9a479f2a8e021801a3eaba3acc4e377d",
+      "probe_report_sha256": "d047fd5b91872c32244ae0efc877773d645f8341a92a801bd93b32ec8e354cad"
+    }
+  },
+  "ctest": {"passed": 21, "total": 21, "parallel_jobs": 4}
+}
