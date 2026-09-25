@@ -602,6 +602,17 @@ plugin passes 27/27; both x86-64 and arm64 executed-read regressions pass
 evidence JSON. Native callee semantics and protected-sample coverage remain
 unknown.
 
+Native-region modeled-use contract checkpoint for rows 3a, 3b, 5 and 6a: the
+separate completed/prefix region projector now checks each binding's classified
+name, the run's model-use flag and the latest observed CALL before each modeled
+argument. Ambiguous transfer sequences abstain; completed captures cap edges
+at 4,096 per run. Portable mutations and actual-backend edge removal reject
+unbound uses. Fresh IDA completed and prefix inspections retain four scoped
+observations across four runs and pass 38/38 and 43/43 checks; an interleaved
+read-only regression passes 35/35, and all 21 CTest suites pass. See
+`VMP_REGION_MODELED_USE_CONTRACT.md` and its evidence JSON. Protected modeled
+calls and native callee equivalence remain unknown.
+
 Writable-memory arithmetic checkpoint: exact locally established bytes now
 feed modeled x86-64/i386 arithmetic, read-modify-write results and status
 flags. Three new transfer targets and two conditions per architecture gain

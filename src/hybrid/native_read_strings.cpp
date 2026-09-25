@@ -1,4 +1,5 @@
 #include "evidence.hpp"
+#include "call_summary_policy.hpp"
 #include "../common/string_recovery.h"
 #include <algorithm>
 #include <limits>
@@ -36,6 +37,8 @@ Endpoint endpoint(const UseSnapshot &use, uint64_t address)
 struct Records
 {
     std::vector<const UseSnapshot *> uses;
+    std::vector<const ExecEdge *> transfers;
+    bool ambiguous_transfers = false;
     std::map<uint64_t, const DataAcc *> data;
     std::map<uint64_t, const AllocationLifetime *> objects;
     std::set<uint64_t> barriers;
@@ -96,12 +99,21 @@ bool valid_read(const UseSnapshot &use, const Records &records, uint64_t context
 bool valid_argument(const UseSnapshot &use, const Records &records, uint64_t context,
                     const std::vector<EmuCallSummary> &bindings)
 {
-    if (!valid_object(use, records, context) || use.producer != UseProducer::MODELED_ARGUMENT)
+    if (!valid_object(use, records, context) || use.producer != UseProducer::MODELED_ARGUMENT ||
+        records.ambiguous_transfers)
         return false;
     const auto binding = std::find_if(
         bindings.begin(), bindings.end(), [&](const auto &item)
         { return item.address == use.callee && uint8_t(item.kind) == use.model_kind; });
     if (binding == bindings.end())
+        return false;
+    const auto at = std::lower_bound(records.transfers.begin(), records.transfers.end(),
+                                     use.sequence, [](const ExecEdge *edge, uint64_t sequence)
+                                     { return edge->sequence < sequence; });
+    if (at == records.transfers.begin())
+        return false;
+    const auto &edge = **std::prev(at);
+    if (edge.kind != ExecEdge::Kind::Call || edge.from != use.site || edge.to != use.callee)
         return false;
     switch (binding->kind)
     {
@@ -271,6 +283,8 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
             const auto run = runs.find({edge.run_id, edge.seed});
             if (run == runs.end())
                 return {};
+            if (bindings)
+                run->second.transfers.push_back(&edge);
             if (edge.kind == ExecEdge::Kind::Call || edge.kind == ExecEdge::Kind::Unknown)
             {
                 if (run->second.barriers.size() >= 81920)
@@ -279,6 +293,18 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
             }
         }
     }
+    if (bindings)
+        for (auto &[identity, records] : runs)
+        {
+            (void)identity;
+            std::sort(records.transfers.begin(), records.transfers.end(),
+                      [](const auto *a, const auto *b) { return a->sequence < b->sequence; });
+            records.ambiguous_transfers =
+                std::adjacent_find(records.transfers.begin(), records.transfers.end(),
+                                   [](const auto *a, const auto *b)
+                                   { return a->sequence == b->sequence; }) !=
+                records.transfers.end();
+        }
     std::map<Key, std::map<Run, Stream>> values;
     std::set<Key> ambiguous;
     for (auto &[identity, records] : runs)
@@ -696,17 +722,23 @@ project_native_strings(const std::vector<NativeTemporalStringRun> &source, size_
             out.temporal_capture_truncated || out.data_trace_truncated || out.data_trace_filtered ||
             out.region_code_changed || out.function_boundary || out.permission_violation ||
             out.cancelled || out.escaped_image || out.unmodeled_external ||
-            out.environment_model_failure)
+            out.environment_model_failure || run.events.edges.size() > 4096)
             return reject("incomplete or incompatible temporal capture");
         if (run.bindings.empty() || run.bindings.size() > 32)
             return reject("invalid model contract");
+        if (std::any_of(run.events.uses.begin(), run.events.uses.end(), [](const auto &use)
+                        { return use.producer == UseProducer::MODELED_ARGUMENT; }) &&
+            !out.external_model_used)
+            return reject("unreported modeled use");
         std::vector<Binding> actual;
         std::set<uint64_t> addresses;
         for (const auto &binding : run.bindings)
         {
             if (!binding.address || binding.kind == EmuSummaryKind::UNMODELED ||
                 binding.kind > EmuSummaryKind::STRNLEN || binding.name.empty() ||
-                binding.name.size() > 128 || !addresses.insert(binding.address).second)
+                binding.name.size() > 128 ||
+                hybrid_classify_call_summary_name(binding.name) != binding.kind ||
+                !addresses.insert(binding.address).second)
                 return reject("invalid model contract");
             actual.emplace_back(binding.address, binding.kind, binding.name);
         }

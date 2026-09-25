@@ -1062,7 +1062,13 @@ void native_read_stream_regressions()
                 run.events.uses = std::move(uses);
                 run.events.data = std::move(data);
                 if (modeled)
+                {
+                    run.outcome.external_model_used = true;
                     run.bindings.push_back({0x2020, EmuSummaryKind::STRLEN, "strlen"});
+                    for (const auto &use : run.events.uses)
+                        run.events.edges.push_back({use.site, use.callee, run.run_id, run.seed,
+                                                    ExecEdge::Kind::Call, use.sequence - 1});
+                }
             }
             return copy;
         };
@@ -1092,21 +1098,62 @@ void native_read_stream_regressions()
                   argument_result.observations[0].witnesses.size() == 2 &&
                   argument_result.observations[0].read_fragments.empty(),
               "modeled arguments preserve snapshots without inventing executed reads");
-        for (const auto &[kind, argument] :
-             std::vector<std::pair<EmuSummaryKind, int>>{{EmuSummaryKind::STRLEN, 0},
-                                                         {EmuSummaryKind::STRNLEN, 0},
-                                                         {EmuSummaryKind::MEMCHR, 0},
-                                                         {EmuSummaryKind::STRCMP, 0},
-                                                         {EmuSummaryKind::STRCMP, 1},
-                                                         {EmuSummaryKind::MEMCPY, 1},
-                                                         {EmuSummaryKind::MEMMOVE, 1},
-                                                         {EmuSummaryKind::STRCPY, 1},
-                                                         {EmuSummaryKind::STRNCPY, 1}})
+        auto mismatched_name = arguments;
+        for (auto &run : mismatched_name)
+            run.bindings.back().name = "strcmp";
+        check(!hybrid_native_temporal_strings(mismatched_name).available,
+              "a region model name must classify to its recorded kind");
+        auto unreported_model = arguments;
+        unreported_model.front().outcome.external_model_used = false;
+        check(!hybrid_native_temporal_strings(unreported_model).available,
+              "modeled region uses require a reported external model");
+        auto absent_transfer = arguments;
+        absent_transfer.front().events.edges.erase(absent_transfer.front().events.edges.begin());
+        check(hybrid_native_temporal_strings(absent_transfer).observations.size() == 1,
+              "a modeled region use requires its observed CALL transfer");
+        auto wrong_transfer = arguments;
+        wrong_transfer.front().events.edges.front().kind = ExecEdge::Kind::Jump;
+        check(hybrid_native_temporal_strings(wrong_transfer).observations.size() == 1,
+              "a jump cannot authorize a region modeled-call use");
+        auto wrong_target = arguments;
+        ++wrong_target.front().events.edges.front().to;
+        check(hybrid_native_temporal_strings(wrong_target).observations.size() == 1,
+              "a CALL to another target cannot authorize a region modeled use");
+        auto intervening_transfer = arguments;
+        auto &first_edge = intervening_transfer.front().events.edges.front();
+        const auto later = first_edge.sequence;
+        --first_edge.sequence;
+        intervening_transfer.front().events.edges.push_back(
+            {0x1300, 0x1301, first_edge.run_id, first_edge.seed, ExecEdge::Kind::Jump, later});
+        check(hybrid_native_temporal_strings(intervening_transfer).observations.size() == 1,
+              "only the latest transfer before a modeled snapshot can authorize it");
+        auto duplicate_transfer = arguments;
+        duplicate_transfer.front().events.edges.push_back(
+            duplicate_transfer.front().events.edges.front());
+        check(hybrid_native_temporal_strings(duplicate_transfer).observations.empty(),
+              "ambiguous transfer sequences cannot authorize region modeled uses");
+        struct ModelSlot
+        {
+            EmuSummaryKind kind;
+            int argument;
+            const char *name;
+        };
+        for (const auto &[kind, argument, name] :
+             std::vector<ModelSlot>{{EmuSummaryKind::STRLEN, 0, "strlen"},
+                                    {EmuSummaryKind::STRNLEN, 0, "strnlen"},
+                                    {EmuSummaryKind::MEMCHR, 0, "memchr"},
+                                    {EmuSummaryKind::STRCMP, 0, "strcmp"},
+                                    {EmuSummaryKind::STRCMP, 1, "strcmp"},
+                                    {EmuSummaryKind::MEMCPY, 1, "memcpy"},
+                                    {EmuSummaryKind::MEMMOVE, 1, "memmove"},
+                                    {EmuSummaryKind::STRCPY, 1, "strcpy"},
+                                    {EmuSummaryKind::STRNCPY, 1, "strncpy"}})
         {
             auto copy = arguments;
             for (auto &run : copy)
             {
                 run.bindings.back().kind = kind;
+                run.bindings.back().name = name;
                 for (auto &use : run.events.uses)
                 {
                     use.model_kind = uint8_t(kind);
@@ -1165,6 +1212,10 @@ void native_read_stream_regressions()
         over_quota[0].events.uses[0].bytes.resize(TemporalMemory::snapshot_limit + 1);
         check(!hybrid_native_temporal_strings(over_quota).available,
               "oversized retained snapshots reject the whole native corpus");
+        auto excess_transfers = arguments;
+        excess_transfers[0].events.edges.resize(4097, excess_transfers[0].events.edges.front());
+        check(!hybrid_native_temporal_strings(excess_transfers).available,
+              "completed region capture bounds transfer indexing to 4096 edges per run");
         auto forged_function = source;
         forged_function.runs[0].outcome.native_region = true;
         check(

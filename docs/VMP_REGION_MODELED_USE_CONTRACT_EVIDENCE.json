@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "previous_commit": "bfd985656e33045cdab6c0846117a3ac329ad6cc",
+  "scope": "native-region completed and prefix modeled-argument CALL provenance; no ordinary function proof or VM identity",
+  "source_sha256": {
+    "src/hybrid/native_read_strings.cpp": "1ab8443b007b7f0c81ef360136d5e16bed50e5fa721765f789466bb6135b84f0",
+    "src/hybrid/call_summary_policy.cpp": "7b6fa94842d9528de833a0ed786ba46c6bca205a05c568aefd4e36d46ad950cc",
+    "tests/evidence_tests.cpp": "d37346fe62cd54fa587ea18e206927cf09a6943720cfeb986402f9cb6579cfcc",
+    "tests/hybrid_tests.cpp": "61ec3c599a41565a08f65fa755ad05675ea6c2f5a521802bd7cc1bd5e211a96d",
+    "tests/run_native_use_snapshots.py": "d56012509e870394076a1042d988b62bef660977bced97a4e138d21c9d5a707f",
+    "tests/ida_region_strings_probe.py": "1bfab95a432da19502c7b3796c5aaf61f0bc8de029651b69bd3c2f3e45cdfae0",
+    "tests/vmp_native/native_snapshot_strings.c": "b786171bc009aa783428d929adf7ca63996835a0cde85075a9b100faef9bb950",
+    "tests/vmp_native/native_interleaved_strings.c": "aab93428a8f9d5e747a837db64704d246ce40be8a0a6c2d998e0f83047fa2e6a",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "python/chernobog_temporal_strings.py": "82a442878506b827786b32d179af9fb4a9d72f1627a12e224caadf200d09e15e"
+  },
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "signed_plugin_sha256": "ce61e123d4a39380188165e8e0e053bd7f329ffdb68edb2df3f95b0c5c5890ca",
+  "native_oracles": {
+    "snapshot_fixture": {
+      "original_sha256": "b9f46136e54b3e074f3f9b6e601c8006c62983e1585653772d8eeb1c758c7067",
+      "first_negative_sha256": "a5b2c2e5ecbce0458d0095f66f7ffb5390fb71628f250c1a3cc77e4b8bf03259",
+      "second_negative_sha256": "25137397252d00449530911e619cbdea8115d547c7ee71a641be4d4fec1f211d",
+      "exit_codes": [0, 1, 1]
+    },
+    "interleaved_fixture": {
+      "original_sha256": "4cb9d74f5a890dcec4429ef1b76e253a517631843e2c259ea906a31d5d34861c",
+      "first_negative_sha256": "33dd5beb98e809da8efa5d99b015469eeab9a207be4f811ab762bdd74ed463bd",
+      "second_negative_sha256": "e402d04f0943131bad3da17b50873eb57eb7263caa6d993db3bedca8f795cceb",
+      "exit_codes": [0, 1, 1]
+    }
+  },
+  "ida_profiles": {
+    "completed": {
+      "returned_complete_runs": 4,
+      "observations": ["executed-read:secret!", "modeled-argument:secret!", "executed-read:second!", "modeled-argument:second!"],
+      "checks_passed": 38,
+      "checks_total": 38,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "analysis_report": "build/region-model-contract-verified-console/snapshot_analysis.json",
+      "analysis_report_sha256": "dce040b02a46fb2fd1733c2ca7a72459defc38b331e01cc4792680ce641dcb3a",
+      "run_report": "build/region-model-contract-verified-console/console/run.json",
+      "run_report_sha256": "5039eaba5deb07d24776939afd3b73760142ef40fdb47c3592f9794d7339e9aa",
+      "probe_report": "build/region-model-contract-verified-console/console/region_strings.json",
+      "probe_report_sha256": "161e6c1c0de5ebd192e98056bc41aa95d39edcaae8a2dd515d29d65bc1a7a4e7"
+    },
+    "prefix": {
+      "returned_complete_runs": 4,
+      "observations": ["executed-read:secret!", "modeled-argument:secret!", "executed-read:second!", "modeled-argument:second!"],
+      "checks_passed": 43,
+      "checks_total": 43,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "run_report": "build/region-model-contract-verified-prefix/run.json",
+      "run_report_sha256": "18b7d715e22964d2912a5333ccea35b0d9aec52e4645d42c8d89df41d2315df5",
+      "probe_report": "build/region-model-contract-verified-prefix/region_strings.json",
+      "probe_report_sha256": "94663657a1aaa338bfab5a2fdcc496d8e4714ed9237e934a1becf13790495bda"
+    },
+    "executed_read_regression": {
+      "returned_complete_runs": 4,
+      "observations": ["executed-read-stream:secret!", "executed-read-stream:second!"],
+      "checks_passed": 35,
+      "checks_total": 35,
+      "runner_return_code": 0,
+      "artifacts_unchanged": true,
+      "analysis_report": "build/region-model-contract-verified-interleaved/snapshot_analysis.json",
+      "analysis_report_sha256": "1304233b4c263eb770819ed393f112818bb84bece454c057d79eb9e69e589497",
+      "run_report": "build/region-model-contract-verified-interleaved/console/run.json",
+      "run_report_sha256": "dceacd5a2edc5c36d330630edfe4f246a34031946e695f302c70b6368cb8568d",
+      "probe_report": "build/region-model-contract-verified-interleaved/console/region_strings.json",
+      "probe_report_sha256": "407c94b0e4bb01cdf5bbb04b8c632cb932966c1bcb009207cc3ed975e544275b"
+    }
+  },
+  "ctest": {"passed": 21, "total": 21, "parallel_jobs": 4}
+}

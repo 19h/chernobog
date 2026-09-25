@@ -1835,6 +1835,30 @@ void test_temporal_heap_uses(const RaxApi *api)
                       "modeled region preserves exact use bytes and selected-entry context");
             }
         check(observed == 2, "modeled region observes both erased uses");
+        NativeTemporalStringRun captured;
+        captured.capture = 1;
+        captured.context = 0x1000;
+        captured.image_hash = region_image.content_hash;
+        captured.generation = 1;
+        captured.run_id = input.run_id;
+        captured.seed = input.seed;
+        captured.ran = true;
+        captured.outcome = outcome;
+        captured.events = events;
+        captured.bindings = summaries;
+        const auto projected = hybrid_native_temporal_strings({captured});
+        check(projected.available && projected.observations.size() == 2 &&
+                  projected.observations[0].use.producer == UseProducer::MODELED_ARGUMENT &&
+                  projected.observations[1].use.producer == UseProducer::MODELED_ARGUMENT,
+              "actual regional execution supplies call-bound modeled uses");
+        auto missing_transfer = captured;
+        missing_transfer.events.edges.erase(
+            std::remove_if(missing_transfer.events.edges.begin(),
+                           missing_transfer.events.edges.end(),
+                           [&](const auto &edge) { return edge.from == use_sites.front(); }),
+            missing_transfer.events.edges.end());
+        check(hybrid_native_temporal_strings({missing_transfer}).observations.size() == 1,
+              "actual regional model use loses its observation without the matching CALL");
         check(outcome.native_temporal_prefix_complete && outcome.native_temporal_prefix_end &&
                   std::all_of(events.data.begin(), events.data.end(), [&](const auto &access)
                               { return access.sequence < outcome.native_temporal_prefix_end; }),
@@ -1861,6 +1885,17 @@ void test_temporal_heap_uses(const RaxApi *api)
                       prefix_events.uses[i].witness_key() == events.uses[i].witness_key() &&
                       prefix_events.uses[i].sequence < prefix_outcome.native_temporal_prefix_end,
                   "prefix keeps exact original use witnesses before its exclusive cutoff");
+        auto prefix_captured = captured;
+        prefix_captured.outcome = prefix_outcome;
+        prefix_captured.events = prefix_events;
+        check(hybrid_native_temporal_prefix_strings({prefix_captured}).observations.size() == 2,
+              "actual completed prefix retains both call-bound modeled uses");
+        prefix_captured.events.edges.erase(
+            std::remove_if(prefix_captured.events.edges.begin(), prefix_captured.events.edges.end(),
+                           [&](const auto &edge) { return edge.from == use_sites.front(); }),
+            prefix_captured.events.edges.end());
+        check(hybrid_native_temporal_prefix_strings({prefix_captured}).observations.size() == 1,
+              "completed prefix loses a modeled use without its observed CALL");
         auto truncated_config = cfg;
         truncated_config.max_runtime_bytes = 1;
         prefix_region = plan_native_region(region_image, api, 0x1000, 4096, stop_before_ret);
