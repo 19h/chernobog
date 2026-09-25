@@ -1569,6 +1569,22 @@ void native_interleaved_read_regressions()
                 verify(hybrid_consensus_native_read_strings(changed).empty(),
                        "interleaved streams cannot cross a write or control-effect barrier");
             }
+            auto stack_write = evidence;
+            stack_write.events.data.push_back(
+                {0x1300, 0x21000, 0, 8, RAX_MEM_WRITE, DataScope::STACK, 16, 1, 11});
+            const auto after_stack_write = hybrid_consensus_native_read_strings(stack_write);
+            verify(after_stack_write.size() == (scope == DataScope::HEAP ? 2 : 0),
+                   "an exact stack write preserves heap strings but interrupts nonheap streams");
+            auto wide_stack_write = evidence;
+            wide_stack_write.events.data.push_back(
+                {0x1300, 0x21000, 0, 9, RAX_MEM_WRITE, DataScope::STACK, 16, 1, 11});
+            verify(hybrid_consensus_native_read_strings(wide_stack_write).empty(),
+                   "a wide stack write remains a global barrier");
+            auto overflowing_stack_write = evidence;
+            overflowing_stack_write.events.data.push_back(
+                {0x1300, UINT64_MAX, 0, 8, RAX_MEM_WRITE, DataScope::STACK, 16, 1, 11});
+            verify(hybrid_consensus_native_read_strings(overflowing_stack_write).empty(),
+                   "an overflowing stack write remains a global barrier");
             auto invalid_heap_write = evidence;
             invalid_heap_write.events.data.push_back(
                 {0x1300, UINT64_MAX, 0, 8, RAX_MEM_WRITE, DataScope::HEAP, 16, 1, 11});
@@ -1581,6 +1597,13 @@ void native_interleaved_read_regressions()
                    "unrelated read-only data does not erase interleaved witnesses");
             if (layout < 2)
             {
+                auto mismatched_scope = evidence;
+                mismatched_scope.events.data.push_back(
+                    {0x1300, first_address + 1, 0, 1, RAX_MEM_WRITE, DataScope::STACK, 16, 1, 11});
+                const auto mismatched = hybrid_consensus_native_read_strings(mismatched_scope);
+                verify(mismatched.size() == (layout == 0 ? 1 : 0) &&
+                           (layout != 0 || mismatched[0].value == "second!"),
+                       "a stack-labeled write overlapping a heap object cannot cross its reads");
                 auto unrelated_heap_write = evidence;
                 unrelated_heap_write.events.data.push_back(
                     {0x1300, first_address + 24, 0, 1, RAX_MEM_WRITE, DataScope::HEAP, 16, 1, 11});

@@ -19,7 +19,11 @@ __attribute__((noinline)) int native_disjoint_strings(unsigned mode)
     unsigned mismatch = 0;
     for (unsigned string_index = 0; string_index < 2; ++string_index)
     {
+#ifdef NATIVE_DISJOINT_STACK_HASH
+        volatile uint64_t observed = UINT64_C(0xcbf29ce484222325);
+#else
         uint64_t observed = UINT64_C(0xcbf29ce484222325);
+#endif
 #pragma clang loop unroll(disable)
         for (unsigned index = 0; index < 8; ++index)
         {

@@ -39,7 +39,7 @@ struct Records
     std::map<uint64_t, const DataAcc *> data;
     std::map<uint64_t, const AllocationLifetime *> objects;
     std::set<uint64_t> barriers;
-    std::map<uint64_t, const DataAcc *> heap_writes;
+    std::map<uint64_t, const DataAcc *> attributed_writes;
     size_t snapshot_bytes = 0;
 };
 
@@ -132,8 +132,8 @@ bool uninterrupted(const Stream &stream, uint64_t sequence, const Records &recor
     auto barrier = records.barriers.upper_bound(last.sequence);
     if (barrier != records.barriers.end() && *barrier <= sequence)
         return false;
-    auto write = records.heap_writes.upper_bound(last.sequence);
-    if (write == records.heap_writes.end() || write->first > sequence)
+    auto write = records.attributed_writes.upper_bound(last.sequence);
+    if (write == records.attributed_writes.end() || write->first > sequence)
         return true;
     if (first.scope != DataScope::HEAP)
         return false;
@@ -144,7 +144,7 @@ bool uninterrupted(const Stream &stream, uint64_t sequence, const Records &recor
     if (allocation.address > UINT64_MAX - allocation.size)
         return false;
     size_t examined = 0;
-    for (; write != records.heap_writes.end() && write->first <= sequence; ++write)
+    for (; write != records.attributed_writes.end() && write->first <= sequence; ++write)
     {
         if (++examined > 256)
             return false;
@@ -155,10 +155,12 @@ bool uninterrupted(const Stream &stream, uint64_t sequence, const Records &recor
         const uint64_t allocation_end = allocation.address + allocation.size;
         if (write_end <= allocation.address || access.addr >= allocation_end)
             continue;
-        // A write wholly inside the same allocation is checked against the
-        // completed string span before publication. A partial overlap with
-        // the allocation cannot be attributed to one object.
-        if (access.addr < allocation.address || write_end > allocation_end)
+        // Exact stack-scope writes are disjoint from this heap object. A
+        // heap-scope write wholly inside the same allocation is checked
+        // against the completed string span before publication. A mismatched
+        // scope or partial allocation overlap cannot be attributed safely.
+        if (access.scope != DataScope::HEAP || access.addr < allocation.address ||
+            write_end > allocation_end)
             return false;
     }
     return true;
@@ -174,8 +176,8 @@ bool completed_stream_avoids_writes(const Stream &stream, const Records &records
     const uint64_t end = start + stream.use.observed_size;
     const uint64_t last_sequence = stream.parts.back().sequence;
     size_t examined = 0;
-    for (auto write = records.heap_writes.upper_bound(stream.parts.front().sequence);
-         write != records.heap_writes.end() && write->first <= last_sequence; ++write)
+    for (auto write = records.attributed_writes.upper_bound(stream.parts.front().sequence);
+         write != records.attributed_writes.end() && write->first <= last_sequence; ++write)
     {
         if (++examined > 256)
             return false;
@@ -244,9 +246,10 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
             auto &r = run->second;
             if (r.data.size() == 65536 || !r.data.emplace(data.sequence, &data).second)
                 return {};
-            if (data.kind == RAX_MEM_WRITE && data.scope == DataScope::HEAP && data.size &&
+            if (data.kind == RAX_MEM_WRITE &&
+                (data.scope == DataScope::HEAP || data.scope == DataScope::STACK) && data.size &&
                 data.size <= 8 && data.addr <= UINT64_MAX - data.size)
-                r.heap_writes.emplace(data.sequence, &data);
+                r.attributed_writes.emplace(data.sequence, &data);
             else if (data.kind != RAX_MEM_READ)
                 r.barriers.insert(data.sequence);
         }

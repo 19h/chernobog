@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "previous_commit": "d6ffcb1b1600726247e382d421f03a5c5cd60467",
+  "source_sha256": {
+    "src/hybrid/native_read_strings.cpp": "5fe75d2f57df5f4e91bb6b1be58134b5618d6abe32202eed09b9282551876ea2",
+    "tests/evidence_tests.cpp": "bdd2cf6e7e8f64a61046fdd7f1694c1040aa49bfee1ec1e35cc75434dae9bc4a",
+    "tests/vmp_native/native_disjoint_strings.c": "e4a42c776a46885233d4f7035b7c77ef285ed5a49b73b32a95404df99a883985",
+    "tests/ida_disjoint_string_probe.py": "65f07778c3fa4406962bac93e0dc38dcc8cd960c5ba9cbc837cd3dc349292ea1"
+  },
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "previous_plugin_sha256": "7a7151b6d1cc1a0725cb8487230e89ee961fd2a80f8cfc30a7b4b89f078e382a",
+  "modified_plugin_sha256": "c816fcdd6f0c8f012ec74ada861beca63ea191c1476ea54f55a9563570b5c6da",
+  "fixtures": {
+    "x86_64": "32638fd767dbd6fa54492c03e1833e0bdcc9a1c83d9bc3932cb98155bd18ec0a",
+    "arm64": "af206d852540f3cbac143734e0a37768e6c45f7d28b0c59cb58205f453d5beb6",
+    "x86_64_wrong_oracle": "bc219ccd69d47f04c6963a00146e7c3d1bb172cea7e294f91b8153d5c6ab78cb",
+    "arm64_wrong_oracle": "3a4db22abd111b1951fb6ab269f158b50f16520a74565e09959ae1c8f0ce4e98"
+  },
+  "native_oracles": {
+    "positive_exit_codes": {"x86_64": 0, "arm64": 0},
+    "wrong_second_exit_codes": {"x86_64": 1, "arm64": 1}
+  },
+  "ida_profiles": [
+    {
+      "architecture": "x86_64",
+      "returned_complete_runs": 4,
+      "use_snapshots": 224,
+      "visible_run_zero_heap_reads": 8,
+      "visible_run_zero_stack_writes": 14,
+      "previous_candidates": 0,
+      "modified_values": ["secret!", "second!"],
+      "previous_streams": 0,
+      "modified_streams": 8,
+      "previous_annotations": 0,
+      "modified_annotations": 2,
+      "previous_passed_checks": 6,
+      "modified_passed_checks": 10,
+      "checks_total": 10,
+      "previous_run_sha256": "e0d06c78a206c85907450116d667968d32fd580e3c41264617d26b5779c745fa",
+      "previous_probe_sha256": "42cea4ebdfc1079fc4185a3422030c2531c9ae079e37861d43098c7f2ae69289",
+      "modified_run_sha256": "ee71cb876326def31330f78c182492b9243bfb19715927065ced5a075a9ffa61",
+      "modified_probe_sha256": "067652cbb14e356a1655c4be1e13ede29b217003bfbb8f9a44646e9923e6e568"
+    },
+    {
+      "architecture": "arm64",
+      "returned_complete_runs": 6,
+      "use_snapshots": 336,
+      "visible_run_zero_heap_reads": 4,
+      "visible_run_zero_stack_writes": 9,
+      "previous_candidates": 0,
+      "modified_values": ["secret!", "second!"],
+      "previous_streams": 0,
+      "modified_streams": 12,
+      "previous_annotations": 0,
+      "modified_annotations": 2,
+      "previous_passed_checks": 6,
+      "modified_passed_checks": 10,
+      "checks_total": 10,
+      "previous_run_sha256": "c48bca4adb87d064bc9ef4de125bce2102da8f8dec7d32af13d730d91db59b63",
+      "previous_probe_sha256": "bfca14b0a0f3299357173d24d6e5561572293d9094b88cbbd7cf659c57073a50",
+      "modified_run_sha256": "28272c64eac34f32192cb9e4d793621babdf65ea4a05edfe00eaa908e41df978",
+      "modified_probe_sha256": "7e6592c9e248a6e262212360ab812057204ccdd1ba4a7c17db0b0bd79830edc3"
+    }
+  ],
+  "regression_probes": {
+    "no_stack_hash": {"passed": 9, "total": 9, "run_sha256": "18ac2d73072e5689694e957b211b708c4ce5a82e592e4bab36e7117e16474d79", "probe_sha256": "a48d99b98eee90812845b73437af1602dfd5f7745bc9fb27f4db3fce80166536"},
+    "permuted_reads": {"passed": 9, "total": 9, "run_sha256": "03be4e5992b1b954bb8a3588f8451f9e29d3b7b3c816a447010854d5d502ac6c", "probe_sha256": "0c008346147ea812ea1a800b2831b8aadc2573674462fffbc1c5c833c2e82833"},
+    "same_object_writes": {"passed": 9, "total": 9, "run_sha256": "a9be87eaf57fce3bb44cae082b096d25b2d5f22abda8a2ba8f0e84234fb3914d", "probe_sha256": "19fa355591bcd76f6c9dffb7521c53b0ef502e317f0075adb4c0ed76b5e4c1c8"}
+  },
+  "portable_interleaved_checks": 470,
+  "ctest": {
+    "passed": 21,
+    "total": 21,
+    "parallel_jobs": 4,
+    "vm_transitions_single_rerun_passed": true,
+    "prior_parallel_20_timeout_in_vm_transitions": true
+  }
+}

@@ -117,6 +117,27 @@ try:
         for row in view["events"]
         if row["kind"] == "memory" and row["scope"] == "0x2" and row["access_kind"] == "1"
     ]
+    report["stack_writes"] = [
+        row
+        for row in view["events"]
+        if row["kind"] == "memory"
+        and row["scope"] == "0x1"
+        and row["access_kind"] == "1"
+        and row["run"] == "0x0"
+    ]
+    if os.environ.get("CHERNOBOG_EXPECT_STACK_HASH") == "1":
+        reads = sorted(
+            int(row["sequence"], 16) for row in report["heap_reads"] if row["run"] == "0x0"
+        )
+        writes = [int(row["sequence"], 16) for row in report["stack_writes"]]
+        check(
+            "stack hash writes separate heap reads",
+            len(reads) >= 4
+            and all(
+                any(first < write < second for write in writes)
+                for first, second in zip(reads, reads[1:])
+            ),
+        )
     report["view_omitted"] = view["omitted"]
     check(
         "two separate streams per run",
