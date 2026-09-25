@@ -1797,6 +1797,71 @@ void native_permuted_read_regressions()
     divergent_site.events.data[8].from = 0x1230;
     check(hybrid_consensus_native_read_strings(divergent_site).empty(),
           "one changed source site cannot match the other run's spatial read shape");
+    constexpr uint8_t second_value[8] = {'s', 'e', 'c', 'o', 'n', 'd', '!', 0};
+    auto two_spans = multisite;
+    for (uint32_t id : {1u, 2u})
+    {
+        const auto object =
+            std::find_if(two_spans.events.allocations.begin(), two_spans.events.allocations.end(),
+                         [id](const auto &item) { return item.run_id == id; });
+        check(object != two_spans.events.allocations.end(), "second span has a parent object");
+        const auto original = multisite.events.uses[id == 1 ? 0 : 8];
+        unsigned site_occurrences[2] = {};
+        size_t position = 0;
+        for (const unsigned offset : id == 1 ? order : reverse_order)
+        {
+            const unsigned site_index = offset & 1;
+            auto use = original;
+            use.site = 0x1240 + 0x10 * site_index;
+            use.occurrence = ++site_occurrences[site_index];
+            use.address = object->address + 16 + offset;
+            use.offset = 16 + offset;
+            use.sequence = 50 + 4 * position++;
+            use.bytes = {second_value[offset]};
+            two_spans.events.uses.push_back(use);
+            two_spans.events.data.push_back({use.site, use.address, second_value[offset], 1,
+                                             RAX_MEM_READ, DataScope::HEAP, use.sequence + 1, id,
+                                             use.seed});
+        }
+    }
+    const auto split = hybrid_consensus_native_read_strings(two_spans);
+    check(split.size() == 2 && split[0].value == "secret!" && split[1].value == "second!" &&
+              split[0].read_fragments.size() == 2 && split[1].read_fragments.size() == 2 &&
+              split[0].use.offset == 0 && split[1].use.offset == 16,
+          "two disjoint complete strings retain separate allocation-wide read witnesses");
+    auto one_changed = two_spans;
+    auto changed_use =
+        std::find_if(one_changed.events.uses.begin(), one_changed.events.uses.end(),
+                     [](const auto &use) { return use.run_id == 2 && use.offset == 16; });
+    check(changed_use != one_changed.events.uses.end(), "second-run byte witness exists");
+    changed_use->bytes = {'X'};
+    auto changed_data = std::find_if(
+        one_changed.events.data.begin(), one_changed.events.data.end(), [&](const auto &data)
+        { return data.run_id == 2 && data.sequence == changed_use->sequence + 1; });
+    check(changed_data != one_changed.events.data.end(), "second-run data witness exists");
+    changed_data->value = 'X';
+    const auto first_only = hybrid_consensus_native_read_strings(one_changed);
+    check(first_only.size() == 1 && first_only[0].value == "secret!",
+          "one changed string does not suppress the other disjoint span");
+    auto incomplete_extra = two_spans;
+    auto extra_read = incomplete_extra.events.uses[0];
+    extra_read.site = 0x1270;
+    extra_read.occurrence = 1;
+    extra_read.address = first_address + 30;
+    extra_read.offset = 30;
+    extra_read.sequence = 90;
+    extra_read.bytes = {'Z'};
+    incomplete_extra.events.uses.push_back(extra_read);
+    incomplete_extra.events.data.push_back(
+        {extra_read.site, extra_read.address, 'Z', 1, RAX_MEM_READ, DataScope::HEAP, 91, 1, 21});
+    check(hybrid_consensus_native_read_strings(incomplete_extra).empty(),
+          "incomplete third component vetoes the allocation-wide group");
+    auto first_written = two_spans;
+    first_written.events.data.push_back(
+        {0x1280, first_address + 5, 0, 1, RAX_MEM_WRITE, DataScope::HEAP, 16, 1, 21});
+    const auto second_only = hybrid_consensus_native_read_strings(first_written);
+    check(second_only.size() == 1 && second_only[0].value == "second!",
+          "an overlapping write vetoes only the affected completed span");
 }
 
 int main(int argc, char **argv)

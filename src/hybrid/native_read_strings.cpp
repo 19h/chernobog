@@ -337,44 +337,86 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
             const auto &parts = group.stream.parts;
             if (group.invalid || parts.size() < 2 || group.bytes.empty())
                 return true;
-            if (require_multiple_sites &&
-                std::all_of(parts.begin(), parts.end(),
-                            [&](const auto &part) { return part.site == parts.front().site; }))
+            // Separate complete strings only at an observed address gap. A
+            // NUL followed immediately by another observed byte is an
+            // ambiguous interior terminator, not permission to publish a
+            // suffix. Every component must end in NUL; an unrelated partial
+            // read continues to veto the entire allocation-wide group.
+            std::vector<std::pair<uint64_t, uint64_t>> spans;
+            uint64_t start = group.bytes.begin()->first;
+            uint64_t previous_address = start;
+            uint8_t previous_byte = group.bytes.begin()->second;
+            for (auto at = std::next(group.bytes.begin()); at != group.bytes.end(); ++at)
+            {
+                if (at->first != previous_address + 1)
+                {
+                    if (previous_byte != 0)
+                        return true;
+                    spans.emplace_back(start, previous_address + 1);
+                    start = at->first;
+                }
+                else if (previous_byte == 0)
+                    return true;
+                previous_address = at->first;
+                previous_byte = at->second;
+            }
+            if (previous_byte != 0)
                 return true;
-            bool ascending = true;
-            uint64_t next_address = parts.front().address;
+            spans.emplace_back(start, previous_address + 1);
+            std::vector<std::vector<UseSnapshot>> fragments(spans.size());
             for (const auto &part : parts)
             {
-                if (part.address != next_address || next_address > UINT64_MAX - part.observed_size)
-                {
-                    ascending = false;
-                    break;
-                }
-                next_address += part.observed_size;
+                auto found = std::upper_bound(spans.begin(), spans.end(), part.address,
+                                              [](uint64_t address, const auto &span)
+                                              { return address < span.first; });
+                if (found == spans.begin())
+                    return true;
+                --found;
+                if (part.address > UINT64_MAX - part.observed_size ||
+                    part.address + part.observed_size > found->second)
+                    return true;
+                fragments[size_t(found - spans.begin())].push_back(part);
             }
-            if (ascending)
-                return true; // The existing forward stream owns this shape.
-            const uint64_t start = group.bytes.begin()->first;
-            const uint64_t last = group.bytes.rbegin()->first;
-            if (last == UINT64_MAX || last - start + 1 != group.bytes.size() ||
-                group.bytes.rbegin()->second != 0)
-                return true;
-            if (std::any_of(group.bytes.begin(), std::prev(group.bytes.end()),
-                            [](const auto &entry) { return entry.second == 0; }))
-                return true;
-            const auto anchor = std::find_if(parts.begin(), parts.end(), [start](const auto &part)
-                                             { return part.address == start; });
-            if (anchor == parts.end())
-                return true;
-            Stream stream;
-            stream.use = *anchor;
-            stream.use.producer = UseProducer::EXECUTED_READ_STREAM;
-            stream.use.bytes.clear();
-            stream.use.observed_size = group.bytes.size();
-            stream.parts = parts; // Execution order is kept for source witnesses.
-            for (const auto &entry : group.bytes)
-                stream.use.bytes.push_back(entry.second);
-            return retain(std::move(stream));
+            for (size_t index = 0; index < spans.size(); ++index)
+            {
+                const auto &fragment = fragments[index];
+                if (fragment.size() < 2 ||
+                    (require_multiple_sites &&
+                     std::all_of(fragment.begin(), fragment.end(), [&](const auto &part)
+                                 { return part.site == fragment.front().site; })))
+                    continue;
+                bool ascending = true;
+                uint64_t next_address = fragment.front().address;
+                for (const auto &part : fragment)
+                {
+                    if (part.address != next_address ||
+                        next_address > UINT64_MAX - part.observed_size)
+                    {
+                        ascending = false;
+                        break;
+                    }
+                    next_address += part.observed_size;
+                }
+                if (ascending)
+                    continue; // The existing forward stream owns this shape.
+                const auto anchor =
+                    std::find_if(fragment.begin(), fragment.end(), [&](const auto &part)
+                                 { return part.address == spans[index].first; });
+                if (anchor == fragment.end())
+                    return true;
+                Stream stream;
+                stream.use = *anchor;
+                stream.use.producer = UseProducer::EXECUTED_READ_STREAM;
+                stream.use.bytes.clear();
+                stream.use.observed_size = spans[index].second - spans[index].first;
+                stream.parts = fragment; // Preserve per-span execution order.
+                for (auto byte = group.bytes.lower_bound(spans[index].first);
+                     byte != group.bytes.end() && byte->first < spans[index].second; ++byte)
+                    stream.use.bytes.push_back(byte->second);
+                if (!retain(std::move(stream)))
+                    return false;
+            }
+            return true;
         };
         const auto finish_permuted = [&]()
         {
