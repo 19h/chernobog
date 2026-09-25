@@ -481,7 +481,10 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
                 multisite.clear();
                 continue;
             }
-            if (bindings && !retain(Stream{use, {use}, {}}))
+            const bool complete_single_read =
+                use.bytes.size() > minimum_length &&
+                std::find(use.bytes.begin(), use.bytes.end(), 0) != use.bytes.end();
+            if ((bindings || complete_single_read) && !retain(Stream{use, {use}, {}}))
                 return {};
             if (use.scope == DataScope::HEAP)
             {

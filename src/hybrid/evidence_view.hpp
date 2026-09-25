@@ -163,7 +163,7 @@ inline EvidenceView project_evidence_view(const TargetEvidence &source)
                              std::to_string(parts[i].observed_size) + ";";
             const auto &use = candidate.witnesses[run];
             EvidenceViewRow row{
-                {"producer", "executed-read-stream"},
+                {"producer", use_producer_name(use.producer)},
                 {"truth", "observation"},
                 {"assumption",
                  "exact recorded reads cover the displayed contiguous NUL-terminated bytes; heap reads may arrive in any order; attributed writes are checked for overlap; no unknown memory effect, call or lifetime boundary; completed temporal model"},

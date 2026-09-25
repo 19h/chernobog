@@ -581,6 +581,16 @@ native-string probes and all 21 CTest suites pass. See
 `VMP_COMPLETED_READ_PREFIX.md` and its evidence JSON. Protected-sample
 coverage and proof of later string starts remain open.
 
+Single-read corroboration checkpoint for rows 3a and 3b: direct executed
+eight-byte reads previously supplied two visible heap strings from snapshots
+alone. The general use-site projector now leaves executed reads to the native
+projector, which requires matching memory events and complete data capture.
+Matched x86-64/arm64 profiles retain two strings and two transient annotations
+while adding 8/12 checked evidence rows; portable forged, missing and
+unavailable-data controls abstain. Both prior multi-read profiles and all 21
+CTest suites pass. See `VMP_SINGLE_READ_CORROBORATION.md` and its evidence JSON.
+Protected-sample coverage and broader lifecycle verification remain open.
+
 Writable-memory arithmetic checkpoint: exact locally established bytes now
 feed modeled x86-64/i386 arithmetic, read-modify-write results and status
 flags. Three new transfer targets and two conditions per architecture gain

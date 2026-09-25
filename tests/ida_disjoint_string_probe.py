@@ -64,6 +64,7 @@ try:
         )
     }
     counts = report["summary"]
+    single_read = os.environ.get("CHERNOBOG_EXPECT_SINGLE_READ") == "1"
     check(
         "complete temporal corpus",
         counts["fresh"] == 1
@@ -72,7 +73,7 @@ try:
         and counts["temporal_capture_complete_runs"] == counts["runs"]
         and counts["temporal_capture_truncated_runs"] == 0
         and counts["allocation_lifetimes"] == counts["runs"]
-        and counts["use_snapshots"] >= 16 * counts["runs"],
+        and counts["use_snapshots"] >= (2 if single_read else 16) * counts["runs"],
     )
     total = int(evaluate(f"chernobog_rax_use_string_count({target})"))
     report["candidates"] = []
@@ -98,9 +99,13 @@ try:
         total == 2
         and {row["value"] for row in report["candidates"]} == {"secret!", "second!"}
         and all(
-            row["producer"] == "executed-read-stream"
-            and row["read_count"] == 8
-            and row["first_sequence"] < row["last_sequence"]
+            row["producer"] == ("executed-read" if single_read else "executed-read-stream")
+            and row["read_count"] == (1 if single_read else 8)
+            and (
+                row["first_sequence"] == row["last_sequence"]
+                if single_read
+                else row["first_sequence"] < row["last_sequence"]
+            )
             and row["observations"] == row["eligible_runs"] == counts["runs"]
             for row in report["candidates"]
         ),
@@ -112,6 +117,35 @@ try:
         for row in view["events"]
         if row["kind"] == "use" and row["producer"] == "executed-read" and row["scope"] == "0x2"
     ]
+    if single_read:
+        data_reads = [
+            row
+            for row in view["events"]
+            if row["kind"] == "memory" and row["scope"] == "0x2" and row["access_kind"] == "0"
+        ]
+        check(
+            "visible eight-byte reads match data events",
+            len(report["heap_reads"]) >= counts["runs"]
+            and len({use["run"] for use in report["heap_reads"]}) == counts["runs"]
+            and all(
+                len(
+                    [
+                        data
+                        for data in data_reads
+                        if data["run"] == use["run"]
+                        and data["seed"] == use["seed"]
+                        and int(data["sequence"], 16) == int(use["sequence"], 16) + 1
+                        and data["site"] == use["site"]
+                        and data["address"] == use["address"]
+                        and int(data["size"], 16) == 8
+                        and int(data["hook_low64"], 16)
+                        == int.from_bytes(bytes.fromhex(use["bytes_hex"]), "little")
+                    ]
+                )
+                == 1
+                for use in report["heap_reads"]
+            ),
+        )
     if os.environ.get("CHERNOBOG_EXPECT_TRAILING_READ") == "1":
         run_zero = [row for row in report["heap_reads"] if row["run"] == "0x0"]
         trailing = [row for row in run_zero if row["offset"] == "30" and row["bytes_hex"] == "5a"]
@@ -150,12 +184,14 @@ try:
         )
     report["view_omitted"] = view["omitted"]
     check(
-        "two separate streams per run",
+        "verified single-read rows" if single_read else "two separate streams per run",
         len(report["streams"]) == 2 * counts["runs"]
         and {row["bytes_hex"] for row in report["streams"]}
         == {"7365637265742100", "7365636f6e642100"}
         and all(
-            len({part.split(":")[0] for part in row["fragments"].split(";") if part}) == 2
+            row["producer"] == ("executed-read" if single_read else "executed-read-stream")
+            and len({part.split(":")[0] for part in row["fragments"].split(";") if part})
+            == (1 if single_read else 2)
             for row in report["streams"]
         ),
     )

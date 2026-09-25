@@ -1927,6 +1927,59 @@ void native_permuted_read_regressions()
           "an overlapping write vetoes only the affected completed span");
 }
 
+void native_single_read_regressions()
+{
+    constexpr uint8_t value[8] = {'s', 'e', 'c', 'r', 'e', 't', '!', 0};
+    TargetEvidence evidence;
+    evidence.scope.function_start = 0x1000;
+    for (uint32_t id : {1u, 2u})
+    {
+        TemporalMemory memory;
+        memory.enabled = true;
+        memory.context = 0x1000;
+        memory.run_id = id;
+        memory.seed = id + 20;
+        memory.heap_begin = 0x8000 + 0x1000 * id;
+        memory.heap_end = memory.heap_begin + 0x1000;
+        const uint64_t address = memory.allocate(16, 0x1100, 0x2000, 1);
+        memory.capture(0x1200, 0, -1, UseProducer::EXECUTED_READ, DataScope::HEAP, address, value,
+                       sizeof(value), sizeof(value), 10);
+        evidence.events.data.push_back({0x1200, address, UINT64_C(0x0021746572636573), 8,
+                                        RAX_MEM_READ, DataScope::HEAP, 11, id, memory.seed});
+        check(memory.release(address, 30), "release single-read allocation");
+        evidence.events.uses.insert(evidence.events.uses.end(), memory.uses.begin(),
+                                    memory.uses.end());
+        evidence.events.allocations.insert(evidence.events.allocations.end(),
+                                           memory.allocations.begin(), memory.allocations.end());
+        RunObservation run;
+        run.ran = true;
+        run.provenance.run_id = id;
+        run.provenance.seed = memory.seed;
+        run.outcome.temporal_observation_available = true;
+        run.outcome.temporal_capture_complete = true;
+        run.outcome.memory_observation_available = true;
+        evidence.runs.push_back(run);
+    }
+    const auto candidates = hybrid_consensus_use_strings(evidence);
+    check(candidates.size() == 1 && candidates[0].value == "secret!" &&
+              candidates[0].read_fragments.size() == 2 &&
+              candidates[0].read_fragments[0].size() == 1 && candidates[0].eligible_runs == 2,
+          "one exact eight-byte read retains its independently checked data event");
+    auto forged = evidence;
+    for (auto &use : forged.events.uses)
+        use.bytes[0] = 'X';
+    check(hybrid_consensus_use_strings(forged).empty(),
+          "matching forged snapshots without matching data events cannot form a string");
+    auto missing = evidence;
+    missing.events.data.clear();
+    check(hybrid_consensus_use_strings(missing).empty(),
+          "an executed string read requires its exact data event in every run");
+    auto unavailable = evidence;
+    unavailable.runs[0].outcome.memory_observation_available = false;
+    check(hybrid_consensus_use_strings(unavailable).empty(),
+          "unavailable memory observation cannot support an executed string read");
+}
+
 int main(int argc, char **argv)
 {
     evidence_view_regressions();
@@ -1936,6 +1989,7 @@ int main(int argc, char **argv)
     native_read_stream_regressions();
     native_interleaved_read_regressions();
     native_permuted_read_regressions();
+    native_single_read_regressions();
 #ifndef CHERNOBOG_LEGACY_EVIDENCE
     runtime_string_regressions();
 #endif

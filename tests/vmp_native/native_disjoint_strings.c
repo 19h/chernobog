@@ -25,6 +25,9 @@ __attribute__((noinline)) int native_disjoint_strings(unsigned mode)
 #endif
     for (unsigned string_index = 0; string_index < 2; ++string_index)
     {
+#ifdef NATIVE_DISJOINT_SINGLE_READ
+        const uint64_t loaded = ((const volatile uint64_t *)buffer)[2 * string_index];
+#endif
 #ifdef NATIVE_DISJOINT_STACK_HASH
         volatile uint64_t observed = UINT64_C(0xcbf29ce484222325);
 #else
@@ -34,9 +37,12 @@ __attribute__((noinline)) int native_disjoint_strings(unsigned mode)
         for (unsigned index = 0; index < 8; ++index)
         {
             const unsigned offset = order[index];
+            unsigned char byte;
+#ifdef NATIVE_DISJOINT_SINGLE_READ
+            byte = (unsigned char)(loaded >> (8 * offset));
+#else
             const unsigned char *pointer =
                 (const unsigned char *)buffer + 16 * string_index + offset;
-            unsigned char byte;
             if ((offset & 1) != 0)
             {
                 __atomic_signal_fence(__ATOMIC_SEQ_CST);
@@ -45,6 +51,7 @@ __attribute__((noinline)) int native_disjoint_strings(unsigned mode)
             }
             else
                 byte = *(const volatile unsigned char *)pointer;
+#endif
             observed = (observed ^ byte) * UINT64_C(0x100000001b3);
         }
         const uint64_t expected =

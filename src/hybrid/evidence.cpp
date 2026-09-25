@@ -401,14 +401,16 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(const Target
     std::set<UseKey> ambiguous;
     for (const auto &use : evidence.events.uses)
     {
+        // Executed reads require the matching memory event and complete data
+        // observation checked by the native read projector below. This path
+        // admits modeled argument snapshots only.
+        if (use.producer != UseProducer::MODELED_ARGUMENT)
+            continue;
         const RunKey run{use.run_id, use.seed};
         if (eligible.count(run) == 0)
             continue;
         const auto key = use.semantic_key();
-        bool valid = use.status == UseCaptureStatus::EXACT &&
-                     use.bytes.size() == use.observed_size &&
-                     (use.producer == UseProducer::EXECUTED_READ ||
-                      use.producer == UseProducer::MODELED_ARGUMENT);
+        bool valid = use.status == UseCaptureStatus::EXACT && use.bytes.size() == use.observed_size;
         if (use.scope == DataScope::HEAP)
         {
             const ObjectKey object{use.run_id, use.seed, use.allocation_id};
