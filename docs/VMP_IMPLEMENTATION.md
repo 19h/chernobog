@@ -942,3 +942,18 @@ The historical edge scorer rejects newer fixture pins; a current score from
 it is unknown. See `VMP_CORRELATED_JOINS.md` and its evidence JSON. Conditional
 target sets, broader protected effectiveness and the full review remain in
 progress.
+
+Destination-cover checkpoint for rows 1b and 5: existing native transfer
+records now expose sorted destination sets, completeness, unknown inputs,
+widening and current supporting bytes. The three historical dynamic stack,
+byte-store and full-store fixtures each yield a complete two-member set on
+x86-64/i386 and owned/ownerless paths; they remain unresolved scalar targets
+and do not publish unique edges. Additional controls cover distinct local
+addresses, incomplete sources, aliases, opaque calls, an infeasible member,
+nine-state widening, literal mutation, external entries and tail ownership.
+The UI shows containing sets and rejects changed snapshots. Same-binary
+profiles pass 13,312 native checks each; current probes pass 297/297 checks
+per architecture. Existing corpora and all 21 CTest suites pass. See
+`VMP_TARGET_COVERS.md` and its evidence JSON. Feasible-member predicates,
+current historical edge scores, broader protected gain and full review
+completion remain unknown or in progress.

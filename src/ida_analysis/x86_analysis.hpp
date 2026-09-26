@@ -63,6 +63,19 @@ X86RegisterFact analyze_x86_stack_top_before(const insn_t &instruction, size_t d
 X86RegisterFact analyze_x86_memory_before(const insn_t &instruction, uint64_t address,
                                           size_t depth);
 
+// A complete cover contains the destination of every represented normal
+// completion. It does not assert that any member is reachable, and does not
+// authorize unconditional edges or publication. Recomputed from current bytes.
+struct X86TargetCover
+{
+    bool available = false, complete = false, widened = false;
+    size_t unknown_inputs = 0;
+    std::vector<uint64_t> values, support;
+    std::string reason;
+};
+X86TargetCover analyze_x86_push_targets_before(const insn_t &instruction, size_t depth);
+void append_x86_target_cover(std::map<std::string, std::string> &row, const X86TargetCover &cover);
+
 // Recomputed facts for an exact existing ownerless root, before the first
 // unrepresented transfer. No IDB mutation, automatic ownership or publication.
 // Calls clear state at their syntactic continuation under normal return.

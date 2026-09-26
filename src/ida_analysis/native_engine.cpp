@@ -1287,6 +1287,28 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                     row["memory_address"] = hex(*candidate->target.source_address);
                 if (!proof.intended_edge)
                     row["truth"] = "candidate";
+                if (current && details != nullptr)
+                {
+                    X86TargetCover cover;
+                    if (candidate->target.value)
+                    {
+                        cover.available = cover.complete = true;
+                        cover.values.push_back(*candidate->target.value);
+                        cover.support = candidate->target.definitions;
+                        cover.support.push_back(instruction.ea);
+                        cover.support.push_back(candidate->transfer);
+                        std::sort(cover.support.begin(), cover.support.end());
+                        cover.support.erase(std::unique(cover.support.begin(), cover.support.end()),
+                                            cover.support.end());
+                        cover.reason = "current_scalar_target_proof";
+                    }
+                    else
+                        cover = analyze_x86_push_targets_before(
+                            instruction, config.register_scan_depth > 0
+                                             ? size_t(config.register_scan_depth)
+                                             : size_t(64));
+                    append_x86_target_cover(row, cover);
+                }
                 break;
             }
             case NativeProof::Kind::Call:

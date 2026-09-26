@@ -105,6 +105,17 @@ def current_native_region(snapshot, state):
     )
 
 
+def target_display(row):
+    """A cover is a containing set; its members are not published unique edges."""
+    target = row.get(
+        "target", "unknown" if row.get("kind") in ("stack-transfer", "push-return") else ""
+    )
+    values = row.get("target_cover_values", "")
+    if not values:
+        return target
+    return target + "; " + row["target_cover_status"] + " cover {" + values.replace(";", ", ") + "}"
+
+
 def current_shadow_use(snapshot, state, expected_file_hash, current_file_hash):
     """Exact result comparison except the per-query capture counter."""
     if (
@@ -452,7 +463,7 @@ if ida_kernwin.is_idaq():
                                     + (" (unresolved)" if row.get("truth") == "candidate" else ""),
                                     row["publication"],
                                     row["validation"],
-                                    row["site"] + " " + row.get("target", ""),
+                                    row["site"] + " " + target_display(row),
                                 ]
                                 if key == "native"
                                 else [
@@ -1322,7 +1333,7 @@ if ida_kernwin.is_idaq():
                         )
                     )
             facts = [
-                dict(row, result=row.get("outcome", row.get("target", "unknown")))
+                dict(row, result=row.get("outcome", target_display(row)))
                 for row in self.snapshot.get("records", [])
             ]
             self.fill_table(

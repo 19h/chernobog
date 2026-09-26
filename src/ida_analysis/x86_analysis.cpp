@@ -1355,6 +1355,51 @@ std::vector<insn_t> prefix_before(const insn_t &insn, size_t depth)
 
 using AlternativeState = BoundedAlternatives<State>;
 
+X86TargetCover push_target_cover(const insn_t &insn, const AlternativeState &domain)
+{
+    X86TargetCover result;
+    const unsigned bits = mode64(insn) ? 64 : mode32(insn) ? 32 : 0;
+    if (!bits || insn.itype != NN_push || !natad(insn) || (bits == 64 ? !op64(insn) : !op32(insn)))
+    {
+        result.reason = "unsupported_push";
+        return result;
+    }
+    result.available = true;
+    result.widened = domain.widened();
+    std::set<uint64_t> values;
+    for (const auto &state : domain.states())
+    {
+        std::optional<uint64_t> value;
+        if (insn.Op1.type == o_imm)
+        {
+            if (const auto immediate = state.read(insn.Op1, bits))
+                value = bits == 64 ? uint64_t(int64_t(int32_t(*immediate)))
+                                   : uint64_t(uint32_t(*immediate));
+        }
+        else if (insn.Op1.type == o_reg)
+        {
+            const auto slice = register_slice(insn.Op1);
+            if (slice.offset == 0 && slice.width == bits)
+                value = state.read(insn.Op1);
+        }
+        else if (State::stack_top(insn, insn.Op1))
+            value = state.read_stack_top(bits);
+        else if (const auto address = state.memory_address(insn, insn.Op1);
+                 address && State::writable_word(*address, bits))
+            value = state.read_memory(*address, bits);
+        if (value)
+            values.insert(*value);
+        else
+            ++result.unknown_inputs;
+    }
+    result.values.assign(values.begin(), values.end());
+    result.complete = result.unknown_inputs == 0;
+    result.reason = result.complete  ? "every_represented_input_has_an_exact_source"
+                    : result.widened ? "widened_source_unknown"
+                                     : "incomplete_source";
+    return result;
+}
+
 template <class Domain = State> struct FlowFact
 {
     Domain state;
@@ -1582,6 +1627,63 @@ X86RegisterFact analyze_x86_memory_before(const insn_t &insn, uint64_t address, 
     }
     result.value = state.read_memory(address, bits);
     return result;
+}
+
+X86TargetCover analyze_x86_push_targets_before(const insn_t &insn, size_t depth)
+{
+    if (const auto flow = flow_before<AlternativeState>(insn, depth))
+    {
+        auto result = push_target_cover(insn, flow->state);
+        result.support = flow->support;
+        result.support.push_back(insn.ea);
+        std::sort(result.support.begin(), result.support.end());
+        return result;
+    }
+    X86TargetCover result;
+    result.reason = "bounded_graph_unavailable";
+    return result;
+}
+
+void append_x86_target_cover(std::map<std::string, std::string> &row, const X86TargetCover &cover)
+{
+    const auto hex = [](uint64_t value)
+    {
+        std::ostringstream out;
+        out << "0x" << std::hex << value;
+        return out.str();
+    };
+    std::string values, support;
+    for (uint64_t value : cover.values)
+        values += (values.empty() ? "" : ";") + hex(value);
+    for (uint64_t address : cover.support)
+    {
+        insn_t instruction;
+        if (decode_insn(&instruction, ea_t(address)) <= 0)
+            continue;
+        std::string bytes;
+        static const char digits[] = "0123456789abcdef";
+        for (size_t i = 0; i < instruction.size; ++i)
+        {
+            const auto value = get_byte(ea_t(address) + i);
+            bytes += digits[value >> 4];
+            bytes += digits[value & 15];
+        }
+        support += (support.empty() ? "" : ";") + hex(address) + ":" + bytes;
+    }
+    row["target_cover_status"] = !cover.available       ? "unavailable"
+                                 : cover.complete       ? "complete"
+                                 : cover.values.empty() ? "unresolved"
+                                                        : "partial";
+    row["target_cover_complete"] = cover.complete ? "true" : "false";
+    row["target_cover_widened"] = cover.widened ? "true" : "false";
+    row["target_cover_unknown_inputs"] = std::to_string(cover.unknown_inputs);
+    row["target_cover_count"] = std::to_string(cover.values.size());
+    row["target_cover_values"] = std::move(values);
+    row["target_cover_support"] = std::move(support);
+    row["target_cover_reason"] = cover.reason;
+    row["target_cover_validation"] = "recomputed";
+    row["target_cover_scope"] =
+        "complete set covers every represented normal completion; member reachability is not asserted; no edge publication";
 }
 
 X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t round_limit,
@@ -1974,6 +2076,29 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
     bool alternatives_attempted = false;
     const bool has_join = std::any_of(graph.begin(), graph.end(), [](const FlowNode &node)
                                       { return node.predecessors.size() > 1; });
+    const auto ensure_alternatives = [&]()
+    {
+        if (!alternatives_attempted)
+        {
+            alternatives_attempted = true;
+            alternatives = bounded_dataflow<AlternativeState>(
+                graph, node_limit, round_limit,
+                [&](size_t j, AlternativeState domain)
+                {
+                    const auto flow = control(instructions[j]);
+                    if (!flow.stop.empty() || flow.call || flow.ret)
+                        return AlternativeState{};
+                    if (!flow.jump && !flow.branch)
+                        domain = domain.apply(
+                            [&](State next)
+                            {
+                                next.step(instructions[j]);
+                                return next;
+                            });
+                    return domain;
+                });
+        }
+    };
     for (size_t i = 0; i < instructions.size(); ++i)
     {
         const auto &instruction = instructions[i];
@@ -2038,26 +2163,7 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
             auto value = read(state);
             if (!value && has_join)
             {
-                if (!alternatives_attempted)
-                {
-                    alternatives_attempted = true;
-                    alternatives = bounded_dataflow<AlternativeState>(
-                        graph, node_limit, round_limit,
-                        [&](size_t j, AlternativeState domain)
-                        {
-                            const auto flow = control(instructions[j]);
-                            if (!flow.stop.empty() || flow.call || flow.ret)
-                                return AlternativeState{};
-                            if (!flow.jump && !flow.branch)
-                                domain = domain.apply(
-                                    [&](State next)
-                                    {
-                                        next.step(instructions[j]);
-                                        return next;
-                                    });
-                            return domain;
-                        });
-                }
+                ensure_alternatives();
                 if (alternatives)
                     value = read((*alternatives)[i].common());
             }
@@ -2150,6 +2256,26 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
              {"flags_known", known},
              {"flags_value", value},
              {"support", support}});
+        X86TargetCover cover;
+        if (target.value)
+        {
+            cover.available = cover.complete = true;
+            cover.values.push_back(*target.value);
+            cover.reason = "current_scalar_target_fact";
+        }
+        else if (has_join)
+        {
+            ensure_alternatives();
+            if (alternatives)
+                cover = push_target_cover(instruction, (*alternatives)[i]);
+            else
+                cover.reason = "alternative_nonconvergence";
+        }
+        else
+            cover = push_target_cover(instruction, AlternativeState(state));
+        for (const auto &definition : instructions)
+            cover.support.push_back(definition.ea);
+        append_x86_target_cover(result.records.back(), cover);
     }
     return result;
 }
