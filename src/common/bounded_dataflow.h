@@ -84,10 +84,12 @@ template <class State, size_t Limit = 8> class BoundedAlternatives
     }
 };
 
+// Optional inputs distinguish graph bottom from unknown entry. Explicit-entry
+// mode is required after removing edges: a newly orphaned node is not an entry.
 template <class State, class Transfer>
-std::optional<std::vector<State>> bounded_dataflow(const std::vector<FlowNode> &graph,
-                                                   size_t node_limit, size_t round_limit,
-                                                   Transfer transfer)
+std::optional<std::vector<std::optional<State>>>
+bounded_graph_inputs(const std::vector<FlowNode> &graph, size_t node_limit, size_t round_limit,
+                     Transfer transfer, bool implicit_entries)
 {
     if (graph.empty() || graph.size() > node_limit || !round_limit)
         return std::nullopt;
@@ -103,7 +105,7 @@ std::optional<std::vector<State>> bounded_dataflow(const std::vector<FlowNode> &
     // This permits loop invariants to propagate from an actual entry, while
     // later back-edge disagreement can only discard facts before convergence.
     std::vector<std::optional<State>> outputs(graph.size());
-    std::vector<State> inputs(graph.size());
+    std::vector<std::optional<State>> inputs(graph.size());
     for (size_t round = 0; round < round_limit; ++round)
     {
         bool changed = false;
@@ -112,7 +114,8 @@ std::optional<std::vector<State>> bounded_dataflow(const std::vector<FlowNode> &
         {
             const auto &node = graph[i];
             State input;
-            bool initialized = node.unknown_entry || node.predecessors.empty();
+            bool initialized =
+                node.unknown_entry || (implicit_entries && node.predecessors.empty());
             for (size_t predecessor : node.predecessors)
             {
                 if (!outputs[predecessor])
@@ -124,7 +127,12 @@ std::optional<std::vector<State>> bounded_dataflow(const std::vector<FlowNode> &
                 initialized = true;
             }
             if (!initialized)
+            {
+                inputs[i].reset();
+                next[i].reset();
+                changed |= outputs[i].has_value();
                 continue;
+            }
             inputs[i] = input;
             next[i] = transfer(i, input);
             changed |= !outputs[i] || !(*next[i] == *outputs[i]);
@@ -135,5 +143,28 @@ std::optional<std::vector<State>> bounded_dataflow(const std::vector<FlowNode> &
     }
     // Provisional iterations are never returned as a fixed-point proof.
     return std::nullopt;
+}
+
+template <class State, class Transfer>
+std::optional<std::vector<State>> bounded_dataflow(const std::vector<FlowNode> &graph,
+                                                   size_t node_limit, size_t round_limit,
+                                                   Transfer transfer)
+{
+    const auto inputs = bounded_graph_inputs<State>(graph, node_limit, round_limit, transfer, true);
+    if (!inputs)
+        return std::nullopt;
+    std::vector<State> result;
+    result.reserve(inputs->size());
+    for (const auto &input : *inputs)
+        result.push_back(input.value_or(State{}));
+    return result;
+}
+
+template <class State, class Transfer>
+std::optional<std::vector<std::optional<State>>>
+bounded_reachable_dataflow(const std::vector<FlowNode> &graph, size_t node_limit,
+                           size_t round_limit, Transfer transfer)
+{
+    return bounded_graph_inputs<State>(graph, node_limit, round_limit, transfer, false);
 }
 } // namespace chernobog

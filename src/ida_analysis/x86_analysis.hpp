@@ -37,6 +37,9 @@ std::optional<X86Condition> x86_condition(uint16_t instruction_type);
 // Exact value queries retry joins with at most eight correlated alternatives;
 // overflow joins all alternatives conservatively. Only a value shared by
 // every represented input is returned, with the complete graph support.
+// A second solve filters universally decided Jcc successors from converged
+// unfiltered alternative inputs. Original entries and all support survive;
+// provisional or unreached refined inputs do not establish new exact values.
 x86_abstract::Flags analyze_x86_flags_before(const insn_t &instruction, size_t depth);
 
 struct X86FlagFact

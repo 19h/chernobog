@@ -21,6 +21,7 @@ import idautils
 sys.dont_write_bytecode = True
 report = {"checks": [], "errors": [], "owned": {}, "ownerless": {}}
 baseline = os.environ.get("CHERNOBOG_COVER_BASELINE") == "1"
+feasibility_baseline = baseline or os.environ.get("CHERNOBOG_BRANCH_FEASIBILITY_BASELINE") == "1"
 complete = {
     "df_stack_top_dynamic": ("df_stack_top_dynamic_seven", "df_stack_top_dynamic_eight"),
     "df_memory_conflicting_byte": ("df_memory_byte_target_seven", "df_memory_byte_target_eight"),
@@ -30,7 +31,7 @@ complete = {
     "jc_memory": ("jc_memory_destination",),
     "jc_stack": ("jc_stack_destination",),
     "cv_multi_address": ("cv_seven", "cv_eight"),
-    "cv_infeasible": ("cv_seven", "cv_eight"),
+    "cv_infeasible": ("cv_seven", "cv_eight") if feasibility_baseline else ("cv_seven",),
 }
 partial = {"cv_partial": ("cv_seven",), "cv_alias": ("cv_seven",)}
 unknown = ("jc_cap", "jc_initial_memory", "cv_call")
@@ -324,6 +325,7 @@ def main():
                 and rows(restored, False)[0]["target_cover_count"] == "2",
             )
         report["baseline"] = baseline
+        report["branch_feasibility_baseline"] = feasibility_baseline
     except BaseException as error:
         report["errors"].append(type(error).__name__)
         report["exception"] = [

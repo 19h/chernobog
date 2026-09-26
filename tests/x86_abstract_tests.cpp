@@ -243,6 +243,51 @@ void alternative_regressions()
                 cases);
 }
 
+void explicit_entry_regressions()
+{
+    using chernobog::FlowNode;
+    using chernobog::bounded_reachable_dataflow;
+    // Node 2 is an orphan after a proved edge exclusion, not an unknown entry.
+    std::vector<FlowNode> graph = {{{}, true}, {{0}, false}, {{}, false}, {{1, 2}, false}};
+    const auto transfer = [](size_t i, FlowState state)
+    {
+        if (i == 1 || i == 2)
+            state.word.write(32, 0, i == 1 ? 7 : 8, true);
+        return state;
+    };
+    auto result = bounded_reachable_dataflow<FlowState>(graph, 4, 16, transfer);
+    check(result && !(*result)[2] && (*result)[3] && (*result)[3]->word.read(64) == 7,
+          "a newly orphaned block cannot manufacture an unknown entry or overwrite a target");
+    graph[2].unknown_entry = true;
+    result = bounded_reachable_dataflow<FlowState>(graph, 4, 16, transfer);
+    check(result && (*result)[2] && (*result)[3] && !(*result)[3]->word.read(64),
+          "an actual external entry restores the excluded destination");
+    check(!bounded_reachable_dataflow<FlowState>(graph, 4, 2, transfer),
+          "a provisional refined solve cannot return a value");
+    graph = {{{1}, false}, {{0}, false}};
+    result = bounded_reachable_dataflow<FlowState>(graph, 2, 16, transfer);
+    check(result && !(*result)[0] && !(*result)[1], "an unentered cycle remains lattice bottom");
+    graph = {{{}, true}, {{0, 2}, false}, {{1}, false}, {{1}, false}};
+    const auto loop = [](size_t i, FlowState state)
+    {
+        if (i == 0)
+            state.flags.set(CF, true);
+        if (i == 2)
+            state.flags.set(CF, false);
+        return state;
+    };
+    check(!bounded_reachable_dataflow<FlowState>(graph, 4, 2, loop),
+          "initial loop carry is not a converged predicate proof");
+    result = bounded_reachable_dataflow<FlowState>(graph, 4, 16, loop);
+    check(result && (*result)[1] && !(*result)[1]->flags.get(CF),
+          "a back-edge clobber prevents a universal branch outcome");
+    graph[0].predecessors = {4};
+    check(!bounded_reachable_dataflow<FlowState>(graph, 4, 16, loop),
+          "explicit-entry solver rejects a foreign predecessor");
+    std::puts(
+        "explicit-entry dataflow: orphan, external entry, cycle, loop and budget controls passed");
+}
+
 void status_ah_regressions()
 {
     const auto encoded = [](unsigned flags)
@@ -757,6 +802,46 @@ void exhaustive_conditions()
     std::puts("condition profiles: 729 x 16");
 }
 
+void alternative_condition_regressions()
+{
+    size_t cases = 0;
+    const auto identity = [](Flags flags) { return flags; };
+    for (unsigned profile = 0; profile < 729; ++profile)
+    {
+        Flags partial;
+        unsigned encoded = profile;
+        for (unsigned bit = 0; bit < 6; ++bit, encoded /= 3)
+            if (encoded % 3)
+                partial.set(uint8_t(1u << bit), encoded % 3 == 2);
+        for (unsigned other = 0; other < 64; ++other)
+            for (unsigned code = 0; code < 16; ++code)
+            {
+                bool yes = false, no = false;
+                for (unsigned concrete = 0; concrete < 64; ++concrete)
+                    if ((concrete & partial.known) == partial.value || concrete == other)
+                        (condition_oracle(code, concrete) ? yes : no) = true;
+                const std::array<Flags, 2> inputs = {partial, Flags{ALL, uint8_t(other)}};
+                const auto result = evaluate_alternatives(Condition(code), inputs, identity);
+                check(result.has_value() == (yes != no) && (!result || *result == yes),
+                      "universal alternative condition matches independent concrete union");
+                ++cases;
+            }
+    }
+    const std::array<Flags, 2> disjunction = {Flags{ALL, CF}, Flags{ALL, ZF}};
+    Flags common = disjunction[0];
+    common.join(disjunction[1]);
+    check(!evaluate(Condition::below_equal, common) &&
+              evaluate_alternatives(Condition::below_equal, disjunction, identity) == true,
+          "a universal condition can retain a relation lost by individual flag joins");
+    check(!evaluate_alternatives(Condition::equal, std::array<Flags, 0>{}, identity),
+          "empty inputs cannot produce a vacuous branch fact");
+    check(!evaluate_alternatives(Condition(16), disjunction, identity),
+          "invalid condition codes cannot justify edge filtering");
+    std::printf(
+        "alternative condition unions: %zu; correlated, empty and invalid controls passed\n",
+        cases);
+}
+
 void boundaries()
 {
     for (unsigned bits : {8u, 16u, 32u, 64u})
@@ -841,12 +926,14 @@ int main()
 {
     dataflow_regressions();
     alternative_regressions();
+    explicit_entry_regressions();
     status_ah_regressions();
     accumulator_extension_regressions();
     multiply_regressions();
     rotate_regressions();
     exhaustive_arithmetic();
     exhaustive_conditions();
+    alternative_condition_regressions();
     boundaries();
     mapping_counterexamples();
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))

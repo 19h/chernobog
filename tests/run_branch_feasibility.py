@@ -1,4 +1,4 @@
-"""Run complete/partial target cover oracles and fresh owned/ownerless IDA probes."""
+"""Run universal branch filtering oracles and fresh owned/ownerless IDA probes."""
 
 import argparse
 import json
@@ -17,7 +17,6 @@ def main():
     parser.add_argument("--linux32-image")
     parser.add_argument("--docker-context", default="orbstack")
     parser.add_argument("--baseline", action="store_true")
-    parser.add_argument("--branch-feasibility-baseline", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     output = args.output_dir.resolve()
@@ -32,12 +31,10 @@ def main():
         "src/ida_analysis/native_classifier.cpp",
         "src/ida_analysis/native_engine.cpp",
         "tests/x86_abstract_tests.cpp",
-        "tests/vmp_native/join_asm.c",
-        "tests/vmp_native/dataflow.S",
-        "tests/vmp_native/cover_controls.c",
-        "tests/vmp_native/cover_main.c",
-        "tests/ida_target_cover_probe.py",
-        "tests/run_target_cover.py",
+        "tests/vmp_native/feasibility_asm.c",
+        "tests/vmp_native/feasibility_main.c",
+        "tests/ida_branch_feasibility_probe.py",
+        "tests/run_branch_feasibility.py",
         "tests/run_ida_smoke.py",
         "tests/run_vmp_corpus.py",
         "tests/vmp_corpus/linux32.py",
@@ -46,7 +43,6 @@ def main():
     report = {
         "passed": False,
         "baseline": args.baseline,
-        "branch_feasibility_baseline": args.branch_feasibility_baseline,
         "source_sha256": {path: digest(root / path) for path in sources},
         "plugin_sha256": digest(args.plugin),
         "ida_sha256": digest(args.ida),
@@ -56,7 +52,7 @@ def main():
         for architecture in (["x86_64", "i386"] if args.linux32_image else ["x86_64"]):
             directory = output / architecture
             directory.mkdir()
-            binary = directory / "cover"
+            binary = directory / "feasibility"
             row = {"architecture": architecture}
             report["runs"].append(row)
             if architecture == "x86_64":
@@ -68,10 +64,8 @@ def main():
                         "x86_64",
                         "-O2",
                         "-g0",
-                        root / "tests/vmp_native/join_asm.c",
-                        root / "tests/vmp_native/dataflow.S",
-                        root / "tests/vmp_native/cover_controls.c",
-                        root / "tests/vmp_native/cover_main.c",
+                        root / "tests/vmp_native/feasibility_asm.c",
+                        root / "tests/vmp_native/feasibility_main.c",
                         "-o",
                         binary,
                     ]
@@ -90,12 +84,10 @@ def main():
                         "-g0",
                         "-fno-pie",
                         "-no-pie",
-                        "/source/vmp_native/join_asm.c",
-                        "/source/vmp_native/dataflow.S",
-                        "/source/vmp_native/cover_controls.c",
-                        "/source/vmp_native/cover_main.c",
+                        "/source/vmp_native/feasibility_asm.c",
+                        "/source/vmp_native/feasibility_main.c",
                         "-o",
-                        "/output/cover",
+                        "/output/feasibility",
                     ]
                 )
                 assert build["exit_code"] == 0 and not build["timed_out"]
@@ -108,7 +100,7 @@ def main():
                 and not native["output_exceeded"]
             )
             row["native_result"] = json.loads(stdout)
-            assert row["native_result"] == {"passed": True, "checks": 6656}
+            assert row["native_result"] == {"passed": True, "checks": 20992}
             row["binary_sha256"] = digest(binary)
             measurement, _, _ = execute(
                 [
@@ -116,7 +108,7 @@ def main():
                     "-B",
                     root / "tests/run_ida_smoke.py",
                     binary,
-                    root / "tests/ida_target_cover_probe.py",
+                    root / "tests/ida_branch_feasibility_probe.py",
                     "--ida",
                     args.ida.resolve(),
                     "--plugin",
@@ -127,17 +119,12 @@ def main():
                     "CHERNOBOG_IDA_REGISTER_SCAN_DEPTH=64",
                     "--set",
                     "CHERNOBOG_VIEW_MODULE=" + str(root / "python/chernobog_evidence.py"),
-                    *(["--set", "CHERNOBOG_COVER_BASELINE=1"] if args.baseline else []),
-                    *(
-                        ["--set", "CHERNOBOG_BRANCH_FEASIBILITY_BASELINE=1"]
-                        if args.branch_feasibility_baseline
-                        else []
-                    ),
+                    *(["--set", "CHERNOBOG_FEASIBILITY_BASELINE=1"] if args.baseline else []),
                 ],
                 timeout=120,
             )
             row["inspection"] = measurement
-            capture = json.loads((directory / "inspection/cover.json").read_text())
+            capture = json.loads((directory / "inspection/feasibility.json").read_text())
             run = json.loads((directory / "inspection/run.json").read_text())
             row["checks"] = len(capture["checks"])
             row["errors"] = capture["errors"]
@@ -154,13 +141,13 @@ def main():
             )
             row["artifact_sha256"] = {
                 path: digest(directory / path)
-                for path in ("inspection/run.json", "inspection/cover.json")
+                for path in ("inspection/run.json", "inspection/feasibility.json")
             }
             print(
                 json.dumps(
                     {
                         "architecture": architecture,
-                        "native_checks": 6656,
+                        "native_checks": 20992,
                         "ida_checks": row["checks"],
                     }
                 ),
@@ -174,7 +161,7 @@ def main():
         report["passed"] = True
     except Exception as error:
         report["failure"] = type(error).__name__
-    (output / "cover_analysis.json").write_text(json.dumps(report, indent=2) + "\n")
+    (output / "feasibility_analysis.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({"passed": report["passed"], "failure": report.get("failure")}))
     return 0 if report["passed"] else 1
 

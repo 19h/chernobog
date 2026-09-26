@@ -130,6 +130,21 @@ inline std::optional<bool> evaluate(Condition condition, Flags flags)
     return result;
 }
 
+template <class Range, class FlagsAt>
+inline std::optional<bool> evaluate_alternatives(Condition condition, const Range &inputs,
+                                                 FlagsAt flags_at)
+{
+    std::optional<bool> result;
+    for (const auto &input : inputs)
+    {
+        const auto outcome = evaluate(condition, flags_at(input));
+        if (!outcome || (result && *outcome != *result))
+            return std::nullopt;
+        result = outcome;
+    }
+    return result;
+}
+
 inline bool valid_width(unsigned bits)
 {
     return bits == 8 || bits == 16 || bits == 32 || bits == 64;

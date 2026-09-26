@@ -957,3 +957,22 @@ per architecture. Existing corpora and all 21 CTest suites pass. See
 `VMP_TARGET_COVERS.md` and its evidence JSON. Feasible-member predicates,
 current historical edge scores, broader protected gain and full review
 completion remain unknown or in progress.
+
+Universal-branch checkpoint for row 1b: a second fixed-point solve now excludes
+Jcc successors only from universally decided converged alternative inputs.
+Original entries and all original supporting code remain; orphaned refined
+nodes are bottom, and provisional loop outcomes do not establish new facts.
+Thirty-seven independent fixtures recover exact register/memory/stack targets
+on x86-64/i386 and owned/ownerless paths: 148 additional target observations.
+Seventeen dynamic controls remain unresolved. Matched profiles pass 41,984
+native checks each; current production probes pass 1,056 checks per
+architecture. Portable checks enumerate 746,496 condition unions and entry,
+cycle, loop and budget controls. Predicate patches, inactive-arm external
+entries and instruction-interior entries revoke current proofs; restoration
+reestablishes them. Owned graph and prefix admission now reject interior
+code entries. Existing corpus regressions and all 21 CTest suites pass.
+The preceding `cv_infeasible` two-member set becomes a singleton exact target;
+historical evidence remains unchanged. The supplied VMP initializer remains
+75 nodes, 77 edges and three unresolved facts. See `VMP_BRANCH_FEASIBILITY.md`
+and its evidence JSON. Conditional predicates, whole-program reachability,
+broader protected gain and full review completion remain unknown or in progress.

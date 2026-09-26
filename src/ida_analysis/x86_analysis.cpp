@@ -1314,6 +1314,19 @@ bool only_fallthrough(ea_t source, ea_t target)
     return found;
 }
 
+bool interior_or_excess_entry(const insn_t &instruction)
+{
+    size_t count = 0;
+    for (size_t offset = 0; offset < instruction.size; ++offset)
+    {
+        xrefblk_t xref;
+        for (bool ok = xref.first_to(instruction.ea + offset, XREF_ALL); ok; ok = xref.next_to())
+            if (++count > 256 || (offset && xref.iscode))
+                return true;
+    }
+    return false;
+}
+
 std::vector<insn_t> prefix_before(const insn_t &insn, size_t depth)
 {
     if (PH.id != PLFM_386 || (!mode32(insn) && !mode64(insn)))
@@ -1334,7 +1347,7 @@ std::vector<insn_t> prefix_before(const insn_t &insn, size_t depth)
         if (decode_insn(&decoded, previous) <= 0 || decoded.size == 0 ||
             previous > BADADDR - decoded.size || previous + decoded.size != cursor ||
             is_call_insn(decoded) || mode64(decoded) != mode64(insn) ||
-            mode32(decoded) != mode32(insn))
+            mode32(decoded) != mode32(insn) || interior_or_excess_entry(decoded))
             break;
         // IDA marks PUSH-next as a block end in 32-bit code even when its sole
         // code edge is ordinary fallthrough. Include this architectural PUSH
@@ -1354,6 +1367,62 @@ std::vector<insn_t> prefix_before(const insn_t &insn, size_t depth)
 }
 
 using AlternativeState = BoundedAlternatives<State>;
+
+// A branch can be filtered only when every completion of every alternative
+// has the same outcome. The caller supplies converged, unfiltered inputs.
+std::optional<bool> universal_branch(const insn_t &insn, const AlternativeState &domain)
+{
+    const auto condition = x86_condition(insn.itype);
+    if (!condition || condition->use != X86ConditionUse::branch)
+        return std::nullopt;
+    return evaluate_alternatives(condition->condition, domain.states(),
+                                 [](const State &state) { return state.flags; });
+}
+
+template <class Transfer>
+std::optional<std::vector<std::optional<AlternativeState>>>
+refine_branches(const std::vector<FlowNode> &graph, const std::vector<insn_t> &code,
+                const std::vector<AlternativeState> &inputs, size_t node_limit, size_t round_limit,
+                Transfer transfer)
+{
+    std::vector<std::optional<bool>> outcomes;
+    for (size_t i = 0; i < code.size(); ++i)
+        outcomes.push_back(universal_branch(code[i], inputs[i]));
+    auto refined = graph;
+    bool changed = false;
+    for (size_t i = 0; i < refined.size(); ++i)
+    {
+        auto &node = refined[i];
+        // Preserve every original entry, including conservative detached
+        // entries. Removing a predecessor cannot invent a new unknown entry.
+        node.unknown_entry |= graph[i].predecessors.empty();
+        const auto retain = [&](size_t predecessor)
+        {
+            if (!outcomes[predecessor])
+                return true;
+            const auto &branch = code[predecessor];
+            const ea_t taken = to_ea(branch.cs, branch.Op1.addr),
+                       fallthrough = branch.ea + branch.size;
+            if (taken == fallthrough)
+                return true;
+            return code[i].ea == (*outcomes[predecessor] ? taken : fallthrough);
+        };
+        const auto end = std::remove_if(node.predecessors.begin(), node.predecessors.end(),
+                                        [&](size_t p) { return !retain(p); });
+        changed |= end != node.predecessors.end();
+        node.predecessors.erase(end, node.predecessors.end());
+    }
+    if (!changed)
+    {
+        std::vector<std::optional<AlternativeState>> result;
+        for (const auto &state : inputs)
+            result.emplace_back(state);
+        return result;
+    }
+    // The edge decisions above remain fixed. Never use a provisional input
+    // from this second solve to remove another edge or to publish a fact.
+    return bounded_reachable_dataflow<AlternativeState>(refined, node_limit, round_limit, transfer);
+}
 
 X86TargetCover push_target_cover(const insn_t &insn, const AlternativeState &domain)
 {
@@ -1405,6 +1474,7 @@ template <class Domain = State> struct FlowFact
     Domain state;
     std::vector<uint64_t> support;
     bool has_join = false;
+    bool reached = true;
 };
 
 template <class Domain = State>
@@ -1445,6 +1515,8 @@ std::optional<FlowFact<Domain>> flow_before(const insn_t &insn, size_t depth)
         const bool branch = condition && condition->use == X86ConditionUse::branch;
         const bool jump = instruction.itype == NN_jmp;
         const bool call = is_call_insn(instruction);
+        if (interior_or_excess_entry(instruction))
+            return std::nullopt;
         if (!jump && !branch && !call && instruction.itype != NN_retn)
         {
             if (is_indirect_jump_insn(instruction))
@@ -1466,7 +1538,8 @@ std::optional<FlowFact<Domain>> flow_before(const insn_t &insn, size_t depth)
         // guessed return/indirect/far destination or incomplete inventory.
         if (jump || branch)
         {
-            if (instruction.Op1.type != o_near || !add_edge(instruction.Op1.addr))
+            if (instruction.Op1.type != o_near ||
+                !add_edge(to_ea(instruction.cs, instruction.Op1.addr)))
                 return std::nullopt;
         }
         if (!jump && instruction.itype != NN_retn)
@@ -1475,8 +1548,9 @@ std::optional<FlowFact<Domain>> flow_before(const insn_t &insn, size_t depth)
                 !add_edge(instruction.ea + instruction.size))
                 return std::nullopt;
         }
-        if (call && instruction.Op1.type == o_near && index.count(instruction.Op1.addr))
-            graph[index.at(instruction.Op1.addr)].unknown_entry = true;
+        if (call && instruction.Op1.type == o_near &&
+            index.count(to_ea(instruction.cs, instruction.Op1.addr)))
+            graph[index.at(to_ea(instruction.cs, instruction.Op1.addr))].unknown_entry = true;
         xrefblk_t xref;
         size_t references = 0;
         for (bool ok = xref.first_to(instruction.ea, XREF_ALL); ok; ok = xref.next_to())
@@ -1495,40 +1569,51 @@ std::optional<FlowFact<Domain>> flow_before(const insn_t &insn, size_t depth)
                 const auto from_condition = x86_condition(from.itype);
                 const bool from_branch =
                     from_condition && from_condition->use == X86ConditionUse::branch;
-                const bool matches =
-                    type == fl_F ? from.ea + from.size == instruction.ea && from.itype != NN_jmp &&
-                                       from.itype != NN_retn
-                                 : (from.itype == NN_jmp || from_branch) &&
-                                       from.Op1.type == o_near && from.Op1.addr == instruction.ea;
+                const bool matches = type == fl_F
+                                         ? from.ea + from.size == instruction.ea &&
+                                               from.itype != NN_jmp && from.itype != NN_retn
+                                         : (from.itype == NN_jmp || from_branch) &&
+                                               from.Op1.type == o_near &&
+                                               to_ea(from.cs, from.Op1.addr) == instruction.ea;
                 if (!matches)
                     graph[i].unknown_entry = true;
             }
         }
     }
-    const auto states =
-        bounded_dataflow<Domain>(graph, 64, 128,
-                                 [&](size_t i, Domain state)
-                                 {
-                                     const auto condition = x86_condition(code[i].itype);
-                                     if (code[i].itype != NN_jmp &&
-                                         !(condition && condition->use == X86ConditionUse::branch))
-                                     {
-                                         if constexpr (std::is_same_v<Domain, State>)
-                                             state.step(code[i]);
-                                         else
-                                             state = state.apply(
-                                                 [&](State next)
-                                                 {
-                                                     next.step(code[i]);
-                                                     return next;
-                                                 });
-                                     }
-                                     return state;
-                                 });
+    const auto transfer = [&](size_t i, Domain state)
+    {
+        const auto condition = x86_condition(code[i].itype);
+        if (code[i].itype != NN_jmp && !(condition && condition->use == X86ConditionUse::branch))
+        {
+            if constexpr (std::is_same_v<Domain, State>)
+                state.step(code[i]);
+            else
+                state = state.apply(
+                    [&](State next)
+                    {
+                        next.step(code[i]);
+                        return next;
+                    });
+        }
+        return state;
+    };
+    const auto states = bounded_dataflow<Domain>(graph, 64, 128, transfer);
     if (!states)
         return std::nullopt;
     FlowFact<Domain> result;
     result.state = (*states)[index.at(insn.ea)];
+    if constexpr (std::is_same_v<Domain, AlternativeState>)
+    {
+        const auto refined = refine_branches(graph, code, *states, 64, 128, transfer);
+        if (!refined)
+            return std::nullopt;
+        const auto &input = (*refined)[index.at(insn.ea)];
+        result.reached = input.has_value();
+        if (input)
+            result.state = *input;
+        else
+            result.state = Domain{};
+    }
     result.has_join = std::any_of(graph.begin(), graph.end(), [](const FlowNode &node)
                                   { return node.predecessors.size() > 1; });
     for (const auto &instruction : code)
@@ -1546,7 +1631,8 @@ std::optional<X86RegisterFact> flow_value(const insn_t &insn, size_t depth, Read
     auto value = read(flow->state);
     if (!value && flow->has_join)
         if (const auto alternatives = flow_before<AlternativeState>(insn, depth))
-            value = read(alternatives->state.common());
+            if (alternatives->reached)
+                value = read(alternatives->state.common());
     return X86RegisterFact{value, flow->support};
 }
 } // namespace
@@ -1633,6 +1719,14 @@ X86TargetCover analyze_x86_push_targets_before(const insn_t &insn, size_t depth)
 {
     if (const auto flow = flow_before<AlternativeState>(insn, depth))
     {
+        if (!flow->reached)
+        {
+            X86TargetCover result;
+            result.reason = "not_reached_in_refined_graph";
+            result.support = flow->support;
+            result.support.push_back(insn.ea);
+            return result;
+        }
         auto result = push_target_cover(insn, flow->state);
         result.support = flow->support;
         result.support.push_back(insn.ea);
@@ -2072,7 +2166,7 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
     }
     result.converged = true;
     result.reason = candidate_decode ? "complete_candidate_byte_region" : "complete_bounded_region";
-    std::optional<std::vector<AlternativeState>> alternatives;
+    std::optional<std::vector<std::optional<AlternativeState>>> alternatives;
     bool alternatives_attempted = false;
     const bool has_join = std::any_of(graph.begin(), graph.end(), [](const FlowNode &node)
                                       { return node.predecessors.size() > 1; });
@@ -2081,22 +2175,24 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         if (!alternatives_attempted)
         {
             alternatives_attempted = true;
-            alternatives = bounded_dataflow<AlternativeState>(
-                graph, node_limit, round_limit,
-                [&](size_t j, AlternativeState domain)
-                {
-                    const auto flow = control(instructions[j]);
-                    if (!flow.stop.empty() || flow.call || flow.ret)
-                        return AlternativeState{};
-                    if (!flow.jump && !flow.branch)
-                        domain = domain.apply(
-                            [&](State next)
-                            {
-                                next.step(instructions[j]);
-                                return next;
-                            });
-                    return domain;
-                });
+            const auto transfer = [&](size_t j, AlternativeState domain)
+            {
+                const auto flow = control(instructions[j]);
+                if (!flow.stop.empty() || flow.call || flow.ret)
+                    return AlternativeState{};
+                if (!flow.jump && !flow.branch)
+                    domain = domain.apply(
+                        [&](State next)
+                        {
+                            next.step(instructions[j]);
+                            return next;
+                        });
+                return domain;
+            };
+            if (const auto unfiltered =
+                    bounded_dataflow<AlternativeState>(graph, node_limit, round_limit, transfer))
+                alternatives = refine_branches(graph, instructions, *unfiltered, node_limit,
+                                               round_limit, transfer);
         }
     };
     for (size_t i = 0; i < instructions.size(); ++i)
@@ -2164,8 +2260,8 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
             if (!value && has_join)
             {
                 ensure_alternatives();
-                if (alternatives)
-                    value = read((*alternatives)[i].common());
+                if (alternatives && (*alternatives)[i])
+                    value = read((*alternatives)[i]->common());
             }
             return value;
         };
@@ -2266,8 +2362,10 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         else if (has_join)
         {
             ensure_alternatives();
-            if (alternatives)
-                cover = push_target_cover(instruction, (*alternatives)[i]);
+            if (alternatives && (*alternatives)[i])
+                cover = push_target_cover(instruction, *(*alternatives)[i]);
+            else if (alternatives)
+                cover.reason = "not_reached_in_refined_graph";
             else
                 cover.reason = "alternative_nonconvergence";
         }
