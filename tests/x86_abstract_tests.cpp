@@ -128,6 +128,121 @@ void dataflow_regressions()
     std::puts("dataflow join concretizations: 65536; graph controls passed");
 }
 
+void alternative_regressions()
+{
+    struct Pair
+    {
+        Word left, right;
+        void join(const Pair &other)
+        {
+            left.join(other.left);
+            right.join(other.right);
+        }
+        bool operator==(const Pair &other) const
+        {
+            return left.known == other.left.known && left.value == other.left.value &&
+                   right.known == other.right.known && right.value == other.right.value;
+        }
+    };
+    using Domain = chernobog::BoundedAlternatives<Pair, 2>;
+    const auto exact = [](unsigned a, unsigned b) { return Pair{Word{255, a}, Word{255, b}}; };
+    const auto product = [](Pair state)
+    {
+        const auto a = state.left.read(8), b = state.right.read(8);
+        state.left = a && b ? Word{255, (*a * *b) & 255} : Word{};
+        return state;
+    };
+    size_t cases = 0;
+    for (unsigned a = 0; a < 16; ++a)
+        for (unsigned b = 0; b < 16; ++b)
+            for (unsigned c = 0; c < 16; ++c)
+                for (unsigned d = 0; d < 16; ++d)
+                {
+                    Domain input(exact(a, b));
+                    input.join(Domain(exact(c, d)));
+                    const auto result = input.apply(product).common().left;
+                    const unsigned first = (a * b) & 255, second = (c * d) & 255;
+                    check((first & result.known) == result.value &&
+                              (second & result.known) == result.value &&
+                              (first == second ? result.read(8) == first : !result.read(8)),
+                          "correlated multiplication agrees with independent concrete outcomes");
+                    Domain reversed(exact(c, d));
+                    reversed.join(Domain(exact(a, b)));
+                    reversed.join(Domain(exact(a, b)));
+                    check(input == reversed,
+                          "alternative equality ignores ordering and duplicate paths");
+                    ++cases;
+                }
+    Domain input(exact(0, 7));
+    input.join(Domain(exact(7, 0)));
+    check(input.apply(product).common().left.read(8) == 0,
+          "alternatives retain correlations discarded by a product of independent joins");
+    input.join(Domain(exact(0, 0)));
+    check(input.widened() && input.states().size() == 1 &&
+              !input.apply(product).common().left.read(8),
+          "overflow widens every path instead of keeping a favorable subset");
+    const auto widened = input.common();
+    for (const auto &actual : {exact(0, 7), exact(7, 0), exact(0, 0)})
+        check((actual.left.value & widened.left.known) == widened.left.value &&
+                  (actual.right.value & widened.right.known) == widened.right.value,
+              "widened state covers all concrete predecessors");
+    input = input.apply(
+        [](Pair state)
+        {
+            state.left = Word{255, 9};
+            return state;
+        });
+    check(input.widened() && input.common().left.read(8) == 9,
+          "an unconditional overwrite establishes a fact after widening");
+    input.join(Domain{});
+    check(!input.common().left.read(8), "unknown external entry is retained after widening");
+    using chernobog::FlowNode;
+    const std::vector<FlowNode> graph = {
+        {{}, true}, {{0}, false}, {{0}, false}, {{1, 2}, false}, {{3}, false}};
+    const auto transfer = [&](size_t i, Domain state)
+    {
+        if (i == 1)
+            return Domain(exact(0, 7));
+        if (i == 2)
+            return Domain(exact(7, 0));
+        if (i == 3)
+            return state.apply(product);
+        return state;
+    };
+    auto result = chernobog::bounded_dataflow<Domain>(graph, 5, 16, transfer);
+    check(result && (*result)[4].common().left.read(8) == 0,
+          "fixed-point graph propagates correlated values through a join");
+    check(!chernobog::bounded_dataflow<Domain>(graph, 5, 3, transfer),
+          "unfinished alternative analysis cannot return provisional values");
+    auto external = graph;
+    external[3].unknown_entry = true;
+    result = chernobog::bounded_dataflow<Domain>(external, 5, 16, transfer);
+    check(result && !(*result)[4].common().left.read(8),
+          "external entry prevents a correlated graph proof");
+    const std::vector<FlowNode> loop = {{{}, true}, {{0, 2}, false}, {{1}, false}, {{1}, false}};
+    result = chernobog::bounded_dataflow<Domain>(
+        loop, 4, 32,
+        [&](size_t i, Domain state)
+        {
+            if (i == 0)
+                return Domain(exact(0, 9));
+            if (i == 2)
+                return state.apply(
+                    [](Pair next)
+                    {
+                        const auto value = next.left.read(8);
+                        next.left = value ? Word{255, (*value + 1) & 255} : Word{};
+                        return next;
+                    });
+            return state;
+        });
+    check(result && (*result)[3].widened() && !(*result)[3].common().left.read(8) &&
+              (*result)[3].common().right.read(8) == 9,
+          "changing loop widens while retaining its independent invariant");
+    std::printf("alternative concrete pairs: %zu; cap, entry, loop and budget controls passed\n",
+                cases);
+}
+
 void status_ah_regressions()
 {
     const auto encoded = [](unsigned flags)
@@ -725,6 +840,7 @@ void mapping_counterexamples()
 int main()
 {
     dataflow_regressions();
+    alternative_regressions();
     status_ah_regressions();
     accumulator_extension_regressions();
     multiply_regressions();

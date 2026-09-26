@@ -1,0 +1,254 @@
+{
+  "schema": 1,
+  "parent_revision": "5feed46b7c2a9d90dcd8fbe59dadbb632b588c61",
+  "phase": "pre-commit functional observation",
+  "source_sha256": {
+    "src/common/bounded_dataflow.h": "b8b76af571120f755795daa2a425dcd2cbef0df051f793f896771809599a56e1",
+    "src/ida_analysis/x86_analysis.cpp": "ce2c95ca40879a560618e038e28b815da83f4f6cdbc053b3d0d3849c88be9483",
+    "src/ida_analysis/x86_analysis.hpp": "520cf3ddb89329baadd9e1425901880a9f048e0d62214eeacebeb0a1126d2981",
+    "src/ida_analysis/native_classifier.cpp": "97dd01739ca51295b5875d289d43f203670876931cdc2291b4ff4e5140467d13",
+    "src/ida_analysis/native_engine.cpp": "392afafa4a25c15627b889d9c4f6afc2506332a4feb1e5fff4ffe804d8cf5be3",
+    "tests/x86_abstract_tests.cpp": "2178133e127afd9afead5beee1b2ecd2cddcdba4b56da6f527fc4155c6819d99",
+    "tests/vmp_native/join_asm.c": "e675d49f682ee02f958ce7048853e35eb7b38391f6c0efefca3c8aadde5ed27e",
+    "tests/vmp_native/join_main.c": "63f7d9966883efdfd80c3e1b6432766010f735cf7d93fcd982898daa19507bde",
+    "tests/ida_join_probe.py": "fa6c5beb08e975b969f4b4d3fa901dd7093f5328a13974cf09155d879549253f",
+    "tests/run_join.py": "85128f10bde694b5b2c97661603e8404a38afb712e7250bb1d54af815e9c9cfa",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/vmp_corpus/linux32.py": "82bb5e0f90f612ead4a844a14142da1cac029c8f1d6d43e3d56cd597ef8398a5",
+    "tests/vmp_corpus/linux32_exec.py": "a0577238731548cde8e20c20299f61cc7fcf23b4602c33dfdbcd12f8c08793b0"
+  },
+  "documentation_sha256": {
+    "docs/VMP_CORRELATED_JOINS.md": "96f6ee048e4bcc4e54750f6c4ed67c128ee22c552e26c994f0478862ccd83279",
+    "docs/VMP_IMPLEMENTATION.md": "358db4cdc1def71a18896a0c54927bd77af5e7b104eb1830e0f647b887a1c26d"
+  },
+  "profiles": {
+    "prior": {
+      "report": "build/vmp-join-prior-4/join_analysis.json",
+      "sha256": "cb0e650c1a0985b978494030bba8d53dcb8723032f9641b878194c6fc0dec469",
+      "plugin_sha256": "a0e52fe6381c938cda3e9ba0061701f3fae280b96469da10313ea453ce6b5d7a",
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "matched_binary_identity": true,
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "binary_sha256": "0b4b63cd09b40f624ab7b5f30f9e086bcf1dd08f665bf8fc57a303b5452bacdc",
+          "native_result": {
+            "passed": true,
+            "checks": 2560
+          },
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "checks": 32,
+          "artifact_sha256": {
+            "inspection/run.json": "fb6cbb7a261a6db3b926ec5b285b332976fe66d47d5484f50ab52ec3447f2892",
+            "inspection/join.json": "f7c6e65a992e105bb7c3fb5046e62574611d33766edb23041871436b4a6c8aec"
+          }
+        },
+        {
+          "architecture": "i386",
+          "binary_sha256": "d2a49dc2caadc1423dff947c3fa528a6c82af1f8fe5a3a014f5b44f9889a1e53",
+          "native_result": {
+            "passed": true,
+            "checks": 2560
+          },
+          "runtime": {
+            "image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ]
+          },
+          "checks": 32,
+          "artifact_sha256": {
+            "inspection/run.json": "9c8a0af7078939118a2ec1d71ca51608fb6987a6624016cc78051d77b3f6047f",
+            "inspection/join.json": "3f21f7eefddfc0031dcfa3d13ad63161039b0ce6474f87b374feef1f898bf812"
+          }
+        }
+      ]
+    },
+    "current": {
+      "report": "build/vmp-join-new-3/join_analysis.json",
+      "sha256": "d56ebdca3f4a2d98ba5fd5ec579b2ecd9bb9d5d7f8a36fed73b63de51c8c06f5",
+      "plugin_sha256": "4230aa7be1f2cac7270d7c2925b4c4ffa4e1b9ad5dda448af0a2d35ca445e3fc",
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "matched_binary_identity": true,
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "binary_sha256": "0b4b63cd09b40f624ab7b5f30f9e086bcf1dd08f665bf8fc57a303b5452bacdc",
+          "native_result": {
+            "passed": true,
+            "checks": 2560
+          },
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "checks": 49,
+          "artifact_sha256": {
+            "inspection/run.json": "92520a08f494ffe3eedee93149d486ac16a4feb49bc6230c4bf05ef52ccd4a87",
+            "inspection/join.json": "606229611d8767c0ced735c403fb5459a9b77de07dc9c674edaf932e1f4cece8"
+          }
+        },
+        {
+          "architecture": "i386",
+          "binary_sha256": "d2a49dc2caadc1423dff947c3fa528a6c82af1f8fe5a3a014f5b44f9889a1e53",
+          "native_result": {
+            "passed": true,
+            "checks": 2560
+          },
+          "runtime": {
+            "image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ]
+          },
+          "checks": 49,
+          "artifact_sha256": {
+            "inspection/run.json": "373df7aef1987ccb3575c7770b4c3790617a28263d48bcb266fe9528e514e555",
+            "inspection/join.json": "5ac1ab2c542efbabad59fa2caa7c7d146ee7836e4b543b50eda9cb0da1cb763b"
+          }
+        }
+      ]
+    }
+  },
+  "regressions": {
+    "owned": {
+      "report": "build/vmp-join-owned-regression/dataflow_analysis.json",
+      "sha256": "2aa0036e042c82dce9857719e0e615999108a95a9945d34d0e01f64b9e81e2f6",
+      "passed": true,
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "native_result": {
+            "checks": 37630,
+            "passed": true
+          },
+          "checks": 453,
+          "artifact_sha256": {
+            "inspection/run.json": "d3b6dca838ed1242158c525c6c62e64f577f8c3f3b27796d18223839a9d1ddca",
+            "inspection/dataflow.json": "a53a2b5345c8cb3548b174a68b9f0808dd36803a7a737fc4e61ba41c5f4380cd"
+          }
+        },
+        {
+          "architecture": "i386",
+          "native_result": {
+            "checks": 36350,
+            "passed": true
+          },
+          "checks": 386,
+          "artifact_sha256": {
+            "inspection/run.json": "f054c83df2ec358bdd3e8273d1de62872a1f1a1cdc5213dac91ad55b83f19503",
+            "inspection/dataflow.json": "097d418f80b3c258f33072bda48114d7c801f9d4d6f9424f5b853a9a171134bf"
+          }
+        }
+      ]
+    },
+    "ownerless": {
+      "report": "build/vmp-join-ownerless-regression/ownerless_dataflow_analysis.json",
+      "sha256": "28468808a970baad655d86b3e78b48af7000bfefc554b68021d756b0eff03efe",
+      "passed": true,
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "checks": 1730,
+          "artifact_sha256": {
+            "inspection/run.json": "5cabd2b564743d52c922f44efa000b84686e312a77e7e3bc49bb27009b540467",
+            "inspection/ownerless_dataflow.json": "f2e93a6aa85ff2417eb70317cf876317e4d198c596b5f24f6b3a5abeb2ed1431"
+          }
+        },
+        {
+          "architecture": "i386",
+          "checks": 1680,
+          "artifact_sha256": {
+            "inspection/run.json": "90c684e5c424d9df9eb8abf9fcf5b72ba99cd9cfcd66a8fd98c02471fc318004",
+            "inspection/ownerless_dataflow.json": "fd11bdca98379b9574800f40e149dc97d59e790a96edbc055af40219b8af9887"
+          }
+        }
+      ]
+    }
+  },
+  "portable": {
+    "report": "build/vmp-join-portable-final.log",
+    "sha256": "29b7834f05db6dec6c1136ccc721f3a4f5d4137863e08e52df30d4bf1bd3a658",
+    "concrete_pairs": 65536,
+    "overflow_limit_test": 2,
+    "production_limit": 8
+  },
+  "ctest": {
+    "report": "build/vmp-join-ctest.log",
+    "sha256": "ed11ae1ea08eb8670cb354e8f677324c8143d1570bafe09523a35d18c9f1ae0e",
+    "suites": 21,
+    "passed": true
+  },
+  "bounds": {
+    "alternatives": 8,
+    "owned_nodes": 64,
+    "ownerless_nodes": 128,
+    "rounds": 128,
+    "incoming_per_instruction": 256,
+    "branch_pruning": false,
+    "overflow": "join every alternative; no path dropped"
+  },
+  "quality_gates": {
+    "QG1": "pass within documented scalar-target scope",
+    "QG2": "pass within documented scalar-target scope",
+    "QG3": "pass within documented scalar-target scope",
+    "QG4": "pass within documented scalar-target scope",
+    "QG5": "pass within documented scalar-target scope",
+    "QG6": "pass within documented scalar-target scope",
+    "QG7": "pass within documented scalar-target scope"
+  },
+  "protected": {
+    "sample": "samples/foo_x86_vmp",
+    "sample_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "probe": "build/vmp-multiply-protected-new/probe/ida_protected_region_inspect.py",
+    "probe_sha256": "b68a41d2011f232808974d7b155b84a43e4f13a8f3eb157a0d204cf6f04548d2",
+    "reports_identical": true,
+    "root": "0x1002946b5",
+    "nodes": 75,
+    "edges": 77,
+    "facts": 3,
+    "proved": 0,
+    "checks": 8,
+    "artifacts": {
+      "build/vmp-join-protected-prior/protected_region.json": "26da0a9b8e82ebd309f55a1734efd30d47cf2bfb4dc6f805f0088bebcb099eb6",
+      "build/vmp-join-protected-new/protected_region.json": "26da0a9b8e82ebd309f55a1734efd30d47cf2bfb4dc6f805f0088bebcb099eb6",
+      "build/vmp-join-protected-prior/run.json": "2fbe562aa05d5e9a35770fb470962363f397bacd3bb5c91ddcee97c37fef3c1d",
+      "build/vmp-join-protected-new/run.json": "e6dc2b0e4daee988f314442c06139e2b4ab7fa10294e5985bc29cf8e0dd9f363"
+    }
+  },
+  "historical_edge_scorer": {
+    "source": "tests/score_native_edge_benchmark.py",
+    "source_sha256": "8060f3fb4be34737b70a576baa2eb95207891278008675bbe593198b7fe97be5",
+    "current_score": "unknown",
+    "reason": "frozen fixture source pins differ from current corpus; scorer rejects before scoring",
+    "fixture": "tests/vmp_native/dataflow.S",
+    "pinned_sha256": "aae2a6c21c3bb30df909a36d82eb7af1f2158199bf59286deb8104be7696721a",
+    "current_sha256": "46c95831d6f4ac820e0a00bf8682f0a6e75291ee55ab304b44ce1cea92ad7dbc"
+  }
+}

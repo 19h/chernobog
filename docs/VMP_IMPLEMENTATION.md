@@ -926,3 +926,19 @@ three facts remain unresolved and its prior/current reports are identical.
 All 21 CTest suites pass. See `VMP_MULTIPLY_FLAGS.md` and its evidence JSON;
 translated execution, broader protected gain, the complete lifecycle matrix
 and the full review retain their stated bounds.
+
+Correlated-join checkpoint for row 1b: exact value queries now retry unknown
+joins with at most eight alternative states. Overflow joins every state
+conservatively; no path is discarded. Three independent register, local
+memory and tracked-stack fixtures recover one named destination per owned
+and ownerless path on x86-64 and i386, while differing destinations, nine-state
+overflow and unestablished writable memory remain unresolved. The same
+binaries pass 5,120 executed checks per plugin profile; current production
+probes pass 49/49 checks per architecture, including predecessor mutation,
+restoration, external-entry invalidation and read-only ownerless inventory.
+Portable checks cover 65,536 concrete operand pairs and loop/budget controls.
+Existing owned and ownerless corpus regressions and all 21 CTest suites pass.
+The historical edge scorer rejects newer fixture pins; a current score from
+it is unknown. See `VMP_CORRELATED_JOINS.md` and its evidence JSON. Conditional
+target sets, broader protected effectiveness and the full review remain in
+progress.

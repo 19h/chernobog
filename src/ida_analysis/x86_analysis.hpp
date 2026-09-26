@@ -34,6 +34,9 @@ std::optional<X86Condition> x86_condition(uint16_t instruction_type);
 // folded; only bounded local MOV stores and register/memory exchanges can
 // establish writable facts. Exact MOV, MOVZX, MOVSX, and MOVSXD register loads
 // may consume those facts.
+// Exact value queries retry joins with at most eight correlated alternatives;
+// overflow joins all alternatives conservatively. Only a value shared by
+// every represented input is returned, with the complete graph support.
 x86_abstract::Flags analyze_x86_flags_before(const insn_t &instruction, size_t depth);
 
 struct X86FlagFact

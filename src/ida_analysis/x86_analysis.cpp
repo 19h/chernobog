@@ -19,6 +19,7 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include <type_traits>
 #include <vector>
 
 namespace chernobog::ida_analysis
@@ -1352,13 +1353,17 @@ std::vector<insn_t> prefix_before(const insn_t &insn, size_t depth)
     return prefix;
 }
 
-struct FlowFact
+using AlternativeState = BoundedAlternatives<State>;
+
+template <class Domain = State> struct FlowFact
 {
-    State state;
+    Domain state;
     std::vector<uint64_t> support;
+    bool has_join = false;
 };
 
-std::optional<FlowFact> flow_before(const insn_t &insn, size_t depth)
+template <class Domain = State>
+std::optional<FlowFact<Domain>> flow_before(const insn_t &insn, size_t depth)
 {
     if (PH.id != PLFM_386 || (!mode32(insn) && !mode64(insn)))
         return std::nullopt;
@@ -1456,23 +1461,48 @@ std::optional<FlowFact> flow_before(const insn_t &insn, size_t depth)
         }
     }
     const auto states =
-        bounded_dataflow<State>(graph, 64, 128,
-                                [&](size_t i, State state)
-                                {
-                                    const auto condition = x86_condition(code[i].itype);
-                                    if (code[i].itype != NN_jmp &&
-                                        !(condition && condition->use == X86ConditionUse::branch))
-                                        state.step(code[i]);
-                                    return state;
-                                });
+        bounded_dataflow<Domain>(graph, 64, 128,
+                                 [&](size_t i, Domain state)
+                                 {
+                                     const auto condition = x86_condition(code[i].itype);
+                                     if (code[i].itype != NN_jmp &&
+                                         !(condition && condition->use == X86ConditionUse::branch))
+                                     {
+                                         if constexpr (std::is_same_v<Domain, State>)
+                                             state.step(code[i]);
+                                         else
+                                             state = state.apply(
+                                                 [&](State next)
+                                                 {
+                                                     next.step(code[i]);
+                                                     return next;
+                                                 });
+                                     }
+                                     return state;
+                                 });
     if (!states)
         return std::nullopt;
-    FlowFact result;
+    FlowFact<Domain> result;
     result.state = (*states)[index.at(insn.ea)];
+    result.has_join = std::any_of(graph.begin(), graph.end(), [](const FlowNode &node)
+                                  { return node.predecessors.size() > 1; });
     for (const auto &instruction : code)
         if (instruction.ea != insn.ea)
             result.support.push_back(instruction.ea);
     return result;
+}
+
+template <class Read>
+std::optional<X86RegisterFact> flow_value(const insn_t &insn, size_t depth, Read read)
+{
+    const auto flow = flow_before(insn, depth);
+    if (!flow)
+        return std::nullopt;
+    auto value = read(flow->state);
+    if (!value && flow->has_join)
+        if (const auto alternatives = flow_before<AlternativeState>(insn, depth))
+            value = read(alternatives->state.common());
+    return X86RegisterFact{value, flow->support};
 }
 } // namespace
 
@@ -1499,8 +1529,9 @@ X86FlagFact analyze_x86_flag_fact_before(const insn_t &insn, size_t depth)
 
 X86RegisterFact analyze_x86_register_before(const insn_t &insn, const op_t &operand, size_t depth)
 {
-    if (const auto flow = flow_before(insn, depth))
-        return {flow->state.read(operand), flow->support};
+    if (const auto flow =
+            flow_value(insn, depth, [&](const State &state) { return state.read(operand); }))
+        return *flow;
     const auto prefix = prefix_before(insn, depth);
     State state;
     X86RegisterFact result;
@@ -1518,8 +1549,9 @@ X86RegisterFact analyze_x86_stack_top_before(const insn_t &insn, size_t depth)
     const unsigned bits = mode64(insn) ? 64 : mode32(insn) ? 32 : 0;
     if (!bits || !natad(insn))
         return {};
-    if (const auto flow = flow_before(insn, depth))
-        return {flow->state.read_stack_top(bits), flow->support};
+    if (const auto flow =
+            flow_value(insn, depth, [&](const State &state) { return state.read_stack_top(bits); }))
+        return *flow;
     const auto prefix = prefix_before(insn, depth);
     State state;
     X86RegisterFact result;
@@ -1537,8 +1569,9 @@ X86RegisterFact analyze_x86_memory_before(const insn_t &insn, uint64_t address, 
     const unsigned bits = mode64(insn) ? 64 : mode32(insn) ? 32 : 0;
     if (!bits || !natad(insn) || !State::writable_word(address, bits))
         return {};
-    if (const auto flow = flow_before(insn, depth))
-        return {flow->state.read_memory(address, bits), flow->support};
+    if (const auto flow = flow_value(insn, depth, [&](const State &state)
+                                     { return state.read_memory(address, bits); }))
+        return *flow;
     const auto prefix = prefix_before(insn, depth);
     State state;
     X86RegisterFact result;
@@ -1937,6 +1970,10 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
     }
     result.converged = true;
     result.reason = candidate_decode ? "complete_candidate_byte_region" : "complete_bounded_region";
+    std::optional<std::vector<AlternativeState>> alternatives;
+    bool alternatives_attempted = false;
+    const bool has_join = std::any_of(graph.begin(), graph.end(), [](const FlowNode &node)
+                                      { return node.predecessors.size() > 1; });
     for (size_t i = 0; i < instructions.size(); ++i)
     {
         const auto &instruction = instructions[i];
@@ -1996,6 +2033,36 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         ret_model.alternate_predecessor = ret_node.unknown_entry ||
                                           ret_node.predecessors.size() != 1 ||
                                           ret_node.predecessors.front() != i;
+        const auto read_target = [&](auto read)
+        {
+            auto value = read(state);
+            if (!value && has_join)
+            {
+                if (!alternatives_attempted)
+                {
+                    alternatives_attempted = true;
+                    alternatives = bounded_dataflow<AlternativeState>(
+                        graph, node_limit, round_limit,
+                        [&](size_t j, AlternativeState domain)
+                        {
+                            const auto flow = control(instructions[j]);
+                            if (!flow.stop.empty() || flow.call || flow.ret)
+                                return AlternativeState{};
+                            if (!flow.jump && !flow.branch)
+                                domain = domain.apply(
+                                    [&](State next)
+                                    {
+                                        next.step(instructions[j]);
+                                        return next;
+                                    });
+                            return domain;
+                        });
+                }
+                if (alternatives)
+                    value = read((*alternatives)[i].common());
+            }
+            return value;
+        };
         classifier::target_proof_t target;
         if (instruction.Op1.type == o_imm)
         {
@@ -2012,7 +2079,8 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
             const auto slice = register_slice(instruction.Op1);
             push_model.kind = classifier::instruction_kind_t::push_register;
             push_model.source = {slice.reg, uint16_t(slice.offset), uint16_t(slice.width)};
-            target.value = state.read(instruction.Op1);
+            target.value =
+                read_target([&](const State &input) { return input.read(instruction.Op1); });
             if (target.value)
             {
                 target.kind = classifier::target_proof_kind_t::register_definition;
@@ -2029,7 +2097,8 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
             {
                 push_model.source_is_stack_pointer = true;
                 target.stack_top_source = true;
-                target.value = state.read_stack_top(result.address_bits);
+                target.value = read_target([&](const State &input)
+                                           { return input.read_stack_top(result.address_bits); });
                 if (target.value)
                 {
                     target.kind = classifier::target_proof_kind_t::stack_definition;
@@ -2041,7 +2110,9 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
                      address && State::writable_word(*address, result.address_bits))
             {
                 target.source_address = *address;
-                target.value = state.read_memory(*address, result.address_bits);
+                target.value =
+                    read_target([&](const State &input)
+                                { return input.read_memory(*address, result.address_bits); });
                 if (target.value)
                 {
                     target.kind = classifier::target_proof_kind_t::memory_definition;
