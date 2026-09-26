@@ -174,4 +174,3 @@ OF, exceptional execution and translation retain explicit bounds. QG6:
 Intel SDM, actual local emitter hashes and recorded primary process/IDA
 artifacts establish provenance. QG7: protected effectiveness and remaining
 architecture/lifecycle coverage are explicit unknowns.
-
