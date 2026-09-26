@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "parent_revision": "e9cbe164cd20326c50b2ecdc7d00ccee7c1879bc",
+  "observed_parent_revision": "1019ecc9ed300e8dfa63a95af5243d4b0aa17404",
+  "isa_source": "https://cdrdv2-public.intel.com/874240/325462-090-sdm-vol-1-2abcd-3abcd-4.pdf",
+  "source_sha256": {
+    "src/vm/ida_native_trace.cpp": "21d64f75743ce92cc8929524559fd8b825292d452bc25c06cc364ab7f1616e5f",
+    "src/vm/ida_native_trace.hpp": "3b8cad25add7f7267ede2777572a02c4624f14d0b0e0f1d72d277447109e6ce8",
+    "src/plugin/idc_api.cpp": "8ba4053389ecea1774ff89488ae90eee2f407ebc19042ddb24e3944166dc98df",
+    "tests/ida_vmp_hello_postcall_checkpoint_probe.py": "cb9c2dc35e188a0ab359b1208a6fc07652c8dabf18f387c804c5eaebf4bc140e",
+    "tests/lldb_vmp_hello_postcall.py": "ebee3ebbad97d2b4bd9e0909dba262e6c79e49e9be7ac8d9aafca58787aff655",
+    "tests/ida_vmp_hello_postcall_observed_probe.py": "076bf08c75d08210017b83d7e6d4f33f394d700149e34b2d2a3892213ff663db",
+    "tests/vmp_hello_postcall_interpose.c": "d1dc0a8a5f070cb3f86877569aab32f4a21f94b46ed81d1fa2afa21d4123f0bd",
+    "tests/run_vmp_hello_postcall_interpose.py": "3f3a66109f112a6a0d923e8d6f5a325eb9406df3c011395a308438dec0524464",
+    "tests/ida_vmp_hello_postcall_interpose_probe.py": "5698781f75c86eb9aa4766f087f13cd8a278492bb75e13f931a3368ea04c44ad"
+  },
+  "prior_source_sha256": {
+    "tests/lldb_vmp_hello_postcall.py": "60bd5092503845499c16a13af976a905e4b8aa3d5f367208457fc833d679fbe0"
+  },
+  "input_sha256": {
+    "samples/foo_x86_orig": "443b0a464d7de68c5a26a3e31a92e694356ccd1eef3127d522309ac672ecc7c7",
+    "samples/foo_x86_vmp": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "build/vmp-hello-runtime-final-llvm/runtime-window.bin": "b9e3295c519d3f937c884f6cbab4e1e708ba16cd94314c15e4e962ddc081a023",
+    "build/vmp-hello-runtime-final-apple/runtime-window.bin": "b9e3295c519d3f937c884f6cbab4e1e708ba16cd94314c15e4e962ddc081a023",
+    "build/vmp-hello-main-states-llvm.json": "6fc62cfbff754efade00f586293e3050e82f3fa821bfa8558f38b5469b6f76bd",
+    "build/vmp-hello-main-states-apple.json": "c0697a6eab3a6e5ba3758729b8cffee687153c3733fc157da0c07b13ff8e5ccb"
+  },
+  "plugin_sha256": "cbd5b87319450a61bef9048051754c2b286f8b551bdc9d206a0c6278d75d987b",
+  "plugin_source_fingerprint": "a7212cc1d56f",
+  "observed_plugin_sha256": "66a5b0436caa60c2f43c3ccb2bb1330428da4721deb221423cb05505f505d8e1",
+  "plugin_artifacts_sha256": {
+    "build/vmp-hello-postcall-verified-llvm/idauser/plugins/vmp-hello-checkpoint.dylib": "cbd5b87319450a61bef9048051754c2b286f8b551bdc9d206a0c6278d75d987b",
+    "build/vmp-hello-postcall-observed-verified-llvm/idauser/plugins/chernobog.dylib": "66a5b0436caa60c2f43c3ccb2bb1330428da4721deb221423cb05505f505d8e1"
+  },
+  "interposer_sha256": "e9013575a12669025f85563fca2b1e8abbac78a233befe16b011657a6ff74683",
+  "process_capture_sha256": {
+    "build/vmp-hello-postcall-interpose-report.json": "47d6e52c8823564bf46049338874b8bffc18c87f999479d10de4a5cd00b91544",
+    "build/postcall-original-0.bin": "72790ee6458e9dc127d6e69adb7d90c41ae8b6993c6efeffefb9b96c6e7436c6",
+    "build/postcall-original-1.bin": "d94844652998544f957d3058ae5c93f047d257498a679091ddc3208205f37793",
+    "build/postcall-protected-0.bin": "8a33f6f0ef88d414c45dc79fe09662cf9805f462f94bfd1cf81cdcad8c2a6cea",
+    "build/postcall-protected-1.bin": "3eb2c637e75e243eb77d0461d5bafdfec32b89a5e1dff9960b40709673f1218a"
+  },
+  "debugger_capture_sha256": {
+    "build/vmp-hello-postcall-observed-llvm.json": "4f131adb050094aadbf9dcabafed56756f82218cf595ca9e0e76795ec0f7f680",
+    "build/vmp-hello-postcall-observed-apple.json": "cf2a31d698e68dde10cf0096c6eb6df53787c822144fbc62af2bfe3d5b0c9c0e"
+  },
+  "reports_sha256": {
+    "build/vmp-hello-postcall-verified-llvm/vmp_hello_postcall_checkpoint.json": "b38e9d9ced7161d3887e8161173317b6b7be24600b663dad6b5b27a592182572",
+    "build/vmp-hello-postcall-verified-apple/vmp_hello_postcall_checkpoint.json": "521ce3c88a04fbcf54bce0c8e9a714ec11f8ede4db174be408e4c2086a5224a3",
+    "build/vmp-hello-postcall-verified-llvm/run.json": "4ab4614086cfc9b62f14649ad6e40aafbe4704246646f53f51c7bc67f8da9788",
+    "build/vmp-hello-postcall-verified-apple/run.json": "e8525ffdce5209e15ef3ad4e0b0971f9292c38241ae8c146d723b39c31ab67a7",
+    "build/vmp-hello-postcall-direct-final-0/vmp_hello_postcall_interpose.json": "4702f811634480dd7fdfbfe046cb8bac6fcf95258d8fd2a9dbee1b25edfdb633",
+    "build/vmp-hello-postcall-direct-final-1/vmp_hello_postcall_interpose.json": "e5e4b402f364c24914c03ede277214ded9a82cc7c30b30c1931206ef2d613555",
+    "build/vmp-hello-postcall-direct-final-0/run.json": "f4ed5dae802c197d45bc49af09bbeae2b355dbada0cdc59e00918f3f74d7ecee",
+    "build/vmp-hello-postcall-direct-final-1/run.json": "6e23ecfde204cd022a06590ffa0ede5eb787764baafe74299c02c85d7c291e78",
+    "build/vmp-hello-postcall-observed-verified-llvm/vmp_hello_postcall_observed.json": "c2f77e181a3f696788f28c6ae8ee2b81d91fb47e22d6a6bf95f9992417e91bdc",
+    "build/vmp-hello-postcall-observed-verified-apple/vmp_hello_postcall_observed.json": "d5fbf7a2074258a192733184c5a7fae975d964794e7fd75cd32124d3ae1ae88c",
+    "build/vmp-hello-postcall-observed-verified-llvm/run.json": "d71296fc89feaee92b56df0ee88c532cb242f62278387fca6bd399a3a23800ab",
+    "build/vmp-hello-postcall-observed-verified-apple/run.json": "749baabc5c3485e446794c9a0942a464d4fd6f42c27cbd43206caaa31c6dcd8c"
+  },
+  "results": {
+    "synthetic_postcall_state": true,
+    "instrumented_postcall_state_derived_from_process": true,
+    "unmodified_postcall_state_observed": true,
+    "unmodified_scope": "debugger-observed without dyld printf interposer; breakpoints and single-step instrumentation remain",
+    "prior_debugger_launch_result": "LLVM LLDB and Apple LLDB both reported process exited with status -1 (lost connection) before first stop in the earlier sandbox",
+    "debugger_launch_result": "both debuggers launched with full filesystem access; entry-stub-first capture avoids loader-overwritten main breakpoint",
+    "debugger_captures": 2,
+    "debugger_slides": ["0x213c000", "0x2852000"],
+    "debugger_boundaries_per_capture": 4,
+    "debugger_ida_runs": 2,
+    "debugger_checks_per_run": 12,
+    "debugger_checks_passed_per_run": 12,
+    "debugger_scoped_scalar_comparisons_per_run": 72,
+    "debugger_scoped_scalar_matches_per_run": 72,
+    "debugger_rflags_contract": "full entry RFLAGS; CF/PF/ZF/SF/OF mask 0x8c5 after XOR; AF undefined and excluded",
+    "debugger_recorded_stack_reads_per_run": 2,
+    "debugger_whole_data_trace_complete": false,
+    "synthetic_ida_runs": 2,
+    "synthetic_checks_per_run": 13,
+    "synthetic_checks_passed_per_run": 13,
+    "instrumented_process_captures": 4,
+    "instrumented_protected_ida_runs": 2,
+    "instrumented_checks_per_run": 11,
+    "instrumented_checks_passed_per_run": 11,
+    "instrumented_output_matches_unmodified": true,
+    "instrumented_protected_slides": ["0x2107000", "0x29d000"],
+    "capture_record_bytes": 328,
+    "planned_heads_per_run": 3,
+    "entered_heads_per_run": 3,
+    "checkpoint_instruction_budget": 4,
+    "maximum_supported_checkpoint_instructions": 64,
+    "ctest_passed": 21,
+    "ctest_total": 21,
+    "function_evidence_published": false,
+    "checkpoint_provenance_verified": false
+  }
+}

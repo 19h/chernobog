@@ -234,7 +234,8 @@ struct RuntimeDataPatch
     bool instruction_budget_explicit = false;
 };
 bool parse_entry_replay(const std::string &request, std::string &shadow_path,
-                        hybrid::EmuInput &input, RuntimeDataPatch *data_patch = nullptr)
+                        hybrid::EmuInput &input, RuntimeDataPatch *data_patch = nullptr,
+                        uint64_t *checkpoint_budget = nullptr)
 {
     if (request.empty() || request.size() > (data_patch ? 32000 : 8192) ||
         request.find('\0') != std::string::npos)
@@ -293,9 +294,19 @@ bool parse_entry_replay(const std::string &request, std::string &shadow_path,
             data_patch->instruction_budget_explicit = true;
         }
     }
-    else if (!keys(root.obj(), {"shadow_file", "observed_sp", "gprs", "rflags", "stack_above",
-                                "stack_relative_gprs", "stack_relative_words"}))
+    else if (checkpoint_budget
+                 ? !keys(root.obj(), {"shadow_file", "observed_sp", "gprs", "rflags", "stack_above",
+                                      "stack_relative_gprs", "stack_relative_words", "max_insns"})
+                 : !keys(root.obj(), {"shadow_file", "observed_sp", "gprs", "rflags", "stack_above",
+                                      "stack_relative_gprs", "stack_relative_words"}))
         return false;
+    if (checkpoint_budget)
+    {
+        const auto *maximum = root.obj().get_value("max_insns", JT_NUM);
+        if (!maximum || maximum->num() < 1 || maximum->num() > 64)
+            return false;
+        *checkpoint_budget = uint64_t(maximum->num());
+    }
     const auto *path = root.obj().get_value("shadow_file", JT_STR);
     const auto *sp = root.obj().get_value("observed_sp", JT_STR);
     const auto *gprs = root.obj().get_value("gprs", JT_ARR);
@@ -666,9 +677,14 @@ static std::string trace_native_region_impl(
     hybrid::ProgramImage *retained_image = nullptr, bool candidate_entry = false,
     const std::vector<uint8_t> *runtime_shadow = nullptr, bool sample_states = false,
     const RuntimeDataPatch *runtime_data = nullptr, const ShadowUseRequest *shadow_use = nullptr,
-    bool owned_checkpoint = false)
+    bool owned_checkpoint = false, uint64_t candidate_checkpoint_budget = 0)
 {
     using namespace hybrid;
+    if (candidate_checkpoint_budget &&
+        (!candidate_entry || !runtime_shadow || !sample_states || !explicit_input ||
+         !explicit_input->native_entry || runtime_data || walk || check || bindings || shadow_use ||
+         candidate_checkpoint_budget > 64))
+        return unavailable("invalid candidate checkpoint request", candidate_entry);
     if (owned_checkpoint &&
         (candidate_entry || !runtime_shadow || !sample_states || !runtime_data || !explicit_input ||
          !runtime_data->instruction_budget_explicit || walk || check || bindings || shadow_use))
@@ -685,6 +701,7 @@ static std::string trace_native_region_impl(
     if (!api || !api->decode)
         return unavailable("native decoder/emulator unavailable", candidate_entry);
     bool shadow_unloaded_entry = false, observed_tail_checkpoint = false;
+    bool observed_unloaded_checkpoint = false;
     if (candidate_entry)
     {
         const auto *segment = getseg(ea_t(function));
@@ -699,6 +716,11 @@ static std::string trace_native_region_impl(
             explicit_input && explicit_input->native_entry && segment && is_tail(flags) &&
             item_start != BADADDR && is_data(get_flags(item_start)) &&
             getseg(item_start) == segment && is_loaded(ea_t(function)) && !has_user_name(flags);
+        observed_unloaded_checkpoint =
+            candidate_checkpoint_budget && explicit_input && explicit_input->native_entry &&
+            segment && is_unknown(flags) && !is_loaded(ea_t(function)) && !has_user_name(flags);
+        if (candidate_checkpoint_budget && !observed_unloaded_checkpoint)
+            return unavailable("not_unloaded_observed_checkpoint", true);
         // A protected loader can restore a zero-fill executable target only
         // after process startup. Admit it solely through an explicit shadow
         // request and an existing code xref to the exact unloaded root.
@@ -722,7 +744,8 @@ static std::string trace_native_region_impl(
         if (PH.id != PLFM_386 || function == BADADDR || uint64_t(ea_t(function)) != function ||
             !segment || segment->type == SEG_XTRN || !(segment->perm & SEGPERM_EXEC) ||
             (segment->bitness != 1 && segment->bitness != 2) ||
-            !(data_head || shadow_unloaded_entry || observed_tail_checkpoint) ||
+            !(data_head || shadow_unloaded_entry || observed_tail_checkpoint ||
+              observed_unloaded_checkpoint) ||
             (!shadow_unloaded_entry && has_user_name(flags)) || get_func(ea_t(function)))
             return unavailable(runtime_shadow ? "not_unlabeled_executable_shadow_entry"
                                               : "not_unlabeled_executable_data_head",
@@ -745,7 +768,9 @@ static std::string trace_native_region_impl(
     }
     HybridConfig config;
     config.max_image_bytes = 64ull * 1024 * 1024;
-    config.max_insns = runtime_data ? runtime_data->instruction_budget : 4096;
+    config.max_insns = candidate_checkpoint_budget ? candidate_checkpoint_budget
+                       : runtime_data              ? runtime_data->instruction_budget
+                                                   : 4096;
     config.timeout_ms = sample_states ? 1000 : 250;
     config.want_runtime_strings = false;
     config.want_import_summaries = false;
@@ -847,7 +872,8 @@ static std::string trace_native_region_impl(
                      bindings ? *bindings : std::vector<EmuCallSummary>{});
     EmuInput input = explicit_input ? *explicit_input : EmuInput{};
     if (input.native_entry)
-        input.native_entry->observed_checkpoint = observed_tail_checkpoint || owned_checkpoint;
+        input.native_entry->observed_checkpoint =
+            observed_tail_checkpoint || observed_unloaded_checkpoint || owned_checkpoint;
     input.seed = seed;
     input.run_id = 1;
     EmuEvents events;
@@ -1059,6 +1085,8 @@ static std::string trace_native_region_impl(
         << inspection_json_quote(
                runtime_data
                    ? "ephemeral native entry replay over caller-supplied executable shadow, writable data, scalar registers and translated stack windows; external runtime provenance is not verified by this API; no function evidence or VM identity"
+               : candidate_checkpoint_budget
+                   ? "ephemeral native checkpoint replay over caller-supplied executable shadow, scalar registers and translated stack-relative fields; prior call effects and external runtime provenance are not verified by this API; no function evidence or VM identity"
                : runtime_shadow && input.native_entry
                    ? "ephemeral native entry replay over caller-supplied executable shadow bytes, scalar registers and translated stack-relative fields; external runtime provenance is not verified by this API; no function evidence or VM identity"
                : runtime_shadow
@@ -1078,6 +1106,9 @@ static std::string trace_native_region_impl(
             << ",\"shadow_fingerprint\":"
             << inspection_json_quote(hex(runtime_shadow_fingerprint(*runtime_shadow)))
             << ",\"shadow_instruction_states\":" << (sample_states ? "true" : "false");
+    if (candidate_checkpoint_budget)
+        out << ",\"observed_checkpoint_request\":true,\"checkpoint_instruction_budget\":"
+            << candidate_checkpoint_budget << ",\"checkpoint_provenance_verified\":false";
     if (shadow_use)
         out << ",\"shadow_use\":" << capture_shadow_use(*shadow_use, region, image, events);
     if (input.native_entry)
@@ -1203,6 +1234,19 @@ std::string trace_native_candidate_shadow_replay(uint64_t root, uint64_t seed,
         return unavailable("invalid bounded native entry replay", true);
     return trace_native_region_impl(root, seed, &input, false, false, nullptr, nullptr, nullptr,
                                     true, &shadow, true);
+}
+std::string trace_native_candidate_shadow_checkpoint(uint64_t root, uint64_t seed,
+                                                     const std::string &request)
+{
+    std::string path;
+    hybrid::EmuInput input;
+    std::vector<uint8_t> shadow;
+    uint64_t budget = 0;
+    if (!parse_entry_replay(request, path, input, nullptr, &budget) ||
+        !read_runtime_shadow(path, shadow))
+        return unavailable("invalid bounded candidate checkpoint", true);
+    return trace_native_region_impl(root, seed, &input, false, false, nullptr, nullptr, nullptr,
+                                    true, &shadow, true, nullptr, nullptr, false, budget);
 }
 std::string trace_native_candidate_shadow_replay_memory(uint64_t root, uint64_t seed,
                                                         const std::string &request)

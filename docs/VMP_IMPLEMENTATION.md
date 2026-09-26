@@ -852,3 +852,25 @@ initializer remains 75 nodes, 77 edges
 and three unresolved facts. All 21 CTest suites pass. See
 `VMP_STATUS_AH_FLAGS.md` and its evidence JSON. Protected prevalence,
 other status instructions and the full review remain open.
+
+Protected hello return-tail checkpoint for rows 6a and V: an explicit,
+read-only caller-state replay now admits an unnamed unloaded executable root
+with 1–64 entered instructions and reports unverified checkpoint provenance.
+Two fresh IDA runs seeded with synthetic post-call states derived from the
+earlier LLVM/Apple `_main` captures each pass 13/13 admission, architectural
+effect, byte-mutation and selected-IDB-inventory checks. Both enter three
+restored tail instructions and reach the caller return address. A signed
+disposable wrapper around the dyld-resolved original `printf` then captures two original and two
+protected process return states; all four outputs and exit statuses match
+their uninstrumented no-argument controls. The two protected captures seed
+two more fresh IDA runs, each passing 11/11 raw-capture, entry-register,
+architectural-effect and IDB-inventory checks. After full filesystem access
+restored debugger launch, a corrected entry-stub-first capture observes the
+noninterposed `printf` return and three tail instructions under both LLVM and
+Apple LLDB with ASLR enabled. Two fresh installed-plugin IDA runs each pass
+12/12 checks and 72/72 scoped scalar comparisons, including the post-RET state;
+the two recorded stack reads and selected IDA inventory agree. Undefined XOR
+AF is excluded, and the whole data trace remains incomplete at the external
+caller frontier. Complete protected-path replay remains unknown.
+See `VMP_HELLO_POSTCALL_CHECKPOINT.md` and its evidence JSON; the full review
+remains in progress.
