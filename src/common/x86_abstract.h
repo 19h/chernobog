@@ -270,6 +270,10 @@ enum class Operation : uint8_t
     shift_left,
     shift_right,
     arithmetic_right,
+    rotate_left,
+    rotate_right,
+    carry_left,
+    carry_right,
     clear_carry,
     set_carry,
     complement_carry,
@@ -283,6 +287,12 @@ inline void result_flags(Flags &flags, uint64_t result, unsigned width)
     for (unsigned i = 0; i < 8; ++i)
         parity ^= unsigned((result >> i) & 1);
     flags.set(PF, parity == 0);
+}
+
+inline bool rotate_operation(Operation op)
+{
+    return op == Operation::rotate_left || op == Operation::rotate_right ||
+           op == Operation::carry_left || op == Operation::carry_right;
 }
 
 // Pure bitvector transfer, O(1) time/space. Missing values do not supply zero.
@@ -316,6 +326,73 @@ inline std::optional<uint64_t> transfer(Operation op, unsigned width, std::optio
         *right &= m;
     if (op == Operation::bit_not)
         return left ? std::optional<uint64_t>((~*left) & m) : std::nullopt;
+
+    if (rotate_operation(op))
+    {
+        const bool through = op == Operation::carry_left || op == Operation::carry_right;
+        const bool to_left = op == Operation::rotate_left || op == Operation::carry_left;
+        const auto incoming_carry = flags.get(CF);
+        if (!right)
+        {
+            // Every rotate preserves SF/ZF/AF/PF, including a variable count.
+            // Constant all-zero/all-one words are invariant under plain rotates;
+            // a carry rotate also needs a matching known incoming carry.
+            flags.forget(CF | OF);
+            if (left && (*left == 0 || *left == m) &&
+                (!through || (incoming_carry && *incoming_carry == (*left != 0))))
+            {
+                if (incoming_carry && *incoming_carry == (*left != 0))
+                    flags.set(CF, *incoming_carry);
+                return left;
+            }
+            return std::nullopt;
+        }
+        const unsigned count = unsigned(*right & (width == 64 ? 63 : 31));
+        if (count == 0)
+            return left;
+        const unsigned steps = through ? (width < 32 ? count % (width + 1) : count) : count % width;
+        // A complete carry-ring cycle preserves its input and carry. OF is
+        // left unknown for a nonzero masked count, including these cycles.
+        if (through && steps == 0)
+        {
+            flags.forget(OF);
+            return left;
+        }
+        flags.forget(CF | OF);
+        if (!left)
+            return std::nullopt;
+        const uint64_t a = *left;
+        if (!through)
+        {
+            const uint64_t result = steps == 0 ? a
+                                    : to_left  ? ((a << steps) | (a >> (width - steps))) & m
+                                               : ((a >> steps) | (a << (width - steps))) & m;
+            flags.set(CF, to_left ? (result & 1) != 0 : (result & sign) != 0);
+            if (count == 1)
+                flags.set(OF, to_left ? ((result & sign) != 0) != ((result & 1) != 0)
+                                      : ((result >> (width - 1)) ^ (result >> (width - 2))) & 1);
+            return result;
+        }
+        // For admitted counts the outgoing carry is a source-word bit, even
+        // when the incoming carry makes the destination value unknown.
+        flags.set(CF, ((a >> (to_left ? width - steps : steps - 1)) & 1) != 0);
+        if (count == 1)
+        {
+            if (to_left)
+                flags.set(OF, ((a >> (width - 1)) ^ (a >> (width - 2))) & 1);
+            else if (incoming_carry)
+                flags.set(OF, ((a & sign) != 0) != *incoming_carry);
+        }
+        if (!incoming_carry)
+            return std::nullopt;
+        // Avoid a 64-bit shift by 64 in the one-step wraparound terms.
+        const uint64_t result =
+            to_left ? (a << steps) | (uint64_t(*incoming_carry) << (steps - 1)) |
+                          (steps > 1 ? a >> (width + 1 - steps) : 0)
+                    : (a >> steps) | (uint64_t(*incoming_carry) << (width - steps)) |
+                          (steps > 1 ? a << (width + 1 - steps) : 0);
+        return result & m;
+    }
 
     if (op == Operation::shift_left || op == Operation::shift_right ||
         op == Operation::arithmetic_right)

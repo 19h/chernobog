@@ -252,6 +252,103 @@ void accumulator_extension_regressions()
     std::puts("Accumulator extension partial bytes: 6561; signed words: 65536 per mode");
 }
 
+std::pair<uint64_t, Flags> rotate_oracle(Operation op, unsigned width, uint64_t input,
+                                         unsigned raw_count, Flags flags)
+{
+    const bool through = op == Operation::carry_left || op == Operation::carry_right;
+    const bool to_left = op == Operation::rotate_left || op == Operation::carry_left;
+    const unsigned count = raw_count & (width == 64 ? 63 : 31);
+    if (count == 0)
+        return {input & mask(width), flags};
+    const unsigned length = width + unsigned(through);
+    std::array<bool, 65> bits{};
+    for (unsigned i = 0; i < width; ++i)
+        bits[i] = (input >> i) & 1;
+    if (through)
+        bits[width] = *flags.get(CF);
+    // Independently rotate an explicit bit vector, avoiding the implementation's
+    // word-shift formulas and its special wraparound terms.
+    for (unsigned step = 0; step < count % length; ++step)
+    {
+        const auto old = bits;
+        for (unsigned i = 0; i < length; ++i)
+            bits[i] = old[(i + (to_left ? length - 1 : 1)) % length];
+    }
+    uint64_t result = 0;
+    for (unsigned i = 0; i < width; ++i)
+        result |= uint64_t(bits[i]) << i;
+    flags.set(CF, through ? bits[width] : bits[to_left ? 0 : width - 1]);
+    flags.forget(OF);
+    if (count == 1)
+        flags.set(OF, bits[width - 1] != (to_left ? *flags.get(CF) : bits[width - 2]));
+    return {result, flags};
+}
+
+void rotate_regressions()
+{
+    constexpr Operation ops[] = {Operation::rotate_left, Operation::rotate_right,
+                                 Operation::carry_left, Operation::carry_right};
+    size_t cases = 0;
+    for (unsigned width : {8u, 16u, 32u, 64u})
+        for (Operation op : ops)
+            for (unsigned profile = 0; profile < 729; ++profile)
+                for (unsigned count : {0u, 1u, 2u, 8u, 9u, 17u, 32u, 64u, 255u})
+                {
+                    Flags initial;
+                    unsigned encoded = profile;
+                    for (unsigned bit = 0; bit < 6; ++bit, encoded /= 3)
+                        if (encoded % 3)
+                            initial.set(uint8_t(1u << bit), encoded % 3 == 2);
+                    const uint64_t input = (uint64_t{1} << (width - 1)) | 5;
+                    Flags expected;
+                    std::optional<uint64_t> expected_value;
+                    bool first = true;
+                    for (bool carry : {false, true})
+                    {
+                        if (initial.get(CF) && *initial.get(CF) != carry)
+                            continue;
+                        Flags concrete = initial;
+                        concrete.set(CF, carry);
+                        const auto result = rotate_oracle(op, width, input, count, concrete);
+                        if (first)
+                        {
+                            expected = result.second;
+                            expected_value = result.first;
+                        }
+                        else
+                        {
+                            expected.join(result.second);
+                            if (expected_value != result.first)
+                                expected_value.reset();
+                        }
+                        first = false;
+                    }
+                    Flags actual = initial;
+                    const auto result = transfer(op, width, input, count, false, actual);
+                    check(result == expected_value && actual.known == expected.known &&
+                              actual.value == expected.value,
+                          "all partial flag profiles agree with explicit rotate bit vectors");
+                    ++cases;
+                }
+    for (unsigned width : {8u, 16u, 32u, 64u})
+        for (Operation op : ops)
+        {
+            Flags flags{ALL, ALL};
+            transfer(op, width, {}, {}, false, flags);
+            check(flags.known == (ALL & ~(CF | OF)) && flags.value == flags.known,
+                  "unknown rotate operand/count retains exactly SF/ZF/AF/PF");
+            flags = {ALL, ALL};
+            transfer(op, width, {}, 0, false, flags);
+            check(flags.known == ALL && flags.value == ALL,
+                  "masked-zero rotate preserves flags without a known operand");
+            flags = {ALL, 0};
+            const auto zero = transfer(op, width, 0, {}, false, flags);
+            check(zero == 0 && flags.get(CF) == false && !flags.get(OF),
+                  "zero word and matching carry remain invariant for an unknown count");
+        }
+    std::printf("rotate partial profiles: %zu; unknown-count and operand controls passed\n", cases);
+}
+
 uint8_t arithmetic_oracle(unsigned a, unsigned b, unsigned carry, bool sub)
 {
     const int exact = sub ? int(a) - int(b) - int(carry) : int(a + b + carry);
@@ -512,6 +609,7 @@ int main()
     dataflow_regressions();
     status_ah_regressions();
     accumulator_extension_regressions();
+    rotate_regressions();
     exhaustive_arithmetic();
     exhaustive_conditions();
     boundaries();

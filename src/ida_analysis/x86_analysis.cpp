@@ -245,6 +245,14 @@ Operation operation(uint16_t type)
         return Operation::shift_right;
     case NN_sar:
         return Operation::arithmetic_right;
+    case NN_rol:
+        return Operation::rotate_left;
+    case NN_ror:
+        return Operation::rotate_right;
+    case NN_rcl:
+        return Operation::carry_left;
+    case NN_rcr:
+        return Operation::carry_right;
     case NN_clc:
         return Operation::clear_carry;
     case NN_stc:
@@ -464,6 +472,11 @@ struct State
         const unsigned width = unsigned(get_dtype_size(insn.Op1.dtype) * 8);
         const unsigned word_bits = is64 ? 64 : 32;
         const auto algebra = operation(insn.itype);
+        if (rotate_operation(algebra) && ((!mode32(insn) && !is64) || (insn.auxpref & aux_lock)))
+        {
+            *this = {};
+            return;
+        }
         const auto memory_operand = [](const op_t &operand)
         { return operand.type == o_mem || operand.type == o_displ || operand.type == o_phrase; };
         const auto algebra_address =
@@ -1526,6 +1539,8 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         else if (accumulator_extension(instruction.itype) &&
                  !exact_accumulator_extension_encoding(instruction))
             flow.stop = "unsupported_accumulator_extension_encoding";
+        else if (rotate_operation(operation(instruction.itype)) && (instruction.auxpref & aux_lock))
+            flow.stop = "unsupported_locked_rotate";
         else if (instruction.itype == NN_bswap && get_dtype_size(instruction.Op1.dtype) != 4 &&
                  get_dtype_size(instruction.Op1.dtype) != 8 &&
                  !abstract_bswap16_fallthrough(instruction))

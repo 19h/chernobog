@@ -1,0 +1,321 @@
+{
+  "schema": 1,
+  "parent_revision": "343d7c8463e311980b169cab573fbb39d00bd120",
+  "isa": {
+    "source": "Intel SDM revision 090",
+    "url": "https://cdrdv2-public.intel.com/874240/325462-090-sdm-vol-1-2abcd-3abcd-4.pdf",
+    "artifact": "build/intel-sdm-090.pdf",
+    "sha256": "3686e42931e893b5016c70fb131403795ef173237d073afcfec52755fcd3ea50",
+    "instruction_pages": [
+      "Vol. 2B 4-533",
+      "Vol. 2B 4-534",
+      "Vol. 2B 4-535",
+      "Vol. 2B 4-536",
+      "Vol. 2B 4-537"
+    ],
+    "zero_extension_section": "Vol. 1 3.4.1.1",
+    "carry_full_cycle_of_contract": "unknown for every nonzero masked count except one; no preservation proof from a zero effective count"
+  },
+  "emitter_snapshot": {
+    "logical_label": "VMP emitter core/intel.cc",
+    "sha256": "ec81bac7a581873892710d3cd81b942973394e83b0586f881022c8b67961163c",
+    "review_sha256": "ce0edd303f1b20d12affaf1bb4646b684a056babe724f36af24340fefe7cb17c",
+    "same_snapshot": false,
+    "template_lines": [
+      16094,
+      16095,
+      16096,
+      16152,
+      16153,
+      16154,
+      16155
+    ],
+    "mutation_operation_lines": [
+      17610,
+      17611
+    ]
+  },
+  "source_sha256": {
+    "src/common/x86_abstract.h": "3c2c84e29baf8116e70a7205a60f9a2337b62a7668007ea2bdeb0bb4ecee9a1d",
+    "src/ida_analysis/x86_analysis.cpp": "9d09677e114276abb800ce3e6feff2fb96b315930b334dd4dbddc409861879ce",
+    "tests/x86_abstract_tests.cpp": "19695014cf7c6ba4f8c279fab575419771b7d008dd54bd1840fec796e3c91f75",
+    "tests/vmp_native/rotate_asm.c": "791cbbeb851daa2d297ed2d99724213eb4d59d5dcd52b38f16d4fb99c41ebfef",
+    "tests/vmp_native/rotate.cpp": "6e57db3f1bc80ee32eb768ae04b964c0b3e4a19c4f21c10e2e7f577f38568087",
+    "tests/ida_rotate_probe.py": "55dd27f803c7c78474b48758ad68d9c5a2ddf8df0f15b82a009a1d5f56ea31f4",
+    "tests/run_rotate.py": "deedc437f685cafc265fe2a1f892173456488adb45cb6a45b932004b642afd91",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/vmp_corpus/rotate.Dockerfile": "b9fd03f590e837ae99fc6c6e5d7658113bbc34a269b47341b94fe813cc0adefd",
+    "tests/vmp_corpus/linux32.py": "82bb5e0f90f612ead4a844a14142da1cac029c8f1d6d43e3d56cd597ef8398a5",
+    "tests/vmp_corpus/linux32_exec.py": "a0577238731548cde8e20c20299f61cc7fcf23b4602c33dfdbcd12f8c08793b0"
+  },
+  "profiles": {
+    "prior": {
+      "report": "build/vmp-rotate-prior-final/rotate_analysis.json",
+      "report_sha256": "38a043517d7a81a56b48dc794915bf475a84d2243d85ee69c89082a5c7f39ca0",
+      "plugin_sha256": "786da7034b578c4345efa6d0e9778ac44fb771a1ff5759c3eeb5ae1a1bb1f0b2",
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "matched_binary_identity": true,
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "binary_sha256": "d58a4c5d473c0e2710c2375657e487ddede59abf8563bbad9fe5aaf71099927f",
+          "native_result": {
+            "passed": true,
+            "byte_cases": 1048576,
+            "corner_cases": 245760,
+            "static_inputs": 512
+          },
+          "checks": 103,
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "artifact_sha256": {
+            "inspection/run.json": "04c76fa12dbdeaff3c83c9083fc25157bd7a7a4ca26156b53c18e82af090bf8f",
+            "inspection/rotate.json": "480a05cb098633b17e3e747787e63b66093e58ec4834ad98ae99f1845c7a56e1"
+          }
+        },
+        {
+          "architecture": "i386",
+          "binary_sha256": "eb76b2861aa66dba48a46134a8c9e0aede2a5235d5bdee86d1949d9409222f4d",
+          "native_result": {
+            "passed": true,
+            "byte_cases": 1048576,
+            "corner_cases": 184320,
+            "static_inputs": 512
+          },
+          "checks": 99,
+          "runtime": {
+            "image_id": "sha256:bea6d242fce2d512c1d22e3e2ccf3ed2747cda74f8a89be9e00ce24e50d84393",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ],
+            "cpp_tool_sha256": [
+              {
+                "file": "i686-linux-gnu-g++",
+                "sha256": "c12ea71f2a973c02842a1170cc955bfef58c3b3ec0e1d0102caa94b2291595fc"
+              },
+              {
+                "file": "libstdc++.a",
+                "sha256": "cbea20f6a874d099da2571d79fbf88383880bbe47b76e7e1a363a61790f87118"
+              }
+            ]
+          },
+          "artifact_sha256": {
+            "inspection/run.json": "78e1238de510c28e50d75b91ac10bec901eecfe44e4e4b8a184793cd6e1d340f",
+            "inspection/rotate.json": "d4d70a8e11886b1749e429df51a1c7a33c2c689b8cc6f7e81cc2635da5cb9370"
+          }
+        }
+      ],
+      "plugin_artifact": "build/vmp-rotate-prior-final/x86_64/inspection/idauser/plugins/chernobog.dylib"
+    },
+    "new": {
+      "report": "build/vmp-rotate-new-final/rotate_analysis.json",
+      "report_sha256": "ba4000d6474731432dcbd60668b764a1ebbe3b33e4392fa6a563a8e151c9331c",
+      "plugin_sha256": "4d2cc0825602003d3ffba8e71e5a235bdcf8e6ed043635de2422a77dbddcf30a",
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "matched_binary_identity": true,
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "binary_sha256": "d58a4c5d473c0e2710c2375657e487ddede59abf8563bbad9fe5aaf71099927f",
+          "native_result": {
+            "passed": true,
+            "byte_cases": 1048576,
+            "corner_cases": 245760,
+            "static_inputs": 512
+          },
+          "checks": 128,
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "artifact_sha256": {
+            "inspection/run.json": "44f3c4de903a69c7717dbccf0b58f5e1a1c5767669d061b2b7bb34837c6c8776",
+            "inspection/rotate.json": "fa33d61bc40c7d9c51ac4330eea577aa3ffb325c85fb7192eb08c19033042219"
+          }
+        },
+        {
+          "architecture": "i386",
+          "binary_sha256": "eb76b2861aa66dba48a46134a8c9e0aede2a5235d5bdee86d1949d9409222f4d",
+          "native_result": {
+            "passed": true,
+            "byte_cases": 1048576,
+            "corner_cases": 184320,
+            "static_inputs": 512
+          },
+          "checks": 123,
+          "runtime": {
+            "image_id": "sha256:bea6d242fce2d512c1d22e3e2ccf3ed2747cda74f8a89be9e00ce24e50d84393",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ],
+            "cpp_tool_sha256": [
+              {
+                "file": "i686-linux-gnu-g++",
+                "sha256": "c12ea71f2a973c02842a1170cc955bfef58c3b3ec0e1d0102caa94b2291595fc"
+              },
+              {
+                "file": "libstdc++.a",
+                "sha256": "cbea20f6a874d099da2571d79fbf88383880bbe47b76e7e1a363a61790f87118"
+              }
+            ]
+          },
+          "artifact_sha256": {
+            "inspection/run.json": "678ef415297d1485f5c6a48b3cc97760c93bf0a734710ba8883eb729a517ca80",
+            "inspection/rotate.json": "2b653ac9258537ee9d30fc45e3b2a3e2a856233e9d711d64a08a61d37821e375"
+          }
+        }
+      ],
+      "plugin_artifact": "build/vmp-rotate-new-final/x86_64/inspection/idauser/plugins/chernobog.dylib"
+    }
+  },
+  "recovery_by_architecture": {
+    "x86_64": {
+      "prior": {
+        "owned_condition_values": 0,
+        "ownerless_condition_values": 0,
+        "owned_stack_targets": 0,
+        "ownerless_stack_targets": 0
+      },
+      "new": {
+        "owned_condition_values": 20,
+        "ownerless_condition_values": 20,
+        "owned_stack_targets": 1,
+        "ownerless_stack_targets": 1
+      }
+    },
+    "i386": {
+      "prior": {
+        "owned_condition_values": 0,
+        "ownerless_condition_values": 0,
+        "owned_stack_targets": 0,
+        "ownerless_stack_targets": 0
+      },
+      "new": {
+        "owned_condition_values": 19,
+        "ownerless_condition_values": 19,
+        "owned_stack_targets": 1,
+        "ownerless_stack_targets": 1
+      }
+    }
+  },
+  "portable": {
+    "flag_profiles": 729,
+    "operations": 4,
+    "widths_bits": [
+      8,
+      16,
+      32,
+      64
+    ],
+    "counts": [
+      0,
+      1,
+      2,
+      8,
+      9,
+      17,
+      32,
+      64,
+      255
+    ],
+    "partial_flag_cases": 104976,
+    "oracle": "independent explicit Boolean bit vector and compatible CF completion join",
+    "additional_controls": [
+      "unknown operand/count preserves SF/ZF/AF/PF",
+      "masked-zero count preserves all flags",
+      "unknown-count constant-zero with matching CF"
+    ]
+  },
+  "native": {
+    "byte_cases_per_architecture": 1048576,
+    "x86_64_corner_cases": 245760,
+    "i386_corner_cases": 184320,
+    "instruction_cases_across_architecture_pair": 2527232,
+    "static_input_groups_per_architecture": 512,
+    "undefined_of_excluded": true,
+    "comparator": "current portable helper compiled into both prior/new plugin profiles; literal ISA instructions independently produce result and flag snapshots"
+  },
+  "tools": {
+    "host_compiler": {
+      "logical_file": "clang++",
+      "sha256": "5922f5f7843fee699497c45cc98134b6686e0a5e2fa8a5866ab74c5482fa87a5",
+      "version": "Apple clang version 21.0.0 (clang-2100.3.34.2)"
+    },
+    "docker_base_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+    "docker_rotate_image_id": "sha256:bea6d242fce2d512c1d22e3e2ccf3ed2747cda74f8a89be9e00ce24e50d84393",
+    "additional_cpp_packages": [
+      "g++-13-i686-linux-gnu\t13.3.0-6ubuntu2~24.04.1cross1",
+      "g++-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+      "libstdc++-13-dev-i386-cross\t13.3.0-6ubuntu2~24.04.1cross1"
+    ],
+    "docker_formatter": {
+      "module": "github.com/reteps/dockerfmt",
+      "module_version": "v0.5.2",
+      "self_reported_version": "dev",
+      "artifact": "build/tools/dockerfmt",
+      "sha256": "7848c8433ad35beb611fa4021f4007feb6a2cfb392b7fe6aad09999857221e9f",
+      "check": "build/tools/dockerfmt -n -c tests/vmp_corpus/rotate.Dockerfile"
+    },
+    "python_formatter": "Black 26.5.1",
+    "cpp_formatter": "clang-format version 23.0.0git (git@github.com:llvm/llvm-project b51054818b78dc395cd4d33f17cfb6e98a36a76d)"
+  },
+  "protected_control": {
+    "input": "samples/foo_x86_vmp",
+    "input_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "root": "0x1002946b5",
+    "reports_identical": true,
+    "checks_per_profile": 8,
+    "nodes": 75,
+    "edges": 77,
+    "unresolved_records": 3,
+    "rotate_heads": 0,
+    "rotate_head_inspection": "strip legacy/REX prefixes at each recorded head; test D0/D1/D2/D3/C0/C1 ModRM extension 0..3",
+    "artifacts": {
+      "build/vmp-rotate-protected-prior/run.json": "16ad03a020039319d0db5457f3dce7c31c66c050d5e706402eb05b6e0e9b2504",
+      "build/vmp-rotate-protected-prior/protected_region.json": "26da0a9b8e82ebd309f55a1734efd30d47cf2bfb4dc6f805f0088bebcb099eb6",
+      "build/vmp-rotate-protected-new/run.json": "e14d1ac6d4c64884697c54235a464d0562a3269485ed27ae1e40a144ce9a3fdd",
+      "build/vmp-rotate-protected-new/protected_region.json": "26da0a9b8e82ebd309f55a1734efd30d47cf2bfb4dc6f805f0088bebcb099eb6"
+    }
+  },
+  "ctest": {
+    "passed": 21,
+    "total": 21,
+    "elapsed_seconds": 6.88,
+    "log": "build/vmp-rotate-new-final/ctest.log",
+    "log_sha256": "3b08e796cd0f8d241cba97253f05701f7a9c703d5442aea982ad6f85343f6193"
+  },
+  "limits": {
+    "native_execution": "translated macOS x86-64 and pinned QEMU i386; physical execution unmeasured",
+    "complete_lifecycle_matrix": "unknown",
+    "broader_protected_gain": "unknown",
+    "exceptional_execution": "unsupported",
+    "other_execution_modes": "unsupported",
+    "mutable_package_rebuild_identity": "unknown",
+    "complete_review": "in progress"
+  }
+}

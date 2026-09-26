@@ -890,3 +890,21 @@ The current emitter snapshot differs from the review's recorded source hash;
 both identities and that limitation are explicit in
 `VMP_ACCUMULATOR_EXTENSIONS.md` and its evidence JSON. Wider protected
 effectiveness, lifecycle coverage and the full review remain in progress.
+
+
+Rotate checkpoint for rows 1b and 2a: `ROL`, `ROR`, `RCL` and `RCR`
+now transfer 8/16/32/64-bit values and independently known status flags in
+32/64-bit execution modes. Unknown carry/count/operand cases preserve the
+unaffected flags; exact local memory RMW, AH/CL aliases and long-mode upper
+zero extension have production controls. Masked-zero counts retain all flags;
+nonzero carry-ring cycles conservatively leave OF unknown. Portable tests
+cover 104,976 partial-flag profiles. Executed oracles match 1,294,336 x86-64
+and 1,232,896 i386 instruction cases, plus 512 static input groups per binary.
+Matched prior/new IDA runs recover 20/19 selected values and one stack target
+per owned and ownerless path; current probes pass 128/123 checks, including
+opcode-patch freshness. All 21 CTest suites pass. The supplied VMP initializer
+reports remain identical with zero rotate heads and no measured protected
+gain. Native execution is translated, and the current emitter snapshot is
+distinct from the review source. See `VMP_ROTATE_FLAGS.md` and its evidence
+JSON. Wider protected effectiveness, the complete lifecycle matrix and the
+full review remain in progress.
