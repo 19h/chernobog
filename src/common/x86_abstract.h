@@ -185,6 +185,58 @@ struct Word
     }
 };
 
+struct Product
+{
+    std::optional<uint64_t> low, high;
+};
+
+// Full 2w-bit product represented by two w-bit halves, without signed host
+// overflow or a compiler-specific 128-bit integer. All six incoming flags are
+// irrelevant: CF/OF describe overflow and the other four are undefined.
+inline Product multiply(unsigned width, bool is_signed, std::optional<uint64_t> left,
+                        std::optional<uint64_t> right, Flags &flags)
+{
+    flags.forget();
+    if (!valid_width(width))
+        return {};
+    const uint64_t m = mask(width), sign = uint64_t{1} << (width - 1);
+    if (left)
+        *left &= m;
+    if (right)
+        *right &= m;
+    if ((left && *left == 0) || (right && *right == 0))
+    {
+        flags.set(CF | OF, false);
+        return {0, 0};
+    }
+    if (!left || !right)
+    {
+        if ((left && *left == 1) || (right && *right == 1))
+        {
+            flags.set(CF | OF, false);
+            return {std::nullopt, is_signed ? std::nullopt : std::optional<uint64_t>{0}};
+        }
+        return {};
+    }
+    const uint64_t a = *left, b = *right;
+    const uint64_t low = (a * b) & m;
+    uint64_t high;
+    if (width < 64)
+        high = (a * b) >> width;
+    else
+    {
+        const uint64_t a0 = uint32_t(a), b0 = uint32_t(b);
+        const uint64_t p00 = a0 * b0, p01 = a0 * (b >> 32), p10 = (a >> 32) * b0;
+        const uint64_t middle = (p00 >> 32) + uint32_t(p01) + uint32_t(p10);
+        high = (a >> 32) * (b >> 32) + (p01 >> 32) + (p10 >> 32) + (middle >> 32);
+    }
+    if (is_signed)
+        high = (high - ((a & sign) ? b : 0) - ((b & sign) ? a : 0)) & m;
+    const bool overflow = is_signed ? high != ((low & sign) ? m : 0) : high != 0;
+    flags.set(CF | OF, overflow);
+    return {low, high};
+}
+
 // Copy a sign extension without requiring every source bit to be known. The
 // implicit accumulator forms either retain the low source bits or write only
 // the high half into DX/EDX/RDX. Cache the source for the aliased AX/EAX/RAX case.

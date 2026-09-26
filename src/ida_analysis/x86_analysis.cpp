@@ -208,6 +208,106 @@ bool exact_accumulator_extension_encoding(const insn_t &insn)
            get_byte(insn.ea + 1) == opcode;
 }
 
+struct MultiplyEncoding
+{
+    unsigned bits = 0;
+    bool full = false, is_signed = false;
+    unsigned source_index = 0;
+    std::optional<uint64_t> immediate;
+};
+
+std::optional<MultiplyEncoding> multiply_encoding(const insn_t &insn)
+{
+    if ((insn.itype != NN_mul && insn.itype != NN_imul) || (!mode32(insn) && !mode64(insn)) ||
+        insn.size > 15 || !insn.size || (insn.auxpref & aux_lock))
+        return std::nullopt;
+    std::array<uint8_t, 15> bytes{};
+    if (get_bytes(bytes.data(), insn.size, insn.ea) != insn.size)
+        return std::nullopt;
+    size_t cursor = 0;
+    const bool word = bytes[cursor] == 0x66;
+    if (word)
+        ++cursor;
+    uint8_t rex = 0;
+    if (cursor < insn.size && mode64(insn) && bytes[cursor] >= 0x40 && bytes[cursor] <= 0x4f)
+        rex = bytes[cursor++];
+    if (cursor + 1 >= insn.size)
+        return std::nullopt;
+    const uint8_t opcode = bytes[cursor++];
+    const unsigned width = opcode == 0xf6 ? 8 : (rex & 8) ? 64 : word ? 16 : 32;
+    const auto rm = [](const op_t &op)
+    { return op.type == o_reg || op.type == o_mem || op.type == o_displ || op.type == o_phrase; };
+    if (unsigned(get_dtype_size(insn.Op1.dtype) * 8) != width)
+        return std::nullopt;
+    MultiplyEncoding encoding{width, false, insn.itype == NN_imul, 0, std::nullopt};
+    if (opcode == 0xf6 || opcode == 0xf7)
+    {
+        const unsigned extension = (bytes[cursor] >> 3) & 7;
+        if (extension != (encoding.is_signed ? 5u : 4u) || insn.Op3.type != o_void)
+            return std::nullopt;
+        if (insn.Op2.type == o_void)
+        {
+            if (!rm(insn.Op1))
+                return std::nullopt;
+        }
+        else
+        {
+            // IDA 9.4 exposes the implicit low accumulator as Op1 and the
+            // encoded register/memory source as Op2 for the full-product form.
+            const Slice accumulator = register_slice(insn.Op1);
+            if (accumulator.reg != 0 || accumulator.offset != 0 || accumulator.width != width ||
+                !rm(insn.Op2) || unsigned(get_dtype_size(insn.Op2.dtype) * 8) != width)
+                return std::nullopt;
+            encoding.source_index = 1;
+        }
+        encoding.full = true;
+        return encoding;
+    }
+    if (!encoding.is_signed || insn.Op1.type != o_reg || width == 8)
+        return std::nullopt;
+    if (opcode == 0x0f && bytes[cursor++] == 0xaf)
+    {
+        if (cursor >= insn.size || !rm(insn.Op2) || insn.Op3.type != o_void ||
+            unsigned(get_dtype_size(insn.Op2.dtype) * 8) != width)
+            return std::nullopt;
+        return encoding;
+    }
+    if (opcode != 0x69 && opcode != 0x6b)
+        return std::nullopt;
+    const op_t *immediate = nullptr;
+    if (rm(insn.Op2) && insn.Op3.type == o_imm &&
+        unsigned(get_dtype_size(insn.Op2.dtype) * 8) == width)
+    {
+        encoding.source_index = 1;
+        immediate = &insn.Op3;
+    }
+    else if (insn.Op2.type == o_imm && insn.Op3.type == o_void)
+    {
+        // A decoder may print the aliased three-operand form as reg, imm.
+        // Its encoded source must actually be that same destination register.
+        const uint8_t modrm = bytes[cursor];
+        if ((modrm & 0xc0) != 0xc0 ||
+            (((modrm >> 3) & 7) | ((rex & 4) ? 8 : 0)) != ((modrm & 7) | ((rex & 1) ? 8 : 0)))
+            return std::nullopt;
+        immediate = &insn.Op2;
+    }
+    else
+        return std::nullopt;
+    const unsigned immediate_bits = opcode == 0x6b ? 8 : width == 16 ? 16 : 32;
+    const size_t immediate_bytes = immediate_bits / 8;
+    if (insn.size < cursor + 1 + immediate_bytes)
+        return std::nullopt;
+    uint64_t value = 0;
+    for (size_t i = 0; i < immediate_bytes; ++i)
+        value |= uint64_t(bytes[insn.size - immediate_bytes + i]) << (8 * i);
+    if ((immediate->value & mask(immediate_bits)) != value)
+        return std::nullopt;
+    if (value & (uint64_t{1} << (immediate_bits - 1)))
+        value |= ~mask(immediate_bits);
+    encoding.immediate = value & mask(width);
+    return encoding;
+}
+
 Operation operation(uint16_t type)
 {
     switch (type)
@@ -472,6 +572,46 @@ struct State
         const unsigned width = unsigned(get_dtype_size(insn.Op1.dtype) * 8);
         const unsigned word_bits = is64 ? 64 : 32;
         const auto algebra = operation(insn.itype);
+        if (insn.itype == NN_mul || insn.itype == NN_imul)
+        {
+            const auto encoding = multiply_encoding(insn);
+            if (!encoding)
+            {
+                *this = {};
+                return;
+            }
+            const auto source = [&](const op_t &operand) -> std::optional<uint64_t>
+            {
+                if (stack_top(insn, operand))
+                    return read_stack_top(encoding->bits);
+                if (operand.type == o_reg)
+                    return read(operand);
+                const auto address = memory_address(insn, operand);
+                return address && writable_range(*address, encoding->bits / 8, word_bits)
+                           ? read_memory(*address, encoding->bits)
+                           : std::nullopt;
+            };
+            // Both sources precede either implicit write, including AH and DX
+            // aliases of the destination and a locally stored memory operand.
+            const auto left = encoding->full ? regs[0].read(encoding->bits)
+                                             : source(insn.ops[encoding->source_index]);
+            const auto right = encoding->full        ? source(insn.ops[encoding->source_index])
+                               : encoding->immediate ? encoding->immediate
+                                                     : source(insn.Op2);
+            const Product product =
+                multiply(encoding->bits, encoding->is_signed, left, right, flags);
+            if (!encoding->full)
+                write(insn.Op1, product.low, is64);
+            else
+            {
+                regs[0].write(encoding->bits, 0, product.low, is64);
+                if (encoding->bits == 8)
+                    regs[0].write(8, 8, product.high, is64);
+                else
+                    regs[2].write(encoding->bits, 0, product.high, is64);
+            }
+            return;
+        }
         if (rotate_operation(algebra) && ((!mode32(insn) && !is64) || (insn.auxpref & aux_lock)))
         {
             *this = {};
@@ -1541,6 +1681,9 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
             flow.stop = "unsupported_accumulator_extension_encoding";
         else if (rotate_operation(operation(instruction.itype)) && (instruction.auxpref & aux_lock))
             flow.stop = "unsupported_locked_rotate";
+        else if ((instruction.itype == NN_mul || instruction.itype == NN_imul) &&
+                 !multiply_encoding(instruction))
+            flow.stop = "unsupported_multiply_encoding";
         else if (instruction.itype == NN_bswap && get_dtype_size(instruction.Op1.dtype) != 4 &&
                  get_dtype_size(instruction.Op1.dtype) != 8 &&
                  !abstract_bswap16_fallthrough(instruction))

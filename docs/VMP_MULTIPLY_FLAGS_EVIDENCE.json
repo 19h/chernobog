@@ -1,0 +1,460 @@
+{
+  "schema": 1,
+  "parent_revision": "7f07a825d1f275f418bd22c8e8143b17dd68e876",
+  "isa": {
+    "source": "Intel SDM revision 090",
+    "url": "https://cdrdv2-public.intel.com/874240/325462-090-sdm-vol-1-2abcd-3abcd-4.pdf",
+    "artifact": "build/intel-sdm-090.pdf",
+    "sha256": "3686e42931e893b5016c70fb131403795ef173237d073afcfec52755fcd3ea50",
+    "instruction_pages": [
+      "Vol. 2A 3-451",
+      "Vol. 2A 3-452",
+      "Vol. 2A 3-453",
+      "Vol. 2A 3-454",
+      "Vol. 2B 4-141",
+      "Vol. 2B 4-142"
+    ],
+    "zero_extension_section": "Vol. 1 3.4.1.1",
+    "defined_status_bits": [
+      "CF",
+      "OF"
+    ],
+    "undefined_status_bits": [
+      "SF",
+      "ZF",
+      "AF",
+      "PF"
+    ]
+  },
+  "emitter_snapshot": {
+    "logical_label": "VMP emitter core/intel.cc",
+    "sha256": "ec81bac7a581873892710d3cd81b942973394e83b0586f881022c8b67961163c",
+    "review_sha256": "ce0edd303f1b20d12affaf1bb4646b684a056babe724f36af24340fefe7cb17c",
+    "same_snapshot": false,
+    "vm_handler_selection_lines": [
+      29431,
+      29432,
+      29433,
+      29434
+    ]
+  },
+  "source_sha256": {
+    "src/common/x86_abstract.h": "406ab023fcf83a0870145e292e341a0d10c6d6cbd80efb570ebad8722f585dad",
+    "src/ida_analysis/x86_analysis.cpp": "a539f42f72f069249118e6dca691e8cbe50c486a4648027cf78987228646e3dc",
+    "tests/x86_abstract_tests.cpp": "018d0ebe20d6a042683e9f01c8d50b0781edb648806f549ede6e3f7faeb4674b",
+    "tests/vmp_native/multiply_asm.c": "7573e114af0b2a20924f1a1e095557f215c0afd66682d524a267c2a8bd35f79b",
+    "tests/vmp_native/multiply.cpp": "017a4df1626413096d922c9483495d95a9069248f9cec00cc71b6f52749baf5a",
+    "tests/ida_multiply_probe.py": "61a901bed069c2beb89e1319ce9e0a413fd0ca86fbec419afef9e618596e46d9",
+    "tests/run_multiply.py": "d7c9cc3b02c778957b87868212c9397610603a827eb3394479e54ba1533ff8c9",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/vmp_corpus/rotate.Dockerfile": "b9fd03f590e837ae99fc6c6e5d7658113bbc34a269b47341b94fe813cc0adefd",
+    "tests/vmp_corpus/linux32.py": "82bb5e0f90f612ead4a844a14142da1cac029c8f1d6d43e3d56cd597ef8398a5",
+    "tests/vmp_corpus/linux32_exec.py": "a0577238731548cde8e20c20299f61cc7fcf23b4602c33dfdbcd12f8c08793b0"
+  },
+  "documentation_sha256": {
+    "docs/VMP_MULTIPLY_FLAGS.md": "ad0be52ed24475c5699fdda22f1fcb49762848641e2def7ec70e0e7f7f5af098",
+    "docs/VMP_IMPLEMENTATION.md": "357120c397e28abe4b49b89f08df46cc0c5119038eb290e7347127742a6a9824"
+  },
+  "profiles": {
+    "prior": {
+      "report": "build/vmp-multiply-release-prior/multiply_analysis.json",
+      "report_sha256": "c14ff8d7da9514da2189956502f0ea912a25593b1e52d4991c8976eed248f2d7",
+      "plugin_sha256": "8d95de873cd7216bb3f2cf62d1153c494460e2cd249503ae895b80f87331d459",
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "matched_binary_identity": true,
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "binary_sha256": "ae5f4830dd50330c1c18d50192ca7a06595588d9673d7fe84867586c215457ac",
+          "native_result": {
+            "passed": true,
+            "byte_cases": 524288,
+            "corner_cases": 244800,
+            "static_inputs": 512
+          },
+          "checks": 193,
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "artifact_sha256": {
+            "inspection/run.json": "c2c52e9e49c1e106624b71528ae593bbdffa8373645bde51057939014e53a497",
+            "inspection/multiply.json": "1c39df59cc9b3762c2021c964b29476541e45db5cccd77ec5b8eaa775c9ab86a"
+          }
+        },
+        {
+          "architecture": "i386",
+          "binary_sha256": "053b9cbc6728b0997528d86a41a2c3efd933d304a7fd507fd1f73179c58653cd",
+          "native_result": {
+            "passed": true,
+            "byte_cases": 524288,
+            "corner_cases": 172800,
+            "static_inputs": 512
+          },
+          "checks": 157,
+          "runtime": {
+            "image_id": "sha256:bea6d242fce2d512c1d22e3e2ccf3ed2747cda74f8a89be9e00ce24e50d84393",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ],
+            "cpp_tool_sha256": [
+              {
+                "file": "i686-linux-gnu-g++",
+                "sha256": "c12ea71f2a973c02842a1170cc955bfef58c3b3ec0e1d0102caa94b2291595fc"
+              },
+              {
+                "file": "libstdc++.a",
+                "sha256": "cbea20f6a874d099da2571d79fbf88383880bbe47b76e7e1a363a61790f87118"
+              }
+            ]
+          },
+          "artifact_sha256": {
+            "inspection/run.json": "89dcf51b80188a4944a9e996bf7337779e8d5fea38f7f745788ea222d49a83a0",
+            "inspection/multiply.json": "5fe7c48d32d9a8d74ec16a1ed4774f02b40965b612df5799146fc70d9896107b"
+          }
+        }
+      ],
+      "plugin_artifact": "build/vmp-multiply-release-prior/x86_64/inspection/idauser/plugins/chernobog.dylib"
+    },
+    "new": {
+      "report": "build/vmp-multiply-release-new/multiply_analysis.json",
+      "report_sha256": "fcdafa24f0e23ca37b007bce9ac747934b062d8157cd9436247c0d80105e02db",
+      "plugin_sha256": "5627e6db5fbeb158013483088ba5761d7368988d8f17bac05fcb9339db9c8620",
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "matched_binary_identity": true,
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "binary_sha256": "ae5f4830dd50330c1c18d50192ca7a06595588d9673d7fe84867586c215457ac",
+          "native_result": {
+            "passed": true,
+            "byte_cases": 524288,
+            "corner_cases": 244800,
+            "static_inputs": 512
+          },
+          "checks": 240,
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "artifact_sha256": {
+            "inspection/run.json": "6fbdb9dd85f878c3bd9a40e7f302598b4ec01eaff9605afc815454006d8ebddc",
+            "inspection/multiply.json": "c1a51be29fafac50fb55da498f5cab53ceda8d94a3722b6b6738c0aae7875bf4"
+          }
+        },
+        {
+          "architecture": "i386",
+          "binary_sha256": "053b9cbc6728b0997528d86a41a2c3efd933d304a7fd507fd1f73179c58653cd",
+          "native_result": {
+            "passed": true,
+            "byte_cases": 524288,
+            "corner_cases": 172800,
+            "static_inputs": 512
+          },
+          "checks": 195,
+          "runtime": {
+            "image_id": "sha256:bea6d242fce2d512c1d22e3e2ccf3ed2747cda74f8a89be9e00ce24e50d84393",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ],
+            "cpp_tool_sha256": [
+              {
+                "file": "i686-linux-gnu-g++",
+                "sha256": "c12ea71f2a973c02842a1170cc955bfef58c3b3ec0e1d0102caa94b2291595fc"
+              },
+              {
+                "file": "libstdc++.a",
+                "sha256": "cbea20f6a874d099da2571d79fbf88383880bbe47b76e7e1a363a61790f87118"
+              }
+            ]
+          },
+          "artifact_sha256": {
+            "inspection/run.json": "438ea7a6e5b0814388b05ac5e99a4efe817044ab49b0ead375d670a31438f60d",
+            "inspection/multiply.json": "2583ae7141ee661bcaeb4b4a5bcf2d5d442b932be22299921fc1d1bb8b3f84b3"
+          }
+        }
+      ],
+      "plugin_artifact": "build/vmp-multiply-release-new/x86_64/inspection/idauser/plugins/chernobog.dylib"
+    }
+  },
+  "recovery_by_architecture": {
+    "x86_64": {
+      "prior": {
+        "owned_condition_values": 0,
+        "ownerless_condition_values": 0,
+        "owned_stack_targets": 0,
+        "ownerless_stack_targets": 0
+      },
+      "new": {
+        "owned_condition_values": 40,
+        "ownerless_condition_values": 40,
+        "owned_stack_targets": 1,
+        "ownerless_stack_targets": 1
+      }
+    },
+    "i386": {
+      "prior": {
+        "owned_condition_values": 0,
+        "ownerless_condition_values": 0,
+        "owned_stack_targets": 0,
+        "ownerless_stack_targets": 0
+      },
+      "new": {
+        "owned_condition_values": 31,
+        "ownerless_condition_values": 31,
+        "owned_stack_targets": 1,
+        "ownerless_stack_targets": 1
+      }
+    }
+  },
+  "admitted_families_observed_in_ida": {
+    "x86_64": [
+      {
+        "family": "full-imul",
+        "bits": 8
+      },
+      {
+        "family": "full-imul",
+        "bits": 16
+      },
+      {
+        "family": "full-imul",
+        "bits": 32
+      },
+      {
+        "family": "full-imul",
+        "bits": 64
+      },
+      {
+        "family": "full-mul",
+        "bits": 8
+      },
+      {
+        "family": "full-mul",
+        "bits": 16
+      },
+      {
+        "family": "full-mul",
+        "bits": 32
+      },
+      {
+        "family": "full-mul",
+        "bits": 64
+      },
+      {
+        "family": "short-immediate-imul",
+        "bits": 16
+      },
+      {
+        "family": "short-immediate-imul",
+        "bits": 32
+      },
+      {
+        "family": "short-immediate-imul",
+        "bits": 64
+      },
+      {
+        "family": "two-imul",
+        "bits": 16
+      },
+      {
+        "family": "two-imul",
+        "bits": 32
+      },
+      {
+        "family": "two-imul",
+        "bits": 64
+      },
+      {
+        "family": "wide-immediate-imul",
+        "bits": 16
+      },
+      {
+        "family": "wide-immediate-imul",
+        "bits": 32
+      },
+      {
+        "family": "wide-immediate-imul",
+        "bits": 64
+      }
+    ],
+    "i386": [
+      {
+        "family": "full-imul",
+        "bits": 8
+      },
+      {
+        "family": "full-imul",
+        "bits": 16
+      },
+      {
+        "family": "full-imul",
+        "bits": 32
+      },
+      {
+        "family": "full-mul",
+        "bits": 8
+      },
+      {
+        "family": "full-mul",
+        "bits": 16
+      },
+      {
+        "family": "full-mul",
+        "bits": 32
+      },
+      {
+        "family": "short-immediate-imul",
+        "bits": 16
+      },
+      {
+        "family": "short-immediate-imul",
+        "bits": 32
+      },
+      {
+        "family": "two-imul",
+        "bits": 16
+      },
+      {
+        "family": "two-imul",
+        "bits": 32
+      },
+      {
+        "family": "wide-immediate-imul",
+        "bits": 16
+      },
+      {
+        "family": "wide-immediate-imul",
+        "bits": 32
+      }
+    ]
+  },
+  "portable": {
+    "exhaustive_signed_unsigned_byte_pairs": 131072,
+    "wide_pairs": 1350,
+    "wide_widths_bits": [
+      16,
+      32,
+      64
+    ],
+    "corner_values": 15,
+    "partial_flag_profiles": 729,
+    "partial_flag_cases": 5832,
+    "unknown_zero_one_and_nontrivial_controls_per_case": 3,
+    "invalid_width_abstention": true,
+    "oracle": "independent bit-serial magnitude additions and whole-vector two-complement negation; no host product or high-half correction formula"
+  },
+  "native": {
+    "byte_cases_per_architecture": 524288,
+    "x86_64_corner_cases": 244800,
+    "i386_corner_cases": 172800,
+    "instruction_cases_across_architecture_pair": 1466176,
+    "static_input_groups_per_architecture": 512,
+    "defined_flags_only": true,
+    "comparator": "current portable helper compiled into both prior/new plugin profiles; literal ISA instruction snapshots are the independent result/flag oracle"
+  },
+  "tools": {
+    "host_compiler": {
+      "logical_file": "clang++",
+      "sha256": "5922f5f7843fee699497c45cc98134b6686e0a5e2fa8a5866ab74c5482fa87a5",
+      "version": "Apple clang version 21.0.0 (clang-2100.3.34.2)"
+    },
+    "linux32_runtime": {
+      "image_id": "sha256:bea6d242fce2d512c1d22e3e2ccf3ed2747cda74f8a89be9e00ce24e50d84393",
+      "container_architecture": "arm64",
+      "execution": "qemu-i386 user-mode translation in Linux container",
+      "sha256": {
+        "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+        "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+        "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+        "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+        "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+      },
+      "packages": [
+        "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+        "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+        "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+        "libc6-i386-cross\t2.39-0ubuntu8cross1",
+        "python3\t3.12.3-0ubuntu2.1",
+        "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+      ],
+      "cpp_tool_sha256": [
+        {
+          "file": "i686-linux-gnu-g++",
+          "sha256": "c12ea71f2a973c02842a1170cc955bfef58c3b3ec0e1d0102caa94b2291595fc"
+        },
+        {
+          "file": "libstdc++.a",
+          "sha256": "cbea20f6a874d099da2571d79fbf88383880bbe47b76e7e1a363a61790f87118"
+        }
+      ]
+    },
+    "image_recipe": "tests/vmp_corpus/rotate.Dockerfile",
+    "cpp_formatter": "clang-format version 23.0.0git (git@github.com:llvm/llvm-project b51054818b78dc395cd4d33f17cfb6e98a36a76d)",
+    "python_formatter": "Black 26.5.1"
+  },
+  "protected_control": {
+    "input": "samples/foo_x86_vmp",
+    "input_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "root": "0x1002946b5",
+    "reports_identical": true,
+    "checks_per_profile": 8,
+    "nodes": 75,
+    "edges": 77,
+    "unresolved_records": 3,
+    "observed_multiply_heads": [
+      {
+        "site": "0x1001e80f7",
+        "bytes": "f7e2"
+      }
+    ],
+    "decoded_form": "F7 /4 MUL EDX, implicit EAX; 32-bit full unsigned product",
+    "artifacts": {
+      "build/vmp-multiply-protected-prior/run.json": "829604f643757fb40bf8aec8693c1ad654e2d9383781847701ac82c453b17c19",
+      "build/vmp-multiply-protected-prior/protected_region.json": "26da0a9b8e82ebd309f55a1734efd30d47cf2bfb4dc6f805f0088bebcb099eb6",
+      "build/vmp-multiply-protected-new/run.json": "9618df5dc5202aba115c4892503d769515ea51343a997fd3913b0da419d2893f",
+      "build/vmp-multiply-protected-new/protected_region.json": "26da0a9b8e82ebd309f55a1734efd30d47cf2bfb4dc6f805f0088bebcb099eb6"
+    }
+  },
+  "ctest": {
+    "passed": 21,
+    "total": 21,
+    "elapsed_seconds": 6.97,
+    "log": "build/vmp-multiply-release-new/ctest.log",
+    "log_sha256": "0b851a2df698acf7b5f29877d6ce9d53a37234b5538d1215e9f1e6788106b84a"
+  },
+  "limits": {
+    "native_execution": "translated macOS x86-64 and pinned QEMU i386; physical execution unmeasured",
+    "complete_lifecycle_matrix": "unknown",
+    "broader_protected_gain": "unknown",
+    "complete_vm_handler_recovery": "unknown",
+    "exceptional_execution": "unsupported",
+    "other_prefixes_and_execution_modes": "unsupported",
+    "wider_input_exhaustion": "not exhaustive",
+    "alternative_ida_decoder_settings": "unmeasured",
+    "complete_review": "in progress"
+  }
+}

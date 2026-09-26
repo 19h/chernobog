@@ -252,6 +252,124 @@ void accumulator_extension_regressions()
     std::puts("Accumulator extension partial bytes: 6561; signed words: 65536 per mode");
 }
 
+std::pair<uint64_t, uint64_t> product_oracle(unsigned width, bool is_signed, uint64_t a, uint64_t b)
+{
+    const uint64_t m = mask(width), sign = uint64_t{1} << (width - 1);
+    a &= m;
+    b &= m;
+    const bool negative = is_signed && ((a & sign) != 0) != ((b & sign) != 0);
+    if (is_signed && (a & sign))
+        a = (~a + 1) & m;
+    if (is_signed && (b & sign))
+        b = (~b + 1) & m;
+    std::array<bool, 128> bits{};
+    // Independently add shifted magnitude bits, then negate the entire 2w-bit
+    // vector when needed. No word products or high-half correction formula.
+    for (unsigned i = 0; i < width; ++i)
+        if ((b >> i) & 1)
+        {
+            bool carry = false;
+            for (unsigned j = i; j < 2 * width; ++j)
+            {
+                const unsigned sum = unsigned(bits[j]) + unsigned(carry) +
+                                     unsigned(j - i < width && ((a >> (j - i)) & 1));
+                bits[j] = sum & 1;
+                carry = sum > 1;
+            }
+        }
+    if (negative)
+    {
+        bool carry = true;
+        for (unsigned j = 0; j < 2 * width; ++j)
+        {
+            const unsigned sum = unsigned(!bits[j]) + unsigned(carry);
+            bits[j] = sum & 1;
+            carry = sum > 1;
+        }
+    }
+    uint64_t low = 0, high = 0;
+    for (unsigned j = 0; j < width; ++j)
+    {
+        low |= uint64_t(bits[j]) << j;
+        high |= uint64_t(bits[width + j]) << j;
+    }
+    return {low, high};
+}
+
+void multiply_regressions()
+{
+    size_t byte_cases = 0, wide_cases = 0, flag_cases = 0;
+    const auto compare = [](unsigned width, bool is_signed, uint64_t a, uint64_t b, Flags initial)
+    {
+        const auto expected = product_oracle(width, is_signed, a, b);
+        const bool overflow =
+            is_signed ? expected.second != ((expected.first >> (width - 1)) ? mask(width) : 0)
+                      : expected.second != 0;
+        const Product result = multiply(width, is_signed, a, b, initial);
+        check(result.low == expected.first && result.high == expected.second &&
+                  initial.known == (CF | OF) && initial.value == (overflow ? (CF | OF) : 0),
+              "full multiply agrees with independent bit-serial signed/unsigned oracle");
+    };
+    for (bool is_signed : {false, true})
+        for (unsigned a = 0; a < 256; ++a)
+            for (unsigned b = 0; b < 256; ++b)
+            {
+                compare(8, is_signed, a, b, Flags{ALL, uint8_t((a ^ b) & ALL)});
+                ++byte_cases;
+            }
+    constexpr uint64_t values[] = {0,
+                                   1,
+                                   127,
+                                   128,
+                                   255,
+                                   32767,
+                                   32768,
+                                   65535,
+                                   UINT64_C(0x7fffffff),
+                                   UINT64_C(0x80000000),
+                                   UINT64_C(0xffffffff),
+                                   UINT64_C(0x7fffffffffffffff),
+                                   UINT64_C(0x8000000000000000),
+                                   UINT64_MAX,
+                                   UINT64_C(0x123456789abcdef0)};
+    for (unsigned width : {16u, 32u, 64u})
+        for (bool is_signed : {false, true})
+            for (uint64_t a : values)
+                for (uint64_t b : values)
+                {
+                    compare(width, is_signed, a, b, Flags{ALL, ALL});
+                    ++wide_cases;
+                }
+    for (unsigned profile = 0; profile < 729; ++profile)
+        for (unsigned width : {8u, 16u, 32u, 64u})
+            for (bool is_signed : {false, true})
+            {
+                Flags flags;
+                unsigned encoded = profile;
+                for (unsigned bit = 0; bit < 6; ++bit, encoded /= 3)
+                    if (encoded % 3)
+                        flags.set(uint8_t(1u << bit), encoded % 3 == 2);
+                compare(width, is_signed, mask(width), 2, flags);
+                ++flag_cases;
+                const Product zero = multiply(width, is_signed, {}, 0, flags);
+                check(zero.low == 0 && zero.high == 0 && flags.known == (CF | OF) && !flags.value,
+                      "unknown source times zero has exact halves and cleared overflow");
+                const Product one = multiply(width, is_signed, 1, {}, flags);
+                check(!one.low &&
+                          one.high == (is_signed ? std::nullopt : std::optional<uint64_t>{0}) &&
+                          flags.known == (CF | OF) && !flags.value,
+                      "unknown source times one retains exact overflow and unsigned high half");
+                const Product unknown = multiply(width, is_signed, {}, 3, flags);
+                check(!unknown.low && !unknown.high && !flags.known && !flags.value,
+                      "unknown nontrivial product leaves all status bits and halves unknown");
+            }
+    Flags flags{ALL, ALL};
+    const Product invalid = multiply(0, false, 0, 0, flags);
+    check(!invalid.low && !invalid.high && !flags.known, "invalid multiply width abstains");
+    std::printf("multiply bytes: %zu; wide pairs: %zu; partial flag profiles: %zu\n", byte_cases,
+                wide_cases, flag_cases);
+}
+
 std::pair<uint64_t, Flags> rotate_oracle(Operation op, unsigned width, uint64_t input,
                                          unsigned raw_count, Flags flags)
 {
@@ -609,6 +727,7 @@ int main()
     dataflow_regressions();
     status_ah_regressions();
     accumulator_extension_regressions();
+    multiply_regressions();
     rotate_regressions();
     exhaustive_arithmetic();
     exhaustive_conditions();

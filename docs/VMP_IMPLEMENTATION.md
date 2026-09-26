@@ -908,3 +908,21 @@ gain. Native execution is translated, and the current emitter snapshot is
 distinct from the review source. See `VMP_ROTATE_FLAGS.md` and its evidence
 JSON. Wider protected effectiveness, the complete lifecycle matrix and the
 full review remain in progress.
+
+Multiplication checkpoint for rows 1b and 2a: unsigned full `MUL`, signed
+full `IMUL`, two-operand `IMUL` and short/wide immediate forms now preserve
+unaffected native state while transferring exact product halves and CF/OF.
+Undefined SF/ZF/AF/PF remain unknown. Portable checks cover 131,072 byte
+products, 1,350 wider pairs and 5,832 partial-flag profiles; a limb derivation
+bounds the 64-bit arithmetic. Actual x86-64/i386 instructions match
+769,088/697,088 oracle cases plus 512 static input groups per binary.
+Matched prior/current production probes pass 240/195 current checks and
+prove 40/31 selected values plus one stack target per owned and ownerless
+path. Controls cover all encoding families at each width, immediate sign
+extension, source/destination aliases, local memory, pushed stack words,
+zero/one unknown-input identities, unsupported prefixes and mutation
+freshness. The supplied 75-node VMP initializer contains one MUL, but its
+three facts remain unresolved and its prior/current reports are identical.
+All 21 CTest suites pass. See `VMP_MULTIPLY_FLAGS.md` and its evidence JSON;
+translated execution, broader protected gain, the complete lifecycle matrix
+and the full review retain their stated bounds.
