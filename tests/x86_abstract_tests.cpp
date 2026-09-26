@@ -171,6 +171,87 @@ void status_ah_regressions()
     std::puts("LAHF/SAHF partial profiles: 4096; concrete AH values: 256");
 }
 
+void accumulator_extension_regressions()
+{
+    constexpr uint64_t initial = UINT64_C(0x123456789abcdef0);
+    // Intersect every compatible concrete byte completion independently of the
+    // abstract transfer. This covers all 3^8 partial byte states, including an
+    // unknown sign bit and low bits whose values are known separately.
+    for (unsigned profile = 0; profile < 6561; ++profile)
+    {
+        unsigned encoded = profile;
+        Word input{UINT64_C(0xffffffffffffff00), initial & ~UINT64_C(0xff)};
+        for (unsigned bit = 0; bit < 8; ++bit, encoded /= 3)
+            if (encoded % 3)
+            {
+                input.known |= uint64_t{1} << bit;
+                if (encoded % 3 == 2)
+                    input.value |= uint64_t{1} << bit;
+            }
+        Word expected;
+        bool first = true;
+        for (unsigned byte = 0; byte < 256; ++byte)
+        {
+            if ((byte & input.known & 255) != (input.value & 255))
+                continue;
+            const int signed_byte = byte < 128 ? int(byte) : int(byte) - 256;
+            Word concrete{UINT64_MAX,
+                          (initial & ~UINT64_C(0xffff)) | uint64_t(uint16_t(signed_byte))};
+            if (first)
+                expected = concrete;
+            else
+                expected.join(concrete);
+            first = false;
+        }
+        Word result = input;
+        sign_extend_accumulator(result, result, 8, false, true);
+        check(!first && result.known == expected.known && result.value == expected.value,
+              "CBW partial bits equal the intersection of all concrete completions");
+    }
+    for (unsigned value = 0; value < 65536; ++value)
+        for (bool mode64 : {false, true})
+        {
+            Word source{UINT64_MAX, (initial & ~UINT64_C(0xffff)) | value};
+            Word low = source, high{UINT64_MAX, initial};
+            sign_extend_accumulator(low, low, 16, false, mode64);
+            sign_extend_accumulator(high, source, 16, true, mode64);
+            const int signed_word = value < 32768 ? int(value) : int(value) - 65536;
+            const uint64_t expected_low =
+                uint32_t(signed_word) | (mode64 ? 0 : (initial & ~UINT64_C(0xffffffff)));
+            const uint64_t expected_high =
+                (initial & ~UINT64_C(0xffff)) | (signed_word < 0 ? UINT64_C(0xffff) : 0);
+            check(low.known == UINT64_MAX && low.value == expected_low &&
+                      high.known == UINT64_MAX && high.value == expected_high &&
+                      source.value == ((initial & ~UINT64_C(0xffff)) | value),
+                  "CWDE and CWD exhaust signed words, aliases and preserved register slices");
+        }
+    for (unsigned bits : {16u, 32u, 64u})
+        for (unsigned sign_state = 0; sign_state < 3; ++sign_state)
+            for (bool mode64 : {false, true})
+            {
+                const uint64_t sign = uint64_t{1} << (bits - 1);
+                Word source{sign_state ? sign : 0, sign_state == 2 ? sign : 0};
+                Word high{UINT64_MAX, initial};
+                sign_extend_accumulator(high, source, bits, true, mode64);
+                const uint64_t upper_zero = mode64 && bits == 32 ? ~mask(32) : 0;
+                const uint64_t expected_known = ~mask(bits) | (sign_state ? mask(bits) : 0);
+                check(high.known == expected_known &&
+                          high.value ==
+                              (((initial & ~mask(bits)) | (sign_state == 2 ? mask(bits) : 0)) &
+                               ~upper_zero),
+                      "high-half extension needs only the sign bit and models EDX zero extension");
+                if (bits == 32)
+                {
+                    Word low = source;
+                    sign_extend_accumulator(low, low, 32, false, true);
+                    check(low.known == (source.known | (sign_state ? ~mask(32) : 0)) &&
+                              low.value == (source.value | (sign_state == 2 ? ~mask(32) : 0)),
+                          "CDQE preserves partial low bits and extends only a known sign");
+                }
+            }
+    std::puts("Accumulator extension partial bytes: 6561; signed words: 65536 per mode");
+}
+
 uint8_t arithmetic_oracle(unsigned a, unsigned b, unsigned carry, bool sub)
 {
     const int exact = sub ? int(a) - int(b) - int(carry) : int(a + b + carry);
@@ -430,6 +511,7 @@ int main()
 {
     dataflow_regressions();
     status_ah_regressions();
+    accumulator_extension_regressions();
     exhaustive_arithmetic();
     exhaustive_conditions();
     boundaries();

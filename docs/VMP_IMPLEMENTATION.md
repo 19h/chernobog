@@ -874,3 +874,19 @@ AF is excluded, and the whole data trace remains incomplete at the external
 caller frontier. Complete protected-path replay remains unknown.
 See `VMP_HELLO_POSTCALL_CHECKPOINT.md` and its evidence JSON; the full review
 remains in progress.
+
+Accumulator-extension checkpoint for rows 1b and 2a: exact `CBW`, `CWDE`,
+`CDQE`, `CWD`, `CDQ` and `CQO` now preserve the six status flags and unaffected
+state while propagating independently known sign/source bits. Portable tests
+cover 6,561 partial byte states and all 65,536 word values per mode. Native
+x86-64/i386 oracles check 5,760/3,840 instruction cases across all 64 status
+profiles, plus 512 static-control input groups each. Matched byte-identical
+prior/new fixtures show eight/six additional condition values and one
+stack-mediated target per owned and ownerless path; unknown signs and extra
+prefixes abstain. New IDA probes pass 60/50 checks with opcode-patch freshness
+controls. The supplied VMP initializer reports remain identical with zero
+admitted extension heads and no measured gain. All 21 CTest suites pass.
+The current emitter snapshot differs from the review's recorded source hash;
+both identities and that limitation are explicit in
+`VMP_ACCUMULATOR_EXTENSIONS.md` and its evidence JSON. Wider protected
+effectiveness, lifecycle coverage and the full review remain in progress.

@@ -1,0 +1,233 @@
+{
+  "schema": 1,
+  "parent_revision": "0880c4f5e4ef18d9fbd25b8739ab42e36b933837",
+  "isa": {
+    "source": "Intel SDM revision 090",
+    "url": "https://cdrdv2-public.intel.com/874240/325462-090-sdm-vol-1-2abcd-3abcd-4.pdf",
+    "artifact": "build/intel-sdm-090.pdf",
+    "sha256": "3686e42931e893b5016c70fb131403795ef173237d073afcfec52755fcd3ea50",
+    "instruction_pages": [
+      "Vol. 2A 3-138",
+      "Vol. 2A 3-257"
+    ],
+    "zero_extension_section": "Vol. 1 3.4.1.1"
+  },
+  "emitter_snapshot": {
+    "logical_label": "VMP emitter core/intel.cc",
+    "sha256": "ec81bac7a581873892710d3cd81b942973394e83b0586f881022c8b67961163c",
+    "review_sha256": "ce0edd303f1b20d12affaf1bb4646b684a056babe724f36af24340fefe7cb17c",
+    "same_snapshot": false,
+    "mutation_template_lines": [
+      17584,
+      17585,
+      17586,
+      17587,
+      17589,
+      17590
+    ]
+  },
+  "source_sha256": {
+    "src/common/x86_abstract.h": "02d9b0697e411fbe8006b80bea9dba9ad8b8abd63c5ab3337e30709d99eeab30",
+    "src/ida_analysis/x86_analysis.cpp": "5f09018cfb7132563f18c1c0e858eb875916e98434b7b46d8b966a1d050cd2ee",
+    "tests/x86_abstract_tests.cpp": "6d1f37d6663afad4d2fdebdd3175d2a77cf1c0bb4e58f21b2023034f5ee55292",
+    "tests/vmp_native/sign_extension_asm.c": "28fe454444487593b8b71ee2f4ae3ca473f77f85ebdc29b5a182f2ee36c39ccd",
+    "tests/vmp_native/sign_extension.c": "acb2d72fb2e3e50fc9a65ebc4e241523b8054e3ab872af1dda3bd86e97ec6ae0",
+    "tests/ida_sign_extension_probe.py": "dd63bce78b5a45779ed6dc499865128db74d02262c6eb5a79d4ff5a98b0444bf",
+    "tests/run_sign_extension.py": "9c2222b91874929df8a9691c620ee5cf8e2868ff48208e8233c4baf68f880cfe",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/vmp_corpus/linux32.py": "82bb5e0f90f612ead4a844a14142da1cac029c8f1d6d43e3d56cd597ef8398a5",
+    "tests/vmp_corpus/linux32_exec.py": "a0577238731548cde8e20c20299f61cc7fcf23b4602c33dfdbcd12f8c08793b0"
+  },
+  "profiles": {
+    "prior": {
+      "report": "build/vmp-sign-extension-release-prior/sign_extension_analysis.json",
+      "report_sha256": "0220762f5e40cb2a1de83b8531c2fc595d9607258071ba58f6e801a1958a5e68",
+      "plugin_sha256": "16ca7821df0345ad8f1241d18d2e6d18ddb048f7cae481c281a0af5035f4e6db",
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "matched_binary_identity": true,
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "binary_sha256": "dededf0a874a3b149edff975223313e7c123a0735003fc3f74fc0e2d5e5aed59",
+          "native_result": {
+            "passed": true,
+            "checks": 6272,
+            "oracle_cases": 5760,
+            "static_inputs": 512
+          },
+          "checks": 48,
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "artifact_sha256": {
+            "inspection/run.json": "66b9d05cd51a695ca644ad2cff85c1b174bf7d91bba60cbf81882ab737f20d7f",
+            "inspection/sign_extension.json": "6752f5f66b0a6c85b15e1497934ffc5cc7fc3d87cca5eb562eb91ca643ddd770"
+          }
+        },
+        {
+          "architecture": "i386",
+          "binary_sha256": "c83470c8b752f13e743d792d142d5455333e846494fb5a2020a333af2483047f",
+          "native_result": {
+            "passed": true,
+            "checks": 4352,
+            "oracle_cases": 3840,
+            "static_inputs": 512
+          },
+          "checks": 40,
+          "runtime": {
+            "image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ]
+          },
+          "artifact_sha256": {
+            "inspection/run.json": "f68e29cea8a65aeb5384bfee4758fccb5b520166e3c99eb6b360abd0283374b6",
+            "inspection/sign_extension.json": "76a56532bdbdb8540d9b334d88e1d0b2590c3981f38030fb10261bb37c7c3552"
+          }
+        }
+      ],
+      "plugin_artifact": "build/vmp-sign-extension-release-prior/x86_64/inspection/idauser/plugins/chernobog.dylib"
+    },
+    "new": {
+      "report": "build/vmp-sign-extension-release-new/sign_extension_analysis.json",
+      "report_sha256": "e095a9d36739acb4e760615181419c6670c0434af85c00256718d92579e1cb0e",
+      "plugin_sha256": "ced9388f1006e4f336a720255d08cb4f8d00aecf855a3c4cfe1f9e1a34526a26",
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "matched_binary_identity": true,
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "binary_sha256": "dededf0a874a3b149edff975223313e7c123a0735003fc3f74fc0e2d5e5aed59",
+          "native_result": {
+            "passed": true,
+            "checks": 6272,
+            "oracle_cases": 5760,
+            "static_inputs": 512
+          },
+          "checks": 60,
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "artifact_sha256": {
+            "inspection/run.json": "20dd179cc790bac744e166be50d988aa8ea40e6386daee8e40cdb64d94dad3a4",
+            "inspection/sign_extension.json": "498d6fad1e9c6d8fd087b9f0654daa183d69dcfec373e7b90a10379632bcc163"
+          }
+        },
+        {
+          "architecture": "i386",
+          "binary_sha256": "c83470c8b752f13e743d792d142d5455333e846494fb5a2020a333af2483047f",
+          "native_result": {
+            "passed": true,
+            "checks": 4352,
+            "oracle_cases": 3840,
+            "static_inputs": 512
+          },
+          "checks": 50,
+          "runtime": {
+            "image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ]
+          },
+          "artifact_sha256": {
+            "inspection/run.json": "ffc343d178aa3be1e876876e78217c9f46bbb1139d51fd94d7a6439cd20659ad",
+            "inspection/sign_extension.json": "fb85897aa74e737bbe827f4e63fbab01b40a9cf98740b32d7be4afb148cc8cf0"
+          }
+        }
+      ],
+      "plugin_artifact": "build/vmp-sign-extension-release-new/x86_64/inspection/idauser/plugins/chernobog.dylib"
+    }
+  },
+  "protected_control": {
+    "input": "samples/foo_x86_vmp",
+    "input_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "root": "0x1002946b5",
+    "reports_identical": true,
+    "checks_per_profile": 8,
+    "nodes": 75,
+    "edges": 77,
+    "unresolved_records": 3,
+    "admitted_extension_heads": 0,
+    "artifacts": {
+      "build/vmp-sign-extension-protected-prior/run.json": "ebf0d15e3e20649126d0ea839ace8a11819a3de03140ee3eac12ce39deb7535f",
+      "build/vmp-sign-extension-protected-prior/protected_region.json": "26da0a9b8e82ebd309f55a1734efd30d47cf2bfb4dc6f805f0088bebcb099eb6",
+      "build/vmp-sign-extension-protected/run.json": "8fa03f029af578ff41aac7975493de8d32ad57743c10b56214945c590c111afe",
+      "build/vmp-sign-extension-protected/protected_region.json": "26da0a9b8e82ebd309f55a1734efd30d47cf2bfb4dc6f805f0088bebcb099eb6"
+    }
+  },
+  "portable": {
+    "partial_byte_profiles": 6561,
+    "compatible_byte_completions": 65536,
+    "word_values_per_mode": 65536,
+    "modes": 2,
+    "includes_alias_preservation_zero_extension_unknown_sign": true
+  },
+  "ctest": {
+    "passed": 21,
+    "total": 21,
+    "elapsed_seconds": 16.68,
+    "log": "build/Testing/Temporary/LastTest.log",
+    "log_sha256": "efe0b2126570e0ad3bec9c94abaad020c7acaad5da0b5c5063c86b7ade3c26e4"
+  },
+  "limits": {
+    "native_execution": "translated x86-64 process and pinned QEMU i386; physical x86-64 unmeasured",
+    "complete_lifecycle_matrix": "unknown",
+    "broader_protected_gain": "unknown",
+    "other_prefixes": "unsupported"
+  },
+  "recovery_by_architecture": {
+    "x86_64": {
+      "prior": {
+        "owned_condition_values": 0,
+        "ownerless_condition_values": 0,
+        "owned_stack_targets": 0,
+        "ownerless_stack_targets": 0
+      },
+      "new": {
+        "owned_condition_values": 8,
+        "ownerless_condition_values": 8,
+        "owned_stack_targets": 1,
+        "ownerless_stack_targets": 1
+      }
+    },
+    "i386": {
+      "prior": {
+        "owned_condition_values": 0,
+        "ownerless_condition_values": 0,
+        "owned_stack_targets": 0,
+        "ownerless_stack_targets": 0
+      },
+      "new": {
+        "owned_condition_values": 6,
+        "ownerless_condition_values": 6,
+        "owned_stack_targets": 1,
+        "ownerless_stack_targets": 1
+      }
+    }
+  }
+}

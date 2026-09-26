@@ -171,6 +171,43 @@ bool exact_status_ah_encoding(const insn_t &insn)
            get_byte(insn.ea) == (insn.itype == NN_lahf ? 0x9f : 0x9e);
 }
 
+std::optional<std::pair<unsigned, bool>> accumulator_extension(uint16_t type)
+{
+    switch (type)
+    {
+    case NN_cbw:
+        return {{8, false}};
+    case NN_cwde:
+        return {{16, false}};
+    case NN_cdqe:
+        return {{32, false}};
+    case NN_cwd:
+        return {{16, true}};
+    case NN_cdq:
+        return {{32, true}};
+    case NN_cqo:
+        return {{64, true}};
+    default:
+        return std::nullopt;
+    }
+}
+
+bool exact_accumulator_extension_encoding(const insn_t &insn)
+{
+    const auto extension = accumulator_extension(insn.itype);
+    if (!extension || (!mode32(insn) && !mode64(insn)))
+        return false;
+    const auto [bits, high] = *extension;
+    const uint8_t opcode = high ? 0x99 : 0x98;
+    const unsigned output_bits = high ? bits : bits * 2;
+    if (output_bits == 16)
+        return insn.size == 2 && get_byte(insn.ea) == 0x66 && get_byte(insn.ea + 1) == opcode;
+    if (output_bits == 32)
+        return insn.size == 1 && get_byte(insn.ea) == opcode;
+    return mode64(insn) && insn.size == 2 && get_byte(insn.ea) == 0x48 &&
+           get_byte(insn.ea + 1) == opcode;
+}
+
 Operation operation(uint16_t type)
 {
     switch (type)
@@ -842,6 +879,22 @@ struct State
         case NN_std:
             // DF is outside this state; the six tracked status flags are unchanged.
             return;
+        case NN_cbw:
+        case NN_cwde:
+        case NN_cdqe:
+        case NN_cwd:
+        case NN_cdq:
+        case NN_cqo:
+        {
+            if (!exact_accumulator_extension_encoding(insn))
+            {
+                *this = {};
+                return;
+            }
+            const auto [bits, high] = *accumulator_extension(insn.itype);
+            sign_extend_accumulator(regs[high ? 2 : 0], regs[0], bits, high, is64);
+            return;
+        }
         case NN_lahf:
         case NN_sahf:
             if (!exact_status_ah_encoding(insn))
@@ -1470,6 +1523,9 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         if ((instruction.itype == NN_lahf || instruction.itype == NN_sahf) &&
             !exact_status_ah_encoding(instruction))
             flow.stop = "unsupported_status_ah_encoding";
+        else if (accumulator_extension(instruction.itype) &&
+                 !exact_accumulator_extension_encoding(instruction))
+            flow.stop = "unsupported_accumulator_extension_encoding";
         else if (instruction.itype == NN_bswap && get_dtype_size(instruction.Op1.dtype) != 4 &&
                  get_dtype_size(instruction.Op1.dtype) != 8 &&
                  !abstract_bswap16_fallthrough(instruction))

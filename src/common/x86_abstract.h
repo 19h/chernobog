@@ -185,6 +185,39 @@ struct Word
     }
 };
 
+// Copy a sign extension without requiring every source bit to be known. The
+// implicit accumulator forms either retain the low source bits or write only
+// the high half into DX/EDX/RDX. Cache the source for the aliased AX/EAX/RAX case.
+inline void sign_extend_accumulator(Word &destination, const Word &source, unsigned source_bits,
+                                    bool high_half, bool mode64)
+{
+    if (high_half ? (source_bits != 16 && source_bits != 32 && source_bits != 64)
+                  : (source_bits != 8 && source_bits != 16 && source_bits != 32))
+    {
+        destination = {};
+        return;
+    }
+    const Word input = source;
+    const unsigned destination_bits = high_half ? source_bits : source_bits * 2;
+    const uint64_t written = mask(destination_bits);
+    const uint64_t copied = high_half ? 0 : mask(source_bits);
+    const uint64_t extended = written & ~copied;
+    const uint64_t sign = uint64_t{1} << (source_bits - 1);
+    destination.known = (destination.known & ~written) | (input.known & copied);
+    destination.value = (destination.value & ~written) | (input.value & input.known & copied);
+    if (input.known & sign)
+    {
+        destination.known |= extended;
+        if (input.value & sign)
+            destination.value |= extended;
+    }
+    if (mode64 && destination_bits == 32)
+    {
+        destination.known |= UINT64_C(0xffffffff00000000);
+        destination.value &= UINT64_C(0xffffffff);
+    }
+}
+
 // LAHF and SAHF exchange the five low status flags with AH. OF is neither
 // encoded in AH nor changed by SAHF. Preserve knowledge of each bit separately.
 inline void load_status_into_ah(Word &accumulator, const Flags &flags)
