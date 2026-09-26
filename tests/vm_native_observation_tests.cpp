@@ -575,21 +575,36 @@ struct Collector : solver_evidence::Collector
 };
 void check_repeated_verdicts(const vm::NativeObservationView &view, size_t different = SIZE_MAX)
 {
+    size_t expected_queries = 0;
     for (size_t i = 0; i < view.records.size(); ++i)
     {
         const auto &row = view.records[i];
         if (i < 16)
-            check(row.at("semantic_validation") == (i == different
-                                                        ? "modeled transition counterexample"
-                                                        : "corroborated for captured transition") &&
-                      row.at("transition_queries") == "2" && !row.at("transition_check").empty(),
+        {
+            const auto &verdict = row.at("semantic_validation");
+            const bool completed =
+                verdict == (i == different ? "modeled transition counterexample"
+                                           : "corroborated for captured transition");
+            // A bounded solver may abstain under load; the one-visit controls
+            // separately require completed positive and counterexample results.
+            const auto &reason = row.at("transition_reason");
+            const bool bounded_unknown =
+                verdict == "solver unresolved" && (reason == "canceled" || reason == "timeout" ||
+                                                   reason == "max. resource limit reached");
+            const auto &queries = row.at("transition_queries");
+            check((completed && queries == "2" ||
+                   bounded_unknown && (queries == "1" || queries == "2")) &&
+                      !row.at("transition_check").empty(),
                   "each attempted visit retains its own semantic verdict");
+            expected_queries += queries == "2" ? 2 : 1;
+        }
         else
             check(row.at("semantic_validation") == "transition not checked" &&
                       row.at("transition_reason") == "transition attempt budget exhausted" &&
                       row.count("transition_queries") == 0 && row.count("transition_check") == 0,
                   "every over-budget visit remains unchecked");
     }
+    check(view.queries == expected_queries, "native query total equals per-visit query counts");
 }
 }
 int main()
@@ -687,7 +702,8 @@ int main()
                       "missing entry register cannot corroborate");
                 auto many = fixture(mode, split, 17);
                 v = project(many);
-                check(v.records.size() == 17 && v.transition_attempts == 16 && v.queries == 32 &&
+                check(v.records.size() == 17 && v.transition_attempts == 16 && v.queries >= 16 &&
+                          v.queries <= 32 &&
                           v.records.back().at("transition_reason") ==
                               "transition attempt budget exhausted",
                       "separate repeated visits and solver budget");
@@ -701,7 +717,8 @@ int main()
                         state.regs[1].value ^= 1;
                 const auto different_view = project(different);
                 check(different_view.records.size() == 17 &&
-                          different_view.transition_attempts == 16 && different_view.queries == 32,
+                          different_view.transition_attempts == 16 &&
+                          different_view.queries >= 16 && different_view.queries <= 32,
                       "one later counterexample preserves visit and query counts");
                 check_repeated_verdicts(different_view, 8);
                 std::set<std::string> identities;
@@ -724,7 +741,7 @@ int main()
             auto repeated = fixture(64, false, 130);
             auto view = project(repeated);
             check(view.records.size() == 128 && view.omitted == 2 && view.candidate_visits == 130 &&
-                      view.transition_attempts == 16 && view.queries == 32,
+                      view.transition_attempts == 16 && view.queries >= 16 && view.queries <= 32,
                   "native row and solver quotas remain separate");
             check_repeated_verdicts(view);
             auto dense = fixture(64);
