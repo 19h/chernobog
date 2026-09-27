@@ -752,6 +752,7 @@ if(BUILD_TESTING)
         tests/catalog_tests.cpp
         src/deobf/analysis/ast.cpp
         src/deobf/analysis/ast_builder.cpp
+        src/deobf/analysis/mba_diagnostics.cpp
         src/deobf/analysis/pattern_storage.cpp
         src/deobf/rules/pattern_rule.cpp
         src/deobf/rules/rule_verifier.cpp

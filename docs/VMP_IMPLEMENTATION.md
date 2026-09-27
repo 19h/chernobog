@@ -1153,3 +1153,19 @@ assumptions, primary provenance and source/artifact pins. The default owned
 scan budget remains 8, i386 nonzero memory still lacks a segment-base contract,
 and no protected recovery gain is established. Full review implementation
 remains in progress.
+
+## Rejected MBA constants checkpoint
+
+Review row 4a now records the final failed rule at the furthest catalog gate
+and up to four bound numeric operands, with explicit omission counts. Accepted
+bindings clear this rejected-rule metadata. The protected 40-process matrix
+preserves 152 native rows, 456 SDK outcomes, 454 typed CFG captures and all
+verifier results. Its 1,483 constant-gate events retain 662 attributed events
+through 452 keys; 821 events remain unattributed under the existing quota.
+The recorded ADD/AND/MUL all-ones constraints fail their bound constants, and
+an independent audit produces scoped family counterexamples, exhausts 196,608
+8-bit comparisons and rejects eleven corruptions. All 22 CTest suites pass.
+See `VMP_MBA_CONSTRAINT_BINDINGS.md` and its evidence JSON. These observations
+do not establish a concrete-instance counterexample, a missing identity or a
+protected simplification gain. Full causal classification and review
+implementation remain in progress.

@@ -31,7 +31,20 @@ constexpr size_t outcome_count = static_cast<size_t>(Outcome::Count);
 constexpr size_t sample_limit = 64;
 constexpr size_t detail_byte_limit = 256;
 constexpr size_t rule_byte_limit = 128;
+constexpr size_t binding_limit = 4;
+constexpr size_t binding_name_byte_limit = 20;
 const char *outcome_name(Outcome outcome);
+
+struct NumericBinding
+{
+    std::string_view name;
+    uint16_t width_bytes = 0;
+    uint64_t value = 0;
+};
+
+// Views are borrowed only during formatting. Raw SDK values are not masked.
+// Retain at most four ASCII identifiers; every excluded binding is counted.
+std::string constant_failure_detail(const std::vector<NumericBinding> &bindings);
 
 struct Site
 {

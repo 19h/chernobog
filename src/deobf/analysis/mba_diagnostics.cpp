@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <sstream>
 
 namespace chernobog::mba_diagnostics
 {
@@ -33,6 +34,35 @@ const char *outcome_name(Outcome outcome)
     };
     const auto index = static_cast<size_t>(outcome);
     return index < outcome_count ? names[index] : "invalid";
+}
+
+std::string constant_failure_detail(const std::vector<NumericBinding> &bindings)
+{
+    std::ostringstream out;
+    out << "constant_check_failed;numeric=";
+    size_t retained = 0, omitted = 0;
+    for (const auto &binding : bindings)
+    {
+        const bool identifier =
+            !binding.name.empty() && binding.name.size() <= binding_name_byte_limit &&
+            std::all_of(binding.name.begin(), binding.name.end(),
+                        [](char c)
+                        {
+                            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                                   (c >= '0' && c <= '9') || c == '_';
+                        });
+        if (!identifier || retained == binding_limit)
+        {
+            ++omitted;
+            continue;
+        }
+        if (retained++)
+            out << ',';
+        out << binding.name << ':' << std::dec << binding.width_bytes << ":0x" << std::hex
+            << binding.value;
+    }
+    out << ";omitted=" << std::dec << omitted;
+    return out.str();
 }
 
 void record(Outcome outcome, Site site, uint64_t indexed_patterns, uint64_t structural_matches,

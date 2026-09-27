@@ -1,6 +1,8 @@
 #include "rule_registry.h"
 #include "rule_verifier.h"
 #include "../analysis/ast_builder.h"
+#include <algorithm>
+#include <cstring>
 #if defined(CHERNOBOG_CATALOG_TEST)
 #include <iostream>
 #endif
@@ -11,6 +13,23 @@ namespace rules
 {
 
 using namespace ast;
+
+namespace
+{
+std::string rejected_constants(const std::map<std::string, mop_t> &bindings)
+{
+    std::vector<mba_diagnostics::NumericBinding> numbers;
+    for (const auto &[name, operand] : bindings)
+        if (operand.t == mop_n && operand.nnn != nullptr)
+        {
+            if (operand.size < 0 || operand.size > UINT16_MAX)
+                numbers.push_back({{}, 0, 0}); // Count an unrepresentable width as omitted.
+            else
+                numbers.push_back({name, uint16_t(operand.size), operand.nnn->value});
+        }
+    return mba_diagnostics::constant_failure_detail(numbers);
+}
+} // namespace
 
 //--------------------------------------------------------------------------
 // Singleton implementation
@@ -192,7 +211,13 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
             {
                 ++result.candidate_rejections;
                 if (result.constant_rejections == 0)
+                {
                     result.outcome = mba_diagnostics::Outcome::CandidateConstraint;
+                    result.rejected_rule.assign(
+                        rp.rule->name(),
+                        std::min(std::strlen(rp.rule->name()), mba_diagnostics::rule_byte_limit));
+                    result.rejection_detail = "candidate_check_failed";
+                }
                 continue;
             }
 
@@ -201,6 +226,10 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
             {
                 ++result.constant_rejections;
                 result.outcome = mba_diagnostics::Outcome::ConstantConstraint;
+                result.rejected_rule.assign(
+                    rp.rule->name(),
+                    std::min(std::strlen(rp.rule->name()), mba_diagnostics::rule_byte_limit));
+                result.rejection_detail = rejected_constants(bindings);
                 continue;
             }
 
@@ -214,6 +243,8 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
 #endif
 
             result.rule = rp.rule;
+            result.rejected_rule.clear();
+            result.rejection_detail.clear();
             result.matched_pattern = rp.pattern;
             result.bindings = std::move(bindings);
             return result;

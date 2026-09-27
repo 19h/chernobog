@@ -1,0 +1,233 @@
+{
+  "schema": 1,
+  "passed": true,
+  "parent_revision": "e19349f60147328a3de69a82e07560e8db450dc7",
+  "scope": "final failed rule at the furthest gate; numeric contract and family counterexamples; no concrete-instance counterexample or complete causal classification",
+  "source_sha256": {
+    "CMakeLists.txt": "dd15461136641ae7a7f270fd7f6d133bcf4feb13953404e6a7eaf5847ab78a59",
+    "src/deobf/analysis/ast.h": "32f4b66a9d527030a3b3deedff2dc477b78dfdb42054b3a4bf707f88da5e977f",
+    "src/deobf/analysis/ast_builder.cpp": "ac4e3cc4fe86d9619ba42a6b91b36130036aaab8b75581d4df857352830c6d82",
+    "src/deobf/analysis/mba_diagnostics.hpp": "30188e9a79dc7add135515fa09c653f3f7c6674f49d4e66f5445d44808b4ff54",
+    "src/deobf/analysis/mba_diagnostics.cpp": "4a16c3dda47a6f459c2a8441255ed7a257f367d5146902255245e0c09da72626",
+    "src/deobf/rules/rule_registry.h": "97ae89a96b266c1f9bfa723e9a1b1d42fe1060a075d930036b5e9ce3f7ce4c3b",
+    "src/deobf/rules/rule_registry.cpp": "2f0f08352cc37378411415826d35eb5ec8476ab9cbf4c0ba3109aad6e0121ce4",
+    "src/deobf/handlers/mba_simplify.cpp": "8bff29e2c93148ff00c14875fa768410b332990c8a50fc5945fe0f30025ccf41",
+    "src/deobf/rules/pattern_rule.cpp": "92dfd20a6f2182c90f5c97eab9206e291374b5137c4ac50ab5a81b0ccfff260d",
+    "src/deobf/rules/pattern_rule.h": "95f84426c250c3172b65e216af09a4924a50c960b2a30526c6feca1ef1a51bc2",
+    "src/deobf/rules/rules_sub.h": "ef47c8cf7b455f86294e3ec08609e68ba942f807a85262e0f3c01b4e42525688",
+    "src/deobf/rules/rules_and.h": "96a45fccd9f4dca2f06782ed2485c59d8302d896348e9a1333d73a8bbe186aea",
+    "src/deobf/rules/rules_misc.h": "5b9c4cad2423265cc7f45eaff50e144626328ffe845cfa21a16576a0d8fa2f2b",
+    "src/plugin/idc_api.cpp": "ebd7d977a363249fa0a899121f5115ef3ec0e3bb2f30daad5e787123e7e64d1c",
+    "tests/mba_diagnostics_tests.cpp": "115b38a5c4f3c398fa73509d1166fbb27c35cdbb7536389da95d2385bf9ab910",
+    "tests/mba_matching_diagnostics.py": "6b5ed769cc25fbb78387d06bd0bf80ba45f7a8c149c2ac04b19dd02e2e858279",
+    "tests/verify_mba_constraint_capture.py": "c57ba968079dec34a5f19b4bd4144526dc37e7b6d1e3c42252c5024e722d7f80",
+    "tests/verify_mba_matching_capture.py": "497ec250b3601eebd5c41809cc5c211c82bfe929d2026b44b1f12a131bdff327",
+    "tests/run_protected_mba_corpus.py": "dcb9738481450b7d84016868de9bcbe6d073f7ac32f2b0cf45284530a7cbce34",
+    "tests/ida_protected_mba_probe.py": "e3d79014adde2c448b20afe5f07915c1d5b3834dbafdef5151b4272e6e2df488",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "docs/VMP_MBA_CONSTRAINT_BINDINGS.md": "b1ed9a13c8be364ab497f14abd8788bfba935f24606ea2c5a7429e746fae8e83",
+    "../ida-sdk/src/include/hexrays.hpp": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff"
+  },
+  "artifact_sha256": {
+    "build/mba-constraint-protected-accepted/protected_mba_analysis.json": "cb1da950bfd20cae5a15709988761126f492db85d78da76e312b6837caef4498",
+    "build/mba-constraint-protected-accepted-audit.json": "2f71a9b47c6792ef84e6908cb93324ccacd4b22fc17445d0043ed11a8e10ca9d",
+    "build/mba-constraint-final-ctest.json": "4a1dfe6c688425339353f02568aa6c88630631104fbf2560a163a65d0dee5bb6",
+    "build/mba-constraint-final-ctest.log": "b5fe30148b89047d39b4c13c37d089e781a31cba22b99b3641101bb999eafe10",
+    "build/constraint-candidate-final.dylib": "85b5389ff43bb9d62a88b9d184fdf24664de933738b7f5f3a6acf1b352749721",
+    "build/constraint-prior-e19349f6.dylib": "17b60f1c9bdf0e83566f9beda91fd5fa1b919e6794700ad746d542703409f0c2",
+    "build/mba-constraint-prior-heldout-e19349f6/protected_mba.json": "57fdba9783c7818f99271c3c9cb8d52189e704f8f98a49d8cccca1caa336de41",
+    "build/mba-constraint-prior-heldout-e19349f6/run.json": "1b27ece98881a24c55f1c4f32f8dcf474778eedf467978b49757878fde355e41",
+    "build/mba-constraint-prior-heldout-e19349f6/ida.log": "aa22052a338e5d6ed6c815375b7be367ccade970fde8fa7a60bf11975f088493",
+    "build/mba-constraint-protected-accepted/i386/combined-12648430-on/protected_mba.json": "c1abba6905e86eb0d5ec49b5f31efe054d489df140e3b2d73f5a316d277beb23",
+    "build/mba-constraint-protected-accepted/i386/combined-12648430-on/run.json": "c1a0a9934a3d08e19636261c8264e8acced0947c0face0816752d8acbe7e56c7",
+    "build/mba-constraint-protected-accepted/i386/combined-12648430-on/ida.log": "0a1a8a26b37e954a638e0f818b590a50470b1a3c32d9dd58b36f895327d5ae57",
+    "build/mba-matching-diagnostics-protected-attempt-final/protected_mba_analysis.json": "cb28dd1f2fea43ffcc080202a580d1aba6a6cdb378de71d65640837b7d3bdcf1"
+  },
+  "candidate_receipt": "e19349f60147 dirty=1 source=9faccb06149c sdk=940 rax=a9757b274a3f dbctx=0",
+  "predecessor_receipt": "e19349f60147 dirty=1 source=f17b3bac7197 sdk=940 rax=a9757b274a3f dbctx=0",
+  "immediate_predecessor_heldout": {
+    "architecture": "i386",
+    "label": "combined-12648430",
+    "preserved": {
+      "native_rows": 4,
+      "stages": 16,
+      "captured": 16
+    },
+    "runner": {
+      "schema_version": 2,
+      "input_sha256": "28afeb8f97e7bcd765f60daffbe10719b57caf9c005cc42fdfc883d43a23d5f5",
+      "source_input_sha256": "28afeb8f97e7bcd765f60daffbe10719b57caf9c005cc42fdfc883d43a23d5f5",
+      "plugin_sha256": "17b60f1c9bdf0e83566f9beda91fd5fa1b919e6794700ad746d542703409f0c2",
+      "plugin_unchanged": true,
+      "script_sha256": "e3d79014adde2c448b20afe5f07915c1d5b3834dbafdef5151b4272e6e2df488",
+      "script_unchanged": true,
+      "source_script_sha256": "e3d79014adde2c448b20afe5f07915c1d5b3834dbafdef5151b4272e6e2df488",
+      "source_script_unchanged": true,
+      "source_input_unchanged": true,
+      "input_copy_matches_source": true,
+      "ida_path": "<ida>/idat",
+      "local_paths_redacted": true,
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "ida_sha256_after": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "ida_unchanged": true,
+      "artifacts_unchanged": true,
+      "chernobog_environment_sha256": "7343bd4f64af044508a80c9440508442fc2b52ab74afe7b4506da9c5671c25ab",
+      "enable_rax": false,
+      "verbose": false,
+      "process_elapsed_ns": 11502767750,
+      "process_return_code": 0,
+      "expected_log_pattern": "\\[chernobog\\]\\[[^\\]\\r\\n]+\\] PASS(?:\\s|$)",
+      "expected_log_found": true,
+      "internal_error_found": false,
+      "runner_return_code": 0
+    }
+  },
+  "matrix": {
+    "runs": 40,
+    "plugin_sha256": "85b5389ff43bb9d62a88b9d184fdf24664de933738b7f5f3a6acf1b352749721",
+    "counts": {
+      "preservation": {
+        "native_rows": 152,
+        "stages": 456,
+        "captured": 454
+      },
+      "events": 14065,
+      "constant_events": 1483,
+      "unrecorded_events": 6953,
+      "attributed_events": {
+        "Sub1_FactorRule_2": 557,
+        "And_Rule_3": 90,
+        "Mul_Rule_4": 15
+      },
+      "sample_keys": {
+        "Sub1_FactorRule_2": 419,
+        "And_Rule_3": 27,
+        "Mul_Rule_4": 6
+      },
+      "unattributed_constant_events": 821,
+      "rule_family_comparisons": 196608,
+      "corruptions_rejected": [
+        "lost rule",
+        "unknown rule",
+        "wrong opcode",
+        "lost binding",
+        "incomplete bindings",
+        "unknown width",
+        "constraint actually satisfied",
+        "constraint satisfied after width truncation",
+        "noncanonical value",
+        "duplicate binding",
+        "oversized name"
+      ]
+    },
+    "capture_corruptions_rejected": 602,
+    "maximum_process_elapsed_ns": 26432865458,
+    "maximum_process_resident_bytes": 203423744
+  },
+  "representative_witnesses": {
+    "Sub1_FactorRule_2": {
+      "architecture": "i386",
+      "label": "combined-0",
+      "sample": {
+        "outcome": "constant_constraint",
+        "entry": 134607228,
+        "source": 134549839,
+        "maturity": 0,
+        "block": 3,
+        "opcode": 12,
+        "width_bytes": 4,
+        "indexed_patterns": 26,
+        "structural_matches": 1,
+        "candidate_rejections": 0,
+        "constant_rejections": 1,
+        "reason": "constant_check_failed;numeric=c_minus_1:4:0x4;omitted=0",
+        "rule": "Sub1_FactorRule_2",
+        "count": 1
+      },
+      "witness": {
+        "bits": 32,
+        "constant": "0x4",
+        "x": "0x0",
+        "original": "0x4",
+        "proposed": "0xffffffff",
+        "scope": "unconstrained-x rule family; not the concrete microcode instance"
+      }
+    },
+    "And_Rule_3": {
+      "architecture": "i386",
+      "label": "combined-1",
+      "sample": {
+        "outcome": "constant_constraint",
+        "entry": 134740567,
+        "source": 134740583,
+        "maturity": 1,
+        "block": 3,
+        "opcode": 20,
+        "width_bytes": 2,
+        "indexed_patterns": 22,
+        "structural_matches": 1,
+        "candidate_rejections": 0,
+        "constant_rejections": 1,
+        "reason": "constant_check_failed;numeric=c_minus_1:2:0xa936;omitted=0",
+        "rule": "And_Rule_3",
+        "count": 3
+      },
+      "witness": {
+        "bits": 16,
+        "constant": "0xa936",
+        "x": "0x56c9",
+        "original": "0x0",
+        "proposed": "0x56c9",
+        "scope": "unconstrained-x rule family; not the concrete microcode instance"
+      }
+    },
+    "Mul_Rule_4": {
+      "architecture": "i386",
+      "label": "combined-1",
+      "sample": {
+        "outcome": "constant_constraint",
+        "entry": 135070655,
+        "source": 135070672,
+        "maturity": 1,
+        "block": 2,
+        "opcode": 14,
+        "width_bytes": 2,
+        "indexed_patterns": 6,
+        "structural_matches": 1,
+        "candidate_rejections": 0,
+        "constant_rejections": 1,
+        "reason": "constant_check_failed;numeric=c_minus_1:2:0x800;omitted=0",
+        "rule": "Mul_Rule_4",
+        "count": 1
+      },
+      "witness": {
+        "bits": 16,
+        "constant": "0x800",
+        "x": "0x1",
+        "original": "0x800",
+        "proposed": "0xffff",
+        "scope": "unconstrained-x rule family; not the concrete microcode instance"
+      }
+    }
+  },
+  "ctest": {
+    "passed": true,
+    "suites": 22,
+    "elapsed_ns": 7187903917
+  },
+  "recorder_checks": 146,
+  "excluded_trials": [
+    "build/mba-constraint-protected-final",
+    "build/mba-constraint-protected-audit.json",
+    "build/constraint-candidate.dylib"
+  ],
+  "quality_gates": {
+    "QG1": "passed for this changeset within C1–C5; scope and falsification probes in VMP_MBA_CONSTRAINT_BINDINGS.md",
+    "QG2": "passed for this changeset within C1–C5; scope and falsification probes in VMP_MBA_CONSTRAINT_BINDINGS.md",
+    "QG3": "passed for this changeset within C1–C5; scope and falsification probes in VMP_MBA_CONSTRAINT_BINDINGS.md",
+    "QG4": "passed for this changeset within C1–C5; scope and falsification probes in VMP_MBA_CONSTRAINT_BINDINGS.md",
+    "QG5": "passed for this changeset within C1–C5; scope and falsification probes in VMP_MBA_CONSTRAINT_BINDINGS.md",
+    "QG6": "passed for this changeset within C1–C5; scope and falsification probes in VMP_MBA_CONSTRAINT_BINDINGS.md",
+    "QG7": "passed for this changeset within C1–C5; scope and falsification probes in VMP_MBA_CONSTRAINT_BINDINGS.md"
+  }
+}

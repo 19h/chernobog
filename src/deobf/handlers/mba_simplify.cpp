@@ -40,7 +40,8 @@ static void record_catalog_outcome(mblock_t *block, const minsn_t *instruction,
         int(instruction->opcode),       instruction->d.size};
     chernobog::mba_diagnostics::record(
         outcome, site, match.indexed_patterns, match.structural_matches, match.candidate_rejections,
-        match.constant_rejections, detail, match.rule ? match.rule->name() : "");
+        match.constant_rejections, match.rule ? detail : std::string_view(match.rejection_detail),
+        match.rule ? match.rule->name() : std::string_view(match.rejected_rule));
 }
 
 static void mba_affine_debug(const char *fmt, ...)

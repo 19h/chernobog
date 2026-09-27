@@ -42,6 +42,26 @@ int main()
 {
     try
     {
+        require(constant_failure_detail({}) == "constant_check_failed;numeric=;omitted=0",
+                "empty numeric bindings remain explicit");
+        require(
+            constant_failure_detail({{"c_minus_1", 1, UINT64_MAX}, {"0", 4, 42}}) ==
+                "constant_check_failed;numeric=c_minus_1:1:0xffffffffffffffff,0:4:0x2a;omitted=0",
+            "raw values, names and widths are preserved without masking");
+        const std::string longest(binding_name_byte_limit, 'x');
+        std::vector<NumericBinding> bounded;
+        for (size_t i = 0; i < binding_limit + 1; ++i)
+            bounded.push_back({longest, UINT16_MAX, UINT64_MAX});
+        const auto detail = constant_failure_detail(bounded);
+        require(detail.size() <= detail_byte_limit &&
+                    detail.find(";omitted=1") != std::string::npos,
+                "four maximal bindings fit the recorder byte cap and account for excess");
+        require(constant_failure_detail({{"", 1, 0},
+                                         {"bad:name", 1, 0},
+                                         {"identifier_too_long_for_capture", 1, 0},
+                                         {"ok", 8, 7}}) ==
+                    "constant_check_failed;numeric=ok:8:0x7;omitted=3",
+                "invalid or oversized identifiers are omitted without partial labels");
         reset();
         Site site{0x1000, 0x1010, 3, 1, 9, 4};
         for (size_t i = 0; i < outcome_count; ++i)

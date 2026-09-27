@@ -1,5 +1,7 @@
 """Check bounded catalog-attempt diagnostics independently of their producer."""
 
+import re
+
 OUTCOMES = (
     "no_ast",
     "no_indexed_pattern",
@@ -17,6 +19,22 @@ OUTCOMES = (
 def require(value, reason):
     if not value:
         raise ValueError(reason)
+
+
+def parse_constant_failure(reason):
+    match = re.fullmatch(r"constant_check_failed;numeric=(.*);omitted=(0|[1-9][0-9]*)", reason)
+    require(match is not None, "constant failure detail grammar")
+    bindings = []
+    if match[1]:
+        for value in match[1].split(","):
+            part = re.fullmatch(r"([A-Za-z0-9_]{1,20}):(0|[1-9][0-9]*):0x([0-9a-f]{1,16})", value)
+            require(part is not None, "constant failure binding grammar")
+            name, width, number = part[1], int(part[2]), int(part[3], 16)
+            require(width <= 65535 and format(number, "x") == part[3], "constant binding domain")
+            bindings.append({"name": name, "width_bytes": width, "value": number})
+    require(len(bindings) <= 4, "constant failure binding quota")
+    require(len({b["name"] for b in bindings}) == len(bindings), "duplicate constant binding")
+    return bindings, int(match[2])
 
 
 def validate_matching(value, statistics, entry, maximum_maturity, disabled):
@@ -74,8 +92,12 @@ def validate_matching(value, statistics, entry, maximum_maturity, disabled):
             require(indexed > 0 and structural == candidate == constant == 0, "matching structure")
         elif name == "candidate_constraint":
             require(structural == candidate > 0 and constant == 0, "matching candidate gate")
+            if sample["rule"]:
+                require(sample["reason"] == "candidate_check_failed", "candidate rule attribution")
         elif name == "constant_constraint":
             require(constant > 0 and structural == candidate + constant, "matching constant gate")
+            if sample["rule"]:
+                parse_constant_failure(sample["reason"])
         else:
             require(
                 bool(sample["rule"]) and structural == candidate + constant + 1,
