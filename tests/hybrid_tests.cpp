@@ -918,6 +918,86 @@ void test_native_regions(const RaxApi *api)
                       return_out.sp_delta == (is64 ? 8 : 4),
                   "native walk follows stack-mediated transfer with actual stack effects");
         }
+        {
+            // The new path branches into five old heads before its three new
+            // fallthrough heads. Old heads must not exhaust the remaining quota.
+            auto joined = image;
+            auto &stream = joined.segs[0].bytes;
+            std::fill(stream.begin(), stream.end(), 0xcc);
+            stream[0] = 0x74;
+            stream[1] = 0x3e;
+            stream[2] = 0xff;
+            stream[3] = 0xe0;
+            std::fill(stream.begin() + 0x40, stream.begin() + 0x44, 0x90);
+            stream[0x44] = 0xc3;
+            const uint8_t new_path[] = {0x0f, 0x85, 0x3a, 0xff, 0xff, 0xff, 0x90, 0x90, 0xc3};
+            std::copy(std::begin(new_path), std::end(new_path), stream.begin() + 0x100);
+            joined.content_hash = hybrid_program_content_hash(joined);
+            const auto prior = plan_native_region(joined, api, joined.lo);
+            check(prior.heads().size() == 7 && !prior.truncated(),
+                  "joined extension fixture has seven previous heads");
+            std::map<uint64_t, unsigned> decoded_sites;
+            const chernobog::vm::NativeDecoder counted =
+                [&](uint64_t ea, const uint8_t *data, size_t count, rax_decoded &decoded)
+            {
+                ++decoded_sites[ea];
+                return fixture_decoder(ea, data, count, decoded);
+            };
+            const auto joined_extension = chernobog::vm::extend_native_region(
+                prior, joined, api, joined.lo + 2, joined.lo + 0x100, 11, counted);
+            check(joined_extension.admitted && joined_extension.added_heads == 4 &&
+                      joined_extension.region.heads().size() == 11 &&
+                      !joined_extension.region.truncated() &&
+                      joined_extension.region.at(joined.lo + 0x108) && !prior.at(joined.lo + 0x100),
+                  "previously admitted joins do not consume new native-head quota");
+            check(decoded_sites.size() == 9 &&
+                      std::all_of(decoded_sites.begin(), decoded_sites.end(),
+                                  [](const auto &entry) { return entry.second == 1; }),
+                  "joined heads are decoded once and retained under exact conflict checks");
+            const auto limited_join = chernobog::vm::extend_native_region(
+                prior, joined, api, joined.lo + 2, joined.lo + 0x100, 10, fixture_decoder);
+            check(limited_join.admitted && limited_join.added_heads == 3 &&
+                      limited_join.region.heads().size() == 10 && limited_join.region.truncated() &&
+                      !limited_join.region.at(joined.lo + 0x108),
+                  "new-head quota still stops before the first excess fallthrough head");
+            const chernobog::vm::NativeDecoder conflicting =
+                [&](uint64_t ea, const uint8_t *data, size_t count, rax_decoded &decoded)
+            {
+                if (!fixture_decoder(ea, data, count, decoded))
+                    return false;
+                if (ea == joined.lo + 0x40)
+                    decoded.flow = RAX_FLOW_RETURN;
+                return true;
+            };
+            const auto conflict = chernobog::vm::extend_native_region(
+                prior, joined, api, joined.lo + 2, joined.lo + 0x100, 11, conflicting);
+            check(!conflict.admitted && conflict.reason == "conflicting_decode" &&
+                      conflict.region.identity() == prior.identity(),
+                  "redecoded joined heads cannot silently replace an old control contract");
+            for (unsigned mutation = 0; mutation < 4; ++mutation)
+            {
+                auto stale_join = joined;
+                if (mutation == 0)
+                    stale_join.segs[0].bytes[0x300] ^= 1;
+                else if (mutation == 1)
+                    stale_join.segs[0].mask[0x300 / 8] ^= 1;
+                else if (mutation == 2)
+                    stale_join.segs[0].perm ^= uint32_t(HybridSegPerm::WRITE);
+                else
+                    stale_join.segs[0].bitness = is64 ? 1 : 2;
+                const auto stale_extension = chernobog::vm::extend_native_region(
+                    prior, stale_join, api, joined.lo + 2, joined.lo + 0x100, 11, fixture_decoder);
+                check(
+                    stale_join.content_hash == joined.content_hash && !stale_extension.admitted &&
+                        stale_extension.reason == "stale_region",
+                    "full image revalidation rejects bytes, masks, permissions and mode despite cached hash");
+            }
+            std::cout << "native-extension-quota mode=" << (is64 ? 64 : 32)
+                      << " previous_heads=" << prior.heads().size()
+                      << " added_heads=" << joined_extension.added_heads
+                      << " final_heads=" << joined_extension.region.heads().size()
+                      << " truncated=" << joined_extension.region.truncated() << '\n';
+        }
         // Writable code is captured exactly; a changed future instruction must not
         // execute under its original plan even if the new encoding is also valid.
         changed = image;

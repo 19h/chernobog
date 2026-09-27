@@ -1320,3 +1320,21 @@ every transient failed candidate. See `VMP_MBA_FAILURE_WITNESSES.md` and its
 evidence JSON. Complete causal classification, reaching-definition/alias
 provenance, width/order counterfactuals and full review implementation remain
 in progress.
+
+## Joined native-target quota checkpoint
+
+Review rows 1b, 6a and V now charge only newly scheduled heads when an observed
+target joins an existing native plan, while redecoding and checking joined
+bytes and flow. The validated image fingerprint is traversed once per extension
+instead of twice. Both portable x86 modes retain all four new heads at the
+exact quota; stale image and conflict controls reject. A same-binary installed
+predecessor/current IDA comparison changes an incomplete six-instruction path
+to an eight-instruction return with RAX = 42 at exactly 4,096 heads; the
+one-head excess control remains incomplete. Independent decoding checks
+32,762 head records and 54 entered records, with four corruptions rejected.
+All 23 CTest suites pass. Two fresh protected 40-run matrices retain exact
+common entered prefixes and all 16 completed runs; 31 candidate dependence
+certificates pass independent symbolic replay. All six virtualized/combined
+variants remain incomplete. See `VMP_NATIVE_EXTENSION_QUOTA.md` and its evidence
+JSON. Strict query latency, full protected topology and complete review
+implementation remain in progress.

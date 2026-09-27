@@ -45,6 +45,7 @@ class NativeRegion
     bool matches(const hybrid::ProgramImage &) const;
 
   private:
+    friend class NativeRegionBuilder;
     friend NativeRegion plan_native_region(const hybrid::ProgramImage &, const hybrid::RaxApi *,
                                            uint64_t, size_t, const NativeDecoder &);
     friend NativeExtension extend_native_region(const NativeRegion &, const hybrid::ProgramImage &,
@@ -74,6 +75,8 @@ struct NativeExtension
 // Add one explicitly observed indirect/return destination to a copied plan.
 // The caller supplies the observation; this validates native byte admission,
 // not target uniqueness, logical VM ownership, or semantic equivalence.
+// Existing joined heads are decoded and checked again, but consume no new-head
+// quota. The complete image is checked once before extending this same snapshot.
 NativeExtension extend_native_region(const NativeRegion &, const hybrid::ProgramImage &,
                                      const hybrid::RaxApi *, uint64_t source, uint64_t target,
                                      size_t maximum_heads = 4096,

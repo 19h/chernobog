@@ -45,8 +45,18 @@ bool NativeRegion::matches(const hybrid::ProgramImage &image) const
            image.generation == generation_ &&
            hybrid::hybrid_program_content_hash(image) == image_hash_;
 }
-NativeRegion plan_native_region(const hybrid::ProgramImage &image, const hybrid::RaxApi *api,
-                                uint64_t entry, size_t maximum_heads, const NativeDecoder &decoder)
+// Internal entry point: only an extension whose image has just passed matches()
+// may reuse its image hash. No public caller can supply an unchecked hash.
+class NativeRegionBuilder
+{
+  public:
+    static NativeRegion plan(const hybrid::ProgramImage &image, const hybrid::RaxApi *api,
+                             uint64_t entry, size_t maximum_heads, const NativeDecoder &decoder,
+                             const NativeRegion *previous = nullptr);
+};
+NativeRegion NativeRegionBuilder::plan(const hybrid::ProgramImage &image, const hybrid::RaxApi *api,
+                                       uint64_t entry, size_t maximum_heads,
+                                       const NativeDecoder &decoder, const NativeRegion *previous)
 {
     using namespace hybrid;
     NativeRegion result;
@@ -76,21 +86,24 @@ NativeRegion plan_native_region(const hybrid::ProgramImage &image, const hybrid:
         frontier(entry, "head_limit");
         return result;
     }
-    result.image_hash_ = hybrid_program_content_hash(image);
+    result.image_hash_ = previous ? previous->image_hash_ : hybrid_program_content_hash(image);
     std::deque<uint64_t> pending{entry};
     std::set<uint64_t> scheduled{entry};
+    size_t scheduled_new = 1;
     std::map<uint64_t, uint64_t> spans;
     auto schedule = [&](uint64_t address)
     {
         if (scheduled.count(address))
             return;
-        if (scheduled.size() == maximum_heads)
+        const bool already_admitted = previous && previous->at(address);
+        if (!already_admitted && scheduled_new == maximum_heads)
         {
             result.truncated_ = true;
             frontier(address, "head_limit");
             return;
         }
         scheduled.insert(address);
+        scheduled_new += !already_admitted;
         pending.push_back(address);
     };
     while (!pending.empty())
@@ -164,6 +177,11 @@ NativeRegion plan_native_region(const hybrid::ProgramImage &image, const hybrid:
     result.identity_ = native_identity(result);
     return result;
 }
+NativeRegion plan_native_region(const hybrid::ProgramImage &image, const hybrid::RaxApi *api,
+                                uint64_t entry, size_t maximum_heads, const NativeDecoder &decoder)
+{
+    return NativeRegionBuilder::plan(image, api, entry, maximum_heads, decoder);
+}
 NativeExtension extend_native_region(const NativeRegion &previous,
                                      const hybrid::ProgramImage &image, const hybrid::RaxApi *api,
                                      uint64_t source, uint64_t target, size_t maximum_heads,
@@ -187,8 +205,8 @@ NativeExtension extend_native_region(const NativeRegion &previous,
     maximum_heads = std::min(maximum_heads, size_t(16384));
     if (previous.heads_.size() >= maximum_heads)
         return reject("head_limit");
-    const auto addition =
-        plan_native_region(image, api, target, maximum_heads - previous.heads_.size(), decoder);
+    const auto addition = NativeRegionBuilder::plan(
+        image, api, target, maximum_heads - previous.heads_.size(), decoder, &previous);
     if (!addition.available())
     {
         result.reason = addition.frontiers_.empty() ? "target_not_admissible"

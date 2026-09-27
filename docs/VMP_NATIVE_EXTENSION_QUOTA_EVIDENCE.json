@@ -1,0 +1,393 @@
+{
+  "schema": 1,
+  "passed": true,
+  "baseline_revision": "7a7a0effc85721cce7689ecb8e90267417ba9595",
+  "scope": "joined native-target quota; exact snapshot admission; scoped predecessor/candidate observations",
+  "archive": {
+    "path": "docs/VMP_NATIVE_EXTENSION_QUOTA_CAPTURE.json.gz",
+    "sha256": "24faf8976f67f43decb00083b786f136aefdd0b9f791c758af89956269037021",
+    "canonical_sha256": "81e436301100b90dc835fa62db8caf945bd82bc87c4498a81ce8dced0c969856",
+    "compressed_bytes": 3418373,
+    "canonical_bytes": 66563316,
+    "text_files": 101,
+    "binary_files": 2,
+    "external_binary_files": 10
+  },
+  "sources": {
+    "tests/run_vmp_region_temporal.py": "31228422121b0fdeea5471a517dc16a92b1987d45fdf1b8e2280a253d4a40b40",
+    "tests/ida_region_temporal_probe.py": "85c5996f762a95318ca5921b1f822f169575028b55eae59bbbc19fb3109834a2",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "src/vm/native_region.hpp": "28a7e83fb760d1d8079415e6337850de69d89b6cd20132e5c4f30ddc0c0cb466",
+    "src/vm/native_region.cpp": "8e8f63072840ff96e54fc3db973d53fb5c009dd9b1d5e9be2a326084c8439277",
+    "src/vm/native_undefined.hpp": "3172058161601dfbed684867bfd2e47dde378401a1809b157aa82ed4a56b079b",
+    "src/vm/ida_native_trace.hpp": "3b8cad25add7f7267ede2777572a02c4624f14d0b0e0f1d72d277447109e6ce8",
+    "src/vm/ida_native_trace.cpp": "0d232e1d73ff1adea3bcaf6e4cf5a3830d78ca6f24ffdb451a80ed85e7f2ecba",
+    "src/hybrid/emu_driver.hpp": "cb6eabd480195b9c086f5f8d9d229162b50da5c087054e3b2b642c8756ac09e3",
+    "src/hybrid/emu_driver.cpp": "fb26c4b6b48603ab095325dd10acb4f5c6e1c9e5e2209740f000e650d339f0ce",
+    "src/hybrid/temporal_memory.hpp": "77f5276e10388d5e1ebeea1ee25f43a19a0b759ec4a4d01271a8b17d4f20f324",
+    "src/hybrid/call_summary_policy.cpp": "7b6fa94842d9528de833a0ed786ba46c6bca205a05c568aefd4e36d46ad950cc",
+    "src/plugin/idc_api.cpp": "443daa9c009d636f3a2a5c586888869c5463b1429f8989ca286259ac8810759a",
+    "src/plugin/deobf_plugin.cpp": "2c530244900357f6b1d54cd0733b42f0468a2b9c0eca7d454845e328557d3784",
+    "tests/hybrid_tests.cpp": "e928c9bd0a42417888cdf6c6889e2478276af8c5c90a50bc89e4ed0a27e6ca2f",
+    "src/hybrid/evidence.hpp": "df5d91aafc6a700129853b8e291e74a11096bb47dd151b332dbec07e08d9d68d",
+    "src/hybrid/evidence.cpp": "4389018729f44775b02b64a17a30601ad96ecf420bdc2b5f3269bc86c735de15",
+    "src/hybrid/native_read_strings.cpp": "1ab8443b007b7f0c81ef360136d5e16bed50e5fa721765f789466bb6135b84f0",
+    "python/chernobog_temporal_strings.py": "82a442878506b827786b32d179af9fb4a9d72f1627a12e224caadf200d09e15e",
+    "tests/vmp_native/native_extension_quota.c": "fc42b28dcf88838c5ca4521bbdc0d380b8e7447700ca53fc33b9fa7bc75ed725",
+    "tests/ida_native_extension_quota_probe.py": "0872445a027b54605caae7e54d616daa9983ad81253507a41fb29eaad6a59c6a",
+    "tests/verify_native_extension_quota.py": "fb0da6a5ba3bc07715c7bda57fcff2d2ab017fbc9e6521783e3affa0d2d72f72",
+    "tests/verify_native_undefined_slices.py": "e9e513512cb05c4babbea4914c01d48db137691db0ef7368241e7f0ef9e4a0dd",
+    "tests/verify_vm_native_region_decode.py": "d3e75430de5530227e755a44d7537dae49f3a87d361d3f048ea2580466960bfe",
+    "tests/package_native_extension_evidence.py": "46f60d183e857c78390c4575788de5a4c678e98bb5cec5442e4ed62af08a6330",
+    "docs/VMP_NATIVE_EXTENSION_QUOTA.md": "8f285616c4e6e0b6113866211011b21e35513dccf91145503363d751473a480f",
+    "docs/VMP_IMPLEMENTATION.md": "ea43e27a16fdf6953531551157e0e5154898fd4f9f1d0e59b5843d480c0c841a"
+  },
+  "baseline_production_sources": {
+    "python/chernobog_temporal_strings.py": "82a442878506b827786b32d179af9fb4a9d72f1627a12e224caadf200d09e15e",
+    "src/hybrid/call_summary_policy.cpp": "7b6fa94842d9528de833a0ed786ba46c6bca205a05c568aefd4e36d46ad950cc",
+    "src/hybrid/emu_driver.cpp": "fb26c4b6b48603ab095325dd10acb4f5c6e1c9e5e2209740f000e650d339f0ce",
+    "src/hybrid/emu_driver.hpp": "cb6eabd480195b9c086f5f8d9d229162b50da5c087054e3b2b642c8756ac09e3",
+    "src/hybrid/evidence.cpp": "4389018729f44775b02b64a17a30601ad96ecf420bdc2b5f3269bc86c735de15",
+    "src/hybrid/evidence.hpp": "df5d91aafc6a700129853b8e291e74a11096bb47dd151b332dbec07e08d9d68d",
+    "src/hybrid/native_read_strings.cpp": "1ab8443b007b7f0c81ef360136d5e16bed50e5fa721765f789466bb6135b84f0",
+    "src/hybrid/temporal_memory.hpp": "77f5276e10388d5e1ebeea1ee25f43a19a0b759ec4a4d01271a8b17d4f20f324",
+    "src/plugin/deobf_plugin.cpp": "2c530244900357f6b1d54cd0733b42f0468a2b9c0eca7d454845e328557d3784",
+    "src/plugin/idc_api.cpp": "443daa9c009d636f3a2a5c586888869c5463b1429f8989ca286259ac8810759a",
+    "src/vm/ida_native_trace.cpp": "0d232e1d73ff1adea3bcaf6e4cf5a3830d78ca6f24ffdb451a80ed85e7f2ecba",
+    "src/vm/ida_native_trace.hpp": "3b8cad25add7f7267ede2777572a02c4624f14d0b0e0f1d72d277447109e6ce8",
+    "src/vm/native_region.cpp": "6cc531b837082b6133701036547cc43bbb1ea227afb5881f0c0bcae44964fecd",
+    "src/vm/native_region.hpp": "c332845e5a20a99d722ed5d58e72b56530923233d55f98c4a13c517a177d6e27",
+    "src/vm/native_undefined.hpp": "3172058161601dfbed684867bfd2e47dde378401a1809b157aa82ed4a56b079b"
+  },
+  "reports": {
+    "build/native-extension-prior-matrix/region_temporal_analysis.json": "ac90e9b025868ef4bd704c8dd188a76035687a2ce18cec09303e892aa2728557",
+    "build/native-extension-candidate-matrix/region_temporal_analysis.json": "721724389698281ad55cbca5b63edb280f304ed29ba937c55689871273ead386"
+  },
+  "independent_audit": {
+    "passed": true,
+    "capstone_version": "5.0.7",
+    "source_sha256": "fb0da6a5ba3bc07715c7bda57fcff2d2ab017fbc9e6521783e3affa0d2d72f72",
+    "decoder_source_sha256": "d3e75430de5530227e755a44d7537dae49f3a87d361d3f048ea2580466960bfe",
+    "corpus_report_sha256": "10e050295ad163ae3ef1d23696970cac148fac0f15d466ac92f12c164bbdd2e3",
+    "head_records": 32762,
+    "executed_records": 54,
+    "runs": [
+      {
+        "label": "prior-exact",
+        "input_sha256": "89180855f6c43a768d0b293ac54ca5ee00a3d2335be26ddd954d7175b03fe5fb",
+        "capture_sha256": "9ff21bff46318c0e7c8ce05045db176c3958f60cdc10d2b859b5de18b23db8b5",
+        "receipt_sha256": "56ace2d97c858d597c3f4d1d10daf0beaf20922e450fc5576f5c300f17d3e415",
+        "plugin_sha256": "a4b9a5a60529043a23a3518a68cd16474303d64daab371e64678b81884d97ffd",
+        "initial_heads": 4092,
+        "added_heads": 2,
+        "complete": false
+      },
+      {
+        "label": "candidate-exact",
+        "input_sha256": "89180855f6c43a768d0b293ac54ca5ee00a3d2335be26ddd954d7175b03fe5fb",
+        "capture_sha256": "fbd11557cb0b92b4b0b7b28b36b0509de05d13b331be0cca244627454fed21d3",
+        "receipt_sha256": "e6fbdccc92bba81e9412898b56939922b0e9c685222f6b91495313d925ade5f7",
+        "plugin_sha256": "0f4a93c0942fde619351cdfa917f584688cb01ce6cae040463d9943cfd06049b",
+        "initial_heads": 4092,
+        "added_heads": 4,
+        "complete": true
+      },
+      {
+        "label": "prior-excess",
+        "input_sha256": "377494e6384dd183ea52c5832f1b3b2fa12de8e53edb01ba2ca8290fbde06e3f",
+        "capture_sha256": "2991aa5cddc22405523cc05352d8da8cf03698ca88cd0552550fe718848b6f98",
+        "receipt_sha256": "c129f8110560707dd98372016cacb4f75b1a534ef0b9c557c6b46e1c4e53600d",
+        "plugin_sha256": "a4b9a5a60529043a23a3518a68cd16474303d64daab371e64678b81884d97ffd",
+        "initial_heads": 4093,
+        "added_heads": 2,
+        "complete": false
+      },
+      {
+        "label": "candidate-excess",
+        "input_sha256": "377494e6384dd183ea52c5832f1b3b2fa12de8e53edb01ba2ca8290fbde06e3f",
+        "capture_sha256": "526609c0b319e6d4aeacbda94e38ee76f80a8d072a2f1ac133446e65c9afdf66",
+        "receipt_sha256": "8a95c1516986bc7753122c0f771664eb2d9245aa7733ae4e8b85505fc3ca82e5",
+        "plugin_sha256": "0f4a93c0942fde619351cdfa917f584688cb01ce6cae040463d9943cfd06049b",
+        "initial_heads": 4093,
+        "added_heads": 3,
+        "complete": false
+      }
+    ],
+    "refuted_controls": 4
+  },
+  "symbolic_audit": {
+    "passed": true,
+    "capstone_version": "5.0.7",
+    "z3_version": "4.16.0",
+    "report_sha256": "721724389698281ad55cbca5b63edb280f304ed29ba937c55689871273ead386",
+    "source_sha256": "e9e513512cb05c4babbea4914c01d48db137691db0ef7368241e7f0ef9e4a0dd",
+    "unique_slices": 31,
+    "symbolic_steps": 264,
+    "slice_occurrences": 200,
+    "completed_runs": 16,
+    "abstract_steps": 200,
+    "captures": {
+      "original": "c256d207e3e9bf8e36dfc32d60c305e6ddff84bcaf4839c5adddb76e773765ac",
+      "mutation-0": "b41451af51d0fb6e41af6f1594143ad2fa0f658346a6ac9a3004cc1d44ed5252",
+      "mutation-1": "c7511bdd2127b1e373c7abdd3fbdf69f743043339b3f09a3ab054432a977302f",
+      "mutation-12648430": "67c2211779ffb41011f53b70197b9d3db115a20ae2b849c7c8d246d0a30239e1",
+      "virtualization-0": "274dd8b3a78ee24abf8dc2b55d1ce4db67b2659ba2416332ed544ebf6adaf021",
+      "virtualization-1": "b687b3947988f0254119e3cf4ee2da81d0b3904d62fab522fe47b20691a389b6",
+      "virtualization-12648430": "10dd44d3287ba47e99e54712ea443d9154601024700178ccb43bfe9e848b4110",
+      "combined-0": "3e9a54ef3d0b2c0c6ebc778030e05f8dbbd293c0dc4bba22f09e478cedd9ab5d",
+      "combined-1": "b86f2957173dd6d5097a6a681470f7ca0f0ce83449525c0c8418e54467c8af6d",
+      "combined-12648430": "be581c37e24c6e7a5490ec40f3797aa282ddba945f7eda70a7a99755830f2990"
+    },
+    "controls": {
+      "positive": 1,
+      "refuted": 4
+    }
+  },
+  "comparison": {
+    "passed": true,
+    "prior_report_sha256": "ac90e9b025868ef4bd704c8dd188a76035687a2ce18cec09303e892aa2728557",
+    "candidate_report_sha256": "721724389698281ad55cbca5b63edb280f304ed29ba937c55689871273ead386",
+    "scope": "exact common instruction-entry prefixes; wall-time observations do not establish a general speedup",
+    "runs": [
+      {
+        "label": "original",
+        "prior_instructions": [
+          171,
+          171,
+          171,
+          171
+        ],
+        "candidate_instructions": [
+          171,
+          171,
+          171,
+          171
+        ],
+        "common_entered_prefixes": [
+          171,
+          171,
+          171,
+          171
+        ],
+        "prior_complete": 4,
+        "candidate_complete": 4
+      },
+      {
+        "label": "mutation-0",
+        "prior_instructions": [
+          303,
+          303,
+          303,
+          303
+        ],
+        "candidate_instructions": [
+          303,
+          303,
+          303,
+          303
+        ],
+        "common_entered_prefixes": [
+          303,
+          303,
+          303,
+          303
+        ],
+        "prior_complete": 4,
+        "candidate_complete": 4
+      },
+      {
+        "label": "mutation-1",
+        "prior_instructions": [
+          344,
+          344,
+          344,
+          344
+        ],
+        "candidate_instructions": [
+          344,
+          344,
+          344,
+          344
+        ],
+        "common_entered_prefixes": [
+          344,
+          344,
+          344,
+          344
+        ],
+        "prior_complete": 4,
+        "candidate_complete": 4
+      },
+      {
+        "label": "mutation-12648430",
+        "prior_instructions": [
+          331,
+          331,
+          331,
+          331
+        ],
+        "candidate_instructions": [
+          331,
+          331,
+          331,
+          331
+        ],
+        "common_entered_prefixes": [
+          331,
+          331,
+          331,
+          331
+        ],
+        "prior_complete": 4,
+        "candidate_complete": 4
+      },
+      {
+        "label": "virtualization-0",
+        "prior_instructions": [
+          2721,
+          2721,
+          2721,
+          2721
+        ],
+        "candidate_instructions": [
+          2876,
+          2876,
+          2876,
+          2876
+        ],
+        "common_entered_prefixes": [
+          2721,
+          2721,
+          2721,
+          2721
+        ],
+        "prior_complete": 0,
+        "candidate_complete": 0
+      },
+      {
+        "label": "virtualization-1",
+        "prior_instructions": [
+          2738,
+          2738,
+          2738,
+          2738
+        ],
+        "candidate_instructions": [
+          3587,
+          3587,
+          3587,
+          3587
+        ],
+        "common_entered_prefixes": [
+          2738,
+          2738,
+          2738,
+          2738
+        ],
+        "prior_complete": 0,
+        "candidate_complete": 0
+      },
+      {
+        "label": "virtualization-12648430",
+        "prior_instructions": [
+          40,
+          40,
+          40,
+          40
+        ],
+        "candidate_instructions": [
+          40,
+          40,
+          40,
+          40
+        ],
+        "common_entered_prefixes": [
+          40,
+          40,
+          40,
+          40
+        ],
+        "prior_complete": 0,
+        "candidate_complete": 0
+      },
+      {
+        "label": "combined-0",
+        "prior_instructions": [
+          2983,
+          2983,
+          2983,
+          2983
+        ],
+        "candidate_instructions": [
+          3823,
+          3823,
+          3823,
+          3823
+        ],
+        "common_entered_prefixes": [
+          2983,
+          2983,
+          2983,
+          2983
+        ],
+        "prior_complete": 0,
+        "candidate_complete": 0
+      },
+      {
+        "label": "combined-1",
+        "prior_instructions": [
+          2758,
+          2758,
+          2758,
+          2758
+        ],
+        "candidate_instructions": [
+          2758,
+          2758,
+          2758,
+          2758
+        ],
+        "common_entered_prefixes": [
+          2758,
+          2758,
+          2758,
+          2758
+        ],
+        "prior_complete": 0,
+        "candidate_complete": 0
+      },
+      {
+        "label": "combined-12648430",
+        "prior_instructions": [
+          4096,
+          3007,
+          1384,
+          1874
+        ],
+        "candidate_instructions": [
+          4096,
+          4096,
+          4096,
+          4096
+        ],
+        "common_entered_prefixes": [
+          4096,
+          3007,
+          1384,
+          1874
+        ],
+        "prior_complete": 0,
+        "candidate_complete": 0
+      }
+    ]
+  },
+  "assumptions": [
+    "N1",
+    "N2",
+    "N3",
+    "N4",
+    "N5"
+  ],
+  "review_complete": false
+}
