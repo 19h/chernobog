@@ -81,6 +81,8 @@ def statistics():
     result["matching_available"] = os.environ.get("CHERNOBOG_MBA_LEGACY_DIAGNOSTICS") != "1"
     if result["matching_available"]:
         result["matching"] = json.loads(evaluate("chernobog_rule_stats().matching_diagnostics"))
+        if os.environ.get("CHERNOBOG_MBA_CAPTURE_INPUTS") == "1":
+            result["matching_inputs"] = json.loads(evaluate("chernobog_rule_inputs()"))
     return result
 
 
@@ -268,6 +270,8 @@ try:
         "rejected": int(evaluate("chernobog_rule_stats().rejected")),
         "names": names,
     }
+    if os.environ.get("CHERNOBOG_MBA_CAPTURE_INPUTS") == "1":
+        report["matcher_catalog"] = json.loads(evaluate("chernobog_rule_patterns()"))
     if not report["native_analysis_disabled"]:
         evaluate("chernobog_native_analysis()")
         ida_auto.auto_wait()
@@ -305,7 +309,7 @@ except BaseException as error:
         tb = tb.tb_next
     report["exception_frames"] = frames
 payload = json.dumps(report, indent=2) + "\n"
-if len(payload.encode()) > 4194304:
+if len(payload.encode()) > 8388608:
     report["passed"] = False
     report["errors"].append("report byte quota")
     for row in [

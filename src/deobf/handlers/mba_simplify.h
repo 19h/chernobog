@@ -63,7 +63,7 @@ class mba_simplify_handler_t
 
     // Internal simplification helpers
     static int try_simplify_instruction(mblock_t *blk, minsn_t *ins);
-    static int try_simplify_node(mblock_t *blk, minsn_t *ins);
+    static int try_simplify_node(mblock_t *blk, minsn_t *ins, const minsn_t *anchor);
     static int apply_match(mblock_t *blk, minsn_t *ins,
                            const chernobog::rules::RuleRegistry::MatchResult &match);
 };

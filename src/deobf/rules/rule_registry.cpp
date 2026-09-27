@@ -1,6 +1,7 @@
 #include "rule_registry.h"
 #include "rule_verifier.h"
 #include "../analysis/ast_builder.h"
+#include "../analysis/match_capture.h"
 #include <algorithm>
 #include <cstring>
 #if defined(CHERNOBOG_CATALOG_TEST)
@@ -91,6 +92,7 @@ void RuleRegistry::rebuild_storage_locked()
     initialized_ = false;
     storage_ = PatternStorage(1);
     semantic_roots_.clear();
+    certified_patterns_.clear();
     verified_rule_count_ = 0;
     rejected_rule_count_ = 0;
 
@@ -127,6 +129,7 @@ void RuleRegistry::rebuild_storage_locked()
 
         ++verified_rule_count_;
         storage_.add_pattern_for_rule(pattern, rule.get());
+        certified_patterns_.emplace_back(rule->name(), pattern);
     }
 
     initialized_ = true;
@@ -141,6 +144,7 @@ void RuleRegistry::clear()
 
     // Destroy retained certification trees while IDA/Hex-Rays is still live.
     semantic_roots_.clear();
+    certified_patterns_.clear();
 
     // Clear rules (this destroys the rule objects)
     rules_.clear();
@@ -158,7 +162,8 @@ void RuleRegistry::clear()
 // Uses non-mutating match path to eliminate pattern cloning per attempt.
 // Uses stack-allocated MatchBindings to avoid heap allocations.
 //--------------------------------------------------------------------------
-RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
+RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins, const minsn_t *anchor,
+                                                   const minsn_t *block_head)
 {
     MatchResult result;
     if (SIMD_UNLIKELY(!ins || !initialized_))
@@ -178,6 +183,7 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
             result.rejection_detail = ast_build_status_name(build_report.status);
         return result;
     }
+    result.input = capture_match_input(candidate, anchor, block_head);
 
     // Get matching patterns from storage - const ref, no copy
     const auto &matches = storage_.get_matching_rules(candidate);
@@ -397,6 +403,12 @@ std::vector<std::string> RuleRegistry::list_rules() const
         }
     }
     return names;
+}
+
+std::string RuleRegistry::catalog_pattern_snapshot() const
+{
+    const std::lock_guard<std::mutex> guard(mutex_);
+    return capture_catalog_patterns(certified_patterns_, initialized_);
 }
 
 //--------------------------------------------------------------------------

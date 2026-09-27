@@ -112,6 +112,56 @@ int main()
         account(concurrent);
         reset();
         account(snapshot());
+        const CapturedInput input{CaptureStatus::Complete, "{\"root\":1}"};
+        for (size_t i = 0; i < sample_limit + 1; ++i)
+        {
+            const CapturedInput different{CaptureStatus::Complete, std::to_string(i)};
+            record(Outcome::StructuralMismatch, site, 1, 0, 0, 0, {}, {}, &different);
+        }
+        auto inputs = snapshot(true);
+        require(inputs.inputs.size() == sample_limit && inputs.input_events == sample_limit + 1 &&
+                    inputs.input_unrecorded == 1 && inputs.samples.size() == 1 &&
+                    inputs.samples[0].count == sample_limit + 1,
+                "independent input quota preserves old aggregation");
+        const CapturedInput repeated{CaptureStatus::Complete, "0"};
+        record(Outcome::StructuralMismatch, site, 1, 0, 0, 0, {}, {}, &repeated);
+        require(snapshot(true).inputs[0].event.count == 2,
+                "retained input key increments after quota");
+        require(snapshot().inputs.empty() && snapshot().input_events == 0,
+                "ordinary statistics avoid copying input payloads");
+        reset();
+        for (const auto &bad :
+             {CapturedInput{CaptureStatus::Complete, {}},
+              CapturedInput{CaptureStatus::NoAst, "unexpected"},
+              CapturedInput{CaptureStatus::Count, {}},
+              CapturedInput{CaptureStatus::Complete, std::string(input_byte_limit + 1, 'x')}})
+            record(Outcome::StructuralMismatch, site, 1, 0, 0, 0, {}, {}, &bad);
+        require(snapshot(true).input_counts[size_t(CaptureStatus::Malformed)] == 4 &&
+                    snapshot(true).inputs.size() == 1,
+                "invalid input status/payload rejected with explicit accounting");
+        const CapturedInput maximum{CaptureStatus::Complete, std::string(input_byte_limit, 'x')};
+        record(Outcome::StructuralMismatch, site, 1, 0, 0, 0, {}, {}, &maximum);
+        auto owned = snapshot(true);
+        reset();
+        require(owned.inputs.size() == 2 && owned.inputs[1].input.payload == maximum.payload &&
+                    snapshot(true).input_events == 0 && snapshot(true).inputs.empty(),
+                "exact byte limit, owned snapshot and full reset");
+        writers.clear();
+        for (int worker = 0; worker < 4; ++worker)
+            writers.emplace_back(
+                [&input, site]
+                {
+                    for (int i = 0; i < 1000; ++i)
+                        record(Outcome::StructuralMismatch, site, 1, 0, 0, 0, {}, {}, &input);
+                });
+        for (auto &writer : writers)
+            writer.join();
+        const auto paired = snapshot(true);
+        require(paired.events == 4000 && paired.input_events == 4000 &&
+                    paired.samples[0].count == 4000 && paired.inputs[0].event.count == 4000 &&
+                    paired.input_counts[size_t(CaptureStatus::Complete)] == 4000,
+                "atomic paired concurrent accounting");
+        reset();
         std::cout << "[mba-diagnostics] PASS checks=" << checks << '\n';
         return 0;
     }

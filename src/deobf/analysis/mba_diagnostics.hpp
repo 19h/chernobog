@@ -33,7 +33,28 @@ constexpr size_t detail_byte_limit = 256;
 constexpr size_t rule_byte_limit = 128;
 constexpr size_t binding_limit = 4;
 constexpr size_t binding_name_byte_limit = 20;
+constexpr size_t input_byte_limit = 8192;
 const char *outcome_name(Outcome outcome);
+
+enum class CaptureStatus
+{
+    Complete,
+    NoAst,
+    DepthLimit,
+    VisitLimit,
+    ByteLimit,
+    Malformed,
+    Cycle,
+    Count,
+};
+constexpr size_t capture_status_count = static_cast<size_t>(CaptureStatus::Count);
+const char *capture_status_name(CaptureStatus status);
+
+struct CapturedInput
+{
+    CaptureStatus status = CaptureStatus::NoAst;
+    std::string payload;
+};
 
 struct NumericBinding
 {
@@ -67,6 +88,14 @@ struct Snapshot
     std::array<uint64_t, outcome_count> counts{};
     uint64_t events = 0, unrecorded = 0;
     std::vector<Sample> samples;
+    struct InputSample
+    {
+        Sample event;
+        CapturedInput input;
+    };
+    std::array<uint64_t, capture_status_count> input_counts{};
+    uint64_t input_events = 0, input_unrecorded = 0;
+    std::vector<InputSample> inputs;
 };
 
 // One bounded process-local inventory. Repeated retained keys increment their
@@ -74,8 +103,9 @@ struct Snapshot
 // events without a retained key contribute to unrecorded. Snapshots own data.
 void record(Outcome outcome, Site site, uint64_t indexed_patterns, uint64_t structural_matches,
             uint64_t candidate_rejections, uint64_t constant_rejections,
-            std::string_view detail = {}, std::string_view rule = {});
-Snapshot snapshot();
+            std::string_view detail = {}, std::string_view rule = {},
+            const CapturedInput *input = nullptr);
+Snapshot snapshot(bool include_inputs = false);
 void reset();
 
 } // namespace chernobog::mba_diagnostics

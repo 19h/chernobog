@@ -41,7 +41,7 @@ static void record_catalog_outcome(mblock_t *block, const minsn_t *instruction,
     chernobog::mba_diagnostics::record(
         outcome, site, match.indexed_patterns, match.structural_matches, match.candidate_rejections,
         match.constant_rejections, match.rule ? detail : std::string_view(match.rejection_detail),
-        match.rule ? match.rule->name() : std::string_view(match.rejected_rule));
+        match.rule ? match.rule->name() : std::string_view(match.rejected_rule), &match.input);
 }
 
 static void mba_affine_debug(const char *fmt, ...)
@@ -739,11 +739,11 @@ int mba_simplify_handler_t::try_simplify_instruction(mblock_t *blk, minsn_t *ins
         return 0;
     int changes = 0;
     for (auto *node : order)
-        changes += try_simplify_node(blk, node);
+        changes += try_simplify_node(blk, node, ins);
     return changes;
 }
 
-int mba_simplify_handler_t::try_simplify_node(mblock_t *blk, minsn_t *ins)
+int mba_simplify_handler_t::try_simplify_node(mblock_t *blk, minsn_t *ins, const minsn_t *anchor)
 {
     if (!ins || ins->is_fpinsn() || !is_mba_opcode(ins->opcode))
     {
@@ -784,7 +784,7 @@ int mba_simplify_handler_t::try_simplify_node(mblock_t *blk, minsn_t *ins)
     }
 
     // Try to find a matching rule
-    auto match = RuleRegistry::instance().find_match(ins);
+    auto match = RuleRegistry::instance().find_match(ins, anchor, blk->head);
     if (!match.rule)
     {
         if (match.attempted)

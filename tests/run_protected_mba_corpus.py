@@ -13,12 +13,16 @@ import struct
 sys.dont_write_bytecode = True
 from run_vmp_corpus import digest, execute, INPUT_SEEDS, PROTECTOR_SEEDS, text_section, verify
 from mba_matching_diagnostics import validate_matching
+from mba_match_replay import catalog, validate_inputs
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES = (
     "tests/run_protected_mba_corpus.py",
     "tests/ida_protected_mba_probe.py",
     "tests/mba_matching_diagnostics.py",
+    "tests/mba_match_replay.py",
+    "src/deobf/analysis/match_capture.cpp",
+    "src/deobf/analysis/match_capture.h",
     "tests/run_ida_smoke.py",
     "tests/run_vmp_corpus.py",
     "src/deobf/rules/rule_verifier.cpp",
@@ -124,6 +128,11 @@ def check_probe(probe, entries, disabled, legacy, native_disabled=True, matching
         "SDK capture failed",
     )
     require(probe["native_analysis_disabled"] == native_disabled, "native analysis profile")
+    captured_inputs = "matcher_catalog" in probe
+    if captured_inputs:
+        model, patterns = catalog(
+            probe["matcher_catalog"], probe["rule_catalog"]["names"], disabled
+        )
     if not native_disabled:
         native = probe["native_statistics"]
         require(
@@ -177,6 +186,25 @@ def check_probe(probe, entries, disabled, legacy, native_disabled=True, matching
                 validate_matching(
                     stats["matching"], stats, row["entry"], stage["maturity"], disabled
                 )
+                if captured_inputs:
+                    samples = validate_inputs(
+                        stats["matching_inputs"],
+                        stats,
+                        row["entry"],
+                        stage["maturity"],
+                        disabled,
+                        model,
+                        patterns,
+                    )
+                    for sample in samples:
+                        require(
+                            sample["source"] == 2**64 - 1
+                            or any(
+                                c["start"] <= sample["source"] < c["end"]
+                                for c in row["native_chunks"]
+                            ),
+                            "input source outside native owner",
+                        )
             for name in (
                 "total_matches",
                 "successful_matches",
@@ -449,6 +477,7 @@ def main():
     parser.add_argument("--legacy-reasons", action="store_true")
     parser.add_argument("--legacy-diagnostics", action="store_true")
     parser.add_argument("--native-analysis", action="store_true")
+    parser.add_argument("--matcher-inputs", action="store_true")
     parser.add_argument(
         "--timeout", type=int, default=300, help="Per-process wall-clock cap in seconds"
     )
@@ -462,6 +491,7 @@ def main():
         "legacy_reasons": args.legacy_reasons,
         "matching_diagnostics": not (args.legacy_diagnostics or args.legacy_reasons),
         "native_analysis_disabled": not args.native_analysis,
+        "matcher_inputs": args.matcher_inputs,
         "process_timeout_seconds": args.timeout,
     }
     try:
@@ -517,6 +547,8 @@ def main():
                 command += ["--set", "CHERNOBOG_IDA_ANALYSIS=0"]
             else:
                 command += ["--set", "CHERNOBOG_CAPTURE_NATIVE_STATS=1"]
+            if args.matcher_inputs:
+                command += ["--set", "CHERNOBOG_MBA_CAPTURE_INPUTS=1"]
             if disabled:
                 command += ["--set", "CHERNOBOG_DISABLE=1"]
             if args.legacy_reasons:
@@ -545,6 +577,10 @@ def main():
                 "SDK process failed",
             )
             probe = json.loads((destination / "protected_mba.json").read_text())
+            require(
+                ("matcher_catalog" in probe) == args.matcher_inputs,
+                "matcher input profile attribution",
+            )
             require(probe["architecture"] == corpus["architecture"], "SDK architecture")
             totals = check_probe(
                 probe,

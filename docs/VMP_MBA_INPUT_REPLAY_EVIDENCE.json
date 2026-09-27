@@ -1,0 +1,161 @@
+{
+  "schema": 1,
+  "feature": "Transient matcher input capture, independent structural replay and conservative local byte definitions",
+  "review_rows": [
+    "4a",
+    "V"
+  ],
+  "source_parent": "c9ebffbb4a1e79d8e02adedb23b7810506f3f2c5",
+  "source_fingerprint": "b8d275904cc1",
+  "limits": {
+    "input_bytes": 8192,
+    "input_encoding_visits": 512,
+    "input_depth": 64,
+    "prefix_heads": 64,
+    "catalog_bytes": 32768,
+    "catalog_template_visits": 8192,
+    "inventory_keys_each": 64,
+    "report_bytes": 8388608,
+    "combined_retained_text_payload_bytes": 573440,
+    "whole_process_bounds": "unknown"
+  },
+  "ctest": {
+    "passed": true,
+    "tests": 23,
+    "receipt": "build/match-input-ctest.json"
+  },
+  "component_controls": {
+    "matcher_fixtures": 16,
+    "strict_equality_fixtures": 10,
+    "input_corruptions": 5,
+    "capture_bounds": 12,
+    "paired_recorder_controls": "quota, invalid status/payload, exact byte limit, owned snapshots/reset and four-thread paired event accounting"
+  },
+  "production": {
+    "passed": true,
+    "counts": {
+      "native_rows": 152,
+      "stages": 456,
+      "captured": 454,
+      "events": 14065,
+      "input_unrecorded": 8799,
+      "input_keys": 3950,
+      "retained_events": 5266,
+      "replayed_keys": 3950,
+      "replayed_events": 5266
+    },
+    "capture_statuses": {
+      "complete": 14065,
+      "no_ast": 0,
+      "depth_limit": 0,
+      "visit_limit": 0,
+      "byte_limit": 0,
+      "malformed": 0,
+      "cycle": 0
+    },
+    "prefix_frontiers": {
+      "link_error": 1816,
+      "block_entry": 3382,
+      "missing_anchor": 68
+    },
+    "outcomes": {
+      "no_ast": 0,
+      "no_indexed_pattern": 8103,
+      "structural_mismatch": 4474,
+      "candidate_constraint": 0,
+      "constant_constraint": 1483,
+      "replacement_unavailable": 0,
+      "instance_disproved": 0,
+      "instance_unsupported": 0,
+      "instance_unknown": 0,
+      "catalog_applied": 5
+    },
+    "local_definition_results": {},
+    "corruption_controls": [
+      "changed root opcode",
+      "changed root width",
+      "changed opcode bucket",
+      "changed structural count",
+      "changed failed rule",
+      "changed actual prefix count",
+      "invented pointer field",
+      "false prefix frontier",
+      "prefix head overflow"
+    ],
+    "max_process_elapsed_ns": 51643327833,
+    "max_process_peak_resident_bytes": 203816960,
+    "current_report_sha256": "37698054c7b3f8a14e8fffb5389ccb090440fee16ed265d103965f791697096a",
+    "prior_report_sha256": "5029a00a54dee5dca0fa626d89ac01d2101f6b6e2873abc677977e6b3e51c19c",
+    "scope": "actual retained match-time inputs and independent structural replay; rule-specific predicates/typed replacement proofs are not independently replayed; conservative consecutive local byte definitions under normal completion and a pure enclosing expression; counterfactual structure is not a demonstrated simplification, absent identity, full reaching-definition/alias proof or protected recovery gain"
+  },
+  "prior_installed_control": {
+    "counts": {
+      "native_rows": 4,
+      "stages": 16,
+      "captured": 16
+    },
+    "historical_diagnostics_equal": 16,
+    "live_tag": "[chernobog] build=c9ebffbb4a1e dirty=1 source=625b7fbd15ee sdk=940 rax=a9757b274a3f dbctx=0",
+    "artifacts": {
+      "build/match-input-prior-heldout/run.json": "2628e04f86c562f97459a0cfaea1e73f2d334f211923141f08a73046856a585a",
+      "build/match-input-prior-heldout/protected_mba.json": "2a042f0b09ea2b1158d2ba999f137e8f2eec978ff958c74d378f6e10213ad590",
+      "build/match-input-prior-heldout/ida.log": "4fabafe976b035cd885d25d0168121c168644cdac39d25dbeb230f57c3a802d7"
+    }
+  },
+  "primary_sources": {
+    "sdk_identifier": "IDA SDK 9.40 include/hexrays.hpp",
+    "sdk_sha256": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff",
+    "sdk_contract_lines": {
+      "byte_microregisters": 104,
+      "operand_properties_value_number_size": 2611,
+      "frame_owners": 2427
+    },
+    "repository_contracts": [
+      "src/deobf/analysis/ast.cpp",
+      "src/common/bitvector.h",
+      "src/deobf/analysis/pattern_storage.cpp"
+    ]
+  },
+  "source_sha256": {
+    "CMakeLists.txt": "29ef15bf519a2472abb09bdfacaa38d61ec69a17951163bb31375ea1b5437f99",
+    "src/deobf/analysis/match_capture.cpp": "651bc174a9f8fe278044c7c78149f528e52f2f06f709ad69d20c97991f3b6db8",
+    "src/deobf/analysis/match_capture.h": "f0a319d7b2d54fd9674ddf11d3fa2c66bfd225dce0d25c594626a9e36df65c05",
+    "src/deobf/analysis/mba_diagnostics.cpp": "9b6c7898d0a345f84d624b7d30185dd7d5d6a76623ab6837560a69bf4375a1cd",
+    "src/deobf/analysis/mba_diagnostics.hpp": "97378cd1dce55c5cfd768c1f3c5f38acd24574c8e4d1c798b413cb4d7b1bb710",
+    "src/deobf/rules/rule_registry.cpp": "3d7c27c190592ea5d42d4258ec9056a1f3b0acf3a5c30c2c40c76fe563cefb59",
+    "src/deobf/rules/rule_registry.h": "9f0f4e448282282747585ae076a206eeb93c9efed2e92d4f30da77bd6eb82f30",
+    "src/deobf/handlers/mba_simplify.cpp": "7c023283ca40d6840af4569c6a3e2e6f9dfc7d057e02e8b43f34588d4981df98",
+    "src/deobf/handlers/mba_simplify.h": "883e90b209ae75aca570a4b8f0462bddc233de023988e095263d876853b9cac4",
+    "src/plugin/idc_api.cpp": "443daa9c009d636f3a2a5c586888869c5463b1429f8989ca286259ac8810759a",
+    "tests/catalog_tests.cpp": "02382ae3966f76da92c5d04ba821e6cf9db7ed096a7b87763d51ebd648762d41",
+    "tests/mba_diagnostics_tests.cpp": "b23741cc0ef12149a853ad3bffb7f9e9a10cc22bccef12eecd784fd74cfd642b",
+    "tests/ida_protected_mba_probe.py": "8b43ea575b230495e164e80ae93b0150d762c8636274d34a97dd734884cc7669",
+    "tests/run_protected_mba_corpus.py": "c5fbae3e284332b0179e3324eef10c82d1407b05ee183b90b6ff6f3c12df5e2f",
+    "tests/mba_match_replay.py": "df5aacb9b8885818b1a0fa1010b4c1578d1d6ce24171dd97761c83a3a3b10515",
+    "tests/mba_match_replay_tests.py": "6f14880c30c9433c3c1089be19c070590d47039f229932638ebae07dac2d8847",
+    "tests/verify_mba_input_capture.py": "4d59eb23c9ea735528bd928953bd03015441ccbc15ea9f9b6d70f75399d4e4fc"
+  },
+  "artifact_sha256": {
+    "build/match-input-candidate.dylib": "12ed06ac163f569b0d5920bb0e56220e65bd93384ff8e8601544b003552e5b6f",
+    "build/match-input-prior-c9ebffbb.dylib": "8be74689cd870f540e54948530a39bf5ec2771deec700c2f26ac287b88aa466b",
+    "build/match-input-catalog": "a697cca07f9ab3af30702d3712a077201a085ebcba626b89e7fe92e543770d3f",
+    "build/match-input-build-provenance.hpp": "65e07eb06905d700fbd0d7fa3cc0ce5ca0f3b303a23ba54bec824f7736788d57",
+    "build/match-input-provenance.json": "532ab004c22adf468953105113f98d6473834a37c265dc7530856b46d8a66b3c",
+    "build/match-input-component-fixtures.json": "7ddcb8e83199459431ce446741870532622899eed13a3693239b836e4bc5aeaa",
+    "build/match-input-replay-controls.json": "d8d321730686f93d59b4a9683819735d18fbe5f8b6ef4d2c28818086a0517641",
+    "build/match-input-ctest.log": "c4a313a54d54d82b8d6cb043cc7704f4a8e18e24f877aa5971cfe15ae73dc4eb",
+    "build/match-input-ctest.json": "07196940558db92bf4a1d2132b60ca7df108a5368eeab3f5787e03ff5a86eae7",
+    "build/match-input-protected/protected_mba_analysis.json": "37698054c7b3f8a14e8fffb5389ccb090440fee16ed265d103965f791697096a",
+    "build/match-input-audit.json": "9a187b2bed4b9ce6afe05243c69d2ce3b886cdfcbd4e3f9a6f4ea7e5bf69e790",
+    "build/match-input-production-provenance.json": "b1f76ec44a0c6d35805e335cac8b1fa69bfd5dbda5f2fa1f20e00d0ae08a822f",
+    "build/match-input-prior-heldout/run.json": "2628e04f86c562f97459a0cfaea1e73f2d334f211923141f08a73046856a585a",
+    "build/match-input-prior-heldout/protected_mba.json": "2a042f0b09ea2b1158d2ba999f137e8f2eec978ff958c74d378f6e10213ad590",
+    "build/match-input-prior-heldout/ida.log": "4fabafe976b035cd885d25d0168121c168644cdac39d25dbeb230f57c3a802d7",
+    "build/match-input-ctest-trial.log": "db5f8ce34c7fbf9c7dce8a970913fd6d647ea158e913eff19a89ac9f47890ca6",
+    "build/match-input-build.log": "f6e880cd9bcc7312ea76fefd3564555f2ec874bb2608005916f37c40d416ec11",
+    "build/match-input-build-v2.log": "4f908847d2e842c0b1f108692aef297e6586b7e97de38f8df604728db9d0aef9",
+    "build/match-input-build-v3.log": "a7330d383944b381725f88122b9d03a9380e2fab7b149c99c5474a1acf5fb1ca",
+    "build/match-witness-protected/protected_mba_analysis.json": "5029a00a54dee5dca0fa626d89ac01d2101f6b6e2873abc677977e6b3e51c19c"
+  },
+  "scope": "Retained actual matcher projection and independent structural replay; no independent rule-predicate/typed-proof replay, full CFG definitions/aliases, absent identity, live rewrite or protected recovery gain; no eligible local constant fact observed in retained production structural failures."
+}

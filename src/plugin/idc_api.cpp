@@ -1856,6 +1856,54 @@ error_t idaapi idc_rule_count(idc_value_t *, idc_value_t *r)
     return eOk;
 }
 
+error_t idaapi idc_rule_patterns(idc_value_t *, idc_value_t *r)
+{
+    r->set_string(rules::RuleRegistry::instance().catalog_pattern_snapshot().c_str());
+    return eOk;
+}
+
+error_t idaapi idc_rule_inputs(idc_value_t *, idc_value_t *r)
+{
+    const auto value = mba_diagnostics::snapshot(true);
+    std::ostringstream out;
+    out << "{\"schema\":1,\"events\":" << value.input_events
+        << ",\"unrecorded\":" << value.input_unrecorded << ",\"counts\":{";
+    for (size_t index = 0; index < mba_diagnostics::capture_status_count; ++index)
+    {
+        if (index)
+            out << ',';
+        out << inspection_json_quote(
+                   mba_diagnostics::capture_status_name(mba_diagnostics::CaptureStatus(index)))
+            << ':' << value.input_counts[index];
+    }
+    out << "},\"samples\":[";
+    for (size_t index = 0; index < value.inputs.size(); ++index)
+    {
+        if (index)
+            out << ',';
+        const auto &sample = value.inputs[index];
+        const auto &event = sample.event;
+        out << "{\"outcome\":"
+            << inspection_json_quote(mba_diagnostics::outcome_name(event.outcome))
+            << ",\"entry\":" << event.site.entry << ",\"source\":" << event.site.source
+            << ",\"maturity\":" << event.site.maturity << ",\"block\":" << event.site.block
+            << ",\"opcode\":" << event.site.opcode << ",\"width_bytes\":" << event.site.width_bytes
+            << ",\"indexed_patterns\":" << event.indexed_patterns
+            << ",\"structural_matches\":" << event.structural_matches
+            << ",\"candidate_rejections\":" << event.candidate_rejections
+            << ",\"constant_rejections\":" << event.constant_rejections
+            << ",\"reason\":" << inspection_json_quote(event.detail)
+            << ",\"rule\":" << inspection_json_quote(event.rule) << ",\"count\":" << event.count
+            << ",\"capture_status\":"
+            << inspection_json_quote(mba_diagnostics::capture_status_name(sample.input.status))
+            << ",\"input\":" << (sample.input.payload.empty() ? "null" : sample.input.payload)
+            << '}';
+    }
+    out << "]}";
+    r->set_string(out.str().c_str());
+    return eOk;
+}
+
 error_t idaapi idc_rule_name(idc_value_t *argv, idc_value_t *r)
 {
     const std::vector<std::string> names = rules::RuleRegistry::instance().list_rules();
@@ -2099,6 +2147,10 @@ const idc_entry_t idc_entries[] = {
      "Number of registered MBA rules"},
     {"chernobog_rule_name", idc_rule_name, args_long, "chernobog_rule_name(index)",
      "Name of a registered rule by index"},
+    {"chernobog_rule_patterns", idc_rule_patterns, args_none, "chernobog_rule_patterns()",
+     "Bounded certified matcher templates and SDK tags"},
+    {"chernobog_rule_inputs", idc_rule_inputs, args_none, "chernobog_rule_inputs()",
+     "Bounded actual matcher inputs and local predecessor suffixes"},
     {"chernobog_rule_hits", idc_rule_hits, args_str, "chernobog_rule_hits(name)",
      "Hit count for one rule; -1 when the name is unknown"},
     {"chernobog_rule_reset_stats", idc_rule_reset_stats, args_none, "chernobog_rule_reset_stats()",

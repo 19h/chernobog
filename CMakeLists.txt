@@ -413,6 +413,7 @@ ida_add_plugin(
     # NEW: AST-based pattern matching system
     src/deobf/analysis/ast.cpp
     src/deobf/analysis/ast_builder.cpp
+    src/deobf/analysis/match_capture.cpp
     src/deobf/analysis/pattern_storage.cpp
     src/deobf/analysis/chain_simplify.cpp
     src/deobf/analysis/mba_diagnostics.cpp
@@ -752,6 +753,7 @@ if(BUILD_TESTING)
         tests/catalog_tests.cpp
         src/deobf/analysis/ast.cpp
         src/deobf/analysis/ast_builder.cpp
+        src/deobf/analysis/match_capture.cpp
         src/deobf/analysis/mba_diagnostics.cpp
         src/deobf/analysis/pattern_storage.cpp
         src/deobf/rules/pattern_rule.cpp
@@ -793,11 +795,16 @@ if(BUILD_TESTING)
                     "SHELL:-Wno-unused-parameter -Wno-unused-function -Wno-sign-compare")
     endif()
     add_test(NAME chernobog.mba_catalog COMMAND chernobog_catalog_tests)
+    add_test(
+        NAME chernobog.mba_match_replay
+        COMMAND
+            ${Python3_EXECUTABLE} -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/mba_match_replay_tests.py"
+            $<TARGET_FILE:chernobog_catalog_tests>)
     if(APPLE)
-        set_tests_properties(chernobog.mba_catalog PROPERTIES ENVIRONMENT
-                                                              "DYLD_LIBRARY_PATH=${IDA_LIB_DIR}")
+        set_tests_properties(chernobog.mba_catalog chernobog.mba_match_replay
+                             PROPERTIES ENVIRONMENT "DYLD_LIBRARY_PATH=${IDA_LIB_DIR}")
     elseif(UNIX)
-        set_tests_properties(chernobog.mba_catalog PROPERTIES ENVIRONMENT
-                                                              "LD_LIBRARY_PATH=${IDA_LIB_DIR}")
+        set_tests_properties(chernobog.mba_catalog chernobog.mba_match_replay
+                             PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=${IDA_LIB_DIR}")
     endif()
 endif()

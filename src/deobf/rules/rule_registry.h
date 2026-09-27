@@ -77,13 +77,15 @@ class RuleRegistry
         // Final rejected rule at the furthest reached gate. With no structural
         // match, names one longest-prefix failed branch; ties keep the first.
         std::string rejected_rule, rejection_detail;
+        mba_diagnostics::CapturedInput input;
 
         MatchResult() : rule(nullptr) {}
         bool matched() const { return rule != nullptr; }
     };
 
     // Find first matching rule for instruction
-    MatchResult find_match(const minsn_t *ins);
+    MatchResult find_match(const minsn_t *ins, const minsn_t *anchor = nullptr,
+                           const minsn_t *block_head = nullptr);
 
     // Find all matching rules
     std::vector<MatchResult> find_all_matches(const minsn_t *ins);
@@ -121,6 +123,7 @@ class RuleRegistry
 
     // List all rules
     std::vector<std::string> list_rules() const;
+    std::string catalog_pattern_snapshot() const;
 
   private:
     RuleRegistry() = default;
@@ -131,6 +134,7 @@ class RuleRegistry
     // preserving an auditable snapshot, this prevents their IDA-owned mop_t
     // members from being destroyed after the Hex-Rays runtime is unavailable.
     std::vector<AstPtr> semantic_roots_;
+    std::vector<std::pair<std::string, AstPtr>> certified_patterns_;
     bool initialized_ = false;
     mutable std::mutex mutex_;
 

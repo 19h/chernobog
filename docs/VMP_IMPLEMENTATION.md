@@ -39,6 +39,15 @@ abstentions; they cannot be counted as successful recovery.
 Quality gates are applied to each completed change and again to the complete
 objective. Neither baseline test success nor this ledger proves completion.
 
+Transient MBA input checkpoint for row 4a: actual pre-scan candidate and
+consecutive block-prefix projections are retained separately from historical
+diagnostics. Independent structural replay uses the exact certified templates
+and checks failed-branch attribution. Conservative normal-completion local
+byte definitions support read-only structural counterfactuals; candidate and
+constant predicates, full CFG definitions/aliases, missing identities and
+protected recovery gains remain open. See `VMP_MBA_INPUT_REPLAY.md` and its
+evidence JSON. The complete review remains in progress.
+
 Protected hello call-use checkpoint for rows 3a, 3b, 6a and V: an explicit
 bounded shadow query joins one observed CALL edge, its same-sequence argument
 register state and loaded read-only NUL-terminated bytes. Two current IDA

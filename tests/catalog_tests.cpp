@@ -2,6 +2,8 @@
 #include "deobf/rules/rule_verifier.h"
 #include "deobf/rules/rules_sub.h"
 #include "deobf/analysis/ast_builder.h"
+#include "deobf/analysis/match_capture.h"
+#include <iomanip>
 #include <cstdarg>
 #include <cstdlib>
 #include <iostream>
@@ -1170,10 +1172,239 @@ bool test_ast_destruction()
     return true;
 }
 
+bool test_input_capture_bounds()
+{
+    using namespace chernobog::ast;
+    using chernobog::mba_diagnostics::CaptureStatus;
+    size_t checks = 0;
+    const auto check = [&](bool value)
+    {
+        ++checks;
+        if (!value)
+            throw std::runtime_error("input capture bound check " + std::to_string(checks));
+    };
+    check(capture_match_input(nullptr).status == CaptureStatus::NoAst);
+    auto root = make_node(m_add, make_leaf("x"), make_leaf("y"));
+    const auto plain = capture_match_input(root);
+    check(plain.status == CaptureStatus::Complete &&
+          plain.payload.find("\"prefix_status\":\"missing_anchor\"") != std::string::npos);
+    auto cycle = std::static_pointer_cast<AstNode>(root);
+    cycle->left = cycle;
+    check(capture_match_input(root).status == CaptureStatus::Cycle);
+    cycle->left = make_leaf("x");
+    AstPtr chain = make_leaf("x");
+    for (int i = 0; i < 63; ++i)
+        chain = make_unary(m_neg, chain);
+    check(capture_match_input(chain).status == CaptureStatus::Complete);
+    chain = make_unary(m_neg, chain);
+    check(capture_match_input(chain).status == CaptureStatus::DepthLimit);
+    AstPtr wide = make_leaf("x");
+    for (int i = 0; i < 8; ++i)
+        wide = make_node(m_add, wide, wide);
+    check(capture_match_input(wide).status == CaptureStatus::VisitLimit);
+    std::string long_text(4095, 'x');
+    auto text = make_leaf("helper");
+    text->mop.t = mop_h;
+    text->mop.helper = long_text.data();
+    check(capture_match_input(text).status == CaptureStatus::ByteLimit);
+    text->mop.zero();
+    struct Head
+    {
+        ValueInsn instruction{m_nop, 4};
+    };
+    std::vector<std::unique_ptr<Head>> heads;
+    for (int i = 0; i < 66; ++i)
+    {
+        heads.push_back(std::make_unique<Head>());
+        if (i)
+        {
+            heads[i]->instruction.prev = &heads[i - 1]->instruction;
+            heads[i - 1]->instruction.next = &heads[i]->instruction;
+        }
+    }
+    auto encoded = capture_match_input(root, &heads[64]->instruction, &heads[0]->instruction);
+    check(encoded.status == CaptureStatus::Complete &&
+          encoded.payload.find("\"prefix_status\":\"block_entry\"") != std::string::npos);
+    encoded = capture_match_input(root, &heads[65]->instruction, &heads[0]->instruction);
+    check(encoded.status == CaptureStatus::Complete &&
+          encoded.payload.find("\"prefix_status\":\"head_limit\"") != std::string::npos);
+    heads[64]->instruction.next = nullptr;
+    encoded = capture_match_input(root, &heads[65]->instruction, &heads[0]->instruction);
+    check(encoded.payload.find("\"prefix_status\":\"link_error\",\"prefix\":[]") !=
+          std::string::npos);
+    check(capture_catalog_patterns({{"bad-name", root}}, true).find("\"status\":\"malformed\"") !=
+          std::string::npos);
+    check(capture_catalog_patterns({}, false).find("\"status\":\"not_initialized\"") !=
+          std::string::npos);
+    std::cout << "MBA matcher input capture bounds: " << checks << " passed\n";
+    return true;
+}
+
+int export_matcher_inputs()
+{
+    using namespace chernobog::ast;
+    auto &registry = chernobog::rules::RuleRegistry::instance();
+    registry.initialize();
+    if (registry.verified_rule_count() != 108 || registry.rejected_rule_count() != 0)
+        return EXIT_FAILURE;
+    std::cout << "{\"catalog\":" << registry.catalog_pattern_snapshot() << ",\"fixtures\":[";
+    bool first = true;
+    const auto emit = [&](const std::string &name, const AstPtr &pattern, const AstPtr &candidate,
+                          const minsn_t *anchor = nullptr, const minsn_t *head = nullptr,
+                          int resolved = -1, int value = -1)
+    {
+        MatchBindings bindings;
+        MatchFailure failure;
+        const bool actual = match_pattern(pattern.get(), candidate.get(), bindings, &failure);
+        const auto captured = capture_match_input(candidate, anchor, head);
+        if (captured.status != chernobog::mba_diagnostics::CaptureStatus::Complete)
+            throw std::runtime_error("fixture capture failed: " + name);
+        if (!first)
+            std::cout << ',';
+        first = false;
+        std::cout << "{\"name\":" << std::quoted(name) << ",\"pattern_catalog\":"
+                  << capture_catalog_patterns({{"Fixture", pattern}}, true)
+                  << ",\"input\":" << captured.payload
+                  << ",\"matched\":" << (actual ? "true" : "false")
+                  << ",\"failure\":" << std::quoted(match_failure_detail(failure))
+                  << ",\"resolved\":" << resolved << ",\"value\":" << value << '}';
+    };
+    auto a = make_leaf("a"), b = make_leaf("b");
+    reg(a->mop, 100, 4);
+    reg(b->mop, 200, 4);
+    a->dest_size = b->dest_size = 4;
+    auto pattern = make_node(m_sub, make_leaf("x"), make_leaf("x"));
+    auto candidate = make_node(m_sub, a, b);
+    emit("register", pattern, candidate);
+    reg(b->mop, 100, 8);
+    emit("width", pattern, candidate);
+    b->mop.size = 4;
+    b->mop.valnum = 19;
+    emit("value_number", pattern, candidate);
+    b->mop.valnum = 0;
+    b->mop.oprops = 1;
+    emit("properties", pattern, candidate);
+    b->mop.oprops = 0;
+    emit("same_snapshot", pattern, candidate);
+    pattern = make_node(m_add, make_node(m_sub, make_leaf("x"), make_leaf("y")),
+                        make_node(m_and, make_leaf("y"), make_leaf("z")));
+    candidate = make_node(m_add, make_node(m_or, a, b), make_node(m_sub, a, b));
+    emit("longer_commuted", pattern, candidate);
+    pattern = make_node(m_add, make_leaf("x"), make_node(m_and, make_leaf("y"), make_leaf("z")));
+    candidate = make_node(m_add, make_node(m_or, a, b), a);
+    emit("first_tie", pattern, candidate);
+    pattern = make_node(m_add, make_leaf("x"), make_node(m_sub, make_leaf("y"), make_leaf("z")));
+    candidate = make_node(m_add, make_node(m_sub, a, b), a);
+    emit("success_after_commutation", pattern, candidate);
+    mnumber_t zero(0), one(1);
+    pattern = make_node(m_xor, make_leaf("x"), make_const(0, 4));
+    reg(b->mop, 200, 4);
+    candidate = make_node(m_xor, a, b);
+    candidate->dest_size = 4;
+    ValueInsn definition(m_mov, 4), overwrite(m_mov, 1), anchor(m_xor, 4);
+    constant(definition.l, zero, 4);
+    reg(definition.d, 200, 4);
+    reg(anchor.l, 100, 4);
+    reg(anchor.r, 200, 4);
+    definition.next = &anchor;
+    anchor.prev = &definition;
+    emit("local_zero", pattern, candidate, &anchor, &definition, 1, 0);
+    constant(overwrite.l, one, 1);
+    reg(overwrite.d, 201, 1);
+    definition.next = &overwrite;
+    overwrite.prev = &definition;
+    overwrite.next = &anchor;
+    anchor.prev = &overwrite;
+    emit("overlapping_byte", pattern, candidate, &anchor, &definition, 1, 256);
+    overwrite.opcode = m_call;
+    emit("call_barrier", pattern, candidate, &anchor, &definition, 0);
+    overwrite.opcode = m_mov;
+    b->mop.valnum = 1;
+    emit("stale_value_number", pattern, candidate, &anchor, &definition, 0);
+    b->mop.valnum = 0;
+    b->mop.size = b->dest_size = 8;
+    emit("insufficient_bytes", pattern, candidate, &anchor, &definition, 0);
+    b->mop.size = b->dest_size = 4;
+    b->mop.oprops = 1;
+    emit("read_properties", pattern, candidate, &anchor, &definition, 0);
+    b->mop.oprops = 0;
+    pattern = make_node(m_sub, make_leaf("x"), make_const(0, 4));
+    std::static_pointer_cast<AstNode>(candidate)->opcode = m_sub;
+    constant(b->mop, one, 4);
+    emit("fixed_constant", pattern, candidate);
+    constant(b->mop, zero, 4);
+    emit("actual_numeric_zero", pattern, candidate);
+    b->mop.zero();
+    std::cout << "],\"equalities\":[";
+    first = true;
+    auto pair = make_node(m_sub, a, b);
+    const auto equality = [&](const std::string &name)
+    {
+        MatchFailure difference;
+        const bool equal = mops_equal_strict(a->mop, b->mop, &difference);
+        const auto captured = capture_match_input(pair);
+        if (captured.status != chernobog::mba_diagnostics::CaptureStatus::Complete)
+            throw std::runtime_error("equality fixture capture failed");
+        if (!first)
+            std::cout << ',';
+        first = false;
+        std::cout << "{\"name\":" << std::quoted(name) << ",\"input\":" << captured.payload
+                  << ",\"equal\":" << (equal ? "true" : "false")
+                  << ",\"failure\":" << std::quoted(match_failure_detail(difference)) << '}';
+    };
+    const auto owner_a = reinterpret_cast<mba_t *>(uintptr_t{0x1000});
+    const auto owner_b = reinterpret_cast<mba_t *>(uintptr_t{0x2000});
+    stkvar_ref_t stack_a(owner_a, 24), stack_b(owner_b, 24), stack_same(owner_a, 25);
+    a->mop.t = b->mop.t = mop_S;
+    a->mop.s = &stack_a;
+    b->mop.s = &stack_b;
+    b->mop.size = 4;
+    equality("frame_tokens");
+    b->mop.s = &stack_same;
+    equality("stack_offset");
+    lvar_ref_t local_a(owner_a, 3, 8), local_b(owner_a, 4, 8);
+    a->mop.t = b->mop.t = mop_l;
+    a->mop.l = &local_a;
+    b->mop.l = &local_b;
+    equality("local_index");
+    local_b.idx = 3;
+    local_b.off = 9;
+    equality("local_offset");
+    a->mop.t = b->mop.t = mop_h;
+    char text_a[] = "a\"\n", text_b[] = "b\"\n";
+    a->mop.helper = text_a;
+    b->mop.helper = text_b;
+    equality("hex_helper");
+    a->mop.t = b->mop.t = mop_f;
+    equality("opaque_call");
+    ValueInsn inner_a(m_ldx, 4), inner_b(m_ldx, 4);
+    nested(a->mop, inner_a);
+    nested(b->mop, inner_b);
+    inner_a.ea = 0x3000;
+    inner_b.ea = 0x3001;
+    equality("load_source");
+    inner_a.opcode = inner_b.opcode = m_mov;
+    equality("ordinary_source_ignored");
+    reg(inner_b.d, 100, 4);
+    reg(inner_b.l, 100, 4);
+    equality("destination_before_left");
+    inner_b.d.zero();
+    inner_b.l.zero();
+    inner_b.iprops = IPROP_MBARRIER;
+    equality("nested_properties");
+    a->mop.zero();
+    b->mop.zero();
+    std::cout << "]}\n";
+    registry.clear();
+    return EXIT_SUCCESS;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && std::string(argv[1]) == "--matcher-input-fixtures")
+        return export_matcher_inputs();
     if (argc == 2 && std::string(argv[1]) == "--ast-cycle-control")
     {
         ValueInsn cycle(m_add, 4);
@@ -1204,6 +1435,8 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     if (!test_match_failure_witnesses())
+        return EXIT_FAILURE;
+    if (!test_input_capture_bounds())
         return EXIT_FAILURE;
 
     auto &registry = chernobog::rules::RuleRegistry::instance();
