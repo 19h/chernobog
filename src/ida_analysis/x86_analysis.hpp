@@ -27,6 +27,7 @@ struct X86Condition
 };
 
 std::optional<X86Condition> x86_condition(uint16_t instruction_type);
+bool x86_condition_prefix_supported(const insn_t &instruction);
 
 // Bounded owned-function must-analysis with architectural direct successors and
 // conservative joins. Incomplete/unsupported graphs fall back to the contiguous
@@ -48,6 +49,17 @@ struct X86FlagFact
     std::vector<uint64_t> support;
 };
 X86FlagFact analyze_x86_flag_fact_before(const insn_t &instruction, size_t depth);
+
+// Condition truth can be universal across alternatives whose joined flag bits
+// are individually unknown. Flags retain the original must-analysis result.
+struct X86ConditionFact
+{
+    x86_abstract::Flags flags;
+    std::optional<bool> value;
+    std::vector<uint64_t> support;
+    bool alternatives = false, widened = false;
+};
+X86ConditionFact analyze_x86_condition_before(const insn_t &instruction, size_t depth);
 
 struct X86RegisterFact
 {

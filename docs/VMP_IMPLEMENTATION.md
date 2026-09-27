@@ -976,3 +976,24 @@ historical evidence remains unchanged. The supplied VMP initializer remains
 75 nodes, 77 edges and three unresolved facts. See `VMP_BRANCH_FEASIBILITY.md`
 and its evidence JSON. Conditional predicates, whole-program reachability,
 broader protected gain and full review completion remain unknown or in progress.
+
+Relational-condition checkpoint for rows 2a and 2b: native Jcc, SETcc/CMOV
+value facts, current proof checks, false-branch restoration and SDK generation
+now consume universal truth across bounded alternative states. Joined flag
+bits retain their original result. Ten compound relations across four consumer
+families yield 160 exact condition observations on x86-64/i386 and owned/
+ownerless paths, including 20 owned branch publications and 60 SDK lowerings.
+All 164 conflicting/overflow observations remain unresolved. Matching profiles
+pass 82,952 native checks each and 1,013 current production checks per
+architecture; an independent generated-IR interpreter passes 280 effect/fault
+checks. Byte patches, external entries, snippet generation and nine-state
+widening preserve abstention and freshness. A shared condition-prefix guard
+rejects all 16 invalid LOCK fact observations formerly admitted by the preceding
+plugin. Eight SIGILL controls per profile pass with the source-pinned QEMU
+9.2.0 replacement; QEMU 8.2.2 accepts the invalid JBE and fails this oracle.
+Existing emission checks retain
+12,288 effect comparisons and 192 native fault observations; the older graph,
+target and containing-set corpora and all 21 CTest suites pass. The supplied
+VMP initializer keeps its three unresolved facts. See
+`VMP_RELATIONAL_CONDITIONS.md` and its evidence JSON. Broader protected gains,
+input predicates, lifecycle coverage and full review completion remain in progress.

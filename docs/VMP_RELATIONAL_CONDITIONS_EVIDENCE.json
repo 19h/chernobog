@@ -1,0 +1,1120 @@
+{
+  "schema": 1,
+  "parent_revision": "b55a0aa009526aa0e0e8f4a3ef60e729f22546a9",
+  "phase": "pre-commit functional observation",
+  "contract": "universal condition truth across every completion of reached converged alternatives; joined flag bits retained; full original support; current recomputation; unsupported condition prefixes decline; existing memory/fault/partial-register emission retained",
+  "source_sha256": {
+    "src/common/bounded_dataflow.h": "a8817441c1c23a421fc0f09468a3c9206eb54fd3da18f08906e531d90f909ee5",
+    "src/common/x86_abstract.h": "d2a8ce3abf04629e3ee18ffd30e277e15f0e786eb842d93eb5d1d736ad0f5538",
+    "src/ida_analysis/get_pc_ida.cpp": "0f53b3b3c65e3a07cc6446ed5c10f57928137db62aed49bd4462d3bdf19b115c",
+    "python/chernobog_evidence.py": "30bf869ae02de00d22f81708d87f3ffff161ec34808bccb3bad6252a8fccffa0",
+    "src/ida_analysis/x86_analysis.cpp": "dcea4f7e73f32b5d9635a9369179f90e6312ed3f3a8525f441b8e87e8ad0360f",
+    "src/ida_analysis/x86_analysis.hpp": "b6279d1d543604b6696bb2e5df0e8d6a345597e25bfd495f872a605a4ad79fe1",
+    "src/ida_analysis/native_classifier.cpp": "97dd01739ca51295b5875d289d43f203670876931cdc2291b4ff4e5140467d13",
+    "src/ida_analysis/native_engine.cpp": "5bd28d767c8fc0016f04124414c323a89d989db005728e8fe0ee31d7a65bb6fd",
+    "src/ida_analysis/early_hexrays.cpp": "a5f4b536dbc0d06b66f505c646b7f590b53ad12f234803e55b4628ef71febdda",
+    "tests/verify_conditions_microcode.py": "c72293363b73b080e3017dc8335c5dcfc2c649c895efe09c1b3ad029c22112c5",
+    "tests/x86_abstract_tests.cpp": "8d1e919db97a7bf9f813571e400bd9fc75c4d9b363c3bd302d51e9fc7fc7f3dd",
+    "tests/vmp_native/relational_conditions.c": "99036b1c7ed598956cad84e7dfb4baa6ea5d42d105c23ffe71990fd19beb3e14",
+    "tests/vmp_native/relational_conditions_main.c": "1a08c76951aa7bb954e056a9f46c4b384aa6e3cd309bc694fe99e26be393e87c",
+    "tests/ida_relational_conditions_probe.py": "2b7ea672cf187df8ec0c1c61dcf51c4cd468035d71870ddc760a36ad7c8b2738",
+    "tests/run_relational_conditions.py": "c922534a2789a234b8e8f71cf406bce024cbcfbb24d9ad0c423bb96ac22c0fe7",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/vmp_corpus/linux32.py": "3e69027a6fa06a1c6b4693dd702f26a2f81cd07ac2bcc7775f711e42a8d99c09",
+    "tests/vmp_corpus/linux32_exec.py": "a0577238731548cde8e20c20299f61cc7fcf23b4602c33dfdbcd12f8c08793b0",
+    "tests/vmp_corpus/relations32.Dockerfile": "15b6c4d880419efb1cd00f4a78da3bf6c7561a0f307810e34acf926334e1b0f1"
+  },
+  "documentation_sha256": {
+    "docs/VMP_RELATIONAL_CONDITIONS.md": "7c73ef0b28826275ff1aad51148fb24019bacc7e16ed9b73a9658e04843f6300",
+    "docs/VMP_IMPLEMENTATION.md": "c5bd4565dbffbde80597686aab5291bb875b79eb94c7ba8b8a4848116b39dab8"
+  },
+  "profiles": {
+    "prior": {
+      "path": "build/vmp-relation-final-prior-formatted/relation_analysis.json",
+      "sha256": "1b14d4580517bf332301fd384bad4c25e1abf61b29527282327ca1624807b6b2",
+      "plugin_sha256": "52ee2040af647a3318c944aaebc48977df0b296910c962670822946fb8b845db",
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "passed": true,
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "binary_sha256": "eecddc01e7c3ecbf6261a1e9938c3e1ba32dc4087c2910a4d6b51461091127d0",
+          "native_result": {
+            "passed": true,
+            "checks": 41476
+          },
+          "checks": 578,
+          "microcode_effect_checks": 0,
+          "artifact_sha256": {
+            "inspection/run.json": "47e92030eb2bc0a8d3324c691eaf37d174db72fd2815c018f96f33692756d033",
+            "inspection/relation.json": "5ebd0677c7137b263558c91f74422df3789e3bed81812f9993cbcecaec70b7df"
+          },
+          "matched_binary_identity": true,
+          "condition_observations": {
+            "owned": {
+              "positive_exact": 0,
+              "conflicting_or_overflow_unresolved": 41,
+              "locked_admitted": 4,
+              "representatives": {
+                "rc_be_true_branch": {
+                  "frontier_reasons": []
+                },
+                "rc_a_false_memory": {
+                  "frontier_reasons": []
+                },
+                "rc_ge_true_set": {
+                  "frontier_reasons": []
+                },
+                "rc_cap": {
+                  "frontier_reasons": []
+                },
+                "rc_lock_branch": {
+                  "kind": "local-flag-branch",
+                  "condition_value": "true",
+                  "dependency_count": "4",
+                  "target": "0x1000011fc",
+                  "edge": "true",
+                  "frontier_reasons": []
+                }
+              }
+            },
+            "ownerless": {
+              "positive_exact": 0,
+              "conflicting_or_overflow_unresolved": 41,
+              "locked_admitted": 4,
+              "representatives": {
+                "rc_be_true_branch": {
+                  "kind": "branch-condition",
+                  "outcome": "unknown",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "target": "unknown",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_a_false_memory": {
+                  "kind": "cmov-condition",
+                  "outcome": "unknown",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_ge_true_set": {
+                  "kind": "setcc-value",
+                  "outcome": "unknown",
+                  "flags_known": "0xf",
+                  "flags_value": "0x0",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_cap": {
+                  "kind": "setcc-value",
+                  "outcome": "unknown",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_lock_branch": {
+                  "kind": "branch-condition",
+                  "outcome": "true",
+                  "flags_known": "0x3f",
+                  "flags_value": "0x1",
+                  "target": "0x1000011fc",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                }
+              }
+            }
+          },
+          "custom_lowerings": {
+            "codegen_setcc": 0,
+            "codegen_cmov": 0,
+            "codegen_cmov_memory": 0
+          },
+          "native_fault_controls": 4,
+          "inspection_artifacts_unchanged": true
+        },
+        {
+          "architecture": "i386",
+          "runtime": {
+            "image_id": "sha256:91a6e07bec9b5ef76ccee2f076aa419b5e79a93e15c69de67017e0b8a3a38bc2",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "ab3616f72fd2ec26ba9e1cb931d3bcd9f243471cf482785381bedc2907b3b085",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "qemu_version": [
+              "qemu-i386 version 9.2.0",
+              "Copyright (c) 2003-2024 Fabrice Bellard and the QEMU Project developers"
+            ],
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ]
+          },
+          "binary_sha256": "cb3695b117247653298259ce1afd1859f5cff692ff12fa0f17db2e7a7d152069",
+          "native_result": {
+            "passed": true,
+            "checks": 41476
+          },
+          "checks": 578,
+          "microcode_effect_checks": 0,
+          "artifact_sha256": {
+            "inspection/run.json": "866a037e8c6509f551331e5761ab0a02414130859651b6e543488be25a586d88",
+            "inspection/relation.json": "da5ffb66a7146333aa8d56bb2dad345640c76da209d97664627d31685c7327e4"
+          },
+          "matched_binary_identity": true,
+          "condition_observations": {
+            "owned": {
+              "positive_exact": 0,
+              "conflicting_or_overflow_unresolved": 41,
+              "locked_admitted": 4,
+              "representatives": {
+                "rc_be_true_branch": {
+                  "frontier_reasons": []
+                },
+                "rc_a_false_memory": {
+                  "frontier_reasons": []
+                },
+                "rc_ge_true_set": {
+                  "frontier_reasons": []
+                },
+                "rc_cap": {
+                  "frontier_reasons": []
+                },
+                "rc_lock_branch": {
+                  "kind": "local-flag-branch",
+                  "condition_value": "true",
+                  "dependency_count": "4",
+                  "target": "0x804a3dc",
+                  "edge": "true",
+                  "frontier_reasons": []
+                }
+              }
+            },
+            "ownerless": {
+              "positive_exact": 0,
+              "conflicting_or_overflow_unresolved": 41,
+              "locked_admitted": 4,
+              "representatives": {
+                "rc_be_true_branch": {
+                  "kind": "branch-condition",
+                  "outcome": "unknown",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "target": "unknown",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_a_false_memory": {
+                  "kind": "cmov-condition",
+                  "outcome": "unknown",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_ge_true_set": {
+                  "kind": "setcc-value",
+                  "outcome": "unknown",
+                  "flags_known": "0xf",
+                  "flags_value": "0x0",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_cap": {
+                  "kind": "setcc-value",
+                  "outcome": "unknown",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_lock_branch": {
+                  "kind": "branch-condition",
+                  "outcome": "true",
+                  "flags_known": "0x3f",
+                  "flags_value": "0x1",
+                  "target": "0x804a3dc",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                }
+              }
+            }
+          },
+          "custom_lowerings": {
+            "codegen_setcc": 0,
+            "codegen_cmov": 0,
+            "codegen_cmov_memory": 0
+          },
+          "native_fault_controls": 4,
+          "inspection_artifacts_unchanged": true
+        }
+      ]
+    },
+    "current": {
+      "path": "build/vmp-relation-final-current-formatted/relation_analysis.json",
+      "sha256": "5f8bad048723ef801a41a4075c91026293ecaa631d09351c739d9ac023a82e69",
+      "plugin_sha256": "a69858d470b7c0bc6baa304b420c11ec1c9792fe022ec70de790561dd383ec4b",
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "passed": true,
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "binary_sha256": "eecddc01e7c3ecbf6261a1e9938c3e1ba32dc4087c2910a4d6b51461091127d0",
+          "native_result": {
+            "passed": true,
+            "checks": 41476
+          },
+          "checks": 1013,
+          "microcode_effect_checks": 140,
+          "artifact_sha256": {
+            "inspection/run.json": "139c8053c2a62a04928f3d418685eaff9270efdd9c1bb96e17b9f4d844c8dac7",
+            "inspection/relation.json": "a6ebc2da372de2ed1f5131b9285f5827e027c5217199df51859b37f25c9862a3"
+          },
+          "matched_binary_identity": true,
+          "condition_observations": {
+            "owned": {
+              "positive_exact": 40,
+              "conflicting_or_overflow_unresolved": 41,
+              "locked_admitted": 0,
+              "representatives": {
+                "rc_be_true_branch": {
+                  "kind": "local-flag-branch",
+                  "condition_value": "true",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "condition_basis": "universal-alternatives",
+                  "condition_widened": "false",
+                  "dependency_count": "14",
+                  "target": "0x100000576",
+                  "edge": "true",
+                  "frontier_reasons": []
+                },
+                "rc_a_false_memory": {
+                  "kind": "cmov-condition",
+                  "condition_value": "false",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "condition_basis": "universal-alternatives",
+                  "condition_widened": "false",
+                  "dependency_count": "13",
+                  "edge": "false",
+                  "frontier_reasons": []
+                },
+                "rc_ge_true_set": {
+                  "kind": "setcc-value",
+                  "condition_value": "true",
+                  "flags_known": "0xf",
+                  "flags_value": "0x0",
+                  "condition_basis": "universal-alternatives",
+                  "condition_widened": "false",
+                  "dependency_count": "11",
+                  "edge": "false",
+                  "frontier_reasons": []
+                },
+                "rc_cap": {
+                  "frontier_reasons": []
+                },
+                "rc_lock_branch": {
+                  "frontier_reasons": []
+                }
+              }
+            },
+            "ownerless": {
+              "positive_exact": 40,
+              "conflicting_or_overflow_unresolved": 41,
+              "locked_admitted": 0,
+              "representatives": {
+                "rc_be_true_branch": {
+                  "kind": "branch-condition",
+                  "outcome": "true",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "condition_basis": "universal-alternatives",
+                  "condition_widened": "false",
+                  "target": "0x100000576",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_a_false_memory": {
+                  "kind": "cmov-condition",
+                  "outcome": "false",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "condition_basis": "universal-alternatives",
+                  "condition_widened": "false",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_ge_true_set": {
+                  "kind": "setcc-value",
+                  "outcome": "true",
+                  "flags_known": "0xf",
+                  "flags_value": "0x0",
+                  "condition_basis": "universal-alternatives",
+                  "condition_widened": "false",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_cap": {
+                  "kind": "setcc-value",
+                  "outcome": "unknown",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "condition_basis": "joined-flags",
+                  "condition_widened": "true",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_lock_branch": {
+                  "frontier_reasons": [
+                    "unsupported_condition_prefix"
+                  ]
+                }
+              }
+            }
+          },
+          "custom_lowerings": {
+            "codegen_setcc": 10,
+            "codegen_cmov": 20,
+            "codegen_cmov_memory": 10
+          },
+          "native_fault_controls": 4,
+          "inspection_artifacts_unchanged": true
+        },
+        {
+          "architecture": "i386",
+          "runtime": {
+            "image_id": "sha256:91a6e07bec9b5ef76ccee2f076aa419b5e79a93e15c69de67017e0b8a3a38bc2",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "ab3616f72fd2ec26ba9e1cb931d3bcd9f243471cf482785381bedc2907b3b085",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "qemu_version": [
+              "qemu-i386 version 9.2.0",
+              "Copyright (c) 2003-2024 Fabrice Bellard and the QEMU Project developers"
+            ],
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ]
+          },
+          "binary_sha256": "cb3695b117247653298259ce1afd1859f5cff692ff12fa0f17db2e7a7d152069",
+          "native_result": {
+            "passed": true,
+            "checks": 41476
+          },
+          "checks": 1013,
+          "microcode_effect_checks": 140,
+          "artifact_sha256": {
+            "inspection/run.json": "a6a823f7baaf01a9b058ae7938bef0b6935e2c3a309206a05787b4bb74b4b59f",
+            "inspection/relation.json": "ac04a3dd679b1070fa3a72856817712aa2962787707efa30028b1550ed498ce2"
+          },
+          "matched_binary_identity": true,
+          "condition_observations": {
+            "owned": {
+              "positive_exact": 40,
+              "conflicting_or_overflow_unresolved": 41,
+              "locked_admitted": 0,
+              "representatives": {
+                "rc_be_true_branch": {
+                  "kind": "local-flag-branch",
+                  "condition_value": "true",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "condition_basis": "universal-alternatives",
+                  "condition_widened": "false",
+                  "dependency_count": "14",
+                  "target": "0x8049608",
+                  "edge": "true",
+                  "frontier_reasons": []
+                },
+                "rc_a_false_memory": {
+                  "kind": "cmov-condition",
+                  "condition_value": "false",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "condition_basis": "universal-alternatives",
+                  "condition_widened": "false",
+                  "dependency_count": "13",
+                  "edge": "false",
+                  "frontier_reasons": []
+                },
+                "rc_ge_true_set": {
+                  "kind": "setcc-value",
+                  "condition_value": "true",
+                  "flags_known": "0xf",
+                  "flags_value": "0x0",
+                  "condition_basis": "universal-alternatives",
+                  "condition_widened": "false",
+                  "dependency_count": "11",
+                  "edge": "false",
+                  "frontier_reasons": []
+                },
+                "rc_cap": {
+                  "frontier_reasons": []
+                },
+                "rc_lock_branch": {
+                  "frontier_reasons": []
+                }
+              }
+            },
+            "ownerless": {
+              "positive_exact": 40,
+              "conflicting_or_overflow_unresolved": 41,
+              "locked_admitted": 0,
+              "representatives": {
+                "rc_be_true_branch": {
+                  "kind": "branch-condition",
+                  "outcome": "true",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "condition_basis": "universal-alternatives",
+                  "condition_widened": "false",
+                  "target": "0x8049608",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_a_false_memory": {
+                  "kind": "cmov-condition",
+                  "outcome": "false",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "condition_basis": "universal-alternatives",
+                  "condition_widened": "false",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_ge_true_set": {
+                  "kind": "setcc-value",
+                  "outcome": "true",
+                  "flags_known": "0xf",
+                  "flags_value": "0x0",
+                  "condition_basis": "universal-alternatives",
+                  "condition_widened": "false",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_cap": {
+                  "kind": "setcc-value",
+                  "outcome": "unknown",
+                  "flags_known": "0x36",
+                  "flags_value": "0x0",
+                  "condition_basis": "joined-flags",
+                  "condition_widened": "true",
+                  "frontier_reasons": [
+                    "return_target"
+                  ]
+                },
+                "rc_lock_branch": {
+                  "frontier_reasons": [
+                    "unsupported_condition_prefix"
+                  ]
+                }
+              }
+            }
+          },
+          "custom_lowerings": {
+            "codegen_setcc": 10,
+            "codegen_cmov": 20,
+            "codegen_cmov_memory": 10
+          },
+          "native_fault_controls": 4,
+          "inspection_artifacts_unchanged": true
+        }
+      ]
+    }
+  },
+  "regressions": {
+    "owned": {
+      "path": "build/vmp-relation-final-owned-regression/dataflow_analysis.json",
+      "sha256": "ac69318cfbd8962d28ef8765e84ec0da07519e770eaf30afb64e603ce6c8e8ee",
+      "passed": true,
+      "plugin_sha256": "a69858d470b7c0bc6baa304b420c11ec1c9792fe022ec70de790561dd383ec4b",
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "native_result": {
+            "checks": 37630,
+            "passed": true
+          },
+          "binary_sha256": "097d912fd7d90b3c88561f0cec5a4734b91854e1c56caeb55c76df76724fbd45",
+          "checks": 453,
+          "artifact_sha256": {
+            "inspection/run.json": "be54aabfd23cbfadd41720a66705f5fbf896ed21cc12d84f1ac5990e94d900bc",
+            "inspection/dataflow.json": "816f695609d4e20b542418b01925ac8db74ee6e2153475819c8bd1a72b02f925"
+          }
+        },
+        {
+          "architecture": "i386",
+          "runtime": {
+            "image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "qemu_version": [
+              "qemu-i386 version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)",
+              "Copyright (c) 2003-2023 Fabrice Bellard and the QEMU Project developers"
+            ],
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ]
+          },
+          "native_result": {
+            "checks": 36350,
+            "passed": true
+          },
+          "binary_sha256": "7ae45e9d14a087fa921a624159448c203a8e2dcb79bcbbeea2563ff136f32428",
+          "checks": 386,
+          "artifact_sha256": {
+            "inspection/run.json": "a2b4fdbe39a3c5be3282d3896e4f00ce779f7543970e360e05933f43382de8c0",
+            "inspection/dataflow.json": "16e026503de459adf90e42e917af43a8361c95fc8dff90e361c98d30e5c94d70"
+          }
+        }
+      ]
+    },
+    "ownerless": {
+      "path": "build/vmp-relation-final-region-regression/ownerless_dataflow_analysis.json",
+      "sha256": "1c7d1bcd8e06c5654de6307cebb293f4dfbf5070c2501f58fe4acaa96a4aaaf4",
+      "passed": true,
+      "plugin_sha256": "a69858d470b7c0bc6baa304b420c11ec1c9792fe022ec70de790561dd383ec4b",
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "checks": 1730,
+          "artifact_sha256": {
+            "inspection/run.json": "12f835560314806c72e27b2e8393eaeab66f8d31977ab8337e96e93ba29ae79d",
+            "inspection/ownerless_dataflow.json": "dbac07bb3a5fb37da031390c06e5c1021b8399dadb4391cbf81c14b084f1c2cf"
+          }
+        },
+        {
+          "architecture": "i386",
+          "runtime": {
+            "image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "qemu_version": [
+              "qemu-i386 version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)",
+              "Copyright (c) 2003-2023 Fabrice Bellard and the QEMU Project developers"
+            ],
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ]
+          },
+          "checks": 1680,
+          "artifact_sha256": {
+            "inspection/run.json": "bfa8f1530851efd8a3b72442e2fc28a503e525777e78420788fbaa6dfc737d2e",
+            "inspection/ownerless_dataflow.json": "3525a4dffd7ecb7f346a158e69484de7eeba43cba4516e91273f9e1ed7d537e0"
+          }
+        }
+      ]
+    },
+    "covers": {
+      "path": "build/vmp-relation-final-cover-regression/cover_analysis.json",
+      "sha256": "822b8da3c9982e64f899d66f7081ac7d0e24b2e0b674bb6e9be21b2d85fa0615",
+      "passed": true,
+      "plugin_sha256": "a69858d470b7c0bc6baa304b420c11ec1c9792fe022ec70de790561dd383ec4b",
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "native_result": {
+            "passed": true,
+            "checks": 6656
+          },
+          "binary_sha256": "a51d4ec15aac565966097e00024f1df75e21c3dad0cfe08072d666972bf4cf07",
+          "checks": 293,
+          "artifact_sha256": {
+            "inspection/run.json": "b235e4da8365ae444b43b11b7d0ed6bc968a50e7a42c7c69363da8fe08ebb1cc",
+            "inspection/cover.json": "911a6969cdf50c3147717ab9f970c00524906659a1a6f807b49d7e43610935ac"
+          }
+        },
+        {
+          "architecture": "i386",
+          "runtime": {
+            "image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "qemu_version": [
+              "qemu-i386 version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)",
+              "Copyright (c) 2003-2023 Fabrice Bellard and the QEMU Project developers"
+            ],
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ]
+          },
+          "native_result": {
+            "passed": true,
+            "checks": 6656
+          },
+          "binary_sha256": "880789abd0ac01ba32ba1c5e2757f171862c080e6924ed06f0589a7451124d11",
+          "checks": 293,
+          "artifact_sha256": {
+            "inspection/run.json": "1aae1835ab0768c716308c0711fbaa566ddbfb0138599025cde4b06c878374e7",
+            "inspection/cover.json": "a3dcc8734cd9f2ef81c1777d0bdfff6649542278d23374a8d513730402fbeeb8"
+          }
+        }
+      ]
+    },
+    "feasibility": {
+      "path": "build/vmp-relation-final-feasibility-regression/feasibility_analysis.json",
+      "sha256": "4534fbdecd2fede98a702e77d42761e797790b2b51c3d43ec078a41889c4af9c",
+      "passed": true,
+      "plugin_sha256": "a69858d470b7c0bc6baa304b420c11ec1c9792fe022ec70de790561dd383ec4b",
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "runtime": "macOS x86-64 process; translated on arm64 hosts",
+          "native_result": {
+            "passed": true,
+            "checks": 20992
+          },
+          "binary_sha256": "da338aabb922ea5c31b4aafff2ebad8d93afd9390fd39d77f7ae951f97a83b0f",
+          "checks": 1056,
+          "artifact_sha256": {
+            "inspection/run.json": "07a2bcdc487851fdc28ebfd648867c932c0e2595bc6e57958c4914770e1ff292",
+            "inspection/feasibility.json": "6abd4589ba1c561a82ed71c99d5cfcd7cc1751f0793e88b2e14d8c82442edbec"
+          }
+        },
+        {
+          "architecture": "i386",
+          "runtime": {
+            "image_id": "sha256:91a6e07bec9b5ef76ccee2f076aa419b5e79a93e15c69de67017e0b8a3a38bc2",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "ab3616f72fd2ec26ba9e1cb931d3bcd9f243471cf482785381bedc2907b3b085",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "qemu_version": [
+              "qemu-i386 version 9.2.0",
+              "Copyright (c) 2003-2024 Fabrice Bellard and the QEMU Project developers"
+            ],
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ]
+          },
+          "native_result": {
+            "passed": true,
+            "checks": 20992
+          },
+          "binary_sha256": "13b1e127fcafa9f3eb6b350acb7e15e15bed07d2a60fcfef63156b751ac71bd3",
+          "checks": 1056,
+          "artifact_sha256": {
+            "inspection/run.json": "664a880c5d5ea40b37924b2918ea9aaa6ba11ec8d881a423ef6674587f23536e",
+            "inspection/feasibility.json": "db4084e620a7f436d89440c307c2e7cc3beedfdf1321774734230a201823609e"
+          }
+        }
+      ]
+    },
+    "emission": {
+      "path": "build/vmp-relation-final-condition-regression/evidence.json",
+      "sha256": "7a30777fe508951b30af647df8618d53c24af11e48cdc0486fc7d1319acb55b6",
+      "plugin_sha256": "a69858d470b7c0bc6baa304b420c11ec1c9792fe022ec70de790561dd383ec4b",
+      "sdk_sha256": {
+        "hexrays.hpp": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff",
+        "intel.hpp": "75a83474f0fc3d87a2c1edd7e7dc15915e0a0fedbb1bb1015d7b55a87066caee",
+        "ua.hpp": "b81e3c348421075f1f678276186262ce7b2c0c3902d4ed484c474701ce3dd174",
+        "typeinf.hpp": "d91e8e6b7cc754d10cfd4a8fbd09981aa167e06eed044dc7941d495746f38e8f"
+      },
+      "architectures": {
+        "x86_64": {
+          "runtime": "macOS x86-64 execution; translated on arm64 hosts",
+          "fault_verification": {
+            "observations": 144,
+            "faults": 96,
+            "successful_boundary_reads": 48,
+            "mutation_controls": 2
+          }
+        },
+        "i386": {
+          "runtime": {
+            "image_id": "sha256:91a6e07bec9b5ef76ccee2f076aa419b5e79a93e15c69de67017e0b8a3a38bc2",
+            "container_architecture": "arm64",
+            "execution": "qemu-i386 user-mode translation in Linux container",
+            "sha256": {
+              "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+              "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+              "qemu-i386": "ab3616f72fd2ec26ba9e1cb931d3bcd9f243471cf482785381bedc2907b3b085",
+              "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+              "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+            },
+            "qemu_version": [
+              "qemu-i386 version 9.2.0",
+              "Copyright (c) 2003-2024 Fabrice Bellard and the QEMU Project developers"
+            ],
+            "packages": [
+              "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+              "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+              "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+              "libc6-i386-cross\t2.39-0ubuntu8cross1",
+              "python3\t3.12.3-0ubuntu2.1",
+              "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+            ]
+          },
+          "fault_verification": {
+            "observations": 144,
+            "faults": 96,
+            "successful_boundary_reads": 48,
+            "mutation_controls": 2
+          }
+        }
+      },
+      "measurements": {
+        "x86_64": {
+          "verification": {
+            "captures_per_mode": 58,
+            "accepted_functions": 48,
+            "native_records": 6528,
+            "effect_comparisons": 6144,
+            "mutation_controls": 7,
+            "word_bytes": 8
+          },
+          "optimized": [
+            {
+              "run": {
+                "exit_code": 0,
+                "elapsed_ns": 2955545250,
+                "peak_resident_bytes": 179585024,
+                "timed_out": false,
+                "output_exceeded": false,
+                "stdout_sha256": "fe93897af9dbeff6b736e62bfdaff72452e1f864c75301e9888b638d9f298e36",
+                "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              },
+              "verification": {
+                "maturity": "MMAT_PREOPTIMIZED",
+                "preserved_reads": 8
+              }
+            },
+            {
+              "run": {
+                "exit_code": 0,
+                "elapsed_ns": 2974429417,
+                "peak_resident_bytes": 177913856,
+                "timed_out": false,
+                "output_exceeded": false,
+                "stdout_sha256": "02eccbf8e85bdccbb029f8422718fcca1adbc8baa5c1cc07e3ab162654b2fa8a",
+                "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              },
+              "verification": {
+                "maturity": "MMAT_GLBOPT3",
+                "preserved_reads": 8
+              }
+            }
+          ]
+        },
+        "i386": {
+          "verification": {
+            "captures_per_mode": 58,
+            "accepted_functions": 48,
+            "native_records": 6528,
+            "effect_comparisons": 6144,
+            "mutation_controls": 6,
+            "word_bytes": 4
+          },
+          "optimized": [
+            {
+              "run": {
+                "exit_code": 0,
+                "elapsed_ns": 2935887750,
+                "peak_resident_bytes": 144916480,
+                "timed_out": false,
+                "output_exceeded": false,
+                "stdout_sha256": "7a87c1c0e5f6971afb7899a37c2e2312f0b0472d93b5c00dcc07e805307f92f8",
+                "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              },
+              "verification": {
+                "maturity": "MMAT_PREOPTIMIZED",
+                "preserved_reads": 8
+              }
+            },
+            {
+              "run": {
+                "exit_code": 0,
+                "elapsed_ns": 2968090666,
+                "peak_resident_bytes": 145244160,
+                "timed_out": false,
+                "output_exceeded": false,
+                "stdout_sha256": "05904262b8fff8bf9810f6e0876e9088c62acb1a8ef8366f4638f563ecb68e65",
+                "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              },
+              "verification": {
+                "maturity": "MMAT_GLBOPT3",
+                "preserved_reads": 8
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "protected_initializer": {
+    "prior": {
+      "path": "build/vmp-relation-final-protected-prior/protected_region.json",
+      "sha256": "26da0a9b8e82ebd309f55a1734efd30d47cf2bfb4dc6f805f0088bebcb099eb6",
+      "run_report": {
+        "path": "build/vmp-relation-final-protected-prior/run.json",
+        "sha256": "6c2aebf4f9619af0fe0690bc60a6dda0b66838e833a295bf7195bdc9aa14e4a1"
+      },
+      "checks": 8,
+      "plugin_sha256": "52ee2040af647a3318c944aaebc48977df0b296910c962670822946fb8b845db",
+      "input_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+      "root": "0x1002946b5",
+      "nodes": 75,
+      "edges": 77,
+      "records": [
+        {
+          "flags_known": "0x0",
+          "flags_value": "0x0",
+          "kind": "setcc-value",
+          "outcome": "unknown",
+          "site": "0x1001d6c12",
+          "status": "unresolved",
+          "support": "0x10018aa94;0x10018aa9c;0x10018aaa3;0x10018aaa6;0x1001d6c0c;0x1001d6c0d;0x1001d6c0e;0x1001d6c0f;0x1001d6c12;0x1001d6c16;0x1001d6c19;0x1001d6c1c;0x1001d6c1f;0x1001d6c20;0x1001e80f7;0x1001e80f9;0x1001e80fd;0x1001e8101;0x1001e8104;0x1001e8107;0x1001e8108;0x1001e810b;0x10022ba7c;0x10022ba7f;0x100234f93;0x100234f9a;0x100234f9d;0x100234f9e;0x100234fa4;0x100234fa7;0x10024267b;0x10024267e;0x100248011;0x100248013;0x100248014;0x100248015;0x100248019;0x10024801a;0x10025c182;0x10025c185;0x10025c187;0x10025c18e;0x10025c195;0x10025c197;0x10025c19d;0x10025c1a1;0x10025c1a5;0x10025c1a6;0x10025c1ac;0x10025c1ad;0x10025c1b3;0x10025c1b9;0x10025c1ba;0x10025c1bd;0x10025c1be;0x10025c1c3;0x10025c1c6;0x10025c1cb;0x10025c1ce;0x10025d082;0x10025d088;0x10025d08b;0x10025d08f;0x10025d093;0x10025d09d;0x10025d0a0;0x10025d0a5;0x10025d0a9;0x1002946b5;0x1002946ba;0x1002946bf;0x1002946c3;0x1002946c7;0x1002946ca;0x1002946d1",
+          "truth": "static-region-fact",
+          "value": "unknown",
+          "width_bits": "8"
+        },
+        {
+          "flags_known": "0x0",
+          "flags_value": "0x0",
+          "kind": "setcc-value",
+          "outcome": "unknown",
+          "site": "0x100248015",
+          "status": "unresolved",
+          "support": "0x10018aa94;0x10018aa9c;0x10018aaa3;0x10018aaa6;0x1001d6c0c;0x1001d6c0d;0x1001d6c0e;0x1001d6c0f;0x1001d6c12;0x1001d6c16;0x1001d6c19;0x1001d6c1c;0x1001d6c1f;0x1001d6c20;0x1001e80f7;0x1001e80f9;0x1001e80fd;0x1001e8101;0x1001e8104;0x1001e8107;0x1001e8108;0x1001e810b;0x10022ba7c;0x10022ba7f;0x100234f93;0x100234f9a;0x100234f9d;0x100234f9e;0x100234fa4;0x100234fa7;0x10024267b;0x10024267e;0x100248011;0x100248013;0x100248014;0x100248015;0x100248019;0x10024801a;0x10025c182;0x10025c185;0x10025c187;0x10025c18e;0x10025c195;0x10025c197;0x10025c19d;0x10025c1a1;0x10025c1a5;0x10025c1a6;0x10025c1ac;0x10025c1ad;0x10025c1b3;0x10025c1b9;0x10025c1ba;0x10025c1bd;0x10025c1be;0x10025c1c3;0x10025c1c6;0x10025c1cb;0x10025c1ce;0x10025d082;0x10025d088;0x10025d08b;0x10025d08f;0x10025d093;0x10025d09d;0x10025d0a0;0x10025d0a5;0x10025d0a9;0x1002946b5;0x1002946ba;0x1002946bf;0x1002946c3;0x1002946c7;0x1002946ca;0x1002946d1",
+          "truth": "static-region-fact",
+          "value": "unknown",
+          "width_bits": "8"
+        },
+        {
+          "fallthrough": "0x10025d088",
+          "flags_known": "0x0",
+          "flags_value": "0x0",
+          "kind": "branch-condition",
+          "outcome": "unknown",
+          "site": "0x10025d082",
+          "status": "unresolved",
+          "support": "0x10018aa94;0x10018aa9c;0x10018aaa3;0x10018aaa6;0x1001d6c0c;0x1001d6c0d;0x1001d6c0e;0x1001d6c0f;0x1001d6c12;0x1001d6c16;0x1001d6c19;0x1001d6c1c;0x1001d6c1f;0x1001d6c20;0x1001e80f7;0x1001e80f9;0x1001e80fd;0x1001e8101;0x1001e8104;0x1001e8107;0x1001e8108;0x1001e810b;0x10022ba7c;0x10022ba7f;0x100234f93;0x100234f9a;0x100234f9d;0x100234f9e;0x100234fa4;0x100234fa7;0x10024267b;0x10024267e;0x100248011;0x100248013;0x100248014;0x100248015;0x100248019;0x10024801a;0x10025c182;0x10025c185;0x10025c187;0x10025c18e;0x10025c195;0x10025c197;0x10025c19d;0x10025c1a1;0x10025c1a5;0x10025c1a6;0x10025c1ac;0x10025c1ad;0x10025c1b3;0x10025c1b9;0x10025c1ba;0x10025c1bd;0x10025c1be;0x10025c1c3;0x10025c1c6;0x10025c1cb;0x10025c1ce;0x10025d082;0x10025d088;0x10025d08b;0x10025d08f;0x10025d093;0x10025d09d;0x10025d0a0;0x10025d0a5;0x10025d0a9;0x1002946b5;0x1002946ba;0x1002946bf;0x1002946c3;0x1002946c7;0x1002946ca;0x1002946d1",
+          "taken": "0x10024801a",
+          "target": "unknown",
+          "truth": "static-region-fact"
+        }
+      ],
+      "read_only": true
+    },
+    "new": {
+      "path": "build/vmp-relation-final-protected-new/protected_region.json",
+      "sha256": "9ae4fcb040908b7497ba35400ace41f5bb26b13427a0c12a87249dea3ff5f4c6",
+      "run_report": {
+        "path": "build/vmp-relation-final-protected-new/run.json",
+        "sha256": "c7a8ab78c439515b73cd8e40978d75d6155feb49157c71da7047a0b56340c8ef"
+      },
+      "checks": 8,
+      "plugin_sha256": "a69858d470b7c0bc6baa304b420c11ec1c9792fe022ec70de790561dd383ec4b",
+      "input_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+      "root": "0x1002946b5",
+      "nodes": 75,
+      "edges": 77,
+      "records": [
+        {
+          "condition_basis": "joined-flags",
+          "condition_widened": "false",
+          "flags_known": "0x0",
+          "flags_value": "0x0",
+          "kind": "setcc-value",
+          "outcome": "unknown",
+          "site": "0x1001d6c12",
+          "status": "unresolved",
+          "support": "0x10018aa94;0x10018aa9c;0x10018aaa3;0x10018aaa6;0x1001d6c0c;0x1001d6c0d;0x1001d6c0e;0x1001d6c0f;0x1001d6c12;0x1001d6c16;0x1001d6c19;0x1001d6c1c;0x1001d6c1f;0x1001d6c20;0x1001e80f7;0x1001e80f9;0x1001e80fd;0x1001e8101;0x1001e8104;0x1001e8107;0x1001e8108;0x1001e810b;0x10022ba7c;0x10022ba7f;0x100234f93;0x100234f9a;0x100234f9d;0x100234f9e;0x100234fa4;0x100234fa7;0x10024267b;0x10024267e;0x100248011;0x100248013;0x100248014;0x100248015;0x100248019;0x10024801a;0x10025c182;0x10025c185;0x10025c187;0x10025c18e;0x10025c195;0x10025c197;0x10025c19d;0x10025c1a1;0x10025c1a5;0x10025c1a6;0x10025c1ac;0x10025c1ad;0x10025c1b3;0x10025c1b9;0x10025c1ba;0x10025c1bd;0x10025c1be;0x10025c1c3;0x10025c1c6;0x10025c1cb;0x10025c1ce;0x10025d082;0x10025d088;0x10025d08b;0x10025d08f;0x10025d093;0x10025d09d;0x10025d0a0;0x10025d0a5;0x10025d0a9;0x1002946b5;0x1002946ba;0x1002946bf;0x1002946c3;0x1002946c7;0x1002946ca;0x1002946d1",
+          "truth": "static-region-fact",
+          "value": "unknown",
+          "width_bits": "8"
+        },
+        {
+          "condition_basis": "joined-flags",
+          "condition_widened": "false",
+          "flags_known": "0x0",
+          "flags_value": "0x0",
+          "kind": "setcc-value",
+          "outcome": "unknown",
+          "site": "0x100248015",
+          "status": "unresolved",
+          "support": "0x10018aa94;0x10018aa9c;0x10018aaa3;0x10018aaa6;0x1001d6c0c;0x1001d6c0d;0x1001d6c0e;0x1001d6c0f;0x1001d6c12;0x1001d6c16;0x1001d6c19;0x1001d6c1c;0x1001d6c1f;0x1001d6c20;0x1001e80f7;0x1001e80f9;0x1001e80fd;0x1001e8101;0x1001e8104;0x1001e8107;0x1001e8108;0x1001e810b;0x10022ba7c;0x10022ba7f;0x100234f93;0x100234f9a;0x100234f9d;0x100234f9e;0x100234fa4;0x100234fa7;0x10024267b;0x10024267e;0x100248011;0x100248013;0x100248014;0x100248015;0x100248019;0x10024801a;0x10025c182;0x10025c185;0x10025c187;0x10025c18e;0x10025c195;0x10025c197;0x10025c19d;0x10025c1a1;0x10025c1a5;0x10025c1a6;0x10025c1ac;0x10025c1ad;0x10025c1b3;0x10025c1b9;0x10025c1ba;0x10025c1bd;0x10025c1be;0x10025c1c3;0x10025c1c6;0x10025c1cb;0x10025c1ce;0x10025d082;0x10025d088;0x10025d08b;0x10025d08f;0x10025d093;0x10025d09d;0x10025d0a0;0x10025d0a5;0x10025d0a9;0x1002946b5;0x1002946ba;0x1002946bf;0x1002946c3;0x1002946c7;0x1002946ca;0x1002946d1",
+          "truth": "static-region-fact",
+          "value": "unknown",
+          "width_bits": "8"
+        },
+        {
+          "condition_basis": "joined-flags",
+          "condition_widened": "false",
+          "fallthrough": "0x10025d088",
+          "flags_known": "0x0",
+          "flags_value": "0x0",
+          "kind": "branch-condition",
+          "outcome": "unknown",
+          "site": "0x10025d082",
+          "status": "unresolved",
+          "support": "0x10018aa94;0x10018aa9c;0x10018aaa3;0x10018aaa6;0x1001d6c0c;0x1001d6c0d;0x1001d6c0e;0x1001d6c0f;0x1001d6c12;0x1001d6c16;0x1001d6c19;0x1001d6c1c;0x1001d6c1f;0x1001d6c20;0x1001e80f7;0x1001e80f9;0x1001e80fd;0x1001e8101;0x1001e8104;0x1001e8107;0x1001e8108;0x1001e810b;0x10022ba7c;0x10022ba7f;0x100234f93;0x100234f9a;0x100234f9d;0x100234f9e;0x100234fa4;0x100234fa7;0x10024267b;0x10024267e;0x100248011;0x100248013;0x100248014;0x100248015;0x100248019;0x10024801a;0x10025c182;0x10025c185;0x10025c187;0x10025c18e;0x10025c195;0x10025c197;0x10025c19d;0x10025c1a1;0x10025c1a5;0x10025c1a6;0x10025c1ac;0x10025c1ad;0x10025c1b3;0x10025c1b9;0x10025c1ba;0x10025c1bd;0x10025c1be;0x10025c1c3;0x10025c1c6;0x10025c1cb;0x10025c1ce;0x10025d082;0x10025d088;0x10025d08b;0x10025d08f;0x10025d093;0x10025d09d;0x10025d0a0;0x10025d0a5;0x10025d0a9;0x1002946b5;0x1002946ba;0x1002946bf;0x1002946c3;0x1002946c7;0x1002946ca;0x1002946d1",
+          "taken": "0x10024801a",
+          "target": "unknown",
+          "truth": "static-region-fact"
+        }
+      ],
+      "read_only": true
+    },
+    "original_fields_identical": true
+  },
+  "portable": {
+    "ctest": {
+      "path": "build/vmp-relation-final-ctest.log",
+      "sha256": "9c85e986b6dc9915d62a92919e05eace1c1ec3b0311920ada29c54bfb797a931"
+    },
+    "passed_suites": 21,
+    "condition_union_checks": 746496,
+    "alternative_capacity": 8,
+    "owned_node_limit": 64,
+    "ownerless_node_limit": 128,
+    "round_limit": 128,
+    "incoming_per_instruction_limit": 256
+  },
+  "provenance": {
+    "intel_sdm": {
+      "url": "https://cdrdv2-public.intel.com/874240/325462-090-sdm-vol-1-2abcd-3abcd-4.pdf",
+      "revision": "090",
+      "sha256": "3686e42931e893b5016c70fb131403795ef173237d073afcfec52755fcd3ea50",
+      "sections": [
+        "CMOVcc Volume 2A 3-160",
+        "Jcc Volume 2A 3-503",
+        "SETcc Volume 2B 4-623 and 4-624"
+      ]
+    },
+    "qemu_source": {
+      "url": "https://download.qemu.org/qemu-9.2.0.tar.xz",
+      "sha256": "f859f0bc65e1f533d040bbe8c92bcfecee5af2c921a6687c652fb44d089bd894",
+      "decoder_url": "https://github.com/qemu/qemu/blob/v9.2.0/target/i386/tcg/decode-new.c.inc",
+      "base_image_id": "sha256:7b1781979ac73774803cdcd1ce8797d345cbae204731e0e684c1d74e89bef654",
+      "build_log": {
+        "path": "build/vmp-relation-qemu-build.log",
+        "sha256": "60238d563fdd0899ff705869e4cdf0caccd05350e45fa17b04dc83b3b588de0e"
+      },
+      "built_recipe_sha256": "aab3cb16e0e2970083ce8640820ff3c515be21d65d2be17a793319f1c4db555a"
+    },
+    "qemu82_counterexample": {
+      "strict_report": {
+        "path": "build/vmp-relation-final-prior/relation_analysis.json",
+        "sha256": "6c60312b00593e2a74f270545fdcb62615d8c6ecc8bceb8ff1e839748ff585e8"
+      },
+      "trace": {
+        "path": "build/vmp-relation-qemu82-lock-strace.log",
+        "sha256": "6bf54e5a406748b09108b9ba098e80e7495e79f6beb0fc7a85a1a15637f30b6b"
+      },
+      "binary_sha256": "cb3695b117247653298259ce1afd1859f5cff692ff12fa0f17db2e7a7d152069",
+      "qemu_sha256": "25939c0dba72ea1b8124b583c00d7c9b9afa6b4cb38a182f5808f2ca31b3b566",
+      "child_exit_code": 99,
+      "oracle_exit_code": 5,
+      "expected_child_signal": "SIGILL",
+      "passed": false
+    }
+  },
+  "assumptions": [
+    "C1: represented abstract transfers overapproximate normal completions",
+    "C2: current bytes/entries/ownership and admitted prefixes/operands delimit condition validity",
+    "C3: literal Boolean execution contracts and independent IR effects define the selected fixtures",
+    "C4: recorded source/tool/translation identities bound comparisons; physical x86 hardware and broader protected gains unknown"
+  ],
+  "quality_gates": {
+    "QG1": "pass; see assumption register and self-red-team in VMP_RELATIONAL_CONDITIONS.md",
+    "QG2": "pass; see assumption register and self-red-team in VMP_RELATIONAL_CONDITIONS.md",
+    "QG3": "pass within the documented condition checkpoint; full review remains active",
+    "QG4": "pass; see assumption register and self-red-team in VMP_RELATIONAL_CONDITIONS.md",
+    "QG5": "pass; see assumption register and self-red-team in VMP_RELATIONAL_CONDITIONS.md",
+    "QG6": "pass; see assumption register and self-red-team in VMP_RELATIONAL_CONDITIONS.md",
+    "QG7": "pass; see assumption register and self-red-team in VMP_RELATIONAL_CONDITIONS.md"
+  }
+}

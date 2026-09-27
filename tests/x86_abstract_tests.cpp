@@ -837,6 +837,29 @@ void alternative_condition_regressions()
           "empty inputs cannot produce a vacuous branch fact");
     check(!evaluate_alternatives(Condition(16), disjunction, identity),
           "invalid condition codes cannot justify edge filtering");
+    FlowState first;
+    first.word.write(32, 0, 0, true);
+    first.flags = {ALL, CF};
+    chernobog::BoundedAlternatives<FlowState> domain(first);
+    const auto flags_at = [](const FlowState &state) { return state.flags; };
+    for (unsigned i = 1; i < 8; ++i)
+    {
+        FlowState next;
+        next.word.write(32, 0, i, true);
+        next.flags = {ALL, uint8_t(i & 1 ? ZF : CF)};
+        domain.join(chernobog::BoundedAlternatives<FlowState>(next));
+    }
+    check(!domain.widened() &&
+              evaluate_alternatives(Condition::below_equal, domain.states(), flags_at) == true &&
+              evaluate_alternatives(Condition::above, domain.states(), flags_at) == false,
+          "eight distinct states retain universal true and false compound predicates");
+    FlowState ninth;
+    ninth.word.write(32, 0, 8, true);
+    ninth.flags = {ALL, CF};
+    domain.join(chernobog::BoundedAlternatives<FlowState>(ninth));
+    check(domain.widened() &&
+              !evaluate_alternatives(Condition::below_equal, domain.states(), flags_at),
+          "nine-state widening conservatively loses a universally true relation");
     std::printf(
         "alternative condition unions: %zu; correlated, empty and invalid controls passed\n",
         cases);

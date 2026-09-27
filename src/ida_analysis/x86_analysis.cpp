@@ -1347,7 +1347,8 @@ std::vector<insn_t> prefix_before(const insn_t &insn, size_t depth)
         if (decode_insn(&decoded, previous) <= 0 || decoded.size == 0 ||
             previous > BADADDR - decoded.size || previous + decoded.size != cursor ||
             is_call_insn(decoded) || mode64(decoded) != mode64(insn) ||
-            mode32(decoded) != mode32(insn) || interior_or_excess_entry(decoded))
+            mode32(decoded) != mode32(insn) || interior_or_excess_entry(decoded) ||
+            (x86_condition(decoded.itype) && !x86_condition_prefix_supported(decoded)))
             break;
         // IDA marks PUSH-next as a block end in 32-bit code even when its sole
         // code edge is ordinary fallthrough. Include this architectural PUSH
@@ -1373,7 +1374,8 @@ using AlternativeState = BoundedAlternatives<State>;
 std::optional<bool> universal_branch(const insn_t &insn, const AlternativeState &domain)
 {
     const auto condition = x86_condition(insn.itype);
-    if (!condition || condition->use != X86ConditionUse::branch)
+    if (!condition || condition->use != X86ConditionUse::branch ||
+        !x86_condition_prefix_supported(insn))
         return std::nullopt;
     return evaluate_alternatives(condition->condition, domain.states(),
                                  [](const State &state) { return state.flags; });
@@ -1515,6 +1517,8 @@ std::optional<FlowFact<Domain>> flow_before(const insn_t &insn, size_t depth)
         const bool branch = condition && condition->use == X86ConditionUse::branch;
         const bool jump = instruction.itype == NN_jmp;
         const bool call = is_call_insn(instruction);
+        if (condition && !x86_condition_prefix_supported(instruction))
+            return std::nullopt;
         if (interior_or_excess_entry(instruction))
             return std::nullopt;
         if (!jump && !branch && !call && instruction.itype != NN_retn)
@@ -1642,6 +1646,11 @@ x86_abstract::Flags analyze_x86_flags_before(const insn_t &insn, size_t depth)
     return analyze_x86_flag_fact_before(insn, depth).flags;
 }
 
+bool x86_condition_prefix_supported(const insn_t &insn)
+{
+    return !(insn.auxpref & (aux_lock | aux_rep | aux_repne));
+}
+
 X86FlagFact analyze_x86_flag_fact_before(const insn_t &insn, size_t depth)
 {
     if (const auto flow = flow_before(insn, depth))
@@ -1655,6 +1664,29 @@ X86FlagFact analyze_x86_flag_fact_before(const insn_t &insn, size_t depth)
         result.support.push_back(it->ea);
     }
     result.flags = state.flags;
+    return result;
+}
+
+X86ConditionFact analyze_x86_condition_before(const insn_t &insn, size_t depth)
+{
+    const auto flags = analyze_x86_flag_fact_before(insn, depth);
+    X86ConditionFact result;
+    result.flags = flags.flags;
+    result.support = flags.support;
+    const auto condition = x86_condition(insn.itype);
+    if (!condition || !x86_condition_prefix_supported(insn))
+        return result;
+    result.value = evaluate(condition->condition, result.flags);
+    if (!result.value)
+        if (const auto flow = flow_before<AlternativeState>(insn, depth);
+            flow && flow->has_join && flow->reached)
+        {
+            result.value = evaluate_alternatives(condition->condition, flow->state.states(),
+                                                 [](const State &state) { return state.flags; });
+            result.support = flow->support;
+            result.alternatives = true;
+            result.widened = flow->state.widened();
+        }
     return result;
 }
 
@@ -1902,8 +1934,10 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         flow.jump = instruction.itype == NN_jmp;
         flow.call = is_call_insn(instruction);
         flow.ret = instruction.itype == NN_retn;
-        if ((instruction.itype == NN_lahf || instruction.itype == NN_sahf) &&
-            !exact_status_ah_encoding(instruction))
+        if (condition && !x86_condition_prefix_supported(instruction))
+            flow.stop = "unsupported_condition_prefix";
+        else if ((instruction.itype == NN_lahf || instruction.itype == NN_sahf) &&
+                 !exact_status_ah_encoding(instruction))
             flow.stop = "unsupported_status_ah_encoding";
         else if (accumulator_extension(instruction.itype) &&
                  !exact_accumulator_extension_encoding(instruction))
@@ -2205,7 +2239,20 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         const auto condition = x86_condition(instruction.itype);
         if (condition && control(instruction).stop.empty())
         {
-            const auto outcome = evaluate(condition->condition, state.flags);
+            auto outcome = evaluate(condition->condition, state.flags);
+            bool alternative_decision = false, widened = false;
+            if (!outcome && has_join)
+            {
+                ensure_alternatives();
+                if (alternatives && (*alternatives)[i])
+                {
+                    outcome =
+                        evaluate_alternatives(condition->condition, (*alternatives)[i]->states(),
+                                              [](const State &input) { return input.flags; });
+                    alternative_decision = outcome.has_value();
+                    widened = (*alternatives)[i]->widened();
+                }
+            }
             std::map<std::string, std::string> row{
                 {"site", hex(instruction.ea)},
                 {"truth", candidate_decode ? "conditional-byte-decode" : "static-region-fact"},
@@ -2216,6 +2263,9 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
                                                                        : "cmov-condition"},
                 {"flags_known", known},
                 {"flags_value", value},
+                {"condition_basis",
+                 alternative_decision ? "universal-alternatives" : "joined-flags"},
+                {"condition_widened", widened ? "true" : "false"},
                 {"support", support}};
             if (condition->use == X86ConditionUse::branch)
             {

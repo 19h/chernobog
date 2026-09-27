@@ -40,6 +40,7 @@ class Linux32:
             "files=['/usr/bin/i686-linux-gnu-gcc','/usr/bin/i686-linux-gnu-ld','/usr/bin/qemu-i386',"
             "'/usr/i686-linux-gnu/lib/ld-linux.so.2','/usr/i686-linux-gnu/lib/libc.so.6']; "
             "print(json.dumps({'sha256':{Path(p).name:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in files},"
+            "'qemu_version':subprocess.check_output(['/usr/bin/qemu-i386','--version'],text=True).splitlines(),"
             "'packages':subprocess.check_output(['dpkg-query','-W','gcc-i686-linux-gnu','binutils-i686-linux-gnu',"
             "'libc6-dev-i386-cross','libc6-i386-cross','qemu-user','python3'],text=True).splitlines()}))"
         )

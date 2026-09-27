@@ -21,6 +21,7 @@ import idautils
 sys.dont_write_bytecode = True
 report = {"checks": [], "errors": [], "owned": {}, "ownerless": {}}
 baseline = os.environ.get("CHERNOBOG_FEASIBILITY_BASELINE") == "1"
+relation_baseline = baseline or os.environ.get("CHERNOBOG_RELATIONAL_CONDITION_BASELINE") == "1"
 conditions = (
     "o",
     "no",
@@ -348,12 +349,15 @@ def main():
         compound = report["ownerless"]["bf_compound"]
         branches = [row for row in compound["records"] if row["kind"] == "branch-condition"]
         check(
-            "universal alternative predicate does not fabricate common flag bits",
-            len(branches) == 2 and branches[-1]["outcome"] == "unknown",
+            "universal alternative predicate retains unknown common flag bits",
+            len(branches) == 2
+            and branches[-1]["outcome"] == ("unknown" if relation_baseline else "true")
+            and not (int(branches[-1]["flags_known"], 0) & 9),
         )
         if not baseline:
             mutations(False)
         report["baseline"] = baseline
+        report["relational_condition_baseline"] = relation_baseline
     except BaseException as error:
         report["errors"].append(type(error).__name__)
         report["exception"] = [

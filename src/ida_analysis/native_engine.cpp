@@ -1397,8 +1397,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 if (!current)
                     break;
                 const auto fact =
-                    analyze_x86_flag_fact_before(instruction, size_t(config.flag_scan_depth));
-                const auto outcome = x86_abstract::evaluate(condition->condition, fact.flags);
+                    analyze_x86_condition_before(instruction, size_t(config.flag_scan_depth));
+                const auto outcome = fact.value;
                 current = outcome && proof.value && uint64_t(*outcome ? 1 : 0) == *proof.value &&
                           covered(fact.support);
                 row["kind"] = condition->use == X86ConditionUse::branch     ? "local-flag-branch"
@@ -1407,6 +1407,11 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 if (!current)
                     break;
                 row["condition_value"] = *outcome ? "true" : "false";
+                row["condition_basis"] =
+                    fact.alternatives ? "universal-alternatives" : "joined-or-prefix-flags";
+                row["condition_widened"] = fact.widened ? "true" : "false";
+                row["flags_known"] = hex(fact.flags.known);
+                row["flags_value"] = hex(fact.flags.value);
                 row["scan_depth"] = std::to_string(config.flag_scan_depth);
                 if (condition->use == X86ConditionUse::branch)
                     current =
@@ -1419,7 +1424,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                     row["width_bits"] = "8";
                 }
                 row["assumption"] =
-                    "bounded owned-graph or single-entry flag analysis; SETcc byte writes and CMOV memory/partial-register effects retained";
+                    "bounded owned-graph or single-entry condition analysis; universal alternatives may decide truth without common flag bits; SETcc byte writes and CMOV memory/partial-register effects retained";
                 break;
             }
             default:
@@ -2452,9 +2457,9 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         const auto condition = x86_condition(instruction.itype);
         if (!condition)
             return false;
-        const auto fact = analyze_x86_flag_fact_before(instruction, size_t(config.flag_scan_depth));
+        const auto fact = analyze_x86_condition_before(instruction, size_t(config.flag_scan_depth));
         const auto flags = fact.flags;
-        const auto outcome = x86_abstract::evaluate(condition->condition, flags);
+        const auto outcome = fact.value;
         if (!outcome)
         {
             const auto old = native_proofs.find(instruction.ea);
@@ -2484,10 +2489,10 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         {
             record_proof(std::move(proof), before,
                          condition->use == X86ConditionUse::set_byte
-                             ? (*outcome ? "SETcc byte result 1 (locally proven flags)"
-                                         : "SETcc byte result 0 (locally proven flags)")
-                             : (*outcome ? "CMOVcc condition true (locally proven flags)"
-                                         : "CMOVcc condition false (locally proven flags)"));
+                             ? (*outcome ? "SETcc byte result 1 (locally proven condition)"
+                                         : "SETcc byte result 0 (locally proven condition)")
+                             : (*outcome ? "CMOVcc condition true (locally proven condition)"
+                                         : "CMOVcc condition false (locally proven condition)"));
             // Facts alone do not authorize deletion of memory access, partial
             // register writes, or the processor module's normal emulation.
             return false;
@@ -2526,8 +2531,9 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         }
         plan_ea(selected);
         qstring comment;
-        comment.sprnt("%s (locally proven x86 flags; known=%02X value=%02X)",
+        comment.sprnt("%s (locally proven x86 condition; basis=%s; known=%02X value=%02X)",
                       decision == BranchDecision::Taken ? "always taken" : "never taken",
+                      fact.alternatives ? "universal-alternatives" : "joined-or-prefix-flags",
                       unsigned(flags.known), unsigned(flags.value));
         if (!record_proof(std::move(proof), before, comment.c_str()))
             return false;
@@ -2734,9 +2740,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             const auto condition = x86_condition(instruction.itype);
             if (!condition || condition->use != X86ConditionUse::branch)
                 continue;
-            const auto flags =
-                analyze_x86_flags_before(instruction, size_t(config.flag_scan_depth));
-            const auto outcome = x86_abstract::evaluate(condition->condition, flags);
+            const auto outcome =
+                analyze_x86_condition_before(instruction, size_t(config.flag_scan_depth)).value;
             if (!outcome || *outcome)
                 continue;
             const ea_t continuation = instruction.ea + instruction.size;

@@ -1240,7 +1240,7 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
         const auto condition = x86_condition(codegen.insn.itype);
         if (!condition || condition->use == X86ConditionUse::branch ||
             (!mode32(codegen.insn) && !mode64(codegen.insn)) ||
-            (codegen.insn.auxpref & (aux_lock | aux_rep | aux_repne)) != 0)
+            !x86_condition_prefix_supported(codegen.insn))
             return std::nullopt;
         const auto *owner = get_func(codegen.insn.ea);
         if (owner == nullptr || owner->start_ea != codegen.mba->entry_ea)
@@ -1268,7 +1268,7 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
         }
         // Recompute from the current IDB on every generation. Persisted comments
         // and value facts are neither an authority nor a cache for this filter.
-        const auto fact = analyze_x86_flag_fact_before(codegen.insn, config.condition_scan_depth);
+        const auto fact = analyze_x86_condition_before(codegen.insn, config.condition_scan_depth);
         for (const auto address : fact.support)
         {
             insn_t supporting;
@@ -1278,7 +1278,7 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
                 (supporting.auxpref & (aux_lock | aux_rep | aux_repne)) != 0)
                 return std::nullopt;
         }
-        return x86_abstract::evaluate(condition->condition, fact.flags);
+        return fact.value;
     }
 
     merror_t apply_condition(codegen_t &codegen, bool value)
