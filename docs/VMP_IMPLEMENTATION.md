@@ -1065,3 +1065,19 @@ The 32-key quota/reset controls, 432 current capture mutations and all 21 CTest
 suites pass. See `VMP_PROTECTED_MBA_DIAGNOSTICS.md` and its evidence JSON.
 Ownership availability, default-profile latency, complete miss classification,
 literal/edge accuracy and the original review remain in progress or unknown.
+
+## Native function metadata callback latency checkpoint
+
+Routine IDA function updates now filter unrelated native proofs and reuse
+attribute-independent condition, stack-transfer and materialization publications.
+CALL/RET ownership leases still rederive their conclusions. New code inventory
+revokes affected value proofs synchronously; explicit analysis and inspection
+retain full revalidation. A read-only statistics API separates measurement from
+analysis. On the same formerly stalled i386 virtualization fixture, the prior
+installed artifact times out at 120 s and the corrected candidate completes in
+30.860 s. The default-profile matrix passes 40/40 processes (20 with the native
+engine enabled), with owners and SDK refusals retained as explicit outcomes.
+Metadata controls, owned dataflow, get-PC leases, condition lifecycle and all
+21 CTest suites pass. See `VMP_NATIVE_METADATA_UPDATES.md` and its evidence JSON
+for attribution, assumptions and bounded conclusions. General latency,
+protected-function equivalence and the full review remain unknown or in progress.

@@ -24,6 +24,8 @@ SOURCES = (
     "src/deobf/handlers/mba_simplify.cpp",
     "src/deobf/rules/rule_registry.cpp",
     "src/plugin/idc_api.cpp",
+    "src/ida_analysis/native_engine.cpp",
+    "src/ida_analysis/native_engine.hpp",
     "tests/catalog_tests.cpp",
 )
 
@@ -109,12 +111,21 @@ def load_corpus(path, pins):
     return corpus, binaries
 
 
-def check_probe(probe, entries, disabled, legacy):
+def check_probe(probe, entries, disabled, legacy, native_disabled=True):
     require(
         probe["passed"] and not probe["errors"] and probe["transformations_disabled"] == disabled,
         "SDK capture failed",
     )
-    require(probe["native_analysis_disabled"], "native analysis profile")
+    require(probe["native_analysis_disabled"] == native_disabled, "native analysis profile")
+    if not native_disabled:
+        native = probe["native_statistics"]
+        require(
+            native["enabled"] == int(not disabled) and native["ran"] == 0,
+            "native engine enabled attribution",
+        )
+        require(
+            all(type(value) is int and value >= 0 for value in native.values()), "native statistic"
+        )
     require(
         len(probe["entries"]) == 2 and {r["name"] for r in probe["entries"]} == set(entries),
         "SDK entry population",
@@ -230,14 +241,14 @@ def check_native_entries(probe, binary):
             require(row["direct_target"] is None, "unsupported direct entry form")
 
 
-def controls(probe, entries, disabled, legacy, binary):
+def controls(probe, entries, disabled, legacy, binary, native_disabled=True):
     trials = []
 
     def run(label, change):
         altered = copy.deepcopy(probe)
         change(altered)
         try:
-            check_probe(altered, entries, disabled, legacy)
+            check_probe(altered, entries, disabled, legacy, native_disabled)
             check_native_entries(altered, binary)
         except (ValueError, KeyError):
             trials.append(label)
@@ -247,7 +258,15 @@ def controls(probe, entries, disabled, legacy, binary):
     run("duplicate entry", lambda p: p["entries"].append(copy.deepcopy(p["entries"][0])))
     run("changed entry", lambda p: p["entries"][0].update(entry=0))
     run("changed profile", lambda p: p.update(transformations_disabled=not disabled))
-    run("changed native analysis profile", lambda p: p.update(native_analysis_disabled=False))
+    run(
+        "changed native analysis profile",
+        lambda p: p.update(native_analysis_disabled=not native_disabled),
+    )
+    if not native_disabled:
+        run(
+            "changed native engine attribution",
+            lambda p: p["native_statistics"].update(enabled=int(disabled)),
+        )
     run("missing entry", lambda p: p["entries"].pop())
     run("changed entry bytes", lambda p: p["entries"][0].update(entry_bytes="00"))
     body = next((i for i, row in enumerate(probe["entries"]) if row["body"] is not None), None)
@@ -279,7 +298,7 @@ def controls(probe, entries, disabled, legacy, binary):
     return trials
 
 
-def paired_summary(runs):
+def paired_summary(runs, native_disabled=True):
     profiles = {}
     for run in runs:
         key = run["architecture"], run["label"], run["disabled"]
@@ -298,23 +317,28 @@ def paired_summary(runs):
                 require((before is None) == (after is None), "paired body population")
                 if before is None:
                     continue
-                require(
-                    all(
-                        before.get(k) == after.get(k)
-                        for k in ("entry", "owner", "status", "native_chunks")
-                    ),
-                    "paired native ownership/bytes",
+                ownership_equal = all(
+                    before.get(k) == after.get(k)
+                    for k in ("entry", "owner", "status", "native_chunks")
                 )
+                require(before["entry"] == after["entry"], "paired native entry")
+                if native_disabled:
+                    require(ownership_equal, "paired native ownership/bytes")
                 pair = {
                     "architecture": architecture,
                     "label": label,
                     "name": baseline["name"],
                     "kind": kind,
                     "status": after["status"],
+                    "off_status": before["status"],
+                    "native_ownership_equal": ownership_equal,
                     "stages": [],
                 }
                 pairs.append(pair)
                 totals[kind + "_" + after["status"]] += 1
+                if not ownership_equal:
+                    totals["native_ownership_changed"] += 1
+                    continue
                 require(len(before["stages"]) == len(after["stages"]), "paired stage population")
                 for left, right in zip(before["stages"], after["stages"]):
                     require(left["maturity"] == right["maturity"], "paired stage maturity")
@@ -346,7 +370,7 @@ def paired_summary(runs):
     return {
         "counts": dict(totals),
         "pairs": pairs,
-        "scope": "recorded SDK shapes and unchanged native owners/bytes; no semantic equivalence or alias-identity claim",
+        "scope": "recorded SDK shapes at matching native owners/bytes; ownership changes counted separately; no semantic equivalence or alias-identity claim",
     }
 
 
@@ -357,6 +381,7 @@ def main():
     parser.add_argument("--plugin", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--legacy-reasons", action="store_true")
+    parser.add_argument("--native-analysis", action="store_true")
     parser.add_argument(
         "--timeout", type=int, default=300, help="Per-process wall-clock cap in seconds"
     )
@@ -368,7 +393,7 @@ def main():
         "passed": False,
         "runs": [],
         "legacy_reasons": args.legacy_reasons,
-        "native_analysis_disabled": True,
+        "native_analysis_disabled": not args.native_analysis,
         "process_timeout_seconds": args.timeout,
     }
     try:
@@ -419,9 +444,11 @@ def main():
                 destination,
                 "--set",
                 "CHERNOBOG_MBA_CORPUS_ENTRIES=" + json.dumps(corpus["selected_functions"]),
-                "--set",
-                "CHERNOBOG_IDA_ANALYSIS=0",
             ]
+            if not args.native_analysis:
+                command += ["--set", "CHERNOBOG_IDA_ANALYSIS=0"]
+            else:
+                command += ["--set", "CHERNOBOG_CAPTURE_NATIVE_STATS=1"]
             if disabled:
                 command += ["--set", "CHERNOBOG_DISABLE=1"]
             if args.legacy_reasons:
@@ -449,7 +476,13 @@ def main():
             )
             probe = json.loads((destination / "protected_mba.json").read_text())
             require(probe["architecture"] == corpus["architecture"], "SDK architecture")
-            totals = check_probe(probe, corpus["selected_functions"], disabled, args.legacy_reasons)
+            totals = check_probe(
+                probe,
+                corpus["selected_functions"],
+                disabled,
+                args.legacy_reasons,
+                not args.native_analysis,
+            )
             check_native_entries(probe, path.parent / label)
             manifest = json.loads((destination / "run.json").read_text())
             require(
@@ -467,12 +500,14 @@ def main():
                 "binary_sha256": sha,
                 "measurement": measurement,
                 "counts": totals,
+                "native_statistics": probe.get("native_statistics"),
                 "mutation_controls": controls(
                     probe,
                     corpus["selected_functions"],
                     disabled,
                     args.legacy_reasons,
                     path.parent / label,
+                    not args.native_analysis,
                 ),
                 "artifact_sha256": {
                     relative(destination / name): digest(destination / name)
@@ -491,7 +526,7 @@ def main():
                 )
         require(len(report["runs"]) == 40, "SDK run population")
         require(not any("failure" in row for row in report["runs"]), "SDK process failed")
-        report["paired"] = paired_summary(report["runs"])
+        report["paired"] = paired_summary(report["runs"], not args.native_analysis)
         for row in report["runs"]:
             for name, sha in row["artifact_sha256"].items():
                 pins[ROOT / name] = sha

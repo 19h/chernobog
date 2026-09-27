@@ -43,6 +43,13 @@ struct NativeAnalysisStats
     size_t post_scan_functions = 0;
     size_t direct_jump_decode_attempts = 0;
     size_t direct_jump_targets_decoded = 0;
+    size_t function_updates_scoped = 0;
+    size_t function_updates_global = 0;
+    size_t proof_revalidation_calls = 0;
+    size_t proof_revalidation_checks = 0;
+    size_t proof_revalidation_skipped = 0;
+    size_t proof_metadata_reuses = 0;
+    size_t item_topology_invalidations = 0;
     bool direct_jump_decode_truncated = false;
     bool post_scan_truncated = false;
 };

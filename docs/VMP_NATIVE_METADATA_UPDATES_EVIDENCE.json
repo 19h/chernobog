@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-09-27",
+  "scope": "Function attribute callback filtering and native value proof reuse; protected-function and logical-VM equivalence remain unknown",
+  "predecessor_commit": "5b59849303e99be0c38387bb29658c18491df9b5",
+  "candidate_plugin_sha256": "1a72df7bd99a2cd54beb1ce9160d0e09741118c73e2acf7633168d33c7bf9bef",
+  "prior_installed_plugin_sha256": "c2f5349511b577e70363ff783229c67d93b39fe44c00f45a737eb984f48ef32d",
+  "ida_executable_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "ida_components_sha256": {
+    "<ida>/libida.dylib": "c723167ed12fcb001774e10cb5a05035c96858da1b2a6c5761e553c6346e78ab",
+    "<ida>/libidalib.dylib": "0bb76152d5ce1b164d1715d289f17ee7db87a74ee1e5223fd232829ed33855d8",
+    "<ida>/procs/pc.dylib": "09165b45c585c5c156797a9bd0ca5147f33ee99f12b82a6130fd7cc07707b43d",
+    "<ida>/plugins/hexx64.dylib": "6d0ad64715eeb88966091e2df788b3d1283546a95b4b1002c2bb11918bfa4caf",
+    "<ida>/plugins/goomba.dylib": "fd9c98d862bdd08753c12fca2a5319a67ecbb45161b1cd00600f4047c8f835ec",
+    "<ida>/cfg/goomba.cfg": "cf3eea65229dde0a2028eeb74debab36f30419f3bb0385f87e36cbee2945ccb5"
+  },
+  "source_sha256": {
+    "tests/run_protected_mba_corpus.py": "3c7e880f159823dfc7c30e61840bb7c8566abb342d0bcddedf2b87b33b8b68cd",
+    "tests/ida_protected_mba_probe.py": "123e9eb948e41370e9fb3ea12f0191263e70000086160461d3bd94f3b1767307",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "src/deobf/rules/rule_verifier.cpp": "2a62e22ba38e291e1b9ba70dd9e4a981477644b38ec064a576d5a50e682daa54",
+    "src/deobf/rules/rule_verifier.h": "7491159c494acc7d8f8575490dda23596c8f6d0efe61ff70fdc8da21f6923c68",
+    "src/deobf/handlers/mba_simplify.cpp": "963a4d6c46addea208eeddafe58dfa53f48da662eb36a369c7754141df3d5b24",
+    "src/deobf/rules/rule_registry.cpp": "c208ae7bba6674f153f9d78be11e572e4ad1246e04b9458e556fc20759421abe",
+    "src/plugin/idc_api.cpp": "d8a515ec8ef54d38c0c8f1c434d136988f672c51eb453820f7faefbe07d93cae",
+    "src/ida_analysis/native_engine.cpp": "995356e62376bb5f87835f85024ab189723c1fda5c23d793c06c28108cbc222a",
+    "src/ida_analysis/native_engine.hpp": "e4095ac715da3f9635bdea7be21d58ccccf2b8f7e6988d93aadc70c00aa9fc65",
+    "tests/catalog_tests.cpp": "dde175441c2f67ed26d9873718ab6c09a12538fc7c0e6c078f5cdfa073c31562",
+    "tests/ida_native_metadata_probe.py": "39c0e36f296aefe21f663188e193d92239aa0c29f4181ce41bb75bf56e2b2bae",
+    "tests/ida_dataflow_probe.py": "e8f3a295fc4ee4b0880038fbcfc2126b03030e1bf45a7896c6bc0729daa53e28",
+    "tests/ida_get_pc_region_probe.py": "308b4f1d67181c2d9a335b415092946865488030b04200636beda02937e30e5e",
+    "tests/run_condition_lifecycle.py": "1d9f97b9270d22684f0fed6f1015650cc2cc1ce873184e102ae9700b7b8e4e4d"
+  },
+  "sdk_contract_sha256": {
+    "funcs.hpp": "070b6b81609709ab2cfe8704500ea44f9f95139cfb56a745cb0f586d92e11a91",
+    "idp.hpp": "8a3b67a46a2dc4a9ee54c70492a5de1bb21fc694ebfc46def6efcaef7454a898"
+  },
+  "protected_matrix": {
+    "report": {
+      "path": "build/native-update-default-matrix-v3/protected_mba_analysis.json",
+      "sha256": "fda87f6d783c08b31ffc07e547083457924a637382e5f56bd9a0356fef24d172"
+    },
+    "processes": 40,
+    "native_engine_enabled_processes": 20,
+    "process_timeout_seconds": 120,
+    "maximum_elapsed_ns": 30859944583,
+    "paired_counts": {
+      "entry_owned": 40,
+      "paired_stages": 228,
+      "on_captured": 227,
+      "captured_shape_equal": 222,
+      "body_owned": 17,
+      "captured_shape_changed": 5,
+      "body_entry_inside_owner": 1,
+      "on_sdk_refused": 1,
+      "body_ownerless": 18
+    },
+    "negative_capture_controls": 472
+  },
+  "same_input_default_case": {
+    "architecture": "i386",
+    "label": "virtualization-12648430",
+    "binary_sha256": "d804f18b479c2cd2a66b076eda094e2fb67eb0c0dad750efaf6254d887b8ffdb",
+    "prior": {
+      "path": "build/native-update-default-prior-120s/measurement.json",
+      "sha256": "1d79de1aba05f357533026367b1c89250cf244a94b4e3deb3a806d6169a0ad31"
+    },
+    "prior_measurement": {
+      "exit_code": -9,
+      "elapsed_ns": 120021502958,
+      "peak_resident_bytes": 29212672,
+      "timed_out": true,
+      "output_exceeded": false,
+      "stdout_sha256": "bdc3b6851e17cd9ec6270ff6794dab7b639e210c5257d4c6312fde3653fd91c3",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "prior_capture_exists": false,
+    "candidate_measurement": {
+      "exit_code": 0,
+      "elapsed_ns": 30859944583,
+      "peak_resident_bytes": 149848064,
+      "timed_out": false,
+      "output_exceeded": false,
+      "stdout_sha256": "83d6fe804096a1e2841eb3144cbe55cbb9e6396f7c152841e29c9c690baa1883",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "candidate_native_statistics": {
+      "enabled": 1,
+      "ran": 0,
+      "function_updates_scoped": 141564,
+      "function_updates_global": 2,
+      "proof_revalidation_calls": 143514,
+      "proof_revalidation_checks": 420021,
+      "proof_revalidation_skipped": 27725302,
+      "proof_metadata_reuses": 9502530,
+      "item_topology_invalidations": 207070
+    },
+    "latency_scope": "one censored prior observation and one final candidate observation; no latency distribution or universal speedup claim"
+  },
+  "metadata_controls": [
+    {
+      "architecture": "x86_64",
+      "checks": 19,
+      "report": {
+        "path": "build/native-update-metadata-x64-v4/native_metadata.json",
+        "sha256": "3ca1b5e9f4f56f252d1cc8973512e115232856f1c1be7de0a67e2b22e61a5946"
+      },
+      "manifest": {
+        "path": "build/native-update-metadata-x64-v4/run.json",
+        "sha256": "ef7f881d4b8e2a9c2a12dfc6849190d5108031aa4e9c049d365974a77d9e9c85"
+      }
+    },
+    {
+      "architecture": "i386",
+      "checks": 19,
+      "report": {
+        "path": "build/native-update-metadata-i386-v4/native_metadata.json",
+        "sha256": "4741959c07c79b6fac89d4f3272b4e7b592405881509e60775bb677cd7184b5f"
+      },
+      "manifest": {
+        "path": "build/native-update-metadata-i386-v4/run.json",
+        "sha256": "957bcccfffd96dbbc1b187d710aadfbbe3601f0d9f00a94194aac97055c188e7"
+      }
+    }
+  ],
+  "owned_dataflow_controls": [
+    {
+      "architecture": "x86_64",
+      "checks": 479,
+      "report": {
+        "path": "build/native-update-owned-x64-final/dataflow.json",
+        "sha256": "1c1ed33b4e08730205ab7fcb989222e662cbcd571bf67840af7adeff5574df7b"
+      },
+      "manifest": {
+        "path": "build/native-update-owned-x64-final/run.json",
+        "sha256": "562de23c897b7e81e071720bd87411622df50afc040a42998b6f1495421a63ee"
+      }
+    },
+    {
+      "architecture": "i386",
+      "checks": 412,
+      "report": {
+        "path": "build/native-update-owned-i386-final/dataflow.json",
+        "sha256": "64f09a84cdd273d30d61d2167820e03aebaf54a730b24f9925f52b6f3c96b6df"
+      },
+      "manifest": {
+        "path": "build/native-update-owned-i386-final/run.json",
+        "sha256": "7cd0361a859a3a3ce10b0c65caabf77f85dbd0d976fe51efb9ec4f48a270c0ee"
+      }
+    }
+  ],
+  "get_pc_controls": {
+    "report": {
+      "path": "build/native-update-getpc-regression.json",
+      "sha256": "990592f8d98fdb47ea2ead3df08749868b75bdb587b72cbab535ea7289ea4980"
+    },
+    "write_processes": [
+      {
+        "bits": 32,
+        "checks": 11,
+        "report": {
+          "path": "build/native-update-getpc-32-write/get_pc_region.json",
+          "sha256": "ee067296f29aed8820538429abec4f33ae379a189ba939888cfef023070597f7"
+        },
+        "manifest": {
+          "path": "build/native-update-getpc-32-write/run.json",
+          "sha256": "277e9178c5a7ebefcca05396b472f949e67a595baba1313a38bf216d0b5a906c"
+        }
+      },
+      {
+        "bits": 64,
+        "checks": 11,
+        "report": {
+          "path": "build/native-update-getpc-64-write/get_pc_region.json",
+          "sha256": "e7b69a93c67713e80aa44835e94328da0b222ef79c054228ee7d20f528dd6eba"
+        },
+        "manifest": {
+          "path": "build/native-update-getpc-64-write/run.json",
+          "sha256": "dc7f0e7908d490c21abb569fe5c25fe82f7eb3f22a95e31ff715b2179300f5a0"
+        }
+      }
+    ],
+    "processes": 16,
+    "checks": 146
+  },
+  "condition_lifecycle": {
+    "report": {
+      "path": "build/native-update-condition-lifecycle-final/condition_lifecycle_analysis.json",
+      "sha256": "b65a57e52d3037aeb67867b62c34d5f995d2f15d706531817f698a82257723a8"
+    },
+    "processes": 14,
+    "checks": 14050,
+    "independent_ir_effect_checks": 3528
+  },
+  "ctest": {
+    "report": {
+      "path": "build/native-update-ctest-final.log",
+      "sha256": "4593cc96922305ef0f8168d207f7201c8a89bf95be909ffa4c9e01e10bf12293"
+    },
+    "passed_suites": 21
+  },
+  "unknowns": [
+    "Physical x86 execution",
+    "Other IDA SDK versions and callback implementations",
+    "Database mutations bypassing SDK notifications",
+    "Whole protected-function equivalence and full review completion"
+  ]
+}

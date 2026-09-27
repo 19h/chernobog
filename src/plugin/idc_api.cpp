@@ -940,20 +940,20 @@ error_t idaapi idc_native_opaque(idc_value_t *, idc_value_t *r)
 // Re-runs the one-shot native enrichment engine and reports its cumulative
 // per-database counters.
 //--------------------------------------------------------------------------
-error_t idaapi idc_native_analysis(idc_value_t *, idc_value_t *r)
+error_t native_stats_result(idc_value_t *r, bool run_analysis)
 {
     Host *host = current_host();
     ida_analysis::NativeAnalysisEngine *engine =
         host != nullptr ? host->native_analysis_engine() : nullptr;
     const bool enabled = engine != nullptr && engine->enabled();
-    if (enabled)
+    if (enabled && run_analysis)
         engine->on_autoanalysis_complete();
 
     const ida_analysis::NativeAnalysisStats fallback;
     const ida_analysis::NativeAnalysisStats &stats = engine != nullptr ? engine->stats() : fallback;
 
     make_object(r);
-    set_bool(r, "ran", enabled);
+    set_bool(r, "ran", enabled && run_analysis);
     set_bool(r, "enabled", enabled);
     set_size(r, "redundant_prefixes", stats.redundant_prefixes);
     set_size(r, "get_pc_gadgets", stats.get_pc_gadgets);
@@ -972,8 +972,25 @@ error_t idaapi idc_native_analysis(idc_value_t *, idc_value_t *r)
     set_bool(r, "post_scan_truncated", stats.post_scan_truncated);
     set_size(r, "direct_jump_decode_attempts", stats.direct_jump_decode_attempts);
     set_size(r, "direct_jump_targets_decoded", stats.direct_jump_targets_decoded);
+    set_size(r, "function_updates_scoped", stats.function_updates_scoped);
+    set_size(r, "function_updates_global", stats.function_updates_global);
+    set_size(r, "proof_revalidation_calls", stats.proof_revalidation_calls);
+    set_size(r, "proof_revalidation_checks", stats.proof_revalidation_checks);
+    set_size(r, "proof_revalidation_skipped", stats.proof_revalidation_skipped);
+    set_size(r, "proof_metadata_reuses", stats.proof_metadata_reuses);
+    set_size(r, "item_topology_invalidations", stats.item_topology_invalidations);
     set_bool(r, "direct_jump_decode_truncated", stats.direct_jump_decode_truncated);
     return eOk;
+}
+
+error_t idaapi idc_native_analysis(idc_value_t *, idc_value_t *r)
+{
+    return native_stats_result(r, true);
+}
+
+error_t idaapi idc_native_stats(idc_value_t *, idc_value_t *r)
+{
+    return native_stats_result(r, false);
 }
 
 //--------------------------------------------------------------------------
@@ -1920,6 +1937,8 @@ const idc_entry_t idc_entries[] = {
      "Run pre-lifting opaque predicate resolution"},
     {"chernobog_native_analysis", idc_native_analysis, args_none, "chernobog_native_analysis()",
      "Run native IDA analysis enrichment and report its counters"},
+    {"chernobog_native_stats", idc_native_stats, args_none, "chernobog_native_stats()",
+     "Snapshot native analysis counters without running analysis"},
     {"chernobog_early_stats", idc_early_stats, args_none, "chernobog_early_stats()",
      "Cumulative early Hex-Rays pass counters"},
 

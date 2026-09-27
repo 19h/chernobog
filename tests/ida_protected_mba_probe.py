@@ -81,6 +81,29 @@ def statistics():
     return result
 
 
+def native_statistics():
+    value = ida_expr.idc_value_t()
+    assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_stats()")
+    result = {}
+    for name in (
+        "enabled",
+        "ran",
+        "function_updates_scoped",
+        "function_updates_global",
+        "proof_revalidation_calls",
+        "proof_revalidation_checks",
+        "proof_revalidation_skipped",
+        "proof_metadata_reuses",
+        "item_topology_invalidations",
+    ):
+        field = ida_expr.idc_value_t()
+        assert not ida_expr.get_idcv_attr(field, value, name)
+        result[name] = int(field.i64)
+    assert result["enabled"] == int(os.environ.get("CHERNOBOG_DISABLE") != "1")
+    assert result["ran"] == 0
+    return result
+
+
 class Quota(Exception):
     pass
 
@@ -253,6 +276,9 @@ try:
             row["body"] = capture_entry(capture, name + ":direct_target", target)
     report["capture_nodes"] = capture.nodes
     report["capture_text_bytes"] = capture.text_bytes
+    if os.environ.get("CHERNOBOG_CAPTURE_NATIVE_STATS") == "1":
+        report["native_statistics"] = native_statistics()
+        assert report["native_statistics"] == native_statistics(), "statistics query ran analysis"
     report["passed"] = True
 except BaseException as error:
     report["errors"].append(type(error).__name__ + ": " + str(error))

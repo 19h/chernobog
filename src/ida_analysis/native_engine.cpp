@@ -471,6 +471,130 @@ struct NativeMutationGuard
     ~NativeMutationGuard() { --depth; }
 };
 
+// A routine function metadata update does not change an unrelated function's
+// value graph. Keep byte/owner dependencies, cross-function gadget leases and
+// shared-tail parents in its affected set. Ambiguous events use the full sweep.
+struct FunctionUpdateScope
+{
+    ea_t first = BADADDR, end = BADADDR;
+    std::set<ea_t> owners;
+
+    bool affects(const NativeProof &proof) const
+    {
+        const auto address = [&](ea_t ea) { return ea >= first && ea < end; };
+        if (address(proof.source) || address(proof.site) || address(proof.context_call) ||
+            owners.count(proof.owned_noreturn_function) != 0)
+            return true;
+        if (proof.owned_donor_function && (owners.count(proof.owned_donor_function->owner) != 0 ||
+                                           address(proof.owned_donor_function->start)))
+            return true;
+        for (const auto &dependency : proof.dependencies)
+            if (owners.count(dependency.owner) != 0 ||
+                (dependency.first < end && first < dependency.first + dependency.bytes.size()))
+                return true;
+        return false;
+    }
+};
+
+bool is_value_proof(const NativeProof &proof)
+{
+    if (proof.owned_noreturn_function != BADADDR || proof.owned_donor_function ||
+        proof.context_call != BADADDR)
+        return false;
+    return proof.kind == NativeProof::Kind::Condition ||
+           proof.kind == NativeProof::Kind::StackTransfer ||
+           proof.kind == NativeProof::Kind::Materialization;
+}
+
+std::optional<FunctionUpdateScope> item_update_scope(ea_t first, ea_t end)
+{
+    if (first == BADADDR || end <= first)
+        return std::nullopt;
+    FunctionUpdateScope result;
+    result.first = first;
+    result.end = end;
+    // Item notifications cover at most sixteen bytes here. Include every
+    // owner crossed by the item, including shared-tail parents.
+    for (ea_t address = first; address < end; ++address)
+    {
+        const func_t *owner = get_func(address);
+        if (owner != nullptr)
+            result.owners.insert(owner->start_ea);
+#if IDA_SDK_VERSION >= 940
+        func_tail_info_t tail;
+        if (get_func_tail_info(&tail, address))
+        {
+            const size_t parents = get_tail_referer_qty(address);
+            if (parents == 0 || parents > 4096)
+                return std::nullopt;
+            for (size_t index = 0; index < parents; ++index)
+            {
+                const ea_t parent = get_tail_referer(address, index);
+                if (parent == BADADDR)
+                    return std::nullopt;
+                result.owners.insert(parent);
+            }
+        }
+#else
+        const func_t *chunk = get_fchunk(address);
+        if (chunk != nullptr && (chunk->flags & FUNC_TAIL) != 0)
+            return std::nullopt;
+#endif
+    }
+    return result;
+}
+
+std::optional<FunctionUpdateScope> function_update_scope(int event, va_list arguments)
+{
+    FunctionUpdateScope result;
+    bool tail = false;
+    if (event == idb_event::func_updated)
+    {
+        const func_t *function = va_arg(arguments, const func_t *);
+        if (function == nullptr)
+            return std::nullopt;
+        result.first = function->start_ea;
+        result.end = function->end_ea;
+        tail = (function->flags & FUNC_TAIL) != 0;
+    }
+#if IDA_SDK_VERSION >= 940
+    else if (event == idb_event::function_updated)
+    {
+        const ea_t ea = va_arg(arguments, ea_t);
+        fchunk_info_t chunk;
+        if (!get_fchunk_info(&chunk, ea))
+            return std::nullopt;
+        result.first = chunk.start_ea;
+        result.end = chunk.end_ea;
+        tail = chunk.is_tail();
+    }
+#endif
+    else
+        return std::nullopt;
+    if (result.first == BADADDR || result.end <= result.first)
+        return std::nullopt;
+    if (!tail)
+        result.owners.insert(result.first);
+    else
+    {
+#if IDA_SDK_VERSION >= 940
+        const size_t parents = get_tail_referer_qty(result.first);
+        if (parents == 0 || parents > 4096)
+            return std::nullopt;
+        for (size_t index = 0; index < parents; ++index)
+        {
+            const ea_t owner = get_tail_referer(result.first, index);
+            if (owner == BADADDR)
+                return std::nullopt;
+            result.owners.insert(owner);
+        }
+#else
+        return std::nullopt;
+#endif
+    }
+    return result;
+}
+
 bool has_inbound_reference(ea_t address, ea_t allowed_source = BADADDR)
 {
     xrefblk_t xref;
@@ -1658,16 +1782,37 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         }
     }
 
-    void revalidate_proofs(bool settle_detached_donors = false)
+    void revalidate_proofs(bool settle_detached_donors = false,
+                           const FunctionUpdateScope *scope = nullptr)
     {
+        ++statistics.proof_revalidation_calls;
         for (auto it = native_proofs.begin(); it != native_proofs.end();)
         {
+            if (scope != nullptr && !scope->affects(it->second))
+            {
+                ++statistics.proof_revalidation_skipped;
+                ++it;
+                continue;
+            }
+            // SDK update_func()/set_func_entry_info() changes attributes, not
+            // boundaries or tail membership. These value recognizers consume
+            // decoded bytes, code inventory, owners, segment attributes and
+            // references, whose notifications invalidate/revalidate separately.
+            // CALL/RET leases also consume SP/noreturn/prototype metadata and
+            // must still be rederived on an attribute update.
+            if (scope != nullptr && is_value_proof(it->second))
+            {
+                ++statistics.proof_metadata_reuses;
+                ++it;
+                continue;
+            }
             const bool pending = pending_donor_revocations.count(it->first) != 0;
             if ((pending && !settle_detached_donors) || deleting_donor_tails.count(it->first) != 0)
             {
                 ++it;
                 continue;
             }
+            ++statistics.proof_revalidation_checks;
             const bool fresh = proof_is_fresh(it->second);
             const bool conclusion = fresh && current_proof_conclusion(it->second);
             if (!pending && fresh && conclusion)
@@ -1689,6 +1834,16 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             pending_donor_revocations.erase(proof.source);
             revoke_proof(std::move(proof), true);
         }
+        const size_t calls = statistics.proof_revalidation_calls;
+        qstring trace;
+        if (calls != 0 && (calls & (calls - 1)) == 0 &&
+            qgetenv("CHERNOBOG_IDA_REVALIDATION_TRACE", &trace) && !trace.empty() &&
+            trace[0] != '0')
+            msg("[chernobog][ida-analysis][revalidation] calls=%zu checked=%zu "
+                "skipped=%zu metadata_reuses=%zu scoped_updates=%zu global_updates=%zu live=%zu\n",
+                calls, statistics.proof_revalidation_checks, statistics.proof_revalidation_skipped,
+                statistics.proof_metadata_reuses, statistics.function_updates_scoped,
+                statistics.function_updates_global, native_proofs.size());
     }
 
     void invalidate_new_fallthrough(ea_t from, ea_t to)
@@ -1793,10 +1948,80 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         return true;
     }
 
+    void invalidate_item_value_proofs(const FunctionUpdateScope *scope)
+    {
+        for (auto iterator = native_proofs.begin(); iterator != native_proofs.end();)
+        {
+            if (!is_value_proof(iterator->second) ||
+                (scope != nullptr && !scope->affects(iterator->second)))
+            {
+                ++iterator;
+                continue;
+            }
+            NativeProof stale = std::move(iterator->second);
+            iterator = native_proofs.erase(iterator);
+            ++statistics.item_topology_invalidations;
+            revoke_proof(std::move(stale), true);
+        }
+    }
+
     void on_database_event(int event, va_list arguments)
     {
         if (get_dbctx_id() != owner_database || native_mutation_depth != 0 || replaying_undo)
             return;
+        if (event == idb_event::make_code || event == idb_event::make_data)
+        {
+            ea_t first = BADADDR;
+            asize_t size = 0;
+            bool changed = false;
+            if (event == idb_event::make_code)
+            {
+                const insn_t *instruction = va_arg(arguments, const insn_t *);
+                if (instruction != nullptr)
+                {
+                    first = instruction->ea;
+                    size = instruction->size;
+                    changed = first <= BADADDR - size &&
+                              (!is_code(get_flags(first)) || get_item_end(first) != first + size);
+                }
+            }
+            else
+            {
+                first = va_arg(arguments, ea_t);
+                (void)va_arg(arguments, flags64_t);
+                (void)va_arg(arguments, tid_t);
+                size = va_arg(arguments, asize_t);
+                // Small data creations matter only when they replace code.
+                // Larger/ambiguous creations conservatively revoke value facts.
+                changed = size > 16;
+                if (first <= BADADDR - size && size <= 16)
+                    for (asize_t offset = 0; offset < size; ++offset)
+                        changed |= is_code(get_flags(first + offset));
+            }
+            if (changed && !native_proofs.empty())
+            {
+                const auto scope = first <= BADADDR - size && size != 0 && size <= 16
+                                       ? item_update_scope(first, first + size)
+                                       : std::nullopt;
+                invalidate_item_value_proofs(scope ? &*scope : nullptr);
+            }
+            return;
+        }
+        const bool function_update = event == idb_event::func_updated
+#if IDA_SDK_VERSION >= 940
+                                     || event == idb_event::function_updated
+#endif
+            ;
+        // Snapshot callback arguments before receipt recovery can mutate IDA
+        // function objects. No cached scope or conclusion survives this callback.
+        std::optional<FunctionUpdateScope> update_scope;
+        if (function_update)
+        {
+            va_list copy;
+            va_copy(copy, arguments);
+            update_scope = function_update_scope(event, copy);
+            va_end(copy);
+        }
         const bool topology_changing =
             event == idb_event::set_func_start || event == idb_event::set_func_end ||
             event == idb_event::deleting_func || event == idb_event::deleting_func_tail
@@ -1902,7 +2127,14 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             }
             // Recompute conclusions after a topology update, including support
             // coverage; equal values with newly introduced dependencies are stale.
-            revalidate_proofs();
+            if (function_update)
+            {
+                if (update_scope)
+                    ++statistics.function_updates_scoped;
+                else
+                    ++statistics.function_updates_global;
+            }
+            revalidate_proofs(false, update_scope ? &*update_scope : nullptr);
             repair_get_pc_noreturn_flags();
             return;
         }
