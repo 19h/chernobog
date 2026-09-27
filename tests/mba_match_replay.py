@@ -181,9 +181,10 @@ def catalog(value, names=None, disabled=False):
 
 
 def capture(value, model):
-    require(
-        set(value) == {"root", "enclosing", "anchor", "prefix_status", "prefix"}, "input schema"
-    )
+    fields = {"root", "enclosing", "anchor", "prefix_status", "prefix"}
+    require(set(value) in (fields, fields | {"root_iprops"}), "input schema")
+    if value.get("root_iprops") is not None:
+        integer(value["root_iprops"], 0, 2**32 - 1)
     require(len(packed(value).encode()) <= 8192, "input byte quota")
     integer(value["anchor"])
     require(

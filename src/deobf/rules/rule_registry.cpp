@@ -183,7 +183,7 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins, const min
             result.rejection_detail = ast_build_status_name(build_report.status);
         return result;
     }
-    result.input = capture_match_input(candidate, anchor, block_head);
+    result.input = capture_match_input(candidate, anchor, block_head, ins);
 
     // Get matching patterns from storage - const ref, no copy
     const auto &matches = storage_.get_matching_rules(candidate);

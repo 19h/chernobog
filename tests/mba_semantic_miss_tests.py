@@ -34,7 +34,7 @@ def controls(model):
         require(proof["status"] == expected, "semantic control: " + label)
         for query in proof.get("queries", []):
             if query["state"] == "sat":
-                verify_primitive_witness(expression, model, query)
+                verify_primitive_witness(expression, model, query, options.get("root_iprops"))
         passed.append(label)
         return proof
 
@@ -73,6 +73,58 @@ def controls(model):
             require(proof["status"] == "sat", "actual typed constant rejection")
             verify_constraint_witness(sample, model, proof)
             passed.append(rule + ":" + str(width))
+
+    for width in (1, 2, 4, 8):
+        x, y = leaf("r", width, 8), leaf("r", width, 32)
+        for op in (
+            "cfadd",
+            "ofadd",
+            "seto",
+            "setp",
+            "setz",
+            "setnz",
+            "setb",
+            "setae",
+            "seta",
+            "setbe",
+            "setg",
+            "setge",
+            "setl",
+            "setle",
+        ):
+            expression = root(op, 1, x, y)
+            check(f"{op}:{width}:free", expression, "primitive_reduction_refuted", root_iprops=0)
+            check(f"{op}:{width}:missing-metadata", expression, "unsupported")
+            check(f"{op}:{width}:floating", expression, "unsupported", root_iprops=16)
+            check(f"{op}:{width}:effects", expression, "unsupported", root_iprops=4096)
+            if op not in ("cfadd", "ofadd"):
+                check(
+                    f"{op}:{width}:same",
+                    root(op, 1, x, copy.deepcopy(x)),
+                    "value_reduction",
+                    root_iprops=0,
+                )
+            check(
+                f"{op}:{width}:destination-width", root(op, 4, x, y), "unsupported", root_iprops=0
+            )
+            other = 4 if width == 8 else width * 2
+            check(
+                f"{op}:{width}:operand-width",
+                root(op, 1, x, leaf("r", other, 32)),
+                "unsupported",
+                root_iprops=0,
+            )
+        for op in ("sets", "lnot"):
+            check(
+                f"{op}:{width}:free", root(op, 1, x), "primitive_reduction_refuted", root_iprops=0
+            )
+            for value in (0, 1, 1 << (width * 8 - 1)):
+                check(
+                    f"{op}:{width}:constant:{value}",
+                    root(op, 1, leaf("n", width, value)),
+                    "value_reduction",
+                    root_iprops=0,
+                )
 
     expression = root("xor", 2, leaf("r", 2, 8), leaf("r", 2, 9))
     proof = check("overlapping register bytes", expression, "primitive_reduction_refuted")

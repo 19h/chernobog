@@ -167,6 +167,10 @@ struct InstanceTranslator
         case m_xor:
         case m_lnot:
         case m_sets:
+        case m_cfadd:
+        case m_ofadd:
+        case m_seto:
+        case m_setp:
         case m_setnz:
         case m_setz:
         case m_setae:
@@ -182,9 +186,12 @@ struct InstanceTranslator
             return reject("unsupported instruction opcode or effects");
         }
         const bool comparison = value->opcode >= m_setnz && value->opcode <= m_setle;
-        const bool binary = comparison || value->opcode == m_add || value->opcode == m_sub ||
-                            value->opcode == m_mul || value->opcode == m_and ||
-                            value->opcode == m_or || value->opcode == m_xor;
+        const bool flag = value->opcode == m_cfadd || value->opcode == m_ofadd ||
+                          value->opcode == m_seto || value->opcode == m_setp;
+        const bool binary = comparison || flag || value->opcode == m_add ||
+                            value->opcode == m_sub || value->opcode == m_mul ||
+                            value->opcode == m_and || value->opcode == m_or ||
+                            value->opcode == m_xor;
         auto left = operand(value->l, depth + 1, binary ? branch + "L" : branch);
         if (!left)
             return {};
@@ -196,7 +203,7 @@ struct InstanceTranslator
         { return z3::ite(condition, context.bv_val(1, bits), context.bv_val(0, bits)); };
         if (value->opcode == m_lnot)
             return boolean_value(*left == 0);
-        if (value->opcode == m_sets || comparison)
+        if (value->opcode == m_sets || comparison || flag)
         {
             if (bits != 8)
                 return reject("comparison result must be one byte");
@@ -207,6 +214,25 @@ struct InstanceTranslator
                 return {};
             if (right->get_sort().bv_size() != left_bits)
                 return reject("comparison operand widths differ");
+            if (flag)
+            {
+                const z3::expr sum = *left + *right;
+                const z3::expr difference = *left - *right;
+                if (value->opcode == m_cfadd)
+                    return boolean_value(z3::ult(sum, *left));
+                if (value->opcode == m_ofadd)
+                    return boolean_value(((~(*left ^ *right)) & (*left ^ sum))
+                                             .extract(left_bits - 1, left_bits - 1) == 1);
+                if (value->opcode == m_seto)
+                    return boolean_value(((*left ^ *right) & (*left ^ difference))
+                                             .extract(left_bits - 1, left_bits - 1) == 1);
+                // Integer SETP tests even parity of the low byte of l-r.
+                // Floating unordered SETP is excluded by is_fpinsn() above.
+                z3::expr parity = difference.extract(0, 0);
+                for (unsigned bit = 1; bit < 8; ++bit)
+                    parity = parity ^ difference.extract(bit, bit);
+                return boolean_value(parity == 0);
+            }
             switch (value->opcode)
             {
             case m_setnz:

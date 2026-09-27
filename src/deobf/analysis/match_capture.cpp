@@ -383,7 +383,7 @@ std::string sdk_model()
 } // namespace
 
 mba_diagnostics::CapturedInput capture_match_input(const AstPtr &candidate, const minsn_t *anchor,
-                                                   const minsn_t *block_head)
+                                                   const minsn_t *block_head, const minsn_t *source)
 {
     if (!candidate)
         return {CaptureStatus::NoAst, {}};
@@ -432,7 +432,9 @@ mba_diagnostics::CapturedInput capture_match_input(const AstPtr &candidate, cons
         if (cursor == block_head && frontier == "head_limit")
             frontier = "block_entry";
     }
-    std::string result = "{\"root\":" + root + ",\"enclosing\":" + enclosing + ",\"anchor\":" +
+    std::string result = "{\"root\":" + root +
+                         ",\"root_iprops\":" + (source ? std::to_string(source->iprops) : "null") +
+                         ",\"enclosing\":" + enclosing + ",\"anchor\":" +
                          std::to_string(anchor ? uint64_t(anchor->ea) : UINT64_MAX) +
                          ",\"prefix_status\":\"" + frontier + "\",\"prefix\":[";
     for (auto it = prefix.rbegin(); it != prefix.rend(); ++it)

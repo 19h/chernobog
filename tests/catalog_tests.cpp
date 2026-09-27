@@ -1,8 +1,11 @@
+#include <fstream>
+
 #include "deobf/rules/rule_registry.h"
 #include "deobf/rules/rule_verifier.h"
 #include "deobf/rules/rules_sub.h"
 #include "deobf/analysis/ast_builder.h"
 #include "deobf/analysis/match_capture.h"
+#include "common/bitvector.h"
 #include <iomanip>
 #include <cstdarg>
 #include <cstdlib>
@@ -894,12 +897,48 @@ bool test_typed_instances()
     okay &= expect_constant(comparison, 1, RuleVerificationStatus::UNSUPPORTED,
                             "undefined predicate input rejects");
     comparison.l.oprops = 0;
-    for (mcode_t opcode : {m_setp, m_seto, m_cfadd, m_ofadd})
+    for (mcode_t opcode : {m_cfshl, m_cfshr})
     {
         comparison.opcode = opcode;
         okay &= expect_constant(comparison, 1, RuleVerificationStatus::UNSUPPORTED,
                                 "unmodeled flag semantics reject");
     }
+    for (int bytes : {1, 2, 4, 8})
+        for (mcode_t opcode : {m_cfadd, m_ofadd, m_seto, m_setp})
+        {
+            ValueInsn flag(opcode, 1);
+            reg(flag.l, 100, bytes);
+            reg(flag.r, 100, bytes);
+            if (opcode == m_seto || opcode == m_setp)
+            {
+                const unsigned value = opcode == m_setp;
+                okay &= expect_constant(flag, value, RuleVerificationStatus::VERIFIED,
+                                        "same integer operands subtraction flags");
+                okay &= expect_constant(flag, value ^ 1, RuleVerificationStatus::DISPROVED,
+                                        "wrong integer flag proposal");
+                flag.r.valnum = 1;
+                okay &= expect_constant(flag, value, RuleVerificationStatus::DISPROVED,
+                                        "flag value numbers must agree");
+                flag.r.valnum = 0;
+            }
+            else
+                okay &= expect_constant(flag, 0, RuleVerificationStatus::DISPROVED,
+                                        "addition flags of same free value are not constant");
+            flag.iprops = IPROP_FPINSN;
+            okay &= expect_constant(flag, 0, RuleVerificationStatus::UNSUPPORTED,
+                                    "floating flag operation excluded");
+            flag.iprops = IPROP_MBARRIER;
+            okay &= expect_constant(flag, 0, RuleVerificationStatus::UNSUPPORTED,
+                                    "flag barrier excluded");
+            flag.iprops = 0;
+            flag.d.size = 4;
+            okay &= expect_constant(flag, 0, RuleVerificationStatus::UNSUPPORTED,
+                                    "flag result must remain one byte");
+            flag.d.size = 1;
+            flag.r.size = bytes == 8 ? 4 : bytes * 2;
+            okay &= expect_constant(flag, 0, RuleVerificationStatus::UNSUPPORTED,
+                                    "flag operands must have equal widths");
+        }
     ValueInsn conjunction(m_and, 4), disjunction(m_or, 4), combined(m_add, 4),
         ordinary_sum(m_add, 4), equivalent(m_setz, 1);
     for (auto *node : {&conjunction, &disjunction, &ordinary_sum})
@@ -1308,6 +1347,13 @@ bool test_input_capture_bounds()
     const auto plain = capture_match_input(root);
     check(plain.status == CaptureStatus::Complete &&
           plain.payload.find("\"prefix_status\":\"missing_anchor\"") != std::string::npos);
+    check(plain.payload.find("\"root_iprops\":null") != std::string::npos);
+    ValueInsn original(m_add, 4);
+    original.iprops = IPROP_FPINSN;
+    const auto floating = capture_match_input(root, nullptr, nullptr, &original);
+    check(floating.status == CaptureStatus::Complete &&
+          floating.payload.find("\"root_iprops\":" + std::to_string(IPROP_FPINSN)) !=
+              std::string::npos);
     auto cycle = std::static_pointer_cast<AstNode>(root);
     cycle->left = cycle;
     check(capture_match_input(root).status == CaptureStatus::Cycle);
@@ -1521,8 +1567,54 @@ int export_matcher_inputs()
 
 } // namespace
 
+int verify_native_flags(const char *path)
+{
+    std::ifstream input(path, std::ios::binary);
+    if (!input)
+        return EXIT_FAILURE;
+    chernobog::rules::RuleVerifier verifier;
+    size_t checks = 0;
+    const auto pair = [&](int bytes, uint64_t x, uint64_t y)
+    {
+        for (mcode_t opcode : {m_cfadd, m_ofadd, m_seto, m_setp})
+        {
+            const int expected = input.get();
+            if (expected != 0 && expected != 1)
+                return false;
+            ValueInsn flag(opcode, 1);
+            mnumber_t left(x), right(y);
+            constant(flag.l, left, bytes);
+            constant(flag.r, right, bytes);
+            if (!verifier.verify_constant(&flag, uint64_t(expected)).verified())
+                return false;
+            ++checks;
+        }
+        return true;
+    };
+    for (unsigned x = 0; x < 256; ++x)
+        for (unsigned y = 0; y < 256; ++y)
+            if (!pair(1, x, y))
+                return EXIT_FAILURE;
+    for (int bytes : {2, 4, 8})
+    {
+        const uint64_t mask = chernobog::bitvector::mask(bytes);
+        const uint64_t sign = uint64_t{1} << (8 * bytes - 1);
+        const std::array<uint64_t, 8> corners{0, 1, 2, sign - 1, sign, sign + 1, mask - 1, mask};
+        for (uint64_t x : corners)
+            for (uint64_t y : corners)
+                if (!pair(bytes, x, y))
+                    return EXIT_FAILURE;
+    }
+    if (checks != 262912 || input.get() != std::char_traits<char>::eof())
+        return EXIT_FAILURE;
+    std::cout << "{\"passed\":true,\"native_flag_checks\":" << checks << "}\n";
+    return EXIT_SUCCESS;
+}
+
 int main(int argc, char **argv)
 {
+    if (argc == 3 && std::string(argv[1]) == "--native-flag-values")
+        return verify_native_flags(argv[2]);
     if (argc == 2 && std::string(argv[1]) == "--matcher-input-fixtures")
         return export_matcher_inputs();
     if (argc == 2 && std::string(argv[1]) == "--ast-cycle-control")

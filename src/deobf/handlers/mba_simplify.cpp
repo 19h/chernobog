@@ -766,7 +766,8 @@ int mba_simplify_handler_t::try_simplify_node(mblock_t *blk, minsn_t *ins, const
         initialize();
     }
 
-    if (is_mcode_set(ins->opcode) || ins->opcode == m_lnot)
+    if (is_mcode_set(ins->opcode) || ins->opcode == m_lnot || ins->opcode == m_cfadd ||
+        ins->opcode == m_ofadd)
     {
         const int predicate_changes =
             predicate_optimizer_handler_t::simplify_set(blk, ins, nullptr);

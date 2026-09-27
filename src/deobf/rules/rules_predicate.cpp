@@ -466,7 +466,7 @@ bool SetConstRule::matches(minsn_t *ins)
         return false;
 
     // Check for set* opcodes
-    if (!is_mcode_set(ins->opcode))
+    if (!is_mcode_set(ins->opcode) && ins->opcode != m_cfadd && ins->opcode != m_ofadd)
         return false;
 
     // Both operands must be constants
@@ -493,6 +493,20 @@ int SetConstRule::apply(minsn_t *ins)
 
     switch (ins->opcode)
     {
+    case m_cfadd:
+        return ((l + r) & mask) < l;
+    case m_ofadd:
+        return ((~(l ^ r) & (l ^ (l + r))) >> (8 * size - 1)) & 1;
+    case m_seto:
+        return (((l ^ r) & (l ^ (l - r))) >> (8 * size - 1)) & 1;
+    case m_setp:
+    {
+        unsigned byte = unsigned((l - r) & 255);
+        byte ^= byte >> 4;
+        byte ^= byte >> 2;
+        byte ^= byte >> 1;
+        return (byte & 1) ^ 1;
+    }
     case m_setz:
         return (l == r) ? 1 : 0;
     case m_setnz:
@@ -714,7 +728,7 @@ int PredicateRuleRegistry::try_apply(minsn_t *ins)
 {
     // Integer bit-vector identities do not apply to IEEE 754 comparisons:
     // NaN makes self-equality and ordering non-reflexive.
-    if (!ins || (is_mcode_set(ins->opcode) && ins->is_fpinsn()))
+    if (!ins || ins->is_fpinsn())
         return -1;
 
     if (!initialized_)
@@ -773,7 +787,7 @@ bool predicate_optimizer_handler_t::detect(mbl_array_t *mba)
 
         for (minsn_t *ins = blk->head; ins; ins = ins->next)
         {
-            if (is_mcode_set(ins->opcode))
+            if (is_mcode_set(ins->opcode) || ins->opcode == m_cfadd || ins->opcode == m_ofadd)
                 return true;
             if (ins->opcode == m_lnot)
                 return true;
@@ -801,7 +815,8 @@ int predicate_optimizer_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 
         for (minsn_t *ins = blk->head; ins; ins = ins->next)
         {
-            if (is_mcode_set(ins->opcode) || ins->opcode == m_lnot)
+            if (is_mcode_set(ins->opcode) || ins->opcode == m_lnot || ins->opcode == m_cfadd ||
+                ins->opcode == m_ofadd)
             {
                 int changes = simplify_set(blk, ins, ctx);
                 total_changes += changes;

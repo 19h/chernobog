@@ -1,5 +1,10 @@
 # Typed predicate constants in the live MBA traversal
 
+Subsequent integer flag support adds typed carry/overflow/parity semantics,
+four live constant simplifications and original instruction metadata for
+independent replay. See [VMP_INTEGER_FLAGS.md](VMP_INTEGER_FLAGS.md). Historical
+observations and source hashes below remain unchanged.
+
 Review rows 4a/4b require typed proposals to pass instance verification before
 mutation. The existing predicate registry was compiled but had no caller outside
 its own source file. It now runs in the bounded bottom-up MBA traversal and

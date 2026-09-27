@@ -21,6 +21,9 @@ PACKAGE = "4.16.0.0"
 BINARY = {"add", "sub", "mul", "and", "or", "xor"}
 UNARY = {"bnot", "neg"}
 CONVERSION = {"mov", "xdu", "xds", "low", "high"}
+FLAGS = {"cfadd", "ofadd", "seto", "setp"}
+COMPARISON = {"setnz", "setz", "setae", "setb", "seta", "setbe", "setg", "setge", "setl", "setle"}
+PREDICATE = FLAGS | COMPARISON | {"sets", "lnot"}
 CONTRACTS = {
     "Sub1_FactorRule_2": ("add", "subtract_one"),
     "And_Rule_3": ("and", "identity"),
@@ -52,9 +55,9 @@ class Unsupported(ValueError):
 
 
 class Primitive:
-    """One arithmetic root; operands preserve width, versions and byte overlap."""
+    """One scalar root; operands preserve width, versions and byte overlap."""
 
-    def __init__(self, root, model):
+    def __init__(self, root, model, root_iprops=None):
         tags = model["mops"]
         self.op = {code: name for name, code in model["ops"].items()}.get(root[3])
         self.width = root[1]
@@ -62,10 +65,18 @@ class Primitive:
             raise Unsupported("unsupported root width or kind")
         if root[2][3] != 0:
             raise Unsupported("root value properties")
-        if self.op not in BINARY | UNARY | CONVERSION:
+        if root_iprops is not None and (type(root_iprops) is not int or root_iprops != 0):
+            raise Unsupported("root instruction properties")
+        if self.op in PREDICATE and root_iprops is None:
+            raise Unsupported("predicate integer/effect metadata unavailable")
+        if self.op not in BINARY | UNARY | CONVERSION | PREDICATE:
             raise Unsupported("unsupported arithmetic root")
-        if root[4] is None or (root[5] is None) != (self.op in UNARY | CONVERSION):
+        if root[4] is None or (root[5] is None) != (
+            self.op in UNARY | CONVERSION | {"sets", "lnot"}
+        ):
             raise Unsupported("arithmetic arity")
+        if self.op in PREDICATE - {"lnot"} and self.width != 1:
+            raise Unsupported("predicate result must be one byte")
         self.bits = self.width * 8
         self.leaves, self.cells, self.loads, self.widths = {}, {}, [], {}
         for path, node in (("L", root[4]), ("R", root[5])):
@@ -76,7 +87,7 @@ class Primitive:
             kind, width, version, props, value = node[2]
             if width not in (1, 2, 4, 8) or node[1] != width:
                 raise Unsupported("operand width or nested result mismatch")
-            if self.op not in CONVERSION and width != self.width:
+            if self.op not in CONVERSION | PREDICATE and width != self.width:
                 raise Unsupported("implicit operand width conversion")
             if self.op == "mov" and width != self.width:
                 raise Unsupported("implicit MOV width conversion")
@@ -130,6 +141,8 @@ class Primitive:
                 self.cells.setdefault(key, identity)
                 keys.append(key)
             self.leaves[path] = {"bytes": keys}
+        if self.op in FLAGS | COMPARISON and self.widths["L"] != self.widths["R"]:
+            raise Unsupported("predicate operand widths differ")
 
     def values(self, cells):
         require(set(cells) == set(self.cells), "counterexample byte population")
@@ -151,6 +164,10 @@ class Primitive:
             "integer operand width",
         )
         x, y = values["L"], values.get("R", 0)
+        input_bits = 8 * self.widths["L"]
+        sign = 1 << (input_bits - 1)
+        signed = lambda v: v - 2 * sign if v & sign else v
+        outside = lambda v: not -sign <= v < sign
         result = {
             "add": lambda: x + y,
             "sub": lambda: x - y,
@@ -167,6 +184,22 @@ class Primitive:
             ),
             "low": lambda: x,
             "high": lambda: x >> (8 * (self.widths["L"] - self.width)),
+            "lnot": lambda: int(x == 0),
+            "sets": lambda: int(bool(x & sign)),
+            "cfadd": lambda: int(x + y > mask(self.widths["L"])),
+            "ofadd": lambda: int(outside(signed(x) + signed(y))),
+            "seto": lambda: int(outside(signed(x) - signed(y))),
+            "setp": lambda: int(((x - y) & 255).bit_count() % 2 == 0),
+            "setnz": lambda: int(x != y),
+            "setz": lambda: int(x == y),
+            "setae": lambda: int(x >= y),
+            "setb": lambda: int(x < y),
+            "seta": lambda: int(x > y),
+            "setbe": lambda: int(x <= y),
+            "setg": lambda: int(signed(x) > signed(y)),
+            "setge": lambda: int(signed(x) >= signed(y)),
+            "setl": lambda: int(signed(x) < signed(y)),
+            "setle": lambda: int(signed(x) <= signed(y)),
         }[self.op]()
         return result & mask(self.width)
 
@@ -181,6 +214,26 @@ class Primitive:
                 values[path] = parts[0] if len(parts) == 1 else z3.Concat(*parts)
         x, y = values["L"], values.get("R")
         left_bits = self.widths["L"] * 8
+        boolean = lambda condition: z3.If(
+            condition, z3.BitVecVal(1, self.bits), z3.BitVecVal(0, self.bits)
+        )
+
+        def overflow(subtract):
+            wide = (
+                z3.SignExt(1, x) - z3.SignExt(1, y)
+                if subtract
+                else z3.SignExt(1, x) + z3.SignExt(1, y)
+            )
+            return boolean(
+                z3.Extract(left_bits, left_bits, wide)
+                != z3.Extract(left_bits - 1, left_bits - 1, wide)
+            )
+
+        def parity():
+            difference = x - y
+            count = sum(z3.ZeroExt(7, z3.Extract(bit, bit, difference)) for bit in range(8))
+            return boolean((count & 1) == 0)
+
         result = {
             "add": lambda: x + y,
             "sub": lambda: x - y,
@@ -195,6 +248,24 @@ class Primitive:
             "xds": lambda: z3.SignExt(self.bits - left_bits, x),
             "low": lambda: z3.Extract(self.bits - 1, 0, x),
             "high": lambda: z3.Extract(left_bits - 1, left_bits - self.bits, x),
+            "lnot": lambda: boolean(x == 0),
+            "sets": lambda: boolean(z3.Extract(left_bits - 1, left_bits - 1, x) == 1),
+            "cfadd": lambda: boolean(
+                z3.Extract(left_bits, left_bits, z3.ZeroExt(1, x) + z3.ZeroExt(1, y)) == 1
+            ),
+            "ofadd": lambda: overflow(False),
+            "seto": lambda: overflow(True),
+            "setp": parity,
+            "setnz": lambda: boolean(x != y),
+            "setz": lambda: boolean(x == y),
+            "setae": lambda: boolean(z3.UGE(x, y)),
+            "setb": lambda: boolean(z3.ULT(x, y)),
+            "seta": lambda: boolean(z3.UGT(x, y)),
+            "setbe": lambda: boolean(z3.ULE(x, y)),
+            "setg": lambda: boolean(x > y),
+            "setge": lambda: boolean(x >= y),
+            "setl": lambda: boolean(x < y),
+            "setle": lambda: boolean(x <= y),
         }[self.op]()
         return result, cells, values
 
@@ -222,9 +293,9 @@ def solve(condition, timeout_ms=250, resource_limit=100000):
     return "unknown", None, solver.reason_unknown()
 
 
-def primitive_reductions(root, model, timeout_ms=250, resource_limit=100000):
+def primitive_reductions(root, model, timeout_ms=250, resource_limit=100000, root_iprops=None):
     try:
-        primitive = Primitive(root, model)
+        primitive = Primitive(root, model, root_iprops)
     except Unsupported as error:
         return {"status": "unsupported", "reason": str(error)}
     first, a, values = primitive.symbolic("first")
@@ -274,7 +345,7 @@ def constraint_binding(sample, model):
         "constraint contract",
     )
     root = sample["input"]["root"]
-    primitive = Primitive(root, model)
+    primitive = Primitive(root, model, sample["input"].get("root_iprops"))
     operation, proposed = CONTRACTS[sample["rule"]]
     require(
         primitive.op == operation and primitive.width == sample["width_bytes"],
@@ -323,9 +394,9 @@ def constraint_reduction(sample, model, timeout_ms=250, resource_limit=100000):
     return result
 
 
-def verify_primitive_witness(root, sdk_model, query):
+def verify_primitive_witness(root, sdk_model, query, root_iprops=None):
     """Recheck SAT witnesses with integer arithmetic, without a solver query."""
-    primitive = Primitive(root, sdk_model)
+    primitive = Primitive(root, sdk_model, root_iprops)
     require(query["state"] == "sat", "only SAT has a reduction counterexample")
     require(
         query["target"] == "any_constant"

@@ -19,9 +19,12 @@ constexpr size_t catalog_capture_byte_limit = 32768;
 // identities are event-local tokens; host pointers and SDK objects never escape.
 // Context contains a consecutive predecessor suffix before the enclosing top
 // level instruction. A missing/broken anchor supplies no predecessor facts.
+// Original root properties distinguish integer and floating/effectful inputs;
+// synthetic or historical AST-only captures cannot infer that instruction state.
 mba_diagnostics::CapturedInput capture_match_input(const AstPtr &candidate,
                                                    const minsn_t *anchor = nullptr,
-                                                   const minsn_t *block_head = nullptr);
+                                                   const minsn_t *block_head = nullptr,
+                                                   const minsn_t *source = nullptr);
 
 // Templates are the exact certified pattern roots, in registry traversal order.
 // The snapshot includes the local SDK tags needed for independent replay.

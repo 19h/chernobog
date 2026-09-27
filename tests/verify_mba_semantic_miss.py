@@ -37,7 +37,7 @@ SOURCES = (
 )
 
 
-def controls(root, model, proof):
+def controls(root, model, proof, root_iprops=None):
     query = next(
         q for q in proof["queries"] if q["state"] == "sat" and q["target"] != "any_constant"
     )
@@ -67,7 +67,7 @@ def controls(root, model, proof):
         wrong = copy.deepcopy(query)
         edit(wrong)
         try:
-            verify_primitive_witness(root, model, wrong)
+            verify_primitive_witness(root, model, wrong, root_iprops)
         except (ValueError, KeyError):
             rejected.append(name)
         else:
@@ -116,14 +116,24 @@ def audit(report_path, timeout_ms, resource_limit):
                         classifications["existing_terminal_outcome"] += sample["count"]
                         continue
                     root = sample["input"]["root"]
+                    root_iprops = sample["input"].get("root_iprops")
                     # Cache only the semantic root inputs and exact SDK tags.
                     cache_key = json.dumps(
-                        [model, root, sample["outcome"], sample["rule"], sample["reason"]],
+                        [
+                            model,
+                            root,
+                            root_iprops,
+                            sample["outcome"],
+                            sample["rule"],
+                            sample["reason"],
+                        ],
                         sort_keys=True,
                         separators=(",", ":"),
                     )
                     if cache_key not in proof_keys:
-                        value = primitive_reductions(root, model, timeout_ms, resource_limit)
+                        value = primitive_reductions(
+                            root, model, timeout_ms, resource_limit, root_iprops
+                        )
                         if (
                             sample["outcome"] == "constant_constraint"
                             and sample["rule"] in CONTRACTS
@@ -160,7 +170,7 @@ def audit(report_path, timeout_ms, resource_limit):
                         for query in proof["queries"]:
                             solver_states[query["state"]] += sample["count"]
                             if query["state"] == "sat":
-                                verify_primitive_witness(root, model, query)
+                                verify_primitive_witness(root, model, query, root_iprops)
                                 counts["integer_witness_replays"] += sample["count"]
                         if (
                             first is None
@@ -170,7 +180,7 @@ def audit(report_path, timeout_ms, resource_limit):
                                 for q in proof["queries"]
                             )
                         ):
-                            first = root, model, proof
+                            first = root, model, proof, root_iprops
                     instance = proof.get("rejected_rule_instance")
                     if instance is not None:
                         counts["constraint_instance_" + instance["status"]] += sample["count"]

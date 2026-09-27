@@ -1,5 +1,10 @@
 # Typed semantic checks on actual catalog rejections
 
+Subsequent integer flag/predicate support requires original instruction metadata;
+the fresh audit refutes reductions for 4,595 retained events and leaves 666
+unsupported. See [VMP_INTEGER_FLAGS.md](VMP_INTEGER_FLAGS.md). Historical
+observations and source hashes below remain unchanged.
+
 This checkpoint advances review row 4a using the immutable match-time inputs
 captured by commit `3b21e98c842ee4f179aa0b3d25e0ea7920fcea9b`. An independent
 tool checks simpler scalar values and three rejected replacements on actual

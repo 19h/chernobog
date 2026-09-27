@@ -48,6 +48,17 @@ constant predicates, full CFG definitions/aliases, missing identities and
 protected recovery gains remain open. See `VMP_MBA_INPUT_REPLAY.md` and its
 evidence JSON. The complete review remains in progress.
 
+Integer flag checkpoint for rows 4a/4b: carry, addition/subtraction overflow
+and integer parity now have typed instance semantics and verified constant
+proposals. Actual paired SDK controls reduce four functions to correct constants;
+262,912 native status bytes agree with production, integer and symbolic models.
+Original instruction properties prevent floating parity inference in semantic
+replay. The fresh 40-process protected matrix adds 18 transient admissions but
+preserves all 454 captured typed trees; its semantic audit refutes reductions
+for 4,595 retained events and leaves 666 unsupported plus 8,786 omitted. See
+`VMP_INTEGER_FLAGS.md` and its durable evidence/capture archive. General CFG,
+aliasing, arbitrary identities, protected recovery and full review remain open.
+
 Typed MBA rejection checkpoint for row 4a: independent semantic analysis of
 actual transient inputs refutes constant/current-operand reductions for 1,845
 retained events and checks 521 rejected replacements with exact typed
