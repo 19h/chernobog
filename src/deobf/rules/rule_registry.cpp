@@ -184,9 +184,12 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
     result.indexed_patterns = matches.size();
     result.outcome = matches.empty() ? mba_diagnostics::Outcome::NoIndexedPattern
                                      : mba_diagnostics::Outcome::StructuralMismatch;
+    if (matches.empty())
+        result.rejection_detail = "root_opcode_unindexed;opcode=" + std::to_string(ins->opcode);
 
     // Stack-allocated bindings - NO HEAP ALLOCATION PER MATCH ATTEMPT
     MatchBindings match_bindings;
+    MatchFailure best_failure;
 
     // Try each match
     for (const auto &rp : matches)
@@ -198,7 +201,8 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
 
         // OPTIMIZED: Non-mutating match - NO PATTERN CLONING
         // match_pattern() doesn't modify pattern, just fills bindings
-        if (match_pattern(rp.pattern.get(), candidate.get(), match_bindings))
+        MatchFailure failure;
+        if (match_pattern(rp.pattern.get(), candidate.get(), match_bindings, &failure))
         {
             ++result.structural_matches;
             // Only convert to std::map when we have a structural match
@@ -252,8 +256,19 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
             result.bindings = std::move(bindings);
             return result;
         }
+        else if (result.structural_matches == 0 && failure.kind != MatchFailureKind::None &&
+                 (best_failure.kind == MatchFailureKind::None ||
+                  failure.matched_nodes > best_failure.matched_nodes))
+        {
+            best_failure = std::move(failure);
+            result.rejected_rule.assign(
+                rp.rule->name(),
+                std::min(std::strlen(rp.rule->name()), mba_diagnostics::rule_byte_limit));
+        }
     }
 
+    if (result.structural_matches == 0 && best_failure.kind != MatchFailureKind::None)
+        result.rejection_detail = match_failure_detail(best_failure);
     return result;
 }
 

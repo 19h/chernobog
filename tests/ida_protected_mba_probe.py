@@ -257,6 +257,17 @@ try:
     print("[chernobog][protected-mba] initial analysis complete", flush=True)
     assert hx.init_hexrays_plugin(), "decompiler load"
     report["architecture"] = "x86_64" if ida_ida.inf_is_64bit() else "i386"
+    count = int(evaluate("chernobog_rule_count()"))
+    assert 0 < count <= 256, "rule inventory quota"
+    names = [evaluate(f"chernobog_rule_name({index})") for index in range(count)]
+    assert all(isinstance(name, str) and 0 < len(name.encode()) <= 128 for name in names)
+    assert len(set(names)) == count, "duplicate catalog rule name"
+    report["rule_catalog"] = {
+        "registered": count,
+        "verified": int(evaluate("chernobog_rule_stats().verified")),
+        "rejected": int(evaluate("chernobog_rule_stats().rejected")),
+        "names": names,
+    }
     if not report["native_analysis_disabled"]:
         evaluate("chernobog_native_analysis()")
         ida_auto.auto_wait()

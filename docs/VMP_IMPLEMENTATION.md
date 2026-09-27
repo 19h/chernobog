@@ -1241,3 +1241,22 @@ held-out run independently retains all 16 captures and diagnostics. The first
 opaque-call guard's 18 diagnostic changes remain rejected trial evidence.
 See `VMP_AST_CONSTRUCTION_BOUNDS.md` and its evidence JSON. SDK-internal costs,
 cross-instruction analysis and the complete review remain in progress.
+
+## Catalog failure witness checkpoint
+
+Review row 4a now retains one actual longest-prefix failed matcher branch with
+its rule, pattern/candidate paths and shape or operand-metadata reason. Binding
+rollback, equal-prefix ties and successful commutation preserve admission and
+clear discarded failures. All 184 new component checks, two initialized
+registry controls and 22 CTest suites pass. Forty protected matrix processes
+preserve 152 native rows, 456 SDK outcomes, 454 typed captures and all 14,065
+terminal outcomes. A fresh preceding installed reserved-seed i386 control
+retains all 16 archived diagnostics. The new inventory attributes 6,407 retained
+failures: 4,469 unindexed roots, 463 numeric requirements, 1,451 node requirements
+and 24 differing fixed constants. Its 6,996 omitted events remain explicit.
+No retained production width/snapshot/commuted-path witness or protected
+simplification gain is observed. Final SDK trees cannot independently reconstruct
+every transient failed candidate. See `VMP_MBA_FAILURE_WITNESSES.md` and its
+evidence JSON. Complete causal classification, reaching-definition/alias
+provenance, width/order counterfactuals and full review implementation remain
+in progress.

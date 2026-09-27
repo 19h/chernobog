@@ -194,7 +194,57 @@ struct MatchBindings
 // Non-mutating pattern match function (doesn't modify pattern AST)
 // Returns true if pattern matches candidate, fills bindings
 //--------------------------------------------------------------------------
-bool match_pattern(const AstBase *pattern, const AstBase *candidate, MatchBindings &bindings);
+enum class MatchFailureKind
+{
+    None,
+    NullTree,
+    NumericRequired,
+    NodeRequired,
+    Opcode,
+    Arity,
+    ConstantValue,
+    OperandKind,
+    OperandWidth,
+    ValueNumber,
+    OperandProperties,
+    NullPayload,
+    RegisterIdentity,
+    NumberValue,
+    FrameOwner,
+    StackOffset,
+    GlobalAddress,
+    LocalIndex,
+    LocalOffset,
+    NestedOpcode,
+    InstructionProps,
+    LoadSource,
+    BlockIdentity,
+    TextValue,
+    UnsupportedOperand,
+    ComparisonBudget,
+    BindingCapacity,
+};
+
+constexpr size_t match_path_byte_limit = 64;
+
+// One actual failed branch with the longest successfully matched prefix.
+// Ties retain the first branch in traversal order. Paths refer to AST nodes;
+// a repeated binding's metadata difference may lie inside its SDK operand.
+// No SDK pointer, operand, binding name, or tree is retained. This witness
+// does not assert that changing its field makes the entire pattern match.
+struct MatchFailure
+{
+    MatchFailureKind kind = MatchFailureKind::None;
+    size_t matched_nodes = 0;
+    std::string pattern_path, candidate_path;
+    uint64_t expected = 0, actual = 0;
+    bool has_values = false, path_truncated = false;
+};
+
+const char *match_failure_kind_name(MatchFailureKind kind);
+std::string match_failure_detail(const MatchFailure &failure);
+bool match_pattern(const AstBase *pattern, const AstBase *candidate, MatchBindings &bindings,
+                   MatchFailure *failure = nullptr);
 
 //--------------------------------------------------------------------------
 // Helper functions for creating AST nodes (for rule definitions)
@@ -235,7 +285,8 @@ inline AstPtr make_unary(mcode_t op, AstPtr operand)
 const char *opcode_name(mcode_t op);
 
 // Check if two mops are equal (ignoring size differences)
-bool mops_equal_strict(const mop_t &a, const mop_t &b);
+// Optional first metadata-difference witness, without copying either operand.
+bool mops_equal_strict(const mop_t &a, const mop_t &b, MatchFailure *failure = nullptr);
 
 // Size mask for given byte size
 uint64_t size_mask(int size);

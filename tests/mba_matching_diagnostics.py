@@ -15,6 +15,37 @@ OUTCOMES = (
     "catalog_applied",
 )
 
+FAILURE_KINDS_WITH_VALUES = {
+    "numeric_required",
+    "opcode",
+    "arity",
+    "constant_value",
+    "operand_kind",
+    "operand_width",
+    "value_number",
+    "operand_properties",
+    "register_identity",
+    "number_value",
+    "stack_offset",
+    "global_address",
+    "local_index",
+    "local_offset",
+    "nested_opcode",
+    "instruction_props",
+    "load_source",
+    "block_identity",
+}
+FAILURE_KINDS_WITHOUT_VALUES = {
+    "null_tree",
+    "node_required",
+    "null_payload",
+    "frame_owner",
+    "text_value",
+    "unsupported_mop",
+    "comparison_budget",
+    "binding_capacity",
+}
+
 
 def require(value, reason):
     if not value:
@@ -35,6 +66,40 @@ def parse_constant_failure(reason):
     require(len(bindings) <= 4, "constant failure binding quota")
     require(len({b["name"] for b in bindings}) == len(bindings), "duplicate constant binding")
     return bindings, int(match[2])
+
+
+def parse_match_failure(reason):
+    match = re.fullmatch(
+        r"match_failed;kind=([a-z_]+);p=(-|[LR]{1,64});c=(-|[LR]{1,64});"
+        r"nodes=(0|[1-9][0-9]*)(?:;e=0x([0-9a-f]{1,16});a=0x([0-9a-f]{1,16}))?;cut=([01])",
+        reason,
+    )
+    require(match is not None, "match failure detail grammar")
+    kind, pattern, candidate, nodes, expected, actual, cut = match.groups()
+    require(kind in FAILURE_KINDS_WITH_VALUES | FAILURE_KINDS_WITHOUT_VALUES, "failure kind")
+    require((expected is not None) == (kind in FAILURE_KINDS_WITH_VALUES), "failure value fields")
+    pattern, candidate = ["" if path == "-" else path for path in (pattern, candidate)]
+    nodes, cut = int(nodes), bool(int(cut))
+    require(len(pattern) == len(candidate), "failure path depth disagreement")
+    require(nodes < 2**64 and nodes >= len(pattern), "failure prefix count")
+    require(not cut or len(pattern) == 64, "failure path truncation")
+    result = {
+        "kind": kind,
+        "pattern_path": pattern,
+        "candidate_path": candidate,
+        "matched_nodes": nodes,
+        "path_truncated": cut,
+    }
+    if expected is not None:
+        expected, actual = int(expected, 16), int(actual, 16)
+        require(
+            format(expected, "x") == match[5]
+            and format(actual, "x") == match[6]
+            and expected != actual,
+            "failure numeric difference",
+        )
+        result.update(expected=expected, actual=actual)
+    return result
 
 
 def validate_matching(value, statistics, entry, maximum_maturity, disabled):
@@ -88,8 +153,16 @@ def validate_matching(value, statistics, entry, maximum_maturity, disabled):
         )
         if name in ("no_ast", "no_indexed_pattern"):
             require(indexed == structural == candidate == constant == 0, "matching empty index")
+            if name == "no_indexed_pattern" and sample["reason"]:
+                require(
+                    sample["reason"] == "root_opcode_unindexed;opcode=" + str(sample["opcode"])
+                    and not sample["rule"],
+                    "unindexed root attribution",
+                )
         elif name == "structural_mismatch":
             require(indexed > 0 and structural == candidate == constant == 0, "matching structure")
+            if sample["rule"]:
+                parse_match_failure(sample["reason"])
         elif name == "candidate_constraint":
             require(structural == candidate > 0 and constant == 0, "matching candidate gate")
             if sample["rule"]:

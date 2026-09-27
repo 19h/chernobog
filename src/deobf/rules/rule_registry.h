@@ -74,7 +74,8 @@ class RuleRegistry
         mba_diagnostics::Outcome outcome = mba_diagnostics::Outcome::NoAst;
         uint64_t indexed_patterns = 0, structural_matches = 0;
         uint64_t candidate_rejections = 0, constant_rejections = 0;
-        // Final rejected rule at the furthest reached gate, not all candidates.
+        // Final rejected rule at the furthest reached gate. With no structural
+        // match, names one longest-prefix failed branch; ties keep the first.
         std::string rejected_rule, rejection_detail;
 
         MatchResult() : rule(nullptr) {}

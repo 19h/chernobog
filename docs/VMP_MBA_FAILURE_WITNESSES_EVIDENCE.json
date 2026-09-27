@@ -1,0 +1,214 @@
+{
+  "schema": 1,
+  "feature": "Actual longest-prefix catalog failure witnesses",
+  "review_rows": [
+    "4a",
+    "V"
+  ],
+  "source_parent": "b472013e16664bcfe2868850a1a4f6c3d6b409d0",
+  "scope": "One actual failed matcher branch per retained structural event; empty opcode-root buckets identified; unchanged recorded native ownership, CFG/typed values and terminal outcomes. Full causal classification, reaching definitions/alias relations, missing identities and protected recovery effectiveness remain incomplete.",
+  "limits": {
+    "path_bytes": 64,
+    "max_detail_bytes": 245,
+    "inventory_detail_bytes": 256,
+    "inventory_rule_bytes": 128,
+    "inventory_keys": 64,
+    "operand_comparison_depth": 64,
+    "operand_comparison_visits": 512,
+    "binding_capacity": 8,
+    "whole_process_bounds": "unknown"
+  },
+  "component_catalog": {
+    "new_witness_checks": 184,
+    "new_initialized_registry_controls": 2,
+    "retained_construction_checks": 108,
+    "retained_identity_checks": 1247,
+    "retained_typed_results": 190,
+    "certified_rules": 108,
+    "false_rule_rejected": true,
+    "SDK_copy_scope": "empty/register/global operands only; borrowed descriptors test comparison without SDK allocation or recursive copy emulation"
+  },
+  "ctest": {
+    "passed": true,
+    "passed_tests": 22,
+    "receipt": "build/match-witness-ctest-accepted.json",
+    "initial_wrapper": "All 22 tests and process exit 0 passed; first wrapper required obsolete CTest wording. Accepted receipt validates individual Passed rows from the same immutable log; no rerun."
+  },
+  "production_preservation": {
+    "counts": {
+      "native_rows": 152,
+      "stages": 456,
+      "captured": 454,
+      "events": 14065,
+      "unrecorded": 6996,
+      "retained_events": 7069,
+      "witness_keys": 3062,
+      "witness_events": 6407,
+      "commuted_witness_keys": 0,
+      "truncated_witness_keys": 0
+    },
+    "outcomes": {
+      "no_ast": 0,
+      "no_indexed_pattern": 8103,
+      "structural_mismatch": 4474,
+      "candidate_constraint": 0,
+      "constant_constraint": 1483,
+      "replacement_unavailable": 0,
+      "instance_disproved": 0,
+      "instance_unsupported": 0,
+      "instance_unknown": 0,
+      "catalog_applied": 5
+    },
+    "retained_witness_kinds": {
+      "root_opcode_unindexed": 4469,
+      "numeric_required": 463,
+      "node_required": 1451,
+      "constant_value": 24
+    },
+    "retained_failed_rules": {
+      "Xor_Rule_2": 487,
+      "Add_CarryFreeOrRule": 950,
+      "Add_HackersDelightRule_1": 405,
+      "And_FactorRule_1": 63,
+      "Sub_HackersDelightRule_2": 24,
+      "Add_OllvmRule_3": 3,
+      "Or_FactorRule_1": 6
+    },
+    "retained_unindexed_opcodes": {
+      "9": 159,
+      "33": 1347,
+      "31": 1339,
+      "29": 658,
+      "25": 250,
+      "26": 256,
+      "35": 164,
+      "30": 206,
+      "6": 42,
+      "32": 33,
+      "8": 12,
+      "23": 3
+    },
+    "max_process_elapsed_ns": 51795749833,
+    "max_process_peak_resident_bytes": 203341824,
+    "corruption_controls": [
+      "lost failed rule",
+      "unknown failed rule",
+      "unknown cause",
+      "wrong path alphabet",
+      "path quota",
+      "path depth mismatch",
+      "prefix before path",
+      "false truncation",
+      "missing numeric fields",
+      "invented frame pointers",
+      "equal differing fields",
+      "noncanonical integer",
+      "prefix overflow",
+      "false unindexed opcode"
+    ]
+  },
+  "production_matrix": {
+    "processes": 40,
+    "architectures": [
+      "x86_64",
+      "i386"
+    ],
+    "modes": [
+      "original",
+      "mutation",
+      "virtualization",
+      "combined"
+    ],
+    "protector_seeds": [
+      0,
+      1,
+      12648430
+    ],
+    "held_out_protector_seed": 12648430,
+    "indirect_artifact_pins": 190,
+    "report": "build/match-witness-protected/protected_mba_analysis.json",
+    "baseline_report": "build/ast-bounds-protected-complete/protected_mba_analysis.json",
+    "artifact_pin_verification": "Every primary report artifact and every per-run capture pin matched during manifest construction; child captures remain linked through the hashed matrix report."
+  },
+  "prior_installed_control": {
+    "report": "build/match-witness-prior-control.json",
+    "profile": "i386 combined-12648430 enabled",
+    "native_rows": 4,
+    "SDK_outcomes": 16,
+    "typed_captures": 16,
+    "prior_archived_diagnostics_exact": 16,
+    "prior_vs_candidate_terminal_counts_exact": 16
+  },
+  "live_candidate_build": {
+    "revision": "b472013e1666",
+    "dirty": 1,
+    "source_fingerprint": "625b7fbd15ee",
+    "source_inputs_recomputed": 215,
+    "matrix_logs_with_exact_build_tag": 40,
+    "proof": "build/match-witness-provenance-audit.json"
+  },
+  "SDK_and_IDA": {
+    "SDK_version": "940",
+    "SDK_contract": "<sdk>/include/hexrays.hpp",
+    "SDK_contract_sha256": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff",
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "ida_components_sha256": {
+      "<ida>/libida.dylib": "c723167ed12fcb001774e10cb5a05035c96858da1b2a6c5761e553c6346e78ab",
+      "<ida>/libidalib.dylib": "0bb76152d5ce1b164d1715d289f17ee7db87a74ee1e5223fd232829ed33855d8",
+      "<ida>/procs/pc.dylib": "09165b45c585c5c156797a9bd0ca5147f33ee99f12b82a6130fd7cc07707b43d",
+      "<ida>/plugins/hexx64.dylib": "6d0ad64715eeb88966091e2df788b3d1283546a95b4b1002c2bb11918bfa4caf",
+      "<ida>/plugins/goomba.dylib": "fd9c98d862bdd08753c12fca2a5319a67ecbb45161b1cd00600f4047c8f835ec",
+      "<ida>/cfg/goomba.cfg": "cf3eea65229dde0a2028eeb74debab36f30419f3bb0385f87e36cbee2945ccb5"
+    }
+  },
+  "known_evidence_limits": [
+    "Witness score describes one traversed branch, not semantic distance or the sole cause of all pattern failures.",
+    "Final SDK captures cannot independently reconstruct every transient matcher candidate.",
+    "No retained production width/value-number/frame-owner/commuted/truncated witness appears in this matrix; component controls cover those cases.",
+    "6996 events lack retained keys; finer detail changes aggregation relative to the preceding 6953 omitted events.",
+    "Source for the initial 179-check component trial is unknown; its receipt records one incorrect tie-case expectation and its executable was not retained."
+  ],
+  "source_sha256": {
+    "src/deobf/analysis/ast.cpp": "12d673a35e25c4180ef097c7c382194310e5dbe0a7caf4713a07f10d9f934b48",
+    "src/deobf/analysis/ast.h": "fd5ecaf7358b0877fa5f57c76cfd7337148b57df632f9204a551886ee7da60f0",
+    "src/deobf/analysis/mba_diagnostics.cpp": "4a16c3dda47a6f459c2a8441255ed7a257f367d5146902255245e0c09da72626",
+    "src/deobf/analysis/mba_diagnostics.hpp": "30188e9a79dc7add135515fa09c653f3f7c6674f49d4e66f5445d44808b4ff54",
+    "src/deobf/handlers/mba_simplify.cpp": "8bff29e2c93148ff00c14875fa768410b332990c8a50fc5945fe0f30025ccf41",
+    "src/deobf/rules/pattern_rule.cpp": "92dfd20a6f2182c90f5c97eab9206e291374b5137c4ac50ab5a81b0ccfff260d",
+    "src/deobf/rules/pattern_rule.h": "95f84426c250c3172b65e216af09a4924a50c960b2a30526c6feca1ef1a51bc2",
+    "src/deobf/rules/rule_registry.cpp": "cef910cffeef53911d9b56c0b861d1a1bd24a58ace7cacd85117516ee658bf7d",
+    "src/deobf/rules/rule_registry.h": "dae5f8db4649df4fd4078a9f66e29202a8f93e5a61855f166588ebfb5773e50c",
+    "src/deobf/rules/rule_verifier.cpp": "a5f020d93d4e45d932d42cfda0a879bc2de6a2afbd60aa44d3c7987a623bf435",
+    "src/deobf/rules/rule_verifier.h": "dbfa01190d7dfc5551e6d54e5b7fb72ae657043fe968bbe20990075336941eaf",
+    "src/ida_analysis/native_engine.cpp": "d919fed9c99160a8f4dfe7e4b71e66bf3dc389858018776f3339ee8e40d39fef",
+    "src/ida_analysis/native_engine.hpp": "4ccbbcb86d833db26529fbc729dbfa42c9a8649fb3c29167a34faa3178724657",
+    "src/plugin/idc_api.cpp": "ebd7d977a363249fa0a899121f5115ef3ec0e3bb2f30daad5e787123e7e64d1c",
+    "tests/catalog_tests.cpp": "2e487e509af600670a6d4bab3feddb84faccfaf9b246e2e4c8114b55f44fc208",
+    "tests/ida_protected_mba_probe.py": "1838ce63f7cee61322a618150fde63d474a3bac8c08227dd7c51b49c8bb21ebc",
+    "tests/mba_matching_diagnostics.py": "6d5ec6939a684c5de6453932ed6ab89f5ff212a1e018a36602ca3fde58758ec6",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_protected_mba_corpus.py": "dcb9738481450b7d84016868de9bcbe6d073f7ac32f2b0cf45284530a7cbce34",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/verify_mba_failure_capture.py": "1bb0a1c35d810f9ab042337fb83d4189d97d27007591fc48a19e57d2655b3599"
+  },
+  "artifact_sha256": {
+    "build/match-witness-candidate.dylib": "13c372027e80f0ac5e447a6cd753dd6770ddf1fd3d84d4f9fd9824cb8c647145",
+    "build/match-witness-prior-b472013e.dylib": "c6403684e7934b74205b460b733babc1a5e3d43793fcf2d3e3465c789f5adcab",
+    "build/match-witness-catalog": "9ddb497d36562e4c16f507b985d15af6c27a596d45b35d6ff2deec5c96006bc3",
+    "build/match-witness-build-provenance.hpp": "481d6b92d7de3155c61d47825ecaf36eca71b4140b25d44835bcd8105a9fab88",
+    "build/match-witness-catalog-accepted.json": "9153e9a92a4d8d879c8efe8836d21edf29b2eb2a82e26b08f04439edc7fe9999",
+    "build/match-witness-catalog-trial.json": "cd7bec033312bd776ecb6fd7c5379ae06d8a43fae8b3e7714f6a9342e29bb6d9",
+    "build/match-witness-ctest.log": "c45daa3c70ddd1b175c1d59aff7a1217d38944f225397fa6e23ccf950fd42ee1",
+    "build/match-witness-ctest-accepted.json": "35620b30f81a27ce919bd99951ce688e5f30ef455ce5e053e0caff0a0b2c3702",
+    "build/match-witness-ctest-wrapper-trial.json": "d974a9afc54997ae93e4b4dd1b352984e5ee90bfcd4f74dbd89059b7e498c76b",
+    "build/match-witness-protected/protected_mba_analysis.json": "5029a00a54dee5dca0fa626d89ac01d2101f6b6e2873abc677977e6b3e51c19c",
+    "build/match-witness-audit.json": "8da8fed50f7e581b37a3d962d41d4a5a559aa0ab319179e3651fd370dc6acbaa",
+    "build/match-witness-provenance-audit.json": "9abee4ae2a9dd2246afd9b623986cf64304979b5fb428c5f864b83817ed889f8",
+    "build/match-witness-prior-control.json": "135c08487314bac357d838848ba213a89af26be7a8081d070635c219348a7d45",
+    "build/match-witness-prior-heldout/run.json": "1aa009903a86d19c30ca9d6ab5060baf3be3b105d25728229c40d3b28fb3d447",
+    "build/match-witness-prior-heldout/ida.log": "af9ca55ae555d1d0646bb284d06275d7af18f82ff4b671477b19c5d15dda7d4b",
+    "build/match-witness-prior-heldout/protected_mba.json": "971dde30e52d24e115d7b1cf145e9ed8b6bea075f7948b5307fb6a92517670a1",
+    "build/ast-bounds-protected-complete/protected_mba_analysis.json": "cc821fe7178e47110ba7c27ef79afe5bf1c7e5611930b100b08fe9108b9e92f7",
+    "docs/VMP_AST_CONSTRUCTION_BOUNDS_EVIDENCE.json": "6f534435326c670d52775ddb0faa6c3f6a1f4a2038ba2a0e4457dbb2b4b4b969"
+  }
+}

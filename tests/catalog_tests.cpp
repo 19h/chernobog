@@ -938,6 +938,209 @@ bool test_commutative_matching()
            ordered_bindings.count == 0;
 }
 
+bool test_match_failure_witnesses()
+{
+    using namespace chernobog::ast;
+    size_t checks = 0, failed = 0;
+    const auto check = [&](bool condition)
+    {
+        ++checks;
+        failed += !condition;
+        if (!condition)
+            std::cerr << "match failure witness check " << checks << " failed\n";
+    };
+    const auto mismatch = [&](const AstPtr &pattern, const AstPtr &candidate, MatchFailureKind kind,
+                              const char *p, const char *c)
+    {
+        MatchBindings plain, traced;
+        MatchFailure failure;
+        check(!match_pattern(pattern.get(), candidate.get(), plain));
+        check(!match_pattern(pattern.get(), candidate.get(), traced, &failure));
+        check(plain.count == 0 && traced.count == 0 && failure.kind == kind &&
+              failure.pattern_path == p && failure.candidate_path == c && !failure.path_truncated);
+        check(match_failure_detail(failure).size() <= 256);
+        return failure;
+    };
+    auto pattern =
+        make_node(m_sub, make_leaf("x"), make_node(m_and, make_leaf("x"), make_leaf("y")));
+    auto candidate =
+        make_node(m_sub, make_leaf("a"), make_node(m_or, make_leaf("a"), make_leaf("b")));
+    auto failure = mismatch(pattern, candidate, MatchFailureKind::Opcode, "R", "R");
+    check(failure.matched_nodes == 2 && failure.has_values && failure.expected == m_and &&
+          failure.actual == m_or);
+    candidate = make_node(m_sub, make_leaf("a"), make_leaf("b"));
+    mismatch(pattern, candidate, MatchFailureKind::NodeRequired, "R", "R");
+    candidate = make_unary(m_sub, make_leaf("a"));
+    failure = mismatch(pattern, candidate, MatchFailureKind::Arity, "", "");
+    check(failure.has_values && failure.expected == 3 && failure.actual == 1);
+    // The swapped ADD branch matches a longer prefix. Its candidate path is L,
+    // while the failed AND still occupies pattern path R.
+    pattern = make_node(m_add, make_node(m_sub, make_leaf("x"), make_leaf("y")),
+                        make_node(m_and, make_leaf("y"), make_leaf("z")));
+    candidate = make_node(m_add, make_node(m_or, make_leaf("a"), make_leaf("b")),
+                          make_node(m_sub, make_leaf("c"), make_leaf("d")));
+    failure = mismatch(pattern, candidate, MatchFailureKind::Opcode, "R", "L");
+    check(failure.matched_nodes == 4);
+    // Equal prefixes keep the first actual failure, even if another branch
+    // reports a different kind. The witness is not a semantic distance metric.
+    pattern = make_node(m_add, make_leaf("x"), make_node(m_and, make_leaf("y"), make_leaf("z")));
+    candidate = make_node(m_add, make_node(m_or, make_leaf("a"), make_leaf("b")), make_leaf("c"));
+    failure = mismatch(pattern, candidate, MatchFailureKind::NodeRequired, "R", "R");
+    check(failure.matched_nodes == 2);
+    auto constant_pattern = make_const(255, 1), constant_candidate = make_leaf("number");
+    mnumber_t number(254);
+    constant(constant_candidate->mop, number, 1);
+    failure =
+        mismatch(constant_pattern, constant_candidate, MatchFailureKind::ConstantValue, "", "");
+    check(failure.expected == 255 && failure.actual == 254 && failure.has_values);
+    constant_candidate->mop.zero();
+    mismatch(constant_pattern, make_leaf("nonnumeric"), MatchFailureKind::NumericRequired, "", "");
+    constant_candidate->mop.t = mop_n;
+    constant_candidate->mop.nnn = nullptr;
+    mismatch(constant_pattern, constant_candidate, MatchFailureKind::NullPayload, "", "");
+    constant_candidate->mop.zero();
+    // Successful commutation clears every discarded failure and keeps bindings.
+    for (mcode_t opcode : {m_add, m_mul, m_and, m_or, m_xor})
+    {
+        pattern =
+            make_node(opcode, make_leaf("x"), make_node(m_sub, make_leaf("y"), make_leaf("z")));
+        candidate =
+            make_node(opcode, make_node(m_sub, make_leaf("a"), make_leaf("b")), make_leaf("c"));
+        MatchBindings plain, traced;
+        failure.kind = MatchFailureKind::Opcode;
+        failure.pattern_path = "stale";
+        check(match_pattern(pattern.get(), candidate.get(), plain) &&
+              match_pattern(pattern.get(), candidate.get(), traced, &failure));
+        check(plain.count == 3 && traced.count == 3 && failure.kind == MatchFailureKind::None &&
+              failure.pattern_path.empty() && match_failure_detail(failure).empty());
+    }
+    // Actual repeated bindings reject width/snapshot/storage differences.
+    for (int bytes : {1, 2, 4, 8})
+    {
+        pattern = make_node(m_sub, make_leaf("x"), make_leaf("x"));
+        auto a = make_leaf("a"), b = make_leaf("b");
+        reg(a->mop, 100, bytes);
+        reg(b->mop, 100, bytes);
+        candidate = make_node(m_sub, a, b);
+        b->mop.size = bytes == 8 ? 4 : 8;
+        failure = mismatch(pattern, candidate, MatchFailureKind::OperandWidth, "R", "R");
+        check(failure.expected == uint64_t(bytes) && failure.actual == uint64_t(b->mop.size));
+        b->mop.size = bytes;
+        b->mop.valnum = 17;
+        failure = mismatch(pattern, candidate, MatchFailureKind::ValueNumber, "R", "R");
+        check(failure.expected == 0 && failure.actual == 17);
+        b->mop.valnum = 0;
+        b->mop.oprops = OPROP_ABI;
+        mismatch(pattern, candidate, MatchFailureKind::OperandProperties, "R", "R");
+        b->mop.oprops = 0;
+        b->mop.r = 101;
+        mismatch(pattern, candidate, MatchFailureKind::RegisterIdentity, "R", "R");
+        b->mop.t = mop_v;
+        b->mop.g = 0x3000;
+        mismatch(pattern, candidate, MatchFailureKind::OperandKind, "R", "R");
+    }
+    const auto difference = [&](const mop_t &a, const mop_t &b, MatchFailureKind kind)
+    {
+        MatchFailure first;
+        check(!mops_equal_strict(a, b) && !mops_equal_strict(a, b, &first));
+        check(first.kind == kind && first.pattern_path.empty() && first.candidate_path.empty());
+        check(match_failure_detail(first).size() <= 256);
+    };
+    // Borrowed SDK payloads test metadata comparison without kernel allocation
+    // or pretending to implement the SDK's recursive operand copy operation.
+    ValueInsn a(m_mov, 4), b(m_mov, 4), inner_a(m_mov, 4), inner_b(m_mov, 4);
+    const auto frame_a = reinterpret_cast<mba_t *>(uintptr_t{0x1000});
+    const auto frame_b = reinterpret_cast<mba_t *>(uintptr_t{0x2000});
+    stkvar_ref_t stack_a(frame_a, 24), stack_b(frame_b, 24), stack_same(frame_a, 25);
+    a.l.t = b.l.t = mop_S;
+    a.l.size = b.l.size = 4;
+    a.l.s = &stack_a;
+    b.l.s = &stack_b;
+    difference(a.l, b.l, MatchFailureKind::FrameOwner);
+    b.l.s = &stack_same;
+    difference(a.l, b.l, MatchFailureKind::StackOffset);
+    b.l.s = nullptr;
+    difference(a.l, b.l, MatchFailureKind::NullPayload);
+    lvar_ref_t local_a(frame_a, 3, 8), local_b(frame_b, 3, 8), local_same(frame_a, 4, 8);
+    a.l.t = b.l.t = mop_l;
+    a.l.l = &local_a;
+    b.l.l = &local_b;
+    difference(a.l, b.l, MatchFailureKind::FrameOwner);
+    b.l.l = &local_same;
+    difference(a.l, b.l, MatchFailureKind::LocalIndex);
+    local_same.idx = 3;
+    local_same.off = 9;
+    difference(a.l, b.l, MatchFailureKind::LocalOffset);
+    a.l.t = b.l.t = mop_v;
+    a.l.g = 0x3000;
+    b.l.g = 0x3001;
+    difference(a.l, b.l, MatchFailureKind::GlobalAddress);
+    mnumber_t one(1), two(2);
+    constant(a.l, one, 4);
+    constant(b.l, two, 4);
+    difference(a.l, b.l, MatchFailureKind::NumberValue);
+    a.l.t = b.l.t = mop_b;
+    a.l.b = 1;
+    b.l.b = 2;
+    difference(a.l, b.l, MatchFailureKind::BlockIdentity);
+    a.l.t = b.l.t = mop_f;
+    difference(a.l, b.l, MatchFailureKind::UnsupportedOperand);
+    char first[] = "a", second[] = "b";
+    a.l.t = b.l.t = mop_h;
+    a.l.helper = first;
+    b.l.helper = second;
+    difference(a.l, b.l, MatchFailureKind::TextValue);
+    nested(a.l, inner_a);
+    nested(b.l, inner_b);
+    inner_b.opcode = m_neg;
+    difference(a.l, b.l, MatchFailureKind::NestedOpcode);
+    inner_b.opcode = inner_a.opcode;
+    inner_b.iprops = IPROP_MBARRIER;
+    difference(a.l, b.l, MatchFailureKind::InstructionProps);
+    inner_b.iprops = 0;
+    inner_a.opcode = inner_b.opcode = m_ldx;
+    inner_a.ea = 0x4000;
+    inner_b.ea = 0x4001;
+    difference(a.l, b.l, MatchFailureKind::LoadSource);
+    inner_a.opcode = inner_b.opcode = m_mov;
+    nested(inner_a.l, inner_a);
+    nested(inner_b.l, inner_b);
+    difference(a.l, b.l, MatchFailureKind::ComparisonBudget);
+    // Diagnostic paths alone truncate. Matcher acceptance stays unchanged.
+    pattern = make_const(0);
+    candidate = make_leaf("deep");
+    for (unsigned depth = 0; depth < 65; ++depth)
+    {
+        pattern = make_unary(m_bnot, pattern);
+        candidate = make_unary(m_bnot, candidate);
+    }
+    MatchBindings deep;
+    check(!match_pattern(pattern.get(), candidate.get(), deep, &failure) &&
+          failure.kind == MatchFailureKind::NumericRequired && failure.path_truncated &&
+          failure.pattern_path.size() == 64 && failure.candidate_path.size() == 64);
+    failure.kind = MatchFailureKind::OperandProperties;
+    failure.expected = UINT64_MAX;
+    failure.actual = UINT64_MAX - 1;
+    failure.has_values = true;
+    failure.matched_nodes = SIZE_MAX;
+    check(match_failure_detail(failure).size() == 245);
+    // Nine distinct leaves exceed the existing eight-binding capacity.
+    pattern = make_leaf("0");
+    candidate = make_leaf("a");
+    for (unsigned index = 1; index < 9; ++index)
+    {
+        pattern = make_node(m_sub, pattern, make_leaf(std::to_string(index)));
+        candidate = make_node(m_sub, candidate, make_leaf("a"));
+    }
+    check(!match_pattern(pattern.get(), candidate.get(), deep, &failure) && deep.count == 0 &&
+          failure.kind == MatchFailureKind::BindingCapacity);
+    check(!match_pattern(pattern.get(), nullptr, deep, &failure) &&
+          failure.kind == MatchFailureKind::NullTree);
+    std::cout << "MBA match failure witnesses: " << checks << " checks; failures=" << failed
+              << '\n';
+    return failed == 0;
+}
+
 // Destroying an AST reaches mop_t's hexapi destructor. With the real
 // dispatcher absent that call jumped to an address derived from its arguments
 // and killed the process, so the catalog previously depended on retaining
@@ -1000,6 +1203,8 @@ int main(int argc, char **argv)
         std::cerr << "commutative matcher regression\n";
         return EXIT_FAILURE;
     }
+    if (!test_match_failure_witnesses())
+        return EXIT_FAILURE;
 
     auto &registry = chernobog::rules::RuleRegistry::instance();
     {
@@ -1020,6 +1225,27 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     std::cout << "MBA attempt admission controls: 2 passed\n";
+    {
+        ValueInsn instruction(m_add, 4), unindexed(m_shl, 4);
+        reg(instruction.l, 100, 4);
+        reg(instruction.r, 200, 4);
+        reg(unindexed.l, 100, 4);
+        reg(unindexed.r, 200, 1);
+        const auto failed = registry.find_match(&instruction);
+        const auto absent = registry.find_match(&unindexed);
+        const auto names = registry.list_rules();
+        if (!failed.attempted || failed.matched() ||
+            failed.outcome != chernobog::mba_diagnostics::Outcome::StructuralMismatch ||
+            failed.rejection_detail.find("match_failed;kind=") != 0 ||
+            std::find(names.begin(), names.end(), failed.rejected_rule) == names.end() ||
+            absent.matched() ||
+            absent.outcome != chernobog::mba_diagnostics::Outcome::NoIndexedPattern ||
+            absent.rejection_detail != "root_opcode_unindexed;opcode=" + std::to_string(m_shl) ||
+            !absent.rejected_rule.empty())
+            return EXIT_FAILURE;
+        registry.clear_statistics();
+        std::cout << "MBA failed pattern and unindexed root attribution: 2 passed\n";
+    }
 #ifndef CHERNOBOG_LEGACY_AST_BOUNDS
     {
         ValueInsn cycle(m_add, 4);
