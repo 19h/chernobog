@@ -30,7 +30,10 @@ std::optional<X86Condition> x86_condition(uint16_t instruction_type);
 bool x86_condition_prefix_supported(const insn_t &instruction);
 
 // Bounded owned-function must-analysis with architectural direct successors and
-// conservative joins. Incomplete/unsupported graphs fall back to the contiguous
+// conservative joins. A complete inventory of at most 4096 heads supplies a
+// predecessor slice of at most min(depth, 64) preceding nodes plus the query. Cut
+// predecessors contribute unknown input. Support retains the entire inventory.
+// Incomplete/unsupported graphs fall back to the contiguous
 // single-entry prefix. No dynamic witnesses or initial writable bytes are
 // folded; only bounded local MOV stores and register/memory exchanges can
 // establish writable facts. Exact MOV, MOVZX, MOVSX, and MOVSXD register loads

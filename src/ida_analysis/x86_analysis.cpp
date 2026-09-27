@@ -1547,6 +1547,25 @@ X86TargetCover push_target_cover(const insn_t &insn, const AlternativeState &dom
     return result;
 }
 
+bool owned_flow_shape_supported(const insn_t &instruction)
+{
+    const auto condition = x86_condition(instruction.itype);
+    const bool branch = condition && condition->use == X86ConditionUse::branch;
+    if ((condition && !x86_condition_prefix_supported(instruction)) ||
+        interior_or_excess_entry(instruction))
+        return false;
+    if (instruction.itype == NN_jmp || branch)
+        return instruction.Op1.type == o_near;
+    if (is_call_insn(instruction) || instruction.itype == NN_retn)
+        return true;
+    if (is_indirect_jump_insn(instruction) || (instruction.get_canon_feature(PH) & CF_STOP))
+        return false;
+    for (const auto &operand : instruction.ops)
+        if (operand.type == o_near || operand.type == o_far)
+            return false;
+    return true;
+}
+
 template <class Domain = State> struct FlowFact
 {
     Domain state;
@@ -1564,8 +1583,12 @@ std::optional<FlowFact<Domain>> flow_before(const insn_t &insn, size_t depth)
     if (!owner)
         return std::nullopt;
     const size_t limit = std::min<size_t>(depth, 64);
-    std::vector<insn_t> code;
-    std::map<ea_t, size_t> index;
+    if (!limit)
+        return std::nullopt;
+    // Inventory and transfer budgets are separate. Keep every decoded head in
+    // the freshness support, including sources outside the predecessor slice.
+    constexpr size_t inventory_limit = 4096;
+    std::vector<ea_t> heads;
     func_item_iterator_t iterator;
     if (!iterator.set(owner))
         return std::nullopt;
@@ -1574,14 +1597,25 @@ std::optional<FlowFact<Domain>> flow_before(const insn_t &insn, size_t depth)
         const ea_t ea = iterator.current();
         if (!is_code(get_flags(ea)))
             continue;
+        if (heads.size() >= inventory_limit)
+            return std::nullopt;
+        heads.push_back(ea);
+    } while (iterator.next_code());
+    // Oversized owners can have many candidate sites. Reject their inventory
+    // before allocating instruction objects or invoking the processor decoder.
+    std::vector<insn_t> code;
+    code.reserve(heads.size());
+    std::map<ea_t, size_t> index;
+    for (ea_t ea : heads)
+    {
         insn_t decoded;
-        if (code.size() >= limit || get_func(ea) != owner || decode_insn(&decoded, ea) <= 0 ||
-            decoded.size == 0 || ea > BADADDR - decoded.size || mode64(decoded) != mode64(insn) ||
-            mode32(decoded) != mode32(insn))
+        if (get_func(ea) != owner || decode_insn(&decoded, ea) <= 0 || decoded.size == 0 ||
+            ea > BADADDR - decoded.size || mode64(decoded) != mode64(insn) ||
+            mode32(decoded) != mode32(insn) || !owned_flow_shape_supported(decoded))
             return std::nullopt;
         index.emplace(ea, code.size());
         code.push_back(decoded);
-    } while (iterator.next_code());
+    }
     if (!index.count(insn.ea) || !index.count(owner->start_ea))
         return std::nullopt;
     std::vector<FlowNode> graph(code.size());
@@ -1593,18 +1627,6 @@ std::optional<FlowFact<Domain>> flow_before(const insn_t &insn, size_t depth)
         const bool branch = condition && condition->use == X86ConditionUse::branch;
         const bool jump = instruction.itype == NN_jmp;
         const bool call = is_call_insn(instruction);
-        if (condition && !x86_condition_prefix_supported(instruction))
-            return std::nullopt;
-        if (interior_or_excess_entry(instruction))
-            return std::nullopt;
-        if (!jump && !branch && !call && instruction.itype != NN_retn)
-        {
-            if (is_indirect_jump_insn(instruction))
-                return std::nullopt;
-            for (const auto &operand : instruction.ops)
-                if (operand.type == o_near || operand.type == o_far)
-                    return std::nullopt;
-        }
         const auto add_edge = [&](ea_t target)
         {
             const auto found = index.find(target);
@@ -1660,41 +1682,54 @@ std::optional<FlowFact<Domain>> flow_before(const insn_t &insn, size_t depth)
             }
         }
     }
+    // The prefix budget counts preceding instructions. Reserve the query
+    // separately so a new slice cannot shorten that established scan horizon.
+    const size_t slice_limit = limit + 1;
+    const auto slice = backward_flow_slice(graph, index.at(insn.ea), slice_limit);
+    if (!slice)
+        return std::nullopt;
+    std::vector<insn_t> sliced_code;
+    sliced_code.reserve(slice->original_indices.size());
+    for (size_t i : slice->original_indices)
+        sliced_code.push_back(code[i]);
     const auto transfer = [&](size_t i, Domain state)
     {
-        const auto condition = x86_condition(code[i].itype);
-        if (code[i].itype != NN_jmp && !(condition && condition->use == X86ConditionUse::branch))
+        const auto &instruction = sliced_code[i];
+        const auto condition = x86_condition(instruction.itype);
+        if (instruction.itype != NN_jmp &&
+            !(condition && condition->use == X86ConditionUse::branch))
         {
             if constexpr (std::is_same_v<Domain, State>)
-                state.step(code[i]);
+                state.step(instruction);
             else
                 state = state.apply(
                     [&](State next)
                     {
-                        next.step(code[i]);
+                        next.step(instruction);
                         return next;
                     });
         }
         return state;
     };
-    const auto states = bounded_dataflow<Domain>(graph, 64, 128, transfer);
+    const auto states = bounded_dataflow<Domain>(slice->graph, slice_limit, 128, transfer);
     if (!states)
         return std::nullopt;
     FlowFact<Domain> result;
-    result.state = (*states)[index.at(insn.ea)];
+    result.state = (*states)[slice->query];
     if constexpr (std::is_same_v<Domain, AlternativeState>)
     {
-        const auto refined = refine_branches(graph, code, *states, 64, 128, transfer);
+        const auto refined =
+            refine_branches(slice->graph, sliced_code, *states, slice_limit, 128, transfer);
         if (!refined)
             return std::nullopt;
-        const auto &input = (*refined)[index.at(insn.ea)];
+        const auto &input = (*refined)[slice->query];
         result.reached = input.has_value();
         if (input)
             result.state = *input;
         else
             result.state = Domain{};
     }
-    result.has_join = std::any_of(graph.begin(), graph.end(), [](const FlowNode &node)
+    result.has_join = std::any_of(slice->graph.begin(), slice->graph.end(), [](const FlowNode &node)
                                   { return node.predecessors.size() > 1; });
     for (const auto &instruction : code)
         if (instruction.ea != insn.ea)

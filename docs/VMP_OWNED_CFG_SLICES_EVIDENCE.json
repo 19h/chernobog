@@ -1,0 +1,471 @@
+{
+  "schema": 1,
+  "feature": "bounded predecessor slices in owned native functions",
+  "review_rows": [
+    "1b",
+    "2a",
+    "2b",
+    "V"
+  ],
+  "source_parent": "b65415a8dacd5c6280249f150070813528c301c6",
+  "scope": "complete owned inventory with unknown cut inputs, exact fixture gains and unchanged measured protected captures; full review remains in progress",
+  "limits": {
+    "owned_code_heads": 4096,
+    "selected_nodes": "1 + min(depth,64): query reserved separately from preceding nodes",
+    "solver_rounds": 128,
+    "alternatives": 8,
+    "unknown_input_on_cut": true,
+    "complete_inventory_support": true,
+    "displayed_dependencies": 64,
+    "zero_depth_rejects_owned_flow": true,
+    "proof_result_cache_added": false,
+    "maximum_selected_nodes": 65
+  },
+  "independent_portable": {
+    "measurement": {
+      "exit_code": 0,
+      "elapsed_ns": 209848000,
+      "peak_resident_bytes": 2801664,
+      "timed_out": false,
+      "output_exceeded": false,
+      "stdout_sha256": "b6edbea3c3d0fa37d2b54158d2edec469107a728fd3fc0286cdaca454f0fab5e",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "backward_slice_concrete_boolean_comparisons": 81920,
+    "topologies": 1024,
+    "transfer_layouts": 16,
+    "budgets": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "controls": [
+      "loop-entry cuts",
+      "zero budget",
+      "foreign query",
+      "unselected malformed predecessor"
+    ]
+  },
+  "native_oracles": {
+    "x86_64": {
+      "measurement": {
+        "exit_code": 0,
+        "elapsed_ns": 112599208,
+        "peak_resident_bytes": 3407872,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "37ae761366baec84b70718d5740fe6890941dd4db3153d711d5ab0c4b9cd52ff",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "output": "{\"passed\":true,\"checks\":11264,\"seed\":\"0x713ec0a5\"}\n",
+      "error": ""
+    },
+    "i386": {
+      "build": {
+        "exit_code": 0,
+        "elapsed_ns": 167799208,
+        "peak_resident_bytes": 47480832,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "native": {
+        "exit_code": 0,
+        "elapsed_ns": 26011039,
+        "peak_resident_bytes": 18841600,
+        "timed_out": false,
+        "output_exceeded": false,
+        "stdout_sha256": "37ae761366baec84b70718d5740fe6890941dd4db3153d711d5ab0c4b9cd52ff",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "binary_sha256": "0a7a60b324d0ba69d60117b6449d562662acce73aaae545dc5a6b1645693a62a",
+        "binary_unchanged": true,
+        "accounting_scope": "Linux wait4 of qemu-i386 process, including translated guest execution",
+        "runtime_sha256": {
+          "qemu-i386": "ab3616f72fd2ec26ba9e1cb931d3bcd9f243471cf482785381bedc2907b3b085",
+          "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+          "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+        },
+        "launcher": {
+          "exit_code": 0,
+          "elapsed_ns": 218761750,
+          "peak_resident_bytes": 47611904,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "guest_report": "guest-runs/cfg_slices-0.json"
+      },
+      "runtime": {
+        "image_id": "sha256:91a6e07bec9b5ef76ccee2f076aa419b5e79a93e15c69de67017e0b8a3a38bc2",
+        "container_architecture": "arm64",
+        "execution": "qemu-i386 user-mode translation in Linux container",
+        "sha256": {
+          "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+          "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+          "qemu-i386": "ab3616f72fd2ec26ba9e1cb931d3bcd9f243471cf482785381bedc2907b3b085",
+          "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+          "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+        },
+        "qemu_version": [
+          "qemu-i386 version 9.2.0",
+          "Copyright (c) 2003-2024 Fabrice Bellard and the QEMU Project developers"
+        ],
+        "packages": [
+          "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+          "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+          "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+          "libc6-i386-cross\t2.39-0ubuntu8cross1",
+          "python3\t3.12.3-0ubuntu2.1",
+          "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+        ]
+      },
+      "output": "{\"passed\":true,\"checks\":11264,\"seed\":\"0x713ec0a5\"}\n",
+      "binary_sha256": "0a7a60b324d0ba69d60117b6449d562662acce73aaae545dc5a6b1645693a62a"
+    },
+    "checks_per_architecture": 11264,
+    "total_checks": 22528,
+    "seed": "0x713ec0a5",
+    "physical_x86_execution": "unknown"
+  },
+  "production_acceptance": {
+    "passed": true,
+    "protected_profiles": 40,
+    "protected_preservation": {
+      "native_rows": 152,
+      "stages": 456,
+      "captured": 454
+    },
+    "matching_diagnostics_exact": 456,
+    "counts": {
+      "total_matches": 14065,
+      "successful_matches": 5,
+      "instance_verified": 5,
+      "instance_disproved": 0,
+      "instance_unsupported": 0,
+      "instance_unknown": 0
+    },
+    "mutations_rejected": 602,
+    "maximum_elapsed_ns": 51259757375,
+    "slowest_profile": {
+      "architecture": "i386",
+      "label": "virtualization-12648430",
+      "disabled": false
+    },
+    "maximum_peak_resident_bytes": 203177984,
+    "first_trial_maximum_elapsed_ns": 177578693209,
+    "first_trial_slowest_profile": {
+      "architecture": "i386",
+      "label": "virtualization-12648430",
+      "disabled": false
+    },
+    "intermediate_trial_maximum_elapsed_ns": 51254380292,
+    "fixture_captures": [
+      {
+        "directory": "build/cfg-slices-x64-complete-default",
+        "passed_checks": 59,
+        "conditions": 5,
+        "condition_names": [
+          "slice_equal192",
+          "slice_flags192",
+          "slice_loop192",
+          "slice_inventory4096",
+          "slice_prefix8"
+        ],
+        "transfers": 2,
+        "transfer_names": [
+          "slice_target192",
+          "slice_memory192"
+        ],
+        "elapsed_ns": 2998537250,
+        "plugin_sha256": "fe708ac1dab571e244ee6fd00ffb8cbcc5a26efbedc6f3adc536191a843597e4",
+        "report_sha256": "1750df42dab627003a1100cb548bcd9ce70f25870e7e3d808c99838f67b61451",
+        "run_sha256": "9c98b5a55451f33ecf0919b4bcfd5637153b71916e2ec59e56dbc15f5d61a0d6"
+      },
+      {
+        "directory": "build/cfg-slices-i386-complete-default",
+        "passed_checks": 59,
+        "conditions": 5,
+        "condition_names": [
+          "slice_equal192",
+          "slice_flags192",
+          "slice_loop192",
+          "slice_inventory4096",
+          "slice_prefix8"
+        ],
+        "transfers": 2,
+        "transfer_names": [
+          "slice_target192",
+          "slice_memory192"
+        ],
+        "elapsed_ns": 2841319292,
+        "plugin_sha256": "fe708ac1dab571e244ee6fd00ffb8cbcc5a26efbedc6f3adc536191a843597e4",
+        "report_sha256": "35f3b93f956c3aee9351e69c35dd943fc830d7ad4c3bb6d64b258626ab1d8351",
+        "run_sha256": "96bc13877373d70978e549565144a937df9378b15cb8e812ec17edd84ba98855"
+      },
+      {
+        "directory": "build/cfg-slices-x64-complete-prior",
+        "passed_checks": 35,
+        "conditions": 1,
+        "condition_names": [
+          "slice_prefix8"
+        ],
+        "transfers": 0,
+        "transfer_names": [],
+        "elapsed_ns": 2719319208,
+        "plugin_sha256": "e9216d96f685eeeb892c67244604346f3bbd77c266494acf4b420342673e8ab8",
+        "report_sha256": "03e964e188ca871dff632f530382414ebc8cd456354238ba9d1daf96673572ad",
+        "run_sha256": "17241e6b754c986086c019498dd339e77b17d1920d0a7b23d477661d2de9691d"
+      },
+      {
+        "directory": "build/cfg-slices-i386-complete-prior",
+        "passed_checks": 35,
+        "conditions": 1,
+        "condition_names": [
+          "slice_prefix8"
+        ],
+        "transfers": 0,
+        "transfer_names": [],
+        "elapsed_ns": 2573691625,
+        "plugin_sha256": "e9216d96f685eeeb892c67244604346f3bbd77c266494acf4b420342673e8ab8",
+        "report_sha256": "85aa9c46aadc6dafd828db1890c7cdf5a2e58c82affc02f4aab2f2940230fc21",
+        "run_sha256": "4bfa5351a6d868b2a6d718c2de39984ba5c89b841493ca4d5396930b42ed09d9"
+      },
+      {
+        "directory": "build/cfg-slices-first-budget-control",
+        "passed_checks": 56,
+        "conditions": 4,
+        "condition_names": [
+          "slice_equal192",
+          "slice_flags192",
+          "slice_loop192",
+          "slice_inventory4096"
+        ],
+        "transfers": 2,
+        "transfer_names": [
+          "slice_target192",
+          "slice_memory192"
+        ],
+        "elapsed_ns": 2974024417,
+        "plugin_sha256": "f73932e1d8ce355126a5bf06edc12b7418a137a907dd0430edf22bd5b8544e34",
+        "report_sha256": "b1c53e432a81df8559c9f2fee8fd1828b2bb46a0804e9a9f852ceec6d600fdfd",
+        "run_sha256": "51a5f6ca4c6bbb122d00b7d4f13cf8c314b120ac148d5c8a96e4460da3b32dd6"
+      },
+      {
+        "directory": "build/cfg-slices-x64-complete-depth1",
+        "passed_checks": 34,
+        "conditions": 0,
+        "condition_names": [],
+        "transfers": 0,
+        "transfer_names": [],
+        "elapsed_ns": 2766883583,
+        "plugin_sha256": "fe708ac1dab571e244ee6fd00ffb8cbcc5a26efbedc6f3adc536191a843597e4",
+        "report_sha256": "9ad8b07df5ec6f750481fb95b421e248a186134438e88993d05ec323327dbfa8",
+        "run_sha256": "4d31365f50e0f2d0aa0e91e3a111a58d36ad4594a8d6826d3927b7b29f1369a4"
+      }
+    ],
+    "report_sha256": {
+      "build/cfg-slice-protected-complete/protected_mba_analysis.json": "65ccffe92ced74c5799b4b41b218f15adbd2f999e200f529ae7d45565f63c9d5",
+      "build/ast-value-protected-final/protected_mba_analysis.json": "3ddd13023dd200e679aa06054e7bb12a4f102fb84cb28b49386beaa5872400cb",
+      "build/cfg-slice-protected-final/protected_mba_analysis.json": "fd169fe9e172d9f2b47ec3eb091de3e7c15632eb55c0c358565ea2021df23677",
+      "build/cfg-slice-protected-admitted/protected_mba_analysis.json": "55a308be2b38ca7f5b8f3df69be464874ba675b8acaaa2e658d7e861bdbeefc5"
+    },
+    "scope": "complete corrected matrix preserves preceding AST checkpoint observations; actual installed predecessor fixtures establish net gains and retained prefix horizon; first and intermediate trials remain historical evidence",
+    "matched_fixture_gain": {
+      "conditions_per_architecture": 4,
+      "transfer_targets_per_architecture": 2,
+      "total_new_conditions": 8,
+      "total_new_transfer_targets": 4,
+      "retained_prefix_facts": 2,
+      "first_budget_counterfactual_loses_prefix": true
+    }
+  },
+  "existing_dataflow_regression": [
+    {
+      "architecture": "x86_64",
+      "binary_sha256": "097d912fd7d90b3c88561f0cec5a4734b91854e1c56caeb55c76df76724fbd45",
+      "native_result": {
+        "checks": 37630,
+        "passed": true
+      },
+      "ida_checks": 479
+    },
+    {
+      "architecture": "i386",
+      "binary_sha256": "7ae45e9d14a087fa921a624159448c203a8e2dcb79bcbbeea2563ff136f32428",
+      "native_result": {
+        "checks": 36350,
+        "passed": true
+      },
+      "ida_checks": 412
+    }
+  ],
+  "ctest": {
+    "exit_code": 0,
+    "elapsed_ns": 8423693834,
+    "log": "build/cfg-slices-ctest.log",
+    "passed_suites": 22
+  },
+  "latency_scope": {
+    "first_trial_maximum_ns": 177578693209,
+    "accepted_maximum_ns": 51259757375,
+    "preceding_checkpoint_maximum_ns": 26913515041,
+    "accepted_maximum_peak_resident_bytes": 203177984,
+    "observation_scope": "one complete run per artifact; runner startup and scheduling included; accepted observation remains above preceding checkpoint",
+    "general_speedup": "unknown",
+    "intermediate_trial_maximum_ns": 51254380292
+  },
+  "sdk_and_ida": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "ida_components_sha256": {
+      "<ida>/libida.dylib": "c723167ed12fcb001774e10cb5a05035c96858da1b2a6c5761e553c6346e78ab",
+      "<ida>/libidalib.dylib": "0bb76152d5ce1b164d1715d289f17ee7db87a74ee1e5223fd232829ed33855d8",
+      "<ida>/procs/pc.dylib": "09165b45c585c5c156797a9bd0ca5147f33ee99f12b82a6130fd7cc07707b43d",
+      "<ida>/plugins/hexx64.dylib": "6d0ad64715eeb88966091e2df788b3d1283546a95b4b1002c2bb11918bfa4caf",
+      "<ida>/plugins/goomba.dylib": "fd9c98d862bdd08753c12fca2a5319a67ecbb45161b1cd00600f4047c8f835ec",
+      "<ida>/cfg/goomba.cfg": "cf3eea65229dde0a2028eeb74debab36f30419f3bb0385f87e36cbee2945ccb5"
+    }
+  },
+  "source_sha256": {
+    "../ida-sdk/src/include/funcs.hpp": "070b6b81609709ab2cfe8704500ea44f9f95139cfb56a745cb0f586d92e11a91",
+    "../ida-sdk/src/include/hexrays.hpp": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff",
+    "../ida-sdk/src/include/xref.hpp": "ca53915dca0eac8ddb4c75edca8508742864e0ebd8f5d0a1daafeff07c636eac",
+    "src/common/bounded_dataflow.h": "b65cd157082e65ffdc75bf44d2bf4ef948634f133f6fcfa4cbf0d27ea5edd28c",
+    "src/common/x86_abstract.h": "faadf0072a962d046def573f0b0796c82fc5956df03df2cf20ee4d3dd1bc1bb0",
+    "src/common/x86_string_memory.h": "ae4cc9ec3423dc470af81b8e5d169ea2cac8573ed23b330c0262e9f0093e5f9d",
+    "src/deobf/analysis/mba_diagnostics.cpp": "4a16c3dda47a6f459c2a8441255ed7a257f367d5146902255245e0c09da72626",
+    "src/deobf/analysis/mba_diagnostics.hpp": "30188e9a79dc7add135515fa09c653f3f7c6674f49d4e66f5445d44808b4ff54",
+    "src/deobf/handlers/mba_simplify.cpp": "8bff29e2c93148ff00c14875fa768410b332990c8a50fc5945fe0f30025ccf41",
+    "src/deobf/rules/pattern_rule.cpp": "92dfd20a6f2182c90f5c97eab9206e291374b5137c4ac50ab5a81b0ccfff260d",
+    "src/deobf/rules/pattern_rule.h": "95f84426c250c3172b65e216af09a4924a50c960b2a30526c6feca1ef1a51bc2",
+    "src/deobf/rules/rule_registry.cpp": "2f0f08352cc37378411415826d35eb5ec8476ab9cbf4c0ba3109aad6e0121ce4",
+    "src/deobf/rules/rule_registry.h": "97ae89a96b266c1f9bfa723e9a1b1d42fe1060a075d930036b5e9ce3f7ce4c3b",
+    "src/deobf/rules/rule_verifier.cpp": "a5f020d93d4e45d932d42cfda0a879bc2de6a2afbd60aa44d3c7987a623bf435",
+    "src/deobf/rules/rule_verifier.h": "dbfa01190d7dfc5551e6d54e5b7fb72ae657043fe968bbe20990075336941eaf",
+    "src/ida_analysis/analysis_config.hpp": "d9fc4daed5d9f955626136d60da3a91152cdf7e4d16395cb76dac5be08cd10f1",
+    "src/ida_analysis/get_pc_ida.cpp": "0f53b3b3c65e3a07cc6446ed5c10f57928137db62aed49bd4462d3bdf19b115c",
+    "src/ida_analysis/native_engine.cpp": "d919fed9c99160a8f4dfe7e4b71e66bf3dc389858018776f3339ee8e40d39fef",
+    "src/ida_analysis/native_engine.hpp": "4ccbbcb86d833db26529fbc729dbfa42c9a8649fb3c29167a34faa3178724657",
+    "src/ida_analysis/x86_analysis.cpp": "e2ef20c8590f05d09dba3a35741673fff7bb69ebe744b1510fd862ab2b4fc3d2",
+    "src/ida_analysis/x86_analysis.hpp": "96e24cb78759947b3e0f112a87fd406c7eef35b635e307eeac9af7fcfe696285",
+    "src/plugin/idc_api.cpp": "ebd7d977a363249fa0a899121f5115ef3ec0e3bb2f30daad5e787123e7e64d1c",
+    "tests/catalog_tests.cpp": "a01b764083265f992dd5cac31c422c5da3b9c6d30a4e7081064d8ec60089adf1",
+    "tests/ida_cfg_slices_probe.py": "963d6585b536464966ef82fce6ebbe920feb1d3dfc8be631326d9c6737a1bde0",
+    "tests/ida_dataflow_probe.py": "e8f3a295fc4ee4b0880038fbcfc2126b03030e1bf45a7896c6bc0729daa53e28",
+    "tests/ida_protected_mba_probe.py": "e3d79014adde2c448b20afe5f07915c1d5b3834dbafdef5151b4272e6e2df488",
+    "tests/mba_matching_diagnostics.py": "6b5ed769cc25fbb78387d06bd0bf80ba45f7a8c149c2ac04b19dd02e2e858279",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_native_dataflow.py": "7d411ce3d00e2595041337375445989ff781b829e721eaf297377ed990254c23",
+    "tests/run_protected_mba_corpus.py": "dcb9738481450b7d84016868de9bcbe6d073f7ac32f2b0cf45284530a7cbce34",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/verify_mba_matching_capture.py": "497ec250b3601eebd5c41809cc5c211c82bfe929d2026b44b1f12a131bdff327",
+    "tests/vmp_corpus/linux32.py": "3e69027a6fa06a1c6b4693dd702f26a2f81cd07ac2bcc7775f711e42a8d99c09",
+    "tests/vmp_corpus/linux32_exec.py": "a0577238731548cde8e20c20299f61cc7fcf23b4602c33dfdbcd12f8c08793b0",
+    "tests/vmp_native/cfg_slices.S": "8c407600df2e7b9a9571b0f8c6446c37439ca27b3db1caa9d5ef97e03ca3652d",
+    "tests/vmp_native/cfg_slices_main.c": "aa39756c348f58a88fd8cebc2050680ab89bf646a94f43214f0a6840fe37b1c6",
+    "tests/vmp_native/dataflow.S": "46c95831d6f4ac820e0a00bf8682f0a6e75291ee55ab304b44ce1cea92ad7dbc",
+    "tests/vmp_native/dataflow_main.c": "db34d9794cdf8d0743b620e9abd455a054ced2f0e634e4fe60c697a14ed28d73",
+    "tests/x86_abstract_tests.cpp": "df286e7ffff2fca04cb04b70b90faf14cf2336d15707fd01e617ac70acec4b9c"
+  },
+  "artifact_sha256": {
+    "build/ast-value-protected-final/protected_mba_analysis.json": "3ddd13023dd200e679aa06054e7bb12a4f102fb84cb28b49386beaa5872400cb",
+    "build/cfg-slice-acceptance-audit.json": "13d63eac9884095187e00c3cc0448747c2efc64c27b8995f9e552929c1703a2c",
+    "build/cfg-slice-admitted-candidate.dylib": "e770d602e2d9b671b4b1ed282a73e2051b2aefa29b6be55a54a0ab11a17cf6cc",
+    "build/cfg-slice-candidate.dylib": "f73932e1d8ce355126a5bf06edc12b7418a137a907dd0430edf22bd5b8544e34",
+    "build/cfg-slice-complete-acceptance-audit.json": "a0d1d8ba5b79008459f8981c326a49a47f4ad2d4892b97e985e0ca81bbf2695d",
+    "build/cfg-slice-complete-candidate.dylib": "fe708ac1dab571e244ee6fd00ffb8cbcc5a26efbedc6f3adc536191a843597e4",
+    "build/cfg-slice-dataflow-admitted/dataflow_analysis.json": "bc79614a0aedd5478589cba1d6f282a9bcd9930b55811f1137e90756a0ece19b",
+    "build/cfg-slice-dataflow-admitted/i386/inspection/dataflow.json": "64f09a84cdd273d30d61d2167820e03aebaf54a730b24f9925f52b6f3c96b6df",
+    "build/cfg-slice-dataflow-admitted/i386/inspection/run.json": "d9eba36c6b70aaeea5bc442d2feaa3fa339f7fa55858f05674b19d02dc59750a",
+    "build/cfg-slice-dataflow-admitted/x86_64/inspection/dataflow.json": "1c1ed33b4e08730205ab7fcb989222e662cbcd571bf67840af7adeff5574df7b",
+    "build/cfg-slice-dataflow-admitted/x86_64/inspection/run.json": "58b5c91cf20497278b368dca482dacfd7fcd396a1cb5cad59b187dc0f397be24",
+    "build/cfg-slice-dataflow-complete/dataflow_analysis.json": "e611ce66886172023aa099ed4d375e30adbd0949f5c3f1d88a94f9496b0d6351",
+    "build/cfg-slice-dataflow-complete/i386/inspection/dataflow.json": "64f09a84cdd273d30d61d2167820e03aebaf54a730b24f9925f52b6f3c96b6df",
+    "build/cfg-slice-dataflow-complete/i386/inspection/run.json": "2a57839a299ab2633eab51fbc3258ed9a50640224bf85da887ccf18dcb71bc07",
+    "build/cfg-slice-dataflow-complete/x86_64/inspection/dataflow.json": "1c1ed33b4e08730205ab7fcb989222e662cbcd571bf67840af7adeff5574df7b",
+    "build/cfg-slice-dataflow-complete/x86_64/inspection/run.json": "6e4bfba60d37a7b899e081251d0b3f8755ba2307500f786b3c04f6facb55e1b8",
+    "build/cfg-slice-first-preservation.json": "6d4ae46cfbc83d216b39218ad30e2b85b870137721c0c4b57d1c286adca7b4cd",
+    "build/cfg-slice-first-x86_analysis.cpp": "c4b35616d0e4dd24c1297b9539bcd9039ddae2cda799b10baaee19920085f53e",
+    "build/cfg-slice-native-stack.txt": "61b22f9ff05877b427b4bc6d7e54067de547cef5ee8ab4782ef8cd022856a076",
+    "build/cfg-slice-prior-b65415a8.dylib": "e9216d96f685eeeb892c67244604346f3bbd77c266494acf4b420342673e8ab8",
+    "build/cfg-slice-protected-admitted/protected_mba_analysis.json": "55a308be2b38ca7f5b8f3df69be464874ba675b8acaaa2e658d7e861bdbeefc5",
+    "build/cfg-slice-protected-complete/protected_mba_analysis.json": "65ccffe92ced74c5799b4b41b218f15adbd2f999e200f529ae7d45565f63c9d5",
+    "build/cfg-slice-protected-final/protected_mba_analysis.json": "fd169fe9e172d9f2b47ec3eb091de3e7c15632eb55c0c358565ea2021df23677",
+    "build/cfg-slices-complete-i386/cfg_slices": "0a7a60b324d0ba69d60117b6449d562662acce73aaae545dc5a6b1645693a62a",
+    "build/cfg-slices-complete-i386/native.json": "c71bd54bc48cdc69615a57e27db8b02605fece119c80fef862fe520fa0afb62b",
+    "build/cfg-slices-complete-native-x86_64.json": "9fb0e080e520cff2d15b5d0e47b9f99a54c6b8de2f4a6f14f5b9b9e57034379b",
+    "build/cfg-slices-complete-x86_64": "1c98337130c3f84397927473b235748da18b2f07c160707abc17649bf5814f6f",
+    "build/cfg-slices-ctest.json": "1cfc379e168471a06426adf46dbaba7467556f43d53735d6466d2ab084475893",
+    "build/cfg-slices-ctest.log": "2c622bee71cbe15433a25a4d167ff106fd999629c9af08709c36a8117f1041a0",
+    "build/cfg-slices-first-budget-control/cfg_slices.json": "b1c53e432a81df8559c9f2fee8fd1828b2bb46a0804e9a9f852ceec6d600fdfd",
+    "build/cfg-slices-first-budget-control/run.json": "51a5f6ca4c6bbb122d00b7d4f13cf8c314b120ac148d5c8a96e4460da3b32dd6",
+    "build/cfg-slices-i386-admitted-default/cfg_slices.json": "53dea8d9bd3f86e3b7c49f703cfe0f6c073d0ed7417bbb0294a3117e0faaa62a",
+    "build/cfg-slices-i386-admitted-default/run.json": "5545b1e62762385062e6b9f26b8ae890f955ca74893faa63e1c3acf101eeb6f0",
+    "build/cfg-slices-i386-admitted64/cfg_slices.json": "337f6fac1b61544144f24ab06af911a4c7ad03a1832e69b43837cb393baa2ceb",
+    "build/cfg-slices-i386-admitted64/run.json": "ffa081e653c302c6b23b3ac8cdee97bfdbfc81c7a178090dd8a732dd46b5c7ca",
+    "build/cfg-slices-i386-complete-default/cfg_slices.json": "35f3b93f956c3aee9351e69c35dd943fc830d7ad4c3bb6d64b258626ab1d8351",
+    "build/cfg-slices-i386-complete-default/run.json": "96bc13877373d70978e549565144a937df9378b15cb8e812ec17edd84ba98855",
+    "build/cfg-slices-i386-complete-prior/cfg_slices.json": "85aa9c46aadc6dafd828db1890c7cdf5a2e58c82affc02f4aab2f2940230fc21",
+    "build/cfg-slices-i386-complete-prior/run.json": "4bfa5351a6d868b2a6d718c2de39984ba5c89b841493ca4d5396930b42ed09d9",
+    "build/cfg-slices-i386-prior64-final/cfg_slices.json": "8f38e979f20c8fdb0a72d3d06cda02845ee529870cb1cd7e8294bdac7d553492",
+    "build/cfg-slices-i386-prior64-final/run.json": "24b64ef2732b8182bc3969e131457770ba3b2717ff10cc2b74cf641880055841",
+    "build/cfg-slices-i386/cfg_slices": "bd183a7620e526a754ac65a0bd51dbae2ad702a524f6e4f9fc6d37ac3b3405ce",
+    "build/cfg-slices-i386/native.json": "3855734f07fbf7fb4a0a77f62248681ccda3aae599890a3d0c50aee2cf9dc478",
+    "build/cfg-slices-native-x86_64.json": "b2a2d803e9c0ad935a240ddefc6a61f291f5efdbe1630c6ff7a5b05f9770ed87",
+    "build/cfg-slices-portable.json": "bcac3a7aeaf8be474c4ad573f1e163987f481cbba2173a20a6a2829ba6f520dc",
+    "build/cfg-slices-x64-admitted-default/cfg_slices.json": "2cfc593e5d94c362761af7ccb5cbe1281519656d03c191de4cfce584bcd387ae",
+    "build/cfg-slices-x64-admitted-default/run.json": "50c5f175371e63eb4a2c823dc9b550c5da7f95435d20bcfc1d39ded9b9570a53",
+    "build/cfg-slices-x64-admitted-depth1/cfg_slices.json": "86f7bdbd80d88ed32af1335f3f8d205c1140799568c10aca7021dbdbcd5a2270",
+    "build/cfg-slices-x64-admitted-depth1/run.json": "c670f432b4a2fd3646ac79190832b37d1c7916f5907584f5b87cc849f42e07a0",
+    "build/cfg-slices-x64-complete-default/cfg_slices.json": "1750df42dab627003a1100cb548bcd9ce70f25870e7e3d808c99838f67b61451",
+    "build/cfg-slices-x64-complete-default/run.json": "9c98b5a55451f33ecf0919b4bcfd5637153b71916e2ec59e56dbc15f5d61a0d6",
+    "build/cfg-slices-x64-complete-depth1/cfg_slices.json": "9ad8b07df5ec6f750481fb95b421e248a186134438e88993d05ec323327dbfa8",
+    "build/cfg-slices-x64-complete-depth1/run.json": "4d31365f50e0f2d0aa0e91e3a111a58d36ad4594a8d6826d3927b7b29f1369a4",
+    "build/cfg-slices-x64-complete-prior/cfg_slices.json": "03e964e188ca871dff632f530382414ebc8cd456354238ba9d1daf96673572ad",
+    "build/cfg-slices-x64-complete-prior/run.json": "17241e6b754c986086c019498dd339e77b17d1920d0a7b23d477661d2de9691d",
+    "build/cfg-slices-x64-prior64-v2/cfg_slices.json": "182f4577fa07da8c7d73056b73ea1a52f849b33c34c7e512b84ab973f3a2a8de",
+    "build/cfg-slices-x64-prior64-v2/run.json": "3dfb27c54a7edc2b3e177d45fff13b6d2ef2ddbdbb3b826cd0d95a0480ba2d3f",
+    "build/cfg-slices-x86_64": "b852489ac6dda94c5ba1d167f3717b3c855c9a1267f65a574435934dd9149205"
+  },
+  "assumptions": [
+    "A1 current owned code inventory and byte-derived successors describe the admitted graph",
+    "A2 each cut predecessor supplies arbitrary modeled input",
+    "A3 existing state transfer and join semantics apply to the selected graph",
+    "A4 complete support remains in byte/owner freshness despite display quotas",
+    "A5 artifact/profile pins bind comparisons and single-run observations"
+  ],
+  "limitations": [
+    "4096-head complete-inventory cap",
+    "unsupported/incomplete full graphs use existing prefix fallback",
+    "cut inputs can discard precision and correlations",
+    "complete inventories are rebuilt for every query",
+    "measured maximum latency remains above preceding checkpoint",
+    "no broader protected recovery gain",
+    "no new hardware fault, concurrency, segment-base or dynamic-heap proof",
+    "no full review completion claim"
+  ],
+  "quality_gates": {
+    "QG1": "no normative content required",
+    "QG2": "A1-A5 dependencies and probes documented",
+    "QG3": "changeset admission/preservation covered; full review remains open",
+    "QG4": "exact counts, heads, bytes and nanoseconds",
+    "QG5": "cut states, refusals, display caps and latency costs explicit",
+    "QG6": "primary SDK/source/actual module and capture hashes pinned",
+    "QG7": "bounded reuse, correlation and inspection opportunities documented"
+  },
+  "artifact_roles": {
+    "accepted_candidate": "build/cfg-slice-complete-candidate.dylib",
+    "actual_installed_predecessor": "build/cfg-slice-prior-b65415a8.dylib",
+    "first_trial": "build/cfg-slice-candidate.dylib",
+    "intermediate_admission_trial": "build/cfg-slice-admitted-candidate.dylib",
+    "accepted_matrix": "build/cfg-slice-protected-complete/protected_mba_analysis.json",
+    "accepted_audit": "build/cfg-slice-complete-acceptance-audit.json",
+    "accepted_dataflow_regression": "build/cfg-slice-dataflow-complete/dataflow_analysis.json",
+    "accepted_binary_x86_64": "build/cfg-slices-complete-x86_64",
+    "accepted_binary_i386": "build/cfg-slices-complete-i386/cfg_slices"
+  },
+  "candidate_source_fingerprint": "cdb8d4b0e30a"
+}

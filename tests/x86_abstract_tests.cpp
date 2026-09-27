@@ -475,6 +475,90 @@ void dataflow_regressions()
     std::puts("dataflow join concretizations: 65536; graph controls passed");
 }
 
+void backward_slice_regressions()
+{
+    using chernobog::FlowNode;
+    using chernobog::backward_flow_slice;
+    uint64_t comparisons = 0;
+    // Independently enumerate concrete Boolean inputs over every five-node
+    // acyclic topology. Every cut edge must add both Boolean completions.
+    for (unsigned topology = 0; topology < 1024; ++topology)
+        for (unsigned operations = 0; operations < 16; ++operations)
+        {
+            std::vector<FlowNode> graph(5);
+            unsigned edge = 0;
+            for (size_t i = 0; i < graph.size(); ++i)
+                for (size_t p = 0; p < i; ++p, ++edge)
+                    if (topology & (1u << edge))
+                        graph[i].predecessors.push_back(p);
+            graph[0].unknown_entry = true;
+            std::array<unsigned, 5> inputs{}, outputs{};
+            const auto operation = [&](size_t i) { return (operations >> (i % 4)) & 3u; };
+            for (size_t i = 0; i < graph.size(); ++i)
+            {
+                unsigned input = graph[i].predecessors.empty() ? 3 : 0;
+                for (size_t p : graph[i].predecessors)
+                    input |= outputs[p];
+                inputs[i] = input;
+                const unsigned op = operation(i);
+                outputs[i] = op == 0   ? input
+                             : op == 1 ? 1
+                             : op == 2 ? 2
+                                       : ((input & 1) << 1) | ((input & 2) >> 1);
+            }
+            for (size_t budget = 1; budget <= 5; ++budget)
+            {
+                const auto slice = backward_flow_slice(graph, 4, budget);
+                check(slice && slice->graph.size() <= budget &&
+                          slice->original_indices[slice->query] == 4,
+                      "backward slice keeps the query within its node budget");
+                if (!slice)
+                    continue;
+                const auto result = chernobog::bounded_dataflow<FlowState>(
+                    slice->graph, budget, 16,
+                    [&](size_t i, FlowState state)
+                    {
+                        const unsigned op = operation(slice->original_indices[i]);
+                        if (op == 1 || op == 2)
+                            state.flags.set(CF, op == 2);
+                        else if (op == 3)
+                            if (const auto value = state.flags.get(CF))
+                                state.flags.set(CF, !*value);
+                        return state;
+                    });
+                check(result.has_value(), "acyclic slice reaches a fixed point");
+                if (!result)
+                    continue;
+                const auto value = (*result)[slice->query].flags.get(CF);
+                check(!value || inputs[4] == (*value ? 2u : 1u),
+                      "every sliced Boolean fact agrees with every concrete original input");
+                ++comparisons;
+            }
+        }
+    std::vector<FlowNode> loop = {{{}, true}, {{0, 2}, false}, {{1}, false}, {{1}, false}};
+    for (size_t budget : {1u, 2u, 3u, 4u})
+    {
+        const auto slice = backward_flow_slice(loop, 3, budget);
+        const auto result =
+            chernobog::bounded_dataflow<FlowState>(slice->graph, budget, 16,
+                                                   [&](size_t i, FlowState state)
+                                                   {
+                                                       if (slice->original_indices[i] == 0)
+                                                           state.flags.set(CF, true);
+                                                       return state;
+                                                   });
+        check(result && (budget == 4 ? (*result)[slice->query].flags.get(CF) == true
+                                     : !(*result)[slice->query].flags.get(CF)),
+              "a cut loop entry stays unknown until its establishing predecessor is retained");
+    }
+    check(!backward_flow_slice(loop, 4, 4), "foreign slice query rejects");
+    check(!backward_flow_slice(loop, 3, 0), "zero slice budget rejects");
+    loop[0].predecessors = {4};
+    check(!backward_flow_slice(loop, 3, 2), "even an unselected malformed predecessor rejects");
+    std::printf("backward slice concrete Boolean comparisons: %llu; controls passed\n",
+                static_cast<unsigned long long>(comparisons));
+}
+
 void alternative_regressions()
 {
     struct Pair
@@ -1297,6 +1381,7 @@ int main()
     repeated_memory_regressions();
     const uint64_t repeat_assertions = assertions;
     dataflow_regressions();
+    backward_slice_regressions();
     alternative_regressions();
     explicit_entry_regressions();
     status_ah_regressions();

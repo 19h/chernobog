@@ -17,6 +17,57 @@ struct FlowNode
     bool unknown_entry = false;
 };
 
+struct BackwardFlowSlice
+{
+    std::vector<FlowNode> graph;
+    std::vector<size_t> original_indices;
+    size_t query = 0;
+};
+
+// Select a bounded predecessor neighborhood from a complete graph. A cut edge
+// contributes unknown input at its destination; it is never treated as absent
+// or unreachable. Preserve the original node order for deterministic solves.
+inline std::optional<BackwardFlowSlice> backward_flow_slice(const std::vector<FlowNode> &graph,
+                                                            size_t query, size_t node_limit)
+{
+    if (query >= graph.size() || !node_limit)
+        return std::nullopt;
+    for (const auto &node : graph)
+        for (size_t predecessor : node.predecessors)
+            if (predecessor >= graph.size())
+                return std::nullopt;
+    std::vector<bool> included(graph.size());
+    std::vector<size_t> queue{query};
+    included[query] = true;
+    for (size_t cursor = 0; cursor < queue.size(); ++cursor)
+        for (size_t predecessor : graph[queue[cursor]].predecessors)
+            if (!included[predecessor] && queue.size() < node_limit)
+            {
+                included[predecessor] = true;
+                queue.push_back(predecessor);
+            }
+    std::sort(queue.begin(), queue.end());
+    BackwardFlowSlice result;
+    result.original_indices = queue;
+    result.graph.resize(queue.size());
+    std::vector<size_t> remap(graph.size());
+    for (size_t i = 0; i < queue.size(); ++i)
+        remap[queue[i]] = i;
+    result.query = remap[query];
+    for (size_t i = 0; i < queue.size(); ++i)
+    {
+        const auto &original = graph[queue[i]];
+        auto &node = result.graph[i];
+        node.unknown_entry = original.unknown_entry;
+        for (size_t predecessor : original.predecessors)
+            if (included[predecessor])
+                node.predecessors.push_back(remap[predecessor]);
+            else
+                node.unknown_entry = true;
+    }
+    return result;
+}
+
 // Retain correlations across a bounded set of alternatives. Overflow widens
 // every member with State::join; no predecessor or concrete path is dropped.
 template <class State, size_t Limit = 8> class BoundedAlternatives

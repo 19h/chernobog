@@ -1204,3 +1204,23 @@ different value numbers do not prove runtime inequality, and the measured key
 size rises from 32 to 64 bytes. No protected simplification gain is established.
 Reaching definitions, alias/order completeness and full review implementation
 remain in progress.
+
+## Owned CFG predecessor-slice checkpoint
+
+Review rows 1b, 2a, 2b and V now separate a complete 4,096-head owned inventory
+from the existing local node budget. A bounded predecessor slice retains every
+cut input as unknown, and full inventory support preserves freshness outside
+the transfer slice. Both architectures gain four exact conditions and two
+transfer targets on matched large-function binaries; the actual preceding
+installed plugin abstains. Default-profile fixtures, configured dataflow
+regressions, 4,096/4,097 head
+controls, entry/byte mutations, 81,920 independent Boolean comparisons and
+22,528 native result/memory checks pass. A separately reserved query node retains
+the preceding plugin's exact eight-instruction prefix fact. Existing dataflow
+regressions and all 22 CTest suites pass. The full 40-process protected matrix preserves 152 native
+rows, 456 SDK outcomes, 454 typed captures and all matching diagnostics.
+Head-count and early-shape admission reduce the first candidate's slowest run
+from 177,578,693,209 ns to 51,259,757,375 ns; this remains above the predecessor
+checkpoint's measurement. See `VMP_OWNED_CFG_SLICES.md` and its evidence JSON.
+Repeated inventory cost, larger/incomplete graphs, full protected ownership and
+complete review implementation remain in progress.
