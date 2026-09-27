@@ -13,11 +13,13 @@ import ida_expr
 import ida_funcs
 import ida_idaapi
 import ida_kernwin
+import ida_name
 
 ACTION = "chernobog:evidence_view"
 REGION_ACTION = "chernobog:native_region_facts"
 CANDIDATE_ACTION = "chernobog:native_candidate_region"
 SHADOW_USE_ACTION = "chernobog:shadow_call_use"
+TEMPORAL_VM_ACTION = "chernobog:temporal_vm_trace"
 
 
 def api(name, ea):
@@ -41,6 +43,87 @@ def shadow_use_api(root, seed, shadow_file, request):
     ):
         raise RuntimeError("shadow call-use API unavailable")
     return json.loads(value.c_str())
+
+
+def temporal_vm_api(root, seed, request, bindings):
+    """One explicit native capture; its result is historical after the call."""
+    value = ida_expr.idc_value_t()
+    expression = (
+        f"chernobog_vm_trace_temporal_check({int(root)},{int(seed)},"
+        f"{json.dumps(request)},{json.dumps(bindings)})"
+    )
+    if (
+        ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, expression)
+        or value.vtype != ida_expr.VT_STR
+    ):
+        raise RuntimeError("temporal VM capture API unavailable")
+    return json.loads(value.c_str())
+
+
+def suggested_temporal_bindings():
+    """Offer exact current IDB import names; the plugin validates each binding."""
+    names = (
+        "malloc",
+        "calloc",
+        "free",
+        "memset",
+        "memcpy",
+        "memmove",
+        "strlen",
+        "strcmp",
+        "strcpy",
+        "strncpy",
+        "memchr",
+        "strnlen",
+        "exit",
+        "abort",
+        "arc4random",
+        "arc4random_uniform",
+    )
+    found = {}
+    for base in names:
+        for name in (base, "_" + base):
+            address = ida_name.get_name_ea(ida_idaapi.BADADDR, name)
+            if (
+                address != ida_idaapi.BADADDR
+                and ida_bytes.is_mapped(address)
+                and ida_name.get_name(address) == name
+            ):
+                found.setdefault(address, {"address": hex(address), "name": name})
+    return json.dumps(list(found.values()))
+
+
+def temporal_candidate_source_rows(snapshot):
+    """Bound freshness checks to instructions named by retained candidates."""
+    candidates = snapshot.get("native_vm_candidates", {}).get("records", []) + snapshot.get(
+        "native_observations", {}
+    ).get("records", [])
+    sites = {
+        span.split(":")[0]
+        for row in candidates
+        for span in row.get("instruction_spans", "").split(";")
+        if span
+    }
+    sites.update(
+        row[key]
+        for row in candidates
+        for key in ("site", "read", "dispatch", "target", "observed_target")
+        if row.get(key)
+    )
+    return [row for row in snapshot.get("heads", []) if row["site"] in sites]
+
+
+def matching_temporal_sources(snapshot, source_rows=None):
+    """Check candidate source bytes without refreshing captured runtime claims."""
+    if not snapshot.get("available") or not snapshot.get("ran"):
+        return set()
+    matching = set()
+    for row in source_rows if source_rows is not None else temporal_candidate_source_rows(snapshot):
+        site = row["site"]
+        data = bytes.fromhex(row["bytes"])
+        if len(data) == int(row["size"]) and ida_bytes.get_bytes(int(site, 0), len(data)) == data:
+            matching.add(site)
+    return matching
 
 
 def shadow_file_digest(path):
@@ -211,10 +294,15 @@ if ida_kernwin.is_idaq():
             super().mousePressEvent(event)
 
     class FlowEdge(QtWidgets.QGraphicsPathItem):
-        def __init__(self, owner, row, start, end):
+        def __init__(self, owner, row, start, end, compact=False):
             path = QtGui.QPainterPath(start)
-            bend = max(40.0, abs(end.y() - start.y()) / 2)
-            path.cubicTo(start + QtCore.QPointF(70, bend), end + QtCore.QPointF(-70, -bend), end)
+            if compact:
+                path.cubicTo(start + QtCore.QPointF(60, 0), end + QtCore.QPointF(-60, 0), end)
+            else:
+                bend = max(40.0, abs(end.y() - start.y()) / 2)
+                path.cubicTo(
+                    start + QtCore.QPointF(70, bend), end + QtCore.QPointF(-70, -bend), end
+                )
             super().__init__(path)
             self.owner, self.row = owner, row
             color = {"witness": "#267db8", "native-proof": "#49a875"}.get(row["truth"], "#b67e2b")
@@ -1460,6 +1548,375 @@ if ida_kernwin.is_idaq():
             if hasattr(self, "timer"):
                 self.timer.stop()
 
+    class TemporalVmForm(ida_kernwin.PluginForm):
+        """Captured ownerless visits, actual transfers and local check results."""
+
+        def __init__(self, root, seed, request, bindings, snapshot):
+            super().__init__()
+            self.root, self.seed = int(root), int(seed)
+            self.request, self.bindings = request, bindings
+            self.snapshot = snapshot
+            self.selected = {}
+            self.selected_visit = None
+            self.selected_syntax = None
+            self.sources = set()
+            self.closed = False
+
+        def OnCreate(self, form):
+            self.parent = self.FormToPyQtWidget(form)
+            self.parent.setMinimumSize(1100, 700)
+            layout = QtWidgets.QVBoxLayout(self.parent)
+            self.status = QtWidgets.QLabel()
+            self.status.setWordWrap(True)
+            layout.addWidget(self.status)
+            self.scope = QtWidgets.QLabel(
+                "Historical fixed-seed native capture. Local checks apply only to the recorded "
+                "entry state and event prefix. No VM identity or ordinary function proof is published."
+            )
+            self.scope.setWordWrap(True)
+            layout.addWidget(self.scope)
+            controls = QtWidgets.QHBoxLayout()
+            for title, callback in (
+                ("Recapture", self.reload),
+                ("Fit transfers", self.fit_graph),
+                ("Jump to matching bytes", self.jump_source),
+            ):
+                button = QtWidgets.QPushButton(title)
+                button.clicked.connect(callback)
+                controls.addWidget(button)
+                if title.startswith("Jump"):
+                    self.jump = button
+            controls.addStretch()
+            layout.addLayout(controls)
+            split = QtWidgets.QSplitter()
+            self.graph = FlowView()
+            self.scene = QtWidgets.QGraphicsScene(self.graph)
+            self.graph.setScene(self.scene)
+            self.graph.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            split.addWidget(self.graph)
+            right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+            self.tabs = QtWidgets.QTabWidget()
+            self.syntax = QtWidgets.QTableWidget()
+            self.visits = QtWidgets.QTableWidget()
+            self.memory = QtWidgets.QTableWidget()
+            self.transfers = QtWidgets.QTableWidget()
+            for table, title in (
+                (self.syntax, "Syntax candidates"),
+                (self.visits, "VM candidate visits"),
+                (self.memory, "Ordered memory"),
+                (self.transfers, "Observed transfers"),
+            ):
+                table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+                table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+                table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+                table.itemSelectionChanged.connect(lambda t=table: self.select_table(t))
+                self.tabs.addTab(table, title)
+            right.addWidget(self.tabs)
+            self.detail = QtWidgets.QPlainTextEdit()
+            self.detail.setReadOnly(True)
+            right.addWidget(self.detail)
+            right.setSizes([350, 300])
+            split.addWidget(right)
+            split.setSizes([430, 670])
+            layout.addWidget(split, 1)
+            self.rebuild()
+            QtCore.QTimer.singleShot(0, self.fit_graph)
+            self.timer = QtCore.QTimer(self.parent)
+            self.timer.timeout.connect(self.poll)
+            self.timer.start(2000)
+            self.poll()
+
+        def fill_table(self, table, columns, rows):
+            table.blockSignals(True)
+            table.clear()
+            table.setColumnCount(len(columns))
+            table.setHorizontalHeaderLabels([title for title, _ in columns])
+            table.setRowCount(len(rows))
+            for index, row in enumerate(rows):
+                for column, (_, key) in enumerate(columns):
+                    item = QtWidgets.QTableWidgetItem(str(row.get(key, "")))
+                    item.setData(QtCore.Qt.ItemDataRole.UserRole, row)
+                    table.setItem(index, column, item)
+            table.resizeColumnsToContents()
+            table.horizontalHeader().setStretchLastSection(True)
+            table.blockSignals(False)
+
+        def rebuild(self):
+            self.selected = {}
+            self.selected_visit = None
+            self.selected_syntax = None
+            self.scene.clear()
+            self.nodes = {}
+            self.source_rows = temporal_candidate_source_rows(self.snapshot)
+            observations = self.snapshot.get("native_observations", {})
+            syntax = self.snapshot.get("native_vm_candidates", {}).get("records", [])[:128]
+            visits = observations.get("records", [])[:128]
+            sites = {
+                row[key]
+                for row in syntax + visits
+                for key in ("site", "read", "dispatch", "target", "observed_target")
+                if row.get(key) and row[key] != "0x0"
+            }
+            all_transfers = [
+                dict(row, site=row["source"], truth="witness")
+                for row in self.snapshot.get("edges", [])
+                if row["source"] in sites or row["target"] in sites
+            ]
+            self.transfer_total = len(all_transfers)
+            transfers = all_transfers[:256]
+            sites.update(row[key] for row in transfers for key in ("source", "target"))
+            for index, site in enumerate(sorted(sites, key=lambda address: int(address, 0))):
+                node = FlowNode(self, site, (index % 3) * 210, (index // 3) * 90)
+                self.scene.addItem(node)
+                self.nodes[site] = node
+            for row in transfers:
+                start, end = self.nodes[row["source"]], self.nodes[row["target"]]
+                self.scene.addItem(
+                    FlowEdge(
+                        self,
+                        row,
+                        start.sceneBoundingRect().center(),
+                        end.sceneBoundingRect().center(),
+                        compact=True,
+                    )
+                )
+            self.fill_table(
+                self.syntax,
+                [
+                    ("Entry", "site"),
+                    ("Read", "read"),
+                    ("Dispatch", "dispatch"),
+                    ("Status", "semantic_validation"),
+                ],
+                syntax,
+            )
+            self.fill_table(
+                self.visits,
+                [
+                    ("Entry", "site"),
+                    ("Dispatch", "dispatch"),
+                    ("Path", "path"),
+                    ("Local check", "semantic_validation"),
+                ],
+                visits,
+            )
+            self.fill_table(
+                self.transfers,
+                [
+                    ("Sequence", "sequence"),
+                    ("Source", "source"),
+                    ("Target", "target"),
+                    ("Kind", "kind"),
+                ],
+                transfers,
+            )
+            self.fill_memory()
+            self.fit_graph()
+            self.show_detail()
+
+        def fill_memory(self):
+            accesses = self.snapshot.get("data", [])
+            if self.selected_visit is not None:
+                lower = int(self.selected_visit["sequence"], 0)
+                upper = int(self.selected_visit.get("output_sequence", "0"), 0)
+                accesses = [row for row in accesses if lower < int(row["sequence"], 0) < upper]
+            elif self.selected_syntax is not None:
+                lower = int(self.selected_syntax["first_sequence"], 0)
+                upper = int(self.selected_syntax["last_sequence"], 0)
+                accesses = [row for row in accesses if lower < int(row["sequence"], 0) <= upper]
+            self.visible_memory_count = len(accesses)
+            self.fill_table(
+                self.memory,
+                [
+                    ("Sequence", "sequence"),
+                    ("Source", "site"),
+                    ("Kind", "kind"),
+                    ("Address", "address"),
+                    ("Value", "value"),
+                ],
+                accesses[:256],
+            )
+
+        def fit_graph(self):
+            if self.scene.items():
+                self.graph.fitInView(
+                    self.scene.itemsBoundingRect().adjusted(-20, -20, 20, 20),
+                    QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                )
+
+        def select_table(self, table):
+            if not table.selectedItems():
+                return
+            row = table.selectedItems()[0].data(QtCore.Qt.ItemDataRole.UserRole)
+            if table is self.visits:
+                self.selected_visit = row
+                self.selected_syntax = None
+                self.fill_memory()
+            elif table is self.syntax:
+                self.selected_syntax = row
+                self.selected_visit = None
+                self.fill_memory()
+            self.select_record(row)
+
+        def select_site(self, site):
+            visit = next(
+                (
+                    row
+                    for row in self.snapshot.get("native_observations", {}).get("records", [])
+                    if site
+                    in (row.get("site"), row.get("read"), row.get("dispatch"), row.get("target"))
+                ),
+                None,
+            )
+            if visit is not None:
+                self.selected_visit = visit
+                self.selected_syntax = None
+                self.fill_memory()
+            syntax = next(
+                (
+                    row
+                    for row in self.snapshot.get("native_vm_candidates", {}).get("records", [])
+                    if site
+                    in (
+                        row.get("site"),
+                        row.get("read"),
+                        row.get("dispatch"),
+                        row.get("observed_target"),
+                    )
+                ),
+                None,
+            )
+            if visit is None and syntax is not None:
+                self.selected_syntax = syntax
+                self.selected_visit = None
+                self.fill_memory()
+            self.select_record(visit or syntax or {"site": site})
+
+        def select_record(self, row):
+            if row.get("truth") == "witness":
+                self.selected_visit = None
+                self.selected_syntax = None
+                self.fill_memory()
+            self.selected = row
+            node = self.nodes.get(row.get("site"))
+            for other in self.nodes.values():
+                other.setBrush(QtGui.QColor("#bedff4" if other is node else "#e1e7ee"))
+            if node is not None:
+                self.graph.centerOn(node)
+            self.show_detail()
+
+        def show_detail(self):
+            observation = self.snapshot.get("native_observations", {})
+            self.detail.setPlainText(
+                json.dumps(
+                    {
+                        "local_check": self.selected.get("semantic_validation", "not selected"),
+                        "candidate_scope": (
+                            "syntax-only; no transition check"
+                            if self.selected_syntax is not None
+                            else (
+                                "captured local visit"
+                                if self.selected_visit is not None
+                                else "no candidate selected"
+                            )
+                        ),
+                        "observed_target": self.selected.get(
+                            "target", self.selected.get("observed_target", "unknown")
+                        ),
+                        "transition_reason": self.selected.get("transition_reason", ""),
+                        "transition_queries": self.selected.get("transition_queries", "0"),
+                        "captured_path": self.selected.get("path", "unknown"),
+                        "scope": "historical captured transition; no persistent VM proof",
+                        "source_bytes_match": self.selected.get("site") in self.sources,
+                        "capture": self.snapshot.get("capture"),
+                        "image_hash": self.snapshot.get("image_hash"),
+                        "seed": self.snapshot.get("seed"),
+                        "stop": self.snapshot.get("stop"),
+                        "native_walk_stop": self.snapshot.get("native_walk_stop"),
+                        "temporal_prefix_complete": self.snapshot.get(
+                            "native_temporal_prefix_complete"
+                        ),
+                        "sample_complete": self.snapshot.get("native_state_capture_complete"),
+                        "observation_reason": observation.get("reason"),
+                        "candidate_visits": observation.get("candidate_visits"),
+                        "candidate_records_omitted": observation.get("omitted"),
+                        "syntax_records_omitted": self.snapshot.get("native_vm_candidates", {}).get(
+                            "omitted"
+                        ),
+                        "transition_attempts": observation.get("transition_attempts"),
+                        "solver_queries": observation.get("queries"),
+                        "visible_transfers": min(self.transfer_total, 256),
+                        "omitted_transfers": max(0, self.transfer_total - 256),
+                        "visible_memory": min(self.visible_memory_count, 256),
+                        "omitted_memory": max(0, self.visible_memory_count - 256),
+                        "selected": self.selected,
+                    },
+                    indent=2,
+                    sort_keys=False,
+                )
+            )
+            self.jump.setEnabled(self.selected.get("site") in self.sources)
+
+        def poll(self):
+            self.sources = matching_temporal_sources(self.snapshot, self.source_rows)
+            observations = self.snapshot.get("native_observations", {})
+            self.status.setText(
+                "Captured seed "
+                + str(self.snapshot.get("seed"))
+                + " | stop "
+                + str(self.snapshot.get("stop"))
+                + " | candidate visits "
+                + str(observations.get("candidate_visits", 0))
+                + " (producer omitted "
+                + str(observations.get("omitted", 0))
+                + ")"
+                + " | syntax candidates "
+                + str(len(self.snapshot.get("native_vm_candidates", {}).get("records", [])))
+                + " (producer omitted "
+                + str(self.snapshot.get("native_vm_candidates", {}).get("omitted", 0))
+                + ")"
+                + " | local checks "
+                + str(observations.get("transition_attempts", 0))
+                + " | queries "
+                + str(observations.get("queries", 0))
+                + " | candidate source bytes matching "
+                + str(len(self.sources))
+                + "/"
+                + str(len(self.source_rows))
+                + " | sampling complete "
+                + str(self.snapshot.get("native_state_capture_complete"))
+                + " | temporal prefix complete "
+                + str(self.snapshot.get("native_temporal_prefix_complete"))
+                + " | displayed transfers "
+                + str(min(self.transfer_total, 256))
+                + "/"
+                + str(self.transfer_total)
+            )
+            self.show_detail()
+
+        def reload(self):
+            try:
+                state = temporal_vm_api(self.root, self.seed, self.request, self.bindings)
+                if not state.get("available") or not state.get("ran"):
+                    self.poll()
+                    return
+                self.snapshot = state
+                self.rebuild()
+                self.poll()
+            except (RuntimeError, ValueError, KeyError):
+                self.poll()
+
+        def jump_source(self):
+            self.poll()
+            site = self.selected.get("site")
+            if site in self.sources:
+                ida_kernwin.jumpto(int(site, 0))
+
+        def OnClose(self, _form):
+            self.closed = True
+            if hasattr(self, "timer"):
+                self.timer.stop()
+
 
 class NativeRegionAction(ida_kernwin.action_handler_t):
     def __init__(self, owner, api_name="chernobog_native_region_facts"):
@@ -1544,6 +2001,38 @@ class ShadowUseAction(ida_kernwin.action_handler_t):
         return ida_kernwin.AST_ENABLE_FOR_WIDGET
 
 
+class TemporalVmAction(ida_kernwin.action_handler_t):
+    def __init__(self, owner):
+        super().__init__()
+        self.owner = owner
+
+    def activate(self, context):
+        seed = ida_kernwin.ask_long(0, "Native temporal capture seed")
+        if seed is None or seed < 0:
+            return 0
+        request = ida_kernwin.ask_str('{"args":[],"objects":[]}', 0, "Bounded native input JSON")
+        if request is None:
+            return 0
+        bindings = ida_kernwin.ask_str(suggested_temporal_bindings(), 0, "Named ABI binding JSON")
+        if bindings is None:
+            return 0
+        try:
+            parsed_bindings = json.loads(bindings)
+            if (
+                not isinstance(json.loads(request), dict)
+                or not isinstance(parsed_bindings, list)
+                or not parsed_bindings
+            ):
+                raise ValueError("invalid native request or bindings")
+            return int(self.owner.open_temporal_vm(context.cur_ea, seed, request, bindings))
+        except (RuntimeError, ValueError, KeyError):
+            ida_kernwin.msg("[chernobog] Temporal VM capture unavailable.\n")
+            return 0
+
+    def update(self, _context):
+        return ida_kernwin.AST_ENABLE_FOR_WIDGET
+
+
 class EvidenceAction(ida_kernwin.action_handler_t):
     def __init__(self, owner):
         super().__init__()
@@ -1604,6 +2093,7 @@ class EvidencePlugin(ida_idaapi.plugin_t):
         self.forms = {}
         self.region_forms = {}
         self.shadow_forms = {}
+        self.temporal_forms = {}
         self.action = EvidenceAction(self)
         if not ida_kernwin.register_action(
             ida_kernwin.action_desc_t(
@@ -1662,7 +2152,44 @@ class EvidencePlugin(ida_idaapi.plugin_t):
             ida_kernwin.attach_action_to_menu(
                 "View/Open subviews/", SHADOW_USE_ACTION, ida_kernwin.SETMENU_APP
             )
+        self.temporal_action = TemporalVmAction(self)
+        self.temporal_registered = ida_kernwin.register_action(
+            ida_kernwin.action_desc_t(
+                TEMPORAL_VM_ACTION,
+                "Chernobog temporal VM capture",
+                self.temporal_action,
+                None,
+                "Inspect bounded native VM candidate visits and local transition checks",
+                -1,
+            )
+        )
+        if self.temporal_registered:
+            ida_kernwin.attach_action_to_menu(
+                "View/Open subviews/", TEMPORAL_VM_ACTION, ida_kernwin.SETMENU_APP
+            )
         return ida_idaapi.PLUGIN_KEEP
+
+    def open_temporal_vm(self, root, seed, request, bindings):
+        snapshot = temporal_vm_api(root, seed, request, bindings)
+        if not snapshot.get("available") or not snapshot.get("ran"):
+            raise ValueError("selected native temporal capture unavailable")
+        key = (snapshot.get("database"), int(root), int(seed), request, bindings)
+        title = "Chernobog temporal VM " + snapshot["function"] + " seed " + hex(seed)
+        existing = self.temporal_forms.get(key)
+        if existing is not None and not existing.closed:
+            existing.snapshot = snapshot
+            existing.rebuild()
+            existing.poll()
+            existing.Show(title, options=ida_kernwin.PluginForm.WOPN_PERSIST)
+            return True
+        if len(self.temporal_forms) >= 8:
+            oldest = self.temporal_forms.pop(next(iter(self.temporal_forms)))
+            if not oldest.closed:
+                oldest.Close(ida_kernwin.PluginForm.WCLS_SAVE)
+        form = TemporalVmForm(root, seed, request, bindings, snapshot)
+        self.temporal_forms[key] = form
+        form.Show(title, options=ida_kernwin.PluginForm.WOPN_PERSIST)
+        return True
 
     def open_shadow_use(self, root, seed, shadow_file, request):
         digest = shadow_file_digest(shadow_file)
@@ -1688,6 +2215,11 @@ class EvidencePlugin(ida_idaapi.plugin_t):
         ida_kernwin.process_ui_action(ACTION)
 
     def term(self):
+        for form in getattr(self, "temporal_forms", {}).values():
+            if not form.closed:
+                form.Close(ida_kernwin.PluginForm.WCLS_SAVE)
+        if getattr(self, "temporal_registered", False):
+            ida_kernwin.unregister_action(TEMPORAL_VM_ACTION)
         for form in getattr(self, "shadow_forms", {}).values():
             if not form.closed:
                 form.Close(ida_kernwin.PluginForm.WCLS_SAVE)

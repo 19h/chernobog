@@ -1,0 +1,54 @@
+{
+  "archive_sha256": "c30f2a0b2aa29ddf41068deca40f8f4a31bb2d6217df2b09aa75212e9069ecd8",
+  "archive_verifier_sha256": "4c398260c9485aef3fb364f02a01ead417e69adf479ea09995424a74ab71be26",
+  "corpus_report_sha256": "bc23fb34a3914bd8430e26aa82e874ec8f1050e314d18f4aec36745d59670ecc",
+  "ida_gui_sha256": "c0ada391b4d241fdef7d28bcbf8a9315f2bcbd94b397227331d3bc38a510e71d",
+  "outcomes": {
+    "abstained": {
+      "binary_label": "combined-12648430",
+      "binary_sha256": "03f786c1ab630fbe06fa19c6172a2bd6e2a97b7f48d1b98ad643302933202a23",
+      "checks": 5,
+      "report_sha256": "b69eeaa7feec85fca31747b7bdd8c359e34d64f9247e653903109752bd0cb68f",
+      "runner_sha256": "f2f6fa9ec8b2020385ab3bf45e7f230a52733aa30e80210f9051a0082556591d",
+      "screenshot_dimensions_px": [
+        2634,
+        2084
+      ],
+      "screenshot_sha256": "834b468c7c1dbb3f48f0f10e984c815953e3bbb8593efeafbafaa5bb842cbce7",
+      "summary": {
+        "candidate_visits": 0,
+        "solver_queries": 0,
+        "syntax_candidates": 3
+      }
+    },
+    "checked": {
+      "binary_label": "virtualization-0",
+      "binary_sha256": "f94eddb8f3430fe9e286630b47ff2c8922e7044beaa410fe4a4b65ba8b155f57",
+      "checks": 13,
+      "report_sha256": "c03cebb54836d14fb1db5695a7d29b349da08ee98a541e9df8be32c75ad7c562",
+      "runner_sha256": "3c548c98dbb424cdfb7abd54544d5103bb14180e633ceed0435d3f67cddb9a77",
+      "screenshot_dimensions_px": [
+        2634,
+        2084
+      ],
+      "screenshot_sha256": "670aefdbe9ba8fa88a38ab2459a2914333518e8e05d3bbe4c095a5db44305676",
+      "summary": {
+        "heads": 2377,
+        "memory_rows": 5,
+        "queries": 8,
+        "visits": 4
+      }
+    }
+  },
+  "passed": true,
+  "plugin_sha256": "4458eda4c0c7213e1eeb8cc3748104c09541d2e86f64ecadbfc724e377d87c8a",
+  "schema": 1,
+  "scope": "actual IDA Qt checked and abstained temporal VM captures",
+  "source_sha256": {
+    "python/chernobog_evidence.py": "ce8a383194d83f1e7785560554871e6a540ff19afd23a2887f6e6a73540e7d38",
+    "tests/ida_vm_temporal_gui_abstain_probe.py": "b84dd93f45aa52fd716da9b96385cb416ce1d21112b482ed3bf5a4660971bbf2",
+    "tests/ida_vm_temporal_gui_probe.py": "59c403bd9f0b8605da8e21b3ff00b419c4a9f787f2469438cd5aac28cc0b7986",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248"
+  },
+  "verifier_sha256": "946a3c24dd8d0a39b204bd6971378c6da50a0a7461a6bedfbb0d50f69d6cd691"
+}

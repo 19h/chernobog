@@ -1374,3 +1374,22 @@ samples without promoting them to complete sampling. Same-seed sampled and
 unsampled native sites, heads, edges and data events agree in every run. See
 `VMP_TEMPORAL_STATE.md` and its evidence JSON. General VM identity, alternate
 entry behavior, other inputs and complete review implementation remain open.
+
+## Captured temporal VM Qt checkpoint
+
+Review rows 5, 6a, 6b and V now have a separate actual IDA Qt view for
+opt-in named-model native temporal captures. It links syntax candidates,
+checked visits, actual transfer edges, ordered memory intervals and local
+result details. Source navigation requires current candidate instruction
+bytes to match the captured plan; it does not claim current runtime state or
+persistent VM proof. A protected `virtualization-0` view shows four checked
+visits, eight SMT queries and five accesses at the selected scaffold. A
+budget-limited `combined-12648430` view shows three syntax-only candidates,
+zero visits and zero queries. Eighteen actual Qt checks and an offline archive
+verification pass. The settled-IDB positive control preserves 2,377 planned
+heads' bytes, flags, owners and outgoing xrefs; queued IDA autoanalysis before
+the baseline is an explicit negative setup. See `VMP_TEMPORAL_VM_GUI.md` and
+its evidence/capture archive. Full VM and review requirements remain open.
+One eight-job full CTest run reached the existing 100 ms VM-transition solver
+timeout; the four-job full suite passed 23/23. This does not establish
+eight-job deterministic completion.
