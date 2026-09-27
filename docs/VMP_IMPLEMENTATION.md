@@ -48,6 +48,14 @@ constant predicates, full CFG definitions/aliases, missing identities and
 protected recovery gains remain open. See `VMP_MBA_INPUT_REPLAY.md` and its
 evidence JSON. The complete review remains in progress.
 
+Typed MBA rejection checkpoint for row 4a: independent semantic analysis of
+actual transient inputs refutes constant/current-operand reductions for 1,845
+retained events and checks 521 rejected replacements with exact typed
+counterexamples. Integer replay verifies the witnesses; 3,421 unsupported and
+8,799 omitted events remain unclassified. Flags, full CFG/alias state, arbitrary
+identity search, ordering and native reachability remain open. See
+`VMP_MBA_SEMANTIC_MISSES.md` and its evidence JSON.
+
 Protected hello call-use checkpoint for rows 3a, 3b, 6a and V: an explicit
 bounded shadow query joins one observed CALL edge, its same-sequence argument
 register state and loaded read-only NUL-terminated bytes. Two current IDA

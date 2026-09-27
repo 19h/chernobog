@@ -1,0 +1,162 @@
+{
+  "schema": 1,
+  "feature": "Typed semantic checks on actual catalog rejections",
+  "review_rows": [
+    "4a",
+    "V"
+  ],
+  "source_parent": "3b21e98c842ee4f179aa0b3d25e0ea7920fcea9b",
+  "capture_source_fingerprint": "b8d275904cc1",
+  "scope": "actual retained typed primitive value snapshots: refute reduction to any constant or current operand and check three captured rejected-rule instances; values may be unreachable in the native program; different storage classes have no inferred alias relation; no full-state/CFG, fault, side-effect, missing-identity completeness, live rewrite or protected recovery claim",
+  "measurement_origin": "Immutable preceding source-pinned actual match-time matrix; this semantic tool does not create new protected executions or alter plugin matching/rewrite behavior",
+  "population": {
+    "events": 14065,
+    "unrecorded": 8799,
+    "keys": 3950,
+    "retained_events": 5266,
+    "integer_witness_replays": 5273,
+    "constraint_instance_sat": 521,
+    "constraint_integer_witness_replays": 521
+  },
+  "retained_outcomes": {
+    "no_indexed_pattern": 3531,
+    "constant_constraint": 521,
+    "structural_mismatch": 1214
+  },
+  "classifications": {
+    "primitive_reduction_refuted": 1845,
+    "unsupported": 3421
+  },
+  "unsupported_reasons": {
+    "unsupported arithmetic root": 3401,
+    "nonprimitive arithmetic subtree": 8,
+    "unsupported nested value or explicit-load contract": 6,
+    "reserved or condition microregister needs a state contract": 6
+  },
+  "weighted_solver_states": {
+    "sat": 5273
+  },
+  "semantic_projections": 326,
+  "distinct_reduction_queries": 306,
+  "distinct_constraint_queries": 39,
+  "corruption_controls": [
+    "changed computed result",
+    "changed proposed result",
+    "lost snapshot byte",
+    "out-of-domain byte",
+    "invented operand",
+    "false solver state"
+  ],
+  "component_controls": 93,
+  "solver": {
+    "engine": "4.16.0",
+    "package": "4.16.0.0",
+    "sha256": {
+      "<python-z3>/__init__.py": "53c4529a01f38e7c0d593b7548c79e0d7398aa09f7d7cbd1773470859ee2febd",
+      "<python-z3>/z3.py": "4b6130ea4f9f98d1c119e3e854802b11182a6f83c0057a29bb0bd53550299ca1",
+      "<python-z3>/z3core.py": "2df439bdbae68feceefe967ac7651134069a09056b0c6739cd487567f5019f1a",
+      "<python-z3>/z3types.py": "ba728354b4a9ee40bcfbd899f405d904bc4bb023e41807044c06c318548c3080",
+      "<python-z3>/z3consts.py": "4469a1aca95e4282f5fa8fa81041af544347baa7f2b898e0cddf7d1328a181a3",
+      "<python-z3>/lib/libz3.dylib": "752e7241ea570da619daf1fd4e5974c2638f5e83a2c19977ac2aa622bcc139c2"
+    }
+  },
+  "limits": {
+    "analysis_timeout_ms": 250,
+    "analysis_resource_units": 100000,
+    "component_timeout_ms": 1000,
+    "component_resource_units": 1000000,
+    "exhaustion_control_units": 1,
+    "max_snapshot_bytes_per_assignment": 16,
+    "max_reduction_queries": 3,
+    "max_extra_constraint_queries": 1,
+    "whole_process_bounds": "unknown"
+  },
+  "measurements": {
+    "audit": {
+      "exit_code": 0,
+      "elapsed_ns": 1462765750,
+      "peak_resident_bytes": 202539008,
+      "timed_out": false,
+      "output_exceeded": false,
+      "stdout_sha256": "6509ce8827234b1eae225cd1e24e325110ca77ebd23f8dc90ec03c682af34d84",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "controls": {
+      "exit_code": 0,
+      "elapsed_ns": 515253708,
+      "peak_resident_bytes": 118882304,
+      "timed_out": false,
+      "output_exceeded": false,
+      "stdout_sha256": "e91a8a1f8a219d1119802d7279a9f920d871b4361ea0096552f0ad276a20b10b",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "primary_sources": {
+    "sdk_identifier": "IDA SDK 9.40 include/hexrays.hpp",
+    "sdk_sha256": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff",
+    "contract_lines": {
+      "byte_microregisters": 104,
+      "condition_registers": 814,
+      "operand_metadata": 2611
+    },
+    "rule_contracts": [
+      "src/deobf/rules/rules_sub.h:90",
+      "src/deobf/rules/rules_and.h:253",
+      "src/deobf/rules/rules_misc.h:202",
+      "src/deobf/rules/pattern_rule.cpp"
+    ]
+  },
+  "source_sha256": {
+    "src/deobf/rules/pattern_rule.cpp": "92dfd20a6f2182c90f5c97eab9206e291374b5137c4ac50ab5a81b0ccfff260d",
+    "src/deobf/rules/rule_verifier.cpp": "a5f020d93d4e45d932d42cfda0a879bc2de6a2afbd60aa44d3c7987a623bf435",
+    "src/deobf/rules/rules_and.h": "96a45fccd9f4dca2f06782ed2485c59d8302d896348e9a1333d73a8bbe186aea",
+    "src/deobf/rules/rules_misc.h": "5b9c4cad2423265cc7f45eaff50e144626328ffe845cfa21a16576a0d8fa2f2b",
+    "src/deobf/rules/rules_sub.h": "ef47c8cf7b455f86294e3ec08609e68ba942f807a85262e0f3c01b4e42525688",
+    "tests/mba_match_replay.py": "df5aacb9b8885818b1a0fa1010b4c1578d1d6ce24171dd97761c83a3a3b10515",
+    "tests/mba_matching_diagnostics.py": "6d5ec6939a684c5de6453932ed6ab89f5ff212a1e018a36602ca3fde58758ec6",
+    "tests/mba_semantic_miss.py": "6730fd5901f51a331dc4ca0835a2bea7cf184d4867fa0da07f0a24f17d666300",
+    "tests/mba_semantic_miss_tests.py": "21b482bd6b18215ed87483372298842e7ed058e8ae5d420a9746b5a70d503def",
+    "tests/verify_mba_matching_capture.py": "497ec250b3601eebd5c41809cc5c211c82bfe929d2026b44b1f12a131bdff327",
+    "tests/verify_mba_semantic_miss.py": "e68e2b75b02ce53fb5c5d976e8c4f5f768b4c7acaccd818a8c95c87a75e98f3f"
+  },
+  "artifact_sha256": {
+    "build/mba-semantic-audit.json": "7593aa1ee81cb0409ce56fab858ebc252ef0803b39383a4062d39044ef4ae50b",
+    "build/mba-semantic-audit-process.json": "fa268a9bd0527731588b263256c5eff5259a112ccae5e53595e58d340acf142d",
+    "build/mba-semantic-controls-accepted.json": "a19ee3676804d916a74f6bafe158d42db66772df8307760f41818e0d0a384f10",
+    "build/mba-semantic-local-facts.json": "3b35cd6434d4488cc9c03b4551b2dca1d84aef1b3304d44a6dc5a5763b115a3b",
+    "build/mba-semantic-controls-trial.json": "77a9bf6f23b884c42f07e1441d8c56123a54dd165e799851028cd013e177b448",
+    "build/mba-semantic-controls-v2.json": "d064dcc0b05038d552a5c00da307d00f6b1b3ad6150c13ad35731c3d2b6ff6a1",
+    "build/mba-semantic-controls-v3.json": "c2eae987452ee5d3fc5a0f680a57a5e1763bc6be93d7472eb40c75e2a735083c",
+    "build/mba-semantic-audit-trial.json": "cdb64994d92870ad49c60e09055f6ead37ed368d4f671294bfd838700ddca8b6",
+    "build/mba-semantic-audit-v2.json": "46b898596b3bfb158dae80365fd1741bf19755b7a1b041c205a0358bbe900bbc",
+    "build/mba-semantic-audit-v3.json": "69cfa52fb77633a53f8206554841b339f0adc3fcd793d3947ed497c7c2bbf908",
+    "build/match-input-component-fixtures.json": "7ddcb8e83199459431ce446741870532622899eed13a3693239b836e4bc5aeaa",
+    "build/match-input-protected/protected_mba_analysis.json": "37698054c7b3f8a14e8fffb5389ccb090440fee16ed265d103965f791697096a",
+    "build/match-input-audit.json": "9a187b2bed4b9ce6afe05243c69d2ce3b886cdfcbd4e3f9a6f4ea7e5bf69e790",
+    "build/match-input-provenance.json": "532ab004c22adf468953105113f98d6473834a37c265dc7530856b46d8a66b3c",
+    "build/match-input-production-provenance.json": "b1f76ec44a0c6d35805e335cac8b1fa69bfd5dbda5f2fa1f20e00d0ae08a822f",
+    "build/match-input-installed-acceptance.json": "1da2ec9d4ea2745ea0c01ef77e2f96a4bb12a65dfc6791a0f782bf8f2535bc6d",
+    "build/match-input-postinstall-verification.json": "400f9fd578e7ac4bf19cf7ec8b4939140b792b07295826afe7bfee591f736f29",
+    "build/match-input-ctest.json": "07196940558db92bf4a1d2132b60ca7df108a5368eeab3f5787e03ff5a86eae7",
+    "build/mba-semantic-audit-v4.json": "3a5c40fc4fd5934fda4f5114634bfbfc189242c5788d352f90096fbc9763eec8",
+    "build/mba-semantic-audit-process-v4.json": "dafca839c511d369cf84f97ebef76e8edfabb5a36dda57f8e86cd33e09730aa2",
+    "build/mba-semantic-controls-v4.json": "7743ebc526f649bbea17551d1dd2865830fab9773787359c181907f4cd1f2fff"
+  },
+  "trial_history": "Initial package includes multiple operating-system libraries: filename enumeration rejected ambiguity; loaded-dispatcher binding corrected. Initial controls exhausted the intentionally smaller analysis budget for 64-bit free multiplication; component budget separated. Initial audit corruption-control selector selected a conversion with no width-compatible operand; selector corrected. Original trial artifacts retained. Prior accepted receipts are retained. Final replay validation repeats actual binding/width/gate checks and rejects invalid typed MOV targets; nine added persisted-witness corruption controls pass.",
+  "persisted_witness_controls": [
+    "persisted false binding",
+    "persisted false instance width",
+    "persisted false gate",
+    "persisted false bound path",
+    "persisted false proof width",
+    "persisted false proof state",
+    "persisted false constraint result",
+    "persisted false constraint replacement",
+    "persisted width-changing MOV rejected"
+  ],
+  "accepted_artifacts": {
+    "audit": "build/mba-semantic-audit-v4.json",
+    "audit_process": "build/mba-semantic-audit-process-v4.json",
+    "controls": "build/mba-semantic-controls-v4.json"
+  }
+}
