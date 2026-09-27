@@ -141,22 +141,27 @@ void RuleRegistry::clear()
 //--------------------------------------------------------------------------
 RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
 {
+    MatchResult result;
     if (SIMD_UNLIKELY(!ins || !initialized_))
     {
-        return MatchResult();
+        return result;
     }
 
     ++total_matches_;
+    result.attempted = true;
 
     // Convert instruction to AST
     AstPtr candidate = minsn_to_ast(ins);
     if (SIMD_UNLIKELY(!candidate))
     {
-        return MatchResult();
+        return result;
     }
 
     // Get matching patterns from storage - const ref, no copy
     const auto &matches = storage_.get_matching_rules(candidate);
+    result.indexed_patterns = matches.size();
+    result.outcome = matches.empty() ? mba_diagnostics::Outcome::NoIndexedPattern
+                                     : mba_diagnostics::Outcome::StructuralMismatch;
 
     // Stack-allocated bindings - NO HEAP ALLOCATION PER MATCH ATTEMPT
     MatchBindings match_bindings;
@@ -173,6 +178,7 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
         // match_pattern() doesn't modify pattern, just fills bindings
         if (match_pattern(rp.pattern.get(), candidate.get(), match_bindings))
         {
+            ++result.structural_matches;
             // Only convert to std::map when we have a structural match
             // This moves the allocation cost to the success path
             std::map<std::string, mop_t> bindings;
@@ -184,12 +190,17 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
             // Check extra validation - pass candidate (unchanged)
             if (!rp.rule->check_candidate(candidate))
             {
+                ++result.candidate_rejections;
+                if (result.constant_rejections == 0)
+                    result.outcome = mba_diagnostics::Outcome::CandidateConstraint;
                 continue;
             }
 
             // Check constant constraints
             if (!rp.rule->check_constants(bindings))
             {
+                ++result.constant_rejections;
+                result.outcome = mba_diagnostics::Outcome::ConstantConstraint;
                 continue;
             }
 
@@ -202,7 +213,6 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
             deobf::log_verbose("[chernobog] MBA rule '%s' matched\n", rp.rule->name());
 #endif
 
-            MatchResult result;
             result.rule = rp.rule;
             result.matched_pattern = rp.pattern;
             result.bindings = std::move(bindings);
@@ -210,7 +220,7 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
         }
     }
 
-    return MatchResult();
+    return result;
 }
 
 std::vector<RuleRegistry::MatchResult> RuleRegistry::find_all_matches(const minsn_t *ins)

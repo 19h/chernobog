@@ -9,8 +9,13 @@ namespace rules
 using namespace ast;
 
 minsn_t *PatternMatchingRule::apply_replacement(const std::map<std::string, mop_t> &bindings,
-                                                mblock_t *blk, minsn_t *orig_ins)
+                                                mblock_t *blk, minsn_t *orig_ins,
+                                                ReplacementAttempt *attempt)
 {
+    if (attempt)
+        *attempt = {
+            false,
+            {RuleVerificationStatus::UNSUPPORTED, 0, "replacement construction unavailable"}};
     if (!orig_ins)
     {
         return nullptr;
@@ -25,7 +30,12 @@ minsn_t *PatternMatchingRule::apply_replacement(const std::map<std::string, mop_
     std::unique_ptr<minsn_t> proposed(
         build_replacement(replacement, bindings, blk, orig_ins->ea, orig_ins->d.size));
     RuleVerifier verifier;
-    if (!proposed || !verifier.verify_instance(orig_ins, proposed.get()).verified())
+    if (!proposed)
+        return nullptr;
+    const auto result = verifier.verify_instance(orig_ins, proposed.get());
+    if (attempt)
+        *attempt = {true, result};
+    if (!result.verified())
         return nullptr;
     return proposed.release();
 }

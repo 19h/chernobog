@@ -1,0 +1,1622 @@
+{
+  "schema": 1,
+  "passed": true,
+  "scope": "production catalog-attempt diagnostics; actual gates and bounded source samples; no added rewrite, causal miss classification, full-body/ISA proof or full review completion",
+  "source_sha256": {
+    "CMakeLists.txt": "f123bf4573e9b103e7aff510a2a994dd029b221a1f8a6d7761b990c3e9fe6b89",
+    "docs/VMP_IMPLEMENTATION.md": "ff5d5c253652ed39c0f5dbece243743b155228d52906e47e6faecd555aa86f2d",
+    "docs/VMP_MBA_MATCHING_DIAGNOSTICS.md": "69a5519bb892c7ab5165cd52a7b0197a8a778a7267fc442793fabc00135a5af5",
+    "src/common/bitvector.h": "15e4617e7a344472382e0700355d133fa3b34b2d687905deb776e668a05dbb7c",
+    "src/deobf/analysis/ast.cpp": "02ea7b88d4aec277eb9b9975fc2a407e995e2c10e26861da59336f92fe618380",
+    "src/deobf/analysis/ast_builder.cpp": "ac4e3cc4fe86d9619ba42a6b91b36130036aaab8b75581d4df857352830c6d82",
+    "src/deobf/analysis/chain_simplify.cpp": "294494e16fd565ef111c7f955f8fc5398c06ec1c13d7878f98e656fb35239714",
+    "src/deobf/analysis/mba_diagnostics.cpp": "328881909a5e031e8f925b551428046a530743c3abaf3c6cabaf57608cc09bda",
+    "src/deobf/analysis/mba_diagnostics.hpp": "3fb54a8df59364bad0fc92150135d4da4cecdfd2ace1183e9740320f268ecbf2",
+    "src/deobf/analysis/pattern_storage.cpp": "728e6586a5ec4c19c9bf1abea6b9dd8915de7dcd040965dd476148f60d58dc91",
+    "src/deobf/handlers/mba_simplify.cpp": "bb18646897d33bfa087863f969394a778a26b76fbe39c02fd86e12053952d95c",
+    "src/deobf/rules/pattern_rule.cpp": "92dfd20a6f2182c90f5c97eab9206e291374b5137c4ac50ab5a81b0ccfff260d",
+    "src/deobf/rules/pattern_rule.h": "95f84426c250c3172b65e216af09a4924a50c960b2a30526c6feca1ef1a51bc2",
+    "src/deobf/rules/rule_registry.cpp": "c97f85628e156075fa1973a61fadfdb6e5744681a51eacf7fe04ee2137480be5",
+    "src/deobf/rules/rule_registry.h": "0246b213e2b884b9814535895dcd3541c5f1f16b365a2d3c08bca528bce8e833",
+    "src/deobf/rules/rule_verifier.cpp": "a5f020d93d4e45d932d42cfda0a879bc2de6a2afbd60aa44d3c7987a623bf435",
+    "src/deobf/rules/rule_verifier.h": "dbfa01190d7dfc5551e6d54e5b7fb72ae657043fe968bbe20990075336941eaf",
+    "src/ida_analysis/native_engine.cpp": "d919fed9c99160a8f4dfe7e4b71e66bf3dc389858018776f3339ee8e40d39fef",
+    "src/ida_analysis/native_engine.hpp": "4ccbbcb86d833db26529fbc729dbfa42c9a8649fb3c29167a34faa3178724657",
+    "src/plugin/idc_api.cpp": "ebd7d977a363249fa0a899121f5115ef3ec0e3bb2f30daad5e787123e7e64d1c",
+    "tests/catalog_tests.cpp": "4794673b042ade0d8226660bc72566b8cff435c85e91d604b29f6b478af2621c",
+    "tests/ida_mba_shapes_probe.py": "534f65b6537af5c89db9a9754e305c8afe88d31a22c964418425cfc1ce581e45",
+    "tests/ida_protected_mba_probe.py": "e3d79014adde2c448b20afe5f07915c1d5b3834dbafdef5151b4272e6e2df488",
+    "tests/mba_diagnostics_tests.cpp": "984db3cfb647bf6840586ce1c55d0f249a59914d6710539cfc3a4a88e9bbe0ec",
+    "tests/mba_matching_diagnostics.py": "3a9fb5dbea8a13198d1ebc3d820e87c63d9218f3d41d30fd458c69955373601c",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_protected_mba_corpus.py": "dcb9738481450b7d84016868de9bcbe6d073f7ac32f2b0cf45284530a7cbce34",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/verify_mba_matching_capture.py": "497ec250b3601eebd5c41809cc5c211c82bfe929d2026b44b1f12a131bdff327",
+    "tests/verify_mba_shapes.py": "36301d1aa01ee9ac2fde5aee38e5ac9b5191166535f3fe57d4be8a85fc86d8e0",
+    "tests/vmp_native/mba_shapes.S": "8ef8debf6d566864f8c0c4481c10bd93ea74c87a6f1b795a87a1c122023b46aa",
+    "tests/vmp_native/mba_shapes_oracle.c": "3eec4a02e0d6a2bdeb52c52cfa80ade0b1dda0eedbecbc1d883ad4af415fb58c"
+  },
+  "primary_sdk_sha256": {
+    "<ida-sdk>/include/hexrays.hpp": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff",
+    "<ida-sdk>/include/pro.h": "2bc2eff3d473258204318afe355b965e67dfc292fe26f8ff9601f848bfc50565"
+  },
+  "prior_revision": "9c9bfbeac0454fcc1cf1fc739b0fc33153a3099d",
+  "prior_installed_plugin_sha256": "8ce5c892f6587d82ae55b9135e968a3acf01a29c6004716564a53c0d0cb5473f",
+  "candidate_plugin_sha256": "0c01a95e2d296109f376e288e729edf5eae0eff7e7695f104341be90fb75d596",
+  "compiled_source_attestation": "unknown reproducible compiled-source attestation; source pins are capture/worktree observations",
+  "tools": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "ida_components_sha256": {
+      "<ida>/libida.dylib": "c723167ed12fcb001774e10cb5a05035c96858da1b2a6c5761e553c6346e78ab",
+      "<ida>/libidalib.dylib": "0bb76152d5ce1b164d1715d289f17ee7db87a74ee1e5223fd232829ed33855d8",
+      "<ida>/procs/pc.dylib": "09165b45c585c5c156797a9bd0ca5147f33ee99f12b82a6130fd7cc07707b43d",
+      "<ida>/plugins/hexx64.dylib": "6d0ad64715eeb88966091e2df788b3d1283546a95b4b1002c2bb11918bfa4caf",
+      "<ida>/plugins/goomba.dylib": "fd9c98d862bdd08753c12fca2a5319a67ecbb45161b1cd00600f4047c8f835ec",
+      "<ida>/cfg/goomba.cfg": "cf3eea65229dde0a2028eeb74debab36f30419f3bb0385f87e36cbee2945ccb5"
+    },
+    "clang_format_version": "clang-format version 23.0.0git (git@github.com:llvm/llvm-project b51054818b78dc395cd4d33f17cfb6e98a36a76d)",
+    "black_version": "26.5.1",
+    "cmake_format_version": "0.6.13"
+  },
+  "retention": {
+    "sample_key_limit": 64,
+    "detail_bytes": 256,
+    "rule_bytes": 128,
+    "maximum_retained_string_content_bytes": 24576,
+    "pointer_free_owned_snapshots": true,
+    "process_local_no_database_run_identity": true
+  },
+  "protected_matrix": {
+    "path": "build/mba-matching-diagnostics-protected-attempt-final/protected_mba_analysis.json",
+    "sha256": "cb28dd1f2fea43ffcc080202a580d1aba6a6cdb378de71d65640837b7d3bdcf1",
+    "source_sha256": {
+      "tests/run_protected_mba_corpus.py": "dcb9738481450b7d84016868de9bcbe6d073f7ac32f2b0cf45284530a7cbce34",
+      "tests/ida_protected_mba_probe.py": "e3d79014adde2c448b20afe5f07915c1d5b3834dbafdef5151b4272e6e2df488",
+      "tests/mba_matching_diagnostics.py": "3a9fb5dbea8a13198d1ebc3d820e87c63d9218f3d41d30fd458c69955373601c",
+      "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+      "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+      "src/deobf/rules/rule_verifier.cpp": "a5f020d93d4e45d932d42cfda0a879bc2de6a2afbd60aa44d3c7987a623bf435",
+      "src/deobf/rules/rule_verifier.h": "dbfa01190d7dfc5551e6d54e5b7fb72ae657043fe968bbe20990075336941eaf",
+      "src/deobf/handlers/mba_simplify.cpp": "bb18646897d33bfa087863f969394a778a26b76fbe39c02fd86e12053952d95c",
+      "src/deobf/rules/rule_registry.cpp": "c97f85628e156075fa1973a61fadfdb6e5744681a51eacf7fe04ee2137480be5",
+      "src/deobf/rules/rule_registry.h": "0246b213e2b884b9814535895dcd3541c5f1f16b365a2d3c08bca528bce8e833",
+      "src/deobf/rules/pattern_rule.cpp": "92dfd20a6f2182c90f5c97eab9206e291374b5137c4ac50ab5a81b0ccfff260d",
+      "src/deobf/rules/pattern_rule.h": "95f84426c250c3172b65e216af09a4924a50c960b2a30526c6feca1ef1a51bc2",
+      "src/deobf/analysis/mba_diagnostics.cpp": "328881909a5e031e8f925b551428046a530743c3abaf3c6cabaf57608cc09bda",
+      "src/deobf/analysis/mba_diagnostics.hpp": "3fb54a8df59364bad0fc92150135d4da4cecdfd2ace1183e9740320f268ecbf2",
+      "src/plugin/idc_api.cpp": "ebd7d977a363249fa0a899121f5115ef3ec0e3bb2f30daad5e787123e7e64d1c",
+      "src/ida_analysis/native_engine.cpp": "d919fed9c99160a8f4dfe7e4b71e66bf3dc389858018776f3339ee8e40d39fef",
+      "src/ida_analysis/native_engine.hpp": "4ccbbcb86d833db26529fbc729dbfa42c9a8649fb3c29167a34faa3178724657",
+      "tests/catalog_tests.cpp": "4794673b042ade0d8226660bc72566b8cff435c85e91d604b29f6b478af2621c"
+    },
+    "measurement_columns": [
+      "architecture",
+      "label",
+      "disabled",
+      "elapsed_ns",
+      "peak_resident_bytes",
+      "exit_code",
+      "timed_out",
+      "output_exceeded"
+    ],
+    "measurements": [
+      [
+        "x86_64",
+        "original",
+        true,
+        1535130333,
+        140787712,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "original",
+        false,
+        3001682500,
+        181387264,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "mutation-0",
+        true,
+        1176127458,
+        162611200,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "mutation-0",
+        false,
+        2817810000,
+        202129408,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "mutation-1",
+        true,
+        1139893042,
+        160825344,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "mutation-1",
+        false,
+        2905841666,
+        202014720,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "mutation-12648430",
+        true,
+        1205352334,
+        161660928,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "mutation-12648430",
+        false,
+        2889276417,
+        201916416,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "virtualization-0",
+        true,
+        1194808875,
+        162643968,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "virtualization-0",
+        false,
+        2845587875,
+        202833920,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "virtualization-1",
+        true,
+        1182852167,
+        160579584,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "virtualization-1",
+        false,
+        2794634375,
+        202768384,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "virtualization-12648430",
+        true,
+        1133056542,
+        161366016,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "virtualization-12648430",
+        false,
+        2798174958,
+        203472896,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "combined-0",
+        true,
+        1165781750,
+        161218560,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "combined-0",
+        false,
+        2764482166,
+        202686464,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "combined-1",
+        true,
+        1141051417,
+        165871616,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "combined-1",
+        false,
+        2754538292,
+        202342400,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "combined-12648430",
+        true,
+        1138991291,
+        162168832,
+        0,
+        false,
+        false
+      ],
+      [
+        "x86_64",
+        "combined-12648430",
+        false,
+        2783800375,
+        202358784,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "original",
+        true,
+        917901875,
+        104382464,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "original",
+        false,
+        2547028416,
+        147914752,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "mutation-0",
+        true,
+        945695875,
+        104923136,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "mutation-0",
+        false,
+        2541757708,
+        147505152,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "mutation-1",
+        true,
+        924099417,
+        104300544,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "mutation-1",
+        false,
+        2562317292,
+        147406848,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "mutation-12648430",
+        true,
+        928719417,
+        105234432,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "mutation-12648430",
+        false,
+        2562712667,
+        147734528,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "virtualization-0",
+        true,
+        1536636125,
+        112394240,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "virtualization-0",
+        false,
+        9635444375,
+        155844608,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "virtualization-1",
+        true,
+        1515749000,
+        111968256,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "virtualization-1",
+        false,
+        8013187750,
+        154157056,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "virtualization-12648430",
+        true,
+        10922410042,
+        112427008,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "virtualization-12648430",
+        false,
+        26373470000,
+        150568960,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "combined-0",
+        true,
+        1508480042,
+        111886336,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "combined-0",
+        false,
+        9564195375,
+        155549696,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "combined-1",
+        true,
+        1501720917,
+        111591424,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "combined-1",
+        false,
+        10027709542,
+        153862144,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "combined-12648430",
+        true,
+        1601320292,
+        112623616,
+        0,
+        false,
+        false
+      ],
+      [
+        "i386",
+        "combined-12648430",
+        false,
+        10482676333,
+        154861568,
+        0,
+        false,
+        false
+      ]
+    ],
+    "maximum_elapsed_ns": 26373470000,
+    "maximum_elapsed_seconds": 26.37347,
+    "capture_mutations_rejected": 602,
+    "paired_counts": {
+      "entry_owned": 40,
+      "paired_stages": 228,
+      "on_captured": 227,
+      "captured_shape_equal": 221,
+      "body_owned": 17,
+      "captured_shape_changed": 6,
+      "body_entry_inside_owner": 1,
+      "on_sdk_refused": 1,
+      "body_ownerless": 18
+    },
+    "artifact_inventory_count": 189,
+    "artifact_inventory_canonical_sha256": "dbb6c3594174a6320425fcddb864939a496e71cb757d1c3f98db054177d7c3b0",
+    "artifact_inventory_encoding": "JSON, sorted keys, separators comma/colon, UTF-8; complete inventory in hashed report"
+  },
+  "audits": [
+    {
+      "path": "build/mba-matching-diagnostics-protected-attempt-audit.json",
+      "sha256": "31d139aced983fe08565d0b3fc9c4a64482185b21e787bf7a11855bb386a41e1",
+      "report": {
+        "passed": true,
+        "counts": {
+          "native_rows": 152,
+          "stages": 456,
+          "captured": 454,
+          "matching_events": 14065,
+          "unrecorded_events": 6953,
+          "sample_keys": 3507,
+          "retained_events": 7112
+        },
+        "outcomes": {
+          "no_ast": 0,
+          "no_indexed_pattern": 8103,
+          "structural_mismatch": 4474,
+          "candidate_constraint": 0,
+          "constant_constraint": 1483,
+          "replacement_unavailable": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0,
+          "catalog_applied": 5
+        },
+        "profiles": [
+          {
+            "architecture": "x86_64",
+            "label": "original",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "original",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 705,
+              "structural_mismatch": 366,
+              "candidate_constraint": 0,
+              "constant_constraint": 8,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "mutation-0",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "mutation-0",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "mutation-1",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "mutation-1",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "mutation-12648430",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "mutation-12648430",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "virtualization-0",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "virtualization-0",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "virtualization-1",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "virtualization-1",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "virtualization-12648430",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "virtualization-12648430",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "combined-0",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "combined-0",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "combined-1",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "combined-1",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "combined-12648430",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "x86_64",
+            "label": "combined-12648430",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "original",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "original",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 558,
+              "structural_mismatch": 372,
+              "candidate_constraint": 0,
+              "constant_constraint": 64,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "mutation-0",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "mutation-0",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 759,
+              "structural_mismatch": 389,
+              "candidate_constraint": 0,
+              "constant_constraint": 97,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "mutation-1",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "mutation-1",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 552,
+              "structural_mismatch": 293,
+              "candidate_constraint": 0,
+              "constant_constraint": 103,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "mutation-12648430",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "mutation-12648430",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 669,
+              "structural_mismatch": 399,
+              "candidate_constraint": 0,
+              "constant_constraint": 59,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "virtualization-0",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "virtualization-0",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 959,
+              "structural_mismatch": 541,
+              "candidate_constraint": 0,
+              "constant_constraint": 194,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 2
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "virtualization-1",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "virtualization-1",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 921,
+              "structural_mismatch": 465,
+              "candidate_constraint": 0,
+              "constant_constraint": 250,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "virtualization-12648430",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "virtualization-12648430",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 609,
+              "structural_mismatch": 307,
+              "candidate_constraint": 0,
+              "constant_constraint": 97,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "combined-0",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "combined-0",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 947,
+              "structural_mismatch": 530,
+              "candidate_constraint": 0,
+              "constant_constraint": 156,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 2
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "combined-1",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "combined-1",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 440,
+              "structural_mismatch": 268,
+              "candidate_constraint": 0,
+              "constant_constraint": 96,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "combined-12648430",
+            "disabled": true,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 0,
+              "structural_mismatch": 0,
+              "candidate_constraint": 0,
+              "constant_constraint": 0,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            }
+          },
+          {
+            "architecture": "i386",
+            "label": "combined-12648430",
+            "disabled": false,
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 984,
+              "structural_mismatch": 544,
+              "candidate_constraint": 0,
+              "constant_constraint": 359,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 1
+            }
+          }
+        ],
+        "corruption_controls": [
+          "lost event",
+          "false native owner",
+          "false native source",
+          "false maturity",
+          "false width",
+          "false phase count",
+          "false retained count",
+          "false text quota",
+          "duplicate sample"
+        ],
+        "current_report_sha256": "cb28dd1f2fea43ffcc080202a580d1aba6a6cdb378de71d65640837b7d3bdcf1",
+        "baseline_report_sha256": "fd8306c257936fbb032048f4b799b8078a88c6e17eb1ad8822eefdfc419e993b",
+        "scope": "actual catalog-attempt outcomes and native source-range attribution; preserved recorded CFG/typed values and verifier outcomes; no missing-identity, reaching-definition, alias, full-body or ISA-equivalence claim",
+        "verifier_sha256": "497ec250b3601eebd5c41809cc5c211c82bfe929d2026b44b1f12a131bdff327"
+      }
+    },
+    {
+      "path": "build/mba-matching-diagnostics-shapes-attempt-audit.json",
+      "sha256": "937a128770295d5d28cef693969e9660ae0ecc751f15e0e6f394e1707c3648c3",
+      "report": {
+        "passed": true,
+        "routines": 10,
+        "SDK_captures": 40,
+        "current_checks": 15,
+        "prior_checks": 15,
+        "ctree_and_typed_shapes_equal": true,
+        "matching_accounting_passed": true,
+        "outcomes": {
+          "no_ast": 0,
+          "no_indexed_pattern": 2502,
+          "structural_mismatch": 1764,
+          "candidate_constraint": 0,
+          "constant_constraint": 141,
+          "replacement_unavailable": 0,
+          "instance_disproved": 0,
+          "instance_unsupported": 0,
+          "instance_unknown": 0,
+          "catalog_applied": 22
+        },
+        "routines_diagnostics": [
+          {
+            "name": "mba_demorgan32",
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 258,
+              "structural_mismatch": 238,
+              "candidate_constraint": 0,
+              "constant_constraint": 5,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 3
+            },
+            "events": 504,
+            "unrecorded": 0
+          },
+          {
+            "name": "mba_carry32",
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 355,
+              "structural_mismatch": 256,
+              "candidate_constraint": 0,
+              "constant_constraint": 5,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 2
+            },
+            "events": 618,
+            "unrecorded": 0
+          },
+          {
+            "name": "mba_carry64",
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 234,
+              "structural_mismatch": 244,
+              "candidate_constraint": 0,
+              "constant_constraint": 5,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 2
+            },
+            "events": 485,
+            "unrecorded": 0
+          },
+          {
+            "name": "mba_stack32",
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 440,
+              "structural_mismatch": 418,
+              "candidate_constraint": 0,
+              "constant_constraint": 32,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 12
+            },
+            "events": 902,
+            "unrecorded": 0
+          },
+          {
+            "name": "mba_truncate8",
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 296,
+              "structural_mismatch": 173,
+              "candidate_constraint": 0,
+              "constant_constraint": 5,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            },
+            "events": 474,
+            "unrecorded": 0
+          },
+          {
+            "name": "mba_extend_not",
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 89,
+              "structural_mismatch": 50,
+              "candidate_constraint": 0,
+              "constant_constraint": 5,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            },
+            "events": 144,
+            "unrecorded": 0
+          },
+          {
+            "name": "mba_not_extend",
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 110,
+              "structural_mismatch": 47,
+              "candidate_constraint": 0,
+              "constant_constraint": 5,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            },
+            "events": 162,
+            "unrecorded": 0
+          },
+          {
+            "name": "mba_alias_write",
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 159,
+              "structural_mismatch": 42,
+              "candidate_constraint": 0,
+              "constant_constraint": 5,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            },
+            "events": 206,
+            "unrecorded": 0
+          },
+          {
+            "name": "mba_alias_partial",
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 159,
+              "structural_mismatch": 42,
+              "candidate_constraint": 0,
+              "constant_constraint": 5,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 0
+            },
+            "events": 206,
+            "unrecorded": 0
+          },
+          {
+            "name": "mba_order32",
+            "counts": {
+              "no_ast": 0,
+              "no_indexed_pattern": 402,
+              "structural_mismatch": 254,
+              "candidate_constraint": 0,
+              "constant_constraint": 69,
+              "replacement_unavailable": 0,
+              "instance_disproved": 0,
+              "instance_unsupported": 0,
+              "instance_unknown": 0,
+              "catalog_applied": 3
+            },
+            "events": 728,
+            "unrecorded": 175
+          }
+        ],
+        "capture_sha256": {
+          "build/mba-matching-diagnostics-shapes-prior-final/run.json": "7a1bd6347d3d94e0fa88fc59bd2fb6060c0c969aa8851a92ea796fc282efbcac",
+          "build/mba-matching-diagnostics-shapes-prior-final/mba_shapes.json": "2e989ffcb7facd526763795a47e29fb4ec3d0fbc3bf1eced7e8cea24f1650623",
+          "build/mba-matching-diagnostics-shapes-attempt-final/run.json": "11e9d64bb61bafcd07ac1a4f6604273ff6ae4adc196e525422010989eb549954",
+          "build/mba-matching-diagnostics-shapes-attempt-final/mba_shapes.json": "30c36e5649bab870b7dcbbef34615a1633044dd4629ddef4cf319a64280b117e",
+          "tests/verify_mba_shapes.py": "36301d1aa01ee9ac2fde5aee38e5ac9b5191166535f3fe57d4be8a85fc86d8e0"
+        },
+        "scope": "paired ten-routine x64 shape corpus; terminal per-routine counts include repeated SDK generations, not unique rewrites"
+      }
+    },
+    {
+      "path": "build/mba-matching-diagnostics-shapes-attempt-ir-oracle.json",
+      "sha256": "acea3927848fe7c4844ccc30be7a854ee6fb8b36765f15980a3a512a58fb4418",
+      "report": {
+        "passed": true,
+        "comparisons_per_artifact": [
+          70656,
+          70656
+        ],
+        "total_comparisons": 141312,
+        "result_bits": 64,
+        "observable_memory_cell_bytes": 4,
+        "seeds": [
+          "0x390fe14891",
+          "0x9827136ab5"
+        ],
+        "same_input_script_and_ida": true,
+        "distinct_plugin_identities": true,
+        "plugin_sha256": [
+          "8ce5c892f6587d82ae55b9135e968a3acf01a29c6004716564a53c0d0cb5473f",
+          "0c01a95e2d296109f376e288e729edf5eae0eff7e7695f104341be90fb75d596"
+        ],
+        "artifact_sha256": {
+          "build/mba-matching-diagnostics-shapes-prior-final/run.json": "7a1bd6347d3d94e0fa88fc59bd2fb6060c0c969aa8851a92ea796fc282efbcac",
+          "build/mba-matching-diagnostics-shapes-prior-final/mba_shapes.json": "2e989ffcb7facd526763795a47e29fb4ec3d0fbc3bf1eced7e8cea24f1650623",
+          "build/mba-matching-diagnostics-shapes-attempt-final/run.json": "11e9d64bb61bafcd07ac1a4f6604273ff6ae4adc196e525422010989eb549954",
+          "build/mba-matching-diagnostics-shapes-attempt-final/mba_shapes.json": "30c36e5649bab870b7dcbbef34615a1633044dd4629ddef4cf319a64280b117e",
+          "tests/verify_mba_shapes.py": "36301d1aa01ee9ac2fde5aee38e5ac9b5191166535f3fe57d4be8a85fc86d8e0"
+        },
+        "scope": "independent scalar interpreter on prior/current enabled GLBOPT1 captures; finite result and cell oracle, no all-flags/fault/protected-body equivalence"
+      }
+    },
+    {
+      "path": "build/mba-matching-diagnostics-original-audit.json",
+      "sha256": "89678b0ba2b0e7c571d463489fdaa17a47859ce4445467b941b0da9f43c7de0f",
+      "report": {
+        "passed": true,
+        "native_rows": 2,
+        "SDK_stages": 8,
+        "native_ownership_and_bytes_equal": true,
+        "typed_trees_and_verifier_outcomes_equal": true,
+        "captures": [
+          {
+            "path": "build/mba-matching-diagnostics-original-prior-final/protected_mba.json",
+            "sha256": "2bec2ce7fa3e495a8176b36e44910bd38f417c9892e01d167cce949578751450"
+          },
+          {
+            "path": "build/mba-matching-diagnostics-original-final/protected_mba.json",
+            "sha256": "663396cbcdd0b76281961d0fb60f97426a3c85dc3254bee1bfa789ccde133550"
+          }
+        ],
+        "scope": "paired selected original x64 entries; diagnostic addition, no semantic recovery gain"
+      }
+    }
+  ],
+  "ctest": {
+    "passed": 22,
+    "total": 22,
+    "recorder_checks": 142,
+    "catalog_admission_controls": 2,
+    "log": {
+      "path": "build/mba-matching-diagnostics-attempt-ctest.log",
+      "sha256": "45fa9fc0a94aca0aa6209be42b901394f39b98ad7b1674f1ec5b57d578e1650a"
+    },
+    "details": {
+      "path": "build/mba-matching-diagnostics-attempt-ctest-details.log",
+      "sha256": "348ee9bd3d32d387f869e877fee143959d594d96bda1d4c3e5de62b8e329f226"
+    },
+    "test_binary_sha256": {
+      "build/chernobog_mba_diagnostics_tests": "03ab9fcae0dd6a051b12334b7e60413f109f215a990abafb30ce59f53c73a2cd",
+      "build/chernobog_catalog_tests": "15f5b085e17377076252ab9f2ee2d88526ba15f89af1762ba19a28eb8fc52b5c"
+    }
+  },
+  "native_shape_oracle": {
+    "binary": {
+      "path": "build/mba-matching-diagnostics-shapes-native",
+      "sha256": "d52861d00518d1d09c56d6daaa9e1a7ee11b7e3e5695f10ebd9f0bc79e5a5aa6"
+    },
+    "stdout": {
+      "path": "build/mba-matching-diagnostics-shapes-native-oracle.log",
+      "sha256": "9d716e697faaa718cecb0b3283ee16fff6d8f1f3a769d37e33f26d655cb44260"
+    },
+    "comparisons": 70656,
+    "seeds": [
+      "0x390fe14891",
+      "0x9827136ab5"
+    ]
+  },
+  "shape_processes": [
+    {
+      "path": "build/mba-matching-diagnostics-shapes-prior-final/run.json",
+      "sha256": "7a1bd6347d3d94e0fa88fc59bd2fb6060c0c969aa8851a92ea796fc282efbcac",
+      "report": {
+        "schema_version": 2,
+        "input_sha256": "d52861d00518d1d09c56d6daaa9e1a7ee11b7e3e5695f10ebd9f0bc79e5a5aa6",
+        "source_input_sha256": "d52861d00518d1d09c56d6daaa9e1a7ee11b7e3e5695f10ebd9f0bc79e5a5aa6",
+        "plugin_sha256": "8ce5c892f6587d82ae55b9135e968a3acf01a29c6004716564a53c0d0cb5473f",
+        "plugin_unchanged": true,
+        "script_sha256": "534f65b6537af5c89db9a9754e305c8afe88d31a22c964418425cfc1ce581e45",
+        "script_unchanged": true,
+        "source_script_sha256": "534f65b6537af5c89db9a9754e305c8afe88d31a22c964418425cfc1ce581e45",
+        "source_script_unchanged": true,
+        "source_input_unchanged": true,
+        "input_copy_matches_source": true,
+        "ida_path": "<ida>/idat",
+        "local_paths_redacted": true,
+        "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+        "ida_sha256_after": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+        "ida_unchanged": true,
+        "artifacts_unchanged": true,
+        "chernobog_environment_sha256": "bd85ac9730c74163dffee795dc713a50a95060e14975ef4188c1751d3c409f4e",
+        "enable_rax": false,
+        "verbose": false,
+        "process_elapsed_ns": 3150119917,
+        "process_return_code": 0,
+        "expected_log_pattern": "\\[chernobog\\]\\[[^\\]\\r\\n]+\\] PASS(?:\\s|$)",
+        "expected_log_found": true,
+        "internal_error_found": false,
+        "runner_return_code": 0
+      }
+    },
+    {
+      "path": "build/mba-matching-diagnostics-shapes-attempt-final/run.json",
+      "sha256": "11e9d64bb61bafcd07ac1a4f6604273ff6ae4adc196e525422010989eb549954",
+      "report": {
+        "schema_version": 2,
+        "input_sha256": "d52861d00518d1d09c56d6daaa9e1a7ee11b7e3e5695f10ebd9f0bc79e5a5aa6",
+        "source_input_sha256": "d52861d00518d1d09c56d6daaa9e1a7ee11b7e3e5695f10ebd9f0bc79e5a5aa6",
+        "plugin_sha256": "0c01a95e2d296109f376e288e729edf5eae0eff7e7695f104341be90fb75d596",
+        "plugin_unchanged": true,
+        "script_sha256": "534f65b6537af5c89db9a9754e305c8afe88d31a22c964418425cfc1ce581e45",
+        "script_unchanged": true,
+        "source_script_sha256": "534f65b6537af5c89db9a9754e305c8afe88d31a22c964418425cfc1ce581e45",
+        "source_script_unchanged": true,
+        "source_input_unchanged": true,
+        "input_copy_matches_source": true,
+        "ida_path": "<ida>/idat",
+        "local_paths_redacted": true,
+        "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+        "ida_sha256_after": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+        "ida_unchanged": true,
+        "artifacts_unchanged": true,
+        "chernobog_environment_sha256": "487d9ce83534f89e3bd97fc5560a2c5d68c1114779dd71e964eb5a860589e319",
+        "enable_rax": false,
+        "verbose": false,
+        "process_elapsed_ns": 3211486333,
+        "process_return_code": 0,
+        "expected_log_pattern": "\\[chernobog\\]\\[[^\\]\\r\\n]+\\] PASS(?:\\s|$)",
+        "expected_log_found": true,
+        "internal_error_found": false,
+        "runner_return_code": 0
+      }
+    }
+  ],
+  "assumptions": [
+    "D1: implemented gate observations do not identify a semantic cause",
+    "D2: selected SDK metadata/source ranges identify the recorded capture, not future IR applicability",
+    "D3: fresh process/database and serialized generation/query; no joint atomic cross-counter snapshot",
+    "D4: actual find_match attempts form the denominator; preprocessing and admission abstentions remain outside",
+    "D5: exact artifacts and finite native/IR oracles identify measured scope; compiled-source reproducibility unknown"
+  ],
+  "limits": [
+    "Six catalog outcomes have zero observations in this protected matrix",
+    "No newly recovered or simplified protected expression is attributed to this feature",
+    "No automatic reaching-definition, alias, width or rewrite-ordering causal diagnosis",
+    "First-seen sample cap omits sites while preserving all outcome/event counts",
+    "Sampling keys are stage references, not unique expression identities or persistent proof receipts",
+    "Complete protected body ownership, ISA flags/exceptions and full review remain incomplete"
+  ]
+}

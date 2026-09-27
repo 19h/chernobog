@@ -32,6 +32,12 @@ struct RuleVerificationResult
     bool verified() const { return status == RuleVerificationStatus::VERIFIED; }
 };
 
+struct ReplacementAttempt
+{
+    bool instance_checked = false;
+    RuleVerificationResult verification;
+};
+
 const char *rule_verification_status_name(RuleVerificationStatus status);
 
 struct InstanceRejectionCount

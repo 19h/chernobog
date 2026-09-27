@@ -1,6 +1,7 @@
 #pragma once
 #include "pattern_rule.h"
 #include "../analysis/pattern_storage.h"
+#include "../analysis/mba_diagnostics.hpp"
 #include <memory>
 #include <vector>
 #include <map>
@@ -69,6 +70,10 @@ class RuleRegistry
         PatternMatchingRule *rule;
         AstPtr matched_pattern;
         std::map<std::string, mop_t> bindings;
+        bool attempted = false;
+        mba_diagnostics::Outcome outcome = mba_diagnostics::Outcome::NoAst;
+        uint64_t indexed_patterns = 0, structural_matches = 0;
+        uint64_t candidate_rejections = 0, constant_rejections = 0;
 
         MatchResult() : rule(nullptr) {}
         bool matched() const { return rule != nullptr; }

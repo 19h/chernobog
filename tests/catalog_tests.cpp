@@ -562,7 +562,24 @@ int main()
     }
 
     auto &registry = chernobog::rules::RuleRegistry::instance();
+    {
+        ValueInsn instruction(m_add, 4);
+        reg(instruction.l, 100, 4);
+        reg(instruction.r, 200, 4);
+        const auto ignored = registry.find_match(&instruction);
+        if (ignored.attempted || ignored.matched() || registry.total_matches() != 0)
+        {
+            std::cerr << "uninitialized registry cannot report an AST attempt\n";
+            return EXIT_FAILURE;
+        }
+    }
     registry.initialize();
+    if (registry.find_match(nullptr).attempted || registry.total_matches() != 0)
+    {
+        std::cerr << "null instruction cannot report an AST attempt\n";
+        return EXIT_FAILURE;
+    }
+    std::cout << "MBA attempt admission controls: 2 passed\n";
 
     const std::size_t registered = registry.rule_count();
     const std::size_t verified = registry.verified_rule_count();

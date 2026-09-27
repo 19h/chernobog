@@ -30,6 +30,7 @@ namespace rules
 {
 
 using namespace ast;
+struct ReplacementAttempt;
 
 //--------------------------------------------------------------------------
 // Base class for all pattern matching rules
@@ -72,7 +73,7 @@ class PatternMatchingRule
     // Apply the replacement pattern given variable bindings
     // Returns new instruction or nullptr on failure
     minsn_t *apply_replacement(const std::map<std::string, mop_t> &bindings, mblock_t *blk,
-                               minsn_t *orig_ins);
+                               minsn_t *orig_ins, ReplacementAttempt *attempt = nullptr);
 
     //----------------------------------------------------------------------
     // Statistics

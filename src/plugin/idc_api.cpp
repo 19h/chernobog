@@ -27,6 +27,7 @@
 #include "../deobf/deobf_main.h"
 #include "../deobf/analysis/arch_utils.h"
 #include "../deobf/analysis/pattern_match.h"
+#include "../deobf/analysis/mba_diagnostics.hpp"
 #include "../deobf/handlers/hikari_cfg.h"
 #include "../deobf/handlers/native_opaque.h"
 #include "../deobf/rules/rule_registry.h"
@@ -1812,6 +1813,40 @@ error_t idaapi idc_rule_stats(idc_value_t *, idc_value_t *r)
     }
     reasons << ']';
     set_str(r, "instance_rejection_reasons", reasons.str().c_str());
+    const auto diagnostics = mba_diagnostics::snapshot();
+    std::ostringstream matching;
+    matching << "{\"schema\":1,\"events\":" << diagnostics.events
+             << ",\"unrecorded\":" << diagnostics.unrecorded << ",\"counts\":{";
+    for (size_t i = 0; i < mba_diagnostics::outcome_count; ++i)
+    {
+        if (i != 0)
+            matching << ',';
+        matching << inspection_json_quote(
+                        mba_diagnostics::outcome_name(mba_diagnostics::Outcome(i)))
+                 << ':' << diagnostics.counts[i];
+    }
+    matching << "},\"samples\":[";
+    for (size_t i = 0; i < diagnostics.samples.size(); ++i)
+    {
+        const auto &sample = diagnostics.samples[i];
+        if (i != 0)
+            matching << ',';
+        matching << "{\"outcome\":"
+                 << inspection_json_quote(mba_diagnostics::outcome_name(sample.outcome))
+                 << ",\"entry\":" << sample.site.entry << ",\"source\":" << sample.site.source
+                 << ",\"maturity\":" << sample.site.maturity << ",\"block\":" << sample.site.block
+                 << ",\"opcode\":" << sample.site.opcode
+                 << ",\"width_bytes\":" << sample.site.width_bytes
+                 << ",\"indexed_patterns\":" << sample.indexed_patterns
+                 << ",\"structural_matches\":" << sample.structural_matches
+                 << ",\"candidate_rejections\":" << sample.candidate_rejections
+                 << ",\"constant_rejections\":" << sample.constant_rejections
+                 << ",\"reason\":" << inspection_json_quote(sample.detail)
+                 << ",\"rule\":" << inspection_json_quote(sample.rule)
+                 << ",\"count\":" << sample.count << '}';
+    }
+    matching << "]}";
+    set_str(r, "matching_diagnostics", matching.str().c_str());
     return eOk;
 }
 
@@ -1842,6 +1877,7 @@ error_t idaapi idc_rule_reset_stats(idc_value_t *, idc_value_t *r)
 {
     rules::RuleRegistry::instance().clear_statistics();
     rules::reset_instance_verification_stats();
+    mba_diagnostics::reset();
     r->set_long(1);
     return eOk;
 }

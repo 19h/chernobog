@@ -12,17 +12,24 @@ import struct
 
 sys.dont_write_bytecode = True
 from run_vmp_corpus import digest, execute, INPUT_SEEDS, PROTECTOR_SEEDS, text_section, verify
+from mba_matching_diagnostics import validate_matching
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES = (
     "tests/run_protected_mba_corpus.py",
     "tests/ida_protected_mba_probe.py",
+    "tests/mba_matching_diagnostics.py",
     "tests/run_ida_smoke.py",
     "tests/run_vmp_corpus.py",
     "src/deobf/rules/rule_verifier.cpp",
     "src/deobf/rules/rule_verifier.h",
     "src/deobf/handlers/mba_simplify.cpp",
     "src/deobf/rules/rule_registry.cpp",
+    "src/deobf/rules/rule_registry.h",
+    "src/deobf/rules/pattern_rule.cpp",
+    "src/deobf/rules/pattern_rule.h",
+    "src/deobf/analysis/mba_diagnostics.cpp",
+    "src/deobf/analysis/mba_diagnostics.hpp",
     "src/plugin/idc_api.cpp",
     "src/ida_analysis/native_engine.cpp",
     "src/ida_analysis/native_engine.hpp",
@@ -111,7 +118,7 @@ def load_corpus(path, pins):
     return corpus, binaries
 
 
-def check_probe(probe, entries, disabled, legacy, native_disabled=True):
+def check_probe(probe, entries, disabled, legacy, native_disabled=True, matching_diagnostics=False):
     require(
         probe["passed"] and not probe["errors"] and probe["transformations_disabled"] == disabled,
         "SDK capture failed",
@@ -165,6 +172,11 @@ def check_probe(probe, entries, disabled, legacy, native_disabled=True):
             )
             totals[stage["status"]] += 1
             stats = stage["statistics"]
+            if matching_diagnostics:
+                require(stats.get("matching_available") is True, "matching diagnostic attribution")
+                validate_matching(
+                    stats["matching"], stats, row["entry"], stage["maturity"], disabled
+                )
             for name in (
                 "total_matches",
                 "successful_matches",
@@ -241,14 +253,16 @@ def check_native_entries(probe, binary):
             require(row["direct_target"] is None, "unsupported direct entry form")
 
 
-def controls(probe, entries, disabled, legacy, binary, native_disabled=True):
+def controls(
+    probe, entries, disabled, legacy, binary, native_disabled=True, matching_diagnostics=False
+):
     trials = []
 
     def run(label, change):
         altered = copy.deepcopy(probe)
         change(altered)
         try:
-            check_probe(altered, entries, disabled, legacy, native_disabled)
+            check_probe(altered, entries, disabled, legacy, native_disabled, matching_diagnostics)
             check_native_entries(altered, binary)
         except (ValueError, KeyError):
             trials.append(label)
@@ -295,6 +309,58 @@ def controls(probe, entries, disabled, legacy, binary, native_disabled=True):
                     + 1
                 ),
             )
+        if matching_diagnostics:
+
+            def diagnostic(p):
+                return p["entries"][owned]["stages"][0]["statistics"]["matching"]
+
+            run(
+                "lost matching API",
+                lambda p: p["entries"][owned]["stages"][0]["statistics"].update(
+                    matching_available=False
+                ),
+            )
+            run(
+                "changed matching event count",
+                lambda p: diagnostic(p).update(events=diagnostic(p)["events"] + 1),
+            )
+            run(
+                "changed matching quota accounting",
+                lambda p: diagnostic(p).update(unrecorded=diagnostic(p)["unrecorded"] + 1),
+            )
+            retained = next(
+                (
+                    (i, j)
+                    for i, row in enumerate(probe["entries"])
+                    for j, stage in enumerate(row["stages"])
+                    if stage["statistics"]["matching"]["samples"]
+                ),
+                None,
+            )
+            if retained is not None:
+
+                def sampled(p):
+                    return p["entries"][retained[0]]["stages"][retained[1]]["statistics"][
+                        "matching"
+                    ]
+
+                run("changed matching owner", lambda p: sampled(p)["samples"][0].update(entry=0))
+                run(
+                    "changed matching maturity",
+                    lambda p: sampled(p)["samples"][0].update(maturity=1000),
+                )
+                run(
+                    "changed matching phase count",
+                    lambda p: sampled(p)["samples"][0].update(structural_matches=10**9),
+                )
+                run(
+                    "changed matching sample count",
+                    lambda p: sampled(p)["samples"][0].update(count=0),
+                )
+                run(
+                    "matching text quota",
+                    lambda p: sampled(p)["samples"][0].update(reason="x" * 257),
+                )
     return trials
 
 
@@ -381,6 +447,7 @@ def main():
     parser.add_argument("--plugin", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--legacy-reasons", action="store_true")
+    parser.add_argument("--legacy-diagnostics", action="store_true")
     parser.add_argument("--native-analysis", action="store_true")
     parser.add_argument(
         "--timeout", type=int, default=300, help="Per-process wall-clock cap in seconds"
@@ -393,6 +460,7 @@ def main():
         "passed": False,
         "runs": [],
         "legacy_reasons": args.legacy_reasons,
+        "matching_diagnostics": not (args.legacy_diagnostics or args.legacy_reasons),
         "native_analysis_disabled": not args.native_analysis,
         "process_timeout_seconds": args.timeout,
     }
@@ -453,6 +521,8 @@ def main():
                 command += ["--set", "CHERNOBOG_DISABLE=1"]
             if args.legacy_reasons:
                 command += ["--set", "CHERNOBOG_MBA_LEGACY_REASONS=1"]
+            if args.legacy_diagnostics:
+                command += ["--set", "CHERNOBOG_MBA_LEGACY_DIAGNOSTICS=1"]
             measurement, _, _ = execute(command, timeout=args.timeout)
             if (
                 measurement["exit_code"] != 0
@@ -482,6 +552,7 @@ def main():
                 disabled,
                 args.legacy_reasons,
                 not args.native_analysis,
+                report["matching_diagnostics"],
             )
             check_native_entries(probe, path.parent / label)
             manifest = json.loads((destination / "run.json").read_text())
@@ -508,6 +579,7 @@ def main():
                     args.legacy_reasons,
                     path.parent / label,
                     not args.native_analysis,
+                    report["matching_diagnostics"],
                 ),
                 "artifact_sha256": {
                     relative(destination / name): digest(destination / name)

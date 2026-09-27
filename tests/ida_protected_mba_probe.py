@@ -78,6 +78,9 @@ def statistics():
             sum(row["count"] for row in reasons if row["status"] == status)
             <= result["instance_" + status]
         ), "status accounting"
+    result["matching_available"] = os.environ.get("CHERNOBOG_MBA_LEGACY_DIAGNOSTICS") != "1"
+    if result["matching_available"]:
+        result["matching"] = json.loads(evaluate("chernobog_rule_stats().matching_diagnostics"))
     return result
 
 
@@ -195,6 +198,8 @@ def capture_entry(capture, name, ea):
         assert not any(before[key] for key in SCALARS), "statistics reset"
         if before["reasons_available"]:
             assert not before["rejection_reasons"] and before["unrecorded_rejections"] == 0
+        if before.get("matching_available"):
+            assert before["matching"]["events"] == 0 and not before["matching"]["samples"]
         stage = {"maturity": int(maturity), "blocks": []}
         row["stages"].append(stage)
         failure = hx.hexrays_failure_t()

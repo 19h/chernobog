@@ -1116,3 +1116,23 @@ change. Prefixes and absent snippet output contracts do not establish complete
 body recovery or canonicalization success. See `VMP_DIRECT_JUMP_FLOW.md` and
 its evidence JSON. Full protected ownership, miss classification, exceptions,
 lifecycle coverage and the complete review remain in progress or unknown.
+
+## Production catalog matching diagnostics checkpoint
+
+Row 4a now exposes bounded per-site matching outcomes and gate counts through
+`chernobog_rule_stats().matching_diagnostics`. A failed construction is distinct
+from an actual instance rejection, and null/uninitialized-registry inputs stay
+outside the catalog-attempt denominator. Forty protected matrix processes
+classify 14,065 attempts into 8,103 index absences, 4,474 structural mismatches,
+1,483 constant-gate rejections and five existing verified applications. All
+152 native rows, 456 SDK outcomes, 454 typed captures and verifier outcomes
+match the preceding checkpoint. The sample cap retains 7,112 events through
+3,507 keys and explicitly accounts for 6,953 additional events. The matrix
+rejects 602 capture mutations, and a separate audit rejects nine diagnostic
+corruptions. Prior/current ten-routine captures and pseudocode match; native
+and independent IR oracles check 70,656 and 141,312 result/memory cases. All
+22 CTest suites pass. See `VMP_MBA_MATCHING_DIAGNOSTICS.md` and its evidence
+JSON for source/site attribution, assumptions and limits. A recorded gate
+does not establish a missing identity or a complete reaching-definition,
+alias, width or ordering diagnosis. Full protected ownership, causal miss
+classification, ISA effects and the complete review remain in progress.

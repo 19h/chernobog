@@ -2,6 +2,7 @@
 #include "../analysis/ast.h"
 #include "../analysis/ast_builder.h"
 #include "../analysis/chain_simplify.h"
+#include "../analysis/mba_diagnostics.hpp"
 #include "../analysis/z3_solver.h"
 #include "../../common/bitvector.h"
 #include "../../common/z3_utils.h"
@@ -25,6 +26,22 @@ size_t mba_simplify_handler_t::total_simplified_ = 0;
 
 namespace
 {
+
+static void record_catalog_outcome(mblock_t *block, const minsn_t *instruction,
+                                   const RuleRegistry::MatchResult &match,
+                                   chernobog::mba_diagnostics::Outcome outcome,
+                                   std::string_view detail = {})
+{
+    if (!block || !block->mba || !instruction)
+        return;
+    const chernobog::mba_diagnostics::Site site{
+        uint64_t(block->mba->entry_ea), uint64_t(instruction->ea),
+        int(block->mba->maturity),      block->serial,
+        int(instruction->opcode),       instruction->d.size};
+    chernobog::mba_diagnostics::record(
+        outcome, site, match.indexed_patterns, match.structural_matches, match.candidate_rejections,
+        match.constant_rejections, detail, match.rule ? match.rule->name() : "");
+}
 
 static void mba_affine_debug(const char *fmt, ...)
 {
@@ -769,6 +786,8 @@ int mba_simplify_handler_t::try_simplify_node(mblock_t *blk, minsn_t *ins)
     auto match = RuleRegistry::instance().find_match(ins);
     if (!match.rule)
     {
+        if (match.attempted)
+            record_catalog_outcome(blk, ins, match, match.outcome);
         return changes;
     }
 
@@ -785,12 +804,34 @@ int mba_simplify_handler_t::apply_match(mblock_t *blk, minsn_t *ins,
     }
 
     // Apply the replacement
-    minsn_t *replacement = match.rule->apply_replacement(match.bindings, blk, ins);
+    ReplacementAttempt attempt;
+    minsn_t *replacement = match.rule->apply_replacement(match.bindings, blk, ins, &attempt);
 
     if (!replacement)
     {
+        using chernobog::mba_diagnostics::Outcome;
+        Outcome outcome = Outcome::ReplacementUnavailable;
+        if (attempt.instance_checked)
+            switch (attempt.verification.status)
+            {
+            case RuleVerificationStatus::DISPROVED:
+                outcome = Outcome::InstanceDisproved;
+                break;
+            case RuleVerificationStatus::UNSUPPORTED:
+                outcome = Outcome::InstanceUnsupported;
+                break;
+            case RuleVerificationStatus::UNKNOWN:
+                outcome = Outcome::InstanceUnknown;
+                break;
+            case RuleVerificationStatus::VERIFIED:
+                break;
+            }
+        record_catalog_outcome(blk, ins, match, outcome, attempt.verification.detail);
         return 0;
     }
+
+    record_catalog_outcome(blk, ins, match, chernobog::mba_diagnostics::Outcome::CatalogApplied,
+                           attempt.verification.detail);
 
     // Save original properties
     ea_t orig_ea = ins->ea;
@@ -831,6 +872,7 @@ void mba_simplify_handler_t::reset_statistics()
 {
     total_simplified_ = 0;
     RuleRegistry::instance().clear_statistics();
+    chernobog::mba_diagnostics::reset();
 }
 
 void mba_simplify_handler_t::dump_statistics()

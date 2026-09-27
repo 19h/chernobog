@@ -41,11 +41,13 @@ def evaluate(expression):
     assert not ida_expr.eval_idc_expr(
         result, ida_idaapi.BADADDR, expression
     ), "IDC evaluation failed"
+    if result.vtype == ida_expr.VT_STR:
+        return result.c_str()
     return result.i64 if result.vtype == ida_expr.VT_INT64 else result.num
 
 
 def statistics():
-    return {
+    result = {
         field: int(evaluate("chernobog_rule_stats()." + field))
         for field in (
             "total_matches",
@@ -56,6 +58,10 @@ def statistics():
             "instance_unknown",
         )
     }
+    result["matching_available"] = os.environ.get("CHERNOBOG_MBA_LEGACY_DIAGNOSTICS") != "1"
+    if result["matching_available"]:
+        result["matching"] = json.loads(evaluate("chernobog_rule_stats().matching_diagnostics"))
+    return result
 
 
 def operand(value):

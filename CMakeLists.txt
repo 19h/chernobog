@@ -415,6 +415,7 @@ ida_add_plugin(
     src/deobf/analysis/ast_builder.cpp
     src/deobf/analysis/pattern_storage.cpp
     src/deobf/analysis/chain_simplify.cpp
+    src/deobf/analysis/mba_diagnostics.cpp
     # NEW: MBA rule system
     src/deobf/rules/pattern_rule.cpp
     src/deobf/rules/rule_verifier.cpp
@@ -734,6 +735,14 @@ if(BUILD_TESTING)
         set_tests_properties(chernobog.symbolic_executor
                              PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=${IDA_LIB_DIR}")
     endif()
+
+    add_executable(chernobog_mba_diagnostics_tests tests/mba_diagnostics_tests.cpp
+                                                   src/deobf/analysis/mba_diagnostics.cpp)
+    target_include_directories(chernobog_mba_diagnostics_tests
+                               PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_features(chernobog_mba_diagnostics_tests PRIVATE cxx_std_17)
+    target_link_libraries(chernobog_mba_diagnostics_tests PRIVATE ${_chernobog_thread_libraries})
+    add_test(NAME chernobog.mba_diagnostics COMMAND chernobog_mba_diagnostics_tests)
 
     # Compile and execute the exact statically-registered MBA catalog through its fail-closed Z3
     # verifier. Only the catalog's IDA-independent runtime is linked, avoiding unrelated plugin
