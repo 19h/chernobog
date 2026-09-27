@@ -88,8 +88,10 @@ NativeObservationView project_native_observations(const NativeRegion &region,
         (mode != 32 && mode != 64) || mode != region.address_bits() || !outcome.native_region ||
         outcome.region_identity != region.identity() || !outcome.stop_valid)
         return reject("exact native capture and region identity required");
-    if (!outcome.native_state_capture_requested || !outcome.native_state_capture_complete)
-        return reject("complete native instruction-entry sampling required");
+    if (!outcome.native_state_capture_requested ||
+        (!outcome.native_state_capture_complete &&
+         !(outcome.native_temporal_requested && outcome.native_temporal_prefix_complete)))
+        return reject("complete native instruction-entry or temporal event prefix required");
     if (events.execution.empty() || events.execution.size() > 4096 || events.data.size() > 4096 ||
         events.states.size() > 12289 || events.edges.size() > 4096 || decoded.size() > 4096)
         return reject("native observation input budget exceeded");
@@ -117,14 +119,20 @@ NativeObservationView project_native_observations(const NativeRegion &region,
     {
         if (!same_run(access) || (!first && access.sequence <= previous))
             return reject("data order or identity differs");
-        while (memory_instruction + 1 < events.execution.size() &&
-               events.execution[memory_instruction + 1].sequence < access.sequence)
-            ++memory_instruction;
-        if (events.execution[memory_instruction].sequence >= access.sequence ||
-            events.execution[memory_instruction].pc != access.from ||
-            (memory_instruction + 1 < events.execution.size() &&
-             events.execution[memory_instruction + 1].sequence == access.sequence))
-            return reject("data event does not follow its entered instruction");
+        if (!outcome.native_temporal_requested)
+        {
+            while (memory_instruction + 1 < events.execution.size() &&
+                   events.execution[memory_instruction + 1].sequence < access.sequence)
+                ++memory_instruction;
+            if (events.execution[memory_instruction].sequence >= access.sequence ||
+                events.execution[memory_instruction].pc != access.from ||
+                (memory_instruction + 1 < events.execution.size() &&
+                 events.execution[memory_instruction + 1].sequence == access.sequence))
+                return reject("data event does not follow its entered instruction");
+        }
+        // Named-model accesses can be attributed to an unentered callee. A
+        // modeled CALL cannot occur inside an admitted local scaffold; the
+        // candidate's ordered direct accesses are checked by check_transition.
         previous = access.sequence;
         first = false;
     }
@@ -156,21 +164,30 @@ NativeObservationView project_native_observations(const NativeRegion &region,
         if (!same_run(edge) || (!first && edge.sequence <= previous) ||
             !edges.emplace(edge.sequence, &edge).second)
             return reject("edge order or identity differs");
-        while (edge_instruction + 1 < events.execution.size() &&
-               events.execution[edge_instruction + 1].sequence < edge.sequence)
-            ++edge_instruction;
-        if (events.execution[edge_instruction].sequence >= edge.sequence ||
-            events.execution[edge_instruction].pc != edge.from ||
-            (edge_instruction + 1 < events.execution.size() &&
-             (events.execution[edge_instruction + 1].sequence != edge.sequence ||
-              events.execution[edge_instruction + 1].pc != edge.to)))
-            return reject("edge does not join its entered source and destination");
+        if (!outcome.native_temporal_requested)
+        {
+            while (edge_instruction + 1 < events.execution.size() &&
+                   events.execution[edge_instruction + 1].sequence < edge.sequence)
+                ++edge_instruction;
+            if (events.execution[edge_instruction].sequence >= edge.sequence ||
+                events.execution[edge_instruction].pc != edge.from ||
+                (edge_instruction + 1 < events.execution.size() &&
+                 (events.execution[edge_instruction + 1].sequence != edge.sequence ||
+                  events.execution[edge_instruction + 1].pc != edge.to)))
+                return reject("edge does not join its entered source and destination");
+        }
+        // Temporal named-model edges can skip an unentered import callee. A
+        // candidate cannot contain that CALL, and every edge used to validate
+        // an admitted direct link or final dispatch is checked below against
+        // its adjacent entered native instructions and transfer state.
         previous = edge.sequence;
         first = false;
     }
     view.available = true;
     view.reason =
-        "exact captured native paths; local role hypotheses; VM identity and other entry points unproved";
+        outcome.native_state_capture_complete
+            ? "exact captured native paths; local role hypotheses; VM identity and other entry points unproved"
+            : "complete temporal event prefix with per-instruction entry records; some registers unavailable; local transition checks require complete candidate endpoints";
     for (size_t start = 0; start < events.execution.size(); ++start)
     {
         const auto &initial = decoded.at(events.execution[start].pc);

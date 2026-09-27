@@ -1327,6 +1327,17 @@ error_t idaapi idc_vm_trace_temporal(idc_value_t *argv, idc_value_t *r)
     return eOk;
 }
 
+error_t idaapi idc_vm_trace_temporal_check(idc_value_t *argv, idc_value_t *r)
+{
+    const auto request = arg_string(argv[2]), bindings = arg_string(argv[3]);
+    const auto json = vm::trace_native_region_temporal_check(
+        uint64_t(resolve_function(argv[0])), uint64_t(argv[1].num),
+        std::string(request.c_str(), request.length()),
+        std::string(bindings.c_str(), bindings.length()));
+    r->set_string(json.c_str());
+    return eOk;
+}
+
 error_t idaapi idc_vm_temporal_strings(idc_value_t *argv, idc_value_t *r)
 {
     const auto input = arg_string(argv[1]), models = arg_string(argv[2]);
@@ -2100,6 +2111,9 @@ const idc_entry_t idc_entries[] = {
     {"chernobog_vm_trace_temporal", idc_vm_trace_temporal, args_ea_long_str_str,
      "chernobog_vm_trace_temporal(ea, seed, input_json, bindings_json)",
      "Explicit named ABI models and temporal observations across native owners; no function evidence publication"},
+    {"chernobog_vm_trace_temporal_check", idc_vm_trace_temporal_check, args_ea_long_str_str,
+     "chernobog_vm_trace_temporal_check(ea, seed, input_json, bindings_json)",
+     "Explicit named-model native continuation with instruction-entry samples and bounded local VM transition checks"},
     {"chernobog_vm_temporal_strings", idc_vm_temporal_strings, args_ea_str_str,
      "chernobog_vm_temporal_strings(ea, input_json, bindings_json)",
      "Four-run named-model native string observations with immutable read witnesses and separate freshness lease"},

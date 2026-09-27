@@ -1042,7 +1042,7 @@ static std::string trace_native_region_impl(
     config.max_insns = candidate_checkpoint_budget ? candidate_checkpoint_budget
                        : runtime_data              ? runtime_data->instruction_budget
                                                    : 4096;
-    config.timeout_ms = sample_states ? 1000 : 250;
+    config.timeout_ms = sample_states || (bindings && check) ? 1000 : 250;
     config.want_runtime_strings = false;
     config.want_import_summaries = false;
     config.max_runtime_bytes = 65536;
@@ -1188,13 +1188,13 @@ static std::string trace_native_region_impl(
     EmuEvents events;
     EmuOutcome outcome;
     const uint64_t initial_identity = region.identity();
-    const bool ran = bindings ? driver.emulate_region_temporal(region, config, events, outcome,
-                                                               decoder, &input, undefined_oracle)
-                     : walk   ? driver.emulate_region_walk(region, config, events, outcome, decoder,
-                                                           64, &input, check)
-                     : sample_states
-                         ? driver.emulate_region_states(region, config, events, outcome, &input)
-                         : driver.emulate_region(region, config, events, outcome, &input);
+    const bool ran =
+        bindings ? driver.emulate_region_temporal(region, config, events, outcome, decoder, &input,
+                                                  undefined_oracle, check)
+        : walk   ? driver.emulate_region_walk(region, config, events, outcome, decoder, 64, &input,
+                                              check)
+        : sample_states ? driver.emulate_region_states(region, config, events, outcome, &input)
+                        : driver.emulate_region(region, config, events, outcome, &input);
     static std::atomic<uint64_t> next_capture{1};
     uint64_t capture = next_capture.load();
     while (capture != UINT64_MAX && !next_capture.compare_exchange_weak(capture, capture + 1))
@@ -1661,6 +1661,18 @@ std::string trace_native_region_temporal(uint64_t function, uint64_t seed,
     if (!parse_bindings(models, bindings))
         return unavailable("invalid named environment bindings");
     return trace_native_region_impl(function, seed, &input, true, false, &bindings);
+}
+std::string trace_native_region_temporal_check(uint64_t function, uint64_t seed,
+                                               const std::string &request,
+                                               const std::string &models)
+{
+    hybrid::EmuInput input;
+    std::vector<hybrid::EmuCallSummary> bindings;
+    if (!parse_input(request, input) || !input.native_objects.empty())
+        return unavailable("invalid bounded temporal input");
+    if (!parse_bindings(models, bindings))
+        return unavailable("invalid named environment bindings");
+    return trace_native_region_impl(function, seed, &input, true, true, &bindings);
 }
 
 void clear_native_temporal_strings() { string_lease.reset(); }

@@ -27,6 +27,9 @@ std::string trace_native_region_walk(uint64_t function, uint64_t seed, const std
 std::string trace_native_region_check(uint64_t function, uint64_t seed, const std::string &request);
 std::string trace_native_region_temporal(uint64_t function, uint64_t seed,
                                          const std::string &request, const std::string &bindings);
+std::string trace_native_region_temporal_check(uint64_t function, uint64_t seed,
+                                               const std::string &request,
+                                               const std::string &bindings);
 std::string inspect_native_temporal_strings(uint64_t function, const std::string &request,
                                             const std::string &bindings);
 std::string inspect_native_temporal_prefix_strings(uint64_t function, const std::string &request,

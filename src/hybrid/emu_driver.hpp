@@ -404,7 +404,8 @@ class EmuDriver
     bool emulate_region_temporal(vm::NativeRegion &, const HybridConfig &, EmuEvents &,
                                  EmuOutcome &, const vm::NativeDecoder &,
                                  const EmuInput *input = nullptr,
-                                 const vm::NativeUndefinedOracle &undefined_oracle = {});
+                                 const vm::NativeUndefinedOracle &undefined_oracle = {},
+                                 bool sample_native_instructions = false);
 
   private:
     bool emulate_region_impl(const vm::NativeRegion &, const HybridConfig &, EmuEvents &,

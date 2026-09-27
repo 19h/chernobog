@@ -642,6 +642,32 @@ int main()
                 bad = f;
                 bad.outcome.native_state_capture_complete = false;
                 check(!project(bad).available, "incomplete native samples rejected");
+                if (!split)
+                {
+                    bad.outcome.native_temporal_prefix_complete = true;
+                    check(!project(bad).available,
+                          "non-temporal prefix cannot replace complete native samples");
+                    bad.outcome.native_temporal_requested = true;
+                    auto sample = std::find_if(
+                        bad.events.states.begin(), bad.events.states.end(),
+                        [&](const hybrid::StatePoint &state)
+                        {
+                            return state.kind == hybrid::StatePoint::Kind::NativeInstructionEntry &&
+                                   state.sequence == bad.events.execution[1].sequence;
+                        });
+                    check(sample != bad.events.states.end() && !sample->regs.empty(),
+                          "intermediate sample control exists");
+                    sample->regs.pop_back();
+                    v = project(bad);
+                    check(v.available && v.queries == 2 &&
+                              v.records[0].at("semantic_validation") ==
+                                  "corroborated for captured transition" &&
+                              v.reason.find("some registers unavailable") != std::string::npos,
+                          "complete temporal prefix permits local checked endpoints");
+                    bad.outcome.native_temporal_prefix_complete = false;
+                    check(!project(bad).available,
+                          "partial native samples without complete prefix rejected");
+                }
                 bad = f;
                 bad.events.execution[1].sequence = 0;
                 check(!project(bad).available, "duplicate execution sequence rejected");
@@ -657,9 +683,20 @@ int main()
                 bad = f;
                 bad.events.data[0].sequence = 0;
                 check(!project(bad).available, "read before instruction rejected");
+                bad.outcome.native_temporal_requested = true;
+                v = project(bad);
+                check(v.available && v.queries == 0 &&
+                          v.records[0].at("transition_reason") == "ordered access count differs",
+                      "read before candidate entry cannot corroborate");
                 bad = f;
                 ++bad.events.data[0].from;
                 check(!project(bad).available, "read source differs from entered instruction");
+                bad.outcome.native_temporal_requested = true;
+                v = project(bad);
+                check(v.available && v.queries == 0 &&
+                          v.records[0].at("transition_reason") ==
+                              "ordered access source/kind/width differs",
+                      "read source differs from candidate instruction");
                 bad = f;
                 ++bad.events.states.back().regs[0].value;
                 v = project(bad);
@@ -690,6 +727,7 @@ int main()
                       "mode bound to native plan");
                 bad = f;
                 ++bad.events.edges.back().to;
+                bad.outcome.native_temporal_requested = true;
                 v = project(bad);
                 check(v.queries == 0 && v.records[0].at("transition_reason") ==
                                             "complete dispatch observation required",

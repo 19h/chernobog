@@ -1,0 +1,325 @@
+{
+  "archive_sha256": "70da0fae38276a9a774a34b995f61d091775b0531f3cce81e1c2fc2dffa44b62",
+  "archive_verifier_sha256": "c20f92b4ce903a400728abd0d63627e799d9fc5313023b7d911b06f6c82c4993",
+  "baseline_commit": "6cbfd62cc8c0639b0264de866023f2ded62af10b",
+  "corpus_report_sha256": "bc23fb34a3914bd8430e26aa82e874ec8f1050e314d18f4aec36745d59670ecc",
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "matrix_sha256": "6f7d051249eeb9d905cbbf4be4ff7c7c066661b4ec6733dfbf3d330a0425eb9f",
+  "outcomes": {
+    "combined-0": {
+      "binary_sha256": "6400997543605e7f6464d8d18ec0b588c083d098918d543b1b3252807355f57b",
+      "candidate_rows": 20,
+      "candidate_visits": 40,
+      "capture_sha256": "b2843283676aead94c555ac883bb394e770add4700b2d78e6d8fa3b84dedcf6a",
+      "corroborated": 40,
+      "partial_instruction_samples": 24,
+      "sample_complete": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "solver_queries": 80,
+      "temporal_complete": [
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    "combined-1": {
+      "binary_sha256": "b379a8388f2416dfa2ef4b7d5d57090880c6ee2b639dbded5bb2da70c91f1833",
+      "candidate_rows": 16,
+      "candidate_visits": 32,
+      "capture_sha256": "72271ecfb706253caf08e802e79c0394618cecca01592edfc111b56a69b32796",
+      "corroborated": 32,
+      "partial_instruction_samples": 188,
+      "sample_complete": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "solver_queries": 64,
+      "temporal_complete": [
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    "combined-12648430": {
+      "binary_sha256": "03f786c1ab630fbe06fa19c6172a2bd6e2a97b7f48d1b98ad643302933202a23",
+      "candidate_rows": 12,
+      "candidate_visits": 0,
+      "capture_sha256": "af4a4e5e54a03a9235a92cbc0dba9651c64f97bd8c0e4472c21b2e11beb623b2",
+      "corroborated": 0,
+      "partial_instruction_samples": 884,
+      "sample_complete": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "solver_queries": 0,
+      "temporal_complete": [
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    "mutation-0": {
+      "binary_sha256": "95140f47a0de35906578026b038bf1c1572f641421bf3657962ff0ba5481a835",
+      "candidate_rows": 0,
+      "candidate_visits": 0,
+      "capture_sha256": "f59bd34abcb4f933cb9f8086c135780ca9cc189dfb9e7fd0f15acacadde5131f",
+      "corroborated": 0,
+      "partial_instruction_samples": 0,
+      "sample_complete": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "solver_queries": 0,
+      "temporal_complete": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "mutation-1": {
+      "binary_sha256": "02cd90fa45364f0431b1b1a68472243326de0c1a0900ed791ad3d364d8fe1ec2",
+      "candidate_rows": 0,
+      "candidate_visits": 0,
+      "capture_sha256": "ac6e37bfc4682def39b9d034ad4ad969aa5f85a81bb09a76776700da9984db83",
+      "corroborated": 0,
+      "partial_instruction_samples": 12,
+      "sample_complete": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "solver_queries": 0,
+      "temporal_complete": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "mutation-12648430": {
+      "binary_sha256": "5aab31336dbd8e956281a3d1c1c7f3159961976b197488c46c9c43d2a522316b",
+      "candidate_rows": 0,
+      "candidate_visits": 0,
+      "capture_sha256": "e0e265f3e2e659ad7c0f82b279decb9e993ea2880e607aa76b6a880fa7a83b46",
+      "corroborated": 0,
+      "partial_instruction_samples": 0,
+      "sample_complete": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "solver_queries": 0,
+      "temporal_complete": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "original": {
+      "binary_sha256": "44245e21de031582c987ff52dd969a4df64e8fec678be44fbf991b9342eb7134",
+      "candidate_rows": 0,
+      "candidate_visits": 0,
+      "capture_sha256": "adf1da49892699d5ff25f98b9d24092392feae0b4992dbb118ddd414de28f714",
+      "corroborated": 0,
+      "partial_instruction_samples": 0,
+      "sample_complete": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "solver_queries": 0,
+      "temporal_complete": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "virtualization-0": {
+      "binary_sha256": "f94eddb8f3430fe9e286630b47ff2c8922e7044beaa410fe4a4b65ba8b155f57",
+      "candidate_rows": 16,
+      "candidate_visits": 16,
+      "capture_sha256": "6df7a44c4f5a3b363fef8aa7f88c9f396a23377855c88bc7bf089f781fc36289",
+      "corroborated": 16,
+      "partial_instruction_samples": 120,
+      "sample_complete": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "solver_queries": 32,
+      "temporal_complete": [
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    "virtualization-1": {
+      "binary_sha256": "97aa6e2f1f35870c5b668bb8d3ada19156bc7e8a703c99dd88e4c0f7b74aae6f",
+      "candidate_rows": 16,
+      "candidate_visits": 28,
+      "capture_sha256": "7dd2f191d77749110a1aa008cbfb1a43bfd426dbe3db59742a5ecc724e7258b9",
+      "corroborated": 28,
+      "partial_instruction_samples": 448,
+      "sample_complete": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "solver_queries": 56,
+      "temporal_complete": [
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    "virtualization-12648430": {
+      "binary_sha256": "d55fd9683b1c854efe1ec0ee44cd8b2d4101647d1310b3e05e5073c5d14853e5",
+      "candidate_rows": 0,
+      "candidate_visits": 0,
+      "capture_sha256": "43f7a3e34ae697d0697a4e7a7d80a8062fa4cd3c27a3e9252a19f28b4b925349",
+      "corroborated": 0,
+      "partial_instruction_samples": 0,
+      "sample_complete": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "solver_queries": 0,
+      "temporal_complete": [
+        false,
+        false,
+        false,
+        false
+      ]
+    }
+  },
+  "passed": true,
+  "plugin_sha256": "3d548c81cfc4f6e061457859d79e85833971ca6f5691e08c3306cacb9e5a58d3",
+  "schema": 1,
+  "scope": "sampled explicit native temporal prefixes; local fixed-input transition checks only",
+  "source_sha256": {
+    "src/hybrid/emu_driver.cpp": "e08686cfcd83504cc8c85995e569938dfcefa09bf6204135a8538f42e4551f7b",
+    "src/hybrid/emu_driver.hpp": "5f329bd86093fd86ce151a6d55f93bdc52994b9b233e6b8d61ac0de2b11b396b",
+    "src/plugin/idc_api.cpp": "c9db11fadd06d539a57c2bc4d734572ecc6ce490d207a7a66d82396d067d032f",
+    "src/vm/ida_native_trace.cpp": "a7f5fb613d5f6ccabad3328f323b6e62b35ca4431141fb67e6077953d2aea006",
+    "src/vm/ida_native_trace.hpp": "85edfa0450d66ebaadba7803f2ecd3cd79e4688f4fdef162b33bf928ec9dfc62",
+    "src/vm/native_observations.cpp": "05985a44b4a455902f40aa8001f2d83eefea9f5013477ef3b420d8441e01f85f",
+    "tests/ida_vm_temporal_state_probe.py": "de3367e93ad71a0d1575516c798bb080bbb680e43c1fa53bb84de1c08518f447",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vm_temporal_state_matrix.py": "22e83c794ab42aad2f80f9d1cee8fa480352e3e9ce9121653a5ca99ea8f9149e",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/vm_native_observation_tests.cpp": "1d1fc792a71c3f99ef89a582d6e81d56c004ce60ad18dfcccaeb76e37fbf13bf"
+  },
+  "target_rows": [
+    {
+      "accesses_captured": "5",
+      "dispatch": "0x10008ef17",
+      "entry_dispatch_base": "0x1000d64cf",
+      "entry_key": "0x100074059",
+      "entry_vip": "0x100074059",
+      "internal_transfers": "exact captured witnesses",
+      "output_dispatch_base": "0x100007031",
+      "output_key": "0x1fff44b3b",
+      "output_vip": "0x100074055",
+      "path": "complete captured native path",
+      "read": "0x1000d64ea",
+      "seed": "0x0",
+      "semantic_validation": "corroborated for captured transition",
+      "site": "0x1000d64db",
+      "target": "0x100007031",
+      "transition_queries": "2",
+      "transition_reason": "SAT inputs then UNSAT mismatch: all GPRs, defined arithmetic flags, dispatch and ordered accesses agree under the local model"
+    },
+    {
+      "accesses_captured": "5",
+      "dispatch": "0x10008ef17",
+      "entry_dispatch_base": "0x1000d64cf",
+      "entry_key": "0x100074059",
+      "entry_vip": "0x100074059",
+      "internal_transfers": "exact captured witnesses",
+      "output_dispatch_base": "0x100007031",
+      "output_key": "0x1fff44b3b",
+      "output_vip": "0x100074055",
+      "path": "complete captured native path",
+      "read": "0x1000d64ea",
+      "seed": "0x1",
+      "semantic_validation": "corroborated for captured transition",
+      "site": "0x1000d64db",
+      "target": "0x100007031",
+      "transition_queries": "2",
+      "transition_reason": "SAT inputs then UNSAT mismatch: all GPRs, defined arithmetic flags, dispatch and ordered accesses agree under the local model"
+    },
+    {
+      "accesses_captured": "5",
+      "dispatch": "0x10008ef17",
+      "entry_dispatch_base": "0x1000d64cf",
+      "entry_key": "0x100074059",
+      "entry_vip": "0x100074059",
+      "internal_transfers": "exact captured witnesses",
+      "output_dispatch_base": "0x100007031",
+      "output_key": "0x1fff44b3b",
+      "output_vip": "0x100074055",
+      "path": "complete captured native path",
+      "read": "0x1000d64ea",
+      "seed": "0x11",
+      "semantic_validation": "corroborated for captured transition",
+      "site": "0x1000d64db",
+      "target": "0x100007031",
+      "transition_queries": "2",
+      "transition_reason": "SAT inputs then UNSAT mismatch: all GPRs, defined arithmetic flags, dispatch and ordered accesses agree under the local model"
+    },
+    {
+      "accesses_captured": "5",
+      "dispatch": "0x10008ef17",
+      "entry_dispatch_base": "0x1000d64cf",
+      "entry_key": "0x100074059",
+      "entry_vip": "0x100074059",
+      "internal_transfers": "exact captured witnesses",
+      "output_dispatch_base": "0x100007031",
+      "output_key": "0x1fff44b3b",
+      "output_vip": "0x100074055",
+      "path": "complete captured native path",
+      "read": "0x1000d64ea",
+      "seed": "0xc0ffee",
+      "semantic_validation": "corroborated for captured transition",
+      "site": "0x1000d64db",
+      "target": "0x100007031",
+      "transition_queries": "2",
+      "transition_reason": "SAT inputs then UNSAT mismatch: all GPRs, defined arithmetic flags, dispatch and ordered accesses agree under the local model"
+    }
+  ],
+  "totals": {
+    "abstained_runs": 4,
+    "candidate_rows": 80,
+    "candidate_visits": 116,
+    "corroborated": 116,
+    "partial_instruction_samples": 1676,
+    "runs": 40,
+    "solver_queries": 232
+  },
+  "verifier_sha256": "002df1369eb0d94f93a1accec2d0d740deff551760e9b865d7083e80b3ca1b03"
+}

@@ -2230,7 +2230,8 @@ bool EmuDriver::emulate_region_walk(vm::NativeRegion &region, const HybridConfig
 bool EmuDriver::emulate_region_temporal(vm::NativeRegion &region, const HybridConfig &requested,
                                         EmuEvents &out, EmuOutcome &outcome,
                                         const vm::NativeDecoder &decoder, const EmuInput *input,
-                                        const vm::NativeUndefinedOracle &undefined_oracle)
+                                        const vm::NativeUndefinedOracle &undefined_oracle,
+                                        bool sample_native_instructions)
 {
     if (!decoder || (input && !input->native_objects.empty()))
     {
@@ -2240,8 +2241,8 @@ bool EmuDriver::emulate_region_temporal(vm::NativeRegion &region, const HybridCo
         outcome.native_walk_stop = "invalid_temporal_request";
         return false;
     }
-    return emulate_region_impl(region, requested, out, outcome, input, &region, &decoder, 64, false,
-                               true, &undefined_oracle);
+    return emulate_region_impl(region, requested, out, outcome, input, &region, &decoder, 64,
+                               sample_native_instructions, true, &undefined_oracle);
 }
 
 bool EmuDriver::emulate_region_impl(const vm::NativeRegion &region, const HybridConfig &requested,

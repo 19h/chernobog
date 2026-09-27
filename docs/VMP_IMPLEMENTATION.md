@@ -1355,3 +1355,22 @@ identity, single-entry handler, complete transition, or ordinary function
 publication is claimed. All 23 CTest suites and the existing paired temporal
 matrix pass. See `VMP_OBSERVED_SCAFFOLD.md` and its evidence JSON. Complete VM
 recovery and the remaining review requirements remain in progress.
+
+## Sampled temporal VM transition checkpoint
+
+Review rows 6a, 6b and V now have an explicit opt-in named-model native walk
+that samples instruction-entry states and checks observed local VM transitions.
+One ownerless protected 28-instruction scaffold has complete local entry,
+transfer, exit and five-access evidence despite 30 unavailable register
+samples elsewhere in its 2,876-instruction run. Its two SMT queries find
+satisfiable captured inputs and no modeled mismatch. The four-seed paired
+matrix records 80 syntax candidate rows, 116 distinct visits and 116
+corroborated fixed-input transitions in 232 solver queries. Sixteen
+original/native-mutation captures yield zero candidates. All 24 protected
+captures remain execution-incomplete; four budget-stopped combined captures
+abstain because neither complete global sampling nor a complete event prefix
+is available. The full 40-run matrix records 1,676 partial instruction-entry
+samples without promoting them to complete sampling. Same-seed sampled and
+unsampled native sites, heads, edges and data events agree in every run. See
+`VMP_TEMPORAL_STATE.md` and its evidence JSON. General VM identity, alternate
+entry behavior, other inputs and complete review implementation remain open.
