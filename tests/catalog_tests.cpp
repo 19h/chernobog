@@ -186,6 +186,10 @@ bool test_typed_instances()
                    "distinct reaching values cannot cancel");
     samples.r.r = 100;
     okay &= expect(samples, zero_value, RuleVerificationStatus::VERIFIED, "same value can cancel");
+    samples.r.valnum = 1;
+    okay &= expect(samples, zero_value, RuleVerificationStatus::DISPROVED,
+                   "different value numbers cannot cancel");
+    samples.r.valnum = 0;
     samples.r.size = 1;
     okay &= expect(samples, zero_value, RuleVerificationStatus::UNSUPPORTED,
                    "implicit width conversion");
@@ -217,6 +221,104 @@ bool test_typed_instances()
     samples.r.s = &second_frame;
     okay &= expect(samples, zero_value, RuleVerificationStatus::DISPROVED,
                    "different frame owners cannot cancel");
+
+    for (int bytes : {1, 2, 4, 8})
+        for (int address_bytes : {4, 8})
+        {
+            ValueInsn first(m_ldx, bytes), second(m_ldx, bytes), changed(m_ldx, bytes),
+                left_not(m_bnot, bytes), right_not(m_bnot, bytes), both_not(m_and, bytes),
+                either(m_or, bytes), inverted(m_bnot, bytes), first_only(m_mov, bytes),
+                distinct_xor(m_xor, bytes), distinct_sub(m_sub, bytes), extra(m_or, bytes),
+                converted(bytes == 8 ? m_xdu : m_low, bytes), nested_address(m_ldx, address_bytes);
+            first.ea = changed.ea = 0x1000;
+            second.ea = 0x1004;
+            for (auto *load : {&first, &second, &changed})
+            {
+                reg(load->l, 500, 2);
+                reg(load->r, 600, address_bytes);
+            }
+            second.r.r = 700;
+            nested(left_not.l, first);
+            nested(right_not.l, second);
+            nested(both_not.l, left_not);
+            nested(both_not.r, right_not);
+            nested(either.l, first);
+            nested(either.r, second);
+            nested(inverted.l, either);
+            okay &= expect(both_not, inverted, RuleVerificationStatus::VERIFIED,
+                           "De Morgan preserves explicit memory reads");
+            nested(first_only.l, first);
+            okay &= expect(both_not, first_only, RuleVerificationStatus::UNSUPPORTED,
+                           "dropping a memory read rejects");
+            nested(extra.l, first);
+            nested(extra.r, second);
+            nested(either.l, extra);
+            okay &= expect(both_not, inverted, RuleVerificationStatus::UNSUPPORTED,
+                           "duplicating a memory read rejects");
+            nested(either.l, second);
+            nested(either.r, first);
+            okay &= expect(both_not, inverted, RuleVerificationStatus::UNSUPPORTED,
+                           "reordering memory reads rejects");
+            nested(either.l, changed);
+            nested(either.r, second);
+            changed.r.r = 601;
+            okay &= expect(both_not, inverted, RuleVerificationStatus::UNSUPPORTED,
+                           "changing memory address rejects");
+            changed.r.r = 600;
+            changed.r.valnum = 1;
+            okay &= expect(both_not, inverted, RuleVerificationStatus::UNSUPPORTED,
+                           "changing address value number rejects");
+            changed.r.valnum = 0;
+            changed.l.r = 501;
+            okay &= expect(both_not, inverted, RuleVerificationStatus::UNSUPPORTED,
+                           "changing segment selector rejects");
+            changed.l.r = 500;
+            changed.d.size = bytes == 8 ? 4 : 2 * bytes;
+            nested(converted.l, changed);
+            nested(either.l, converted);
+            okay &= expect(both_not, inverted, RuleVerificationStatus::UNSUPPORTED,
+                           "changing memory read width rejects");
+            changed.d.size = bytes;
+            nested(either.l, changed);
+            reg(nested_address.l, 500, 2);
+            reg(nested_address.r, 900, address_bytes);
+            nested(changed.r, nested_address);
+            okay &= expect(both_not, inverted, RuleVerificationStatus::UNSUPPORTED,
+                           "memory-dependent load address rejects");
+            reg(changed.r, 600, address_bytes);
+            changed.ea = 0x1008;
+            okay &= expect(both_not, inverted, RuleVerificationStatus::UNSUPPORTED,
+                           "changing load provenance rejects");
+            changed.ea = first.ea;
+            changed.iprops = IPROP_MBARRIER;
+            okay &= expect(both_not, inverted, RuleVerificationStatus::UNSUPPORTED,
+                           "barrier load cannot be opaque");
+            changed.iprops = 0;
+            nested(either.l, first);
+            first.d.t = mop_v;
+            first.d.g = 0x3000;
+            okay &= expect(both_not, inverted, RuleVerificationStatus::UNSUPPORTED,
+                           "nested load cannot carry an additional destination write");
+            first.d.zero();
+            first.d.size = bytes;
+            second.r.r = first.r.r;
+            okay &= expect(both_not, inverted, RuleVerificationStatus::VERIFIED,
+                           "aliased loads retain both independent occurrences");
+            nested(distinct_xor.l, first);
+            nested(distinct_xor.r, second);
+            nested(distinct_sub.l, first);
+            nested(distinct_sub.r, second);
+            okay &= expect(distinct_xor, distinct_sub, RuleVerificationStatus::DISPROVED,
+                           "aliased reads do not imply equal observed values");
+            either.r.t = mop_v;
+            either.r.g = 0x2000;
+            either.r.size = bytes;
+            right_not.l.t = mop_v;
+            right_not.l.g = 0x2000;
+            right_not.l.size = bytes;
+            okay &= expect(both_not, inverted, RuleVerificationStatus::UNSUPPORTED,
+                           "implicit and explicit memory reads cannot mix");
+        }
     // Real rejected SDK trees exercise independent width/reason keys beyond
     // the diagnostic quota. Dropping a reason must never drop its rejection.
     for (int bytes : {1, 2, 4, 8})

@@ -1,0 +1,1835 @@
+{
+  "schema": 1,
+  "passed": true,
+  "scope": "Typed explicit-load effect admission; one captured protected store value; not whole-function, native flags, hardware exceptions or logical-VM equivalence. Full review remains in progress.",
+  "source_sha256": {
+    "src/deobf/rules/rule_verifier.cpp": "a5f020d93d4e45d932d42cfda0a879bc2de6a2afbd60aa44d3c7987a623bf435",
+    "src/deobf/rules/rule_verifier.h": "f6591c31b98941c47f99f74f40b2728dc798bfe6fbb01b0bcaef20bcc6f683ee",
+    "src/deobf/rules/pattern_rule.cpp": "c05929c9ac08a11f734c9d22c39df1e5cd515825712ecd87fe0cdcf7fbd948a8",
+    "src/deobf/handlers/mba_simplify.cpp": "963a4d6c46addea208eeddafe58dfa53f48da662eb36a369c7754141df3d5b24",
+    "tests/catalog_tests.cpp": "a0f40b62e224aa181a5ae86f8e9b0b3b8510a8c4b9569329ec3462cd6d062a03",
+    "tests/ida_protected_mba_probe.py": "5ad95e9ccca6601184b62763b97f6c18b50e330de2d6a1e04e30db1a3f02647c",
+    "tests/verify_mba_load_capture.py": "da05931fa4f14ce95c103d5130570d33992fc6513e9c50d4582a01ee5f622d23",
+    "tests/run_protected_mba_corpus.py": "3c7e880f159823dfc7c30e61840bb7c8566abb342d0bcddedf2b87b33b8b68cd",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc"
+  },
+  "primary_sdk_contract": {
+    "path": "../ida-sdk/src/include/hexrays.hpp",
+    "sha256": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff",
+    "sdk_version": 940,
+    "contracts": [
+      "m_ldx: selector/offset/result",
+      "mop_t.valnum: uint16, zero unknown",
+      "mop_z: anonymous operand",
+      "operand/instruction properties"
+    ]
+  },
+  "prior_revision": "90e165ec9ff951d5ec6d06e0d654667065e33d9c",
+  "prior_revision_verifier_source_sha256": "2a62e22ba38e291e1b9ba70dd9e4a981477644b38ec064a576d5a50e682daa54",
+  "compiled_source_attestation": "unknown; preceding installed artifact and prior Git source are separately pinned. Runner source snapshots identify capture-time worktree inputs, not the historical compiled module.",
+  "toolchain": {
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "ida_components_sha256": {
+      "<ida>/libida.dylib": "c723167ed12fcb001774e10cb5a05035c96858da1b2a6c5761e553c6346e78ab",
+      "<ida>/libidalib.dylib": "0bb76152d5ce1b164d1715d289f17ee7db87a74ee1e5223fd232829ed33855d8",
+      "<ida>/procs/pc.dylib": "09165b45c585c5c156797a9bd0ca5147f33ee99f12b82a6130fd7cc07707b43d",
+      "<ida>/plugins/hexx64.dylib": "6d0ad64715eeb88966091e2df788b3d1283546a95b4b1002c2bb11918bfa4caf",
+      "<ida>/plugins/goomba.dylib": "fd9c98d862bdd08753c12fca2a5319a67ecbb45161b1cd00600f4047c8f835ec",
+      "<ida>/cfg/goomba.cfg": "cf3eea65229dde0a2028eeb74debab36f30419f3bb0385f87e36cbee2945ccb5"
+    },
+    "includes_goomba": true,
+    "clang_format": "23.0.0git b51054818b78dc395cd4d33f17cfb6e98a36a76d",
+    "black": "26.5.1, line length 100"
+  },
+  "corpora": [
+    {
+      "path": "build/vmp-mba-corpus-x64/corpus.json",
+      "sha256": "1abbb97f8f24f3c43252a6cd2c5b9b0ae52bc7d517ff99f9552c2748e5a53cea",
+      "native_behavior_rows": 16800,
+      "scope": "Existing native producer records revalidated during each matrix; no new native behavior run of rewritten microcode."
+    },
+    {
+      "path": "build/vmp-mba-corpus-i386/corpus.json",
+      "sha256": "31909dbeb6b19a44042c6db79bf6f45f6d75c0b5e99c10910d202a6999c1583a",
+      "native_behavior_rows": 16800,
+      "scope": "Existing native producer records revalidated during each matrix; no new native behavior run of rewritten microcode."
+    }
+  ],
+  "ctest": {
+    "passed": 21,
+    "total": 21,
+    "log": {
+      "path": "build/mba-load-contract-ctest-final-destination.log",
+      "sha256": "6001e119ce67967ee3965d3eb5dc30bc78b803a4d12815f5b50fb20a60395f60"
+    },
+    "details": {
+      "path": "build/mba-load-contract-ctest-details-final.log",
+      "sha256": "1b1ccd89dab231813e6366f7ca0ebd3746ccdc3b603a497d3671719fcf076d58"
+    },
+    "catalog_executable": {
+      "path": "build/chernobog_catalog_tests",
+      "sha256": "fbbdba8d1fb70b1488de9a1da6b758ceb17b6b2d4cf1cf51781a467e8f86fa20"
+    },
+    "catalog": {
+      "registered": 108,
+      "verified": 108,
+      "deliberate_rejection_passed": true
+    },
+    "typed_instances": {
+      "initial_results": 190,
+      "verified": 25,
+      "disproved": 18,
+      "unsupported": 146,
+      "unknown": 1,
+      "diagnostic_reason_quota": 32,
+      "unrecorded": 39,
+      "reset_passed": true,
+      "result_bits": [
+        8,
+        16,
+        32,
+        64
+      ],
+      "address_bits": [
+        32,
+        64
+      ],
+      "same_address_read_values_independent": true,
+      "nested_destination_writes_rejected": true
+    }
+  },
+  "independent_audit": {
+    "path": "build/mba-load-contract-final-formatted-audit.json",
+    "sha256": "b0e6c4b65621a9c73b372df8fe56bc97e46aa3a1fc17d50e5f9b43faa9057553",
+    "report": {
+      "passed": true,
+      "prior_report_sha256": "8ce7d55825071ca576ae54b1c829f5caf5584acd09ea2f218ec77ffa027141a5",
+      "current_report_sha256": "21c0922f3c2971dcb3426d0b9dddcdefbe0ff16360c295c8d23b4aa0f3d3b897",
+      "prior_plugin_sha256": "c154239cd404840d5d0cc08acc36a8c8974c01bfd603b3a3bacb354cb037399e",
+      "current_plugin_sha256": "869ad146663376f5e88fad245a5867b2212570257fe4a159af33a64699219f87",
+      "native_rows": 152,
+      "stages": 456,
+      "captured_stages": 454,
+      "changes": [
+        {
+          "architecture": "i386",
+          "label": "combined-12648430",
+          "name": "corpus_transform",
+          "kind": "body",
+          "maturity": 5,
+          "store_ea": 135037736,
+          "normal_effect_comparisons": 139552,
+          "fault_prefix_comparisons": 6,
+          "corruption_controls": [
+            "wrong NOT",
+            "changed load address",
+            "dropped load",
+            "swapped load occurrences",
+            "changed load width",
+            "changed load source",
+            "additional nested destination write",
+            "changed address value number",
+            "changed store width",
+            "changed store address"
+          ]
+        }
+      ],
+      "scope": "captured value, ordered explicit read and store effects under both operand schedules; modeled load/store faults; no whole-function, flags, hardware exception or logical-VM equivalence claim",
+      "verifier_sha256": "da05931fa4f14ce95c103d5130570d33992fc6513e9c50d4582a01ee5f622d23"
+    }
+  },
+  "captures": {
+    "prior": {
+      "raw_report": {
+        "path": "build/mba-load-contract-prior-frozen/protected_mba_analysis.json",
+        "sha256": "8ce7d55825071ca576ae54b1c829f5caf5584acd09ea2f218ec77ffa027141a5"
+      },
+      "plugin_sha256": "c154239cd404840d5d0cc08acc36a8c8974c01bfd603b3a3bacb354cb037399e",
+      "runner_source_snapshot_sha256": {
+        "tests/run_protected_mba_corpus.py": "3c7e880f159823dfc7c30e61840bb7c8566abb342d0bcddedf2b87b33b8b68cd",
+        "tests/ida_protected_mba_probe.py": "5ad95e9ccca6601184b62763b97f6c18b50e330de2d6a1e04e30db1a3f02647c",
+        "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+        "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+        "src/deobf/rules/rule_verifier.cpp": "45363faa67ea7a054ba33ca1110dadbb247bb5d95339811ba49389877aa8ae03",
+        "src/deobf/rules/rule_verifier.h": "f6591c31b98941c47f99f74f40b2728dc798bfe6fbb01b0bcaef20bcc6f683ee",
+        "src/deobf/handlers/mba_simplify.cpp": "963a4d6c46addea208eeddafe58dfa53f48da662eb36a369c7754141df3d5b24",
+        "src/deobf/rules/rule_registry.cpp": "c208ae7bba6674f153f9d78be11e572e4ad1246e04b9458e556fc20759421abe",
+        "src/plugin/idc_api.cpp": "d8a515ec8ef54d38c0c8f1c434d136988f672c51eb453820f7faefbe07d93cae",
+        "src/ida_analysis/native_engine.cpp": "995356e62376bb5f87835f85024ab189723c1fda5c23d793c06c28108cbc222a",
+        "src/ida_analysis/native_engine.hpp": "e4095ac715da3f9635bdea7be21d58ccccf2b8f7e6988d93aadc70c00aa9fc65",
+        "tests/catalog_tests.cpp": "7cc820498171e049b615b627c795df6b65182026e2083b9782b2eee833ba0299"
+      },
+      "process_count": 40,
+      "native_enabled_process_count": 20,
+      "totals": {
+        "owned": 114,
+        "captured": 454,
+        "total_matches": 14066,
+        "successful_matches": 6,
+        "instance_verified": 4,
+        "instance_disproved": 0,
+        "instance_unsupported": 2,
+        "instance_unknown": 0,
+        "ownerless": 36,
+        "entry_inside_owner": 2,
+        "sdk_refused": 2
+      },
+      "maximum_elapsed_ns": 27991985583,
+      "capture_mutation_controls": 472,
+      "all_processes_exit_zero": true,
+      "all_processes_within_120_seconds": true,
+      "measurement_columns": [
+        "architecture",
+        "label",
+        "disabled",
+        "elapsed_ns",
+        "peak_resident_bytes",
+        "instance_verified",
+        "instance_unsupported",
+        "binary_sha256",
+        "run_and_capture_sha256"
+      ],
+      "measurements": [
+        [
+          "x86_64",
+          "original",
+          true,
+          1703683125,
+          141967360,
+          0,
+          0,
+          "1245a1ce3259f68fa020924aaf35fd78734ca1594f9ffe1f4d99215753256e7b",
+          [
+            "c7ca490c025677b58dfae1380f1b947326e2dcdb97dceba84e397a26a6b2dc26",
+            "00e240fbe7774decd747b2c42e0146af466156d7e4ca70e8c5175a07535198e7"
+          ]
+        ],
+        [
+          "x86_64",
+          "original",
+          false,
+          4450983583,
+          181698560,
+          0,
+          0,
+          "1245a1ce3259f68fa020924aaf35fd78734ca1594f9ffe1f4d99215753256e7b",
+          [
+            "95d648506d9a4586249391e2ec5bcb5b14d55a4352e90911f199e968057cc125",
+            "d942ce77506e5a032a6a73bbd72db4ef66f302633d1ee4bc73130ee809a9c666"
+          ]
+        ],
+        [
+          "x86_64",
+          "mutation-0",
+          true,
+          2232800917,
+          163872768,
+          0,
+          0,
+          "2cf00e7a5327257d98d18af8f5a35d0b0921b135d2a37a2ec9628e6d997e9a07",
+          [
+            "393b32c4bf2b9cfd2dcf45fd79af46b450477944c3483ddf711a024b6a3696d4",
+            "6d822de7ad1025d14ea9e1ab9492c57a3952553fc81f1725f8599ba1252ce2af"
+          ]
+        ],
+        [
+          "x86_64",
+          "mutation-0",
+          false,
+          3048312375,
+          202899456,
+          0,
+          0,
+          "2cf00e7a5327257d98d18af8f5a35d0b0921b135d2a37a2ec9628e6d997e9a07",
+          [
+            "96e027b208b191232a85cce44c388860a94b3a5f28bf5ee3375150a22c4dbee1",
+            "50e5bf77ecf1f81d490dae000507e28ef46c1e76c32aa9d900b6df411d52b540"
+          ]
+        ],
+        [
+          "x86_64",
+          "mutation-1",
+          true,
+          1321615958,
+          161775616,
+          0,
+          0,
+          "0245d938b64b96a65f20d0d3734deec473fbd7f86e7cda39f5b806214f1ac367",
+          [
+            "047cd0a1f433167c1b4446d24783e5cf17ef294f94416ac3a433c15c085e8809",
+            "ab79280a38a69a10b7a97e357245ab59bf8936d15f693604027de496ab023934"
+          ]
+        ],
+        [
+          "x86_64",
+          "mutation-1",
+          false,
+          2979324542,
+          203423744,
+          0,
+          0,
+          "0245d938b64b96a65f20d0d3734deec473fbd7f86e7cda39f5b806214f1ac367",
+          [
+            "558a0e35d5e60f5d9555835fcadfd41e5c747bf07dfef6d1e85191f6065afb21",
+            "cc7efd9ac44ed3eb5bb8fd930d25eee6de786802aa3fc6f1174cc608ea2546e3"
+          ]
+        ],
+        [
+          "x86_64",
+          "mutation-12648430",
+          true,
+          1227460875,
+          162988032,
+          0,
+          0,
+          "564848f0d760a8e92a50e363cacda7e30c9206afcf8db58d81279e8b7571a299",
+          [
+            "ec70877e7f25c4ab7883e4866b825f73f100c2783e410e68ddbf0d0dfb588cf9",
+            "c4a52befb9bf6678fc9f948a73929ee5c41d4299f4248d349e60fa607798384e"
+          ]
+        ],
+        [
+          "x86_64",
+          "mutation-12648430",
+          false,
+          2962933375,
+          205963264,
+          0,
+          0,
+          "564848f0d760a8e92a50e363cacda7e30c9206afcf8db58d81279e8b7571a299",
+          [
+            "29d67e1e9898302d14ffda766a8e688fe509b93d6f6d6ee2c3e7390eb2ad07be",
+            "78016d7c3b63c1dc642c5a5d00543c494931f652fccf2d22953d1674004bfb36"
+          ]
+        ],
+        [
+          "x86_64",
+          "virtualization-0",
+          true,
+          1215864542,
+          160382976,
+          0,
+          0,
+          "119f617599b35fdead8909e3705005e52f3c1756c1f51549e204d1f8cd888ae2",
+          [
+            "08d2aa1ac13bfe80ab73feaee630249a3cef94b0c908612b71459a0958475dfe",
+            "47a6ddea532c762ca3b4af05f7d64860b57a0052be72c66fb5a1f406469ccc39"
+          ]
+        ],
+        [
+          "x86_64",
+          "virtualization-0",
+          false,
+          2941698875,
+          203456512,
+          0,
+          0,
+          "119f617599b35fdead8909e3705005e52f3c1756c1f51549e204d1f8cd888ae2",
+          [
+            "1e6abe00b0927852398dc877ae0920a2df73481ff905e66695e09e7f09f786dd",
+            "a92b3201f2a933482fd04490bf140183c03ef3d4d9081616c6cfb4942f0cddf9"
+          ]
+        ],
+        [
+          "x86_64",
+          "virtualization-1",
+          true,
+          1222722792,
+          162349056,
+          0,
+          0,
+          "a0751b571f2a4ebe3997ca37e68e97e562b965a64e047f74b99270f8fe312869",
+          [
+            "b346cae14a4fe2c7b301bd29db74f793c2ddc9df918cc7301c0f3cfae32925b4",
+            "d29141ec8e904316b87cb9cdb72434a998cf3a6803a80f6f48acb10cf03218e0"
+          ]
+        ],
+        [
+          "x86_64",
+          "virtualization-1",
+          false,
+          2917080292,
+          203898880,
+          0,
+          0,
+          "a0751b571f2a4ebe3997ca37e68e97e562b965a64e047f74b99270f8fe312869",
+          [
+            "20ba8a1cbdb52655690c47962434736abc19850a217e81942a768c591bd879c6",
+            "fa8bd2898d63e803b0a9118b0e014b7ff7979973894df44606710aed07d4df40"
+          ]
+        ],
+        [
+          "x86_64",
+          "virtualization-12648430",
+          true,
+          1181774625,
+          160235520,
+          0,
+          0,
+          "75059ce336baa1ec7bb1304b2778aeb391563a69a905fd3c48f548d61119a18a",
+          [
+            "1feacb7b37b9d1bea9b6bb14e15a62a88315d545559797561861c0d04aa76d00",
+            "3c6ca5b695549199bfa17ff751c3dd555c38094922591e7742b46403cfa2bc5d"
+          ]
+        ],
+        [
+          "x86_64",
+          "virtualization-12648430",
+          false,
+          2914309125,
+          202735616,
+          0,
+          0,
+          "75059ce336baa1ec7bb1304b2778aeb391563a69a905fd3c48f548d61119a18a",
+          [
+            "cb6110af849452d70b18e2c8e0b9f4f1e8c4330679bd27f9175cb124b36b9410",
+            "fc64a4acab0ae1f7c5814f4e17384bd0ce0bee839bd8ea32aa39eae05d4d7ffb"
+          ]
+        ],
+        [
+          "x86_64",
+          "combined-0",
+          true,
+          1203850334,
+          162709504,
+          0,
+          0,
+          "1c14af5156970789fd75a758cadb3cbda8248849acabd2106a2e5ba907fb6b74",
+          [
+            "d5a7f6e4069dc9aab1a3ad978bdbbea6bd1f1d05f85ecb8583e6de4bfbbdf48c",
+            "d6010ad2d6a1e6a48d10f4fbbc21e23c911ba299cbed09f1e4a93349a6f956dd"
+          ]
+        ],
+        [
+          "x86_64",
+          "combined-0",
+          false,
+          2892965125,
+          202620928,
+          0,
+          0,
+          "1c14af5156970789fd75a758cadb3cbda8248849acabd2106a2e5ba907fb6b74",
+          [
+            "01cb4e556794217c7a3237430acaae4ee2a11ad6718097b845c9ee8712b64719",
+            "ae560b7a73d4c10a4abd4e4afcae7067b25e3a4a207aaf49aab69335c2ac0d16"
+          ]
+        ],
+        [
+          "x86_64",
+          "combined-1",
+          true,
+          1201978584,
+          161497088,
+          0,
+          0,
+          "dbfd660a4c55d9d7e30f8de5eb53c625a0f618e55a1285087f68e70abcf05b8f",
+          [
+            "1b70972c375dadba666edefeb520d10574dd035e415783f21ccfd33c0e2e25dc",
+            "e8fdb56ec4ac9deec65a9eb9a8a819a6b6dd3743e6e28166ec1e489290a229ae"
+          ]
+        ],
+        [
+          "x86_64",
+          "combined-1",
+          false,
+          2897473625,
+          203833344,
+          0,
+          0,
+          "dbfd660a4c55d9d7e30f8de5eb53c625a0f618e55a1285087f68e70abcf05b8f",
+          [
+            "3edeb6cbd3cba83af9238f1108b185b35c40be659b6a49ab53a09fed1ad2961b",
+            "d7519f652bda675d50b647a9e4eba4ee41de7b3ebf252a038dd96ce037d0ab43"
+          ]
+        ],
+        [
+          "x86_64",
+          "combined-12648430",
+          true,
+          1185056792,
+          162742272,
+          0,
+          0,
+          "2f3025aa7d738ba02a40cf23c8ed98e55f40bc8af6771232e63c14f8ca1076a7",
+          [
+            "bb0cc5c9090ff36163000afa66ac48b3f07e24c9c9dd237ad895d9d477051f45",
+            "31f1903c267554efd2023ad6e1fb8520f658c2d00f87c5a351b5009ce5262696"
+          ]
+        ],
+        [
+          "x86_64",
+          "combined-12648430",
+          false,
+          2940199166,
+          203128832,
+          0,
+          0,
+          "2f3025aa7d738ba02a40cf23c8ed98e55f40bc8af6771232e63c14f8ca1076a7",
+          [
+            "eb07a681c77e240319b32c2ee773e91d11316199f6d2863b7c8f1331b4898e2b",
+            "e9a6c7e102a847fb28aaec1b0e633d386a19e76a0e0d25b69fba04798dccf2f6"
+          ]
+        ],
+        [
+          "i386",
+          "original",
+          true,
+          997657125,
+          105201664,
+          0,
+          0,
+          "94d2c90bf7020c7dd506c4e3ed7dee9bffbd6832a4c512e6e310f1f02485e39a",
+          [
+            "6791c1a9fc5b41b549b426401b5c63a2b31878afde7fd2d940de660d8d79e5e0",
+            "7889e657700c9462eed2eb7cd0741f888fb59e0ae271b576cdc895067a8e26b3"
+          ]
+        ],
+        [
+          "i386",
+          "original",
+          false,
+          2685193667,
+          147292160,
+          0,
+          0,
+          "94d2c90bf7020c7dd506c4e3ed7dee9bffbd6832a4c512e6e310f1f02485e39a",
+          [
+            "5318877913c5873baac8f325164bb299e25664595736f229351d8d63aecfa081",
+            "d7a01c5819fd83d6f931a3189169cda46310a2369d760d7a1814cd9f066c0e2c"
+          ]
+        ],
+        [
+          "i386",
+          "mutation-0",
+          true,
+          986987292,
+          106364928,
+          0,
+          0,
+          "dc99df7a6da7a4c65e648d8db9ea841925b4c1b835765e28f50818d83454bfe4",
+          [
+            "91f2ae97e1542e7d4f1963e9346b7744db698f9872cd2d6c8e11c5dc95713cc1",
+            "2b9779370eb0a579313ae02c7c601ced248ba05ba3177cf7c1d8395ff25947a6"
+          ]
+        ],
+        [
+          "i386",
+          "mutation-0",
+          false,
+          2728438042,
+          148176896,
+          0,
+          0,
+          "dc99df7a6da7a4c65e648d8db9ea841925b4c1b835765e28f50818d83454bfe4",
+          [
+            "f97850787e1915aab6476cef41e643937a7c1ab36b19990fbde1e06d2538dabf",
+            "6ac6b9f32a7c7bb09d4fc93356d2887783a815c518a19b7e86ef615420f86acb"
+          ]
+        ],
+        [
+          "i386",
+          "mutation-1",
+          true,
+          984334458,
+          103989248,
+          0,
+          0,
+          "06607a588e0cc22c61ed4142702fdac1f2f32a7d3c2657e60eccdc04be954f5f",
+          [
+            "9a6607e7d5be9b08200fc7a1b25cbf1fd411b554918c966bf769fda322c98d63",
+            "b2800a43693f21aed5a0cb61ed9b8b94c4bc454fb181e84e95809b1a24eb7797"
+          ]
+        ],
+        [
+          "i386",
+          "mutation-1",
+          false,
+          2755374583,
+          147718144,
+          0,
+          0,
+          "06607a588e0cc22c61ed4142702fdac1f2f32a7d3c2657e60eccdc04be954f5f",
+          [
+            "c731145de65ec9ca2dee1f83814bd46096bec9866870ccf01af8f7e5794e926c",
+            "a07c5579f6aa69594ec3918ec0f362abd856e3b2fb08612bc415a00a2956130f"
+          ]
+        ],
+        [
+          "i386",
+          "mutation-12648430",
+          true,
+          1027994833,
+          104693760,
+          0,
+          0,
+          "1c32a35c36cd78ca750fccb9516a0887246a6dcb5ecf0594b7650b92cd0d83ed",
+          [
+            "055222c450ec1e04f16b6bbcf9bc01c5dcbfb7d4b22d7348d4d291b538df558f",
+            "dd5240428dda636861c044bbe00e219bf7893ffdc0d09b671d0398e442d8f28b"
+          ]
+        ],
+        [
+          "i386",
+          "mutation-12648430",
+          false,
+          2745465042,
+          148226048,
+          0,
+          0,
+          "1c32a35c36cd78ca750fccb9516a0887246a6dcb5ecf0594b7650b92cd0d83ed",
+          [
+            "39d1a30e241361148e3293554a65e837bbceb54041d49592fd92f838f44d5189",
+            "44b2e1870567deab6ad3546259919cb11acb09feffba3ce6436d28b1dfc1061a"
+          ]
+        ],
+        [
+          "i386",
+          "virtualization-0",
+          true,
+          1631474209,
+          111476736,
+          0,
+          0,
+          "0da574daf01766471ae23496582be42945ed77dec97726de080f68feba45f2d6",
+          [
+            "eef87a1dd5275b0349a220d0a315ce8187f34edf0f0a49a1f185af8cf7b29cf8",
+            "ce5a4f6236982863727266ea8566dfd792d453257b2bb76b8c3fb8a1c95b03d2"
+          ]
+        ],
+        [
+          "i386",
+          "virtualization-0",
+          false,
+          10154186583,
+          156450816,
+          2,
+          0,
+          "0da574daf01766471ae23496582be42945ed77dec97726de080f68feba45f2d6",
+          [
+            "68850bad5a6f3bb678540fe16ca2f808ce9b186bb3b952cef89df068dd7e8467",
+            "7c1774ead34e8fc5dacf0165a4b37fe0dd3475b95fe3ec6a89d6e5c8fa0815c6"
+          ]
+        ],
+        [
+          "i386",
+          "virtualization-1",
+          true,
+          1610229167,
+          111017984,
+          0,
+          0,
+          "881c7912465a839b58344d4c8d260dc991013382b3f6881ddac2d19c7d703d33",
+          [
+            "56bf71b329ae324a4a4e393ab6ef3b23380d3eb1662e3716c200d1f3269498a9",
+            "8151353670f2d571af84ef873df6ebaf0f8ecc3892c09be0dbd9a1acc4e9375b"
+          ]
+        ],
+        [
+          "i386",
+          "virtualization-1",
+          false,
+          8286553292,
+          155779072,
+          0,
+          0,
+          "881c7912465a839b58344d4c8d260dc991013382b3f6881ddac2d19c7d703d33",
+          [
+            "a29f2c0c9f692118859742430dec0fff6fe27323fb486876fb593e7a2c7b6c39",
+            "57cd56fbf769a150c98a759e46ea8ea76735d7c53356d559d9f1da4f0c9ab543"
+          ]
+        ],
+        [
+          "i386",
+          "virtualization-12648430",
+          true,
+          11401493208,
+          111869952,
+          0,
+          0,
+          "d804f18b479c2cd2a66b076eda094e2fb67eb0c0dad750efaf6254d887b8ffdb",
+          [
+            "c52d534659d94de92f99ac13b9d79d6d274a661f6c960ab3337b8f7ebeba1e9d",
+            "99ef84be6e4051e495a3c35868fd23c132aff6b7835d81fde5739d2be1375ac7"
+          ]
+        ],
+        [
+          "i386",
+          "virtualization-12648430",
+          false,
+          27991985583,
+          150634496,
+          0,
+          0,
+          "d804f18b479c2cd2a66b076eda094e2fb67eb0c0dad750efaf6254d887b8ffdb",
+          [
+            "2a621d54fc6421e74ed4a239aefb962bf0e25f05d4cf260b4631a95b74a78621",
+            "e6057a026d2f879fa7fd80449735da8810bcadc809e5ab3c63b430b3fcbdf9a7"
+          ]
+        ],
+        [
+          "i386",
+          "combined-0",
+          true,
+          1651542833,
+          112312320,
+          0,
+          0,
+          "a8e474f0033524bde7d5d4090d0e1fb2f8451f2ae55f59c33cc55de1c44b6d42",
+          [
+            "3404a04bb3be391ce13bfdbe0f0e8b34daf90bf9ac0109ce8be17895ccef1cb4",
+            "2d6a47418270623ee28cf4906ed1deade005352bb9cb74daee5a98d6bc2d5c81"
+          ]
+        ],
+        [
+          "i386",
+          "combined-0",
+          false,
+          10560117333,
+          155205632,
+          2,
+          0,
+          "a8e474f0033524bde7d5d4090d0e1fb2f8451f2ae55f59c33cc55de1c44b6d42",
+          [
+            "d93c60219063f4c4c43d7ea3951e56fae7ad1377f3e04fd5c2eb3effcbf42c95",
+            "7d79287f68d1be20334d8783bad627934b6e95212404db4ac6cb4840cdcb40ff"
+          ]
+        ],
+        [
+          "i386",
+          "combined-1",
+          true,
+          1650620916,
+          110985216,
+          0,
+          0,
+          "6f63fc2c8746f561716cdf004b62447afe3c2681210fd6ef33e53ce319411ac8",
+          [
+            "4038e1ccd773eb29ab361ec7de26a1d463e64fc6bc2cc8b257be2b2ecbc54edf",
+            "3bd413db3be5f4ea083c964d134c3eaac25d3524141db3f9fd5909af19ce91b0"
+          ]
+        ],
+        [
+          "i386",
+          "combined-1",
+          false,
+          11231785417,
+          154714112,
+          0,
+          0,
+          "6f63fc2c8746f561716cdf004b62447afe3c2681210fd6ef33e53ce319411ac8",
+          [
+            "fc9c6957fa48b4491c70432636dc3cd16bc2bdbaca06e6278eb51c06e0208bd6",
+            "a888164a1c0add29f645794cb99d950c82f699521886fa937e4e990071ce01db"
+          ]
+        ],
+        [
+          "i386",
+          "combined-12648430",
+          true,
+          1683956541,
+          113393664,
+          0,
+          0,
+          "28afeb8f97e7bcd765f60daffbe10719b57caf9c005cc42fdfc883d43a23d5f5",
+          [
+            "fa3ee2b65b60d254bd39d4b13fbf3cce98b1219edc034c42a047822f286a6624",
+            "987d5489802b268240c69b58befec97ebea0346a99d780099176eea79121615a"
+          ]
+        ],
+        [
+          "i386",
+          "combined-12648430",
+          false,
+          12269822917,
+          154877952,
+          0,
+          2,
+          "28afeb8f97e7bcd765f60daffbe10719b57caf9c005cc42fdfc883d43a23d5f5",
+          [
+            "e018c51685713c4d434d5aae9668cea371ce9ab137f8b35f4df1ee8fa7cc22b5",
+            "3e1e6dbd36af54627eccd39785055a008ab5ff3fa1646b694def0ad4884f8227"
+          ]
+        ]
+      ],
+      "changed_store_capture": {
+        "raw_path": "build/mba-load-contract-prior-frozen/i386/combined-12648430-on/protected_mba.json",
+        "raw_sha256": "3e1e6dbd36af54627eccd39785055a008ab5ff3fa1646b694def0ad4884f8227",
+        "entry": 134560072,
+        "owner": 134560072,
+        "maturity": 5,
+        "store": {
+          "opcode": "m_stx",
+          "ea": 135037736,
+          "properties": 0,
+          "text": "stx    (bnot([ds.2{3}:(edi.4{5}+#4.4){4}].4) & bnot([ds.2{3}:edi.4{5}].4)), ds.2{3}, (edi.4{5}+#4.4){4}",
+          "text_truncated": false,
+          "left": {
+            "kind": 4,
+            "kind_name": "mop_d",
+            "bytes": 4,
+            "properties": 0,
+            "value_number": 0,
+            "instruction": {
+              "opcode": "m_and",
+              "ea": 135037731,
+              "properties": 0,
+              "text": "and    bnot([ds.2{3}:(edi.4{5}+#4.4){4}].4), bnot([ds.2{3}:edi.4{5}].4), .4",
+              "text_truncated": false,
+              "left": {
+                "kind": 4,
+                "kind_name": "mop_d",
+                "bytes": 4,
+                "properties": 0,
+                "value_number": 0,
+                "instruction": {
+                  "opcode": "m_bnot",
+                  "ea": 135037724,
+                  "properties": 0,
+                  "text": "bnot   [ds.2{3}:(edi.4{5}+#4.4){4}].4, .4",
+                  "text_truncated": false,
+                  "left": {
+                    "kind": 4,
+                    "kind_name": "mop_d",
+                    "bytes": 4,
+                    "properties": 0,
+                    "value_number": 0,
+                    "instruction": {
+                      "opcode": "m_ldx",
+                      "ea": 134560084,
+                      "properties": 0,
+                      "text": "ldx    ds.2{3}, (edi.4{5}+#4.4){4}, .4",
+                      "text_truncated": false,
+                      "left": {
+                        "kind": 1,
+                        "kind_name": "mop_r",
+                        "bytes": 2,
+                        "properties": 0,
+                        "value_number": 3,
+                        "register": 116
+                      },
+                      "right": {
+                        "kind": 4,
+                        "kind_name": "mop_d",
+                        "bytes": 4,
+                        "properties": 0,
+                        "value_number": 4,
+                        "instruction": {
+                          "opcode": "m_add",
+                          "ea": 134560084,
+                          "properties": 0,
+                          "text": "add    edi.4{5}, #4.4, .4",
+                          "text_truncated": false,
+                          "left": {
+                            "kind": 1,
+                            "kind_name": "mop_r",
+                            "bytes": 4,
+                            "properties": 0,
+                            "value_number": 5,
+                            "register": 32
+                          },
+                          "right": {
+                            "kind": 2,
+                            "kind_name": "mop_n",
+                            "bytes": 4,
+                            "properties": 0,
+                            "value_number": 0,
+                            "value": 4
+                          },
+                          "destination": {
+                            "kind": 0,
+                            "kind_name": "mop_z",
+                            "bytes": 4,
+                            "properties": 0,
+                            "value_number": 0
+                          }
+                        }
+                      },
+                      "destination": {
+                        "kind": 0,
+                        "kind_name": "mop_z",
+                        "bytes": 4,
+                        "properties": 0,
+                        "value_number": 0
+                      }
+                    }
+                  },
+                  "right": {
+                    "kind": 0,
+                    "kind_name": "mop_z",
+                    "bytes": -1,
+                    "properties": 0,
+                    "value_number": 0
+                  },
+                  "destination": {
+                    "kind": 0,
+                    "kind_name": "mop_z",
+                    "bytes": 4,
+                    "properties": 0,
+                    "value_number": 0
+                  }
+                }
+              },
+              "right": {
+                "kind": 4,
+                "kind_name": "mop_d",
+                "bytes": 4,
+                "properties": 0,
+                "value_number": 0,
+                "instruction": {
+                  "opcode": "m_bnot",
+                  "ea": 134560088,
+                  "properties": 0,
+                  "text": "bnot   [ds.2{3}:edi.4{5}].4, .4",
+                  "text_truncated": false,
+                  "left": {
+                    "kind": 4,
+                    "kind_name": "mop_d",
+                    "bytes": 4,
+                    "properties": 0,
+                    "value_number": 0,
+                    "instruction": {
+                      "opcode": "m_ldx",
+                      "ea": 134560082,
+                      "properties": 0,
+                      "text": "ldx    ds.2{3}, edi.4{5}, .4",
+                      "text_truncated": false,
+                      "left": {
+                        "kind": 1,
+                        "kind_name": "mop_r",
+                        "bytes": 2,
+                        "properties": 0,
+                        "value_number": 3,
+                        "register": 116
+                      },
+                      "right": {
+                        "kind": 1,
+                        "kind_name": "mop_r",
+                        "bytes": 4,
+                        "properties": 0,
+                        "value_number": 5,
+                        "register": 32
+                      },
+                      "destination": {
+                        "kind": 0,
+                        "kind_name": "mop_z",
+                        "bytes": 4,
+                        "properties": 0,
+                        "value_number": 0
+                      }
+                    }
+                  },
+                  "right": {
+                    "kind": 0,
+                    "kind_name": "mop_z",
+                    "bytes": -1,
+                    "properties": 0,
+                    "value_number": 0
+                  },
+                  "destination": {
+                    "kind": 0,
+                    "kind_name": "mop_z",
+                    "bytes": 4,
+                    "properties": 0,
+                    "value_number": 0
+                  }
+                }
+              },
+              "destination": {
+                "kind": 0,
+                "kind_name": "mop_z",
+                "bytes": 4,
+                "properties": 0,
+                "value_number": 0
+              }
+            }
+          },
+          "right": {
+            "kind": 1,
+            "kind_name": "mop_r",
+            "bytes": 2,
+            "properties": 0,
+            "value_number": 3,
+            "register": 116
+          },
+          "destination": {
+            "kind": 4,
+            "kind_name": "mop_d",
+            "bytes": 4,
+            "properties": 0,
+            "value_number": 4,
+            "instruction": {
+              "opcode": "m_add",
+              "ea": 135037736,
+              "properties": 0,
+              "text": "add    edi.4{5}, #4.4, .4",
+              "text_truncated": false,
+              "left": {
+                "kind": 1,
+                "kind_name": "mop_r",
+                "bytes": 4,
+                "properties": 0,
+                "value_number": 5,
+                "register": 32
+              },
+              "right": {
+                "kind": 2,
+                "kind_name": "mop_n",
+                "bytes": 4,
+                "properties": 0,
+                "value_number": 0,
+                "value": 4
+              },
+              "destination": {
+                "kind": 0,
+                "kind_name": "mop_z",
+                "bytes": 4,
+                "properties": 0,
+                "value_number": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "current": {
+      "raw_report": {
+        "path": "build/mba-load-contract-current-final/protected_mba_analysis.json",
+        "sha256": "21c0922f3c2971dcb3426d0b9dddcdefbe0ff16360c295c8d23b4aa0f3d3b897"
+      },
+      "plugin_sha256": "869ad146663376f5e88fad245a5867b2212570257fe4a159af33a64699219f87",
+      "runner_source_snapshot_sha256": {
+        "tests/run_protected_mba_corpus.py": "3c7e880f159823dfc7c30e61840bb7c8566abb342d0bcddedf2b87b33b8b68cd",
+        "tests/ida_protected_mba_probe.py": "5ad95e9ccca6601184b62763b97f6c18b50e330de2d6a1e04e30db1a3f02647c",
+        "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+        "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+        "src/deobf/rules/rule_verifier.cpp": "a5f020d93d4e45d932d42cfda0a879bc2de6a2afbd60aa44d3c7987a623bf435",
+        "src/deobf/rules/rule_verifier.h": "f6591c31b98941c47f99f74f40b2728dc798bfe6fbb01b0bcaef20bcc6f683ee",
+        "src/deobf/handlers/mba_simplify.cpp": "963a4d6c46addea208eeddafe58dfa53f48da662eb36a369c7754141df3d5b24",
+        "src/deobf/rules/rule_registry.cpp": "c208ae7bba6674f153f9d78be11e572e4ad1246e04b9458e556fc20759421abe",
+        "src/plugin/idc_api.cpp": "d8a515ec8ef54d38c0c8f1c434d136988f672c51eb453820f7faefbe07d93cae",
+        "src/ida_analysis/native_engine.cpp": "995356e62376bb5f87835f85024ab189723c1fda5c23d793c06c28108cbc222a",
+        "src/ida_analysis/native_engine.hpp": "e4095ac715da3f9635bdea7be21d58ccccf2b8f7e6988d93aadc70c00aa9fc65",
+        "tests/catalog_tests.cpp": "a0f40b62e224aa181a5ae86f8e9b0b3b8510a8c4b9569329ec3462cd6d062a03"
+      },
+      "process_count": 40,
+      "native_enabled_process_count": 20,
+      "totals": {
+        "owned": 114,
+        "captured": 454,
+        "total_matches": 14065,
+        "successful_matches": 5,
+        "instance_verified": 5,
+        "instance_disproved": 0,
+        "instance_unsupported": 0,
+        "instance_unknown": 0,
+        "ownerless": 36,
+        "entry_inside_owner": 2,
+        "sdk_refused": 2
+      },
+      "maximum_elapsed_ns": 30184446084,
+      "capture_mutation_controls": 472,
+      "all_processes_exit_zero": true,
+      "all_processes_within_120_seconds": true,
+      "measurement_columns": [
+        "architecture",
+        "label",
+        "disabled",
+        "elapsed_ns",
+        "peak_resident_bytes",
+        "instance_verified",
+        "instance_unsupported",
+        "binary_sha256",
+        "run_and_capture_sha256"
+      ],
+      "measurements": [
+        [
+          "x86_64",
+          "original",
+          true,
+          1582373667,
+          138706944,
+          0,
+          0,
+          "1245a1ce3259f68fa020924aaf35fd78734ca1594f9ffe1f4d99215753256e7b",
+          [
+            "52348bb99436557bc1dd873745637cff951ea0d1ce6e1c0f9ced15066b25a1cd",
+            "1e4153f6d518519d0db4df40c7a8fcf5a79c79339a3961bd56a251ef715b5b35"
+          ]
+        ],
+        [
+          "x86_64",
+          "original",
+          false,
+          3130442416,
+          181108736,
+          0,
+          0,
+          "1245a1ce3259f68fa020924aaf35fd78734ca1594f9ffe1f4d99215753256e7b",
+          [
+            "13851a4d738e1bdafaec4170802f5ec9200551a9dee46c0423ad0c6be8aba305",
+            "f58b37a36570164d8c6b4473c006e9597b37d6c70855b2537c17806203982705"
+          ]
+        ],
+        [
+          "x86_64",
+          "mutation-0",
+          true,
+          1198648500,
+          162643968,
+          0,
+          0,
+          "2cf00e7a5327257d98d18af8f5a35d0b0921b135d2a37a2ec9628e6d997e9a07",
+          [
+            "04ab2520da31f4d34546767592c7de2f1a36a2fa1a5595b951f7c87af6016459",
+            "402f74c3ca428a674ea93f92af91915a236c7b30206981ba554d910fb82faf86"
+          ]
+        ],
+        [
+          "x86_64",
+          "mutation-0",
+          false,
+          2891078333,
+          203538432,
+          0,
+          0,
+          "2cf00e7a5327257d98d18af8f5a35d0b0921b135d2a37a2ec9628e6d997e9a07",
+          [
+            "42dfde9f6b643a8b534c4842986920e8e406185c86fdb605eba859d3518e3121",
+            "15b2057b7ba92cffb11dcd7f59540c8286cb076a27b036160433267b563fbcbe"
+          ]
+        ],
+        [
+          "x86_64",
+          "mutation-1",
+          true,
+          1168446167,
+          160071680,
+          0,
+          0,
+          "0245d938b64b96a65f20d0d3734deec473fbd7f86e7cda39f5b806214f1ac367",
+          [
+            "24e9327555a6470e3ff3377374f260b2b580d5795e0ca531fb13206ba78591e7",
+            "71d67599b83fe47b9e34f08f32193ab0a971c90edbf1a5ae507e58ecda7b0960"
+          ]
+        ],
+        [
+          "x86_64",
+          "mutation-1",
+          false,
+          3082671708,
+          202571776,
+          0,
+          0,
+          "0245d938b64b96a65f20d0d3734deec473fbd7f86e7cda39f5b806214f1ac367",
+          [
+            "fd1635a030b3db60aff30619bcb8a2a18972baf3937b205cadaa4a7df54d553a",
+            "239b501da92ad8d7dd1176922e9cbe40ea080636ccd4c2bd34a1db4912d068c2"
+          ]
+        ],
+        [
+          "x86_64",
+          "mutation-12648430",
+          true,
+          1350091375,
+          160317440,
+          0,
+          0,
+          "564848f0d760a8e92a50e363cacda7e30c9206afcf8db58d81279e8b7571a299",
+          [
+            "438af085118c0f422491444804ebaad34c3941fd51228884ee2d711c86336592",
+            "3c2d0e869d45aba5ffaf039ca8e7461e66092bafe230674aabf5fd2e410ae1b8"
+          ]
+        ],
+        [
+          "x86_64",
+          "mutation-12648430",
+          false,
+          2943572292,
+          203276288,
+          0,
+          0,
+          "564848f0d760a8e92a50e363cacda7e30c9206afcf8db58d81279e8b7571a299",
+          [
+            "597ea6e7a137648613abc6bb0a0f925fa400c5681d48e70e6e90efa7233102ed",
+            "3564e32824c0001c8cc628dfa8b67cbb47c33f2bd336db2d107aff9413e3ed1b"
+          ]
+        ],
+        [
+          "x86_64",
+          "virtualization-0",
+          true,
+          1208533333,
+          162283520,
+          0,
+          0,
+          "119f617599b35fdead8909e3705005e52f3c1756c1f51549e204d1f8cd888ae2",
+          [
+            "344cb4a9cf2a980a5e91c9183f369e01bcb825a6b8c3950d6736e6fd8332ca0a",
+            "2730b8509c7841398285e58766701bf9f2696680fb5a33d05294b14d592ceeca"
+          ]
+        ],
+        [
+          "x86_64",
+          "virtualization-0",
+          false,
+          2916624458,
+          203063296,
+          0,
+          0,
+          "119f617599b35fdead8909e3705005e52f3c1756c1f51549e204d1f8cd888ae2",
+          [
+            "b8c33062ec8aad0a5cacb830e75161cb9264d836b213ba31a7cc169f39b5afc1",
+            "13e0f6800a28848e4f7d140af55ac98b9a26dbcdf553241214eb37e56ab89213"
+          ]
+        ],
+        [
+          "x86_64",
+          "virtualization-1",
+          true,
+          1237956792,
+          161923072,
+          0,
+          0,
+          "a0751b571f2a4ebe3997ca37e68e97e562b965a64e047f74b99270f8fe312869",
+          [
+            "7a4ec8177e7da85eb97278b78281ec03f4976745d47179329947e5ef0de374ab",
+            "d0efeabe309f6b18de731101104dc1694bde8c96bd55fb4d68b04fe598d0b596"
+          ]
+        ],
+        [
+          "x86_64",
+          "virtualization-1",
+          false,
+          2965834125,
+          203030528,
+          0,
+          0,
+          "a0751b571f2a4ebe3997ca37e68e97e562b965a64e047f74b99270f8fe312869",
+          [
+            "0a60cc128899927867edd035422deb37020261bdf8a9979c4ac3cdf0b5141364",
+            "f3c07b30e3caf639b3bddb9852a8c7888835eab7b6950a428c6765af7ae40304"
+          ]
+        ],
+        [
+          "x86_64",
+          "virtualization-12648430",
+          true,
+          1228204375,
+          162676736,
+          0,
+          0,
+          "75059ce336baa1ec7bb1304b2778aeb391563a69a905fd3c48f548d61119a18a",
+          [
+            "6bd83609bbf40d0b189a7cf794aa26d942d8855e6bdc1ecfbba957c952cf5047",
+            "a5ace21cfce42de9287abfb4a3b05cd371a7e4f4d5afcf1934d01681cee7b983"
+          ]
+        ],
+        [
+          "x86_64",
+          "virtualization-12648430",
+          false,
+          3757304334,
+          204439552,
+          0,
+          0,
+          "75059ce336baa1ec7bb1304b2778aeb391563a69a905fd3c48f548d61119a18a",
+          [
+            "733c6dff7c603c00aec5d2b07033787726e7ced48726ddc91385a86849421533",
+            "bf62df6b446f108ccd55a56d3653a5eff8ae26a8d339410df44f0d83a32a744d"
+          ]
+        ],
+        [
+          "x86_64",
+          "combined-0",
+          true,
+          2074121125,
+          162725888,
+          0,
+          0,
+          "1c14af5156970789fd75a758cadb3cbda8248849acabd2106a2e5ba907fb6b74",
+          [
+            "b3750e720556eba6dc1fdff8c3e39608df52e5d0979a8e7afdc26c91f9ac145d",
+            "6288172631bb4799feb9c0884b7a54f2260b40228eb3a59e8658a6a08c9d7f56"
+          ]
+        ],
+        [
+          "x86_64",
+          "combined-0",
+          false,
+          3062210000,
+          203227136,
+          0,
+          0,
+          "1c14af5156970789fd75a758cadb3cbda8248849acabd2106a2e5ba907fb6b74",
+          [
+            "3de5f7e75931120c1b4f886a108c6357b1cf998edefd4bc8181a95c3952918e4",
+            "05d92be8dc4fa66eda73daadfdd01b89011047ca4f32633b143b5ab5fb20c32e"
+          ]
+        ],
+        [
+          "x86_64",
+          "combined-1",
+          true,
+          1241570709,
+          162791424,
+          0,
+          0,
+          "dbfd660a4c55d9d7e30f8de5eb53c625a0f618e55a1285087f68e70abcf05b8f",
+          [
+            "33c7eacb1700aa37cf46c69287f0004fe7d4fff7ac540e011fbef80a84a61035",
+            "e7c91ab137b177d99916cca088e0d3eee4153a071c1da33d6c178e9dc7e2cb20"
+          ]
+        ],
+        [
+          "x86_64",
+          "combined-1",
+          false,
+          3155769709,
+          203145216,
+          0,
+          0,
+          "dbfd660a4c55d9d7e30f8de5eb53c625a0f618e55a1285087f68e70abcf05b8f",
+          [
+            "7e2ca0d4cae3d3fd6e32f212d8d1b9213818af8f89eb8dd3a40579c45d1cb832",
+            "72b7b96adc9a9434e12c19d2c0e70fd028000e3865722a3c3d57c041a83dfecf"
+          ]
+        ],
+        [
+          "x86_64",
+          "combined-12648430",
+          true,
+          1304420667,
+          165806080,
+          0,
+          0,
+          "2f3025aa7d738ba02a40cf23c8ed98e55f40bc8af6771232e63c14f8ca1076a7",
+          [
+            "06a6714d0b091778838fc3d947a6b668d91185df537f1c3095427369122a6d20",
+            "90e6401d1902598a7ec73953cac993b3a97ae3d0961412e400425db8f4fa2334"
+          ]
+        ],
+        [
+          "x86_64",
+          "combined-12648430",
+          false,
+          3323747250,
+          203145216,
+          0,
+          0,
+          "2f3025aa7d738ba02a40cf23c8ed98e55f40bc8af6771232e63c14f8ca1076a7",
+          [
+            "33bfc06ad99f663e2e150d383a283cbdfb7686d84122178ab97a134b2ee0503e",
+            "89df97e642d31de1671ff8a9caf6d3c54ac6382c223348473a18c1d772e46ecf"
+          ]
+        ],
+        [
+          "i386",
+          "original",
+          true,
+          999255292,
+          103825408,
+          0,
+          0,
+          "94d2c90bf7020c7dd506c4e3ed7dee9bffbd6832a4c512e6e310f1f02485e39a",
+          [
+            "902fca687e5f055ccb44dc8819a8bfb26cd1020e1e7c7fa320168a8fbe07dca6",
+            "46a7c063280db739954ca67ac5463d63a14d4ce6610eef7469fba4d190b5469d"
+          ]
+        ],
+        [
+          "i386",
+          "original",
+          false,
+          3082037375,
+          148176896,
+          0,
+          0,
+          "94d2c90bf7020c7dd506c4e3ed7dee9bffbd6832a4c512e6e310f1f02485e39a",
+          [
+            "f2014e4d273db541f8400be53f4648d834b95c1a6f54c28c49f2be35b0972119",
+            "6bd27b04e93874b43f1e014f325d8cac5361c30951247fa79a16960fc4bc8be6"
+          ]
+        ],
+        [
+          "i386",
+          "mutation-0",
+          true,
+          1022507833,
+          104775680,
+          0,
+          0,
+          "dc99df7a6da7a4c65e648d8db9ea841925b4c1b835765e28f50818d83454bfe4",
+          [
+            "1e1a23ee9a8678928a449277a935fc489ad163c749fa060c86870c84a60f7346",
+            "ae476d70d805327c1b398d882f235e12376d18236119e3adb03a4759862433c3"
+          ]
+        ],
+        [
+          "i386",
+          "mutation-0",
+          false,
+          2655951875,
+          147324928,
+          0,
+          0,
+          "dc99df7a6da7a4c65e648d8db9ea841925b4c1b835765e28f50818d83454bfe4",
+          [
+            "1ad485b6c7281469529a63c2d6d7ef249b36444cf66366d00e056a0c101dc42a",
+            "dde5f11fbfe9291ea4e8d970348981c164a84585e8d4248735f5c91e0bad30ab"
+          ]
+        ],
+        [
+          "i386",
+          "mutation-1",
+          true,
+          969146208,
+          104841216,
+          0,
+          0,
+          "06607a588e0cc22c61ed4142702fdac1f2f32a7d3c2657e60eccdc04be954f5f",
+          [
+            "d4984a77538634e2d294e6a5f98882d28146180d1db01169c497258f5967741d",
+            "234c0bd5c3ecb09bea074e0630f98ca766f1c8677c922de56db4fa4d108b2fb9"
+          ]
+        ],
+        [
+          "i386",
+          "mutation-1",
+          false,
+          2688169625,
+          146833408,
+          0,
+          0,
+          "06607a588e0cc22c61ed4142702fdac1f2f32a7d3c2657e60eccdc04be954f5f",
+          [
+            "1c7a243f6eb88f010bb3fcce37b2b7551fe2ecc5583e77bd6f2ce89d1d22d46f",
+            "45beaf8fb7eab7fea04b487007c500ebabe4d68b23efef8258d8c0e1b82ecc9c"
+          ]
+        ],
+        [
+          "i386",
+          "mutation-12648430",
+          true,
+          989834042,
+          105791488,
+          0,
+          0,
+          "1c32a35c36cd78ca750fccb9516a0887246a6dcb5ecf0594b7650b92cd0d83ed",
+          [
+            "377c2794b7a583782b0664d8664330e72d5c2872c2a1fbaedbbbb7c3929a79ea",
+            "aa6c9fc41caf4106eb8fbd111dc19906ee6bd3c023b8ffe16d5d4e7f03d96421"
+          ]
+        ],
+        [
+          "i386",
+          "mutation-12648430",
+          false,
+          2716364583,
+          148062208,
+          0,
+          0,
+          "1c32a35c36cd78ca750fccb9516a0887246a6dcb5ecf0594b7650b92cd0d83ed",
+          [
+            "61ee200e340d8886577f905ee53b90806e6506982fb2cf91eb343fc6c6604dd1",
+            "07aa5f512cb8f0b72981dee0faff00f3a4bcf08e4e92a38c1e221a3d7f03eabf"
+          ]
+        ],
+        [
+          "i386",
+          "virtualization-0",
+          true,
+          1618709333,
+          112787456,
+          0,
+          0,
+          "0da574daf01766471ae23496582be42945ed77dec97726de080f68feba45f2d6",
+          [
+            "1217b6a89b2acb54636e757e48d61a88dbf81a1aa6eee90f8b43a4afc52fc019",
+            "9f7a66a46bb93e0854183b0c202394fedc60e4a8a0b58d1b7f4a063215a8e6b7"
+          ]
+        ],
+        [
+          "i386",
+          "virtualization-0",
+          false,
+          11329528542,
+          155697152,
+          2,
+          0,
+          "0da574daf01766471ae23496582be42945ed77dec97726de080f68feba45f2d6",
+          [
+            "7cc48fd210d135af79e1bcc1eaa33756e2411f9c80ac1c13570843fdb983ca19",
+            "72e2c027391f31c965ba9d635362180ff2c66f58f8c3c076aa8b9184f9a25d91"
+          ]
+        ],
+        [
+          "i386",
+          "virtualization-1",
+          true,
+          1655970083,
+          111280128,
+          0,
+          0,
+          "881c7912465a839b58344d4c8d260dc991013382b3f6881ddac2d19c7d703d33",
+          [
+            "465a3f99d5f878cc33b369b0816f2039042450fcd04c6026ce173ff3771818d5",
+            "acacf510d994b9823f20540af3d48b428521f3096a79dcd65739dc7382bc3337"
+          ]
+        ],
+        [
+          "i386",
+          "virtualization-1",
+          false,
+          9663055625,
+          154730496,
+          0,
+          0,
+          "881c7912465a839b58344d4c8d260dc991013382b3f6881ddac2d19c7d703d33",
+          [
+            "c5f795a4ac3119017facb642f26350a04150fb8c17263c7db6a7d17f5bbf9cb7",
+            "f99bb92f33025f1abe70626b441e17ddac447555da382ef0f66a851fa45c9072"
+          ]
+        ],
+        [
+          "i386",
+          "virtualization-12648430",
+          true,
+          13297071583,
+          112623616,
+          0,
+          0,
+          "d804f18b479c2cd2a66b076eda094e2fb67eb0c0dad750efaf6254d887b8ffdb",
+          [
+            "34fb696929b13c3fdd67b651e6f40e5071281d983501dfc9d0913ab1d429be3f",
+            "905361f5edb1a8cc74d92923dadd19890d20286fd19293be847ba3f08ab54540"
+          ]
+        ],
+        [
+          "i386",
+          "virtualization-12648430",
+          false,
+          30184446084,
+          149307392,
+          0,
+          0,
+          "d804f18b479c2cd2a66b076eda094e2fb67eb0c0dad750efaf6254d887b8ffdb",
+          [
+            "48f50c05eed629186fc607ea246ef1edf4e051f376d2c5a16f000c47888705e1",
+            "7dffc99f6a5ff08ad87eedc5a5af8055b221bdb495bf00222461e23fe72cd5c3"
+          ]
+        ],
+        [
+          "i386",
+          "combined-0",
+          true,
+          1836133125,
+          112541696,
+          0,
+          0,
+          "a8e474f0033524bde7d5d4090d0e1fb2f8451f2ae55f59c33cc55de1c44b6d42",
+          [
+            "07f4e79f1a993373e8e49569d8828e2986c18dac96f5c3c30f9d596db7d2393e",
+            "5b8cccda6b6538d8a7e0e322c5aaaa2fac42e14235e6099e60ecb3e29dd2ddd8"
+          ]
+        ],
+        [
+          "i386",
+          "combined-0",
+          false,
+          10628025459,
+          155762688,
+          2,
+          0,
+          "a8e474f0033524bde7d5d4090d0e1fb2f8451f2ae55f59c33cc55de1c44b6d42",
+          [
+            "5f2a3ff2411016bbc4b715e9d0f753f126b09c231a9323b0f1ca342206238284",
+            "195751a07596ccaa3033cec3ba22a49d86ee928b87499da9d94b6f95dac97951"
+          ]
+        ],
+        [
+          "i386",
+          "combined-1",
+          true,
+          1668276833,
+          110624768,
+          0,
+          0,
+          "6f63fc2c8746f561716cdf004b62447afe3c2681210fd6ef33e53ce319411ac8",
+          [
+            "30447771bbd69d615555cbe75189971d0408417e783268fd10058321112c724b",
+            "7cef8474123ad1320668feb90409474bcc678d32642e9f654c220cfa054c63c9"
+          ]
+        ],
+        [
+          "i386",
+          "combined-1",
+          false,
+          10355722167,
+          155074560,
+          0,
+          0,
+          "6f63fc2c8746f561716cdf004b62447afe3c2681210fd6ef33e53ce319411ac8",
+          [
+            "74528de37c01405a866f702f4fabeb9d111f8c6cc85ff41591003376370be167",
+            "a8a41b76fbdcb0807d7d4e677f4e36d65212eb3fd34f89aabf11885ceab68cd3"
+          ]
+        ],
+        [
+          "i386",
+          "combined-12648430",
+          true,
+          1603453708,
+          112820224,
+          0,
+          0,
+          "28afeb8f97e7bcd765f60daffbe10719b57caf9c005cc42fdfc883d43a23d5f5",
+          [
+            "9975bb0f54a71c3053f777125c2374962943985364df763451c2c2a6b937535b",
+            "2f045c01d6c0503483b17c6cdbb23fb800c71d3ab00e78ee02c4e504d6f50146"
+          ]
+        ],
+        [
+          "i386",
+          "combined-12648430",
+          false,
+          10984894584,
+          155713536,
+          1,
+          0,
+          "28afeb8f97e7bcd765f60daffbe10719b57caf9c005cc42fdfc883d43a23d5f5",
+          [
+            "3995b0bfee3d694c931bd9948d8fd917e4edbd73c2b86285027c70815633f01a",
+            "0e6b5df5faaa6a74165aa5496c3da38e9fd7cf58a1e32f8abedc94d13b049b2c"
+          ]
+        ]
+      ],
+      "changed_store_capture": {
+        "raw_path": "build/mba-load-contract-current-final/i386/combined-12648430-on/protected_mba.json",
+        "raw_sha256": "0e6b5df5faaa6a74165aa5496c3da38e9fd7cf58a1e32f8abedc94d13b049b2c",
+        "entry": 134560072,
+        "owner": 134560072,
+        "maturity": 5,
+        "store": {
+          "opcode": "m_stx",
+          "ea": 135037736,
+          "properties": 0,
+          "text": "stx    bnot(([ds.2{3}:(edi.4{5}+#4.4){4}].4 | [ds.2{3}:edi.4{5}].4)), ds.2{3}, (edi.4{5}+#4.4){4}",
+          "text_truncated": false,
+          "left": {
+            "kind": 4,
+            "kind_name": "mop_d",
+            "bytes": 4,
+            "properties": 0,
+            "value_number": 0,
+            "instruction": {
+              "opcode": "m_bnot",
+              "ea": 135037731,
+              "properties": 0,
+              "text": "bnot   ([ds.2{3}:(edi.4{5}+#4.4){4}].4 | [ds.2{3}:edi.4{5}].4), .4",
+              "text_truncated": false,
+              "left": {
+                "kind": 4,
+                "kind_name": "mop_d",
+                "bytes": 4,
+                "properties": 0,
+                "value_number": 0,
+                "instruction": {
+                  "opcode": "m_or",
+                  "ea": 135037731,
+                  "properties": 0,
+                  "text": "or     [ds.2{3}:(edi.4{5}+#4.4){4}].4, [ds.2{3}:edi.4{5}].4, .4",
+                  "text_truncated": false,
+                  "left": {
+                    "kind": 4,
+                    "kind_name": "mop_d",
+                    "bytes": 4,
+                    "properties": 0,
+                    "value_number": 0,
+                    "instruction": {
+                      "opcode": "m_ldx",
+                      "ea": 134560084,
+                      "properties": 0,
+                      "text": "ldx    ds.2{3}, (edi.4{5}+#4.4){4}, .4",
+                      "text_truncated": false,
+                      "left": {
+                        "kind": 1,
+                        "kind_name": "mop_r",
+                        "bytes": 2,
+                        "properties": 0,
+                        "value_number": 3,
+                        "register": 116
+                      },
+                      "right": {
+                        "kind": 4,
+                        "kind_name": "mop_d",
+                        "bytes": 4,
+                        "properties": 0,
+                        "value_number": 4,
+                        "instruction": {
+                          "opcode": "m_add",
+                          "ea": 134560084,
+                          "properties": 0,
+                          "text": "add    edi.4{5}, #4.4, .4",
+                          "text_truncated": false,
+                          "left": {
+                            "kind": 1,
+                            "kind_name": "mop_r",
+                            "bytes": 4,
+                            "properties": 0,
+                            "value_number": 5,
+                            "register": 32
+                          },
+                          "right": {
+                            "kind": 2,
+                            "kind_name": "mop_n",
+                            "bytes": 4,
+                            "properties": 0,
+                            "value_number": 0,
+                            "value": 4
+                          },
+                          "destination": {
+                            "kind": 0,
+                            "kind_name": "mop_z",
+                            "bytes": 4,
+                            "properties": 0,
+                            "value_number": 0
+                          }
+                        }
+                      },
+                      "destination": {
+                        "kind": 0,
+                        "kind_name": "mop_z",
+                        "bytes": 4,
+                        "properties": 0,
+                        "value_number": 0
+                      }
+                    }
+                  },
+                  "right": {
+                    "kind": 4,
+                    "kind_name": "mop_d",
+                    "bytes": 4,
+                    "properties": 0,
+                    "value_number": 0,
+                    "instruction": {
+                      "opcode": "m_ldx",
+                      "ea": 134560082,
+                      "properties": 0,
+                      "text": "ldx    ds.2{3}, edi.4{5}, .4",
+                      "text_truncated": false,
+                      "left": {
+                        "kind": 1,
+                        "kind_name": "mop_r",
+                        "bytes": 2,
+                        "properties": 0,
+                        "value_number": 3,
+                        "register": 116
+                      },
+                      "right": {
+                        "kind": 1,
+                        "kind_name": "mop_r",
+                        "bytes": 4,
+                        "properties": 0,
+                        "value_number": 5,
+                        "register": 32
+                      },
+                      "destination": {
+                        "kind": 0,
+                        "kind_name": "mop_z",
+                        "bytes": 4,
+                        "properties": 0,
+                        "value_number": 0
+                      }
+                    }
+                  },
+                  "destination": {
+                    "kind": 0,
+                    "kind_name": "mop_z",
+                    "bytes": 4,
+                    "properties": 0,
+                    "value_number": 0
+                  }
+                }
+              },
+              "right": {
+                "kind": 0,
+                "kind_name": "mop_z",
+                "bytes": -1,
+                "properties": 0,
+                "value_number": 0
+              },
+              "destination": {
+                "kind": 0,
+                "kind_name": "mop_z",
+                "bytes": 4,
+                "properties": 0,
+                "value_number": 0
+              }
+            }
+          },
+          "right": {
+            "kind": 1,
+            "kind_name": "mop_r",
+            "bytes": 2,
+            "properties": 0,
+            "value_number": 3,
+            "register": 116
+          },
+          "destination": {
+            "kind": 4,
+            "kind_name": "mop_d",
+            "bytes": 4,
+            "properties": 0,
+            "value_number": 4,
+            "instruction": {
+              "opcode": "m_add",
+              "ea": 135037736,
+              "properties": 0,
+              "text": "add    edi.4{5}, #4.4, .4",
+              "text_truncated": false,
+              "left": {
+                "kind": 1,
+                "kind_name": "mop_r",
+                "bytes": 4,
+                "properties": 0,
+                "value_number": 5,
+                "register": 32
+              },
+              "right": {
+                "kind": 2,
+                "kind_name": "mop_n",
+                "bytes": 4,
+                "properties": 0,
+                "value_number": 0,
+                "value": 4
+              },
+              "destination": {
+                "kind": 0,
+                "kind_name": "mop_z",
+                "bytes": 4,
+                "properties": 0,
+                "value_number": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "assumptions": [
+    "L1: SDK 9.40 typed operand contracts; width/address and actual SDK capture controls",
+    "L2: supported pure operators; barriers, implicit memory and nested writes reject",
+    "L3: both binary operand schedules; trace conservation and fault-prefix controls",
+    "L4: program-point operand identities; differing value-number controls",
+    "L5: paired artifact/harness/tool pins; identical native owners, bytes and outcomes"
+  ],
+  "limits": [
+    "18 x86-64 protected body entries ownerless per profile",
+    "one i386 body target inside another owner per profile",
+    "one SDK stage refusal per profile",
+    "32-bit sampled effect checks are not exhaustive 32-bit enumeration",
+    "faults modeled; hardware delivery, native flags and whole function unknown",
+    "no general performance or other SDK claim"
+  ]
+}

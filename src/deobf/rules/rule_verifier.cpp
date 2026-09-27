@@ -25,10 +25,20 @@ struct InstanceCounters
 // operand names: the proof must see the original typed microcode on both sides.
 struct InstanceTranslator
 {
+    struct Load
+    {
+        std::string branch;
+        z3::expr selector, address;
+        unsigned bits;
+        ea_t source;
+    };
     z3::context &context;
     std::unordered_map<std::string, z3::expr> variables;
     size_t visited = 0;
     std::string error;
+    std::vector<Load> loads;
+    bool load_address = false;
+    bool implicit_memory = false;
 
     std::optional<z3::expr> reject(const char *reason)
     {
@@ -36,10 +46,12 @@ struct InstanceTranslator
         return {};
     }
 
-    std::optional<z3::expr> operand(const mop_t &value, unsigned depth)
+    std::optional<z3::expr> operand(const mop_t &value, unsigned depth, const std::string &branch)
     {
         if (depth > 64 || ++visited > 512)
             return reject("expression budget exceeded");
+        if (load_address && value.oprops != 0)
+            return reject("unsupported load-address operand properties");
         if (!bitvector::valid_byte_width(value.size) || value.probably_floating() ||
             value.is_udt() || value.is_undef_val())
             return reject("unsupported operand width or value properties");
@@ -52,24 +64,34 @@ struct InstanceTranslator
         {
             if (value.size != value.d->d.size)
                 return reject("nested result width mismatch");
-            return instruction(value.d, depth + 1);
+            return instruction(value.d, depth + 1, branch);
         }
-        std::string identity = std::to_string(value.t) + ":" + std::to_string(value.size) + ":";
+        std::string identity = std::to_string(value.t) + ":" + std::to_string(value.size) + ":" +
+                               std::to_string(value.valnum) + ":";
         switch (value.t)
         {
         case mop_r:
             identity += std::to_string(value.r);
             break;
         case mop_v:
+            if (load_address)
+                return reject("implicit memory in load address");
+            implicit_memory = true;
             identity += std::to_string(value.g);
             break;
         case mop_S:
+            if (load_address)
+                return reject("implicit memory in load address");
+            implicit_memory = true;
             if (!value.s)
                 return reject("missing stack operand");
             identity += std::to_string(reinterpret_cast<uintptr_t>(value.s->mba)) + ":" +
                         std::to_string(value.s->off);
             break;
         case mop_l:
+            if (load_address)
+                return reject("implicit memory in load address");
+            implicit_memory = true;
             if (!value.l)
                 return reject("missing local operand");
             identity += std::to_string(reinterpret_cast<uintptr_t>(value.l->mba)) + ":" +
@@ -85,15 +107,49 @@ struct InstanceTranslator
         return variables.emplace(identity, symbol).first->second;
     }
 
-    std::optional<z3::expr> instruction(const minsn_t *value, unsigned depth = 0)
+    std::optional<z3::expr> instruction(const minsn_t *value, unsigned depth = 0,
+                                        const std::string &branch = {})
     {
         if (!value || depth > 64 || ++visited > 512)
             return reject("expression budget exceeded");
+        if (depth != 0 && value->d.t != mop_z)
+            return reject("nested instruction has explicit destination");
+        if (load_address && (value->iprops != 0 || value->d.oprops != 0))
+            return reject("unsupported load-address instruction properties");
         if (!bitvector::valid_byte_width(value->d.size) || value->is_fpinsn() ||
             value->d.probably_floating() || value->d.is_udt() || value->d.is_undef_val() ||
             value->is_mbarrier() || value->is_assert() || value->is_persistent() ||
             !value->is_combinable() || !value->is_propagatable())
             return reject("unsupported instruction width or effects");
+        if (value->opcode == m_ldx)
+        {
+            if (load_address)
+                return reject("nested memory read in load address");
+            // Explicit selector/offset loads may remain opaque value inputs only
+            // when every occurrence, binary branch, address, width and source EA
+            // survives. No equality between separate reads is assumed, including
+            // aliased addresses or externally changing memory.
+            if (value->iprops != 0 || value->d.oprops != 0 || value->l.oprops != 0 ||
+                value->r.oprops != 0 || value->l.size != 2 ||
+                (value->r.size != 4 && value->r.size != 8))
+                return reject("unsupported explicit load width or properties");
+            struct AddressScope
+            {
+                bool &active;
+                explicit AddressScope(bool &flag) : active(flag) { active = true; }
+                ~AddressScope() { active = false; }
+            } address_scope(load_address);
+            auto selector = operand(value->l, depth + 1, branch);
+            if (!selector)
+                return {};
+            auto address = operand(value->r, depth + 1, branch);
+            if (!address)
+                return {};
+            const unsigned bits = unsigned(value->d.size * 8);
+            const std::string symbol = "instance:read:" + std::to_string(loads.size());
+            loads.push_back({branch, *selector, *address, bits, value->ea});
+            return context.bv_const(symbol.c_str(), bits);
+        }
         switch (value->opcode)
         {
         case m_mov:
@@ -113,14 +169,14 @@ struct InstanceTranslator
         default:
             return reject("unsupported instruction opcode or effects");
         }
-        auto left = operand(value->l, depth + 1);
+        const bool binary = value->opcode == m_add || value->opcode == m_sub ||
+                            value->opcode == m_mul || value->opcode == m_and ||
+                            value->opcode == m_or || value->opcode == m_xor;
+        auto left = operand(value->l, depth + 1, binary ? branch + "L" : branch);
         if (!left)
             return {};
         const unsigned bits = unsigned(value->d.size * 8);
         const unsigned left_bits = left->get_sort().bv_size();
-        const bool binary = value->opcode == m_add || value->opcode == m_sub ||
-                            value->opcode == m_mul || value->opcode == m_and ||
-                            value->opcode == m_or || value->opcode == m_xor;
         if (!binary && value->r.t != mop_z)
             return reject("unexpected unary right operand");
         if (value->opcode == m_xdu || value->opcode == m_xds)
@@ -145,7 +201,7 @@ struct InstanceTranslator
             return ~*left;
         if (value->opcode == m_neg)
             return -*left;
-        auto right = operand(value->r, depth + 1);
+        auto right = operand(value->r, depth + 1, branch + "R");
         if (!right)
             return {};
         if (right->get_sort().bv_size() != bits)
@@ -236,13 +292,33 @@ RuleVerificationResult RuleVerifier::verify_instance_impl(const minsn_t *origina
         bitvector::valid_byte_width(original->d.size) ? unsigned(original->d.size * 8) : 0;
     try
     {
-        InstanceTranslator translator{context_, {}, 0, {}};
+        InstanceTranslator translator{context_, {}, 0, {}, {}, false, false};
         const auto before = translator.instruction(original);
         if (!before)
             return {RuleVerificationStatus::UNSUPPORTED, bits, translator.error};
+        const auto original_loads = std::move(translator.loads);
+        translator.loads.clear();
         const auto after = translator.instruction(replacement);
         if (!after)
             return {RuleVerificationStatus::UNSUPPORTED, bits, translator.error};
+        if (original_loads.size() != translator.loads.size())
+            return {RuleVerificationStatus::UNSUPPORTED, bits,
+                    "explicit memory read count changed"};
+        if (!original_loads.empty() && translator.implicit_memory)
+            return {RuleVerificationStatus::UNSUPPORTED, bits,
+                    "explicit loads mixed with implicit memory operands"};
+        for (size_t index = 0; index < original_loads.size(); ++index)
+        {
+            const auto &old = original_loads[index];
+            const auto &now = translator.loads[index];
+            if (old.branch != now.branch)
+                return {RuleVerificationStatus::UNSUPPORTED, bits,
+                        "explicit memory read branch changed"};
+            if (old.bits != now.bits || old.source != now.source ||
+                !z3::eq(old.selector, now.selector) || !z3::eq(old.address, now.address))
+                return {RuleVerificationStatus::UNSUPPORTED, bits,
+                        "explicit memory read address width or source changed"};
+        }
         const z3::expr equality = (*before == *after).simplify();
         if (equality.is_true())
             return {RuleVerificationStatus::VERIFIED, bits, "typed instance equivalent"};

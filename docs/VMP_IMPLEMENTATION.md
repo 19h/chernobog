@@ -1081,3 +1081,20 @@ Metadata controls, owned dataflow, get-PC leases, condition lifecycle and all
 21 CTest suites pass. See `VMP_NATIVE_METADATA_UPDATES.md` and its evidence JSON
 for attribution, assumptions and bounded conclusions. General latency,
 protected-function equivalence and the full review remain unknown or in progress.
+
+## Explicit-load MBA verification checkpoint
+
+Rows 4a, 4b and V now include typed effect-preserving explicit `m_ldx` operands.
+Every read remains an independent value and retains count, binary branch,
+source EA, selector, address and width; operand identities include SDK value
+numbers. Mixed implicit memory, memory-dependent addresses, barriers and nested
+destination writes reject proposals. The existing De Morgan rule now rewrites
+one formerly rejected i386 reserved-seed protected store value. Two complete
+prior/current matrices pass 80 processes with 40 actual native-enabled runs,
+retaining all native bytes, owners, 456 stage outcomes and every other statement.
+An independent interpreter passes 139,552 value/read/store comparisons, six
+modeled fault prefixes and ten corrupted-capture controls. The 190 typed
+controls, existing 108-rule catalog and all 21 CTest suites pass. See
+`VMP_MBA_LOAD_EFFECTS.md` and its evidence JSON. Whole-function, native flags,
+hardware exceptions, broader protected ownership and full review completion
+remain unknown or in progress.

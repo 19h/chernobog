@@ -118,6 +118,7 @@ class Capture:
             "kind_name": KINDS.get(value.t, "unknown"),
             "bytes": int(value.size),
             "properties": int(value.oprops),
+            "value_number": int(value.valnum),
         }
         if value.t == hx.mop_d:
             row["instruction"] = self.instruction(value.d, depth + 1)

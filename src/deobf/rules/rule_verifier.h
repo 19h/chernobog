@@ -68,7 +68,10 @@ class RuleVerifier
 
     // Verify the instantiated, typed value trees at one program point. No
     // reaching-definition substitution or equality across memory writes is
-    // inferred. Unsupported effects and widths reject the replacement.
+    // inferred. Explicit loads remain independent inputs and must preserve
+    // occurrence count, binary branches, selector/address, width and source EA.
+    // Operand identities retain SDK value numbers and frame ownership.
+    // Unsupported effects and widths reject the replacement.
     RuleVerificationResult verify_instance(const minsn_t *original, const minsn_t *replacement);
 
   private:
