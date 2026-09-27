@@ -582,16 +582,12 @@ bool undefined_effect(uint64_t ea, unsigned mode, NativeUndefinedEffect &effect)
     effect.bytes.resize(insn.size);
     if (get_bytes(effect.bytes.data(), insn.size, ea_t(ea)) != insn.size)
         return false;
-    // Only operand-size and REX prefixes are represented by this flat model.
-    for (uint8_t byte : effect.bytes)
-    {
-        if (byte == 0x66 || (mode == 64 && (byte & 0xf0) == 0x40))
-            continue;
-        if (byte == 0x67 || byte == 0xf0 || byte == 0xf2 || byte == 0xf3 || byte == 0x26 ||
-            byte == 0x2e || byte == 0x36 || byte == 0x3e || byte == 0x64 || byte == 0x65)
-            return false;
-        break;
-    }
+    unsigned operands = 0;
+    for (unsigned index = 0; index < UA_MAXOP; ++index)
+        if (insn.ops[index].type != o_void)
+            operands = index + 1;
+    if (!native_undefined_encoding_supported(effect.bytes, mode, operands))
+        return false;
     auto memory = [](const op_t &op)
     { return op.type == o_mem || op.type == o_phrase || op.type == o_displ; };
     auto address = [&](const op_t &op, uint16_t &mask)

@@ -7,6 +7,29 @@
 
 namespace chernobog::vm
 {
+// Instruction-effect inventory is limited to scalar legacy encodings and at
+// most two SDK operands. In particular, newer forms must not inherit a legacy
+// opcode's flag-write or destination assumptions merely from its mnemonic.
+inline bool native_undefined_encoding_supported(const std::vector<uint8_t> &bytes, unsigned mode,
+                                                unsigned operands)
+{
+    if ((mode != 32 && mode != 64) || bytes.empty() || bytes.size() > 15 || operands > 2)
+        return false;
+    size_t cursor = 0;
+    while (cursor < bytes.size() &&
+           (bytes[cursor] == 0x66 || (mode == 64 && (bytes[cursor] & 0xf0) == 0x40)))
+        ++cursor;
+    if (cursor == bytes.size())
+        return false;
+    const uint8_t opcode = bytes[cursor];
+    if (opcode == 0x62 || opcode == 0xc4 || opcode == 0xc5 || opcode == 0xd5 || opcode == 0x67 ||
+        opcode == 0xf0 || opcode == 0xf2 || opcode == 0xf3 || opcode == 0x26 || opcode == 0x2e ||
+        opcode == 0x36 || opcode == 0x3e || opcode == 0x64 || opcode == 0x65)
+        return false;
+    // XOP map selectors cannot be mistaken for the represented POP /0 form.
+    return opcode != 0x8f || (cursor + 1 < bytes.size() && (bytes[cursor + 1] & 0x1f) < 8);
+}
+
 // Dependence descriptors for a deliberately bounded, straight-line slice.
 // An undefined GPR value may influence private register/flag intermediates,
 // but never an address, memory write, control decision or surviving output.

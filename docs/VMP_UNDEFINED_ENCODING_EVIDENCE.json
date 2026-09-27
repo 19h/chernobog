@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "passed": true,
+  "baseline_revision": "3e65b2bd8c2dfd20bd23d96c2c7a7e3fb37126df",
+  "scope": "scalar legacy encoding and complete SDK operand admission for closed undefined-result slices",
+  "archive": {
+    "path": "docs/VMP_UNDEFINED_ENCODING_CAPTURE.json.gz",
+    "sha256": "51de2de655435208d1d5d6f5d880a19e6fc615f353255d82746992aaa3ad5873",
+    "canonical_sha256": "e320defe48e88ba02908e82ef7fe3b03f1906abfc46d0f129202643915ea1ea6",
+    "compressed_bytes": 107390,
+    "canonical_bytes": 1126200,
+    "text_files": 16
+  },
+  "historical_archive_sha256": "be967f8d3b88e4b541c167a2c4b3c34647ebf44ebdae6ebeb3475cc82d87fe10",
+  "sources": {
+    "src/vm/native_undefined.hpp": "3172058161601dfbed684867bfd2e47dde378401a1809b157aa82ed4a56b079b",
+    "src/vm/ida_native_trace.cpp": "0d232e1d73ff1adea3bcaf6e4cf5a3830d78ca6f24ffdb451a80ed85e7f2ecba",
+    "tests/hybrid_tests.cpp": "0c81c31632fa0d98cd7e7d901ba4c74531c108c5f58671bf9091ad7f5e9970d9",
+    "tests/native_undefined_encoding_replay.cpp": "c0d5ea7f11df05b8c3487bd6b71b5ef46c55618e170ef4bb6cdd9b4d02129aa8",
+    "tests/verify_native_undefined_encoding.py": "7cbe0ebbeb62b18271b347cfbfc8d456bfc829991f0a8ff6428b18cab210caf3",
+    "docs/VMP_UNDEFINED_ENCODING.md": "26b0fa2ae50e583b534de7802bdb3fd34021e62bd5b1940dfe17737510f5ecb9",
+    "tests/ida_region_temporal_probe.py": "85c5996f762a95318ca5921b1f822f169575028b55eae59bbbc19fb3109834a2",
+    "tests/ida_region_strings_probe.py": "6ba0fbb7a5c5fa1c235ed050d31645a5001119a35516f2ec51e3f70229bb1c02",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248"
+  },
+  "artifacts": {
+    "build/undefined-encoding-final-replay.json": "13dd46450a9cf4ed158c1c3fcb37da3fa4a15ffcdcb1884f225b3b6f0f0029b4",
+    "build/undefined-encoding-final-component.txt": "ee36e4930769968bae42e9aebd81a1581dd6ab4fcd2bab4e885b9285580ca3f8",
+    "build/undefined-encoding-final-build.txt": "558d062d9bf8bed7b1e47c4751718b72864ae9bc9577cd4c2c5964ad34984bc1",
+    "build/undefined-encoding-trace/run.json": "d8d12dd3c29ed9f0ee44c79d7b31275db819828c05090d1bd42613fb7b16f379",
+    "build/undefined-encoding-trace/region_temporal.json": "c7511bdd2127b1e373c7abdd3fbdf69f743043339b3f09a3ab054432a977302f",
+    "build/undefined-encoding-strings/run.json": "70f6686f175ccafa57b3198f3dce12762aa12357970edf68df28660a6b07f794",
+    "build/undefined-encoding-strings/region_strings.json": "c703c5e7f147ef4966959cfab18adf90be90f6c1d3c673a1e826968986cb38ad"
+  },
+  "encoding_cases": {
+    "retained": 3,
+    "rejected": 20
+  },
+  "replayed_unique_slices": 26,
+  "replayed_instruction_occurrences": 232,
+  "capstone_version": "5.0.7",
+  "plugin_sha256": "d381ae5b12795423de71e6c7ef06d49d43da87c5e25c97fbf930c69d46a443ef",
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "input_sha256": "02cd90fa45364f0431b1b1a68472243326de0c1a0900ed791ad3d364d8fe1ec2",
+  "trace_checks": 65,
+  "string_checks": 27,
+  "completed_trace_runs": 4,
+  "completed_values": 2,
+  "value_witnesses": 8,
+  "historical_trace_identical": true,
+  "assumptions": [
+    "E1",
+    "E2",
+    "E3",
+    "E4"
+  ],
+  "review_complete": false
+}

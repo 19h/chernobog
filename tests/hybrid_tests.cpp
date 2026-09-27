@@ -2440,6 +2440,25 @@ void test_worker_and_evidence(const RaxApi *api, ProgramImage image)
 void test_undefined_result_slices(const RaxApi *api)
 {
     using namespace chernobog::vm;
+    check(native_undefined_encoding_supported({0x48, 0x01, 0xc8}, 64, 2),
+          "scalar legacy REX arithmetic remains admitted to the effect inventory");
+    check(native_undefined_encoding_supported({0x40}, 32, 1),
+          "legacy one-byte INC is not mistaken for a long-mode REX prefix");
+    check(native_undefined_encoding_supported({0x8f, 0xc0}, 64, 1),
+          "legacy POP /0 remains distinct from XOP map selectors");
+    for (int prefix :
+         {0x62, 0xc4, 0xc5, 0xd5, 0x67, 0xf0, 0xf2, 0xf3, 0x26, 0x2e, 0x36, 0x3e, 0x64, 0x65})
+        check(!native_undefined_encoding_supported({uint8_t(prefix), 0x01, 0xc8}, 64, 2),
+              "unrepresented encoding prefixes cannot inherit legacy flag effects");
+    check(!native_undefined_encoding_supported({0x48, 0x01, 0xc8}, 64, 3),
+          "an additional SDK operand cannot be silently omitted from dependence");
+    check(!native_undefined_encoding_supported({0x8f, 0xe8, 0x78, 0x90}, 64, 2),
+          "XOP map selectors remain outside the effect inventory");
+    check(!native_undefined_encoding_supported({}, 64, 0) &&
+              !native_undefined_encoding_supported({0x66}, 64, 0) &&
+              !native_undefined_encoding_supported(std::vector<uint8_t>(16, 0x90), 64, 0) &&
+              !native_undefined_encoding_supported({0x90}, 16, 0),
+          "empty, prefix-only, oversized and unsupported-mode encodings reject");
     NativeUndefinedEffect first;
     first.address = 0x1000;
     first.next = 0x1003;
