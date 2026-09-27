@@ -129,10 +129,25 @@ def check_probe(probe, entries, disabled, legacy, native_disabled=True, matching
     )
     require(probe["native_analysis_disabled"] == native_disabled, "native analysis profile")
     captured_inputs = "matcher_catalog" in probe
+    rules = probe["rule_catalog"]
+    require(
+        all(type(rules[k]) is int and rules[k] >= 0 for k in ("registered", "verified", "rejected"))
+        and rules["registered"] == len(rules["names"]),
+        "catalog certification counters",
+    )
+    require(
+        (
+            rules["verified"] == rules["rejected"] == 0
+            if disabled
+            else rules["verified"] + rules["rejected"] == rules["registered"]
+        ),
+        "catalog certification accounting",
+    )
     if captured_inputs:
         model, patterns = catalog(
             probe["matcher_catalog"], probe["rule_catalog"]["names"], disabled
         )
+        require(len(patterns) == rules["verified"], "certified catalog count")
     if not native_disabled:
         native = probe["native_statistics"]
         require(
@@ -298,6 +313,15 @@ def controls(
         raise ValueError("capture mutation accepted: " + label)
 
     run("duplicate entry", lambda p: p["entries"].append(copy.deepcopy(p["entries"][0])))
+    run("changed registered catalog count", lambda p: p["rule_catalog"].update(registered=0))
+    run(
+        "changed certified catalog count",
+        lambda p: p["rule_catalog"].update(verified=p["rule_catalog"]["verified"] + 1),
+    )
+    run(
+        "changed rejected catalog count",
+        lambda p: p["rule_catalog"].update(rejected=p["rule_catalog"]["rejected"] + 1),
+    )
     run("changed entry", lambda p: p["entries"][0].update(entry=0))
     run("changed profile", lambda p: p.update(transformations_disabled=not disabled))
     run(
@@ -479,6 +503,9 @@ def main():
     parser.add_argument("--native-analysis", action="store_true")
     parser.add_argument("--matcher-inputs", action="store_true")
     parser.add_argument(
+        "--workers", type=int, default=2, help="Concurrent SDK processes, from 1 to 2"
+    )
+    parser.add_argument(
         "--timeout", type=int, default=300, help="Per-process wall-clock cap in seconds"
     )
     args = parser.parse_args()
@@ -492,10 +519,12 @@ def main():
         "matching_diagnostics": not (args.legacy_diagnostics or args.legacy_reasons),
         "native_analysis_disabled": not args.native_analysis,
         "matcher_inputs": args.matcher_inputs,
+        "workers": args.workers,
         "process_timeout_seconds": args.timeout,
     }
     try:
         require(1 <= args.timeout <= 600, "process timeout bound")
+        require(1 <= args.workers <= 2, "SDK worker bound")
         pins = {ROOT / name: digest(ROOT / name) for name in SOURCES}
         pins[args.ida], pins[args.plugin] = digest(args.ida), digest(args.plugin)
         ida_components = {}
@@ -623,8 +652,25 @@ def main():
                 },
             }
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            for row in executor.map(capture, tasks):
+        def recorded_capture(task):
+            try:
+                return capture(task)
+            except (ValueError, KeyError, OSError) as error:
+                _, corpus, label, sha, disabled = task
+                # Preserve a terminal row for every scheduled profile. A failed
+                # validation must not suppress later results or become success.
+                return {
+                    "architecture": corpus["architecture"],
+                    "label": label,
+                    "disabled": disabled,
+                    "binary_sha256": sha,
+                    "measurement": None,
+                    "counts": {"capture_validation_failed": 1},
+                    "failure": type(error).__name__ + ": " + str(error),
+                }
+
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            for row in executor.map(recorded_capture, tasks):
                 report["runs"].append(row)
                 print(
                     json.dumps(
@@ -633,7 +679,7 @@ def main():
                     flush=True,
                 )
         require(len(report["runs"]) == 40, "SDK run population")
-        require(not any("failure" in row for row in report["runs"]), "SDK process failed")
+        require(not any("failure" in row for row in report["runs"]), "SDK capture failed")
         report["paired"] = paired_summary(report["runs"], not args.native_analysis)
         for row in report["runs"]:
             for name, sha in row["artifact_sha256"].items():

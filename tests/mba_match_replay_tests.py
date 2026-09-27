@@ -18,6 +18,29 @@ def main():
     model, production = catalog(fixtures["catalog"])
     require(len(production) == 108, "actual wholly certified production catalog")
     controls = []
+    names = [name for name, _ in production]
+    for label, kept in (
+        ("partial certified catalog", production[::2]),
+        ("empty certified catalog", []),
+    ):
+        partial = copy.deepcopy(fixtures["catalog"])
+        partial["patterns"] = kept
+        _, accepted = catalog(partial, names)
+        require(accepted == kept, label)
+        controls.append(label)
+    for label, mutate in (
+        ("reordered certified catalog", lambda v: v["patterns"].reverse()),
+        ("unregistered certified rule", lambda v: v["patterns"][0].__setitem__(0, "absent")),
+        ("duplicate certified rule", lambda v: v["patterns"].append(v["patterns"][0])),
+    ):
+        bad = copy.deepcopy(fixtures["catalog"])
+        mutate(bad)
+        try:
+            catalog(bad, names)
+        except ValueError:
+            controls.append(label)
+        else:
+            raise ValueError("catalog corruption accepted: " + label)
     for row in fixtures["fixtures"]:
         _, templates = catalog(row["pattern_catalog"])
         value = capture(row["input"], model)

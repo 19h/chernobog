@@ -160,10 +160,23 @@ def catalog(value, names=None, disabled=False):
         require(pattern is not None and pattern[0] == "n", "indexed pattern root")
         grammar.pattern(pattern)
         observed.append(name)
-    require(len(set(observed)) == len(observed), "duplicate certified rule")
+    observed_names = set(observed)
+    require(len(observed_names) == len(observed), "duplicate certified rule")
     require(not disabled or not patterns, "disabled catalog populated")
     if names is not None:
-        require(set(observed) == (set() if disabled else set(names)), "certified rule population")
+        require(
+            type(names) is list
+            and all(isinstance(name, str) for name in names)
+            and len(set(names)) == len(names),
+            "registered rule population",
+        )
+        require(observed_names.issubset(names), "unregistered certified rule")
+        # Runtime UNKNOWN excludes a rule from the indexed catalog. Replay its
+        # actual certified subsequence in registration order, including empty.
+        require(
+            observed == [name for name in names if name in observed_names],
+            "certified rule order",
+        )
     return model, patterns
 
 

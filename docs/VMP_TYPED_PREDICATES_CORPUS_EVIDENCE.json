@@ -1,0 +1,792 @@
+{
+  "schema": 1,
+  "checkpoint": "Certified catalog subset replay and complete paired predicate corpus refresh",
+  "source_parent": "b89d23fc1acd5761b05eadd318083a946a28505e",
+  "before_module_parent": "0e9dbb49407ad9392352c3c8926d11054f03c97a",
+  "review_rows": [
+    "0b",
+    "4a",
+    "4b",
+    "V"
+  ],
+  "native_behavior_records": 33600,
+  "historical_binary_pins_reproduced": 20,
+  "sdk_processes": 80,
+  "paired_audit": {
+    "passed": true,
+    "counts": {
+      "native_rows": 152,
+      "stages": 456,
+      "captured": 454,
+      "matching_events": 14065,
+      "unrecorded_events": 6996,
+      "sample_keys": 3514,
+      "retained_events": 7069
+    },
+    "outcomes": {
+      "no_ast": 0,
+      "no_indexed_pattern": 8103,
+      "structural_mismatch": 4474,
+      "candidate_constraint": 0,
+      "constant_constraint": 1483,
+      "replacement_unavailable": 0,
+      "instance_disproved": 0,
+      "instance_unsupported": 0,
+      "instance_unknown": 0,
+      "catalog_applied": 5
+    },
+    "corruption_controls": [
+      "lost event",
+      "false native owner",
+      "false native source",
+      "false maturity",
+      "false width",
+      "false phase count",
+      "false retained count",
+      "false text quota",
+      "duplicate sample"
+    ],
+    "current_report_sha256": "977cb357952f4c3127b9c5451b5a6a3c53580f265f40f72b89354d8011d4ee7e",
+    "baseline_report_sha256": "1c195958eda2ed3f58694527c0195729af6e75d258762c641909b27e98745e4d",
+    "scope": "actual catalog-attempt outcomes and native source-range attribution; preserved recorded CFG/typed values and verifier outcomes; no missing-identity, reaching-definition, alias, full-body or ISA-equivalence claim",
+    "verifier_sha256": "497ec250b3601eebd5c41809cc5c211c82bfe929d2026b44b1f12a131bdff327"
+  },
+  "current_inventory": {
+    "passed": true,
+    "profiles": 40,
+    "counts": {
+      "native_rows": 152,
+      "stages": 456,
+      "captured": 454,
+      "events": 14065,
+      "unrecorded": 8799,
+      "keys": 3950,
+      "retained_events": 5266,
+      "instance_verified": 5,
+      "instance_disproved": 0,
+      "instance_unsupported": 0,
+      "instance_unknown": 0
+    },
+    "outcomes": {
+      "no_ast": 0,
+      "no_indexed_pattern": 8103,
+      "structural_mismatch": 4474,
+      "candidate_constraint": 0,
+      "constant_constraint": 1483,
+      "replacement_unavailable": 0,
+      "instance_disproved": 0,
+      "instance_unsupported": 0,
+      "instance_unknown": 0,
+      "catalog_applied": 5
+    },
+    "capture_statuses": {
+      "complete": 14065,
+      "no_ast": 0,
+      "depth_limit": 0,
+      "visit_limit": 0,
+      "byte_limit": 0,
+      "malformed": 0,
+      "cycle": 0
+    },
+    "partial_catalogs": [
+      {
+        "architecture": "i386",
+        "label": "virtualization-12648430",
+        "verified": 102,
+        "rejected": 6,
+        "excluded": [
+          "Add_OllvmRule_3",
+          "Add_SpecialConstantRule_2",
+          "Add_FactorRule_1",
+          "Sub_HackersDelightRule_3",
+          "Sub_HackersDelightRule_4",
+          "Xor_HackersDelightRule_5"
+        ]
+      }
+    ],
+    "workers": 1
+  },
+  "certification_variation": [
+    {
+      "profile": "prior",
+      "architecture": "i386",
+      "label": "virtualization-12648430",
+      "verified": 88,
+      "rejected": 20,
+      "certificate_rejections": [
+        {
+          "rule": "Add_HackersDelightRule_2",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Add_HackersDelightRule_3",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Add_HackersDelightRule_4",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Add_HackersDelightRule_5",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Add_OllvmRule_1",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Add_OllvmRule_2",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Add_OllvmRule_3",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Add_SpecialConstantRule_1",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Add_SpecialConstantRule_2",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Add_FactorRule_1",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Add_FactorRule_2",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "AddXor_Rule_1",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Add_ComplexRule_1",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Sub_HackersDelightRule_2",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Sub_HackersDelightRule_3",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Sub_HackersDelightRule_4",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Sub_SpecialConstantRule_1",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Xor_HackersDelightRule_4",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Xor_HackersDelightRule_5",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Xor_SpecialConstantRule_2",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        }
+      ],
+      "log_sha256": "f8fce297164e45abb959fdf5c8db378983d1fd7a01e95467bbcc0ce69227bf9a"
+    },
+    {
+      "profile": "current",
+      "architecture": "i386",
+      "label": "virtualization-12648430",
+      "verified": 102,
+      "rejected": 6,
+      "certificate_rejections": [
+        {
+          "rule": "Add_OllvmRule_3",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Add_SpecialConstantRule_2",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Add_FactorRule_1",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Sub_HackersDelightRule_3",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Sub_HackersDelightRule_4",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        },
+        {
+          "rule": "Xor_HackersDelightRule_5",
+          "status": "unknown",
+          "width_bits": 0,
+          "detail": "timeout"
+        }
+      ],
+      "log_sha256": "1522f7c81af8cb0d59bf0116d8905eadfa534a894d486bb7be0da85a18c74874"
+    }
+  ],
+  "process_ranges": {
+    "prior": {
+      "elapsed_ns": [
+        923170750,
+        76144814584
+      ],
+      "peak_resident_bytes": [
+        104103936,
+        203751424
+      ],
+      "workers": 1,
+      "plugin_sha256": "80b02f885247a2142adb04bdfab764dd2d932eca64ca7e908f8415dd6d503b31",
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd"
+    },
+    "current": {
+      "elapsed_ns": [
+        926451833,
+        99445301375
+      ],
+      "peak_resident_bytes": [
+        104939520,
+        205225984
+      ],
+      "workers": 1,
+      "plugin_sha256": "03b13b9e6800470ea2a6f2ef6697dee2bd35043efe9f43386f203a17f6e0afa8",
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd"
+    }
+  },
+  "wrapper_measurements": {
+    "build/predicate-protected-x64-process.json": {
+      "exit_code": 0,
+      "elapsed_ns": 54951099416,
+      "peak_resident_bytes": 256720896,
+      "timed_out": false,
+      "output_exceeded": false,
+      "stdout_sha256": "20d735f8847e5607837ab9cc82529c3227b07486789e1cb47840c656cdde720b",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/predicate-protected-i386-process.json": {
+      "exit_code": 0,
+      "elapsed_ns": 46643264584,
+      "peak_resident_bytes": 172081152,
+      "timed_out": false,
+      "output_exceeded": false,
+      "stdout_sha256": "20d735f8847e5607837ab9cc82529c3227b07486789e1cb47840c656cdde720b",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/predicate-matrix-installed-v3-process.json": {
+      "exit_code": 0,
+      "elapsed_ns": 231038994333,
+      "peak_resident_bytes": 205225984,
+      "timed_out": false,
+      "output_exceeded": false,
+      "stdout_sha256": "761f46e09c1dc09e6520ce9b40c0018637ab73e4635a7ab121f80f00eaacbee2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build/predicate-matrix-prior-process.json": {
+      "exit_code": 0,
+      "elapsed_ns": 238529375333,
+      "peak_resident_bytes": 203751424,
+      "timed_out": false,
+      "output_exceeded": false,
+      "stdout_sha256": "761f46e09c1dc09e6520ce9b40c0018637ab73e4635a7ab121f80f00eaacbee2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "controls": {
+    "build/predicate-catalog-replay-controls.json": {
+      "passed": true,
+      "ctest": "chernobog.mba_match_replay",
+      "result": {
+        "passed": true,
+        "controls": [
+          "partial certified catalog",
+          "empty certified catalog",
+          "reordered certified catalog",
+          "unregistered certified rule",
+          "duplicate certified rule",
+          "register",
+          "width",
+          "value_number",
+          "properties",
+          "same_snapshot",
+          "longer_commuted",
+          "first_tie",
+          "success_after_commutation",
+          "local_zero",
+          "overlapping_byte",
+          "call_barrier",
+          "stale_value_number",
+          "insufficient_bytes",
+          "read_properties",
+          "fixed_constant",
+          "actual_numeric_zero",
+          "frame_tokens",
+          "stack_offset",
+          "local_index",
+          "local_offset",
+          "hex_helper",
+          "opaque_call",
+          "load_source",
+          "ordinary_source_ignored",
+          "destination_before_left",
+          "nested_properties",
+          "wrong schema",
+          "false frontier",
+          "wrong SDK payload",
+          "unknown node",
+          "unbounded owner token"
+        ],
+        "fixture_count": 16
+      },
+      "control_count": 36
+    },
+    "build/predicate-partial-catalog-revalidation.json": {
+      "passed": true,
+      "actual_profiles_revalidated": 40,
+      "partial_catalogs": [
+        {
+          "profile": "i386/combined-0-on/protected_mba.json",
+          "verified": 103,
+          "rejected": 5
+        },
+        {
+          "profile": "i386/combined-1-on/protected_mba.json",
+          "verified": 102,
+          "rejected": 6
+        }
+      ]
+    },
+    "build/predicate-matrix-failure-control.json": {
+      "passed": true,
+      "control": "replay 40 actual captured profiles including two startup certification failures; SDK launch mocked, process fields synthetic",
+      "terminal_rows": 40,
+      "failed_rows": [
+        [
+          "i386",
+          "combined-0",
+          false,
+          "ValueError: certified rule population"
+        ],
+        [
+          "i386",
+          "combined-1",
+          false,
+          "ValueError: certified rule population"
+        ]
+      ],
+      "later_held_out_preserved": true,
+      "matrix_return_code": 1,
+      "source_sha256": "4e720c61bb2e7320472948a4575bc3808f42ccbfe8a3c0e646766d6d55cb9a8e"
+    },
+    "build/predicate-matrix-failure-control-v2.json": {
+      "passed": true,
+      "control": "replay 40 actual captured profiles; corrupt one certification count; SDK launch mocked and process fields synthetic",
+      "terminal_rows": 40,
+      "failed_rows": [
+        [
+          "i386",
+          "combined-0",
+          false,
+          "ValueError: catalog certification accounting"
+        ]
+      ],
+      "later_held_out_preserved": true,
+      "matrix_return_code": 1,
+      "source_sha256": "90cabc96a69e3d2f25e7b80564a0e0d188bc130ad2e982b67be5a1f4e1e00911"
+    }
+  },
+  "archive": {
+    "path": "docs/VMP_TYPED_PREDICATES_CORPUS_CAPTURE.json.gz",
+    "sha256": "dc3dc3372fabdefec0a2ea4dd09517616dac8704433075e0df064077f49c198f",
+    "uncompressed_sha256": "21f69179f5d1270435eb25faf60a565d90c3a0a222eea9cd370cef516fb5a7ee",
+    "uncompressed_bytes": 99354940,
+    "compressed_bytes": 2578998,
+    "files": 233,
+    "gzip_mtime": 0,
+    "python": "3.14.7",
+    "zlib_runtime": "1.2.12",
+    "contents": "Exact UTF-8 SDK captures/manifests, matrix reports, native observations and selected receipts; native executables and plugin modules referenced by hashes"
+  },
+  "primary_sdk": {
+    "identifier": "IDA SDK 9.40 include/hexrays.hpp",
+    "sha256": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff"
+  },
+  "reference_source_sha256": {
+    "vmp/core/core.cc": "cd97023bcdcc9f24d238bdd325362817212e512d461264a225b94f7ee5e2510e",
+    "vmp/core/core.h": "057457cc7503c1a1982d78601cd38caf11cd798fd5b5a46df293ffb5f0535b61",
+    "vmp/core/files.cc": "86d9f237a7befcf299b3f4605a694736e75a61716504054af261b4708ce8d2b8",
+    "vmp/core/files.h": "3f706eef4914c0b84650b23543df6898da3fedfb9d4cb734b3b19babebefcc72",
+    "vmp/core/intel.cc": "ce0edd303f1b20d12affaf1bb4646b684a056babe724f36af24340fefe7cb17c",
+    "vmp/core/macfile.cc": "dbb12f7ccb34000734f552e8f917612674df04ba15f1d0923a6afd61c199d7e6",
+    "vmp/core/elffile.cc": "9b4dedd0f7ccb50b669c7f2ebf04344042a7409200d88b7f9600dece9d9b2224",
+    "vmp/core/script.cc": "284c671019c30bb982534a8bb9b7fa4b46c60f4e50fbbddbe9f326dd46ad7313",
+    "vmp/third-party/lua/lmathlib.c": "a9bf0747cfd9653b9e48e9b50a697bb7bf3db1e7d4f6117fe27d7b3bb6c64769"
+  },
+  "source_sha256": {
+    "src/deobf/analysis/match_capture.cpp": "651bc174a9f8fe278044c7c78149f528e52f2f06f709ad69d20c97991f3b6db8",
+    "src/deobf/analysis/match_capture.h": "f0a319d7b2d54fd9674ddf11d3fa2c66bfd225dce0d25c594626a9e36df65c05",
+    "src/deobf/analysis/mba_diagnostics.cpp": "9b6c7898d0a345f84d624b7d30185dd7d5d6a76623ab6837560a69bf4375a1cd",
+    "src/deobf/analysis/mba_diagnostics.hpp": "97378cd1dce55c5cfd768c1f3c5f38acd24574c8e4d1c798b413cb4d7b1bb710",
+    "src/deobf/handlers/mba_simplify.cpp": "7a2c3d54dd107ea1bc4586c683233728ee468fd3502157deb7bb44de47635663",
+    "src/deobf/rules/pattern_rule.cpp": "92dfd20a6f2182c90f5c97eab9206e291374b5137c4ac50ab5a81b0ccfff260d",
+    "src/deobf/rules/pattern_rule.h": "95f84426c250c3172b65e216af09a4924a50c960b2a30526c6feca1ef1a51bc2",
+    "src/deobf/rules/rule_registry.cpp": "3d7c27c190592ea5d42d4258ec9056a1f3b0acf3a5c30c2c40c76fe563cefb59",
+    "src/deobf/rules/rule_registry.h": "9f0f4e448282282747585ae076a206eeb93c9efed2e92d4f30da77bd6eb82f30",
+    "src/deobf/rules/rule_verifier.cpp": "88ff2f28c6a2e01959f570529905e7a0794a9013ebebbc85cb425234a3cf082d",
+    "src/deobf/rules/rule_verifier.h": "8c56abf4307159f77f25836359036245338e0134f16329928c0e604923f04afb",
+    "src/ida_analysis/native_engine.cpp": "d919fed9c99160a8f4dfe7e4b71e66bf3dc389858018776f3339ee8e40d39fef",
+    "src/ida_analysis/native_engine.hpp": "4ccbbcb86d833db26529fbc729dbfa42c9a8649fb3c29167a34faa3178724657",
+    "src/plugin/idc_api.cpp": "443daa9c009d636f3a2a5c586888869c5463b1429f8989ca286259ac8810759a",
+    "tests/catalog_tests.cpp": "ca035298edf019aa51c9d43d154d1e7e04b7d7d393d7f32dd144a64f7e66dae3",
+    "tests/ida_protected_mba_probe.py": "8b43ea575b230495e164e80ae93b0150d762c8636274d34a97dd734884cc7669",
+    "tests/mba_match_replay.py": "78ce820c689b43dbce892e5705d770a3178ebbc7a3e39cbcde142f16bec04a46",
+    "tests/mba_match_replay_tests.py": "4e5a426e54ba05c4c9c42ee216f6c5bac822743555c1f1073bea017cb83b010f",
+    "tests/mba_matching_diagnostics.py": "6d5ec6939a684c5de6453932ed6ab89f5ff212a1e018a36602ca3fde58758ec6",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_protected_mba_corpus.py": "90cabc96a69e3d2f25e7b80564a0e0d188bc130ad2e982b67be5a1f4e1e00911",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/verify_mba_matching_capture.py": "497ec250b3601eebd5c41809cc5c211c82bfe929d2026b44b1f12a131bdff327",
+    "tests/vmp_corpus/linux32.Dockerfile": "6696a2c4c4b1d9b657f40d856a2cf24af845689d732e3a6762436400a0ebb85d",
+    "tests/vmp_corpus/linux32.py": "3e69027a6fa06a1c6b4693dd702f26a2f81cd07ac2bcc7775f711e42a8d99c09",
+    "tests/vmp_corpus/linux32_exec.py": "a0577238731548cde8e20c20299f61cc7fcf23b4602c33dfdbcd12f8c08793b0",
+    "tests/vmp_corpus/pair.S": "51bbc98ac8ad35be87b03e3d9217fb3152015babf2e47aa05be003b977b72e3b",
+    "tests/vmp_corpus/pair.c": "81457bbf6f353daa5e282057c859b9c55662fa0ddc69124c2e8bb7ff97fcf0d5",
+    "tests/vmp_corpus/pair32.S": "64e98a13ef4af322bf94aeefc4ca7ed3c899e5530c08dee282d5baba154fa973",
+    "tests/vmp_corpus/seed.lua": "12c4eeb95ff1a5fcc7bc495df963836f27553002965a0681812594baed4f2fee",
+    "tests/vmp_corpus/seed_interpose.c": "edd66669e5af4255b7aad19bf5d2d2654fb35443ad8ad2e09aa70a6f2d1f0ed5",
+    "tests/vmp_corpus/seed_probe.c": "394d32f1d3a52a7c93f2937f9393d9c6d837b918e6b9b7f21f60949b3b5ad82a"
+  },
+  "artifact_sha256": {
+    "build/predicate-catalog-replay-controls.json": "c2cfbcc99b9632a790b0c20e3199ce1e52f8254e725b1a879d03bdb8adbd554c",
+    "build/predicate-matrix-failure-control-v2.json": "31eb71e7772097c869975cf50f3d2b3d3ce4e0045f07df15b78f98036bf55620",
+    "build/predicate-matrix-failure-control.json": "a8bf9c8910c958e6cb56d6e22f69c17cdb968cc521c871ba199a2aefbbdf4e49",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/combined-0-off/protected_mba.json": "64af1be3d4d089aeb940dae2fbe0bad6a21c70090ff34c6add7d3e3863bdebdb",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/combined-0-off/run.json": "0be665913d4cf4a599021b130dca0dc1fbe5d8b7542652483333b707b72cde0a",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/combined-0-on/protected_mba.json": "f4cdc6ee5490af06a3778fa1c209ff906448b956d28ff9c7e8f0e42b33cdbf69",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/combined-0-on/run.json": "cf1a5872bdd3e04b6ee395008451801076963aaecde42aa14319d202332e7def",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/combined-1-off/protected_mba.json": "42430161bc75064c3a61f3ab85c9bda1d7633a67662313373afbab486f82f507",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/combined-1-off/run.json": "2c6a1a6e53154d4ece75e8f14dd682fc1492abb050a6fb6152dd8adfba748f85",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/combined-1-on/protected_mba.json": "eecd79cc5b3ad321e6de8325e6dfe03b678a2bc6741e874120396fcf7191134b",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/combined-1-on/run.json": "97f8c1af456462da3881785c0e656eea3e6e120d40cf004b40eddf21b79f8607",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/combined-12648430-off/protected_mba.json": "63b7c159ee1945790f8575dab74ddfdd7410e53a59db148ead96986882f72115",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/combined-12648430-off/run.json": "345d3e25227d6d3248dafb043a0b3986a50c56004a7abee5aa4fe05c7f568f73",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/combined-12648430-on/protected_mba.json": "476fb0c3bd6a1dca4860cb75ac266f18484ee0d10dc3902e4862d45befc7c1a9",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/combined-12648430-on/run.json": "243b1a834cfaf21886d92179729e48d59830c705ab5868ab5d25791ff9855f32",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/mutation-0-off/protected_mba.json": "a7146b60a2d3a0063c484b09c6d6a5828029b3382d97ce2424e251a15bce4608",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/mutation-0-off/run.json": "b0b9cb7253aa075707f5f269fec79ee2f2dc142498923617ffd2d3d31cee4de0",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/mutation-0-on/protected_mba.json": "ab51db1d9745db60c1d7aa8b87a9d69d14f2d7c3cf31a583aad52159b437029e",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/mutation-0-on/run.json": "e21fe1553b4b0138ea32281888ab077f1f5c52ca999ce6bd05975d8ae15dec75",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/mutation-1-off/protected_mba.json": "3b1f5abc259332744a747846509c66579a4473fc1bedc597fbbd661c5096f399",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/mutation-1-off/run.json": "1f7ac7d6d8a7fd4c25d5b85db946923b5305fd86e14cad9c8524cdbde2fb69f4",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/mutation-1-on/protected_mba.json": "f9a3f0e462b17a4682957aa29d649cbc5b79ef43bc998b5552de07a708e882fd",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/mutation-1-on/run.json": "13aa9e7faed4e8c190c24ce845f98ab6eb476c18ff43712ceea6e0e66d4deb53",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/mutation-12648430-off/protected_mba.json": "271b8cbdc2926a3e78973b7225660cb4173f6c2886ed4fd106212dd911e73095",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/mutation-12648430-off/run.json": "7261f91c927b74883151d0f33d060b38cd52f4c9ba27e830f2f14b4dd990bf12",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/mutation-12648430-on/protected_mba.json": "149210eeaa5c3ba587a082567bbebb9eb305003d52ae5787ca03071d1a64dc4a",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/mutation-12648430-on/run.json": "797197eb74632aa001e53874fedbdf09f737c45c3e6e054d70e823b6e10499b2",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/original-off/protected_mba.json": "2b7d5edcaa1d9535e18fb0313081dbabc92ff6b5875eeed3f51dd601122362ef",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/original-off/run.json": "b478a8b3828a2adad5673eb55ce41a78e030735b4a305ae57f72f01e5d6a66c3",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/original-on/protected_mba.json": "863bb975126bd77d1344454a09d8232f9f33c1b4ca533325d15a9e2eef1705d1",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/original-on/run.json": "26ae3affb7809f7e6c0e0e61bc07571c56fa48516d89a283e7143ad3fa741dd3",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/virtualization-0-off/protected_mba.json": "c400e2cac39c4e9fd76cb750c4cb8e287d42ce44a1e645ab1c3241c5927cb0d6",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/virtualization-0-off/run.json": "7791ed8d0c66bd26f45368920107bb61a13ad5151b8ae41869b535b31df1c387",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/virtualization-0-on/protected_mba.json": "283e2bbd955a53f21b0e1379a7363298747fcdcb601fc64747ce83ca76a60158",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/virtualization-0-on/run.json": "4420abe477a6513d4a3427d51d9ecdfbf2d030fe194864c1f970ec7fc29ebae2",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/virtualization-1-off/protected_mba.json": "f0af5c831a50a69fa5db129d4b560a94815ad9cb0a4dcfcf9bcc7c9c07a6f3a3",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/virtualization-1-off/run.json": "bf1f76adb65d526f363018a1893ee2e62baee1faec48b9db1cdca847052e7f14",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/virtualization-1-on/protected_mba.json": "457189655675658e3d02c2522f2fac6d2af40874fde2402899ff9f8e773a0919",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/virtualization-1-on/run.json": "e2d2d2a35e25506e77e68b8205fe2997c867c88424ceeb22bf76c789277c0485",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/virtualization-12648430-off/protected_mba.json": "5b8143067b30ca38be17d030bbbb344a6ac25773b16225d1d9e9aaea00357ec4",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/virtualization-12648430-off/run.json": "8206be5bf1ea374cd534ce1081087af69eaccc42dd72ee728f4e6894a716f0b8",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/virtualization-12648430-on/protected_mba.json": "7850f9f68722b28cdccaaa34a676135ce4be9e78640c85defca2eb7aa92c2197",
+    "build/predicate-matrix-installed-b89d23fc-v3/i386/virtualization-12648430-on/run.json": "56bb19c6c96d777b50baf36c8e5da8254914235cb0b0e861ba6d1f0704246999",
+    "build/predicate-matrix-installed-b89d23fc-v3/protected_mba_analysis.json": "977cb357952f4c3127b9c5451b5a6a3c53580f265f40f72b89354d8011d4ee7e",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/combined-0-off/protected_mba.json": "244b04f80dee43327a554840790910f8163137d2e9a7a927da35b14a383eedcf",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/combined-0-off/run.json": "3e6dc2b207579c9aca417002c1ce97b5c05352f720835a2b32f1568d0434198e",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/combined-0-on/protected_mba.json": "7fff38f73db3e4a8fcc75e4aa6fd63cff67a6acebc8d11799474f91e42bf8254",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/combined-0-on/run.json": "c04c1fffbec899c0a321cad67a63e63ebd0b3ec0416267fdb031534c4ea41487",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/combined-1-off/protected_mba.json": "df6e08b08639bd45e1b760f84a7d83cbb6bab7c689030469a7c1a2949123dd30",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/combined-1-off/run.json": "3265dce399ecc1f4831c04762d7042d5af8181c5679cae9c8835ac766ea234e2",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/combined-1-on/protected_mba.json": "704113cb5c128089bc75556bd390e1681b36bc982235eeb130a72481745ac39b",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/combined-1-on/run.json": "08229bdda1b6830a718ebf4dc4da4fb0564b67b4be803886bc6390c98ef99240",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/combined-12648430-off/protected_mba.json": "749ed86b433eef6bb3f7d224c868d1709d424b13bbb303b13e5512925097022d",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/combined-12648430-off/run.json": "d45b2f6c982b40013938b99bb164fd312c261d0aa8e5216f4f77e0112f36a26b",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/combined-12648430-on/protected_mba.json": "49323847194eeabe7bbf8896ec5851102a56554c9d92979916d20b7523de4afc",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/combined-12648430-on/run.json": "e80f7d755a9afa0f2e4ce778bbfd065774f4df66d8b568576315d94ac15062e2",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/mutation-0-off/protected_mba.json": "f5ef9de96c9c3df0fdb0e3fa3e42df8f86419a4df28128ec0edd368b8cc36379",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/mutation-0-off/run.json": "2a1f81a32fc959cc9ac350f6d07c431189904aa5b95fb25b2fdcf307352ead45",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/mutation-0-on/protected_mba.json": "a0863f5b7a6a96c0e5378d90c956dba1a294dbfa445ed3f717723072bcb6793e",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/mutation-0-on/run.json": "4cdc1fa11232cb344a40f73ce6356640ea8ca471ef2ad2e71b082ebc33b2dc29",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/mutation-1-off/protected_mba.json": "2c635c83026a36e2c2b687ace9cacd2d568eb942c0eff60c7a1a76f615c2750b",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/mutation-1-off/run.json": "94777c872d57c92bdf48593385768a7e4d6246a77a07dcf44efe0962fb9091a5",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/mutation-1-on/protected_mba.json": "996acc78481dbe790ae91c617cb845aaf9b294e70860cfa67321713f8cbc0fc2",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/mutation-1-on/run.json": "e00314b0c681345f04fe4c0b43629d0f41a1be7a452362db823ac6d58ad244b8",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/mutation-12648430-off/protected_mba.json": "857e523459d5315dc461f0d36d0d7ef3fcc80377f1389000f5a92cf322907d95",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/mutation-12648430-off/run.json": "747267001c79ea12d91b71dbe5ed826cef35ea3dd2495c74b5d5440c8837a0e2",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/mutation-12648430-on/protected_mba.json": "f6c7fb539282e18542bf3093c589c70c563525959091f52ff5ed56086547cb0f",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/mutation-12648430-on/run.json": "27de4e4f1ea26b48c6afa5d8e8ae62a7b208793b5b9cf9947c1f1b4a63e0e2eb",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/original-off/protected_mba.json": "46df7a322e2c7bdae2d7b75b1da2a765352799f1b23f84545907c47202746be3",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/original-off/run.json": "5871d1684f9e6c2005b356b0052bbf8fb9bfa43a46ac19e5352a54794609cca9",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/original-on/protected_mba.json": "acac3bf4edfaff103499128cc34861f5106ee97d1448b985d46df5930e423148",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/original-on/run.json": "321f76302917cde970739cfb6a0d2cec206088b50d696c887bee8772ff861034",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/virtualization-0-off/protected_mba.json": "548d9ec33d907a654fd56e57b3760436450a6ee96e0949999f756b9ae78c7ab2",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/virtualization-0-off/run.json": "ef686aaa0caa745fcac35ade0a41cc5cab9a83b3ada75cc66189e5eaaf148ae2",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/virtualization-0-on/protected_mba.json": "22f184fa713d2b251a618e60afb07bac90d0f13e9e818247507c4fff9105fc8a",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/virtualization-0-on/run.json": "b92d4205d4a975b7686fe2aa3834bb1724f369e7c62c3f390829ba6e48515f33",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/virtualization-1-off/protected_mba.json": "70ea589331d8b379c830184a9f72b7b12e8d4990a2037dea7e04e5144e8bdddf",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/virtualization-1-off/run.json": "4b0bc34fdd6e28b8f3208eeaefc7a27794fb5c245b3aa3133d8a16a129906bf9",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/virtualization-1-on/protected_mba.json": "382694e9f163cd13dd08ef804acd78dc618ec953fb39997cb7408e7a0b7d1a6d",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/virtualization-1-on/run.json": "27b594c619a1db00a96481bc4cac39b107c2508e1641cefbf63cbe9aa680a73b",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/virtualization-12648430-off/protected_mba.json": "065bc39055669991c827b85ac07c0ca3142ecfb24abf919817540e8f5a33e95f",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/virtualization-12648430-off/run.json": "52816a439651381c8020cb020a009e9e20ad226f52416e8f504e6f77391ee04f",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/virtualization-12648430-on/protected_mba.json": "8550d71440f0f5615b0dc089761e119c51ad1d2722eb5225af605ebff53d3d0f",
+    "build/predicate-matrix-installed-b89d23fc-v3/x86_64/virtualization-12648430-on/run.json": "52f88e0083783cd39cc1548274a502662b48b45af9c594f2a96fb7f3f25c805f",
+    "build/predicate-matrix-installed-v3-process.json": "818739f4869dd274a839e9707d7835cca905e9c21b69fa979ff06067ecca6a92",
+    "build/predicate-matrix-paired-audit.json": "6849cbca7baa4450296006fe53e22e843b3709be236303fb989c464cdea3b061",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/combined-0-off/protected_mba.json": "8af6ac5b6023618363936f459ab4b4ce530f6031712fb0683b342f6e77623391",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/combined-0-off/run.json": "48e316c2f72923913378069cbdaeb64c8bac78991ffafd73f5aa69a7b922ab08",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/combined-0-on/protected_mba.json": "ac0a9f66d40f60407cba723b4d0309e678b93e28d9e8727febbaa32cbf50bcb0",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/combined-0-on/run.json": "ffabaf1c2ef4fece5788ba5d50f2170c03425a7340ec9a6cd2b9cdb768b47666",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/combined-1-off/protected_mba.json": "296c0aca6ce1bc9d702a9888e248eb5b08da154f17c7618a1ccc25aa393ae7f0",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/combined-1-off/run.json": "8f852b5008ab1c9948a6107eba995a24cf4abe32de669c0803fc6ae060524437",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/combined-1-on/protected_mba.json": "365f2bcb7d3a62a932bd91e8301c4c7afc56641c12858df9e826a577b496caad",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/combined-1-on/run.json": "582448e262942712d19011369e55dac2f6db808eb4b086dbf20adf41ebd89989",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/combined-12648430-off/protected_mba.json": "c76769a37b85d8960a6684099013aa0d4e3a1417aa96c1e9b411a0165f514ea7",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/combined-12648430-off/run.json": "52bbd2c4d83946a505889d14474059dfd5c2285ede88404005bb886f488a45ec",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/combined-12648430-on/protected_mba.json": "926b2137089dcf1ebdb64f65340da74f1b848c90f105b869a620a41db526a0e2",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/combined-12648430-on/run.json": "10d46ac10b9dddf76f9bdc67c92581d4302d8ce8923d8a504b15ecaa705c9905",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/mutation-0-off/protected_mba.json": "360d772208f91924eb82b7e8888715663ff41f351094ba8e8cfc9782ac1bad4b",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/mutation-0-off/run.json": "f309dae4b9ab1e557c8af777c3a5b7a6e9f9fda7153a74e3dd12e8c35240a3f5",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/mutation-0-on/protected_mba.json": "c7811436fa28706eb773e5bc1a5fd91aa14fba7ae43ad62fc1fac71d7186cf9c",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/mutation-0-on/run.json": "fcbe410b54990f8961a7f97c13e77245cf60e21c8cd3b74990a45d92a5a1d783",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/mutation-1-off/protected_mba.json": "37f030512b900ea5e7b7a6b8b2329233580df07d36e911a60c0a95f82f330b64",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/mutation-1-off/run.json": "2d9ea94a47ed3faf8694b2110f48b22d1d7e2c34d5bfb46dd1458a99cfd6d6fe",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/mutation-1-on/protected_mba.json": "e826ed8aaf2392360451f7cef7d324796e830dfd0fc287b1339c175f6fcee9ec",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/mutation-1-on/run.json": "ce9dcf4538a787551cbf3e77a0b95a971a98484c01ab2fa83d313f1adf324ef3",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/mutation-12648430-off/protected_mba.json": "0151734cc12b6367b480a976853aa98f3c794a7029eb62283bd9071222371a8d",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/mutation-12648430-off/run.json": "2dcc7b85975e7880905395b32a79acd19004ed9d51ef0f84b9867390049889ec",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/mutation-12648430-on/protected_mba.json": "16ff9c36280d115b0da7bfe2514054b99389fa496eb36f451ca33e9685fd05fb",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/mutation-12648430-on/run.json": "14793b5faa97614b36639bff37f9732d2f2f9f1f8e1eaaf60f8925e8d4f65937",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/original-off/protected_mba.json": "40dfec35a85168ff72075fd417d1781e8d0b071e2fa528541717ffcfacee2eb1",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/original-off/run.json": "801cf40dc8c30d842b109ee0862e41f16927a6f332ec1adbfe22b9444ed198c7",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/original-on/protected_mba.json": "5cf8d2bdc45d8fa909978e1d668a78b4ea85a643cfb4f384a020653d42b18bdc",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/original-on/run.json": "c93ea66b7a04b5a891c51809b78ffd57ed26e32c6af039f6c34618a886b71ef5",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/virtualization-0-off/protected_mba.json": "ebdbe764ce9a525a2566530537e9df59bdd2ca761b1c3eecfebfdee04c23a986",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/virtualization-0-off/run.json": "341392c60e84793ab9ba0cfe310a34ce27027d7509422695f57edbff9b416a02",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/virtualization-0-on/protected_mba.json": "0d2c844c1cffbcc0d1846ddbeb7f6b5faf524ef559c36d775d10919831e4de5d",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/virtualization-0-on/run.json": "ade205972c7ca2a7b0f13c543c4db15eba508d284aac7981cd22e502746b51bc",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/virtualization-1-off/protected_mba.json": "5da7921bbe26a88db39cd3893f55869c8ee22540149e3ec5bd34cf95d262279d",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/virtualization-1-off/run.json": "9f3dc1dfa756b76ef73343d262dacf2694e3d178fb5b16475f64c429b097a4e9",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/virtualization-1-on/protected_mba.json": "b93e7f9a2c6755bbf50669ef9627fadec7f3acf0e0cc748bdbdc79b3f5039a78",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/virtualization-1-on/run.json": "db8e674c17edc5ebc9546a5c33bb2b6fadc0a40e8988657c1e31198aee95fcbe",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/virtualization-12648430-off/protected_mba.json": "523b11ac8fe60513f77237b0a85ee1d876aa4777fb77414905b1983678b2dd3f",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/virtualization-12648430-off/run.json": "5e9c46a73b5255f66dc14a3cdb1482fca2e05b28dfdfd3b85fd067ad52c3663d",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/virtualization-12648430-on/protected_mba.json": "7cb3dea51e75c834b8bf723ace049b3275dd4d095b15664f81e0f30f0af49442",
+    "build/predicate-matrix-prior-0e9dbb49-v1/i386/virtualization-12648430-on/run.json": "aab0ae38b991bd9060a4aaf0033897ca081afc0a63e51e12924b87fb739b8433",
+    "build/predicate-matrix-prior-0e9dbb49-v1/protected_mba_analysis.json": "1c195958eda2ed3f58694527c0195729af6e75d258762c641909b27e98745e4d",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/combined-0-off/protected_mba.json": "7c21a4cc42e997c4cc7b5355545a7715cb82d880977d21ce656420413946701f",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/combined-0-off/run.json": "54ccd5a26f015575e92022015924ec9149b6b9df07c11e17c927ad9778c35f24",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/combined-0-on/protected_mba.json": "a7119100bb71df1f9b34950cae4a91244691a8b88fcd55ef9e61397f9650470c",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/combined-0-on/run.json": "538439244e4edb40c5ef46a60a8096848c3b7794dc1540c18c51e1be8bea9692",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/combined-1-off/protected_mba.json": "a7c7c829f596cea2fd0d97a72f48c654bf3e62db79d9a9739cd99ce319279de7",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/combined-1-off/run.json": "9d413f8193e352940c173124e7947068274eb8b7ef804e339b0f76a2e1a024d8",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/combined-1-on/protected_mba.json": "84a8d01f84fde9d5e7294b849d0d6a596ca9c69b7bba96913e0d894f988e31fc",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/combined-1-on/run.json": "5d9ac22a29d0e9bbdac4ee294cf28b8ff332200a3ee877c33495ec17e1f5f9e4",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/combined-12648430-off/protected_mba.json": "4ad4c27df5457c6247928e7e30bdcd742fff4eed1459aa91ea697cc38a19444f",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/combined-12648430-off/run.json": "48e5e072303e6dbf8a61c6488edfe7c0f6f83bdad29bf5b462ebe86b56f70810",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/combined-12648430-on/protected_mba.json": "24d3edca8c764c1722f5a4f1ff9b9081ed9fea648a7e3e884cf8fbe3355f222f",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/combined-12648430-on/run.json": "2974cf5adb8b9a6bfbec18bb331a4abb9adcbeffa87d12e01ca564c7379802c3",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/mutation-0-off/protected_mba.json": "57b19fea895273d12b19c2e5460a34d8ec1ce0f86e15ef5b0189d68800ea09a5",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/mutation-0-off/run.json": "9418cf477d71167bbe4100a07ceaa5f24d139255541c89bc1f8af593c05a8ec4",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/mutation-0-on/protected_mba.json": "266fffada512355ca52ebf02ad4d76402e15c0ed8f27677d162f176d90d61805",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/mutation-0-on/run.json": "8a510ccdc29f5364e005356e7bf5de8a851c63977fe14d467d16012a8d79c8a3",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/mutation-1-off/protected_mba.json": "3efe38fb8002fe80af7bfc8d17ce40e149c0b5a3292ea6ff5243a836450408ac",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/mutation-1-off/run.json": "246c9d2f8d66366b85e1f055793d21a8aca2479bc9c9a52ce2fbfd8bab25da38",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/mutation-1-on/protected_mba.json": "d5f1cfafafd28d938965cccf1d42c410b5bf4635609a0125b85f6f1b23253ec4",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/mutation-1-on/run.json": "ee7f5eca908085642d221c65a722ae970a96706cce9d6b100acc6231aa520f72",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/mutation-12648430-off/protected_mba.json": "21af76f1d3de54eaa162bbd7e8f7627cdd1612ac31fcfc37846bab402e15f643",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/mutation-12648430-off/run.json": "32ea7beef1b5ec59bae9b68e235d9a6e376dd01a0963565e4aa6403ab1a79fe7",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/mutation-12648430-on/protected_mba.json": "3a18f83cf4ba89c0b94b1b93af365e86e8d4497f77e4a3e67c00e021e7c7a3b0",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/mutation-12648430-on/run.json": "bbe5e0ba328a4435ebf114a3d0ac4641507b21564c56cb1999ab5ba9aaaf5d5f",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/original-off/protected_mba.json": "775835f5c118d157062e121ada387787cdcbc3261c842cfc796028d40e1077e2",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/original-off/run.json": "efe337b1d3c1d5eaebe186940edb4ca077ffe8a003036ee0014e05e9747dc023",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/original-on/protected_mba.json": "841f04b2283f1970340e544579bcb429e7d77b41aa17e50b97448fa968d5b06e",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/original-on/run.json": "1b14e5ecfc75bc442222453f60217188d104d9c472a7f0a323422c826cf946b4",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/virtualization-0-off/protected_mba.json": "3313a9d66d093b280c0c994ff225014b3916b6145d60fc1435af4b7fcc4ab469",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/virtualization-0-off/run.json": "2b14c0bc98f99d0e6789a795d529a44b25b23850729e1f93616fd5958bfcb452",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/virtualization-0-on/protected_mba.json": "f4febce02dc55690f8dfe669b3cbde5ca910f52eaae9972a189ab28b905200e0",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/virtualization-0-on/run.json": "dfacb8faca860c008e7aa14a73165226376e681859a7426fde11d220156c73c4",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/virtualization-1-off/protected_mba.json": "df133e05d8a8f2b0438d43d94bc9a19bd030537f322fe84ff9f341e7e407f6f7",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/virtualization-1-off/run.json": "6db4260b395973ca84d23edc6ed6b22c70eb559964e532618961c3b60f61249d",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/virtualization-1-on/protected_mba.json": "30a6203ff0a626314f53b1cf7a2c097a99e78779b5d9404c70d3cd4f430b87a3",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/virtualization-1-on/run.json": "5473b1068461116100ba936a4e235b566c98ef717a2df70b5d857c0cebd4be5e",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/virtualization-12648430-off/protected_mba.json": "d108ec9cb505d6066b5095db7d369a6e6756896dce9148758a602c93c26ea26c",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/virtualization-12648430-off/run.json": "b5a6b792f461f73decc7192b3428984ef353e00fb0ad4d40a5b0693fd5e6c1d6",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/virtualization-12648430-on/protected_mba.json": "e95e76960d4b3fd1a9c88c05eb0ba2c4654babd84ba78fc047e30f24eec524e2",
+    "build/predicate-matrix-prior-0e9dbb49-v1/x86_64/virtualization-12648430-on/run.json": "c7e1b9d3e73be3f0f40b06488f17363df6f82f47f1be17ead1adc204bf24d586",
+    "build/predicate-matrix-prior-process.json": "450c3a30a563418777209494acf1ed4b0237189d3eea40bf55ff922c7892a724",
+    "build/predicate-partial-catalog-revalidation.json": "a594dac409d7cf8075c5e51a8e98fe5c50b8da30d74b6a1f4e63e86cf7464228",
+    "build/predicate-protected-i386-b89d23fc-v1/corpus.json": "7963390c0e99882a1b11b6b9de8fc85b2bfb2fe878487b21989545e1297aab8b",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/combined-0-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/combined-0-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/combined-0-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/combined-1-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/combined-1-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/combined-1-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/combined-12648430-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/combined-12648430-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/combined-12648430-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/mutation-0-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/mutation-0-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/mutation-0-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/mutation-1-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/mutation-1-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/mutation-1-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/mutation-12648430-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/mutation-12648430-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/mutation-12648430-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/original-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/original-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/original-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/virtualization-0-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/virtualization-0-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/virtualization-0-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/virtualization-1-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/virtualization-1-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/virtualization-1-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/virtualization-12648430-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/virtualization-12648430-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-i386-b89d23fc-v1/observations/virtualization-12648430-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-i386-process.json": "4367aa94753cb14706ed96d4274137412344851a1646da10d0f805a79a768f0c",
+    "build/predicate-protected-x64-b89d23fc-v1/corpus.json": "5cde8eda02d502ffdee68c3606b5ffc14faae9fd7d8e24d746639d6cfa81c0dd",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/combined-0-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/combined-0-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/combined-0-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/combined-1-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/combined-1-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/combined-1-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/combined-12648430-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/combined-12648430-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/combined-12648430-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/mutation-0-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/mutation-0-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/mutation-0-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/mutation-1-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/mutation-1-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/mutation-1-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/mutation-12648430-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/mutation-12648430-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/mutation-12648430-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/original-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/original-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/original-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/virtualization-0-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/virtualization-0-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/virtualization-0-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/virtualization-1-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/virtualization-1-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/virtualization-1-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/virtualization-12648430-2654435769.txt": "6d37003a3feb9c88bb02c1f9f8d7b7a654505a18f6808817ccb364eaef87e806",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/virtualization-12648430-3518319157.txt": "436d19ce29f7ced1f31d618ed2edf10a1bd2f4fdad356a6bc94d2680e49efd60",
+    "build/predicate-protected-x64-b89d23fc-v1/observations/virtualization-12648430-826366246.txt": "51756da0b303801257defd39af7e37f87b9d7aea1c8414785daedd1cae5eeb23",
+    "build/predicate-protected-x64-process.json": "2bf131a32e799830dc95daaed61e024fd3229cd3e93fe4b6d925907666bd9cb5",
+    "build/predicate-protected-x64-b89d23fc-v1/original": "1245a1ce3259f68fa020924aaf35fd78734ca1594f9ffe1f4d99215753256e7b",
+    "build/predicate-protected-x64-b89d23fc-v1/mutation-0": "2cf00e7a5327257d98d18af8f5a35d0b0921b135d2a37a2ec9628e6d997e9a07",
+    "build/predicate-protected-x64-b89d23fc-v1/mutation-1": "0245d938b64b96a65f20d0d3734deec473fbd7f86e7cda39f5b806214f1ac367",
+    "build/predicate-protected-x64-b89d23fc-v1/mutation-12648430": "564848f0d760a8e92a50e363cacda7e30c9206afcf8db58d81279e8b7571a299",
+    "build/predicate-protected-x64-b89d23fc-v1/virtualization-0": "119f617599b35fdead8909e3705005e52f3c1756c1f51549e204d1f8cd888ae2",
+    "build/predicate-protected-x64-b89d23fc-v1/virtualization-1": "a0751b571f2a4ebe3997ca37e68e97e562b965a64e047f74b99270f8fe312869",
+    "build/predicate-protected-x64-b89d23fc-v1/virtualization-12648430": "75059ce336baa1ec7bb1304b2778aeb391563a69a905fd3c48f548d61119a18a",
+    "build/predicate-protected-x64-b89d23fc-v1/combined-0": "1c14af5156970789fd75a758cadb3cbda8248849acabd2106a2e5ba907fb6b74",
+    "build/predicate-protected-x64-b89d23fc-v1/combined-1": "dbfd660a4c55d9d7e30f8de5eb53c625a0f618e55a1285087f68e70abcf05b8f",
+    "build/predicate-protected-x64-b89d23fc-v1/combined-12648430": "2f3025aa7d738ba02a40cf23c8ed98e55f40bc8af6771232e63c14f8ca1076a7",
+    "build/predicate-protected-i386-b89d23fc-v1/original": "94d2c90bf7020c7dd506c4e3ed7dee9bffbd6832a4c512e6e310f1f02485e39a",
+    "build/predicate-protected-i386-b89d23fc-v1/mutation-0": "dc99df7a6da7a4c65e648d8db9ea841925b4c1b835765e28f50818d83454bfe4",
+    "build/predicate-protected-i386-b89d23fc-v1/mutation-1": "06607a588e0cc22c61ed4142702fdac1f2f32a7d3c2657e60eccdc04be954f5f",
+    "build/predicate-protected-i386-b89d23fc-v1/mutation-12648430": "1c32a35c36cd78ca750fccb9516a0887246a6dcb5ecf0594b7650b92cd0d83ed",
+    "build/predicate-protected-i386-b89d23fc-v1/virtualization-0": "0da574daf01766471ae23496582be42945ed77dec97726de080f68feba45f2d6",
+    "build/predicate-protected-i386-b89d23fc-v1/virtualization-1": "881c7912465a839b58344d4c8d260dc991013382b3f6881ddac2d19c7d703d33",
+    "build/predicate-protected-i386-b89d23fc-v1/virtualization-12648430": "d804f18b479c2cd2a66b076eda094e2fb67eb0c0dad750efaf6254d887b8ffdb",
+    "build/predicate-protected-i386-b89d23fc-v1/combined-0": "a8e474f0033524bde7d5d4090d0e1fb2f8451f2ae55f59c33cc55de1c44b6d42",
+    "build/predicate-protected-i386-b89d23fc-v1/combined-1": "6f63fc2c8746f561716cdf004b62447afe3c2681210fd6ef33e53ce319411ac8",
+    "build/predicate-protected-i386-b89d23fc-v1/combined-12648430": "28afeb8f97e7bcd765f60daffbe10719b57caf9c005cc42fdfc883d43a23d5f5",
+    "docs/VMP_TYPED_PREDICATES_CORPUS_CAPTURE.json.gz": "dc3dc3372fabdefec0a2ea4dd09517616dac8704433075e0df064077f49c198f",
+    "build/predicate-prior-0e9dbb49.dylib": "80b02f885247a2142adb04bdfab764dd2d932eca64ca7e908f8415dd6d503b31",
+    "build/predicate-corpus-archive-acceptance.json": "4d3d0a2c5ca180dc5ee9d7e00323ca0f55bbaf0417fda7bea7795ce5132a912c"
+  },
+  "limits": "Normal-completion selected entry and one-hop-owner observations; certification timeout excludes rules; no new protected simplification gain, native whole-function equivalence, plugin-only speed claim or complete review implementation",
+  "archive_reproduction": {
+    "passed": true,
+    "restored_files": 233,
+    "native_observation_records": 33600,
+    "separate_checkout_audit_equal": true,
+    "counts": {
+      "native_rows": 152,
+      "stages": 456,
+      "captured": 454,
+      "matching_events": 14065,
+      "unrecorded_events": 6996,
+      "sample_keys": 3514,
+      "retained_events": 7069
+    },
+    "scope": "archived observation replay; no fresh executable execution"
+  }
+}

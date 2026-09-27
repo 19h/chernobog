@@ -64,8 +64,13 @@ comparison to zero, while signed and intervening-write controls remain unchanged
 captured-IR result/memory checks pass. GLBOPT1 snapshots are archived in the
 evidence JSON. Earlier untracked build artifacts became unavailable following
 a build-directory disappearance of unknown cause; historical hashes are retained
-and a fresh complete protected matrix remains outstanding. See
-`VMP_TYPED_PREDICATES.md` and its evidence JSON.
+and the subsequent refresh regenerates all 20 historical binaries and passes
+33,600 native records plus 80 fresh prior/current SDK processes. All 152 native
+row pairs, 456 outcomes, 454 typed trees and instance results remain equal.
+Runtime certification timeouts now have explicit partial-catalog replay and
+complete terminal-row accounting; 233 capture artifacts are archived in Git.
+No new protected simplification is observed. See `VMP_TYPED_PREDICATES.md`,
+`VMP_TYPED_PREDICATES_CORPUS.md` and their evidence/capture archives.
 
 Protected hello call-use checkpoint for rows 3a, 3b, 6a and V: an explicit
 bounded shadow query joins one observed CALL edge, its same-sequence argument

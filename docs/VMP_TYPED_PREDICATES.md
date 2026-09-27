@@ -99,7 +99,9 @@ function time/memory bounds are unknown.
 The build directory disappeared between validation commands; cause unknown.
 Earlier untracked matrix/receipt files became unavailable. Historical recorded
 hashes are preserved. This checkpoint rebuilds current tests and regenerates
-paired native controls; a new complete protected matrix remains outstanding.
+paired native controls; at that checkpoint a new complete protected matrix
+remained outstanding. The subsequent paired refresh is recorded in
+`VMP_TYPED_PREDICATES_CORPUS.md` and its evidence/capture archives.
 The evidence JSON archives all twelve GLBOPT1 function snapshots, operand
 properties/value numbers, ABI and a canonical snapshot digest. Integer replay
 survives subsequent build cleanup:
