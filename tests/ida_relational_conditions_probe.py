@@ -99,6 +99,12 @@ def restore_owner(name):
     assert ida_funcs.add_func(root, end)
     ida_auto.plan_and_wait(root, end)
     ida_auto.auto_wait()
+    inspect_owner(name)
+
+
+def inspect_owner(name):
+    root = symbol(name)
+    assert ida_funcs.get_func(root) is not None
     sites[name] = list(idautils.FuncItems(root))
     family = "set" if name == "rc_cap" else next(f for f in families if "_" + f in name)
     matches = [
@@ -347,6 +353,35 @@ def mutate(owned):
         )
 
 
+def initialize_contract():
+    report["word_bytes"] = 8 if ida_ida.inf_is_64bit() else 4
+    report["registers"] = {
+        name: int(
+            hx.reg2mreg(ida_idp.str2reg(name if report["word_bytes"] == 8 else "e" + name[1:]))
+        )
+        for name in ("rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi")
+    }
+    if report["word_bytes"] == 8:
+        report["registers"].update(
+            {"r" + str(i): int(hx.reg2mreg(ida_idp.str2reg("r" + str(i)))) for i in range(8, 16)}
+        )
+    report["registers"].update(
+        {name: int(getattr(hx, "mr_" + name)) for name in ("cf", "zf", "sf", "of", "pf")}
+    )
+    report["registers"]["ds"] = int(hx.reg2mreg(ida_idp.str2reg("ds")))
+    report["opcodes"] = {
+        name: int(getattr(hx, name)) for name in ("m_mov", "m_xdu", "m_stx", "m_nop", "m_call")
+    }
+    ordered = sorted(controls, key=symbol)
+    ends.update(
+        {
+            name: symbol(ordered[i + 1]) if i + 1 < len(ordered) else symbol("rc_end")
+            for i, name in enumerate(ordered)
+        }
+    )
+    return ordered
+
+
 def main():
     global module
     try:
@@ -358,34 +393,7 @@ def main():
             )
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
-        report["word_bytes"] = 8 if ida_ida.inf_is_64bit() else 4
-        report["registers"] = {
-            name: int(
-                hx.reg2mreg(ida_idp.str2reg(name if report["word_bytes"] == 8 else "e" + name[1:]))
-            )
-            for name in ("rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi")
-        }
-        if report["word_bytes"] == 8:
-            report["registers"].update(
-                {
-                    "r" + str(i): int(hx.reg2mreg(ida_idp.str2reg("r" + str(i))))
-                    for i in range(8, 16)
-                }
-            )
-        report["registers"].update(
-            {name: int(getattr(hx, "mr_" + name)) for name in ("cf", "zf", "sf", "of", "pf")}
-        )
-        report["registers"]["ds"] = int(hx.reg2mreg(ida_idp.str2reg("ds")))
-        report["opcodes"] = {
-            name: int(getattr(hx, name)) for name in ("m_mov", "m_xdu", "m_stx", "m_nop", "m_call")
-        }
-        ordered = sorted(controls, key=symbol)
-        ends.update(
-            {
-                name: symbol(ordered[i + 1]) if i + 1 < len(ordered) else symbol("rc_end")
-                for i, name in enumerate(ordered)
-            }
-        )
+        ordered = initialize_contract()
         for name in ordered:
             restore_owner(name)
             before = inventory(sites[name])

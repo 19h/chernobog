@@ -9,7 +9,7 @@ sys.dont_write_bytecode = True
 from run_vmp_corpus import digest, execute
 
 
-def verify_ir(capture, baseline):
+def verify_ir(capture, baseline, expected_members=30, expected_checks=140):
     if baseline:
         return 0
     from verify_conditions_microcode import Machine, ReadFault
@@ -95,7 +95,7 @@ def verify_ir(capture, baseline):
                         raise AssertionError("memory read fault disappeared")
                     unchanged(value, observed)
                     checks += 1
-    assert members == 30 and checks == 140
+    assert members == expected_members and checks == expected_checks
     return checks
 
 

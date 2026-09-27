@@ -997,3 +997,21 @@ target and containing-set corpora and all 21 CTest suites pass. The supplied
 VMP initializer keeps its three unresolved facts. See
 `VMP_RELATIONAL_CONDITIONS.md` and its evidence JSON. Broader protected gains,
 input predicates, lifecycle coverage and full review completion remain in progress.
+
+Condition-lifecycle checkpoint for rows 2b and 5: seven isolated IDA processes
+per architecture inspect persisted owners through save/reopen, default and
+physical-netnode rebases with subsequent reopen, and predicate patch/undo/redo/
+restoration. The 85-root x86-64/i386 corpus passes 14,050 production assertions
+and 3,528 independent generated-IR effect/fault checks across 26 snapshots.
+All 40 user annotations survive; eight conflicting predicate patches revoke
+facts and six custom value lowerings before undo restores them. Reopening
+requires receipt recovery, and no later stage recreates owners. Separate
+checkpoint filenames prevent the observed active-database shutdown overwrite;
+this is a harness fix, not a production rebase change. The refactored primary
+probe passes 1,013 assertions/140 IR checks per architecture and reuses its
+82,952 native checks for the lifecycle audit. CTest passes 20 suites on
+the initial sweep and the remaining VM-transition suite on an unchanged
+isolated retry after a solver timeout; both logs are retained. See
+`VMP_CONDITION_LIFECYCLE.md` and its evidence JSON. Broader protected fixtures,
+database/provider lifecycle variants, deterministic timing and the complete
+review remain in progress or unknown.

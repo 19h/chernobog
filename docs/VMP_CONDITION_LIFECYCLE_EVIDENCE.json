@@ -1,0 +1,1016 @@
+{
+  "schema": "chernobog.condition-lifecycle.v1",
+  "parent_revision": "9797ffd5c41c39c91277283a0b23a30b42a2bf8e",
+  "phase": "precommit installed parent plugin; harness and documentation changes",
+  "scope": {
+    "architectures": [
+      "x86_64",
+      "i386"
+    ],
+    "roots_per_architecture": 85,
+    "processes_per_architecture": 7,
+    "snapshots_per_architecture": 13,
+    "later_owner_recreation": false,
+    "new_native_execution_per_lifecycle_stage": false,
+    "review_complete": false
+  },
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "dcea4f7e73f32b5d9635a9369179f90e6312ed3f3a8525f441b8e87e8ad0360f",
+    "src/ida_analysis/x86_analysis.hpp": "b6279d1d543604b6696bb2e5df0e8d6a345597e25bfd495f872a605a4ad79fe1",
+    "src/ida_analysis/native_engine.cpp": "5bd28d767c8fc0016f04124414c323a89d989db005728e8fe0ee31d7a65bb6fd",
+    "src/ida_analysis/early_hexrays.cpp": "a5f4b536dbc0d06b66f505c646b7f590b53ad12f234803e55b4628ef71febdda",
+    "src/ida_analysis/proof_receipt.hpp": "cb62a4453acd3421c24018b0a1fdc5b5719c4839fdd3646a358d0f58cacabc38",
+    "src/common/x86_abstract.h": "d2a8ce3abf04629e3ee18ffd30e277e15f0e786eb842d93eb5d1d736ad0f5538",
+    "src/common/bounded_dataflow.h": "a8817441c1c23a421fc0f09468a3c9206eb54fd3da18f08906e531d90f909ee5",
+    "python/chernobog_evidence.py": "30bf869ae02de00d22f81708d87f3ffff161ec34808bccb3bad6252a8fccffa0",
+    "tests/ida_condition_lifecycle_probe.py": "1ec16e3090b1be474b3e8711e82cdd835e50a6da79399672e66f5f3c4f66eb96",
+    "tests/run_condition_lifecycle.py": "1d9f97b9270d22684f0fed6f1015650cc2cc1ce873184e102ae9700b7b8e4e4d",
+    "tests/ida_relational_conditions_probe.py": "2c6583a0a9dc0c130b5070e9084574f32d427fc91d1a296be46c80fc25150afd",
+    "tests/run_relational_conditions.py": "d38f76ca51533c739b4a9c1b3c78cae458b3f7b75900b0b4a7ae6396d2c4c96e",
+    "tests/verify_conditions_microcode.py": "c72293363b73b080e3017dc8335c5dcfc2c649c895efe09c1b3ad029c22112c5",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/vmp_native/relational_conditions.c": "99036b1c7ed598956cad84e7dfb4baa6ea5d42d105c23ffe71990fd19beb3e14",
+    "tests/vmp_native/relational_conditions_main.c": "1a08c76951aa7bb954e056a9f46c4b384aa6e3cd309bc694fe99e26be393e87c"
+  },
+  "documentation_sha256": {
+    "docs/VMP_CONDITION_LIFECYCLE.md": "0926aa37374164ec2dc6fd7ffebd8485a2e19d51f5295727d829292bd553efc5",
+    "docs/VMP_IMPLEMENTATION.md": "3b16587961afd88326f772c4bdcd0c9d7ae5759ffaf055709c6cc14738a01245"
+  },
+  "tools": {
+    "plugin_sha256": "8a396e19d20d7ac9d18991289f76716098add28bd1b7f52f4c45329e9fb47e7f",
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "black_version": "26.5.1",
+    "python_line_length": 100,
+    "sdk_headers": {
+      "../ida-sdk/src/include/loader.hpp": "02a7e937a10a8073db9dced2bd396b58dd67e54b888f28ad8de06ea5a62a7b6d",
+      "../ida-sdk/src/include/segment.hpp": "5163506649cd62b3d15846eff1623f2c7e9fd4940261a8dcc5903990917b81ed",
+      "../ida-sdk/src/include/undo.hpp": "5d45812fac5ffc3d28ab775bd12242159808dd419bdbbbd7cd9db460d825d2c8",
+      "../ida-sdk/src/include/netnode.hpp": "43ba02f5bd2ee10d93ea437342eb3473743842dc3c44601c0ef9b3dd97117f91"
+    }
+  },
+  "primary_regression": {
+    "report": {
+      "path": "build/vmp-condition-lifecycle-primary/relation_analysis.json",
+      "sha256": "5f9e9ca36d20a78d777c57c0f7325e11589d93ad2f91f5b51162db29266e56f3"
+    },
+    "assertions": {
+      "x86_64": 1013,
+      "i386": 1013
+    },
+    "ir_checks": {
+      "x86_64": 140,
+      "i386": 140
+    },
+    "native_checks": {
+      "x86_64": 41476,
+      "i386": 41476
+    },
+    "binary_sha256": {
+      "x86_64": "eecddc01e7c3ecbf6261a1e9938c3e1ba32dc4087c2910a4d6b51461091127d0",
+      "i386": "cb3695b117247653298259ce1afd1859f5cff692ff12fa0f17db2e7a7d152069"
+    },
+    "runtime": {
+      "x86_64": "macOS x86-64 process; translated on arm64 hosts",
+      "i386": {
+        "image_id": "sha256:91a6e07bec9b5ef76ccee2f076aa419b5e79a93e15c69de67017e0b8a3a38bc2",
+        "container_architecture": "arm64",
+        "execution": "qemu-i386 user-mode translation in Linux container",
+        "sha256": {
+          "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+          "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+          "qemu-i386": "ab3616f72fd2ec26ba9e1cb931d3bcd9f243471cf482785381bedc2907b3b085",
+          "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+          "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+        },
+        "qemu_version": [
+          "qemu-i386 version 9.2.0",
+          "Copyright (c) 2003-2024 Fabrice Bellard and the QEMU Project developers"
+        ],
+        "packages": [
+          "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+          "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+          "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+          "libc6-i386-cross\t2.39-0ubuntu8cross1",
+          "python3\t3.12.3-0ubuntu2.1",
+          "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+        ]
+      }
+    }
+  },
+  "lifecycle": {
+    "report": {
+      "path": "build/vmp-condition-lifecycle-checkpoint/condition_lifecycle_analysis.json",
+      "sha256": "98bf57cdce3ed3c93fe84adf7c834a93da9c99fa59f23f3790fe22b5b5025df1"
+    },
+    "passed": true,
+    "totals": {
+      "snapshots": 26,
+      "full_snapshots": 22,
+      "admitted_value_lowerings": 756,
+      "effect_checks": 3528,
+      "set_lowerings": 252,
+      "move_lowerings": 252,
+      "memory_lowerings": 252,
+      "assertions": 14050,
+      "patched_snapshots": 4
+    },
+    "elapsed_s": 108.390300246,
+    "maximum_reported_child_peak_resident_bytes": 187695104,
+    "runs": [
+      {
+        "architecture": "x86_64",
+        "stage": "write",
+        "assertions": 540,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 16838834875,
+          "peak_resident_bytes": 187695104,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "ff263472b02cad1ef3fd1b3c362673328bc53444d140e3b283d959b72041a9c2",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "eecddc01e7c3ecbf6261a1e9938c3e1ba32dc4087c2910a4d6b51461091127d0",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/write/condition_lifecycle.json",
+            "sha256": "2ed8d59992c1dc65165ccbdc037d0fd4b6550b71231d2267228b63afc76fa52b"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/write/run.json",
+            "sha256": "f23e1bd3d49c2a246eb4b88c48f5294b9aa6425a1447293c049b96c460d8c638"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/write/ida.log",
+            "sha256": "ed1dbca845a4b925c654c6651d14b47f6525f7555d028e65b17a9cae5fc3bbd6"
+          }
+        },
+        "build_log_lines": [],
+        "checkpoint": {
+          "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/write/condition_lifecycle.i64",
+          "sha256": "a2d7c24f9089fd88ec3d4da49e8ce93fd34a2da9f0b44e3118625602035a3488"
+        }
+      },
+      {
+        "architecture": "x86_64",
+        "stage": "read",
+        "assertions": 540,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 5875384417,
+          "peak_resident_bytes": 172457984,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "311af5955b832d0b3b32feda0f109177ba18bbff89f04c9b6cfe56a4e649579d",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "a2d7c24f9089fd88ec3d4da49e8ce93fd34a2da9f0b44e3118625602035a3488",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/read/condition_lifecycle.json",
+            "sha256": "652dfb1a5677d8ed87de5d92ce1a104c8dedb549bf9b4bd56c81cd8e20fe0e72"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/read/run.json",
+            "sha256": "ccaf31f1a94b77ececdfa38529a6afc6cf12448fc4685f923a00b8e2a2fe0767"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/read/ida.log",
+            "sha256": "7437ebd7e9f32c7ec542a2df28c48db29e96b6dfc1a6ba639778c33e8820a5e9"
+          }
+        },
+        "build_log_lines": []
+      },
+      {
+        "architecture": "x86_64",
+        "stage": "rebase",
+        "assertions": 1120,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 6122613958,
+          "peak_resident_bytes": 171704320,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "a2e095df62cd9ca8299f1f736ed57327beb6b931735dc838efacc0fcd6d12ba2",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "a2d7c24f9089fd88ec3d4da49e8ce93fd34a2da9f0b44e3118625602035a3488",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          },
+          {
+            "label": "rebased",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/rebase/condition_lifecycle.json",
+            "sha256": "b520e1149af6bd7dca9dc852b2e9d17321411872e48402ce5469070dc996f5c2"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/rebase/run.json",
+            "sha256": "dcba88d98d1de14e7e4056e0c395481a44ac60394a1b5343d57ed17664f25594"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/rebase/ida.log",
+            "sha256": "a2cedeb2c558802355b5b4c67de0dd2fedbdc458c93f7e1e78c8f5a121a82d69"
+          }
+        },
+        "build_log_lines": [],
+        "checkpoint": {
+          "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/rebase/condition_rebased.i64",
+          "sha256": "5d95eb0511d635c78d0d84544a86549443c687b91cc5a36dd26816f720237313"
+        }
+      },
+      {
+        "architecture": "x86_64",
+        "stage": "read_rebased",
+        "assertions": 540,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 7231788625,
+          "peak_resident_bytes": 171737088,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "0dfaa4901da17197b11218f171d587b83061077ad9a02062a3fd0db625cc4cac",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "5d95eb0511d635c78d0d84544a86549443c687b91cc5a36dd26816f720237313",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/read_rebased/condition_lifecycle.json",
+            "sha256": "4dbefda86a97c4cf57da8af86242ccd06e7be575a0c0a95df02dde24ba144064"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/read_rebased/run.json",
+            "sha256": "7b308efe9f08ca26aa6a4d09394d54e07104f1d24437f3a89913b3bcce288a1b"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/read_rebased/ida.log",
+            "sha256": "3b5575a1db017a79d95a29f36a429ef243554be4e1d254df1812b9fd44f315c0"
+          }
+        },
+        "build_log_lines": []
+      },
+      {
+        "architecture": "x86_64",
+        "stage": "rebase_nodes",
+        "assertions": 1120,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 8738448583,
+          "peak_resident_bytes": 173162496,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "c2c62dc91db6f6177e52b973a915825fcb5d39b3c96d8a5b5842190b68435a43",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "a2d7c24f9089fd88ec3d4da49e8ce93fd34a2da9f0b44e3118625602035a3488",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          },
+          {
+            "label": "rebased",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/rebase_nodes/condition_lifecycle.json",
+            "sha256": "dc260e9ff10edc4250b943d6c5c906253accaeca2ec1b28be98fbea787d30328"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/rebase_nodes/run.json",
+            "sha256": "f9482da691669898f55b0a2f0270915971f9aff10113e8960ad4dbf069a8fe78"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/rebase_nodes/ida.log",
+            "sha256": "5c8626e93ea3cbd4849cb628f7a655a2561eb7477ec5cfc53cc0c7b991c145eb"
+          }
+        },
+        "build_log_lines": [],
+        "checkpoint": {
+          "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/rebase_nodes/condition_rebased.i64",
+          "sha256": "09bf68d0d039bdc3d43c3d9a4eb2fd8849de653b794aa8007a64940e965746b4"
+        }
+      },
+      {
+        "architecture": "x86_64",
+        "stage": "read_rebased_nodes",
+        "assertions": 540,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 6190926166,
+          "peak_resident_bytes": 170360832,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "68fb6cb7e47257c1f31bcb4e1028259bc022e5e8ee4874b1ce1ca388f4d39f0e",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "09bf68d0d039bdc3d43c3d9a4eb2fd8849de653b794aa8007a64940e965746b4",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/read_rebased_nodes/condition_lifecycle.json",
+            "sha256": "4dbefda86a97c4cf57da8af86242ccd06e7be575a0c0a95df02dde24ba144064"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/read_rebased_nodes/run.json",
+            "sha256": "14dfa09598d9a9caec6d12689108c17842da9f4375a463d20e150a27e56f2d65"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/read_rebased_nodes/ida.log",
+            "sha256": "b0d86d59f221cb4c9478daa6ce87de012f4533ee98d412d07ac9c054f2359007"
+          }
+        },
+        "build_log_lines": []
+      },
+      {
+        "architecture": "x86_64",
+        "stage": "undo",
+        "assertions": 2625,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 6293613166,
+          "peak_resident_bytes": 178077696,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "d2bee6e95bd8649e2c75b0b0bedd991baf57650c1e058422d57b01bfccfa8050",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "a2d7c24f9089fd88ec3d4da49e8ce93fd34a2da9f0b44e3118625602035a3488",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          },
+          {
+            "label": "patched",
+            "patched": true,
+            "owners": 85,
+            "lowerings": {
+              "set": 8,
+              "move": 8,
+              "memory": 8
+            },
+            "effect_checks": 112
+          },
+          {
+            "label": "undone",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          },
+          {
+            "label": "redone",
+            "patched": true,
+            "owners": 85,
+            "lowerings": {
+              "set": 8,
+              "move": 8,
+              "memory": 8
+            },
+            "effect_checks": 112
+          },
+          {
+            "label": "restored",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/undo/condition_lifecycle.json",
+            "sha256": "04e8b3d207c9dcdcbbaf1a2fef90facfb6c36f5442a4d131af777ea81d603437"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/undo/run.json",
+            "sha256": "4cf20841500efa53b72ce61f89fd27b7fd41925abdf41999de5decf4248698ba"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/x86_64/undo/ida.log",
+            "sha256": "79ac41c2403c95bd745b9204e9fee9c573d1ab0dab8ab70dd5d4e5c9235b2d71"
+          }
+        },
+        "build_log_lines": []
+      },
+      {
+        "architecture": "i386",
+        "stage": "write",
+        "assertions": 540,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 16378898208,
+          "peak_resident_bytes": 151093248,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "8bd19bfac6943dba3b50ba4cc605dc5d2eaef0a3485c2ff101756cfac0ee23c6",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "cb3695b117247653298259ce1afd1859f5cff692ff12fa0f17db2e7a7d152069",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/write/condition_lifecycle.json",
+            "sha256": "526d31d4dd831c3a31b751d709aad3cceb03570637893f9af257e7490a63dcb1"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/write/run.json",
+            "sha256": "2064f0771087b64a190c7186eeb9a609d6e376b0c6278d91e049ced73be57f3a"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/write/ida.log",
+            "sha256": "aeb5efb1301980ce11f731764f8f484eab026e12841ca432ff95dd4d7f4ba0d8"
+          }
+        },
+        "build_log_lines": [],
+        "checkpoint": {
+          "path": "build/vmp-condition-lifecycle-checkpoint/i386/write/condition_lifecycle.i64",
+          "sha256": "fa56aa17be00d41e31216099dabad43889b1952bd0d978cbbe6c6f9f8d4199dd"
+        }
+      },
+      {
+        "architecture": "i386",
+        "stage": "read",
+        "assertions": 540,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 5736869542,
+          "peak_resident_bytes": 146554880,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "1ba3703f69b4887d1637d0c1c9ef1244b2ec63d56fa7daed59b3d23aa6d084d1",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "fa56aa17be00d41e31216099dabad43889b1952bd0d978cbbe6c6f9f8d4199dd",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/read/condition_lifecycle.json",
+            "sha256": "bb3587e36953fb1d1a803c5bd8f2cdcc24b7a439da5c8111599f099a27a67d8e"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/read/run.json",
+            "sha256": "32f9873ec32b8cc140f5cfaa82799916187f684c0fbfd45377833c727774b1aa"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/read/ida.log",
+            "sha256": "e6ac11d1710d19d1c5215fa859cc3a2a3abe83a288420d7d75c70bcee281e5c3"
+          }
+        },
+        "build_log_lines": []
+      },
+      {
+        "architecture": "i386",
+        "stage": "rebase",
+        "assertions": 1120,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 5876306916,
+          "peak_resident_bytes": 147456000,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "f375c4cd1a1f00df4f830e697ba4110ea03ab36a982276e183f0fe498b6b6b2f",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "fa56aa17be00d41e31216099dabad43889b1952bd0d978cbbe6c6f9f8d4199dd",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          },
+          {
+            "label": "rebased",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/rebase/condition_lifecycle.json",
+            "sha256": "25c5218dd5f059b89803cc130509611419cdb79809b294eef066af9931b0334c"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/rebase/run.json",
+            "sha256": "a0a7f589c9b058e6b6740f670b38b14c22eafe31d252eb9ef06c7725c7bee95b"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/rebase/ida.log",
+            "sha256": "e11b7397ba09a1e9a60fe1e176c612723ad2d522cc62599bc34aa438a1a7ee88"
+          }
+        },
+        "build_log_lines": [],
+        "checkpoint": {
+          "path": "build/vmp-condition-lifecycle-checkpoint/i386/rebase/condition_rebased.i64",
+          "sha256": "46581c5392f788cfeff6d090894e8c3fa25e66218fb2601e723087304cca4f18"
+        }
+      },
+      {
+        "architecture": "i386",
+        "stage": "read_rebased",
+        "assertions": 540,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 5689331583,
+          "peak_resident_bytes": 146571264,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "de84e4fec5c1798b470971171030493114e739775a4a30206cc3a70fa25ea580",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "46581c5392f788cfeff6d090894e8c3fa25e66218fb2601e723087304cca4f18",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/read_rebased/condition_lifecycle.json",
+            "sha256": "22b876e019df8c88ec34926eb538eb4e992d10253d0665ccefe14872b17d5c29"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/read_rebased/run.json",
+            "sha256": "b4ef4340c70d5906e34fdefe432001a409aa52bff02701813a6eadb8a1f351fa"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/read_rebased/ida.log",
+            "sha256": "eca3dce6076eda72ceb793d32db72b31c405a3797a42d3c847afa74fd2ae33cd"
+          }
+        },
+        "build_log_lines": []
+      },
+      {
+        "architecture": "i386",
+        "stage": "rebase_nodes",
+        "assertions": 1120,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 5552745083,
+          "peak_resident_bytes": 148455424,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "ab50b6624df2c4ab1285a267f620cbb54cc1ab4da73cf42c6cbe2113f309fa6c",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "fa56aa17be00d41e31216099dabad43889b1952bd0d978cbbe6c6f9f8d4199dd",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          },
+          {
+            "label": "rebased",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/rebase_nodes/condition_lifecycle.json",
+            "sha256": "fee735d8811488d1790b77b9c710703e7cdbe29f71c1dd18f3c01e8980171315"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/rebase_nodes/run.json",
+            "sha256": "872077207bfc259fdf7e41ae8ec8a7468d764dad9836ca3b8b509f9aeeb3005c"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/rebase_nodes/ida.log",
+            "sha256": "537b54dfb3735f85ee5ca0fa2ee1114e825bc1bd2ad3b4b7b94d187ba26a8f71"
+          }
+        },
+        "build_log_lines": [],
+        "checkpoint": {
+          "path": "build/vmp-condition-lifecycle-checkpoint/i386/rebase_nodes/condition_rebased.i64",
+          "sha256": "a02a71499037a15e930d535dc1cfcb61965f7c72683d1ea85dd94b632053256a"
+        }
+      },
+      {
+        "architecture": "i386",
+        "stage": "read_rebased_nodes",
+        "assertions": 540,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 5278907708,
+          "peak_resident_bytes": 144883712,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "3c5f44bb3c2bd0532f091991d3b5304826874e810fba072bd4834d853881892a",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "a02a71499037a15e930d535dc1cfcb61965f7c72683d1ea85dd94b632053256a",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/read_rebased_nodes/condition_lifecycle.json",
+            "sha256": "22b876e019df8c88ec34926eb538eb4e992d10253d0665ccefe14872b17d5c29"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/read_rebased_nodes/run.json",
+            "sha256": "64d4996ce461abd95222e016da16094d3f27bbfc1647f492f2e01164d90568f2"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/read_rebased_nodes/ida.log",
+            "sha256": "8342cc83efcfdc989db3093f1d1024a75c8a095bfbe2c57a1cc113d51ed0590b"
+          }
+        },
+        "build_log_lines": []
+      },
+      {
+        "architecture": "i386",
+        "stage": "undo",
+        "assertions": 2625,
+        "measurement": {
+          "exit_code": 0,
+          "elapsed_ns": 6585631416,
+          "peak_resident_bytes": 151453696,
+          "timed_out": false,
+          "output_exceeded": false,
+          "stdout_sha256": "886887c613a708a28599346ff93e5c6edac37e218744413c163ea9d0dfbfea1e",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "input_sha256": "fa56aa17be00d41e31216099dabad43889b1952bd0d978cbbe6c6f9f8d4199dd",
+        "snapshots": [
+          {
+            "label": "loaded",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          },
+          {
+            "label": "patched",
+            "patched": true,
+            "owners": 85,
+            "lowerings": {
+              "set": 8,
+              "move": 8,
+              "memory": 8
+            },
+            "effect_checks": 112
+          },
+          {
+            "label": "undone",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          },
+          {
+            "label": "redone",
+            "patched": true,
+            "owners": 85,
+            "lowerings": {
+              "set": 8,
+              "move": 8,
+              "memory": 8
+            },
+            "effect_checks": 112
+          },
+          {
+            "label": "restored",
+            "patched": false,
+            "owners": 85,
+            "lowerings": {
+              "set": 10,
+              "move": 10,
+              "memory": 10
+            },
+            "effect_checks": 140
+          }
+        ],
+        "artifacts": {
+          "condition_lifecycle.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/undo/condition_lifecycle.json",
+            "sha256": "263eaae94c1a3e0efd0a7e536df585d4c0fa927aa5da5ee6598195c58c2b7bc6"
+          },
+          "run.json": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/undo/run.json",
+            "sha256": "52bf72e2e8a049e0f1cdcdb5518197963e5b140c041ca77f2c7ad8d88c2d271f"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-lifecycle-checkpoint/i386/undo/ida.log",
+            "sha256": "121cd229dc99348980028515851d9671c0a2de30faab87410fdfa1f84d3e114b"
+          }
+        },
+        "build_log_lines": []
+      }
+    ]
+  },
+  "checkpoint_counterexample": {
+    "classification": "harness active-database checkpoint overwritten after owned-artifact unload cleanup; shutdown ordering inferred",
+    "initial_report": {
+      "path": "build/vmp-condition-lifecycle-initial/condition_lifecycle_analysis.json",
+      "sha256": "cf3eaa58649c7959fa9b7159cb07cbce4bb766e0d2559a5462b14bd09a5b5789"
+    },
+    "initial_failure": "AssertionError: ",
+    "absence_inspection": {
+      "write": {
+        "receipts": 40,
+        "roots": {
+          "rc_be_true_branch": "0x100000560",
+          "rc_a_false_memory": "0x100000740"
+        },
+        "comments": {
+          "rc_be_true_branch": [
+            [
+              "0x10000056e",
+              "[chernobog][ida-analysis] always taken (locally proven x86 condition; basis=universal-alternatives; known=36 value=00)\nanalyst condition lifecycle witness",
+              [
+                [
+                  "0x100000576",
+                  true
+                ]
+              ]
+            ]
+          ],
+          "rc_a_false_memory": [
+            [
+              "0x100000760",
+              "[chernobog][ida-analysis] CMOVcc condition false (locally proven condition)\nanalyst condition lifecycle witness",
+              [
+                [
+                  "0x100000763",
+                  false
+                ]
+              ]
+            ]
+          ]
+        },
+        "artifacts": {
+          "receipts.json": {
+            "path": "build/vmp-condition-receipts-absent3-write/receipts.json",
+            "sha256": "0abc3ad95406582350b41531d2ee801a1e5f05a5947f42b7d4bcabf1b3819ded"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-receipts-absent3-write/ida.log",
+            "sha256": "117bd109646a39da29755d0fc1fc8b0302ad121c8ed7cf614df8da97135988f9"
+          },
+          "checkpoint.i64": {
+            "path": "build/vmp-condition-receipts-absent3-write/checkpoint.i64",
+            "sha256": "521ed9ac4166324b9cdfd707acacbe85027b084b2db2c1563fded0717086e2a9"
+          }
+        }
+      },
+      "rebase": {
+        "receipts": 0,
+        "roots": {
+          "rc_be_true_branch": "0x100100560",
+          "rc_a_false_memory": "0x100100740"
+        },
+        "comments": {
+          "rc_be_true_branch": [
+            [
+              "0x10010056e",
+              "analyst condition lifecycle witness",
+              []
+            ]
+          ],
+          "rc_a_false_memory": [
+            [
+              "0x100100760",
+              "analyst condition lifecycle witness",
+              [
+                [
+                  "0x100100763",
+                  false
+                ]
+              ]
+            ]
+          ]
+        },
+        "artifacts": {
+          "receipts.json": {
+            "path": "build/vmp-condition-receipts-absent3-rebase/receipts.json",
+            "sha256": "ac30b7835f769845615e09cda19bc814c69e8e58b8f626cd6f9be3557b4953f4"
+          },
+          "ida.log": {
+            "path": "build/vmp-condition-receipts-absent3-rebase/ida.log",
+            "sha256": "117bd109646a39da29755d0fc1fc8b0302ad121c8ed7cf614df8da97135988f9"
+          },
+          "checkpoint.i64": {
+            "path": "build/vmp-condition-receipts-absent3-rebase/checkpoint.i64",
+            "sha256": "f1ea3778eee59d782f06ecfe4034e1abd4201d3f23f3711756753a9dc68981d9"
+          }
+        }
+      }
+    },
+    "diagnostic_sources": {
+      "build/ida_condition_receipts.py": "7ffc72cada09fceb6ee218639e95c43698847d9aef5408cbe009ea10c23b1f5b",
+      "build/run_condition_receipts_without_plugin.py": "adce62d63e6de5f3cce0063a695a6bcda5cf4b279eebb203ae9aea0d798e8516"
+    },
+    "full_plugin_absence_or_reload_coverage": false
+  },
+  "portable_regression": {
+    "initial_suites_passed": 20,
+    "initial_suites_failed": 1,
+    "initial_failure": "chernobog.vm_transitions; solver unresolved; reason=canceled; existing timeout_ms=100",
+    "initial_log": {
+      "path": "build/vmp-condition-lifecycle-ctest.log",
+      "sha256": "522d2a4033d9506ec3f0c35920af522a049720ee3098822cc9cba3ad84399215"
+    },
+    "retry_test": "chernobog.vm_transitions",
+    "retry_passed": true,
+    "retry_log": {
+      "path": "build/vmp-condition-lifecycle-vm-transition-retry.log",
+      "sha256": "833decdb2bf7b44e2d92df21fe060a17f15879983d5ed39ea39f2bc4d3d33f37"
+    },
+    "solver_budget_changed": false
+  },
+  "assumptions": {
+    "L1": "saved checkpoint identity and current receipt recovery; active-path counterexample and both relocation modes",
+    "L2": "current facts and generated effects; no-cache generation, predicate patches, undo/redo, stale UI and byte checks",
+    "L3": "independent literal/native and frozen-IR oracle; translated runtimes, fixed corpus and physical x86 equivalence unknown",
+    "L4": "finite measured results; stable hashes and process gates, solver cancellation retained, broader scope and deterministic timing unknown"
+  },
+  "quality_gates": {
+    "QG1": "pass for the stated lifecycle checkpoint scope",
+    "QG2": "pass for the stated lifecycle checkpoint scope",
+    "QG3": "pass for the stated lifecycle checkpoint scope",
+    "QG4": "pass for the stated lifecycle checkpoint scope",
+    "QG5": "pass for the stated lifecycle checkpoint scope",
+    "QG6": "pass for the stated lifecycle checkpoint scope",
+    "QG7": "pass for the stated lifecycle checkpoint scope"
+  }
+}
