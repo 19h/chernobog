@@ -1,10 +1,219 @@
 #include "ast_builder.h"
 #include "../../common/simd.h"
+#include <set>
 
 namespace chernobog
 {
 namespace ast
 {
+
+namespace
+{
+class StructureAudit
+{
+    AstBuildReport &report_;
+    std::set<const void *> active_;
+
+    bool reject(AstBuildStatus status)
+    {
+        report_.status = status;
+        return false;
+    }
+    bool enter(const void *identity, size_t depth)
+    {
+        report_.maximum_depth = std::max(report_.maximum_depth, depth);
+        if (depth > ast_depth_limit)
+            return reject(AstBuildStatus::DepthLimit);
+        if (report_.visits >= ast_visit_limit)
+            return reject(AstBuildStatus::VisitLimit);
+        ++report_.visits;
+        if (!active_.insert(identity).second)
+            return reject(AstBuildStatus::Cycle);
+        return true;
+    }
+    bool text(const char *value)
+    {
+        if (!value)
+            return reject(AstBuildStatus::MalformedOperand);
+        size_t bytes = 0;
+        while (bytes < ast_text_limit && value[bytes])
+            ++bytes;
+        if (bytes == ast_text_limit || bytes + 1 > ast_total_text_limit - report_.text_bytes)
+            return reject(AstBuildStatus::TextLimit);
+        report_.text_bytes += bytes + 1; // Include the terminator copied by the SDK
+        return true;
+    }
+    bool container(size_t count)
+    {
+        if (count > ast_visit_limit - report_.visits)
+            return reject(AstBuildStatus::VisitLimit);
+        report_.visits += count;
+        return true;
+    }
+    bool location(const argloc_t &value)
+    {
+        return !value.is_scattered() || container(value.scattered().size());
+    }
+
+  public:
+    explicit StructureAudit(AstBuildReport &report) : report_(report) { report_ = {}; }
+    bool instruction(const minsn_t *ins, size_t depth)
+    {
+        if (!ins)
+            return reject(AstBuildStatus::NullInstruction);
+        if (!enter(ins, depth))
+            return false;
+        ++report_.instructions;
+        const bool okay =
+            operand(ins->l, depth) && operand(ins->r, depth) && operand(ins->d, depth);
+        active_.erase(ins);
+        return okay;
+    }
+    bool operand(const mop_t &mop, size_t depth)
+    {
+        if (mop.t == mop_z)
+            return true;
+        if (!enter(&mop, depth))
+            return false;
+        bool okay = true;
+        switch (mop.t)
+        {
+        case mop_r:
+        case mop_v:
+        case mop_b:
+            break;
+        case mop_n:
+            okay = mop.nnn || reject(AstBuildStatus::MalformedOperand);
+            break;
+        case mop_S:
+            okay = mop.s || reject(AstBuildStatus::MalformedOperand);
+            break;
+        case mop_l:
+            okay = mop.l || reject(AstBuildStatus::MalformedOperand);
+            break;
+        case mop_d:
+            okay = instruction(mop.d, depth + 1);
+            break;
+        case mop_a:
+            okay = mop.a ? operand(*mop.a, depth + 1) : reject(AstBuildStatus::MalformedOperand);
+            break;
+        case mop_h:
+            okay = text(mop.helper);
+            break;
+        case mop_str:
+            okay = text(mop.cstr);
+            break;
+        case mop_f:
+            if (!mop.f)
+                okay = reject(AstBuildStatus::MalformedOperand);
+            else
+            {
+                okay = container(mop.f->args.size()) && container(mop.f->retregs.size()) &&
+                       container(mop.f->fti_attrs.size()) && location(mop.f->return_argloc);
+                if (okay)
+                    for (const auto &arg : mop.f->args)
+                        if (!text(arg.name.c_str()) || !location(arg.argloc) ||
+                            !operand(arg, depth + 1))
+                        {
+                            okay = false;
+                            break;
+                        }
+                if (okay)
+                    for (const auto &reg : mop.f->retregs)
+                        if (!operand(reg, depth + 1))
+                        {
+                            okay = false;
+                            break;
+                        }
+            }
+            break;
+        case mop_p:
+            okay = mop.pair ? operand(mop.pair->lop, depth + 1) && operand(mop.pair->hop, depth + 1)
+                            : reject(AstBuildStatus::MalformedOperand);
+            break;
+        case mop_c:
+            if (!mop.c)
+                okay = reject(AstBuildStatus::MalformedOperand);
+            else
+            {
+                okay = container(mop.c->values.size()) && container(mop.c->targets.size());
+                if (okay)
+                    for (const auto &values : mop.c->values)
+                        if (!container(values.size()))
+                        {
+                            okay = false;
+                            break;
+                        }
+            }
+            break;
+        case mop_fn:
+            okay = mop.fpc || reject(AstBuildStatus::MalformedOperand);
+            break;
+        case mop_sc:
+            okay = mop.scif ? text(mop.scif->name.c_str()) && location(*mop.scif)
+                            : reject(AstBuildStatus::MalformedOperand);
+            break;
+        default:
+            okay = reject(AstBuildStatus::UnsupportedOperand);
+            break;
+        }
+        active_.erase(&mop);
+        return okay;
+    }
+};
+
+MopKey mop_key_unchecked(const mop_t &mop);
+uint64_t hash_insn_unchecked(const minsn_t *ins);
+} // namespace
+
+const char *ast_build_status_name(AstBuildStatus status)
+{
+    switch (status)
+    {
+    case AstBuildStatus::Complete:
+        return "complete";
+    case AstBuildStatus::NullInstruction:
+        return "null_instruction";
+    case AstBuildStatus::UnsupportedOperand:
+        return "unsupported_operand_payload";
+    case AstBuildStatus::MalformedOperand:
+        return "malformed_operand_payload";
+    case AstBuildStatus::Cycle:
+        return "cyclic_operand_payload";
+    case AstBuildStatus::DepthLimit:
+        return "ast_depth_limit";
+    case AstBuildStatus::VisitLimit:
+        return "ast_visit_limit";
+    case AstBuildStatus::TextLimit:
+        return "ast_text_limit";
+    }
+    return "unknown";
+}
+
+bool validate_ast_structure(const minsn_t *ins, AstBuildReport *report)
+{
+    AstBuildReport local;
+    StructureAudit audit(report ? *report : local);
+    return audit.instruction(ins, 0);
+}
+
+MopKey MopKey::from_mop(const mop_t &mop, AstBuildReport *report)
+{
+    AstBuildReport local;
+    StructureAudit audit(report ? *report : local);
+    if (!audit.operand(mop, 0))
+    {
+        MopKey rejected{};
+        rejected.complete = false;
+        return rejected;
+    }
+    return mop_key_unchecked(mop);
+}
+
+uint64_t MopKey::hash_insn(const minsn_t *ins, AstBuildReport *report)
+{
+    return validate_ast_structure(ins, report) ? hash_insn_unchecked(ins) : 0;
+}
 
 //--------------------------------------------------------------------------
 // MopKey implementation - OPTIMIZED
@@ -12,7 +221,9 @@ namespace ast
 //--------------------------------------------------------------------------
 
 // Hash an instruction structure recursively (for mop_d operands)
-uint64_t MopKey::hash_insn(const minsn_t *ins)
+namespace
+{
+uint64_t hash_insn_unchecked(const minsn_t *ins)
 {
     if (!ins)
         return 0;
@@ -23,14 +234,14 @@ uint64_t MopKey::hash_insn(const minsn_t *ins)
     // Hash left operand
     if (ins->l.t != mop_z)
     {
-        MopKey left_key = from_mop(ins->l);
+        MopKey left_key = mop_key_unchecked(ins->l);
         h = simd::hash_combine(h, left_key.hash);
     }
 
     // Hash right operand
     if (ins->r.t != mop_z)
     {
-        MopKey right_key = from_mop(ins->r);
+        MopKey right_key = mop_key_unchecked(ins->r);
         h = simd::hash_combine(h, right_key.hash);
     }
 
@@ -43,7 +254,7 @@ uint64_t MopKey::hash_insn(const minsn_t *ins)
     return h;
 }
 
-MopKey MopKey::from_mop(const mop_t &mop)
+MopKey mop_key_unchecked(const mop_t &mop)
 {
     MopKey key{};
     key.type = static_cast<uint16_t>(mop.t);
@@ -91,7 +302,7 @@ MopKey MopKey::from_mop(const mop_t &mop)
         // OPTIMIZED: Hash instruction structure instead of string
         if (mop.d)
         {
-            key.value1 = hash_insn(mop.d);
+            key.value1 = hash_insn_unchecked(mop.d);
             // Use secondary hash for collision resistance
             key.value2 = simd::hash_combine(static_cast<uint64_t>(mop.d->opcode),
                                             static_cast<uint64_t>(mop.d->ea));
@@ -105,7 +316,7 @@ MopKey MopKey::from_mop(const mop_t &mop)
     case mop_a: // Address operand
         if (mop.a)
         {
-            MopKey inner = from_mop(*mop.a);
+            MopKey inner = mop_key_unchecked(*mop.a);
             key.value1 = inner.hash; // Use inner hash
             key.value2 = inner.value1;
         }
@@ -140,6 +351,7 @@ MopKey MopKey::from_mop(const mop_t &mop)
 
     return key;
 }
+} // namespace
 
 //--------------------------------------------------------------------------
 // Internal conversion functions
@@ -193,7 +405,8 @@ static AstPtr mop_to_ast_internal(const mop_t &mop, AstBuilderContext &ctx)
         return nullptr;
     }
 
-    MopKey key = MopKey::from_mop(mop);
+    // The public entry point audited the complete immutable operand tree.
+    MopKey key = mop_key_unchecked(mop);
 
     // Check context first (deduplication)
     if (ctx.has(key))
@@ -267,8 +480,10 @@ static AstPtr mop_to_ast_internal(const mop_t &mop, AstBuilderContext &ctx)
 //--------------------------------------------------------------------------
 // Public conversion functions
 //--------------------------------------------------------------------------
-AstPtr minsn_to_ast(const minsn_t *ins)
+AstPtr minsn_to_ast(const minsn_t *ins, AstBuildReport *report)
 {
+    if (!validate_ast_structure(ins, report))
+        return nullptr;
     if (!ins || !is_mba_opcode(ins->opcode))
     {
         return nullptr;

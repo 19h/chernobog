@@ -19,6 +19,7 @@ using chernobog::ast::make_node;
 using chernobog::ast::match_pattern;
 
 std::size_t empty_operand_erases = 0;
+std::size_t operand_copies = 0;
 
 } // namespace
 
@@ -42,9 +43,37 @@ extern "C" void *chernobog_catalog_hexdsp(int code, ...)
         instruction->d.zero();
         return nullptr;
     }
-    // The SDK's link stub is not an initialized Hex-Rays runtime. Catalog
-    // patterns own only empty SDK operands; emulate precisely their cleanup
-    // and fail on any operation that would require real decompiler behavior.
+    // Copy only allocation-free SDK operands. Recursive payload copies remain
+    // real-runtime operations and are never emulated by these component tests.
+    if (code == hx_mop_t_copy || code == hx_mop_t_assign)
+    {
+        va_list arguments;
+        va_start(arguments, code);
+        auto *destination = va_arg(arguments, mop_t *);
+        const auto *source = va_arg(arguments, const mop_t *);
+        va_end(arguments);
+        if (!destination || !source ||
+            (source->t != mop_z && source->t != mop_r && source->t != mop_v))
+            std::abort();
+        if (code == hx_mop_t_assign && destination->t != mop_z && destination->t != mop_r &&
+            destination->t != mop_v)
+            std::abort();
+        if (destination == source)
+            return destination;
+        destination->zero();
+        destination->t = source->t;
+        destination->size = source->size;
+        destination->oprops = source->oprops;
+        destination->valnum = source->valnum;
+        if (source->t == mop_r)
+            destination->r = source->r;
+        else if (source->t == mop_v)
+            destination->g = source->g;
+        ++operand_copies;
+        return destination;
+    }
+    // The SDK's link stub is not an initialized Hex-Rays runtime. Fail on any
+    // operation that would require real decompiler behavior.
     if (code != hx_mop_t_erase)
     {
         std::cerr << "unsupported catalog SDK operation: " << code << '\n';
@@ -101,6 +130,22 @@ void constant(mop_t &operand, mnumber_t &number, int bytes)
     operand.nnn = &number;
     operand.size = bytes;
 }
+
+template <class T> struct BorrowedVector
+{
+    qvector<T> &value;
+    T *data;
+    BorrowedVector(qvector<T> &vector, T *storage, size_t size) : value(vector), data(storage)
+    {
+        value.inject(data, size);
+    }
+    ~BorrowedVector() { value.extract(); }
+    void resize(size_t size)
+    {
+        value.extract();
+        value.inject(data, size);
+    }
+};
 
 bool test_builder_value_identity()
 {
@@ -277,6 +322,210 @@ bool test_builder_value_identity()
               << "; failures=" << failures << "; passed=" << okay << '\n';
     return okay;
 }
+
+#ifndef CHERNOBOG_LEGACY_AST_BOUNDS
+bool test_builder_bounds()
+{
+    using namespace chernobog::ast;
+    size_t checks = 0;
+    const auto check = [&](bool condition)
+    {
+        ++checks;
+        if (!condition)
+            throw std::runtime_error("AST construction bound control " + std::to_string(checks));
+    };
+    AstBuildReport report;
+    ValueInsn cycle(m_add, 4);
+    nested(cycle.l, cycle);
+    check(!validate_ast_structure(&cycle, &report) && report.status == AstBuildStatus::Cycle);
+    const auto rejected = MopKey::from_mop(cycle.l, &report);
+    check(!rejected.complete && report.status == AstBuildStatus::Cycle);
+    AstBuilderContext context;
+    context.add(rejected, make_leaf("rejected"));
+    check(!context.has(rejected) && !context.get(rejected));
+    check(MopKey::hash_insn(&cycle, &report) == 0 && report.status == AstBuildStatus::Cycle);
+    const auto copies_before_rejection = operand_copies;
+    check(!minsn_to_ast(&cycle, &report) && report.status == AstBuildStatus::Cycle);
+    check(operand_copies == copies_before_rejection);
+    ValueInsn ordinary(m_add, 4);
+    reg(ordinary.l, 100, 4);
+    reg(ordinary.r, 200, 4);
+    reg(ordinary.d, 300, 4);
+    auto converted = minsn_to_ast(&ordinary, &report);
+    check(converted && report.status == AstBuildStatus::Complete &&
+          std::static_pointer_cast<AstNode>(converted)->left->mop.r == 100 &&
+          std::static_pointer_cast<AstNode>(converted)->right->mop.r == 200 &&
+          converted->dest_size == 4 && operand_copies > copies_before_rejection);
+
+    struct OwnedInstruction
+    {
+        ValueInsn instruction{m_add, 4};
+    };
+    struct AddressOperand : mop_addr_t
+    {
+        ~AddressOperand() { zero(); }
+    };
+    struct OwnedAddress
+    {
+        AddressOperand operand;
+    };
+    std::vector<std::unique_ptr<OwnedInstruction>> chain;
+    for (unsigned i = 0; i < 66; ++i)
+        chain.push_back(std::make_unique<OwnedInstruction>());
+    for (unsigned i = 0; i + 1 < chain.size(); ++i)
+        nested(chain[i]->instruction.l, chain[i + 1]->instruction);
+    reg(chain.back()->instruction.l, 100, 4);
+    check(!validate_ast_structure(&chain[0]->instruction, &report) &&
+          report.status == AstBuildStatus::DepthLimit && report.maximum_depth == 65);
+    check(validate_ast_structure(&chain[1]->instruction, &report) && report.maximum_depth == 64 &&
+          report.instructions == 65);
+    check(MopKey::hash_insn(&chain[1]->instruction, &report) != 0 &&
+          report.status == AstBuildStatus::Complete);
+    check(!minsn_to_ast(&chain[0]->instruction, &report) &&
+          report.status == AstBuildStatus::DepthLimit);
+
+    std::vector<std::unique_ptr<OwnedInstruction>> tree;
+    std::vector<ValueInsn *> leaves;
+    const auto balanced = [&](unsigned depth, const auto &self) -> ValueInsn &
+    {
+        auto node = std::make_unique<OwnedInstruction>();
+        auto &ins = node->instruction;
+        reg(ins.d, 300, 4);
+        if (depth)
+        {
+            nested(ins.l, self(depth - 1, self));
+            nested(ins.r, self(depth - 1, self));
+        }
+        else
+        {
+            reg(ins.l, 100, 4);
+            reg(ins.r, 200, 4);
+            leaves.push_back(&ins);
+        }
+        tree.push_back(std::move(node));
+        return ins;
+    };
+    auto &root = balanced(7, balanced);
+    check(validate_ast_structure(&root, &report) && report.visits == 1020 &&
+          report.instructions == 255);
+    std::vector<std::unique_ptr<OwnedAddress>> addresses;
+    for (unsigned i = 0; i < 5; ++i)
+    {
+        auto address = std::make_unique<OwnedAddress>();
+        reg(address->operand, 100, 4);
+        leaves[i]->l.t = mop_a;
+        leaves[i]->l.a = &address->operand;
+        addresses.push_back(std::move(address));
+        const bool okay = validate_ast_structure(&root, &report);
+        check(okay == (i < 4));
+        check(report.visits == std::min<size_t>(1024, 1021 + i));
+        check(report.status == (i < 4 ? AstBuildStatus::Complete : AstBuildStatus::VisitLimit));
+    }
+    check(!minsn_to_ast(&root, &report) && report.status == AstBuildStatus::VisitLimit);
+    // A repeated child is acyclic but its expansion still consumes visits.
+    ValueInsn shared(m_add, 4);
+    nested(shared.l, chain[1]->instruction);
+    nested(shared.r, chain[1]->instruction);
+    check(!validate_ast_structure(&shared, &report) && report.status == AstBuildStatus::DepthLimit);
+    nested(shared.l, chain[2]->instruction);
+    nested(shared.r, chain[2]->instruction);
+    check(validate_ast_structure(&shared, &report) && report.instructions == 129);
+
+    ValueInsn text(m_add, 4);
+    std::string label(4095, 'a');
+    text.l.t = mop_h;
+    text.l.helper = label.data();
+    check(validate_ast_structure(&text, &report) && report.text_bytes == 4096);
+    label.push_back('a');
+    text.l.helper = label.data();
+    check(!validate_ast_structure(&text, &report) && report.status == AstBuildStatus::TextLimit);
+    check(!minsn_to_ast(&text, &report) && report.status == AstBuildStatus::TextLimit);
+    text.l.zero();
+    label.resize(4095);
+    for (unsigned i = 0; i < 5; ++i)
+        reg(leaves[i]->l, 100, 4);
+    for (unsigned i = 0; i < 17; ++i)
+    {
+        leaves[i]->l.t = mop_h;
+        leaves[i]->l.helper = label.data();
+        const bool okay = validate_ast_structure(&root, &report);
+        check(okay == (i < 16));
+        check(report.text_bytes == std::min<size_t>(65536, (i + 1) * 4096));
+        check(report.status == (i < 16 ? AstBuildStatus::Complete : AstBuildStatus::TextLimit));
+    }
+    AddressOperand address_cycle;
+    address_cycle.t = mop_a;
+    address_cycle.a = &address_cycle;
+    text.l.t = mop_a;
+    text.l.a = &address_cycle;
+    check(!validate_ast_structure(&text, &report) && report.status == AstBuildStatus::Cycle);
+    text.l.zero();
+    for (mopt_t type :
+         {mop_n, mop_S, mop_l, mop_a, mop_h, mop_str, mop_f, mop_c, mop_fn, mop_p, mop_sc})
+    {
+        text.l.t = type;
+        text.l.d = nullptr;
+        check(!validate_ast_structure(&text, &report) &&
+              report.status == AstBuildStatus::MalformedOperand);
+        text.l.zero();
+    }
+    for (mopt_t type : {mopt_t{16}, mopt_t{127}, mopt_t{255}})
+    {
+        text.l.t = type;
+        check(!validate_ast_structure(&text, &report) &&
+              report.status == AstBuildStatus::UnsupportedOperand);
+        text.l.zero();
+    }
+    check(!validate_ast_structure(nullptr, &report) &&
+          report.status == AstBuildStatus::NullInstruction);
+    // Recursive SDK containers remain admissible when their payloads fit.
+    mcallinfo_t call;
+    std::array<mcallarg_t, 1024> arguments;
+    BorrowedVector<mcallarg_t> argument_storage(call.args, arguments.data(), 1);
+    reg(call.args[0], 100, 4);
+    text.l.t = mop_f;
+    text.l.f = &call;
+    check(validate_ast_structure(&text, &report));
+    call.args[0].t = mop_f;
+    call.args[0].f = &call;
+    check(!validate_ast_structure(&text, &report) && report.status == AstBuildStatus::Cycle);
+    call.args[0].zero();
+    argument_storage.resize(1024);
+    check(!validate_ast_structure(&text, &report) && report.status == AstBuildStatus::VisitLimit);
+    text.l.zero();
+    mop_pair_t pair;
+    reg(pair.lop, 100, 4);
+    reg(pair.hop, 200, 4);
+    text.l.t = mop_p;
+    text.l.pair = &pair;
+    check(validate_ast_structure(&text, &report));
+    pair.hop.t = mop_p;
+    pair.hop.pair = &pair;
+    check(!validate_ast_structure(&text, &report) && report.status == AstBuildStatus::Cycle);
+    pair.hop.zero();
+    text.l.zero();
+    mcases_t cases;
+    std::array<svalvec_t, 1> groups;
+    std::array<int, 1> targets{};
+    std::array<sval_t, 1024> values{};
+    BorrowedVector<svalvec_t> case_storage(cases.values, groups.data(), 1);
+    BorrowedVector<int> target_storage(cases.targets, targets.data(), 1);
+    BorrowedVector<sval_t> group_storage(groups[0], values.data(), 0);
+    text.l.t = mop_c;
+    text.l.c = &cases;
+    check(validate_ast_structure(&text, &report));
+    group_storage.resize(1024);
+    check(!validate_ast_structure(&text, &report) && report.status == AstBuildStatus::VisitLimit);
+    text.l.zero();
+    fnumber_t number{};
+    text.l.t = mop_fn;
+    text.l.fpc = &number;
+    check(validate_ast_structure(&text, &report));
+    text.l.zero();
+    std::cout << "AST construction bounds: " << checks << " checks passed\n";
+    return true;
+}
+#endif
 
 bool test_typed_instances()
 {
@@ -720,8 +969,20 @@ bool test_ast_destruction()
 
 } // namespace
 
-int main()
+int main(int argc, char **argv)
 {
+    if (argc == 2 && std::string(argv[1]) == "--ast-cycle-control")
+    {
+        ValueInsn cycle(m_add, 4);
+        nested(cycle.l, cycle);
+        const uint64_t hash = chernobog::ast::MopKey::hash_insn(&cycle);
+        std::cout << "cyclic AST hash: " << hash << '\n';
+        return hash == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    }
+#ifndef CHERNOBOG_LEGACY_AST_BOUNDS
+    if (!test_builder_bounds())
+        return EXIT_FAILURE;
+#endif
     if (!test_builder_value_identity())
         return EXIT_FAILURE;
     if (!test_typed_instances())
@@ -759,6 +1020,20 @@ int main()
         return EXIT_FAILURE;
     }
     std::cout << "MBA attempt admission controls: 2 passed\n";
+#ifndef CHERNOBOG_LEGACY_AST_BOUNDS
+    {
+        ValueInsn cycle(m_add, 4);
+        nested(cycle.l, cycle);
+        const auto rejected_ast = registry.find_match(&cycle);
+        if (!rejected_ast.attempted || rejected_ast.matched() ||
+            rejected_ast.outcome != chernobog::mba_diagnostics::Outcome::NoAst ||
+            rejected_ast.rejection_detail != "cyclic_operand_payload" ||
+            rejected_ast.indexed_patterns != 0 || !registry.find_all_matches(&cycle).empty())
+            return EXIT_FAILURE;
+        registry.clear_statistics();
+        std::cout << "MBA bounded AST rejection attribution: passed\n";
+    }
+#endif
 
     const std::size_t registered = registry.rule_count();
     const std::size_t verified = registry.verified_rule_count();

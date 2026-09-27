@@ -170,9 +170,12 @@ RuleRegistry::MatchResult RuleRegistry::find_match(const minsn_t *ins)
     result.attempted = true;
 
     // Convert instruction to AST
-    AstPtr candidate = minsn_to_ast(ins);
+    AstBuildReport build_report;
+    AstPtr candidate = minsn_to_ast(ins, &build_report);
     if (SIMD_UNLIKELY(!candidate))
     {
+        if (build_report.status != AstBuildStatus::Complete)
+            result.rejection_detail = ast_build_status_name(build_report.status);
         return result;
     }
 

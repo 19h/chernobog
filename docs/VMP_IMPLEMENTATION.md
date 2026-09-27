@@ -1224,3 +1224,20 @@ from 177,578,693,209 ns to 51,259,757,375 ns; this remains above the predecessor
 checkpoint's measurement. See `VMP_OWNED_CFG_SLICES.md` and its evidence JSON.
 Repeated inventory cost, larger/incomplete graphs, full protected ownership and
 complete review implementation remain in progress.
+
+## AST construction traversal checkpoint
+
+Review rows 4a, 4b and V now audit owned recursive SDK operands before public
+key hashing and AST construction. Active-path cycles, depth above 64, more than
+1,024 charged visits and checked string-byte exhaustion reject the whole input.
+Incomplete keys cannot enter the AST cache, and actual registry attempts expose
+the construction reason through `no_ast`. Bounded call arguments, operand pairs
+and switch containers retain their prior representation. The source predecessor's
+isolated cycle process exits on signal 11; the corrected control exits 0.
+All 108 new controls, 1,247 identity checks and 22 CTest suites pass. The final
+40-process matrix preserves all 152 native rows, 456 SDK outcomes, 454 typed
+captures and 456 matching diagnostics; an actual immediately preceding installed
+held-out run independently retains all 16 captures and diagnostics. The first
+opaque-call guard's 18 diagnostic changes remain rejected trial evidence.
+See `VMP_AST_CONSTRUCTION_BOUNDS.md` and its evidence JSON. SDK-internal costs,
+cross-instruction analysis and the complete review remain in progress.
