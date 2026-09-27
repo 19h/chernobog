@@ -2437,6 +2437,279 @@ void test_worker_and_evidence(const RaxApi *api, ProgramImage image)
     pool.shutdown();
 }
 
+void test_undefined_result_slices(const RaxApi *api)
+{
+    using namespace chernobog::vm;
+    NativeUndefinedEffect first;
+    first.address = 0x1000;
+    first.next = 0x1003;
+    first.bytes = {0x66, 0x0f, 0xcf}; // BSWAP DI: whole RDI is unknown.
+    first.writes = 0x80;
+    first.undefined_registers = 0x80;
+    NativeUndefinedEffect invert;
+    invert.address = 0x1003;
+    invert.next = 0x1006;
+    invert.bytes = {0x40, 0xf6, 0xd7}; // NOT DIL preserves all flags.
+    invert.reads = invert.writes = 0x80;
+    NativeUndefinedEffect kill;
+    kill.address = 0x1006;
+    kill.next = 0x100b;
+    kill.bytes = {0xbf, 55, 0, 0, 0}; // MOV EDI,55 also clears RDI[63:32].
+    kill.writes = kill.replaces = 0x80;
+    std::vector<NativeUndefinedEffect> effects{first, invert, kill};
+    auto certify = [&]
+    {
+        return certify_native_undefined_slice(
+            0x1000, 0x80,
+            [&](uint64_t address, NativeUndefinedEffect &out)
+            {
+                const auto found =
+                    std::find_if(effects.begin(), effects.end(),
+                                 [&](const auto &effect) { return effect.address == address; });
+                if (found == effects.end())
+                    return false;
+                out = *found;
+                return true;
+            });
+    };
+    const auto slice = certify();
+    check(slice.end == 0x100b && slice.steps.size() == 3 &&
+              slice.steps[1].unknown_registers == 0x80 && slice.steps[2].unknown_registers == 0x80,
+          "undefined partial intermediates close only after a whole GPR overwrite");
+    for (unsigned bit = 0; bit < 16; ++bit)
+    {
+        effects[1].addresses = uint16_t(1u << bit);
+        check(bool(certify().end) == (bit != 7), "unknown address use must reject slice");
+        effects[1].addresses = 0;
+        effects[1].observable = uint16_t(1u << bit);
+        check(bool(certify().end) == (bit != 7), "unknown memory write must reject slice");
+        effects[1].observable = 0;
+    }
+    effects[2].replaces = 0;
+    check(!certify().end, "partial writes cannot close an undefined GPR");
+    effects[2].replaces = 0x80;
+    effects[2].conditional = true;
+    check(!certify().end, "conditional writes cannot close an undefined GPR");
+    effects[2].conditional = false;
+    effects[1].flag_writes = 63;
+    check(!certify().end, "derived unknown flags survive a register overwrite");
+    auto compare = kill;
+    compare.address = kill.next;
+    compare.next += 2;
+    compare.bytes = {0x39, 0xc0};
+    compare.writes = compare.replaces = 0;
+    compare.flag_writes = 63;
+    effects.push_back(compare);
+    check(certify().end == compare.next, "independent comparison closes all derived status flags");
+    effects[2].flag_reads = 1;
+    check(!certify().end, "unknown carry into the overwrite preserves register dependence");
+    effects = {first, invert, kill};
+    effects[0].bytes[0] = 0xf0;
+    check(!certify().end, "LOCK BSWAP is outside the undefined-result contract");
+    effects[0] = first;
+    effects[1].next = first.address;
+    check(!certify().end, "cyclic dependence slices are rejected");
+    effects = {first, invert, kill};
+    check(!certify_native_undefined_slice(0x1000, 0x10, {}).end, "undefined SP is never admitted");
+    if (!api)
+        return;
+    ProgramImage image = branch_image();
+    const uint8_t code[] = {0x66, 0x0f, 0xcf, 0x40, 0xf6, 0xd7, 0xbf,
+                            55,   0,    0,    0,    0x89, 0xf8, 0xc3};
+    std::copy(std::begin(code), std::end(code), image.segs[0].bytes.begin());
+    image.lo = image.segs[0].start = 0x1000;
+    image.hi = image.segs[0].end = 0x2000;
+    image.entries.clear();
+    image.content_hash = hybrid_program_content_hash(image);
+    const NativeDecoder decoder =
+        [api](uint64_t address, const uint8_t *bytes, size_t size, rax_decoded &decoded)
+    {
+        if (address == 0x1000 && size >= 3 && bytes[0] == 0x66 && bytes[1] == 0x0f &&
+            bytes[2] == 0xcf)
+        {
+            decoded = {};
+            decoded.valid = 1;
+            decoded.size = 3;
+            decoded.flow = RAX_FLOW_FALLTHROUGH;
+            return true;
+        }
+        return api->decode(RAX_ARCH_X86, RAX_MODE_64, address, bytes, size, &decoded) == RAX_OK;
+    };
+    const NativeUndefinedOracle oracle = [&](uint64_t address)
+    { return address == slice.entry ? &slice : nullptr; };
+    for (uint64_t value : {UINT64_C(0), UINT64_C(0xffff), UINT64_MAX})
+    {
+        auto region = plan_native_region(image, api, 0x1000, 4096, decoder);
+        EmuDriver driver(api, image);
+        check(region.available() && driver.can_discover(),
+              "undefined-result fixture must have a valid plan and isolated backend");
+        EmuInput input;
+        input.args = {value};
+        EmuEvents events;
+        EmuOutcome outcome;
+        auto config = short_run_config();
+        check(driver.emulate_region_temporal(region, config, events, outcome, decoder, &input,
+                                             oracle) &&
+                  outcome.native_temporal_complete && outcome.abstract_instruction_count == 1 &&
+                  outcome.native_undefined_slices.size() == 1 &&
+                  !outcome.native_undefined_incomplete,
+              "closed undefined-result slice must complete with explicit abstract provenance");
+        const auto output = std::find_if(outcome.native_final_registers.begin(),
+                                         outcome.native_final_registers.end(), [](const auto &reg)
+                                         { return reg.reg == RAX_X86_REG_RAX; });
+        check(output != outcome.native_final_registers.end() && output->value == 55,
+              "all private representatives yield the same defined output");
+        events = {};
+        outcome = {};
+        config.max_insns = 2;
+        check(driver.emulate_region_temporal(region, config, events, outcome, decoder, &input,
+                                             oracle) &&
+                  outcome.native_undefined_incomplete && !outcome.native_temporal_complete &&
+                  !outcome.native_temporal_prefix_complete &&
+                  !outcome.native_final_registers_complete &&
+                  std::none_of(outcome.native_final_registers.begin(),
+                               outcome.native_final_registers.end(),
+                               [](const auto &reg) { return reg.reg == RAX_X86_REG_RDI; }),
+              "budget stop inside a slice suppresses unknown final register observations");
+        events = {};
+        outcome = {};
+        config = short_run_config();
+        check(driver.emulate_region_temporal(region, config, events, outcome, decoder, &input) &&
+                  outcome.region_boundary && outcome.abstract_instruction_count == 0 &&
+                  !outcome.native_temporal_complete,
+              "undefined result without an explicit certificate retains the boundary");
+    }
+
+    // Stop after a register-to-register propagation. Both the original unknown
+    // register and the newly derived post-state must be absent from final data.
+    ProgramImage derived = image;
+    const uint8_t derived_code[] = {0x66, 0x0f, 0xcf, 0x89, 0xfa, 0xbf, 55, 0,
+                                    0,    0,    0xba, 77,   0,    0,    0,  0xc3};
+    std::copy(std::begin(derived_code), std::end(derived_code), derived.segs[0].bytes.begin());
+    derived.content_hash = hybrid_program_content_hash(derived);
+    auto propagation = invert;
+    propagation.bytes = {0x89, 0xfa};
+    propagation.next = 0x1005;
+    propagation.writes = propagation.replaces = 4;
+    auto first_kill = kill;
+    first_kill.address = 0x1005;
+    first_kill.next = 0x100a;
+    auto second_kill = kill;
+    second_kill.address = 0x100a;
+    second_kill.next = 0x100f;
+    second_kill.bytes = {0xba, 77, 0, 0, 0};
+    second_kill.writes = second_kill.replaces = 4;
+    effects = {first, propagation, first_kill, second_kill};
+    const auto derived_slice = certify();
+    check(derived_slice.end == 0x100f, "derived register dependence closes after both overwrites");
+    const NativeUndefinedOracle derived_oracle = [&](uint64_t address)
+    { return address == derived_slice.entry ? &derived_slice : nullptr; };
+    auto derived_region = plan_native_region(derived, api, 0x1000, 4096, decoder);
+    EmuDriver derived_driver(api, derived);
+    auto config = short_run_config();
+    config.max_insns = 2;
+    EmuEvents events;
+    EmuOutcome outcome;
+    check(derived_driver.emulate_region_temporal(derived_region, config, events, outcome, decoder,
+                                                 nullptr, derived_oracle) &&
+              outcome.native_unknown_registers == (0x80 | 4) &&
+              std::none_of(outcome.native_final_registers.begin(),
+                           outcome.native_final_registers.end(), [](const auto &reg)
+                           { return reg.reg == RAX_X86_REG_RDI || reg.reg == RAX_X86_REG_RDX; }),
+          "post-instruction budget stops suppress newly derived unknown registers");
+    ProgramImage repeated = image;
+    repeated.segs[0].bytes[11] = 0xeb;
+    repeated.segs[0].bytes[12] = 0xf3; // JMP back after the closed overwrite.
+    repeated.content_hash = hybrid_program_content_hash(repeated);
+    auto repeated_region = plan_native_region(repeated, api, 0x1000, 4096, decoder);
+    EmuDriver repeated_driver(api, repeated);
+    config = short_run_config();
+    config.max_insns = 2000;
+    events = {};
+    outcome = {};
+    check(repeated_driver.emulate_region_temporal(repeated_region, config, events, outcome, decoder,
+                                                  nullptr, oracle) &&
+              outcome.native_undefined_slices.size() == 64 &&
+              outcome.abstract_instruction_count == 64 &&
+              outcome.native_walk_stop == "undefined_slice_limit" &&
+              !outcome.native_temporal_complete && !outcome.native_temporal_prefix_complete,
+          "the sixty-fifth entered certificate must stop with an explicit quota reason");
+    // Legacy mode uses whole EAX replacement and a four-byte return slot.
+    ProgramImage legacy = image;
+    legacy.arch = HybridArch::X86_32;
+    legacy.segs[0].bitness = 1;
+    const uint8_t legacy_code[] = {0x66, 0x0f, 0xc8, 0xf6, 0xd0, 0xb8, 55, 0, 0, 0, 0xc3};
+    std::copy(std::begin(legacy_code), std::end(legacy_code), legacy.segs[0].bytes.begin());
+    legacy.content_hash = hybrid_program_content_hash(legacy);
+    auto legacy_first = first;
+    legacy_first.bytes = {0x66, 0x0f, 0xc8};
+    legacy_first.writes = legacy_first.undefined_registers = 1;
+    auto legacy_invert = invert;
+    legacy_invert.bytes = {0xf6, 0xd0};
+    legacy_invert.next = 0x1005;
+    legacy_invert.reads = legacy_invert.writes = 1;
+    auto legacy_kill = kill;
+    legacy_kill.bytes = {0xb8, 55, 0, 0, 0};
+    legacy_kill.address = 0x1005;
+    legacy_kill.next = 0x100a;
+    legacy_kill.writes = legacy_kill.replaces = 1;
+    const std::vector<NativeUndefinedEffect> legacy_effects{legacy_first, legacy_invert,
+                                                            legacy_kill};
+    const auto legacy_slice = certify_native_undefined_slice(
+        0x1000, 1,
+        [&](uint64_t pc, NativeUndefinedEffect &effect)
+        {
+            const auto found = std::find_if(legacy_effects.begin(), legacy_effects.end(),
+                                            [&](const auto &row) { return row.address == pc; });
+            if (found == legacy_effects.end())
+                return false;
+            effect = *found;
+            return true;
+        });
+    const NativeDecoder legacy_decoder =
+        [&](uint64_t pc, const uint8_t *bytes, size_t size, rax_decoded &decoded)
+    {
+        for (const auto &row : legacy_effects)
+            if (pc == row.address && size >= row.bytes.size() &&
+                std::equal(row.bytes.begin(), row.bytes.end(), bytes))
+            {
+                decoded = {};
+                decoded.valid = 1;
+                decoded.size = uint32_t(row.bytes.size());
+                decoded.flow = RAX_FLOW_FALLTHROUGH;
+                return true;
+            }
+        if (pc == 0x100a && size && bytes[0] == 0xc3)
+        {
+            decoded = {};
+            decoded.valid = decoded.size = 1;
+            decoded.flow = RAX_FLOW_RETURN;
+            return true;
+        }
+        return false;
+    };
+    const NativeUndefinedOracle legacy_oracle = [&](uint64_t pc)
+    { return pc == legacy_slice.entry ? &legacy_slice : nullptr; };
+    for (uint64_t value : {UINT64_C(0), UINT64_C(0xffff), UINT64_C(0xffffffff)})
+    {
+        auto legacy_region = plan_native_region(legacy, api, 0x1000, 4096, legacy_decoder);
+        EmuDriver legacy_driver(api, legacy);
+        EmuInput input;
+        input.register_overrides.push_back({RAX_X86_REG_EAX, value});
+        EmuEvents recorded;
+        EmuOutcome result;
+        check(legacy_driver.emulate_region_temporal(legacy_region, short_run_config(), recorded,
+                                                    result, legacy_decoder, &input,
+                                                    legacy_oracle) &&
+                  result.native_temporal_complete && result.sp_valid && result.sp_delta == 4 &&
+                  result.abstract_instruction_count == 1 &&
+                  std::any_of(result.native_final_registers.begin(),
+                              result.native_final_registers.end(), [](const auto &reg)
+                              { return reg.reg == RAX_X86_REG_EAX && reg.value == 55; }),
+              "legacy undefined-result slicing preserves the defined output and four-byte return");
+    }
+}
+
 } // namespace
 
 int main()
@@ -2448,6 +2721,7 @@ int main()
     test_smir_input_bounds();
     const RaxApi *api = rax_load();
     check(api != nullptr, rax_unavailable_reason());
+    test_undefined_result_slices(api);
     if (api != nullptr)
     {
         ProgramImage image = branch_image();

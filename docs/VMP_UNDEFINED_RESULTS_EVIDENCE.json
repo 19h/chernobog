@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "passed": true,
+  "baseline_revision": "db33e00fcdd2c26e5e8e364345b46e2eeedeb0b1",
+  "scope": "paired native-region observations under explicit ABI models and closed undefined-result dependence slices",
+  "archive": {
+    "path": "docs/VMP_UNDEFINED_RESULTS_CAPTURE.json.gz",
+    "sha256": "be967f8d3b88e4b541c167a2c4b3c34647ebf44ebdae6ebeb3475cc82d87fe10",
+    "canonical_sha256": "120651e669678d01a988ec2e799bc9c05a42309c0a56280bb374abbf30641c41",
+    "compressed_bytes": 24735320,
+    "canonical_bytes": 69976961,
+    "text_files": 105,
+    "binary_files": 12
+  },
+  "sources": {
+    "src/vm/native_undefined.hpp": "b736cb87d556926dad556246aa1a8fc8eca04df6a8af1e7ac7c2690f56a51373",
+    "src/vm/ida_native_trace.cpp": "0a9e2d28450b5ad3af0d56cfdff8f71ca7fb9da151c8efadfb21b5a4ccc6ceb0",
+    "src/hybrid/emu_driver.cpp": "fb26c4b6b48603ab095325dd10acb4f5c6e1c9e5e2209740f000e650d339f0ce",
+    "src/hybrid/emu_driver.hpp": "cb6eabd480195b9c086f5f8d9d229162b50da5c087054e3b2b642c8756ac09e3",
+    "tests/hybrid_tests.cpp": "705ae10281aacac8af9063cba4503ef951bce0efde3c822b0b8cc5139c6514a3",
+    "tests/ida_region_temporal_probe.py": "85c5996f762a95318ca5921b1f822f169575028b55eae59bbbc19fb3109834a2",
+    "tests/ida_region_strings_probe.py": "6ba0fbb7a5c5fa1c235ed050d31645a5001119a35516f2ec51e3f70229bb1c02",
+    "tests/run_vmp_region_temporal.py": "31228422121b0fdeea5471a517dc16a92b1987d45fdf1b8e2280a253d4a40b40",
+    "tests/verify_native_undefined_slices.py": "e9e513512cb05c4babbea4914c01d48db137691db0ef7368241e7f0ef9e4a0dd",
+    "tests/package_native_undefined_evidence.py": "9157e40038933ca7f708f3b184609216c39960eb2b6e275a20cc84df08280840",
+    "tests/verify_vm_native_region_decode.py": "d3e75430de5530227e755a44d7537dae49f3a87d361d3f048ea2580466960bfe",
+    "tests/vmp_native/native_read_strings.S": "064d1c77f0eb036417ed81c565a5b24903616984b559be0b8cb23e2775cc77b9",
+    "tests/run_vmp_strings.py": "ea8092c9f7937aa032b608f23e39806ce4c605cbdd1f03a27e6c8c85fdc635ec",
+    "docs/VMP_UNDEFINED_RESULTS.md": "3affbc0e94b00c525fc7b87b7986ceb4524eab20c11276aa721d3257d047f5bc"
+  },
+  "reports": {
+    "build/region-temporal-db33-fresh-v1/region_temporal_analysis.json": "d9d8b6449e514eddfa0328008e4a9d5faf935a388fd40bfeef931cc2d2af5dc0",
+    "build/undefined-final-trace/region_temporal_analysis.json": "36b8c8b3a5c09510e61349c01d63a8a9079cd13096757c498b517a6fa64ac94f",
+    "build/undefined-final-strings/region_strings_analysis.json": "ab1ec7d81d1692ae76dca6a0d689493362ad14c720c2f03548456b5a9569bb13"
+  },
+  "corpus_report_sha256": "bc23fb34a3914bd8430e26aa82e874ec8f1050e314d18f4aec36745d59670ecc",
+  "plugin_sha256": "27115c134a66fc554ae0b9c23b9d2965b01f657b588a382b3b2860dccc000053",
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "independent_audit": {
+    "passed": true,
+    "capstone_version": "5.0.7",
+    "z3_version": "4.16.0",
+    "report_sha256": "36b8c8b3a5c09510e61349c01d63a8a9079cd13096757c498b517a6fa64ac94f",
+    "source_sha256": "e9e513512cb05c4babbea4914c01d48db137691db0ef7368241e7f0ef9e4a0dd",
+    "unique_slices": 26,
+    "symbolic_steps": 232,
+    "slice_occurrences": 172,
+    "completed_runs": 16,
+    "abstract_steps": 172,
+    "captures": {
+      "original": "c256d207e3e9bf8e36dfc32d60c305e6ddff84bcaf4839c5adddb76e773765ac",
+      "mutation-0": "b41451af51d0fb6e41af6f1594143ad2fa0f658346a6ac9a3004cc1d44ed5252",
+      "mutation-1": "c7511bdd2127b1e373c7abdd3fbdf69f743043339b3f09a3ab054432a977302f",
+      "mutation-12648430": "67c2211779ffb41011f53b70197b9d3db115a20ae2b849c7c8d246d0a30239e1",
+      "virtualization-0": "0332ac89e48de627813b17ca799c27cfad3572d4fcb77f624e9a909ba3f3b0cd",
+      "virtualization-1": "e1dd3185e6b4e560e0b024f6c967de7405256de81cf36ce6edae4e860a31d3b5",
+      "virtualization-12648430": "10dd44d3287ba47e99e54712ea443d9154601024700178ccb43bfe9e848b4110",
+      "combined-0": "660e48d2ab744525e7483b4cbee3b3762171cfa5b9c7fa92b568a0ca31491327",
+      "combined-1": "b86f2957173dd6d5097a6a681470f7ca0f0ce83449525c0c8418e54467c8af6d",
+      "combined-12648430": "be581c37e24c6e7a5490ec40f3797aa282ddba945f7eda70a7a99755830f2990"
+    },
+    "controls": {
+      "positive": 1,
+      "refuted": 4
+    }
+  },
+  "trace_checks": 734,
+  "string_checks": 204,
+  "baseline_completed_runs": 12,
+  "candidate_completed_runs": 16,
+  "completed_protected_value_instances": 6,
+  "expected_protected_value_instances": 18,
+  "assumptions": [
+    "U1",
+    "U2",
+    "U3",
+    "U4",
+    "U5"
+  ],
+  "review_complete": false
+}

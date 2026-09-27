@@ -41,6 +41,7 @@ def main():
         "tests/run_vmp_corpus.py",
         "src/vm/native_region.hpp",
         "src/vm/native_region.cpp",
+        "src/vm/native_undefined.hpp",
         "src/vm/ida_native_trace.hpp",
         "src/vm/ida_native_trace.cpp",
         "src/hybrid/emu_driver.hpp",
@@ -77,7 +78,7 @@ def main():
         for label, expected in binaries.items():
             binary, run_dir = corpus_path.parent / label, output / label
             assert digest(binary) == expected
-            expected_return = label in ("original", "mutation-0", "mutation-12648430")
+            expected_return = label in ("original", "mutation-0", "mutation-1", "mutation-12648430")
             measurement, _, _ = execute(
                 [
                     sys.executable,

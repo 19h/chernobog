@@ -142,6 +142,13 @@ struct HookCtx
     uint64_t region_boundary_source = 0, region_boundary_target = 0;
     bool region_resume_pending = false;
     bool sample_native_instructions = false, native_sample_incomplete = false;
+    const vm::NativeUndefinedOracle *undefined_oracle = nullptr;
+    const vm::NativeUndefinedSlice *undefined_slice = nullptr;
+    EmuOutcome *outcome = nullptr;
+    size_t undefined_index = 0;
+    uint16_t unknown_registers = 0;
+    uint8_t unknown_flags = 0;
+    uint64_t abstract_steps = 0;
     uint64_t stack_lo = 0, stack_hi = 0;
     uint64_t heap_lo = 0, heap_hi = 0;
     TemporalMemory temporal;
@@ -189,6 +196,15 @@ struct HookCtx
     bool (*cancelled)(const void *) = nullptr;
     const void *cancellation_user = nullptr;
 };
+
+bool register_defined(const HookCtx *c, int reg)
+{
+    for (unsigned index = 0; index < 16; ++index)
+        if ((reg == RAX_X86_GPR64(int(index)) || reg == RAX_X86_GPR32(int(index))) &&
+            (c->unknown_registers & (uint16_t(1) << index)))
+            return false;
+    return !(c->unknown_flags && (reg == RAX_X86_REG_RFLAGS || reg == RAX_X86_REG_EFLAGS));
+}
 
 bool hook_in_function(const HookCtx *c, uint64_t ea)
 {
@@ -960,6 +976,84 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
         c->region_boundary_source = 0;
         c->region_boundary_target = 0;
     }
+    bool abstract_undefined = false;
+    if (c->undefined_slice && c->undefined_index == c->undefined_slice->steps.size())
+    {
+        if (addr != c->undefined_slice->end)
+        {
+            c->environment_model_failure = true;
+            c->api->emu_stop(engine);
+            return;
+        }
+        c->undefined_slice = nullptr;
+        c->unknown_registers = 0;
+        c->unknown_flags = 0;
+    }
+    if (!c->undefined_slice && c->region && c->region->at(addr) && c->undefined_oracle &&
+        *c->undefined_oracle)
+    {
+        const auto *slice = (*c->undefined_oracle)(addr);
+        if (slice && !slice->steps.empty())
+        {
+            if (!c->outcome || c->outcome->native_undefined_slices.size() >= 64)
+            {
+                if (c->outcome)
+                    c->outcome->native_walk_stop = "undefined_slice_limit";
+                c->environment_model_failure = true;
+                c->api->emu_stop(engine);
+                return;
+            }
+            // Recheck the certificate's dataflow; the byte checks at every
+            // entered step remain independent of this decoder-supplied record.
+            size_t index = 0;
+            const auto checked = vm::certify_native_undefined_slice(
+                addr, slice->destination,
+                [&](uint64_t pc, vm::NativeUndefinedEffect &effect)
+                {
+                    if (index >= slice->steps.size() || slice->steps[index].effect.address != pc)
+                        return false;
+                    effect = slice->steps[index++].effect;
+                    return true;
+                });
+            if (checked.end != slice->end || checked.steps.size() != slice->steps.size())
+            {
+                c->environment_model_failure = true;
+                c->api->emu_stop(engine);
+                return;
+            }
+            for (size_t n = 0; n < checked.steps.size(); ++n)
+                if (checked.steps[n].unknown_registers != slice->steps[n].unknown_registers ||
+                    checked.steps[n].unknown_flags != slice->steps[n].unknown_flags)
+                {
+                    c->environment_model_failure = true;
+                    c->api->emu_stop(engine);
+                    return;
+                }
+            c->outcome->native_undefined_slices.push_back({checked, event_sequence});
+            // The oracle owns stable map nodes throughout this synchronous run.
+            c->undefined_slice = slice;
+            c->undefined_index = 0;
+            abstract_undefined = true;
+        }
+    }
+    if (c->undefined_slice)
+    {
+        const auto &step = c->undefined_slice->steps[c->undefined_index];
+        uint8_t actual[15] = {};
+        if (step.effect.address != addr || step.effect.bytes.size() != effective_size ||
+            !c->api->mem_read ||
+            c->api->mem_read(engine, addr, actual, step.effect.bytes.size()) != RAX_OK ||
+            !std::equal(step.effect.bytes.begin(), step.effect.bytes.end(), actual))
+        {
+            c->region_code_changed = true;
+            c->api->emu_stop(engine);
+            return;
+        }
+        c->unknown_registers = step.unknown_registers;
+        c->unknown_flags = step.unknown_flags;
+        abstract_undefined = step.effect.undefined_registers != 0;
+        ++c->undefined_index;
+    }
     bool summary_transfer = false;
     ExecEdge::Kind transfer_kind = ExecEdge::Kind::Unknown;
     if (c->native_temporal && region_resume && c->has_prev)
@@ -995,7 +1089,8 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
                 for (int reg : *c->capture_regs)
                 {
                     uint64_t value = 0;
-                    if (c->api->reg_read_u64(engine, reg, &value) == RAX_OK)
+                    if (register_defined(c, reg) &&
+                        c->api->reg_read_u64(engine, reg, &value) == RAX_OK)
                         p.regs.push_back(RegisterValue{reg, value, c->register_width});
                 }
                 c->out->states.push_back(std::move(p));
@@ -1087,6 +1182,19 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
             c->api->emu_stop(engine);
             return;
         }
+        const auto &code = head->bytes;
+        const bool bswap16 =
+            (code.size() == 3 && code[0] == 0x66 && code[1] == 0x0f && (code[2] & 0xf8) == 0xc8) ||
+            (c->is64 && code.size() == 4 && code[0] == 0x66 && (code[1] & 0xf8) == 0x40 &&
+             code[2] == 0x0f && (code[3] & 0xf8) == 0xc8);
+        if (bswap16 && !abstract_undefined)
+        {
+            c->region_boundary = true;
+            c->region_boundary_source = c->has_prev ? c->prev_pc : addr;
+            c->region_boundary_target = addr;
+            c->api->emu_stop(engine);
+            return;
+        }
         if (!c->has_prev && c->out->states.size() < c->state_cap)
         {
             StatePoint point;
@@ -1099,7 +1207,7 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
             for (int reg : *c->capture_regs)
             {
                 uint64_t value = 0;
-                if (c->api->reg_read_u64(engine, reg, &value) == RAX_OK)
+                if (register_defined(c, reg) && c->api->reg_read_u64(engine, reg, &value) == RAX_OK)
                     point.regs.push_back(RegisterValue{reg, value, c->register_width});
             }
             c->out->states.push_back(std::move(point));
@@ -1120,7 +1228,8 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
                 for (int reg : *c->capture_regs)
                 {
                     uint64_t value = 0;
-                    if (c->api->reg_read_u64(engine, reg, &value) == RAX_OK)
+                    if (register_defined(c, reg) &&
+                        c->api->reg_read_u64(engine, reg, &value) == RAX_OK)
                         point.regs.push_back({reg, value, c->register_width});
                     else
                         c->native_sample_incomplete = true;
@@ -1197,6 +1306,28 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
                 ExecPoint{addr, effective_size, event_sequence, c->run_id, c->seed});
         else
             c->execution_truncated = true;
+    }
+    if (abstract_undefined)
+    {
+        // No register result is assigned. The engine retains a private
+        // representative while the certificate proves that all its effects
+        // disappear before any observable use. This entered step is explicitly
+        // counted as abstract, never as an executed hardware instruction.
+        c->unknown_registers |=
+            c->undefined_slice->steps[c->undefined_index - 1].effect.undefined_registers;
+        c->prev_pc = c->last_pc = addr;
+        c->prev_size = effective_size;
+        c->prev_decode_mode = current_decode_mode;
+        c->has_prev = true;
+        if (c->api->reg_write_u64(engine, c->pc_reg, addr + effective_size) != RAX_OK)
+            c->environment_model_failure = true;
+        else
+        {
+            ++c->abstract_steps;
+            c->summary_resume = true;
+        }
+        c->api->emu_stop(engine);
+        return;
     }
     int32_t current_flow = RAX_FLOW_UNKNOWN;
     if (hook_in_function(c, addr) && c->api != nullptr && c->capture_regs != nullptr &&
@@ -2098,7 +2229,8 @@ bool EmuDriver::emulate_region_walk(vm::NativeRegion &region, const HybridConfig
 
 bool EmuDriver::emulate_region_temporal(vm::NativeRegion &region, const HybridConfig &requested,
                                         EmuEvents &out, EmuOutcome &outcome,
-                                        const vm::NativeDecoder &decoder, const EmuInput *input)
+                                        const vm::NativeDecoder &decoder, const EmuInput *input,
+                                        const vm::NativeUndefinedOracle &undefined_oracle)
 {
     if (!decoder || (input && !input->native_objects.empty()))
     {
@@ -2109,14 +2241,15 @@ bool EmuDriver::emulate_region_temporal(vm::NativeRegion &region, const HybridCo
         return false;
     }
     return emulate_region_impl(region, requested, out, outcome, input, &region, &decoder, 64, false,
-                               true);
+                               true, &undefined_oracle);
 }
 
 bool EmuDriver::emulate_region_impl(const vm::NativeRegion &region, const HybridConfig &requested,
                                     EmuEvents &out, EmuOutcome &outcome, const EmuInput *input,
                                     vm::NativeRegion *expanding, const vm::NativeDecoder *decoder,
                                     size_t maximum_extensions, bool sample_native_instructions,
-                                    bool native_temporal)
+                                    bool native_temporal,
+                                    const vm::NativeUndefinedOracle *undefined_oracle)
 {
     outcome = EmuOutcome{};
     outcome.native_region = true;
@@ -2137,7 +2270,7 @@ bool EmuDriver::emulate_region_impl(const vm::NativeRegion &region, const Hybrid
     cfg.max_runtime_bytes = std::min(cfg.max_runtime_bytes, uint64_t(65536));
     return emulate_scope(region.entry(), region.entry(), cfg, out, &outcome, true, 0, 0, input,
                          nullptr, nullptr, &region, expanding, decoder, maximum_extensions,
-                         sample_native_instructions, native_temporal);
+                         sample_native_instructions, native_temporal, undefined_oracle);
 }
 
 bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridConfig &cfg,
@@ -2146,7 +2279,8 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
                               bool (*cancelled)(const void *), const void *cancellation_user,
                               const vm::NativeRegion *region, vm::NativeRegion *expanding,
                               const vm::NativeDecoder *decoder, size_t maximum_extensions,
-                              bool sample_native_instructions, bool native_temporal)
+                              bool sample_native_instructions, bool native_temporal,
+                              const vm::NativeUndefinedOracle *undefined_oracle)
 {
     if (!can_discover())
         return false;
@@ -2372,6 +2506,8 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
                                            input_overrides_argument(input, 1, arg_regs_));
 
     HookCtx ctx;
+    ctx.undefined_oracle = native_temporal ? undefined_oracle : nullptr;
+    ctx.outcome = outcome;
     ctx.out = &out;
     ctx.api = api_;
     ctx.capture_regs = &capture_regs_;
@@ -2456,7 +2592,7 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
         uint64_t begin = entry;
         for (unsigned resumptions = 0; resumptions <= 256; ++resumptions)
         {
-            const uint64_t used = api_->emu_icount(engine_) - icount_start;
+            const uint64_t used = api_->emu_icount(engine_) - icount_start + ctx.abstract_steps;
             if (used >= cfg.max_insns)
             {
                 if (expanding && outcome)
@@ -2492,6 +2628,13 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
             }
             else
                 attempted_steps_valid = false;
+            if (outcome && expanding && status == RAX_OK)
+            {
+                if (slice_exit.reason == RAX_STOP_COUNT)
+                    outcome->native_walk_stop = "instruction_budget";
+                else if (slice_exit.reason == RAX_STOP_TIMEOUT)
+                    outcome->native_walk_stop = "time_budget";
+            }
             if (status == RAX_OK && expanding && decoder && outcome && ctx.region_boundary &&
                 !ctx.region_code_changed)
             {
@@ -2548,10 +2691,23 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
         }
     }
 
+    // A backend stop can occur after the last entered instruction, before the
+    // next hook. Retain both its pre-state and possible post-state dependence;
+    // newly derived unknown registers must never escape through final capture.
+    if (ctx.undefined_slice && ctx.undefined_index < ctx.undefined_slice->steps.size())
+    {
+        const auto &next = ctx.undefined_slice->steps[ctx.undefined_index];
+        ctx.unknown_registers |= next.unknown_registers;
+        ctx.unknown_flags |= next.unknown_flags;
+    }
     // Summarize the run for the function-level analyses (purge / no-return).
     if (code_ok && outcome != nullptr)
     {
-        outcome->instruction_count = api_->emu_icount(engine_) - icount_start;
+        outcome->abstract_instruction_count = ctx.abstract_steps;
+        outcome->instruction_count = api_->emu_icount(engine_) - icount_start + ctx.abstract_steps;
+        outcome->native_undefined_incomplete = ctx.undefined_slice != nullptr;
+        outcome->native_unknown_registers = ctx.unknown_registers;
+        outcome->native_unknown_flags = ctx.unknown_flags;
         outcome->native_state_capture_complete = ctx.sample_native_instructions &&
                                                  !ctx.native_sample_incomplete &&
                                                  !ctx.execution_truncated;
@@ -2627,7 +2783,8 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
             !ctx.environment_model_failure && !synthetic_entry_context;
         outcome->native_temporal_complete =
             region && native_temporal && outcome->temporal_observation_available &&
-            outcome->returned && !outcome->temporal_capture_truncated && !ctx.execution_truncated &&
+            !outcome->native_undefined_incomplete && outcome->returned &&
+            !outcome->temporal_capture_truncated && !ctx.execution_truncated &&
             !ctx.dependency_truncated && !ctx.data_truncated && !ctx.data_filtered &&
             !ctx.permission_violation && !ctx.cancellation_requested && !ctx.escaped_image &&
             !ctx.region_boundary && !ctx.region_code_changed && !ctx.function_boundary &&
@@ -2643,11 +2800,11 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
             outcome->stop_status == RAX_OK && outcome->temporal_observation_available &&
             outcome->memory_observation_available &&
             (outcome->native_temporal_complete || stopped_before_instruction) &&
-            !outcome->temporal_capture_truncated && !ctx.execution_truncated &&
-            !ctx.dependency_truncated && !ctx.data_truncated && !ctx.data_filtered &&
-            !ctx.permission_violation && !ctx.cancellation_requested && !ctx.escaped_image &&
-            !ctx.region_code_changed && !ctx.function_boundary && !ctx.unmodeled_external &&
-            !ctx.environment_model_failure && !synthetic_entry_context;
+            !outcome->native_undefined_incomplete && !outcome->temporal_capture_truncated &&
+            !ctx.execution_truncated && !ctx.dependency_truncated && !ctx.data_truncated &&
+            !ctx.data_filtered && !ctx.permission_violation && !ctx.cancellation_requested &&
+            !ctx.escaped_image && !ctx.region_code_changed && !ctx.function_boundary &&
+            !ctx.unmodeled_external && !ctx.environment_model_failure && !synthetic_entry_context;
         if (outcome->native_temporal_prefix_complete)
             outcome->native_temporal_prefix_end =
                 ctx.sequence - (stopped_before_instruction ? 1 : 0);
@@ -2685,7 +2842,7 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
         for (int reg : capture_regs_)
         {
             uint64_t value = 0;
-            if (api_->reg_read_u64(engine_, reg, &value) != RAX_OK)
+            if (!register_defined(&ctx, reg) || api_->reg_read_u64(engine_, reg, &value) != RAX_OK)
             {
                 outcome->native_final_registers_complete = false;
                 continue;

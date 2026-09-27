@@ -1286,6 +1286,22 @@ opaque-call guard's 18 diagnostic changes remain rejected trial evidence.
 See `VMP_AST_CONSTRUCTION_BOUNDS.md` and its evidence JSON. SDK-internal costs,
 cross-instruction analysis and the complete review remain in progress.
 
+## Closed undefined-result checkpoint
+
+Review rows 3a, 3b, 6a and V now admit exact BSWAP16 occurrences only inside
+bounded dependence slices that remove every introduced register and flag
+uncertainty before observable use. Unknown and newly derived register values
+remain suppressed on interrupted captures. File-backed independent decoding and
+arbitrary-function symbolic replay prove 26 distinct certificates covering 232
+instructions, with four unsafe controls refuted. Mutation seed 1 now returns
+under the explicit temporal ABI models and recovers both byte-exact strings in
+the completed-run inspection; completed protected value-instance coverage rises
+from four to six of 18. All six virtualized/combined variants remain incomplete.
+Both portable x86 widths, interruption controls and 23 CTest suites pass.
+See `VMP_UNDEFINED_RESULTS.md` and its evidence JSON. Complete VM recovery,
+bounded planning latency, live undefined results and full review implementation
+remain in progress.
+
 ## Catalog failure witness checkpoint
 
 Review row 4a now retains one actual longest-prefix failed matcher branch with

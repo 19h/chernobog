@@ -71,9 +71,10 @@ try:
             == {(r["address"], r["name"]) for r in bindings},
         )
         end = trace["native_temporal_prefix_end"]
+        prefix = trace["native_temporal_prefix_complete"]
         check(
-            "complete prefix retains an exclusive event cutoff",
-            trace["native_temporal_prefix_complete"] and end > 0,
+            "prefix cutoff is present only for a complete prefix",
+            (prefix and end > 0) or (not prefix and end == 0),
         )
         sequences = [
             int(row["sequence"]) for field in ("execution", "uses", "data") for row in trace[field]
@@ -86,11 +87,12 @@ try:
         ]
         check(
             "all entered instructions and memory events precede cutoff",
-            sequences and max(sequences) + 1 == end,
+            sequences and (not prefix or max(sequences) + 1 == end),
         )
         check(
             "cutoff edges denote only the unexecuted frontier",
-            all(
+            not prefix
+            or all(
                 int(row["sequence"]) < end
                 or (
                     trace["region_boundary"]
@@ -136,11 +138,30 @@ try:
                 "operand_bytes": ida_ua.get_dtype_size(instruction.Op1.dtype) if size > 0 else 0,
             }
             check(
-                "undefined BSWAP16 retains boundary",
-                trace["rejected_instruction"]["mnemonic"] == "bswap"
-                and trace["rejected_instruction"]["operand_bytes"] == 2
-                and trace["region_boundary"]
-                and not trace["temporal_capture_complete"],
+                "unexecuted frontier retains its structured stop",
+                not trace["temporal_capture_complete"]
+                and size > 0
+                and (
+                    (trace["region_boundary"] and trace["native_walk_stop"])
+                    or trace["native_walk_stop"] in ("instruction_budget", "time_budget")
+                ),
+            )
+        slices = trace.get("undefined_result_slices", [])
+        check(
+            "abstract results have explicit closed-slice provenance",
+            trace.get("abstract_instruction_count", 0) == 0 or slices,
+        )
+        check(
+            "completed captures contain no surviving unknown result",
+            not trace["native_temporal_complete"]
+            or not trace.get("undefined_result_incomplete", False),
+        )
+        for record in slices:
+            check(
+                "bounded dependence certificate",
+                1 < len(record["steps"]) <= 64
+                and int(record["entry"], 0) == int(record["steps"][0]["site"], 0)
+                and int(record["end"], 0) == int(record["steps"][-1]["next"], 0),
             )
         if os.environ.get("CHERNOBOG_EXPECT_RETURN") == "1":
             check("positive control complete", trace["native_temporal_complete"])

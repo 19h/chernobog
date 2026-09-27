@@ -20,6 +20,7 @@
 #include "hybrid_config.hpp"
 #include "temporal_memory.hpp"
 #include "../vm/native_region.hpp"
+#include "../vm/native_undefined.hpp"
 
 struct rax_engine; // opaque
 
@@ -192,6 +193,16 @@ struct EmuOutcome
     bool native_state_capture_requested = false, native_state_capture_complete = false;
     std::string native_walk_stop;
     std::vector<NativeAdmission> native_admissions;
+    struct NativeUndefinedExecution
+    {
+        vm::NativeUndefinedSlice slice;
+        uint64_t sequence = 0;
+    };
+    std::vector<NativeUndefinedExecution> native_undefined_slices;
+    uint64_t abstract_instruction_count = 0;
+    bool native_undefined_incomplete = false;
+    uint16_t native_unknown_registers = 0;
+    uint8_t native_unknown_flags = 0;
     struct NativeObjectState
     {
         uint32_t argument = 0, offset = 0;
@@ -392,20 +403,23 @@ class EmuDriver
     // Caller objects are rejected: their scratch range overlaps modeled heap.
     bool emulate_region_temporal(vm::NativeRegion &, const HybridConfig &, EmuEvents &,
                                  EmuOutcome &, const vm::NativeDecoder &,
-                                 const EmuInput *input = nullptr);
+                                 const EmuInput *input = nullptr,
+                                 const vm::NativeUndefinedOracle &undefined_oracle = {});
 
   private:
     bool emulate_region_impl(const vm::NativeRegion &, const HybridConfig &, EmuEvents &,
                              EmuOutcome &, const EmuInput *, vm::NativeRegion *,
                              const vm::NativeDecoder *, size_t,
-                             bool sample_native_instructions = false, bool native_temporal = false);
+                             bool sample_native_instructions = false, bool native_temporal = false,
+                             const vm::NativeUndefinedOracle *undefined_oracle = nullptr);
     bool emulate_scope(uint64_t entry, uint64_t func_end, const HybridConfig &, EmuEvents &,
                        EmuOutcome *, bool record_pcs, uint64_t seed, uint32_t run_id,
                        const EmuInput *, bool (*cancelled)(const void *),
                        const void *cancellation_user, const vm::NativeRegion *,
                        vm::NativeRegion *expanding = nullptr,
                        const vm::NativeDecoder *decoder = nullptr, size_t maximum_extensions = 0,
-                       bool sample_native_instructions = false, bool native_temporal = false);
+                       bool sample_native_instructions = false, bool native_temporal = false,
+                       const vm::NativeUndefinedOracle *undefined_oracle = nullptr);
     bool map_image();
     bool map_stack();
     bool load_image_bytes();

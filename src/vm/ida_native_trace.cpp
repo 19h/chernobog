@@ -1,6 +1,7 @@
 #include "ida_native_trace.hpp"
 #include "native_region.hpp"
 #include "native_observations.hpp"
+#include "native_undefined.hpp"
 #include "ida_regions.hpp"
 #include "../hybrid/emu_driver.hpp"
 #include "../hybrid/evidence.hpp"
@@ -539,8 +540,282 @@ uint64_t runtime_shadow_fingerprint(const std::vector<uint8_t> &bytes)
     }
     return hash;
 }
+uint16_t undefined_gpr(const op_t &operand)
+{
+    if (operand.type != o_reg)
+        return 0;
+    const size_t bytes = get_dtype_size(operand.dtype);
+    if (bytes != 1 && bytes != 2 && bytes != 4 && bytes != 8)
+        return 0;
+    qstring name;
+    if (get_reg_name(&name, operand.reg, bytes) <= 0)
+        return 0;
+    static const char *const names[16][4] = {
+        {"al", "ax", "eax", "rax"},      {"cl", "cx", "ecx", "rcx"},
+        {"dl", "dx", "edx", "rdx"},      {"bl", "bx", "ebx", "rbx"},
+        {"spl", "sp", "esp", "rsp"},     {"bpl", "bp", "ebp", "rbp"},
+        {"sil", "si", "esi", "rsi"},     {"dil", "di", "edi", "rdi"},
+        {"r8b", "r8w", "r8d", "r8"},     {"r9b", "r9w", "r9d", "r9"},
+        {"r10b", "r10w", "r10d", "r10"}, {"r11b", "r11w", "r11d", "r11"},
+        {"r12b", "r12w", "r12d", "r12"}, {"r13b", "r13w", "r13d", "r13"},
+        {"r14b", "r14w", "r14d", "r14"}, {"r15b", "r15w", "r15d", "r15"}};
+    for (unsigned reg = 0; reg < 16; ++reg)
+        for (const auto *alias : names[reg])
+            if (name == alias)
+                return uint16_t(1u << reg);
+    static const char *const high[] = {"ah", "ch", "dh", "bh"};
+    for (unsigned reg = 0; reg < 4; ++reg)
+        if (name == high[reg])
+            return uint16_t(1u << reg);
+    return 0;
+}
+
+bool undefined_effect(uint64_t ea, unsigned mode, NativeUndefinedEffect &effect)
+{
+    insn_t insn;
+    if (decode_insn(&insn, ea_t(ea)) <= 0 || !insn.size || insn.size > 15 ||
+        (mode == 64 ? !mode64(insn) : !mode32(insn)) || !natad(insn) || insn.segpref)
+        return false;
+    effect = {};
+    effect.address = ea;
+    effect.next = ea + insn.size;
+    effect.bytes.resize(insn.size);
+    if (get_bytes(effect.bytes.data(), insn.size, ea_t(ea)) != insn.size)
+        return false;
+    // Only operand-size and REX prefixes are represented by this flat model.
+    for (uint8_t byte : effect.bytes)
+    {
+        if (byte == 0x66 || (mode == 64 && (byte & 0xf0) == 0x40))
+            continue;
+        if (byte == 0x67 || byte == 0xf0 || byte == 0xf2 || byte == 0xf3 || byte == 0x26 ||
+            byte == 0x2e || byte == 0x36 || byte == 0x3e || byte == 0x64 || byte == 0x65)
+            return false;
+        break;
+    }
+    auto memory = [](const op_t &op)
+    { return op.type == o_mem || op.type == o_phrase || op.type == o_displ; };
+    auto address = [&](const op_t &op, uint16_t &mask)
+    {
+        for (int index : {x86_base_reg(insn, op), x86_index_reg(insn, op)})
+        {
+            if (index == R_none || index == R_ip)
+                continue;
+            op_t reg;
+            reg.type = o_reg;
+            reg.reg = uint16_t(index);
+            reg.dtype = mode == 64 ? dt_qword : dt_dword;
+            const auto bit = undefined_gpr(reg);
+            if (!bit)
+                return false;
+            mask |= bit;
+        }
+        return true;
+    };
+    auto read = [&](const op_t &op)
+    {
+        if (op.type == o_reg)
+        {
+            const auto bit = undefined_gpr(op);
+            if (!bit)
+                return false;
+            effect.reads |= bit;
+            return true;
+        }
+        if (memory(op))
+            return address(op, effect.addresses);
+        return op.type == o_imm;
+    };
+    auto write = [&](const op_t &op)
+    {
+        if (op.type == o_reg)
+        {
+            const auto bit = undefined_gpr(op);
+            if (!bit)
+                return false;
+            effect.writes |= bit;
+            if (get_dtype_size(op.dtype) >= 4)
+                effect.replaces |= bit;
+            return true;
+        }
+        if (!memory(op) || !address(op, effect.addresses))
+            return false;
+        effect.observable |= effect.reads;
+        return effect.flag_reads == 0;
+    };
+    constexpr uint8_t cf = 1, pf = 2, af = 4, zf = 8, sf = 16, of = 32, all = 63;
+    switch (insn.itype)
+    {
+    case NN_bswap:
+        if (insn.Op1.type != o_reg || !undefined_gpr(insn.Op1))
+            return false;
+        if (get_dtype_size(insn.Op1.dtype) == 2)
+        {
+            effect.writes = undefined_gpr(insn.Op1);
+            effect.undefined_registers = effect.writes;
+            return true;
+        }
+        return read(insn.Op1) && write(insn.Op1);
+    case NN_mov:
+    case NN_movzx:
+    case NN_movsx:
+    case NN_movsxd:
+        return read(insn.Op2) && write(insn.Op1);
+    case NN_lea:
+        return memory(insn.Op2) && address(insn.Op2, effect.reads) && write(insn.Op1);
+    case NN_not:
+        return read(insn.Op1) && write(insn.Op1);
+    case NN_add:
+    case NN_sub:
+    case NN_cmp:
+    case NN_and:
+    case NN_or:
+    case NN_xor:
+    case NN_test:
+    case NN_adc:
+    case NN_sbb:
+        effect.flag_writes = all;
+        if (insn.itype == NN_and || insn.itype == NN_or || insn.itype == NN_xor ||
+            insn.itype == NN_test)
+        {
+            effect.flag_constants = cf | of;
+            effect.flag_undefined = af;
+        }
+        if (insn.itype == NN_adc || insn.itype == NN_sbb)
+            effect.flag_reads = cf;
+        if (!read(insn.Op1) || !read(insn.Op2))
+            return false;
+        if ((insn.itype == NN_xor || insn.itype == NN_sub) && insn.Op1.type == o_reg &&
+            insn.Op2.type == o_reg && insn.Op1.reg == insn.Op2.reg &&
+            insn.Op1.dtype == insn.Op2.dtype)
+            effect.reads = 0;
+        return insn.itype == NN_cmp || insn.itype == NN_test || write(insn.Op1);
+    case NN_neg:
+    case NN_inc:
+    case NN_dec:
+        effect.flag_writes = insn.itype == NN_neg ? all : uint8_t(all & ~cf);
+        return read(insn.Op1) && write(insn.Op1);
+    case NN_rol:
+    case NN_ror:
+    case NN_rcl:
+    case NN_rcr:
+    case NN_shl:
+    case NN_sal:
+    case NN_shr:
+    case NN_sar:
+        effect.flag_writes = (insn.itype == NN_shl || insn.itype == NN_sal ||
+                              insn.itype == NN_shr || insn.itype == NN_sar)
+                                 ? all
+                                 : uint8_t(cf | of);
+        effect.flag_undefined = effect.flag_writes == all ? uint8_t(af | of) : of;
+        if (insn.itype == NN_shl || insn.itype == NN_sal || insn.itype == NN_shr)
+            effect.flag_undefined |= cf;
+        effect.may_preserve_flags = true;
+        if (insn.itype == NN_rcl || insn.itype == NN_rcr)
+            effect.flag_reads = cf;
+        return read(insn.Op1) && read(insn.Op2) && write(insn.Op1);
+    case NN_bt:
+    case NN_bts:
+    case NN_btr:
+    case NN_btc:
+        effect.flag_writes = all;
+        effect.flag_undefined = all & ~cf;
+        return insn.Op1.type == o_reg && read(insn.Op1) && read(insn.Op2) &&
+               (insn.itype == NN_bt || write(insn.Op1));
+    case NN_clc:
+    case NN_stc:
+        effect.flag_writes = effect.flag_constants = cf;
+        return true;
+    case NN_cmc:
+        effect.flag_reads = effect.flag_writes = cf;
+        return true;
+    case NN_push:
+        if (!read(insn.Op1) || get_dtype_size(insn.Op1.dtype) != mode / 8)
+            return false;
+        effect.observable = effect.reads;
+        effect.addresses |= uint16_t(1) << 4;
+        return true;
+    case NN_pop:
+        if (insn.Op1.type != o_reg || get_dtype_size(insn.Op1.dtype) != mode / 8 ||
+            undefined_gpr(insn.Op1) == (uint16_t(1) << 4))
+            return false;
+        effect.addresses = uint16_t(1) << 4;
+        return write(insn.Op1);
+    case NN_cdq:
+    case NN_cqo:
+        effect.reads = 1;
+        effect.writes = effect.replaces = uint16_t(1) << 2;
+        return true;
+    case NN_jmp:
+    case NN_jmpshort:
+        if (insn.Op1.type != o_near)
+            return false;
+        effect.next = to_ea(insn.cs, insn.Op1.addr);
+        return true;
+    case NN_cwd:
+        effect.reads = 1;
+        effect.writes = uint16_t(1) << 2;
+        return true;
+    case NN_cbw:
+    case NN_cwde:
+    case NN_cdqe:
+        effect.reads = effect.writes = 1;
+        effect.replaces = insn.itype == NN_cbw ? 0 : 1;
+        return true;
+    case NN_bsf:
+    case NN_bsr:
+        // Preserve destination dependence for the undefined zero-source case.
+        effect.flag_writes = all;
+        effect.flag_undefined = all & ~zf;
+        effect.conditional = true;
+        effect.nondeterministic_registers = undefined_gpr(insn.Op1);
+        return insn.Op1.type == o_reg && read(insn.Op1) && read(insn.Op2) && write(insn.Op1);
+    case NN_xchg:
+        return insn.Op1.type == o_reg && insn.Op2.type == o_reg && read(insn.Op1) &&
+               read(insn.Op2) && write(insn.Op1) && write(insn.Op2);
+    case NN_nop:
+        return true;
+    default:
+        break;
+    }
+    // Canonical CMOV names select the exact condition's status dependencies.
+    const char *canonical = insn.get_canon_mnem(PH);
+    if (!canonical)
+        return false;
+    const std::string mnemonic = canonical;
+    const bool set = mnemonic.compare(0, 3, "set") == 0;
+    const std::string condition_name = set ? "cmov" + mnemonic.substr(3) : mnemonic;
+    static const std::map<std::string, uint8_t> conditions = {{"cmovo", of},
+                                                              {"cmovno", of},
+                                                              {"cmovb", cf},
+                                                              {"cmovnb", cf},
+                                                              {"cmovz", zf},
+                                                              {"cmovnz", zf},
+                                                              {"cmovbe", uint8_t(cf | zf)},
+                                                              {"cmova", uint8_t(cf | zf)},
+                                                              {"cmovs", sf},
+                                                              {"cmovns", sf},
+                                                              {"cmovp", pf},
+                                                              {"cmovnp", pf},
+                                                              {"cmovl", uint8_t(sf | of)},
+                                                              {"cmovge", uint8_t(sf | of)},
+                                                              {"cmovle", uint8_t(zf | sf | of)},
+                                                              {"cmovg", uint8_t(zf | sf | of)},
+                                                              {"cmovnbe", uint8_t(cf | zf)},
+                                                              {"cmovnl", uint8_t(sf | of)},
+                                                              {"cmovnle", uint8_t(zf | sf | of)},
+                                                              {"cmove", zf},
+                                                              {"cmovne", zf},
+                                                              {"cmovae", cf}};
+    const auto condition = conditions.find(condition_name);
+    if (condition == conditions.end() || insn.Op1.type != o_reg)
+        return false;
+    effect.flag_reads = condition->second;
+    effect.conditional = !set;
+    return set ? write(insn.Op1) : read(insn.Op1) && read(insn.Op2) && write(insn.Op1);
+}
+
 bool decode_native(uint64_t ea, const uint8_t *expected, size_t offered, rax_decoded &out,
-                   unsigned mode)
+                   unsigned mode, bool undefined_slice = false)
 {
     insn_t insn;
     if (decode_insn(&insn, ea_t(ea)) <= 0 || !insn.size || insn.size > offered ||
@@ -558,7 +833,7 @@ bool decode_native(uint64_t ea, const uint8_t *expected, size_t offered, rax_dec
         return false;
     // The 16-bit BSWAP encoding has undefined architectural results. The native
     // capture contract does not choose the emulator's result as hardware truth.
-    if (insn.itype == NN_bswap && get_dtype_size(insn.Op1.dtype) != 4 &&
+    if (!undefined_slice && insn.itype == NN_bswap && get_dtype_size(insn.Op1.dtype) != 4 &&
         get_dtype_size(insn.Op1.dtype) != 8)
         return false;
     out = {};
@@ -860,11 +1135,49 @@ static std::string trace_native_region_impl(
         std::any_of(explicit_input->args.begin(), explicit_input->args.end(),
                     [](uint64_t value) { return value > UINT32_MAX; }))
         return unavailable("argument exceeds architecture width", candidate_entry);
+    std::map<uint64_t, NativeUndefinedSlice> undefined_slices;
+    const NativeUndefinedOracle undefined_oracle = [&](uint64_t address)
+    {
+        const auto found = undefined_slices.find(address);
+        return found == undefined_slices.end() ? nullptr : &found->second;
+    };
     const NativeDecoder decoder =
-        runtime_shadow ? NativeDecoder{}
-                       : NativeDecoder{[mode](uint64_t ea, const uint8_t *data, size_t size,
-                                              rax_decoded &decoded)
-                                       { return decode_native(ea, data, size, decoded, mode); }};
+        runtime_shadow
+            ? NativeDecoder{}
+            : NativeDecoder{
+                  [&](uint64_t ea, const uint8_t *data, size_t size, rax_decoded &decoded)
+                  {
+                      if (decode_native(ea, data, size, decoded, mode))
+                          return true;
+                      for (const auto &record : undefined_slices)
+                          for (const auto &step : record.second.steps)
+                              if (step.effect.address == ea && step.effect.undefined_registers)
+                                  return decode_native(ea, data, size, decoded, mode, true);
+                      if (!bindings || undefined_slices.size() >= 256)
+                          return false;
+                      NativeUndefinedEffect first;
+                      if (!undefined_effect(ea, mode, first))
+                          return false;
+                      auto slice = certify_native_undefined_slice(
+                          ea, first.writes,
+                          [&](uint64_t pc, NativeUndefinedEffect &effect)
+                          {
+                              if (!undefined_effect(pc, mode, effect))
+                                  return false;
+                              const auto *segment = image.segment_at(pc);
+                              const auto bytes = image.loaded_view(pc, effect.bytes.size());
+                              return segment && segment->bitness == (mode == 64 ? 2 : 1) &&
+                                     segment->kind == HybridSegmentKind::NORMAL &&
+                                     segment->has_perm(HybridSegPerm::EXEC) &&
+                                     bytes.size == effect.bytes.size() &&
+                                     std::equal(effect.bytes.begin(), effect.bytes.end(),
+                                                bytes.data);
+                          });
+                      if (!slice.end || !decode_native(ea, data, size, decoded, mode, true))
+                          return false;
+                      undefined_slices.emplace(ea, std::move(slice));
+                      return true;
+                  }};
     auto region = plan_native_region(image, api, function, runtime_shadow ? 16384 : 4096, decoder);
     if (!region.available())
         return unavailable("entry has no admissible native instruction", candidate_entry);
@@ -879,12 +1192,13 @@ static std::string trace_native_region_impl(
     EmuEvents events;
     EmuOutcome outcome;
     const uint64_t initial_identity = region.identity();
-    const bool ran =
-        bindings ? driver.emulate_region_temporal(region, config, events, outcome, decoder, &input)
-        : walk   ? driver.emulate_region_walk(region, config, events, outcome, decoder, 64, &input,
-                                              check)
-        : sample_states ? driver.emulate_region_states(region, config, events, outcome, &input)
-                        : driver.emulate_region(region, config, events, outcome, &input);
+    const bool ran = bindings ? driver.emulate_region_temporal(region, config, events, outcome,
+                                                               decoder, &input, undefined_oracle)
+                     : walk   ? driver.emulate_region_walk(region, config, events, outcome, decoder,
+                                                           64, &input, check)
+                     : sample_states
+                         ? driver.emulate_region_states(region, config, events, outcome, &input)
+                         : driver.emulate_region(region, config, events, outcome, &input);
     static std::atomic<uint64_t> next_capture{1};
     uint64_t capture = next_capture.load();
     while (capture != UINT64_MAX && !next_capture.compare_exchange_weak(capture, capture + 1))
@@ -1047,6 +1361,11 @@ static std::string trace_native_region_impl(
         << ",\"stop_status\":" << outcome.stop_status
         << ",\"stop_pc\":" << inspection_json_quote(hex(outcome.stop_pc))
         << ",\"instruction_count\":" << outcome.instruction_count
+        << ",\"abstract_instruction_count\":" << outcome.abstract_instruction_count
+        << ",\"undefined_result_incomplete\":"
+        << (outcome.native_undefined_incomplete ? "true" : "false")
+        << ",\"unknown_register_mask\":" << outcome.native_unknown_registers
+        << ",\"unknown_flag_mask\":" << unsigned(outcome.native_unknown_flags)
         << ",\"instruction_budget\":" << config.max_insns
         << ",\"entry_sp\":" << inspection_json_quote(hex(outcome.entry_sp))
         << ",\"explicit_input\":" << (explicit_input ? "true" : "false")
@@ -1139,6 +1458,45 @@ static std::string trace_native_region_impl(
     inspection_json_rows(out, "environment_bindings", models);
     inspection_json_rows(out, "allocations", allocations);
     inspection_json_rows(out, "uses", uses);
+    out << ",\"undefined_result_slices\":[";
+    bool first_slice = true;
+    for (const auto &record : outcome.native_undefined_slices)
+    {
+        const auto &slice = record.slice;
+        if (!first_slice)
+            out << ',';
+        first_slice = false;
+        out << "{\"entry\":" << inspection_json_quote(hex(slice.entry))
+            << ",\"end\":" << inspection_json_quote(hex(slice.end))
+            << ",\"sequence\":" << record.sequence << ",\"destination\":" << slice.destination
+            << ",\"steps\":[";
+        bool first_step = true;
+        for (const auto &step : slice.steps)
+        {
+            const auto &effect = step.effect;
+            if (!first_step)
+                out << ',';
+            first_step = false;
+            out << "{\"site\":" << inspection_json_quote(hex(effect.address))
+                << ",\"next\":" << inspection_json_quote(hex(effect.next))
+                << ",\"bytes\":" << inspection_json_quote(bytes(effect.bytes))
+                << ",\"reads\":" << effect.reads << ",\"writes\":" << effect.writes
+                << ",\"replaces\":" << effect.replaces << ",\"addresses\":" << effect.addresses
+                << ",\"undefined_registers\":" << effect.undefined_registers
+                << ",\"nondeterministic_registers\":" << effect.nondeterministic_registers
+                << ",\"observable\":" << effect.observable
+                << ",\"flag_reads\":" << unsigned(effect.flag_reads)
+                << ",\"flag_writes\":" << unsigned(effect.flag_writes)
+                << ",\"flag_constants\":" << unsigned(effect.flag_constants)
+                << ",\"flag_undefined\":" << unsigned(effect.flag_undefined)
+                << ",\"conditional\":" << (effect.conditional ? "true" : "false")
+                << ",\"may_preserve_flags\":" << (effect.may_preserve_flags ? "true" : "false")
+                << ",\"unknown_registers\":" << step.unknown_registers
+                << ",\"unknown_flags\":" << unsigned(step.unknown_flags) << '}';
+        }
+        out << "]}";
+    }
+    out << ']';
     if (check)
     {
         out << ",\"native_observations\":{\"available\":"
@@ -1394,7 +1752,12 @@ static std::string inspect_native_temporal_strings_impl(uint64_t function,
              {"boundary_target", hex(run.outcome.region_boundary_target)},
              {"stop", hybrid_emu_outcome_name(run.outcome)},
              {"site", hex(run.outcome.stop_pc)},
-             {"instructions", std::to_string(run.outcome.instruction_count)}});
+             {"instructions", std::to_string(run.outcome.instruction_count)},
+             {"abstract_instructions", std::to_string(run.outcome.abstract_instruction_count)},
+             {"undefined_result_slices",
+              std::to_string(run.outcome.native_undefined_slices.size())},
+             {"undefined_result_incomplete",
+              run.outcome.native_undefined_incomplete ? "true" : "false"}});
     const size_t count = std::min<size_t>(64, projection.observations.size());
     for (size_t index = 0; index < count; ++index)
     {
@@ -1468,7 +1831,10 @@ static std::string inspect_native_temporal_strings_impl(uint64_t function,
         << inspection_json_quote(
                prefix
                    ? "four seeded runs under explicit named ABI models; only complete event prefixes compared; execution return reported separately; no unique-input or callee-equivalence proof"
-                   : "four seeded runs under explicit named ABI models; immutable byte snapshots; no unique-input or callee-equivalence proof");
+                   : "four seeded runs under explicit named ABI models; immutable byte snapshots; no unique-input or callee-equivalence proof")
+        << ",\"undefined_result_contract\":"
+        << inspection_json_quote(
+               "undefined register values are not observed; bounded closed dependence slices must remove every introduced register and flag dependence before observable use; abstract steps are reported separately");
     inspection_json_rows(out, "observations", observations);
     inspection_json_rows(out, "witnesses", witnesses);
     inspection_json_rows(out, "fragments", fragments);

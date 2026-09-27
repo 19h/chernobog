@@ -81,6 +81,16 @@ try:
         "four retained capture identities",
         len(snapshot["runs"]) == 4 and len({row["capture"] for row in snapshot["runs"]}) == 4,
     )
+    check(
+        "undefined-result modeling is explicit in the inspection view",
+        snapshot["undefined_result_contract"]
+        and all(
+            int(row["abstract_instructions"]) >= 0
+            and int(row["undefined_result_slices"]) >= 0
+            and (row["complete"] != "true" or row["undefined_result_incomplete"] == "false")
+            for row in snapshot["runs"]
+        ),
+    )
     expected = os.environ["CHERNOBOG_EXPECT_RETURN"] == "1"
     expected_values = os.environ.get("CHERNOBOG_EXPECT_STRINGS", str(int(expected))) == "1"
     check("all-run admission", snapshot["consensus_available"] == (True if prefix else expected))
