@@ -1,0 +1,141 @@
+{
+  "schema": 2,
+  "review_revision": "58183245cf292e668df0083590c7fc6bf17e87ae",
+  "scope": "62 reviewed named native PUSH/RET sites; flat unchanged-code normal-completion oracle, including matching DS/ES bases for i386 string-memory positives; the static API receives no segment-base contract and may abstain; no asynchronous memory mutation, execution fault proof, input predicate, or whole-program reachability claim",
+  "site_rule": "one independently decoded adjacent PUSH/RET before the next global df_ symbol; source EA is RET",
+  "source_sha256": {
+    "tests/vmp_native/dataflow.S": "46c95831d6f4ac820e0a00bf8682f0a6e75291ee55ab304b44ce1cea92ad7dbc",
+    "tests/vmp_native/dataflow_main.c": "db34d9794cdf8d0743b620e9abd455a054ced2f0e634e4fe60c697a14ed28d73",
+    "tests/vmp_native/ownerless_dataflow.S": "5709bca1aaa70864a0253f8a384d01f27bdb4410b523416374a1b99e16d8d840",
+    "tests/vmp_native/ownerless_dataflow.c": "36be13c5d99f627978999f107ad9d056418224e2ac37e9308b785e9f4f8e9f90",
+    "tests/ida_dataflow_probe.py": "dd219f802bfe555ffeedcecab070f6bd6a9e4ac8bb020e23fb175668f309aa27",
+    "tests/ida_ownerless_dataflow_probe.py": "9d0bf287ae24dc8775fe373fa94f0eeafce8ede57fc41e101d74600bac6ae02f",
+    "tests/score_native_edge_benchmark.py": "8060f3fb4be34737b70a576baa2eb95207891278008675bbe593198b7fe97be5",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/run_ownerless_dataflow.py": "70e7a94745fdd625f3ca13bad611b51e9a1b3276e155ca9ed04d94dc0d62641c",
+    "tests/vmp_native/ownerless_edge_main.c": "3925a9b30fe4a382c65817f79fbe0f13b74707e684ac0456ce5edc2f39986cd3"
+  },
+  "fixed": {
+    "df_stack_top_transfer": "df_stack_top_destination",
+    "df_stack_top_overwrite": "df_stack_top_overwritten_destination",
+    "df_memory_store_transfer": "df_memory_target",
+    "df_memory_direct_store": "df_memory_target",
+    "df_memory_split_store": "df_memory_target",
+    "df_memory_known_byte_overwrite": "df_memory_target",
+    "df_memory_repaired_byte": "df_memory_target",
+    "df_memory_xchg_store": "df_memory_target",
+    "df_memory_xchg_partial": "df_memory_target",
+    "df_memory_xchg_byte": "df_memory_target",
+    "df_memory_equal_stores": "df_memory_target",
+    "df_memory_disjoint_store": "df_memory_target",
+    "df_memory_overlapping_store": "df_memory_target",
+    "df_memory_alu_add": "df_memory_target",
+    "df_memory_alu_xor_byte": "df_memory_target",
+    "df_memory_alu_source": "df_memory_target",
+    "df_lods_memory_target": "df_memory_target",
+    "df_memory_xchg_load": "df_memory_target",
+    "df_memory_mov_load": "df_memory_target",
+    "df_memory_mov_load_byte": "df_memory_target",
+    "df_memory_movzx_byte": "df_memory_target",
+    "df_memory_movsx_byte": "df_memory_target",
+    "df_memory_movzx_word": "df_memory_target",
+    "df_memory_movsx_word": "df_memory_target",
+    "df_rep_movs_register_target": "df_memory_target",
+    "df_movs_plain_count_target": "df_memory_target",
+    "df_rep_movs_count_unknown": "df_memory_target",
+    "df_stos_register_target": "df_memory_target",
+    "df_rep_stos_count_target": "df_memory_target",
+    "df_rep_lods_count_target": "df_memory_target",
+    "df_stos_disjoint_target": "df_memory_target",
+    "df_stos_unknown_value_disjoint_target": "df_memory_target",
+    "df_stos_overlap_known_target": "df_memory_target",
+    "df_rep_stos_disjoint_target": "df_memory_target",
+    "df_movs_disjoint_target": "df_memory_target",
+    "df_movs_unknown_source_disjoint_target": "df_memory_target",
+    "df_movs_self_copy_target": "df_memory_target",
+    "df_rep_movs_disjoint_target": "df_memory_target",
+    "df_rep_movs_zero_target": "df_memory_target",
+    "df_rep_movs_one_disjoint_target": "df_memory_target",
+    "df_repe_cmps_one_count_target": "df_memory_target",
+    "df_repne_scas_one_count_target": "df_memory_target",
+    "df_lods_full_target": "df_memory_target",
+    "df_lods_byte_preserved_target": "df_memory_target"
+  },
+  "dynamic": {
+    "df_stack_top_dynamic": [
+      "df_stack_top_dynamic_seven",
+      "df_stack_top_dynamic_eight"
+    ],
+    "df_memory_conflicting_byte": [
+      "df_memory_byte_target_seven",
+      "df_memory_byte_target_eight"
+    ],
+    "df_memory_conflicting_store": [
+      "df_memory_target",
+      "df_memory_target_eight"
+    ]
+  },
+  "concrete_only": {
+    "df_memory_missing_byte": "df_memory_target",
+    "df_memory_stack_round_trip": "df_memory_target",
+    "df_memory_xchg_unknown_source": "df_memory_target",
+    "df_memory_initial_word": "df_memory_target",
+    "df_memory_unknown_alias": "df_memory_target",
+    "df_memory_alu_rmw_initial": "df_memory_target",
+    "df_memory_alu_rmw_alias": "df_memory_target",
+    "df_rep_movs_alias": "df_memory_target",
+    "df_stos_alias": "df_memory_target",
+    "df_memory_mov_load_initial": "df_memory_target",
+    "df_memory_mov_load_alias": "df_memory_target",
+    "df_memory_movzx_initial": "df_memory_target",
+    "df_memory_movzx_alias": "df_memory_target",
+    "df_memory_alu_initial": "df_memory_target",
+    "df_memory_alu_alias": "df_memory_target"
+  },
+  "native_input_domain": {
+    "first": 0,
+    "last": 255,
+    "dynamic_zero_return": 7,
+    "dynamic_nonzero_return": 8
+  },
+  "target_return_values": {
+    "df_stack_top_destination": 7,
+    "df_stack_top_overwritten_destination": 8,
+    "df_stack_top_dynamic_seven": 7,
+    "df_stack_top_dynamic_eight": 8,
+    "df_memory_target": 7,
+    "df_memory_target_eight": 8,
+    "df_memory_byte_target_seven": 7,
+    "df_memory_byte_target_eight": 8
+  },
+  "byte_patch_target_pair": [
+    "df_memory_byte_target_seven",
+    "df_memory_byte_target_eight"
+  ],
+  "native_checks": {
+    "owned": {
+      "x86_64": 37630,
+      "i386": 36350
+    },
+    "ownerless": {
+      "x86_64": 4606,
+      "i386": 4606
+    }
+  },
+  "review_basis": {
+    "fixed": "literal target, locally established writable/stack word, preserved register, or normal-completion count zero; reviewed in both assembly branches",
+    "dynamic": "ECX=0/nonzero selects the named 7/8 destinations; each is reachable in the driver input domain; complete cover is not a predicate-scoped edge",
+    "concrete_only": "native driver supplies initial writable bytes, disjoint argument/stack layout, or callback address absent from the static root contract"
+  },
+  "expected_population": {
+    "fixed_sites": 44,
+    "dynamic_sites": 3,
+    "eligible_sites": 47,
+    "oracle_edges": 50,
+    "concrete_only_sites": 15
+  },
+  "exact_binary_native_driver": {
+    "owned": "dataflow_main.c",
+    "ownerless": "ownerless_edge_main.c; dataflow_main.c followed by ownerless_dataflow.c; both result records required in every primary/corrupted native execution"
+  }
+}

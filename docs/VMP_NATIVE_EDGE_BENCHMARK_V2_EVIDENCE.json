@@ -1,0 +1,707 @@
+{
+  "schema": "chernobog.native-edge-benchmark.v2",
+  "parent_revision": "58183245cf292e668df0083590c7fc6bf17e87ae",
+  "phase": "precommit installed parent; benchmark harness and exact-binary oracle extension",
+  "review_complete": false,
+  "score": {
+    "path": "build/vmp-edge-v2-executed-score/native_edge_benchmark_v2.json",
+    "sha256": "eb419639da3c669a9ea1ebd81f6e5638c4d1608cbd8998889f7a2992c3093796"
+  },
+  "oracle_contract": {
+    "path": "tests/vmp_native/edge_oracle_v2.json",
+    "sha256": "49013ae63837f481a1b795eb3059d9bca99771b7eca48cc8aca2fbd8be0053b9"
+  },
+  "source_sha256": {
+    "tests/score_native_edge_benchmark_v2.py": "f0aed2e414097b8f60a6f39a40ae3095c968d7deb1dd9ff789df6ee0161351ae",
+    "tests/run_ownerless_dataflow.py": "70e7a94745fdd625f3ca13bad611b51e9a1b3276e155ca9ed04d94dc0d62641c",
+    "tests/vmp_native/ownerless_edge_main.c": "3925a9b30fe4a382c65817f79fbe0f13b74707e684ac0456ce5edc2f39986cd3",
+    "tests/vmp_native/edge_oracle_v2.json": "49013ae63837f481a1b795eb3059d9bca99771b7eca48cc8aca2fbd8be0053b9",
+    "tests/vmp_native/dataflow.S": "46c95831d6f4ac820e0a00bf8682f0a6e75291ee55ab304b44ce1cea92ad7dbc",
+    "tests/vmp_native/dataflow_main.c": "db34d9794cdf8d0743b620e9abd455a054ced2f0e634e4fe60c697a14ed28d73",
+    "tests/vmp_native/ownerless_dataflow.S": "5709bca1aaa70864a0253f8a384d01f27bdb4410b523416374a1b99e16d8d840",
+    "tests/vmp_native/ownerless_dataflow.c": "36be13c5d99f627978999f107ad9d056418224e2ac37e9308b785e9f4f8e9f90",
+    "tests/ida_dataflow_probe.py": "dd219f802bfe555ffeedcecab070f6bd6a9e4ac8bb020e23fb175668f309aa27",
+    "tests/ida_ownerless_dataflow_probe.py": "9d0bf287ae24dc8775fe373fa94f0eeafce8ede57fc41e101d74600bac6ae02f",
+    "tests/score_native_edge_benchmark.py": "8060f3fb4be34737b70a576baa2eb95207891278008675bbe593198b7fe97be5",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc"
+  },
+  "documentation_sha256": {
+    "docs/VMP_NATIVE_EDGE_BENCHMARK_V2.md": "e72ac727c9b1e9343a668c82241487e99f340d322d62c2bcdfbcd32e0f4115bb",
+    "docs/VMP_IMPLEMENTATION.md": "3ccda8438f88c1d78ea3091098b187ed6c71ab28e7d09c4334501b7a0c538c10"
+  },
+  "artifact_sha256": {
+    "tests/vmp_native/edge_oracle_v2.json": "49013ae63837f481a1b795eb3059d9bca99771b7eca48cc8aca2fbd8be0053b9",
+    "tests/score_native_edge_benchmark_v2.py": "f0aed2e414097b8f60a6f39a40ae3095c968d7deb1dd9ff789df6ee0161351ae",
+    "tests/vmp_native/dataflow.S": "46c95831d6f4ac820e0a00bf8682f0a6e75291ee55ab304b44ce1cea92ad7dbc",
+    "tests/vmp_native/dataflow_main.c": "db34d9794cdf8d0743b620e9abd455a054ced2f0e634e4fe60c697a14ed28d73",
+    "tests/vmp_native/ownerless_dataflow.S": "5709bca1aaa70864a0253f8a384d01f27bdb4410b523416374a1b99e16d8d840",
+    "tests/vmp_native/ownerless_dataflow.c": "36be13c5d99f627978999f107ad9d056418224e2ac37e9308b785e9f4f8e9f90",
+    "tests/ida_dataflow_probe.py": "dd219f802bfe555ffeedcecab070f6bd6a9e4ac8bb020e23fb175668f309aa27",
+    "tests/ida_ownerless_dataflow_probe.py": "9d0bf287ae24dc8775fe373fa94f0eeafce8ede57fc41e101d74600bac6ae02f",
+    "tests/score_native_edge_benchmark.py": "8060f3fb4be34737b70a576baa2eb95207891278008675bbe593198b7fe97be5",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/run_ownerless_dataflow.py": "70e7a94745fdd625f3ca13bad611b51e9a1b3276e155ca9ed04d94dc0d62641c",
+    "tests/vmp_native/ownerless_edge_main.c": "3925a9b30fe4a382c65817f79fbe0f13b74707e684ac0456ce5edc2f39986cd3",
+    "build/vmp-edge-v2-owned/dataflow_analysis.json": "5077e6d80c87af69fc62485deb9c21f0cd8c1488a273e9d95ef52bbba233262a",
+    "src/common/bounded_dataflow.h": "a8817441c1c23a421fc0f09468a3c9206eb54fd3da18f08906e531d90f909ee5",
+    "src/common/x86_abstract.h": "d2a8ce3abf04629e3ee18ffd30e277e15f0e786eb842d93eb5d1d736ad0f5538",
+    "src/ida_analysis/x86_analysis.cpp": "dcea4f7e73f32b5d9635a9369179f90e6312ed3f3a8525f441b8e87e8ad0360f",
+    "src/ida_analysis/x86_analysis.hpp": "b6279d1d543604b6696bb2e5df0e8d6a345597e25bfd495f872a605a4ad79fe1",
+    "src/ida_analysis/get_pc_ida.cpp": "0f53b3b3c65e3a07cc6446ed5c10f57928137db62aed49bd4462d3bdf19b115c",
+    "src/ida_analysis/native_engine.cpp": "5bd28d767c8fc0016f04124414c323a89d989db005728e8fe0ee31d7a65bb6fd",
+    "tests/x86_abstract_tests.cpp": "8d1e919db97a7bf9f813571e400bd9fc75c4d9b363c3bd302d51e9fc7fc7f3dd",
+    "tests/run_native_dataflow.py": "385936f899e272bd369165806afef43f1cd20c80484a3b1976d007c642fd6c04",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/vmp_corpus/linux32.py": "3e69027a6fa06a1c6b4693dd702f26a2f81cd07ac2bcc7775f711e42a8d99c09",
+    "tests/vmp_corpus/linux32_exec.py": "a0577238731548cde8e20c20299f61cc7fcf23b4602c33dfdbcd12f8c08793b0",
+    "build/vmp-edge-v2-owned/x86_64/dataflow": "097d912fd7d90b3c88561f0cec5a4734b91854e1c56caeb55c76df76724fbd45",
+    "build/vmp-edge-v2-owned/x86_64/inspection/run.json": "fcdf51f3f20d81f5c449bcfb7c2c7d584ef9c76b78895f4630f876ee97eebdeb",
+    "build/vmp-edge-v2-owned/x86_64/inspection/dataflow.json": "816f695609d4e20b542418b01925ac8db74ee6e2153475819c8bd1a72b02f925",
+    "build/vmp-edge-v2-owned/i386/dataflow": "7ae45e9d14a087fa921a624159448c203a8e2dcb79bcbbeea2563ff136f32428",
+    "build/vmp-edge-v2-owned/i386/inspection/run.json": "9ef8aacfbc38019d14b8c8a195089aa3c8e2464989ac76a3712573f341bde151",
+    "build/vmp-edge-v2-owned/i386/inspection/dataflow.json": "16e026503de459adf90e42e917af43a8361c95fc8dff90e361c98d30e5c94d70",
+    "build/vmp-edge-v2-ownerless-executed/ownerless_dataflow_analysis.json": "75b550d8f364cd0d75a7a8de37ce9752b3087e22e61062e76ade65fa668df7a8",
+    "src/ida_analysis/native_engine.hpp": "723025cf6519415d906227c29ab679e7557085648ef9bca21eb9f70e78ae88bb",
+    "src/plugin/idc_api.cpp": "8ba4053389ecea1774ff89488ae90eee2f407ebc19042ddb24e3944166dc98df",
+    "python/chernobog_evidence.py": "30bf869ae02de00d22f81708d87f3ffff161ec34808bccb3bad6252a8fccffa0",
+    "build/vmp-edge-v2-ownerless-executed/x86_64/ownerless": "a0b0d24d383db38835984a05cce33e12744a6a773eebf148103eda70084a6988",
+    "build/vmp-edge-v2-ownerless-executed/x86_64/ownerless-corrupt-equal": "95e46038e8db20d317a4ecb8e5849bacc8fdf27a5ee4617800a4de4722854f4b",
+    "build/vmp-edge-v2-ownerless-executed/x86_64/ownerless-corrupt-bswap": "cb68816672b7cc9b8d7cc7efb8a35bd5054787c8723f8df50cbdbae6892be12b",
+    "build/vmp-edge-v2-ownerless-executed/x86_64/inspection/run.json": "689665d50531e1798e824e62a8187a5abfd4fe46af8620062f5c60edcfa77e2d",
+    "build/vmp-edge-v2-ownerless-executed/x86_64/inspection/ownerless_dataflow.json": "6429d2309aba235eb5bd717c882d200b6ba3ea97e521b4945890a3874a3cce2d",
+    "build/vmp-edge-v2-ownerless-executed/i386/ownerless": "dc97874e4a62bccf022e34683a128008c15382297f7f917536795c70918178e4",
+    "build/vmp-edge-v2-ownerless-executed/i386/ownerless-corrupt-equal": "8fe6c18f1747f181bf7660f2991c79ebd62cf5c4544a84e68418291636ae9208",
+    "build/vmp-edge-v2-ownerless-executed/i386/ownerless-corrupt-bswap": "4f87d45c9c451ab8940b1345cdb72794caf24b06ac49f90d38cadff88833d006",
+    "build/vmp-edge-v2-ownerless-executed/i386/inspection/run.json": "187e9d5d2f7087e680f87c672ffdd73422752e34f110606f6e2c0df344ed67e9",
+    "build/vmp-edge-v2-ownerless-executed/i386/inspection/ownerless_dataflow.json": "625d50944bd11f8f3716fccd1a6ef0653e1dfd6cf43197e89d9338a262628b97"
+  },
+  "tools": {
+    "plugin_sha256": "5f8568e2cd8a0cd18adad31c0f26a10e0f67b559f073e595dfabc696475a8f7e",
+    "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+    "nm_sha256": "42da2421bff98120a4a2857285db866bfc327fdcc8713b1a0e104a0b8550850f",
+    "capstone": {
+      "version": "5.0.7",
+      "binding_sha256": "6f8a27fe069aa89a46974e189b5365d56eb5e02c2fd581d2fbfad7fbba51549f",
+      "library_sha256": "016084c6e70d929249a2abb22f1afda95095294e6cd70f509964ffc54006bf94"
+    }
+  },
+  "formatters": {
+    "black": "26.5.1",
+    "line_length": 100,
+    "black_check": {
+      "path": "build/vmp-edge-v2-black-check.log",
+      "sha256": "b9cf511501d306d2bd8355ccb165c8ddc0a6fdd62d7c72c4a7b1795cf8934c8c"
+    },
+    "clang_format": "23.0.0git b51054818b78dc395cd4d33f17cfb6e98a36a76d",
+    "clang_format_check": {
+      "path": "build/vmp-edge-v2-clang-format-check.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "profiles": {
+    "owned": {
+      "report": {
+        "path": "build/vmp-edge-v2-owned/dataflow_analysis.json",
+        "sha256": "5077e6d80c87af69fc62485deb9c21f0cd8c1488a273e9d95ef52bbba233262a"
+      },
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "probe_checks": 453,
+          "ida_log": {
+            "path": "build/vmp-edge-v2-owned/x86_64/inspection/ida.log",
+            "sha256": "46ea9cc68079f46c93a4518581ca8911fc85afe9ef517fe135932bcda1cd4dd5"
+          },
+          "build_log_lines": [
+            "[chernobog] build=58183245cf29 dirty=1 source=7c5bd2e72fff sdk=940 rax=a9757b274a3f dbctx=0"
+          ],
+          "native_result": {
+            "checks": 37630,
+            "passed": true
+          },
+          "binary_sha256": "097d912fd7d90b3c88561f0cec5a4734b91854e1c56caeb55c76df76724fbd45",
+          "native_exit": 0
+        },
+        {
+          "architecture": "i386",
+          "probe_checks": 386,
+          "ida_log": {
+            "path": "build/vmp-edge-v2-owned/i386/inspection/ida.log",
+            "sha256": "f9f909a69c0601e547c3d8f443c3ff0c2fd3facb158291cab6c5477e1354f476"
+          },
+          "build_log_lines": [
+            "[chernobog] build=58183245cf29 dirty=1 source=7c5bd2e72fff sdk=940 rax=a9757b274a3f dbctx=0"
+          ],
+          "native_result": {
+            "checks": 36350,
+            "passed": true
+          },
+          "binary_sha256": "7ae45e9d14a087fa921a624159448c203a8e2dcb79bcbbeea2563ff136f32428",
+          "native_exit": 0
+        }
+      ]
+    },
+    "ownerless": {
+      "report": {
+        "path": "build/vmp-edge-v2-ownerless-executed/ownerless_dataflow_analysis.json",
+        "sha256": "75b550d8f364cd0d75a7a8de37ce9752b3087e22e61062e76ade65fa668df7a8"
+      },
+      "runs": [
+        {
+          "architecture": "x86_64",
+          "probe_checks": 1730,
+          "ida_log": {
+            "path": "build/vmp-edge-v2-ownerless-executed/x86_64/inspection/ida.log",
+            "sha256": "8159e35036f2ef24039578f0c2a6e9836e8b5b2295f5336a407314beca982f64"
+          },
+          "build_log_lines": [
+            "[chernobog] build=58183245cf29 dirty=1 source=7c5bd2e72fff sdk=940 rax=a9757b274a3f dbctx=0"
+          ],
+          "executions": [
+            {
+              "corruption": "none",
+              "binary_sha256": "a0b0d24d383db38835984a05cce33e12744a6a773eebf148103eda70084a6988",
+              "result": {
+                "checks": 4606,
+                "passed": true
+              },
+              "edge_native_result": {
+                "checks": 37630,
+                "passed": true
+              },
+              "native_exit": 0
+            },
+            {
+              "corruption": "equal",
+              "binary_sha256": "95e46038e8db20d317a4ecb8e5849bacc8fdf27a5ee4617800a4de4722854f4b",
+              "result": {
+                "checks": 0,
+                "passed": false,
+                "case": "od_equal",
+                "actual": 1,
+                "expected": 0
+              },
+              "edge_native_result": {
+                "checks": 37630,
+                "passed": true
+              },
+              "native_exit": 1
+            },
+            {
+              "corruption": "bswap",
+              "binary_sha256": "cb68816672b7cc9b8d7cc7efb8a35bd5054787c8723f8df50cbdbae6892be12b",
+              "result": {
+                "checks": 1,
+                "passed": false,
+                "case": "od_bswap_flag",
+                "actual": 1,
+                "expected": 0
+              },
+              "edge_native_result": {
+                "checks": 37630,
+                "passed": true
+              },
+              "native_exit": 1
+            }
+          ]
+        },
+        {
+          "architecture": "i386",
+          "probe_checks": 1680,
+          "ida_log": {
+            "path": "build/vmp-edge-v2-ownerless-executed/i386/inspection/ida.log",
+            "sha256": "fc177eb00417a5951503ad96e0cdb3c959e36452fd10a54376a13b2587b5c2ef"
+          },
+          "build_log_lines": [
+            "[chernobog] build=58183245cf29 dirty=1 source=7c5bd2e72fff sdk=940 rax=a9757b274a3f dbctx=0"
+          ],
+          "executions": [
+            {
+              "corruption": "none",
+              "binary_sha256": "dc97874e4a62bccf022e34683a128008c15382297f7f917536795c70918178e4",
+              "result": {
+                "checks": 4606,
+                "passed": true
+              },
+              "edge_native_result": {
+                "checks": 36350,
+                "passed": true
+              },
+              "native_exit": 0
+            },
+            {
+              "corruption": "equal",
+              "binary_sha256": "8fe6c18f1747f181bf7660f2991c79ebd62cf5c4544a84e68418291636ae9208",
+              "result": {
+                "checks": 0,
+                "passed": false,
+                "case": "od_equal",
+                "actual": 1,
+                "expected": 0
+              },
+              "edge_native_result": {
+                "checks": 36350,
+                "passed": true
+              },
+              "native_exit": 1
+            },
+            {
+              "corruption": "bswap",
+              "binary_sha256": "4f87d45c9c451ab8940b1345cdb72794caf24b06ac49f90d38cadff88833d006",
+              "result": {
+                "checks": 1,
+                "passed": false,
+                "case": "od_bswap_flag",
+                "actual": 1,
+                "expected": 0
+              },
+              "edge_native_result": {
+                "checks": 36350,
+                "passed": true
+              },
+              "native_exit": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "runtimes": {
+    "x86_64": "macOS x86-64 process; translated on arm64 hosts",
+    "i386": {
+      "image_id": "sha256:91a6e07bec9b5ef76ccee2f076aa419b5e79a93e15c69de67017e0b8a3a38bc2",
+      "container_architecture": "arm64",
+      "execution": "qemu-i386 user-mode translation in Linux container",
+      "sha256": {
+        "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+        "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+        "qemu-i386": "ab3616f72fd2ec26ba9e1cb931d3bcd9f243471cf482785381bedc2907b3b085",
+        "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+        "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+      },
+      "qemu_version": [
+        "qemu-i386 version 9.2.0",
+        "Copyright (c) 2003-2024 Fabrice Bellard and the QEMU Project developers"
+      ],
+      "packages": [
+        "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+        "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+        "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+        "libc6-i386-cross\t2.39-0ubuntu8cross1",
+        "python3\t3.12.3-0ubuntu2.1",
+        "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+      ]
+    }
+  },
+  "score_rows": [
+    {
+      "architecture": "x86_64",
+      "analysis": "owned",
+      "binary_sha256": "097d912fd7d90b3c88561f0cec5a4734b91854e1c56caeb55c76df76724fbd45",
+      "native_checks": 37630,
+      "probe_checks": 453,
+      "counts": {
+        "eligible_sites": 47,
+        "oracle_edges": 50,
+        "correct_edges": 42,
+        "false_edges": 0,
+        "unresolved_candidates": 5,
+        "complete_covers": 45,
+        "exact_covers": 45,
+        "unsound_covers": 0,
+        "sound_superset_covers": 0,
+        "incomplete_covers": 2,
+        "complete_cover_missing_members": 0,
+        "complete_cover_extra_members": 0,
+        "concrete_only_candidates": 15,
+        "concrete_only_unresolved": 15,
+        "concrete_only_matching_targets": 0,
+        "concrete_only_mismatches": 0,
+        "cover_reasons": {
+          "current_scalar_target_proof": 42,
+          "incomplete_source": 2,
+          "every_represented_input_has_an_exact_source": 3
+        },
+        "missed_oracle_edges": 8
+      },
+      "resource_scope": "outer wait4 runner child including launch; not isolated IDA resource use",
+      "elapsed_s": 18.482735666,
+      "peak_resident_bytes": 179863552,
+      "capture_mutation_controls": 15,
+      "fixed_misses": [
+        "df_rep_stos_disjoint_target",
+        "df_rep_movs_disjoint_target"
+      ],
+      "dynamic_covers": [
+        {
+          "name": "df_stack_top_dynamic",
+          "oracle_targets": [
+            "0x100000930",
+            "0x100000940"
+          ],
+          "cover_members": [
+            "0x100000930",
+            "0x100000940"
+          ],
+          "edge_outcome": "unresolved",
+          "cover_outcome": "exact"
+        },
+        {
+          "name": "df_memory_conflicting_byte",
+          "oracle_targets": [
+            "0x100001b00",
+            "0x100001b06"
+          ],
+          "cover_members": [
+            "0x100001b00",
+            "0x100001b06"
+          ],
+          "edge_outcome": "unresolved",
+          "cover_outcome": "exact"
+        },
+        {
+          "name": "df_memory_conflicting_store",
+          "oracle_targets": [
+            "0x100001ab0",
+            "0x100001ac0"
+          ],
+          "cover_members": [
+            "0x100001ab0",
+            "0x100001ac0"
+          ],
+          "edge_outcome": "unresolved",
+          "cover_outcome": "exact"
+        }
+      ]
+    },
+    {
+      "architecture": "i386",
+      "analysis": "owned",
+      "binary_sha256": "7ae45e9d14a087fa921a624159448c203a8e2dcb79bcbbeea2563ff136f32428",
+      "native_checks": 36350,
+      "probe_checks": 386,
+      "counts": {
+        "eligible_sites": 47,
+        "oracle_edges": 50,
+        "correct_edges": 33,
+        "false_edges": 0,
+        "unresolved_candidates": 14,
+        "complete_covers": 36,
+        "exact_covers": 36,
+        "unsound_covers": 0,
+        "sound_superset_covers": 0,
+        "incomplete_covers": 11,
+        "complete_cover_missing_members": 0,
+        "complete_cover_extra_members": 0,
+        "concrete_only_candidates": 15,
+        "concrete_only_unresolved": 15,
+        "concrete_only_matching_targets": 0,
+        "concrete_only_mismatches": 0,
+        "cover_reasons": {
+          "current_scalar_target_proof": 33,
+          "incomplete_source": 11,
+          "every_represented_input_has_an_exact_source": 3
+        },
+        "missed_oracle_edges": 17
+      },
+      "resource_scope": "outer wait4 runner child including launch; not isolated IDA resource use",
+      "elapsed_s": 22.424555208,
+      "peak_resident_bytes": 147095552,
+      "capture_mutation_controls": 15,
+      "fixed_misses": [
+        "df_stos_disjoint_target",
+        "df_stos_unknown_value_disjoint_target",
+        "df_stos_overlap_known_target",
+        "df_rep_stos_disjoint_target",
+        "df_movs_disjoint_target",
+        "df_movs_unknown_source_disjoint_target",
+        "df_movs_self_copy_target",
+        "df_rep_movs_disjoint_target",
+        "df_rep_movs_one_disjoint_target",
+        "df_lods_full_target",
+        "df_lods_byte_preserved_target"
+      ],
+      "dynamic_covers": [
+        {
+          "name": "df_stack_top_dynamic",
+          "oracle_targets": [
+            "0x804a240",
+            "0x804a250"
+          ],
+          "cover_members": [
+            "0x804a240",
+            "0x804a250"
+          ],
+          "edge_outcome": "unresolved",
+          "cover_outcome": "exact"
+        },
+        {
+          "name": "df_memory_conflicting_byte",
+          "oracle_targets": [
+            "0x804b400",
+            "0x804b406"
+          ],
+          "cover_members": [
+            "0x804b400",
+            "0x804b406"
+          ],
+          "edge_outcome": "unresolved",
+          "cover_outcome": "exact"
+        },
+        {
+          "name": "df_memory_conflicting_store",
+          "oracle_targets": [
+            "0x804b310",
+            "0x804b320"
+          ],
+          "cover_members": [
+            "0x804b310",
+            "0x804b320"
+          ],
+          "edge_outcome": "unresolved",
+          "cover_outcome": "exact"
+        }
+      ]
+    },
+    {
+      "architecture": "x86_64",
+      "analysis": "ownerless",
+      "binary_sha256": "a0b0d24d383db38835984a05cce33e12744a6a773eebf148103eda70084a6988",
+      "native_checks": 4606,
+      "probe_checks": 1730,
+      "counts": {
+        "eligible_sites": 47,
+        "oracle_edges": 50,
+        "correct_edges": 42,
+        "false_edges": 0,
+        "unresolved_candidates": 5,
+        "complete_covers": 45,
+        "exact_covers": 45,
+        "unsound_covers": 0,
+        "sound_superset_covers": 0,
+        "incomplete_covers": 2,
+        "complete_cover_missing_members": 0,
+        "complete_cover_extra_members": 0,
+        "concrete_only_candidates": 15,
+        "concrete_only_unresolved": 15,
+        "concrete_only_matching_targets": 0,
+        "concrete_only_mismatches": 0,
+        "cover_reasons": {
+          "current_scalar_target_fact": 42,
+          "incomplete_source": 2,
+          "every_represented_input_has_an_exact_source": 3
+        },
+        "missed_oracle_edges": 8
+      },
+      "resource_scope": "outer wait4 runner child including launch; not isolated IDA resource use",
+      "elapsed_s": 34.546825,
+      "peak_resident_bytes": 184483840,
+      "capture_mutation_controls": 15,
+      "fixed_misses": [
+        "df_rep_stos_disjoint_target",
+        "df_rep_movs_disjoint_target"
+      ],
+      "dynamic_covers": [
+        {
+          "name": "df_stack_top_dynamic",
+          "oracle_targets": [
+            "0x100000930",
+            "0x100000940"
+          ],
+          "cover_members": [
+            "0x100000930",
+            "0x100000940"
+          ],
+          "edge_outcome": "unresolved",
+          "cover_outcome": "exact"
+        },
+        {
+          "name": "df_memory_conflicting_byte",
+          "oracle_targets": [
+            "0x100001b00",
+            "0x100001b06"
+          ],
+          "cover_members": [
+            "0x100001b00",
+            "0x100001b06"
+          ],
+          "edge_outcome": "unresolved",
+          "cover_outcome": "exact"
+        },
+        {
+          "name": "df_memory_conflicting_store",
+          "oracle_targets": [
+            "0x100001ab0",
+            "0x100001ac0"
+          ],
+          "cover_members": [
+            "0x100001ab0",
+            "0x100001ac0"
+          ],
+          "edge_outcome": "unresolved",
+          "cover_outcome": "exact"
+        }
+      ]
+    },
+    {
+      "architecture": "i386",
+      "analysis": "ownerless",
+      "binary_sha256": "dc97874e4a62bccf022e34683a128008c15382297f7f917536795c70918178e4",
+      "native_checks": 4606,
+      "probe_checks": 1680,
+      "counts": {
+        "eligible_sites": 47,
+        "oracle_edges": 50,
+        "correct_edges": 33,
+        "false_edges": 0,
+        "unresolved_candidates": 14,
+        "complete_covers": 36,
+        "exact_covers": 36,
+        "unsound_covers": 0,
+        "sound_superset_covers": 0,
+        "incomplete_covers": 11,
+        "complete_cover_missing_members": 0,
+        "complete_cover_extra_members": 0,
+        "concrete_only_candidates": 15,
+        "concrete_only_unresolved": 15,
+        "concrete_only_matching_targets": 0,
+        "concrete_only_mismatches": 0,
+        "cover_reasons": {
+          "current_scalar_target_fact": 33,
+          "incomplete_source": 11,
+          "every_represented_input_has_an_exact_source": 3
+        },
+        "missed_oracle_edges": 17
+      },
+      "resource_scope": "outer wait4 runner child including launch; not isolated IDA resource use",
+      "elapsed_s": 36.2004855,
+      "peak_resident_bytes": 168411136,
+      "capture_mutation_controls": 15,
+      "fixed_misses": [
+        "df_stos_disjoint_target",
+        "df_stos_unknown_value_disjoint_target",
+        "df_stos_overlap_known_target",
+        "df_rep_stos_disjoint_target",
+        "df_movs_disjoint_target",
+        "df_movs_unknown_source_disjoint_target",
+        "df_movs_self_copy_target",
+        "df_rep_movs_disjoint_target",
+        "df_rep_movs_one_disjoint_target",
+        "df_lods_full_target",
+        "df_lods_byte_preserved_target"
+      ],
+      "dynamic_covers": [
+        {
+          "name": "df_stack_top_dynamic",
+          "oracle_targets": [
+            "0x8049640",
+            "0x8049650"
+          ],
+          "cover_members": [
+            "0x8049640",
+            "0x8049650"
+          ],
+          "edge_outcome": "unresolved",
+          "cover_outcome": "exact"
+        },
+        {
+          "name": "df_memory_conflicting_byte",
+          "oracle_targets": [
+            "0x804a800",
+            "0x804a806"
+          ],
+          "cover_members": [
+            "0x804a800",
+            "0x804a806"
+          ],
+          "edge_outcome": "unresolved",
+          "cover_outcome": "exact"
+        },
+        {
+          "name": "df_memory_conflicting_store",
+          "oracle_targets": [
+            "0x804a710",
+            "0x804a720"
+          ],
+          "cover_members": [
+            "0x804a710",
+            "0x804a720"
+          ],
+          "edge_outcome": "unresolved",
+          "cover_outcome": "exact"
+        }
+      ]
+    }
+  ],
+  "attribution_controls": [
+    {
+      "name": "fixture source mismatch",
+      "rejection": "input source changed: tests/vmp_native/dataflow.S"
+    },
+    {
+      "name": "capture checksum mismatch",
+      "rejection": "input artifact changed"
+    },
+    {
+      "name": "plugin attribution mismatch",
+      "rejection": "IDA run attribution failed"
+    },
+    {
+      "name": "binary checksum mismatch",
+      "rejection": "binary changed"
+    },
+    {
+      "name": "duplicate architecture",
+      "rejection": "incomplete architecture matrix"
+    },
+    {
+      "name": "corrupted native oracle accepted",
+      "rejection": "corrupted native oracle accepted"
+    },
+    {
+      "name": "selected native edge result corrupted",
+      "rejection": "selected native edge contract failed"
+    }
+  ],
+  "totals": {
+    "rows": 4,
+    "site_captures": 248,
+    "eligible_site_observations": 188,
+    "oracle_edges": 200,
+    "correct_edges": 150,
+    "false_edges": 0,
+    "scalar_abstentions": 38,
+    "exact_complete_covers": 162,
+    "unsound_complete_covers": 0,
+    "capture_controls": 60,
+    "attribution_controls": 7,
+    "primary_dataflow_checks": 147960,
+    "primary_ownerless_checks": 9212,
+    "corrupted_ownerless_processes_rejected": 4,
+    "corrupted_ownerless_dataflow_checks": 147960,
+    "production_probe_checks": 4249
+  },
+  "before_extension": {
+    "ownerless_report": {
+      "path": "build/vmp-edge-v2-ownerless/ownerless_dataflow_analysis.json",
+      "sha256": "9d9ade56a073d2fa1f4320a074f33234e51173b2470d363a21ba2ac7ba58dc53"
+    },
+    "scope": "full selected native driver absent; not final acceptance evidence"
+  },
+  "assumptions": {
+    "E1": "reviewed oracle and independent source/target bytes; pins, return shapes and byte-target layout",
+    "E2": "exact binaries execute native oracles; corrupted controls; entered-edge trace and physical x86 equivalence unknown",
+    "E3": "flat normal completion; segment/initial-state limitations and all misses/exclusions retained",
+    "E4": "current attributed proof/cover/publication evidence; 60 capture and 7 attribution mutations",
+    "E5": "outer wait4 accounting; isolated IDA resources and speedup unknown"
+  },
+  "quality_gates": {
+    "QG1": "pass for this benchmark checkpoint; full review incomplete",
+    "QG2": "pass for this benchmark checkpoint; full review incomplete",
+    "QG3": "pass for this benchmark checkpoint; full review incomplete",
+    "QG4": "pass for this benchmark checkpoint; full review incomplete",
+    "QG5": "pass for this benchmark checkpoint; full review incomplete",
+    "QG6": "pass for this benchmark checkpoint; full review incomplete",
+    "QG7": "pass for this benchmark checkpoint; full review incomplete"
+  }
+}

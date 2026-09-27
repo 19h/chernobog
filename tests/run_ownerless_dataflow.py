@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--linux32-image")
     parser.add_argument("--docker-context", default="orbstack")
+    parser.add_argument("--edge-oracle-driver", action="store_true")
     parser.add_argument("--rep-count-baseline", action="store_true")
     parser.add_argument("--stack-store-baseline", action="store_true")
     parser.add_argument("--string-count-baseline", action="store_true")
@@ -49,8 +50,14 @@ def main():
         "tests/vmp_corpus/linux32.py",
         "tests/vmp_corpus/linux32_exec.py",
     ]
+    if args.edge_oracle_driver:
+        sources += [
+            "tests/vmp_native/dataflow_main.c",
+            "tests/vmp_native/ownerless_edge_main.c",
+        ]
     report = {
         "passed": False,
+        "edge_oracle_driver": args.edge_oracle_driver,
         "source_sha256": {name: digest(root / name) for name in sources},
         "plugin_sha256": digest(args.plugin),
         "ida_sha256": digest(args.ida),
@@ -79,7 +86,11 @@ def main():
                     if corruption == "equal"
                     else ["-DOWNERLESS_CORRUPT_BSWAP=1"] if corruption == "bswap" else []
                 )
-                assembly = ["dataflow.S", "ownerless_dataflow.S", "ownerless_dataflow.c"]
+                assembly = [
+                    "dataflow.S",
+                    "ownerless_dataflow.S",
+                    "ownerless_edge_main.c" if args.edge_oracle_driver else "ownerless_dataflow.c",
+                ]
                 if backend:
                     build, _, _ = backend.execute(
                         [
@@ -112,7 +123,9 @@ def main():
                 assert build["exit_code"] == 0 and not build["timed_out"]
                 native, stdout, _ = backend.run(binary, 0) if backend else execute([binary])
                 assert not native["timed_out"] and not native["output_exceeded"]
-                result = json.loads(stdout)
+                results = [json.loads(line) for line in stdout.splitlines()]
+                assert len(results) == (2 if args.edge_oracle_driver else 1)
+                result = results[-1]
                 row["executions"].append(
                     {
                         "expected_result_corrupted": corruption != "none",
@@ -123,6 +136,12 @@ def main():
                         "binary_sha256": digest(binary),
                     }
                 )
+                if args.edge_oracle_driver:
+                    assert results[0] == {
+                        "checks": 37630 if architecture == "x86_64" else 36350,
+                        "passed": True,
+                    }
+                    row["executions"][-1]["edge_native_result"] = results[0]
                 if corruption == "equal":
                     assert native["exit_code"] == 1
                     assert result == {

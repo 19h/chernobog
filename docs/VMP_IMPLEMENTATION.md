@@ -1015,3 +1015,19 @@ isolated retry after a solver timeout; both logs are retained. See
 `VMP_CONDITION_LIFECYCLE.md` and its evidence JSON. Broader protected fixtures,
 database/provider lifecycle variants, deterministic timing and the complete
 review remain in progress or unknown.
+
+Current edge-oracle checkpoint for row V: the separate version-2 contract
+reviews 62 current named PUSH/RET sites and derives source EAs and target
+labels from independently decoded exact binary bytes. The ownerless input
+now optionally executes the full dataflow oracle before its existing native
+oracle, retaining both deliberate corrupted-expectation rejections. Four
+x86-64/i386 owned/ownerless rows score 42/50 and 33/50 correct unique edges,
+zero false edges, and 45/47 and 36/47 exact complete destination covers.
+All three dynamic sites retain exact two-member sets without publishing
+unique edges; 15 concrete-only sites remain outside each denominator.
+Sixty actual-capture mutations and seven attribution mutations distinguish
+false edges, unsound complete sets, imprecise supersets and malformed inputs.
+Current variable-count repeat and i386 string-memory abstentions remain
+explicit. See `VMP_NATIVE_EDGE_BENCHMARK_V2.md` and its evidence JSON.
+Historical scorer/evidence pins remain unchanged; protected-mode recovery,
+literal accuracy, solver reasons and the full review remain in progress.
