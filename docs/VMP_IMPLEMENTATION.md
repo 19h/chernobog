@@ -1393,3 +1393,15 @@ its evidence/capture archive. Full VM and review requirements remain open.
 One eight-job full CTest run reached the existing 100 ms VM-transition solver
 timeout; the four-job full suite passed 23/23. This does not establish
 eight-job deterministic completion.
+
+## Empty temporal VM binding checkpoint
+
+Review rows 5, 6a, 6b and V now admit `[]` for the two explicit temporal VM
+trace APIs, allowing the supplied static Morok ELFs to reach bounded native
+execution without inventing a named import. The temporal string consensus API
+still requires at least one exact mapped supported binding. Actual IDA runs on
+the supplied `boo` and keygen files each pass ten parser, capture, publication
+and unchanged-source checks. Both selected startup paths run 33 instructions
+but lack a complete temporal prefix; no VM transition or identity is claimed.
+See `VMP_VM_EMPTY_BINDINGS.md` and its archived reports. Full review
+requirements remain open.

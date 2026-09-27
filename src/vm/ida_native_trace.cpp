@@ -870,7 +870,8 @@ bool decode_native(uint64_t ea, const uint8_t *expected, size_t offered, rax_dec
     return true;
 }
 
-bool parse_bindings(const std::string &request, std::vector<hybrid::EmuCallSummary> &bindings)
+bool parse_bindings(const std::string &request, std::vector<hybrid::EmuCallSummary> &bindings,
+                    bool allow_empty = false)
 {
     if (request.empty() || request.size() > 8192 || request.find('\0') != std::string::npos)
         return false;
@@ -907,7 +908,7 @@ bool parse_bindings(const std::string &request, std::vector<hybrid::EmuCallSumma
         return false;
     jvalue_t root;
     if (parse_json_string(&root, request.c_str()) != eOk || root.type() != JT_ARR ||
-        root.arr().values.empty() || root.arr().values.size() > 32)
+        (!allow_empty && root.arr().values.empty()) || root.arr().values.size() > 32)
         return false;
     std::set<uint64_t> addresses;
     for (const auto &value : root.arr().values)
@@ -1658,7 +1659,7 @@ std::string trace_native_region_temporal(uint64_t function, uint64_t seed,
     std::vector<hybrid::EmuCallSummary> bindings;
     if (!parse_input(request, input) || !input.native_objects.empty())
         return unavailable("invalid bounded temporal input");
-    if (!parse_bindings(models, bindings))
+    if (!parse_bindings(models, bindings, true))
         return unavailable("invalid named environment bindings");
     return trace_native_region_impl(function, seed, &input, true, false, &bindings);
 }
@@ -1670,7 +1671,7 @@ std::string trace_native_region_temporal_check(uint64_t function, uint64_t seed,
     std::vector<hybrid::EmuCallSummary> bindings;
     if (!parse_input(request, input) || !input.native_objects.empty())
         return unavailable("invalid bounded temporal input");
-    if (!parse_bindings(models, bindings))
+    if (!parse_bindings(models, bindings, true))
         return unavailable("invalid named environment bindings");
     return trace_native_region_impl(function, seed, &input, true, true, &bindings);
 }

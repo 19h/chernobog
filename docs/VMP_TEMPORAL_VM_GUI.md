@@ -10,9 +10,11 @@ installed by `make install` invokes the existing IDC API once and retains that
 response only in the form. **Recapture** and reopening the action run a new
 query; the timer checks candidate instruction bytes but never reexecutes the
 analyzed program.
-The underlying API requires at least one mapped, exactly named supported ABI
-binding. A binary without one cannot use this action under the current API
-contract; supplying an invented binding does not satisfy the parser.
+The underlying VM trace API accepts an empty `[]` binding array when there is
+no mapped supported ABI name. Each nonempty binding still requires an exact
+mapped name and supported model; an invented binding fails validation. The
+separate temporal string consensus API retains its nonempty binding requirement.
+See `VMP_VM_EMPTY_BINDINGS.md` for the supplied static ELF controls.
 
 The form separates syntax candidates from candidate visits with captured entry,
 transfer, exit and memory evidence. The graph draws only actual recorded
@@ -77,7 +79,7 @@ IDA byte-query latency are not assigned an unmeasured worst-case duration.
 | G2 | A matching current instruction byte span is sufficient for navigating to that span only. The Jump control depends on it. | Substitute a different byte for the selected source; navigation must disable. Restore the byte; navigation must reenable. Neither outcome upgrades the historical transition. |
 | G3 | A settled IDA database is the baseline for the read-only UI inventory. The unchanged-head claim depends on this setup. | Drain queued autoanalysis, record planned-head bytes/items/owners/xrefs, interact with the form and recapture, then compare. The pre-drain mismatch is a counterexample to an unqualified inventory claim. |
 | G4 | Syntax admission and checked temporal visits have different evidence requirements. The visible check labels depend on the API's separate result fields. | Render a complete-prefix checked run and an incomplete-prefix budget stop; assert four versus zero checked visits, eight versus zero queries, and three retained syntax-only candidates in the latter. |
-| G5 | The prompted bindings are exact current IDB names accepted by the named-model parser. The default capture depends on them. | Resolve mapped import names and rerun the default binding array through the production API; the protected control produces four checked visits and eight queries. A database with no supported names must reject the action. |
+| G5 | Each nonempty prompted binding is an exact current IDB name accepted by the named-model parser. The default capture depends on it when bindings exist. | Resolve mapped import names and rerun the default binding array through the production API; the protected control produces four checked visits and eight queries. On a static ELF, pass `[]` and require an explicit empty model list, then reject malformed contracts and preserve the string API's nonempty rule. |
 
 **High impact:** the view makes a protected local transition and its abstention
 inspectable without changing the IDB's candidate instructions. **Medium impact

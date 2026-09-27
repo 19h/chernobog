@@ -1,0 +1,27 @@
+{
+  "archive_sha256": "5afd3fa6b4d16dac31f9826817740b7cfbdb2c18d6711cd56e5651c5563d085a",
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "outcomes": {
+    "boo": {
+      "binary": "samples/boo-linux-x86_64-static",
+      "binary_sha256": "730f6adfba4cb7179320c96a3a5b24856059f1c4ba24bad25b969d74e4054a27",
+      "checks": 10,
+      "report_sha256": "7ddb147b61e0be460f1bdbb73a9aef936e09ae64da0515de8a5551f4a278d34a",
+      "runner_sha256": "83928249d52e190a649d9f890ccac3405b168ce9c23284bafd6f629fe718b231"
+    },
+    "keygen": {
+      "binary": "samples/int_woma_keygen-linux-x86_64-static",
+      "binary_sha256": "7d1971b1db221174caac0a5922a7452e1bebe214ca2355ab36c889a635699fd9",
+      "checks": 10,
+      "report_sha256": "7ddb147b61e0be460f1bdbb73a9aef936e09ae64da0515de8a5551f4a278d34a",
+      "runner_sha256": "75d108042705a65a821ccab893d01c763d690bc31ba55f26d5596a96cb26495f"
+    }
+  },
+  "passed": true,
+  "plugin_sha256": "e846e17d00bf251e5993d5d0f989247064cb17c0a58c52a8392064b96962d180",
+  "probe_sha256": "8d0e1fd55c657c5e1f33939725c374cd160fdf58b36793d4c67f7e0d0a09d661",
+  "runner_source_sha256": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+  "schema": 1,
+  "scope": "empty temporal VM bindings in two actual IDA static ELF captures",
+  "verifier_sha256": "2278dacf82514c820b6940136f31123ec8452a0afe057fc8b1b921fe2e991685"
+}
