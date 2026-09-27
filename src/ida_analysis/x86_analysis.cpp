@@ -369,6 +369,7 @@ Operation operation(uint16_t type)
 struct State
 {
     Flags flags;
+    std::optional<bool> direction;
     std::array<Word, 16> regs{};
     // Only words established by this single-entry replay are retained. No
     // initial stack memory or absolute stack address is assumed known.
@@ -380,6 +381,8 @@ struct State
     void join(const State &other)
     {
         flags.join(other.flags);
+        if (direction != other.direction)
+            direction.reset();
         for (size_t i = 0; i < regs.size(); ++i)
             regs[i].join(other.regs[i]);
         // Both vectors describe a suffix above otherwise unknown stack bytes.
@@ -403,8 +406,9 @@ struct State
 
     bool operator==(const State &other) const
     {
-        if (flags.known != other.flags.known || flags.value != other.flags.value ||
-            stack.size() != other.stack.size() || memory.size() != other.memory.size())
+        if (direction != other.direction || flags.known != other.flags.known ||
+            flags.value != other.flags.value || stack.size() != other.stack.size() ||
+            memory.size() != other.memory.size())
             return false;
         for (size_t i = 0; i < stack.size(); ++i)
             if (stack[i].known != other.stack[i].known || stack[i].value != other.stack[i].value)
@@ -599,7 +603,8 @@ struct State
                                           move,
                                           memory_address(insn, insn.Op1),
                                           move ? memory_address(insn, insn.Op2) : std::nullopt,
-                                          move ? std::nullopt : read(insn.Op2)};
+                                          move ? std::nullopt : read(insn.Op2),
+                                          direction};
                 if (repeat_string_memory(
                         memory, regs[1], repeat, [word_bits](uint64_t a, unsigned n)
                         { return readable_range(a, n, word_bits); },
@@ -1007,6 +1012,12 @@ struct State
                 return;
             }
             Word pushed;
+            if (direction)
+            {
+                pushed.known |= uint64_t{1} << 10;
+                if (*direction)
+                    pushed.value |= uint64_t{1} << 10;
+            }
             for (const auto [abstract_bit, architectural_bit] :
                  {std::pair<uint8_t, unsigned>{CF, 0},
                   {PF, 2},
@@ -1049,6 +1060,7 @@ struct State
         case NN_popfd:
         case NN_popfq:
         {
+            direction.reset();
             memory.clear();
             if (!natad(insn) || (is64 ? !op64(insn) : !op32(insn)))
             {
@@ -1058,6 +1070,8 @@ struct State
                 return;
             }
             const Word popped = stack.empty() ? Word{} : stack.back();
+            if (popped.known & (uint64_t{1} << 10))
+                direction = (popped.value & (uint64_t{1} << 10)) != 0;
             if (!stack.empty())
                 stack.pop_back();
             adjust_sp(int64_t(word_bits / 8), is64);
@@ -1075,9 +1089,15 @@ struct State
             return;
         }
         case NN_nop:
+            return;
         case NN_cld:
         case NN_std:
-            // DF is outside this state; the six tracked status flags are unchanged.
+            // Admit only the exact unprefixed opcode as a DF definition.
+            // Six-status-bit consumers retain their existing domain.
+            direction = insn.size == 1 && is_loaded(insn.ea) &&
+                                get_byte(insn.ea) == (insn.itype == NN_std ? 0xfd : 0xfc)
+                            ? std::optional<bool>{insn.itype == NN_std}
+                            : std::nullopt;
             return;
         case NN_cbw:
         case NN_cwde:

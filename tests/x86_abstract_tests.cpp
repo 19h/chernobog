@@ -179,78 +179,86 @@ void repeated_memory_regressions()
             for (bool move : {false, true})
                 for (int delta : {-16, -1, 0, 1, 16, 64})
                     for (unsigned domain = 0; domain < 13; ++domain)
-                        for (bool unknown : {false, true})
-                        {
-                            const unsigned low_unknown = domain == 9    ? 1
-                                                         : domain == 10 ? 3
-                                                         : domain == 11 ? 2
-                                                         : domain == 12 ? 7
-                                                                        : 0;
-                            const unsigned fixed = domain == 11 ? 1 : domain < 9 ? domain : 0;
-                            const Word count{mask(bits) & ~uint64_t(low_unknown), fixed};
-                            std::array<uint8_t, 512> initial{};
-                            for (unsigned i = 0; i < initial.size(); ++i)
-                                initial[i] = uint8_t(i * 37 + (i / 7));
-                            StringMemory memory;
-                            for (unsigned i = 96; i < 192; ++i)
-                                memory[i] = initial[i];
-                            memory[450] = initial[450];
-                            const StringRepeat repeat{
-                                bits,
-                                bytes,
-                                move,
-                                uint64_t(128 + delta),
-                                unknown ? std::nullopt : std::optional<uint64_t>{128},
-                                unknown ? std::nullopt
-                                        : std::optional<uint64_t>{UINT64_C(0x8877665544332211)}};
-                            check(repeat_string_memory(memory, count, repeat, range, range),
-                                  "bounded repeat with mapped destinations is admitted");
-                            check(memory.count(450) && memory.at(450) == initial[450],
-                                  "repeat preserves unrelated local memory");
-                            check(memory.size() <= 128, "repeat obeys retained-byte cap");
-                            // A concrete byte-array machine does not use the helper,
-                            // its count enumerator, memory map or join operation.
-                            for (unsigned n = 0; n < 256; ++n)
-                                if ((uint64_t(n) & count.known) == count.value)
-                                    for (int direction : {-1, 1})
-                                        for (unsigned hidden = 0; hidden < 2; ++hidden)
-                                        {
-                                            auto concrete = initial;
-                                            for (unsigned i = 0; i < n; ++i)
+                        for (unsigned direction_domain = 0; direction_domain < 3;
+                             ++direction_domain)
+                            for (bool unknown : {false, true})
+                            {
+                                const unsigned low_unknown = domain == 9    ? 1
+                                                             : domain == 10 ? 3
+                                                             : domain == 11 ? 2
+                                                             : domain == 12 ? 7
+                                                                            : 0;
+                                const unsigned fixed = domain == 11 ? 1 : domain < 9 ? domain : 0;
+                                const Word count{mask(bits) & ~uint64_t(low_unknown), fixed};
+                                std::array<uint8_t, 512> initial{};
+                                for (unsigned i = 0; i < initial.size(); ++i)
+                                    initial[i] = uint8_t(i * 37 + (i / 7));
+                                StringMemory memory;
+                                for (unsigned i = 96; i < 192; ++i)
+                                    memory[i] = initial[i];
+                                memory[450] = initial[450];
+                                const StringRepeat repeat{
+                                    bits,
+                                    bytes,
+                                    move,
+                                    uint64_t(128 + delta),
+                                    unknown ? std::nullopt : std::optional<uint64_t>{128},
+                                    unknown ? std::nullopt
+                                            : std::optional<uint64_t>{UINT64_C(0x8877665544332211)},
+                                    direction_domain ? std::optional<bool>{direction_domain == 2}
+                                                     : std::nullopt};
+                                check(repeat_string_memory(memory, count, repeat, range, range),
+                                      "bounded repeat with mapped destinations is admitted");
+                                check(memory.count(450) && memory.at(450) == initial[450],
+                                      "repeat preserves unrelated local memory");
+                                check(memory.size() <= 128, "repeat obeys retained-byte cap");
+                                // A concrete byte-array machine does not use the helper,
+                                // its count enumerator, memory map or join operation.
+                                for (unsigned n = 0; n < 256; ++n)
+                                    if ((uint64_t(n) & count.known) == count.value)
+                                        for (int direction : {-1, 1})
+                                            for (unsigned hidden = 0; hidden < 2; ++hidden)
                                             {
-                                                const int destination =
-                                                    128 + delta + direction * int(i * bytes);
-                                                const int source = (unknown ? 320 : 128) +
-                                                                   direction * int(i * bytes);
-                                                std::array<uint8_t, 8> payload{};
-                                                for (unsigned j = 0; j < bytes; ++j)
-                                                    payload[j] =
-                                                        move ? concrete[size_t(source) + j]
-                                                        : unknown
-                                                            ? uint8_t(hidden * 255)
-                                                            : uint8_t(
-                                                                  UINT64_C(0x8877665544332211) >>
-                                                                  (j * 8));
-                                                for (unsigned j = 0; j < bytes; ++j)
-                                                    concrete[size_t(destination) + j] = payload[j];
-                                            }
-                                            for (const auto &byte : memory)
-                                                check(
-                                                    byte.second == concrete[size_t(byte.first)],
-                                                    "retained repeat byte agrees with concrete machine");
+                                                if (direction_domain &&
+                                                    (direction < 0) != (direction_domain == 2))
+                                                    continue;
+                                                auto concrete = initial;
+                                                for (unsigned i = 0; i < n; ++i)
+                                                {
+                                                    const int destination =
+                                                        128 + delta + direction * int(i * bytes);
+                                                    const int source = (unknown ? 320 : 128) +
+                                                                       direction * int(i * bytes);
+                                                    std::array<uint8_t, 8> payload{};
+                                                    for (unsigned j = 0; j < bytes; ++j)
+                                                        payload[j] =
+                                                            move ? concrete[size_t(source) + j]
+                                                            : unknown
+                                                                ? uint8_t(hidden * 255)
+                                                                : uint8_t(UINT64_C(
+                                                                              0x8877665544332211) >>
+                                                                          (j * 8));
+                                                    for (unsigned j = 0; j < bytes; ++j)
+                                                        concrete[size_t(destination) + j] =
+                                                            payload[j];
+                                                }
+                                                for (const auto &byte : memory)
+                                                    check(
+                                                        byte.second == concrete[size_t(byte.first)],
+                                                        "retained repeat byte agrees with concrete machine");
 #ifdef CHERNOBOG_NATIVE_REPEAT_ORACLE
-                                            auto native = initial;
-                                            native_repeat(native, bytes, move, n, direction,
-                                                          unsigned(128 + delta),
-                                                          unknown ? 320 : 128,
-                                                          unknown ? hidden ? UINT64_MAX : 0
-                                                                  : UINT64_C(0x8877665544332211));
-                                            check(
-                                                native == concrete,
-                                                "native repeat agrees with full-buffer concrete oracle");
+                                                auto native = initial;
+                                                native_repeat(
+                                                    native, bytes, move, n, direction,
+                                                    unsigned(128 + delta), unknown ? 320 : 128,
+                                                    unknown ? hidden ? UINT64_MAX : 0
+                                                            : UINT64_C(0x8877665544332211));
+                                                check(
+                                                    native == concrete,
+                                                    "native repeat agrees with full-buffer concrete oracle");
 #endif
-                                        }
-                        }
+                                            }
+                            }
     const Word eight{UINT64_MAX, 8}, zero{UINT64_MAX, 0}, one{UINT64_MAX, 1};
     StringMemory memory{{100, 42}, {450, 19}};
     const auto before = memory;
@@ -265,6 +273,15 @@ void repeated_memory_regressions()
                                 [](uint64_t a, unsigned) { return a >= 100; }) &&
               memory == before,
           "one invalid DF direction rejects the whole repeat");
+    check(repeat_string_memory(memory, eight, {64, 1, false, 100, {}, 7, false}, range,
+                               [](uint64_t a, unsigned) { return a >= 100; }) &&
+              memory.at(107) == 7 && memory.at(450) == 19,
+          "known forward DF excludes invalid reverse destinations");
+    memory = before;
+    check(!repeat_string_memory(memory, eight, {64, 1, false, 100, {}, 7, true}, range,
+                                [](uint64_t a, unsigned) { return a >= 100; }) &&
+              memory == before,
+          "known reverse DF rejects its invalid destination without mutation");
     check(!repeat_string_memory(memory, one, {32, 8, false, UINT32_MAX - 3, {}, 7}, range,
                                 [](uint64_t, unsigned) { return true; }) &&
               memory == before,

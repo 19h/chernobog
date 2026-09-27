@@ -1136,3 +1136,20 @@ JSON for source/site attribution, assumptions and limits. A recorded gate
 does not establish a missing identity or a complete reaching-definition,
 alias, width or ordering diagnosis. Full protected ownership, causal miss
 classification, ISA effects and the complete review remain in progress.
+
+## Direction flag repeated-memory checkpoint
+
+Review row 1 and row V now include separate DF tracking for bare CLD/STD,
+supported saved flags, conservative joins and bounded REP MOVS/STOS memory.
+The same 12-routine binary produces eight additional exact owned conditions
+at configured scan depth 64 and eight additional ownerless conditions.
+Four negative cases remain unresolved on each path. Opcode/count/external-entry
+patches revoke facts and restoration recomputes them; all 12 ownerless inventory
+comparisons preserve the IDB. Independent oracles execute 3,072 routine/input
+cases and 38,400 REP cases. All 22 CTest suites and existing x86-64/i386 dataflow
+regressions pass. The supplied VMP control retains 75 nodes, 77 edges and three
+unresolved facts. See `VMP_DIRECTION_FLAG_MEMORY.md` and its evidence JSON for
+assumptions, primary provenance and source/artifact pins. The default owned
+scan budget remains 8, i386 nonzero memory still lacks a segment-base contract,
+and no protected recovery gain is established. Full review implementation
+remains in progress.

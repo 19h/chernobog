@@ -38,9 +38,11 @@ struct StringRepeat
     unsigned element_bytes = 0;
     bool move = false;
     std::optional<uint64_t> destination, source, accumulator;
+    // Empty denotes both DF completions; true selects descending addresses.
+    std::optional<bool> reverse = std::nullopt;
 };
 
-// Replay normal completion for every compatible count and both DF values.
+// Replay normal completion for every compatible count and admitted DF value.
 // MOVS reads before each write, including overlap with previous iterations.
 // Unknown payloads erase only the validated destination footprint. Failed
 // destination validation rejects the whole domain and leaves input unchanged.
@@ -63,6 +65,8 @@ bool repeat_string_memory(StringMemory &memory, const Word &count, const StringR
     for (unsigned c = 0; c < counts->size; ++c)
         for (unsigned reverse = 0; reverse < 2; ++reverse)
         {
+            if (repeat.reverse && *repeat.reverse != bool(reverse))
+                continue;
             StringMemory state = memory;
             for (unsigned i = 0; i < counts->values[c]; ++i)
             {

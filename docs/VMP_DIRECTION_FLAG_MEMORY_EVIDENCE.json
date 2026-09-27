@@ -1,0 +1,1294 @@
+{
+  "schema": 1,
+  "parent_revision": "f7aaf59f9705773d5fd74fb5fac73133850a6419",
+  "scope": "DF precision for bounded normal-completion repeated memory; complete review remains in progress",
+  "source_sha256": {
+    "src/common/x86_string_memory.h": "4d2879fa20aee01d2d88360a500a31250cf197f2237ea12aa9d9dc16d6572ea9",
+    "src/common/x86_abstract.h": "faadf0072a962d046def573f0b0796c82fc5956df03df2cf20ee4d3dd1bc1bb0",
+    "src/common/bounded_dataflow.h": "a8817441c1c23a421fc0f09468a3c9206eb54fd3da18f08906e531d90f909ee5",
+    "src/ida_analysis/x86_analysis.cpp": "ba9a7df02cbd6055127dc228585fbb5c3f439340276297b1eefdc203cd0cf432",
+    "src/ida_analysis/x86_analysis.hpp": "b6279d1d543604b6696bb2e5df0e8d6a345597e25bfd495f872a605a4ad79fe1",
+    "src/ida_analysis/native_engine.cpp": "d919fed9c99160a8f4dfe7e4b71e66bf3dc389858018776f3339ee8e40d39fef",
+    "src/ida_analysis/analysis_config.cpp": "c8a589ff4de1ca2f12b4b177c161ecd67e97a3598148841e11c60a601f69da2f",
+    "src/ida_analysis/analysis_config.hpp": "d9fc4daed5d9f955626136d60da3a91152cdf7e4d16395cb76dac5be08cd10f1",
+    "tests/x86_abstract_tests.cpp": "8a1c715ac7ee728a57c6ea9651756b5b2754b3ee5fc1f17d06ebcee4244ee190",
+    "tests/vmp_native/direction.S": "3c29900da26e4859b5d18a1fbc34a3befb7f7d5b305a87ee3975b7472dc3f6da",
+    "tests/vmp_native/direction_main.c": "0ed6fc6b55ceeea43bb725d7e1329c773dffdd1cdceef4b5be1723bbaabe4bb0",
+    "tests/ida_direction_probe.py": "6dbce73b280b50c987da792c1494da80206f300b77770ad88f61a891e02bf4ef",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_native_dataflow.py": "7d411ce3d00e2595041337375445989ff781b829e721eaf297377ed990254c23",
+    "tests/ida_dataflow_probe.py": "e8f3a295fc4ee4b0880038fbcfc2126b03030e1bf45a7896c6bc0729daa53e28",
+    "tests/ida_protected_region_inspect.py": "b68a41d2011f232808974d7b155b84a43e4f13a8f3eb157a0d204cf6f04548d2",
+    "tests/vmp_native/dataflow.S": "46c95831d6f4ac820e0a00bf8682f0a6e75291ee55ab304b44ce1cea92ad7dbc",
+    "tests/vmp_native/dataflow_main.c": "db34d9794cdf8d0743b620e9abd455a054ced2f0e634e4fe60c697a14ed28d73",
+    "CMakeLists.txt": "f123bf4573e9b103e7aff510a2a994dd029b221a1f8a6d7761b990c3e9fe6b89",
+    "CMakePresets.json": "23197856e30806398f1644517c4bb1c7953eb9fe7f9d5e911946efde0d43a00b",
+    ".clang-format": "931a11f0ad45f8af202d2a4ea9dc47b5c1654c6a7fc911ddbff172207d67ac1d"
+  },
+  "artifact_sha256": {
+    "build/direction-native": "282a0aed6329f0532d108719e77147ea814b6b5b30b6ba41dce42dc8d7b460a5",
+    "build/direction-repeat-native": "cc87252dbdb9b21b068b9cc653ca6198ab8ef6602330946e2df62a919d6563f8",
+    "build/df-direction-candidate.dylib": "0cb87de1ba34d043d3bc05e1b4c8f1898da4c5fc7a0cc9c79d335484e0105fe2",
+    "build/df-prior-f7aaf59f.dylib": "f57dfa9b1f15a583ecc8988a5377ad310af8b5f3a55441fd56070d8880bdd5d7",
+    "build/df-direction-oracles.json": "8aa7a788697a6a9eccca1ea0937992c9afdd598041ee3fca36838a6812274d62",
+    "build/df-direction-dataflow-final/dataflow_analysis.json": "d2941e9da7fc06fd0836d376c8b60335a53600f5900b30e4ccf000eed265c133",
+    "build/df-direction-protected-final/protected_region.json": "9ae4fcb040908b7497ba35400ace41f5bb26b13427a0c12a87249dea3ff5f4c6",
+    "build/df-direction-protected-final/run.json": "a02bc361478220ad62c6c0e4f198423d5fd9af2f88a7029efd5c0095d2cbc670",
+    "build/df-direction-prior-accepted/direction.json": "0aa203bf470483588c75e0959bd1a9733f0e6b7f49658cdced015e41ea8f8cfb",
+    "build/df-direction-prior-accepted/run.json": "c197c3364c7dc1830d6884948498a807d4272cb67fb19d8028fd781c91dbabc0",
+    "build/df-direction-prior-accepted/ida.log": "398daa7d133c8ca7bac3abc27ad0f7eca2997e9c707e851f8d1c232dccff71c0",
+    "build/df-direction-current-accepted/direction.json": "43240e452db671ced6d943cd22a42f85f86944b378242847e33c3dc4bfcd2b87",
+    "build/df-direction-current-accepted/run.json": "ed2608243de0e791121e7e522a830ae07b7451e0e5c32b38392b1e68452ce7de",
+    "build/df-direction-current-accepted/ida.log": "46d6fc5d95ea11e42e3602dbb797b9def54d3dc8f5b621e786b663ebebe570c2",
+    "build/df-direction-native_fixture.log": "e06eeff1a83695a71b2549394c60a435a97d936001eb641e43ffe91810bf1646",
+    "build/df-direction-native_repeat.log": "4649e6ce2c70a7abeffa36010b555682c0cc719f75779f0224b9f5ff95f82ece",
+    "build/df-direction-portable_repeat.log": "a95036e75b28e37abc56cffa034f08829ca50c69774a687438ada8c8a6185a25",
+    "build/df-direction-ctest.log": "63f7a162f9f84fc319506321d7b2f926fa190282d674ea6b3a95064f5fde5225"
+  },
+  "runtime": {
+    "host_machine": "arm64",
+    "native_process": "macOS x86-64 process translated on arm64; bare-metal confirmation unknown"
+  },
+  "oracles": {
+    "native_fixture": {
+      "command": [
+        "build/direction-native"
+      ],
+      "exit_code": 0,
+      "elapsed_ns": 9435500,
+      "log": "build/df-direction-native_fixture.log",
+      "result": {
+        "passed": true,
+        "cases": 3072,
+        "failures": 0
+      }
+    },
+    "native_repeat": {
+      "command": [
+        "build/direction-repeat-native"
+      ],
+      "exit_code": 0,
+      "elapsed_ns": 272794375,
+      "log": "build/df-direction-native_repeat.log",
+      "result": {
+        "repeat_assertions": 3375920,
+        "native_repeat_cases": 38400,
+        "passed": true
+      }
+    },
+    "portable_repeat": {
+      "command": [
+        "build/chernobog_x86_abstract_tests"
+      ],
+      "exit_code": 0,
+      "elapsed_ns": 171198500,
+      "log": "build/df-direction-portable_repeat.log",
+      "result": {
+        "repeat_assertions": 3145520,
+        "native_repeat_cases": 0,
+        "passed": true
+      }
+    },
+    "ctest": {
+      "command": [
+        "ctest",
+        "--test-dir",
+        "build",
+        "--output-on-failure",
+        "--parallel",
+        "8"
+      ],
+      "exit_code": 0,
+      "elapsed_ns": 6884035000,
+      "log": "build/df-direction-ctest.log",
+      "suites": 22,
+      "passed": true
+    }
+  },
+  "paired": {
+    "prior": {
+      "checks": 56,
+      "runner": {
+        "schema_version": 2,
+        "input_sha256": "282a0aed6329f0532d108719e77147ea814b6b5b30b6ba41dce42dc8d7b460a5",
+        "source_input_sha256": "282a0aed6329f0532d108719e77147ea814b6b5b30b6ba41dce42dc8d7b460a5",
+        "plugin_sha256": "f57dfa9b1f15a583ecc8988a5377ad310af8b5f3a55441fd56070d8880bdd5d7",
+        "plugin_unchanged": true,
+        "script_sha256": "6dbce73b280b50c987da792c1494da80206f300b77770ad88f61a891e02bf4ef",
+        "script_unchanged": true,
+        "source_script_sha256": "6dbce73b280b50c987da792c1494da80206f300b77770ad88f61a891e02bf4ef",
+        "source_script_unchanged": true,
+        "source_input_unchanged": true,
+        "input_copy_matches_source": true,
+        "ida_path": "<ida>/idat",
+        "local_paths_redacted": true,
+        "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+        "ida_sha256_after": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+        "ida_unchanged": true,
+        "artifacts_unchanged": true,
+        "chernobog_environment_sha256": "146504cdb858dade6023186958fd2bc4955cf4b95b08629ab17b79b8e76f80b1",
+        "enable_rax": false,
+        "verbose": false,
+        "process_elapsed_ns": 3046438792,
+        "process_return_code": 0,
+        "expected_log_pattern": "\\[chernobog\\]\\[[^\\]\\r\\n]+\\] PASS(?:\\s|$)",
+        "expected_log_found": true,
+        "internal_error_found": false,
+        "runner_return_code": 0
+      },
+      "receipt": "f7aaf59f9705 dirty=1 source=aeb3fb66e4ee sdk=940 rax=a9757b274a3f dbctx=0"
+    },
+    "current": {
+      "checks": 57,
+      "runner": {
+        "schema_version": 2,
+        "input_sha256": "282a0aed6329f0532d108719e77147ea814b6b5b30b6ba41dce42dc8d7b460a5",
+        "source_input_sha256": "282a0aed6329f0532d108719e77147ea814b6b5b30b6ba41dce42dc8d7b460a5",
+        "plugin_sha256": "0cb87de1ba34d043d3bc05e1b4c8f1898da4c5fc7a0cc9c79d335484e0105fe2",
+        "plugin_unchanged": true,
+        "script_sha256": "6dbce73b280b50c987da792c1494da80206f300b77770ad88f61a891e02bf4ef",
+        "script_unchanged": true,
+        "source_script_sha256": "6dbce73b280b50c987da792c1494da80206f300b77770ad88f61a891e02bf4ef",
+        "source_script_unchanged": true,
+        "source_input_unchanged": true,
+        "input_copy_matches_source": true,
+        "ida_path": "<ida>/idat",
+        "local_paths_redacted": true,
+        "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+        "ida_sha256_after": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+        "ida_unchanged": true,
+        "artifacts_unchanged": true,
+        "chernobog_environment_sha256": "4be47a670a8d61a4bf3f7e22e5f76d0387c3c1f93f61e68660d05bb6aabd0ad3",
+        "enable_rax": false,
+        "verbose": false,
+        "process_elapsed_ns": 3004605500,
+        "process_return_code": 0,
+        "expected_log_pattern": "\\[chernobog\\]\\[[^\\]\\r\\n]+\\] PASS(?:\\s|$)",
+        "expected_log_found": true,
+        "internal_error_found": false,
+        "runner_return_code": 0
+      },
+      "receipt": "f7aaf59f9705 dirty=1 source=f17b3bac7197 sdk=940 rax=a9757b274a3f dbctx=0"
+    }
+  },
+  "cases": [
+    {
+      "routine": "direction_forward",
+      "expected_static_condition": true,
+      "prior": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x1000005f9",
+            "status": "unresolved",
+            "support": "0x1000005b0;0x1000005b1;0x1000005b8;0x1000005bf;0x1000005c9;0x1000005cd;0x1000005d7;0x1000005da;0x1000005e4;0x1000005e8;0x1000005eb;0x1000005f0;0x1000005f2;0x1000005f9;0x1000005fc;0x1000005fd;0x100000600",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 17,
+        "edges": 17,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      },
+      "current": {
+        "owned": [
+          {
+            "site": "0x1000005f9",
+            "truth": "native-proof",
+            "value": "0x1",
+            "fresh": "true",
+            "publication": "0x18",
+            "dependency_count": "17"
+          }
+        ],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x3f",
+            "flags_value": "0xa",
+            "kind": "setcc-value",
+            "outcome": "true",
+            "site": "0x1000005f9",
+            "status": "proved",
+            "support": "0x1000005b0;0x1000005b1;0x1000005b8;0x1000005bf;0x1000005c9;0x1000005cd;0x1000005d7;0x1000005da;0x1000005e4;0x1000005e8;0x1000005eb;0x1000005f0;0x1000005f2;0x1000005f9;0x1000005fc;0x1000005fd;0x100000600",
+            "truth": "static-region-fact",
+            "value": "0x1",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 17,
+        "edges": 17,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      }
+    },
+    {
+      "routine": "direction_reverse",
+      "expected_static_condition": false,
+      "prior": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x100000659",
+            "status": "unresolved",
+            "support": "0x100000610;0x100000611;0x100000618;0x10000061f;0x100000629;0x10000062d;0x100000637;0x10000063a;0x100000644;0x100000648;0x10000064b;0x100000650;0x100000652;0x100000659;0x10000065c;0x10000065d;0x100000660",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 17,
+        "edges": 17,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      },
+      "current": {
+        "owned": [
+          {
+            "site": "0x100000659",
+            "truth": "native-proof",
+            "value": "0x0",
+            "fresh": "true",
+            "publication": "0x19",
+            "dependency_count": "17"
+          }
+        ],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x3f",
+            "flags_value": "0x22",
+            "kind": "setcc-value",
+            "outcome": "false",
+            "site": "0x100000659",
+            "status": "proved",
+            "support": "0x100000610;0x100000611;0x100000618;0x10000061f;0x100000629;0x10000062d;0x100000637;0x10000063a;0x100000644;0x100000648;0x10000064b;0x100000650;0x100000652;0x100000659;0x10000065c;0x10000065d;0x100000660",
+            "truth": "static-region-fact",
+            "value": "0x0",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 17,
+        "edges": 17,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      }
+    },
+    {
+      "routine": "direction_saved_forward",
+      "expected_static_condition": true,
+      "prior": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x1000006bc",
+            "status": "unresolved",
+            "support": "0x100000670;0x100000671;0x100000672;0x100000673;0x100000674;0x10000067b;0x100000682;0x10000068c;0x100000690;0x10000069a;0x10000069d;0x1000006a7;0x1000006ab;0x1000006ae;0x1000006b3;0x1000006b5;0x1000006bc;0x1000006bf;0x1000006c0;0x1000006c3",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 20,
+        "edges": 20,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      },
+      "current": {
+        "owned": [
+          {
+            "site": "0x1000006bc",
+            "truth": "native-proof",
+            "value": "0x1",
+            "fresh": "true",
+            "publication": "0x1a",
+            "dependency_count": "20"
+          }
+        ],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x3f",
+            "flags_value": "0xa",
+            "kind": "setcc-value",
+            "outcome": "true",
+            "site": "0x1000006bc",
+            "status": "proved",
+            "support": "0x100000670;0x100000671;0x100000672;0x100000673;0x100000674;0x10000067b;0x100000682;0x10000068c;0x100000690;0x10000069a;0x10000069d;0x1000006a7;0x1000006ab;0x1000006ae;0x1000006b3;0x1000006b5;0x1000006bc;0x1000006bf;0x1000006c0;0x1000006c3",
+            "truth": "static-region-fact",
+            "value": "0x1",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 20,
+        "edges": 20,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      }
+    },
+    {
+      "routine": "direction_saved_reverse",
+      "expected_static_condition": false,
+      "prior": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x10000071c",
+            "status": "unresolved",
+            "support": "0x1000006d0;0x1000006d1;0x1000006d2;0x1000006d3;0x1000006d4;0x1000006db;0x1000006e2;0x1000006ec;0x1000006f0;0x1000006fa;0x1000006fd;0x100000707;0x10000070b;0x10000070e;0x100000713;0x100000715;0x10000071c;0x10000071f;0x100000720;0x100000723",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 20,
+        "edges": 20,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      },
+      "current": {
+        "owned": [
+          {
+            "site": "0x10000071c",
+            "truth": "native-proof",
+            "value": "0x0",
+            "fresh": "true",
+            "publication": "0x1b",
+            "dependency_count": "20"
+          }
+        ],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x3f",
+            "flags_value": "0x22",
+            "kind": "setcc-value",
+            "outcome": "false",
+            "site": "0x10000071c",
+            "status": "proved",
+            "support": "0x1000006d0;0x1000006d1;0x1000006d2;0x1000006d3;0x1000006d4;0x1000006db;0x1000006e2;0x1000006ec;0x1000006f0;0x1000006fa;0x1000006fd;0x100000707;0x10000070b;0x10000070e;0x100000713;0x100000715;0x10000071c;0x10000071f;0x100000720;0x100000723",
+            "truth": "static-region-fact",
+            "value": "0x0",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 20,
+        "edges": 20,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      }
+    },
+    {
+      "routine": "direction_literal_reverse",
+      "expected_static_condition": false,
+      "prior": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x10000077e",
+            "status": "unresolved",
+            "support": "0x100000730;0x100000735;0x100000736;0x10000073d;0x100000744;0x10000074e;0x100000752;0x10000075c;0x10000075f;0x100000769;0x10000076d;0x100000770;0x100000775;0x100000777;0x10000077e;0x100000781;0x100000782;0x100000785",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 18,
+        "edges": 18,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      },
+      "current": {
+        "owned": [
+          {
+            "site": "0x10000077e",
+            "truth": "native-proof",
+            "value": "0x0",
+            "fresh": "true",
+            "publication": "0x1c",
+            "dependency_count": "18"
+          }
+        ],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x3f",
+            "flags_value": "0x22",
+            "kind": "setcc-value",
+            "outcome": "false",
+            "site": "0x10000077e",
+            "status": "proved",
+            "support": "0x100000730;0x100000735;0x100000736;0x10000073d;0x100000744;0x10000074e;0x100000752;0x10000075c;0x10000075f;0x100000769;0x10000076d;0x100000770;0x100000775;0x100000777;0x10000077e;0x100000781;0x100000782;0x100000785",
+            "truth": "static-region-fact",
+            "value": "0x0",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 18,
+        "edges": 18,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      }
+    },
+    {
+      "routine": "direction_unknown_pop",
+      "expected_static_condition": null,
+      "prior": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x1000007db",
+            "status": "unresolved",
+            "support": "0x100000790;0x100000791;0x100000792;0x100000793;0x10000079a;0x1000007a1;0x1000007ab;0x1000007af;0x1000007b9;0x1000007bc;0x1000007c6;0x1000007ca;0x1000007cd;0x1000007d2;0x1000007d4;0x1000007db;0x1000007de;0x1000007df;0x1000007e2",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 19,
+        "edges": 19,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      },
+      "current": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x1000007db",
+            "status": "unresolved",
+            "support": "0x100000790;0x100000791;0x100000792;0x100000793;0x10000079a;0x1000007a1;0x1000007ab;0x1000007af;0x1000007b9;0x1000007bc;0x1000007c6;0x1000007ca;0x1000007cd;0x1000007d2;0x1000007d4;0x1000007db;0x1000007de;0x1000007df;0x1000007e2",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 19,
+        "edges": 19,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      }
+    },
+    {
+      "routine": "direction_unknown",
+      "expected_static_condition": null,
+      "prior": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x100000838",
+            "status": "unresolved",
+            "support": "0x1000007f0;0x1000007f7;0x1000007fe;0x100000808;0x10000080c;0x100000816;0x100000819;0x100000823;0x100000827;0x10000082a;0x10000082f;0x100000831;0x100000838;0x10000083b;0x10000083c;0x10000083f",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 16,
+        "edges": 16,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      },
+      "current": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x100000838",
+            "status": "unresolved",
+            "support": "0x1000007f0;0x1000007f7;0x1000007fe;0x100000808;0x10000080c;0x100000816;0x100000819;0x100000823;0x100000827;0x10000082a;0x10000082f;0x100000831;0x100000838;0x10000083b;0x10000083c;0x10000083f",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 16,
+        "edges": 16,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      }
+    },
+    {
+      "routine": "direction_prefixed",
+      "expected_static_condition": null,
+      "prior": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x10000088a",
+            "status": "unresolved",
+            "support": "0x100000840;0x100000842;0x100000849;0x100000850;0x10000085a;0x10000085e;0x100000868;0x10000086b;0x100000875;0x100000879;0x10000087c;0x100000881;0x100000883;0x10000088a;0x10000088d;0x10000088e;0x100000891",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 17,
+        "edges": 17,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      },
+      "current": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x10000088a",
+            "status": "unresolved",
+            "support": "0x100000840;0x100000842;0x100000849;0x100000850;0x10000085a;0x10000085e;0x100000868;0x10000086b;0x100000875;0x100000879;0x10000087c;0x100000881;0x100000883;0x10000088a;0x10000088d;0x10000088e;0x100000891",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 17,
+        "edges": 17,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      }
+    },
+    {
+      "routine": "direction_join_equal",
+      "expected_static_condition": true,
+      "prior": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x1000008f0",
+            "status": "unresolved",
+            "support": "0x1000008a0;0x1000008a2;0x1000008a4;0x1000008a5;0x1000008a7;0x1000008a8;0x1000008af;0x1000008b6;0x1000008c0;0x1000008c4;0x1000008ce;0x1000008d1;0x1000008db;0x1000008df;0x1000008e2;0x1000008e7;0x1000008e9;0x1000008f0;0x1000008f3;0x1000008f4;0x1000008f7",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 21,
+        "edges": 22,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      },
+      "current": {
+        "owned": [
+          {
+            "site": "0x1000008f0",
+            "truth": "native-proof",
+            "value": "0x1",
+            "fresh": "true",
+            "publication": "0x1d",
+            "dependency_count": "21"
+          }
+        ],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x3f",
+            "flags_value": "0xa",
+            "kind": "setcc-value",
+            "outcome": "true",
+            "site": "0x1000008f0",
+            "status": "proved",
+            "support": "0x1000008a0;0x1000008a2;0x1000008a4;0x1000008a5;0x1000008a7;0x1000008a8;0x1000008af;0x1000008b6;0x1000008c0;0x1000008c4;0x1000008ce;0x1000008d1;0x1000008db;0x1000008df;0x1000008e2;0x1000008e7;0x1000008e9;0x1000008f0;0x1000008f3;0x1000008f4;0x1000008f7",
+            "truth": "static-region-fact",
+            "value": "0x1",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 21,
+        "edges": 22,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      }
+    },
+    {
+      "routine": "direction_join_conflict",
+      "expected_static_condition": null,
+      "prior": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x100000950",
+            "status": "unresolved",
+            "support": "0x100000900;0x100000902;0x100000904;0x100000905;0x100000907;0x100000908;0x10000090f;0x100000916;0x100000920;0x100000924;0x10000092e;0x100000931;0x10000093b;0x10000093f;0x100000942;0x100000947;0x100000949;0x100000950;0x100000953;0x100000954;0x100000957",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 21,
+        "edges": 22,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      },
+      "current": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x100000950",
+            "status": "unresolved",
+            "support": "0x100000900;0x100000902;0x100000904;0x100000905;0x100000907;0x100000908;0x10000090f;0x100000916;0x100000920;0x100000924;0x10000092e;0x100000931;0x10000093b;0x10000093f;0x100000942;0x100000947;0x100000949;0x100000950;0x100000953;0x100000954;0x100000957",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 21,
+        "edges": 22,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      }
+    },
+    {
+      "routine": "direction_stos_forward",
+      "expected_static_condition": true,
+      "prior": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x1000009ab",
+            "status": "unresolved",
+            "support": "0x100000960;0x100000961;0x100000968;0x10000096f;0x100000979;0x10000097d;0x100000987;0x10000098a;0x100000994;0x100000998;0x10000099b;0x1000009a0;0x1000009a2;0x1000009a4;0x1000009ab;0x1000009ae;0x1000009af;0x1000009b2",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 18,
+        "edges": 18,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      },
+      "current": {
+        "owned": [
+          {
+            "site": "0x1000009ab",
+            "truth": "native-proof",
+            "value": "0x1",
+            "fresh": "true",
+            "publication": "0x1e",
+            "dependency_count": "18"
+          }
+        ],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x3f",
+            "flags_value": "0xa",
+            "kind": "setcc-value",
+            "outcome": "true",
+            "site": "0x1000009ab",
+            "status": "proved",
+            "support": "0x100000960;0x100000961;0x100000968;0x10000096f;0x100000979;0x10000097d;0x100000987;0x10000098a;0x100000994;0x100000998;0x10000099b;0x1000009a0;0x1000009a2;0x1000009a4;0x1000009ab;0x1000009ae;0x1000009af;0x1000009b2",
+            "truth": "static-region-fact",
+            "value": "0x1",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 18,
+        "edges": 18,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      }
+    },
+    {
+      "routine": "direction_stos_reverse",
+      "expected_static_condition": false,
+      "prior": {
+        "owned": [],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x0",
+            "flags_value": "0x0",
+            "kind": "setcc-value",
+            "outcome": "unknown",
+            "site": "0x100000a0b",
+            "status": "unresolved",
+            "support": "0x1000009c0;0x1000009c1;0x1000009c8;0x1000009cf;0x1000009d9;0x1000009dd;0x1000009e7;0x1000009ea;0x1000009f4;0x1000009f8;0x1000009fb;0x100000a00;0x100000a02;0x100000a04;0x100000a0b;0x100000a0e;0x100000a0f;0x100000a12",
+            "truth": "static-region-fact",
+            "value": "unknown",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 18,
+        "edges": 18,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      },
+      "current": {
+        "owned": [
+          {
+            "site": "0x100000a0b",
+            "truth": "native-proof",
+            "value": "0x0",
+            "fresh": "true",
+            "publication": "0x1f",
+            "dependency_count": "18"
+          }
+        ],
+        "ownerless": [
+          {
+            "condition_basis": "joined-flags",
+            "condition_widened": "false",
+            "flags_known": "0x3f",
+            "flags_value": "0x26",
+            "kind": "setcc-value",
+            "outcome": "false",
+            "site": "0x100000a0b",
+            "status": "proved",
+            "support": "0x1000009c0;0x1000009c1;0x1000009c8;0x1000009cf;0x1000009d9;0x1000009dd;0x1000009e7;0x1000009ea;0x1000009f4;0x1000009f8;0x1000009fb;0x100000a00;0x100000a02;0x100000a04;0x100000a0b;0x100000a0e;0x100000a0f;0x100000a12",
+            "truth": "static-region-fact",
+            "value": "0x0",
+            "width_bits": "8"
+          }
+        ],
+        "inventory": {
+          "sha256": "ade29a1e2493c12ef78595da1e00015065fa5c2138e4d11c267f0abbd56bca88",
+          "heads": 494,
+          "references": 511
+        },
+        "nodes": 18,
+        "edges": 18,
+        "limits": {
+          "nodes": 128,
+          "rounds": 128,
+          "incoming_per_node": 256
+        },
+        "published": false
+      }
+    }
+  ],
+  "production_owned_flag_scan_depth": 64,
+  "production_default_flag_scan_depth": 8,
+  "mutation_controls": {
+    "opcode_patch_before_reanalysis": [],
+    "opcode_patch_reverse": [
+      {
+        "site": "0x1000005f9",
+        "truth": "native-proof",
+        "value": "0x0",
+        "fresh": "true",
+        "publication": "0x20"
+      }
+    ],
+    "opcode_restored": [
+      {
+        "site": "0x1000005f9",
+        "truth": "native-proof",
+        "value": "0x1",
+        "fresh": "true",
+        "publication": "0x21"
+      }
+    ],
+    "count_nine": [],
+    "count_restored": [
+      {
+        "site": "0x1000005f9",
+        "truth": "native-proof",
+        "value": "0x1",
+        "fresh": "true",
+        "publication": "0x22"
+      }
+    ],
+    "external_entry": [],
+    "external_entry_removed": [
+      {
+        "site": "0x1000005f9",
+        "truth": "native-proof",
+        "value": "0x1",
+        "fresh": "true",
+        "publication": "0x23"
+      }
+    ]
+  },
+  "existing_dataflow": {
+    "passed": true,
+    "source_sha256": {
+      "src/common/bounded_dataflow.h": "a8817441c1c23a421fc0f09468a3c9206eb54fd3da18f08906e531d90f909ee5",
+      "src/common/x86_abstract.h": "faadf0072a962d046def573f0b0796c82fc5956df03df2cf20ee4d3dd1bc1bb0",
+      "src/common/x86_string_memory.h": "4d2879fa20aee01d2d88360a500a31250cf197f2237ea12aa9d9dc16d6572ea9",
+      "src/ida_analysis/x86_analysis.cpp": "ba9a7df02cbd6055127dc228585fbb5c3f439340276297b1eefdc203cd0cf432",
+      "src/ida_analysis/x86_analysis.hpp": "b6279d1d543604b6696bb2e5df0e8d6a345597e25bfd495f872a605a4ad79fe1",
+      "src/ida_analysis/get_pc_ida.cpp": "0f53b3b3c65e3a07cc6446ed5c10f57928137db62aed49bd4462d3bdf19b115c",
+      "src/ida_analysis/native_engine.cpp": "d919fed9c99160a8f4dfe7e4b71e66bf3dc389858018776f3339ee8e40d39fef",
+      "tests/x86_abstract_tests.cpp": "8a1c715ac7ee728a57c6ea9651756b5b2754b3ee5fc1f17d06ebcee4244ee190",
+      "tests/vmp_native/dataflow.S": "46c95831d6f4ac820e0a00bf8682f0a6e75291ee55ab304b44ce1cea92ad7dbc",
+      "tests/vmp_native/dataflow_main.c": "db34d9794cdf8d0743b620e9abd455a054ced2f0e634e4fe60c697a14ed28d73",
+      "tests/ida_dataflow_probe.py": "e8f3a295fc4ee4b0880038fbcfc2126b03030e1bf45a7896c6bc0729daa53e28",
+      "tests/run_native_dataflow.py": "7d411ce3d00e2595041337375445989ff781b829e721eaf297377ed990254c23",
+      "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+      "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+      "tests/vmp_corpus/linux32.py": "3e69027a6fa06a1c6b4693dd702f26a2f81cd07ac2bcc7775f711e42a8d99c09",
+      "tests/vmp_corpus/linux32_exec.py": "a0577238731548cde8e20c20299f61cc7fcf23b4602c33dfdbcd12f8c08793b0"
+    },
+    "runs": [
+      {
+        "architecture": "x86_64",
+        "runtime": "macOS x86-64 process; translated on arm64 hosts",
+        "native_result": {
+          "checks": 37630,
+          "passed": true
+        },
+        "binary_sha256": "097d912fd7d90b3c88561f0cec5a4734b91854e1c56caeb55c76df76724fbd45",
+        "checks": 479,
+        "artifact_sha256": {
+          "inspection/run.json": "efa72f23f457b2217a387b61c56f5d01e2fcc4668c1b642b42fca9489bce99a0",
+          "inspection/dataflow.json": "1c1ed33b4e08730205ab7fcb989222e662cbcd571bf67840af7adeff5574df7b"
+        }
+      },
+      {
+        "architecture": "i386",
+        "runtime": {
+          "image_id": "sha256:91a6e07bec9b5ef76ccee2f076aa419b5e79a93e15c69de67017e0b8a3a38bc2",
+          "container_architecture": "arm64",
+          "execution": "qemu-i386 user-mode translation in Linux container",
+          "sha256": {
+            "i686-linux-gnu-gcc": "b153817903e501ced978c21064c5a167620f6257430cf5479b20112e6da76f68",
+            "i686-linux-gnu-ld": "2561e767483ede30571b33fbd04ce1f2aff05bd727da14edebd4cc9044a466d2",
+            "qemu-i386": "ab3616f72fd2ec26ba9e1cb931d3bcd9f243471cf482785381bedc2907b3b085",
+            "ld-linux.so.2": "2475ee4a5f8337f1d64054826f7867725709aaf500a74c171ee5e084b8ce31bc",
+            "libc.so.6": "31f35ed4544db60e6d236b5a12ae4db9548c2d64be1bbd159ce7bba42b1f01aa"
+          },
+          "qemu_version": [
+            "qemu-i386 version 9.2.0",
+            "Copyright (c) 2003-2024 Fabrice Bellard and the QEMU Project developers"
+          ],
+          "packages": [
+            "binutils-i686-linux-gnu\t2.42-4ubuntu2.10",
+            "gcc-i686-linux-gnu\t4:13.2.0-7ubuntu1",
+            "libc6-dev-i386-cross\t2.39-0ubuntu8cross1",
+            "libc6-i386-cross\t2.39-0ubuntu8cross1",
+            "python3\t3.12.3-0ubuntu2.1",
+            "qemu-user\t1:8.2.2+ds-0ubuntu1.18"
+          ]
+        },
+        "native_result": {
+          "checks": 36350,
+          "passed": true
+        },
+        "binary_sha256": "7ae45e9d14a087fa921a624159448c203a8e2dcb79bcbbeea2563ff136f32428",
+        "checks": 412,
+        "artifact_sha256": {
+          "inspection/run.json": "166a15f5f152e3ce615881d6a8ee29e7ee388bc533c306d154394ac7f11a88e4",
+          "inspection/dataflow.json": "64f09a84cdd273d30d61d2167820e03aebaf54a730b24f9925f52b6f3c96b6df"
+        }
+      }
+    ]
+  },
+  "protected_control": {
+    "sample": "samples/foo_x86_vmp",
+    "sample_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "root": "0x1002946b5",
+    "checks": 8,
+    "nodes": 75,
+    "edges": 77,
+    "records": [
+      {
+        "condition_basis": "joined-flags",
+        "condition_widened": "false",
+        "flags_known": "0x0",
+        "flags_value": "0x0",
+        "kind": "setcc-value",
+        "outcome": "unknown",
+        "site": "0x1001d6c12",
+        "status": "unresolved",
+        "support": "0x10018aa94;0x10018aa9c;0x10018aaa3;0x10018aaa6;0x1001d6c0c;0x1001d6c0d;0x1001d6c0e;0x1001d6c0f;0x1001d6c12;0x1001d6c16;0x1001d6c19;0x1001d6c1c;0x1001d6c1f;0x1001d6c20;0x1001e80f7;0x1001e80f9;0x1001e80fd;0x1001e8101;0x1001e8104;0x1001e8107;0x1001e8108;0x1001e810b;0x10022ba7c;0x10022ba7f;0x100234f93;0x100234f9a;0x100234f9d;0x100234f9e;0x100234fa4;0x100234fa7;0x10024267b;0x10024267e;0x100248011;0x100248013;0x100248014;0x100248015;0x100248019;0x10024801a;0x10025c182;0x10025c185;0x10025c187;0x10025c18e;0x10025c195;0x10025c197;0x10025c19d;0x10025c1a1;0x10025c1a5;0x10025c1a6;0x10025c1ac;0x10025c1ad;0x10025c1b3;0x10025c1b9;0x10025c1ba;0x10025c1bd;0x10025c1be;0x10025c1c3;0x10025c1c6;0x10025c1cb;0x10025c1ce;0x10025d082;0x10025d088;0x10025d08b;0x10025d08f;0x10025d093;0x10025d09d;0x10025d0a0;0x10025d0a5;0x10025d0a9;0x1002946b5;0x1002946ba;0x1002946bf;0x1002946c3;0x1002946c7;0x1002946ca;0x1002946d1",
+        "truth": "static-region-fact",
+        "value": "unknown",
+        "width_bits": "8"
+      },
+      {
+        "condition_basis": "joined-flags",
+        "condition_widened": "false",
+        "flags_known": "0x0",
+        "flags_value": "0x0",
+        "kind": "setcc-value",
+        "outcome": "unknown",
+        "site": "0x100248015",
+        "status": "unresolved",
+        "support": "0x10018aa94;0x10018aa9c;0x10018aaa3;0x10018aaa6;0x1001d6c0c;0x1001d6c0d;0x1001d6c0e;0x1001d6c0f;0x1001d6c12;0x1001d6c16;0x1001d6c19;0x1001d6c1c;0x1001d6c1f;0x1001d6c20;0x1001e80f7;0x1001e80f9;0x1001e80fd;0x1001e8101;0x1001e8104;0x1001e8107;0x1001e8108;0x1001e810b;0x10022ba7c;0x10022ba7f;0x100234f93;0x100234f9a;0x100234f9d;0x100234f9e;0x100234fa4;0x100234fa7;0x10024267b;0x10024267e;0x100248011;0x100248013;0x100248014;0x100248015;0x100248019;0x10024801a;0x10025c182;0x10025c185;0x10025c187;0x10025c18e;0x10025c195;0x10025c197;0x10025c19d;0x10025c1a1;0x10025c1a5;0x10025c1a6;0x10025c1ac;0x10025c1ad;0x10025c1b3;0x10025c1b9;0x10025c1ba;0x10025c1bd;0x10025c1be;0x10025c1c3;0x10025c1c6;0x10025c1cb;0x10025c1ce;0x10025d082;0x10025d088;0x10025d08b;0x10025d08f;0x10025d093;0x10025d09d;0x10025d0a0;0x10025d0a5;0x10025d0a9;0x1002946b5;0x1002946ba;0x1002946bf;0x1002946c3;0x1002946c7;0x1002946ca;0x1002946d1",
+        "truth": "static-region-fact",
+        "value": "unknown",
+        "width_bits": "8"
+      },
+      {
+        "condition_basis": "joined-flags",
+        "condition_widened": "false",
+        "fallthrough": "0x10025d088",
+        "flags_known": "0x0",
+        "flags_value": "0x0",
+        "kind": "branch-condition",
+        "outcome": "unknown",
+        "site": "0x10025d082",
+        "status": "unresolved",
+        "support": "0x10018aa94;0x10018aa9c;0x10018aaa3;0x10018aaa6;0x1001d6c0c;0x1001d6c0d;0x1001d6c0e;0x1001d6c0f;0x1001d6c12;0x1001d6c16;0x1001d6c19;0x1001d6c1c;0x1001d6c1f;0x1001d6c20;0x1001e80f7;0x1001e80f9;0x1001e80fd;0x1001e8101;0x1001e8104;0x1001e8107;0x1001e8108;0x1001e810b;0x10022ba7c;0x10022ba7f;0x100234f93;0x100234f9a;0x100234f9d;0x100234f9e;0x100234fa4;0x100234fa7;0x10024267b;0x10024267e;0x100248011;0x100248013;0x100248014;0x100248015;0x100248019;0x10024801a;0x10025c182;0x10025c185;0x10025c187;0x10025c18e;0x10025c195;0x10025c197;0x10025c19d;0x10025c1a1;0x10025c1a5;0x10025c1a6;0x10025c1ac;0x10025c1ad;0x10025c1b3;0x10025c1b9;0x10025c1ba;0x10025c1bd;0x10025c1be;0x10025c1c3;0x10025c1c6;0x10025c1cb;0x10025c1ce;0x10025d082;0x10025d088;0x10025d08b;0x10025d08f;0x10025d093;0x10025d09d;0x10025d0a0;0x10025d0a5;0x10025d0a9;0x1002946b5;0x1002946ba;0x1002946bf;0x1002946c3;0x1002946c7;0x1002946ca;0x1002946d1",
+        "taken": "0x10024801a",
+        "target": "unknown",
+        "truth": "static-region-fact"
+      }
+    ],
+    "inventory": {
+      "sha256": "06057fc0eaf67b39521f259a547815cb931369fe0618b7be3d55b06136770e2d",
+      "heads": 278,
+      "references": 275,
+      "functions": 7
+    },
+    "runner": {
+      "schema_version": 2,
+      "input_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+      "source_input_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+      "plugin_sha256": "0cb87de1ba34d043d3bc05e1b4c8f1898da4c5fc7a0cc9c79d335484e0105fe2",
+      "plugin_unchanged": true,
+      "script_sha256": "b68a41d2011f232808974d7b155b84a43e4f13a8f3eb157a0d204cf6f04548d2",
+      "script_unchanged": true,
+      "source_script_sha256": "b68a41d2011f232808974d7b155b84a43e4f13a8f3eb157a0d204cf6f04548d2",
+      "source_script_unchanged": true,
+      "source_input_unchanged": true,
+      "input_copy_matches_source": true,
+      "ida_path": "<ida>/idat",
+      "local_paths_redacted": true,
+      "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "ida_sha256_after": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+      "ida_unchanged": true,
+      "artifacts_unchanged": true,
+      "chernobog_environment_sha256": "98463287a3b3854557e502421de3de2504713d810515056e1c594d838ab134d0",
+      "enable_rax": false,
+      "verbose": false,
+      "process_elapsed_ns": 2707927208,
+      "process_return_code": 0,
+      "expected_log_pattern": "\\[chernobog\\]\\[[^\\]\\r\\n]+\\] PASS(?:\\s|$)",
+      "expected_log_found": true,
+      "internal_error_found": false,
+      "runner_return_code": 0
+    }
+  },
+  "primary_source": {
+    "title": "Intel 64 and IA-32 Architectures Software Developer Manual revision 090",
+    "url": "https://cdrdv2-public.intel.com/874240/325462-090-sdm-vol-1-2abcd-3abcd-4.pdf",
+    "artifact": "build/intel-sdm-090.pdf",
+    "sha256": "3686e42931e893b5016c70fb131403795ef173237d073afcfec52755fcd3ea50"
+  },
+  "quality_gates": {
+    "QG1": "passed for this changeset within A1–A6; scope and falsification probes in VMP_DIRECTION_FLAG_MEMORY.md",
+    "QG2": "passed for this changeset within A1–A6; scope and falsification probes in VMP_DIRECTION_FLAG_MEMORY.md",
+    "QG3": "passed for this changeset within A1–A6; scope and falsification probes in VMP_DIRECTION_FLAG_MEMORY.md",
+    "QG4": "passed for this changeset within A1–A6; scope and falsification probes in VMP_DIRECTION_FLAG_MEMORY.md",
+    "QG5": "passed for this changeset within A1–A6; scope and falsification probes in VMP_DIRECTION_FLAG_MEMORY.md",
+    "QG6": "passed for this changeset within A1–A6; scope and falsification probes in VMP_DIRECTION_FLAG_MEMORY.md",
+    "QG7": "passed for this changeset within A1–A6; scope and falsification probes in VMP_DIRECTION_FLAG_MEMORY.md"
+  },
+  "excluded_trials": [
+    "build/df-direction-prior-trial",
+    "build/df-direction-current-final",
+    "build/df-direction-prior-final-2",
+    "build/df-direction-current-final-2",
+    "build/df-direction-prior-final-3",
+    "build/df-direction-current-final-3",
+    "build/df-direction-diagnostic",
+    "build/df-direction-prior-depth64",
+    "build/df-direction-current-depth64"
+  ]
+}
