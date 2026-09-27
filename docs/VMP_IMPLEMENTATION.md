@@ -1169,3 +1169,20 @@ See `VMP_MBA_CONSTRAINT_BINDINGS.md` and its evidence JSON. These observations
 do not establish a concrete-instance counterexample, a missing identity or a
 protected simplification gain. Full causal classification and review
 implementation remain in progress.
+
+## REP index postconditions checkpoint
+
+Review rows 1, 2 and V now retain exact or partial SI/DI postconditions after
+successful bounded REP MOVS/STOS memory admission. Joining every compatible
+count and DF completion recovers 14 additional owned and 14 additional
+ownerless PUSH/RET targets in the same 20-routine executable. Four uncertainty
+controls remain unresolved, and two existing conditions remain exact.
+Count/external-entry/index-mask edits revoke precision; restoration recomputes
+it, and all 20 ownerless inspections preserve the full IDB inventory.
+Independent oracles execute 5,120 fixture cases and 38,400 REP cases. All
+22 CTest suites and existing x86-64/i386 dataflow controls pass. The supplied
+VMP control retains its 75 nodes, 77 edges and three unresolved facts.
+See `VMP_REPEAT_INDEX_POSTCONDITIONS.md` and its evidence JSON for assumptions,
+primary provenance and artifact pins. Existing bounds, configured/default scan
+budgets, zero-count behavior and i386 segment abstention remain; this checkpoint
+establishes no protected recovery gain. The complete review remains in progress.

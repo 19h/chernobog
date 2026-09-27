@@ -615,8 +615,10 @@ struct State
                     {
                         stack.clear();
                         if (move)
-                            regs[6] = {};
-                        regs[7] = {};
+                            regs[6] = repeat_index(regs[1], repeat.source, word_bits,
+                                                   repeat.element_bytes, repeat.reverse);
+                        regs[7] = repeat_index(regs[1], repeat.destination, word_bits,
+                                               repeat.element_bytes, repeat.reverse);
                     }
                     finish_unconditional_repeat(insn, is64);
                     return;

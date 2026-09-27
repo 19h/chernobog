@@ -32,6 +32,37 @@ inline std::optional<RepeatCounts> repeat_counts(const Word &count, unsigned add
 
 using StringMemory = std::map<uint64_t, uint8_t>;
 
+// Normal-completion index bits common to every compatible count and DF value.
+// Call only after the complete memory domain has been admitted; this helper
+// alone establishes neither access validity nor an instruction encoding.
+inline Word repeat_index(const Word &count, std::optional<uint64_t> index, unsigned address_bits,
+                         unsigned element_bytes, std::optional<bool> reverse)
+{
+    const auto counts = repeat_counts(count, address_bits);
+    if (!counts || !index || *index > mask(address_bits) ||
+        (element_bytes != 1 && element_bytes != 2 && element_bytes != 4 && element_bytes != 8))
+        return {};
+    Word common;
+    bool first = true;
+    for (unsigned c = 0; c < counts->size; ++c)
+        for (unsigned descending = 0; descending < 2; ++descending)
+        {
+            if (reverse && *reverse != bool(descending))
+                continue;
+            const uint64_t distance = uint64_t(counts->values[c]) * element_bytes;
+            const uint64_t offset = descending ? uint64_t{0} - distance : distance;
+            const Word result{mask(address_bits), (*index + offset) & mask(address_bits)};
+            if (first)
+            {
+                common = result;
+                first = false;
+            }
+            else
+                common.join(result);
+        }
+    return common;
+}
+
 struct StringRepeat
 {
     unsigned address_bits = 0;

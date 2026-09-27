@@ -212,6 +212,13 @@ void repeated_memory_regressions()
                                 check(memory.count(450) && memory.at(450) == initial[450],
                                       "repeat preserves unrelated local memory");
                                 check(memory.size() <= 128, "repeat obeys retained-byte cap");
+                                const Word destination_index = repeat_index(
+                                    count, repeat.destination, bits, bytes, repeat.reverse);
+                                const Word source_index =
+                                    repeat_index(count, repeat.source, bits, bytes, repeat.reverse);
+                                uint64_t destination_ones = mask(bits),
+                                         destination_zeros = mask(bits);
+                                uint64_t source_ones = mask(bits), source_zeros = mask(bits);
                                 // A concrete byte-array machine does not use the helper,
                                 // its count enumerator, memory map or join operation.
                                 for (unsigned n = 0; n < 256; ++n)
@@ -222,6 +229,25 @@ void repeated_memory_regressions()
                                                 if (direction_domain &&
                                                     (direction < 0) != (direction_domain == 2))
                                                     continue;
+                                                const uint64_t ending_destination = uint64_t(
+                                                    128 + delta + direction * int(n * bytes));
+                                                const uint64_t ending_source =
+                                                    uint64_t(128 + direction * int(n * bytes));
+                                                check(
+                                                    (ending_destination &
+                                                     destination_index.known) ==
+                                                        destination_index.value,
+                                                    "retained DI bits agree with concrete machine");
+                                                check(
+                                                    unknown
+                                                        ? source_index.known == 0
+                                                        : (ending_source & source_index.known) ==
+                                                              source_index.value,
+                                                    "retained SI bits agree with concrete machine");
+                                                destination_ones &= ending_destination;
+                                                destination_zeros &= ~ending_destination;
+                                                source_ones &= ending_source;
+                                                source_zeros &= ~ending_source;
                                                 auto concrete = initial;
                                                 for (unsigned i = 0; i < n; ++i)
                                                 {
@@ -258,8 +284,46 @@ void repeated_memory_regressions()
                                                     "native repeat agrees with full-buffer concrete oracle");
 #endif
                                             }
+                                check(
+                                    destination_index.known ==
+                                            ((destination_ones | destination_zeros) & mask(bits)) &&
+                                        destination_index.value == destination_ones,
+                                    "DI join retains exactly the common concrete bits");
+                                check(unknown
+                                          ? source_index.known == 0
+                                          : source_index.known ==
+                                                    ((source_ones | source_zeros) & mask(bits)) &&
+                                                source_index.value == source_ones,
+                                      "SI join retains exactly the common concrete bits");
                             }
     const Word eight{UINT64_MAX, 8}, zero{UINT64_MAX, 0}, one{UINT64_MAX, 1};
+    for (unsigned bits : {32u, 64u})
+        for (unsigned bytes : {1u, 2u, 4u, 8u})
+            for (unsigned count = 0; count <= 8; ++count)
+                for (uint64_t base : {uint64_t{0}, uint64_t{1}, mask(bits) - 1, mask(bits)})
+                    for (bool reverse : {false, true})
+                    {
+                        uint64_t concrete = base;
+                        for (unsigned i = 0; i < count; ++i)
+                            for (unsigned j = 0; j < bytes; ++j)
+                                concrete = (reverse ? concrete - 1 : concrete + 1) & mask(bits);
+                        const Word result =
+                            repeat_index(Word{mask(bits), count}, base, bits, bytes, reverse);
+                        check(result.known == mask(bits) && result.value == concrete,
+                              "index wrap agrees with independent byte-step machine");
+                    }
+    check(repeat_index(one, {}, 64, 1, false).known == 0, "unknown index remains unknown");
+    check(repeat_index(Word{}, 100, 64, 1, false).known == 0,
+          "unbounded count cannot establish index bits");
+    check(repeat_index(Word{UINT64_MAX, 9}, 100, 64, 1, false).known == 0,
+          "count nine cannot establish index bits");
+    check(repeat_index(one, 100, 16, 1, false).known == 0,
+          "unsupported address width cannot establish index bits");
+    check(repeat_index(one, UINT64_MAX, 32, 1, false).known == 0,
+          "index outside address width cannot establish index bits");
+    for (unsigned bytes : {0u, 3u, 16u})
+        check(repeat_index(one, 100, 64, bytes, false).known == 0,
+              "unsupported element width cannot establish index bits");
     StringMemory memory{{100, 42}, {450, 19}};
     const auto before = memory;
     check(repeat_string_memory(memory, zero, {64, 8, true, {}, {}, {}}, range, range) &&
