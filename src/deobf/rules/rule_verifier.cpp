@@ -2,8 +2,8 @@
 #include "../../common/bitvector.h"
 #include "../../common/solver_evidence.hpp"
 #include <array>
-#include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -18,7 +18,8 @@ namespace
 {
 struct InstanceCounters
 {
-    std::atomic<size_t> verified{0}, disproved{0}, unsupported{0}, unknown{0};
+    std::mutex mutex;
+    InstanceVerificationStats values;
 } instance_stats;
 // This translator deliberately does not use AST deduplication or printed
 // operand names: the proof must see the original typed microcode on both sides.
@@ -172,35 +173,55 @@ struct InstanceTranslator
 
 InstanceVerificationStats instance_verification_stats()
 {
-    return {instance_stats.verified.load(), instance_stats.disproved.load(),
-            instance_stats.unsupported.load(), instance_stats.unknown.load()};
+    const std::lock_guard<std::mutex> guard(instance_stats.mutex);
+    return instance_stats.values;
 }
 void reset_instance_verification_stats()
 {
-    instance_stats.verified = 0;
-    instance_stats.disproved = 0;
-    instance_stats.unsupported = 0;
-    instance_stats.unknown = 0;
+    const std::lock_guard<std::mutex> guard(instance_stats.mutex);
+    instance_stats.values = {};
 }
 
 RuleVerificationResult RuleVerifier::verify_instance(const minsn_t *original,
                                                      const minsn_t *replacement)
 {
     const auto result = verify_instance_impl(original, replacement);
+    const std::lock_guard<std::mutex> guard(instance_stats.mutex);
+    auto &stats = instance_stats.values;
     switch (result.status)
     {
     case RuleVerificationStatus::VERIFIED:
-        ++instance_stats.verified;
+        ++stats.verified;
         break;
     case RuleVerificationStatus::DISPROVED:
-        ++instance_stats.disproved;
+        ++stats.disproved;
         break;
     case RuleVerificationStatus::UNSUPPORTED:
-        ++instance_stats.unsupported;
+        ++stats.unsupported;
         break;
     case RuleVerificationStatus::UNKNOWN:
-        ++instance_stats.unknown;
+        ++stats.unknown;
         break;
+    }
+    if (result.status != RuleVerificationStatus::VERIFIED)
+    {
+        if (result.detail.size() <= 256)
+        {
+            for (auto &entry : stats.rejection_reasons)
+                if (entry.status == result.status && entry.bit_width == result.bit_width &&
+                    entry.detail == result.detail)
+                {
+                    ++entry.count;
+                    return result;
+                }
+            if (stats.rejection_reasons.size() < 32)
+            {
+                stats.rejection_reasons.push_back(
+                    {result.status, result.bit_width, result.detail, 1});
+                return result;
+            }
+        }
+        ++stats.unrecorded_rejections;
     }
     return result;
 }

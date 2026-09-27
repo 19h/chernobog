@@ -4,7 +4,9 @@
 #include <cstdarg>
 #include <cstdlib>
 #include <iostream>
+#include <map>
 #include <stdexcept>
+#include <tuple>
 
 namespace
 {
@@ -102,11 +104,14 @@ void constant(mop_t &operand, mnumber_t &number, int bytes)
 bool test_typed_instances()
 {
     using namespace chernobog::rules;
+    reset_instance_verification_stats();
+    std::vector<RuleVerificationResult> observations;
     RuleVerifier verifier;
     const auto expect =
         [&](minsn_t &before, minsn_t &after, RuleVerificationStatus status, const char *label)
     {
         const auto result = verifier.verify_instance(&before, &after);
+        observations.push_back(result);
         if (result.status == status)
             return true;
         std::cerr << label << ": " << rule_verification_status_name(result.status) << " "
@@ -130,6 +135,7 @@ bool test_typed_instances()
         {
             RuleVerifier exhausted(10'000, 1);
             const auto limited = exhausted.verify_instance(&sum, &direct);
+            observations.push_back(limited);
             if (limited.status != RuleVerificationStatus::UNKNOWN || limited.verified())
             {
                 std::cerr << "typed resource exhaustion must remain unverified UNKNOWN\n";
@@ -211,8 +217,106 @@ bool test_typed_instances()
     samples.r.s = &second_frame;
     okay &= expect(samples, zero_value, RuleVerificationStatus::DISPROVED,
                    "different frame owners cannot cancel");
+    // Real rejected SDK trees exercise independent width/reason keys beyond
+    // the diagnostic quota. Dropping a reason must never drop its rejection.
+    for (int bytes : {1, 2, 4, 8})
+        for (unsigned invalid = 0; invalid < 11; ++invalid)
+        {
+            ValueInsn before(m_mov, bytes), after(m_mov, bytes), inner(m_mov, bytes == 8 ? 4 : 8);
+            reg(before.l, 100, bytes);
+            reg(after.l, 100, bytes);
+            const int other = bytes == 8 ? 4 : 8;
+            switch (invalid)
+            {
+            case 0:
+                before.iprops |= IPROP_MBARRIER;
+                break;
+            case 1:
+                before.l.oprops |= OPROP_UDEFVAL;
+                break;
+            case 2:
+                before.l.t = mop_S;
+                before.l.s = nullptr;
+                break;
+            case 3:
+                before.l.t = mop_l;
+                before.l.l = nullptr;
+                break;
+            case 4:
+                before.l.t = mop_z;
+                break;
+            case 5:
+                before.opcode = m_ldx;
+                break;
+            case 6:
+                reg(before.r, 200, bytes);
+                break;
+            case 7:
+                nested(before.l, inner);
+                before.l.size = bytes;
+                break;
+            case 8:
+                before.l.size = other;
+                break;
+            case 9:
+                before.opcode = m_add;
+                reg(before.r, 200, other);
+                break;
+            case 10:
+                nested(before.l, before);
+                break;
+            }
+            okay &= expect(before, after, RuleVerificationStatus::UNSUPPORTED,
+                           "diagnostic quota retains rejection");
+        }
+    const auto stats = instance_verification_stats();
+    using Key = std::tuple<RuleVerificationStatus, unsigned, std::string>;
+    std::map<Key, size_t> expected;
+    std::map<RuleVerificationStatus, size_t> statuses;
+    size_t verified = 0, rejected = 0, recorded = 0;
+    for (const auto &result : observations)
+    {
+        ++statuses[result.status];
+        if (result.verified())
+            ++verified;
+        else
+        {
+            ++rejected;
+            ++expected[{result.status, result.bit_width, result.detail}];
+        }
+    }
+    std::map<Key, size_t> actual;
+    for (const auto &entry : stats.rejection_reasons)
+    {
+        const Key key{entry.status, entry.bit_width, entry.detail};
+        okay &= entry.count == expected.at(key) && entry.detail.size() <= 256 &&
+                actual.emplace(key, entry.count).second;
+        recorded += entry.count;
+    }
+    okay &= stats.verified == verified &&
+            stats.disproved == statuses[RuleVerificationStatus::DISPROVED] &&
+            stats.unsupported == statuses[RuleVerificationStatus::UNSUPPORTED] &&
+            stats.unknown == statuses[RuleVerificationStatus::UNKNOWN] &&
+            stats.disproved + stats.unsupported + stats.unknown == rejected &&
+            recorded + stats.unrecorded_rejections == rejected &&
+            stats.rejection_reasons.size() == 32 && stats.unrecorded_rejections > 0;
+    reset_instance_verification_stats();
+    const auto reset = instance_verification_stats();
+    okay &= reset.verified == 0 && reset.disproved == 0 && reset.unsupported == 0 &&
+            reset.unknown == 0 && reset.rejection_reasons.empty() &&
+            reset.unrecorded_rejections == 0;
+    okay &=
+        expect(samples, zero_value, RuleVerificationStatus::DISPROVED, "new rejection after reset");
+    const auto restarted = instance_verification_stats();
+    okay &= restarted.disproved == 1 && restarted.rejection_reasons.size() == 1 &&
+            restarted.rejection_reasons[0].count == 1 && restarted.unrecorded_rejections == 0;
+    reset_instance_verification_stats();
     if (okay)
-        std::cout << "MBA typed instances: 25 positive/negative controls passed\n";
+        std::cout << "MBA typed instances: " << observations.size() - 1 << " initial results, "
+                  << stats.verified << " verified, " << stats.disproved << " disproved, "
+                  << stats.unsupported << " unsupported, " << stats.unknown
+                  << " unknown; 32-key quota, " << stats.unrecorded_rejections
+                  << " unrecorded; reset and one new rejection passed\n";
     return okay;
 }
 

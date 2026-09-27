@@ -1,0 +1,500 @@
+{
+  "schema": 1,
+  "checkpoint": "protected SDK capture and bounded typed-proposal rejection diagnostics",
+  "requirements": [
+    "4a",
+    "4b",
+    "V"
+  ],
+  "baseline_commit": "423061be17f786cb020a575f178003093a4f4bbb",
+  "completion_scope": "diagnostic feature and complete recorded capture population; full review remains in progress",
+  "source_sha256": {
+    "tests/run_protected_mba_corpus.py": "ded167e7c8d06054acd3864a9b28a7d30ccec1f56d78280f4b100c2b0a357972",
+    "tests/ida_protected_mba_probe.py": "aa508a6b89bec64e137b26c81e5d1896578ada8344e84aed1fdac63a351a55b0",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "src/deobf/rules/rule_verifier.cpp": "2a62e22ba38e291e1b9ba70dd9e4a981477644b38ec064a576d5a50e682daa54",
+    "src/deobf/rules/rule_verifier.h": "7491159c494acc7d8f8575490dda23596c8f6d0efe61ff70fdc8da21f6923c68",
+    "src/deobf/handlers/mba_simplify.cpp": "963a4d6c46addea208eeddafe58dfa53f48da662eb36a369c7754141df3d5b24",
+    "src/deobf/rules/rule_registry.cpp": "c208ae7bba6674f153f9d78be11e572e4ad1246e04b9458e556fc20759421abe",
+    "src/plugin/idc_api.cpp": "5db0954d56bddb30b7974a18f1c3a14738483e386313268b55777757716554d2",
+    "tests/catalog_tests.cpp": "dde175441c2f67ed26d9873718ab6c09a12538fc7c0e6c078f5cdfa073c31562",
+    "tests/verify_protected_mba_capture.py": "e25e5828162e574e04269067e1d7caece500569bdb2b12bcd8bb685472db01e5",
+    "docs/VMP_PROTECTED_MBA_DIAGNOSTICS.md": "d1bda78473a90b88747499a3b9481e867d6f6576851ab3a4c240ab60348f5e98",
+    "src/deobf/rules/pattern_rule.cpp": "c05929c9ac08a11f734c9d22c39df1e5cd515825712ecd87fe0cdcf7fbd948a8",
+    "src/deobf/analysis/ast_builder.cpp": "ac4e3cc4fe86d9619ba42a6b91b36130036aaab8b75581d4df857352830c6d82",
+    "src/deobf/analysis/chain_simplify.cpp": "294494e16fd565ef111c7f955f8fc5398c06ec1c13d7878f98e656fb35239714"
+  },
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "ida_components_sha256": {
+    "<ida>/libida.dylib": "c723167ed12fcb001774e10cb5a05035c96858da1b2a6c5761e553c6346e78ab",
+    "<ida>/libidalib.dylib": "0bb76152d5ce1b164d1715d289f17ee7db87a74ee1e5223fd232829ed33855d8",
+    "<ida>/procs/pc.dylib": "09165b45c585c5c156797a9bd0ca5147f33ee99f12b82a6130fd7cc07707b43d",
+    "<ida>/plugins/hexx64.dylib": "6d0ad64715eeb88966091e2df788b3d1283546a95b4b1002c2bb11918bfa4caf",
+    "<ida>/plugins/goomba.dylib": "fd9c98d862bdd08753c12fca2a5319a67ecbb45161b1cd00600f4047c8f835ec",
+    "<ida>/cfg/goomba.cfg": "cf3eea65229dde0a2028eeb74debab36f30419f3bb0385f87e36cbee2945ccb5"
+  },
+  "sdk_primary_sources_sha256": {
+    "<sdk>/hexrays.hpp": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff"
+  },
+  "candidate_plugin_sha256": "3148dd96e89b14759458bda63801bd24aeb519da41dc95903e8bd0a7339972a7",
+  "prior_plugin_sha256": "b1fd20025f63b66c9803a03a8226a556624a601ab31bff61c2ee44baa8647473",
+  "native_corpora": [
+    {
+      "architecture": "x86_64",
+      "format": "Mach-O",
+      "host_architecture": "arm64",
+      "source_build_attestation": "unknown",
+      "protector_sha256": "3fe722d21d5c8d9661f12b3b04f5863c4d9b93557692c1318dbf8f1c45c23568",
+      "protector_sdk_sha256": "92c6d56dc8d6092233ffd1d56d1969e272528dfeb98b9f0e1a27067883e74381",
+      "packing": false,
+      "project_options": 0,
+      "vm_options": 0,
+      "procedure_options": 0,
+      "protector_seeds": [
+        0,
+        1,
+        12648430
+      ],
+      "input_seeds": [
+        826366246,
+        2654435769,
+        3518319157
+      ],
+      "held_out_protector_seed": 12648430,
+      "held_out_input_seed": 3518319157,
+      "source_sha256": {
+        "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+        "tests/vmp_corpus/pair.c": "81457bbf6f353daa5e282057c859b9c55662fa0ddc69124c2e8bb7ff97fcf0d5",
+        "tests/vmp_corpus/pair.S": "51bbc98ac8ad35be87b03e3d9217fb3152015babf2e47aa05be003b977b72e3b",
+        "tests/vmp_corpus/pair32.S": "64e98a13ef4af322bf94aeefc4ca7ed3c899e5530c08dee282d5baba154fa973",
+        "tests/vmp_corpus/linux32.py": "3e69027a6fa06a1c6b4693dd702f26a2f81cd07ac2bcc7775f711e42a8d99c09",
+        "tests/vmp_corpus/linux32_exec.py": "a0577238731548cde8e20c20299f61cc7fcf23b4602c33dfdbcd12f8c08793b0",
+        "tests/vmp_corpus/linux32.Dockerfile": "6696a2c4c4b1d9b657f40d856a2cf24af845689d732e3a6762436400a0ebb85d",
+        "tests/vmp_corpus/seed.lua": "12c4eeb95ff1a5fcc7bc495df963836f27553002965a0681812594baed4f2fee",
+        "tests/vmp_corpus/seed_interpose.c": "edd66669e5af4255b7aad19bf5d2d2654fb35443ad8ad2e09aa70a6f2d1f0ed5",
+        "tests/vmp_corpus/seed_probe.c": "394d32f1d3a52a7c93f2937f9393d9c6d837b918e6b9b7f21f60949b3b5ad82a"
+      },
+      "reference_source_sha256": {
+        "vmp/core/core.cc": "1552e90eb81ee6363a2697c17f0da1f6e79fcad71386425dda845da86d5d1915",
+        "vmp/core/core.h": "4959967a2c30f70b720346fa3796a2f2bbac5a476a3bcb9484f23745d63538c1",
+        "vmp/core/files.cc": "1f77b8a8569ce5c2a798d44eefcffcbeed079e6e10093e3c44095c8fae1d4694",
+        "vmp/core/files.h": "3f706eef4914c0b84650b23543df6898da3fedfb9d4cb734b3b19babebefcc72",
+        "vmp/core/intel.cc": "ec81bac7a581873892710d3cd81b942973394e83b0586f881022c8b67961163c",
+        "vmp/core/macfile.cc": "6b4ec66ecc66057de4920531875c0b5b62d89130b23786fefb8cec0c880e28d6",
+        "vmp/core/elffile.cc": "93918c2d2bd9153f077d2962d23db7c6a1c6597c52f132f92f02c66405965661",
+        "vmp/core/script.cc": "ccdc918b751d70a73fb7054b345fed59381882624381e497d6c10c96c3f8204d",
+        "vmp/third-party/lua/lmathlib.c": "a9bf0747cfd9653b9e48e9b50a697bb7bf3db1e7d4f6117fe27d7b3bb6c64769"
+      },
+      "original_sha256": "1245a1ce3259f68fa020924aaf35fd78734ca1594f9ffe1f4d99215753256e7b",
+      "selected_functions": {
+        "corpus_transform": "0x1000048b5",
+        "corpus_branch": "0x1000048c2"
+      },
+      "selected_function_bytes": {
+        "corpus_transform": "8b0231f8c1c00501f08902c3",
+        "corpus_branch": "39f772068b0231f8eb048b0231f0c1c00501f08902c3"
+      },
+      "tool_sha256": {
+        "clang": "5922f5f7843fee699497c45cc98134b6686e0a5e2fa8a5866ab74c5482fa87a5",
+        "ld": "4a255704671030b367319b5bd4d3ed78f9571c8f3f0ef96bf86d183c29bb1138"
+      },
+      "report": "build/vmp-mba-corpus-x64/corpus.json",
+      "report_sha256": "1abbb97f8f24f3c43252a6cd2c5b9b0ae52bc7d517ff99f9552c2748e5a53cea",
+      "native_processes": 30,
+      "behavior_records": 16800,
+      "protected_binaries": {
+        "mutation-0": "2cf00e7a5327257d98d18af8f5a35d0b0921b135d2a37a2ec9628e6d997e9a07",
+        "mutation-1": "0245d938b64b96a65f20d0d3734deec473fbd7f86e7cda39f5b806214f1ac367",
+        "mutation-12648430": "564848f0d760a8e92a50e363cacda7e30c9206afcf8db58d81279e8b7571a299",
+        "virtualization-0": "119f617599b35fdead8909e3705005e52f3c1756c1f51549e204d1f8cd888ae2",
+        "virtualization-1": "a0751b571f2a4ebe3997ca37e68e97e562b965a64e047f74b99270f8fe312869",
+        "virtualization-12648430": "75059ce336baa1ec7bb1304b2778aeb391563a69a905fd3c48f548d61119a18a",
+        "combined-0": "1c14af5156970789fd75a758cadb3cbda8248849acabd2106a2e5ba907fb6b74",
+        "combined-1": "dbfd660a4c55d9d7e30f8de5eb53c625a0f618e55a1285087f68e70abcf05b8f",
+        "combined-12648430": "2f3025aa7d738ba02a40cf23c8ed98e55f40bc8af6771232e63c14f8ca1076a7"
+      },
+      "all_repeated_builds_identical": true
+    },
+    {
+      "architecture": "i386",
+      "format": "ELF",
+      "host_architecture": "arm64",
+      "source_build_attestation": "unknown",
+      "protector_sha256": "3fe722d21d5c8d9661f12b3b04f5863c4d9b93557692c1318dbf8f1c45c23568",
+      "protector_sdk_sha256": "92c6d56dc8d6092233ffd1d56d1969e272528dfeb98b9f0e1a27067883e74381",
+      "packing": false,
+      "project_options": 0,
+      "vm_options": 0,
+      "procedure_options": 0,
+      "protector_seeds": [
+        0,
+        1,
+        12648430
+      ],
+      "input_seeds": [
+        826366246,
+        2654435769,
+        3518319157
+      ],
+      "held_out_protector_seed": 12648430,
+      "held_out_input_seed": 3518319157,
+      "source_sha256": {
+        "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+        "tests/vmp_corpus/pair.c": "81457bbf6f353daa5e282057c859b9c55662fa0ddc69124c2e8bb7ff97fcf0d5",
+        "tests/vmp_corpus/pair.S": "51bbc98ac8ad35be87b03e3d9217fb3152015babf2e47aa05be003b977b72e3b",
+        "tests/vmp_corpus/pair32.S": "64e98a13ef4af322bf94aeefc4ca7ed3c899e5530c08dee282d5baba154fa973",
+        "tests/vmp_corpus/linux32.py": "3e69027a6fa06a1c6b4693dd702f26a2f81cd07ac2bcc7775f711e42a8d99c09",
+        "tests/vmp_corpus/linux32_exec.py": "a0577238731548cde8e20c20299f61cc7fcf23b4602c33dfdbcd12f8c08793b0",
+        "tests/vmp_corpus/linux32.Dockerfile": "6696a2c4c4b1d9b657f40d856a2cf24af845689d732e3a6762436400a0ebb85d",
+        "tests/vmp_corpus/seed.lua": "12c4eeb95ff1a5fcc7bc495df963836f27553002965a0681812594baed4f2fee",
+        "tests/vmp_corpus/seed_interpose.c": "edd66669e5af4255b7aad19bf5d2d2654fb35443ad8ad2e09aa70a6f2d1f0ed5",
+        "tests/vmp_corpus/seed_probe.c": "394d32f1d3a52a7c93f2937f9393d9c6d837b918e6b9b7f21f60949b3b5ad82a"
+      },
+      "reference_source_sha256": {
+        "vmp/core/core.cc": "1552e90eb81ee6363a2697c17f0da1f6e79fcad71386425dda845da86d5d1915",
+        "vmp/core/core.h": "4959967a2c30f70b720346fa3796a2f2bbac5a476a3bcb9484f23745d63538c1",
+        "vmp/core/files.cc": "1f77b8a8569ce5c2a798d44eefcffcbeed079e6e10093e3c44095c8fae1d4694",
+        "vmp/core/files.h": "3f706eef4914c0b84650b23543df6898da3fedfb9d4cb734b3b19babebefcc72",
+        "vmp/core/intel.cc": "ec81bac7a581873892710d3cd81b942973394e83b0586f881022c8b67961163c",
+        "vmp/core/macfile.cc": "6b4ec66ecc66057de4920531875c0b5b62d89130b23786fefb8cec0c880e28d6",
+        "vmp/core/elffile.cc": "93918c2d2bd9153f077d2962d23db7c6a1c6597c52f132f92f02c66405965661",
+        "vmp/core/script.cc": "ccdc918b751d70a73fb7054b345fed59381882624381e497d6c10c96c3f8204d",
+        "vmp/third-party/lua/lmathlib.c": "a9bf0747cfd9653b9e48e9b50a697bb7bf3db1e7d4f6117fe27d7b3bb6c64769"
+      },
+      "original_sha256": "94d2c90bf7020c7dd506c4e3ed7dee9bffbd6832a4c512e6e310f1f02485e39a",
+      "selected_functions": {
+        "corpus_transform": "0x804941a",
+        "corpus_branch": "0x804942f"
+      },
+      "selected_function_bytes": {
+        "corpus_transform": "8b54240c8b0233442404c1c005034424088902c3",
+        "corpus_branch": "8b54240c8b4c24043b4c240872068b0231c8eb068b0233442408c1c005034424088902c3"
+      },
+      "tool_sha256": {
+        "clang": "5922f5f7843fee699497c45cc98134b6686e0a5e2fa8a5866ab74c5482fa87a5",
+        "ld": "4a255704671030b367319b5bd4d3ed78f9571c8f3f0ef96bf86d183c29bb1138"
+      },
+      "report": "build/vmp-mba-corpus-i386/corpus.json",
+      "report_sha256": "31909dbeb6b19a44042c6db79bf6f45f6d75c0b5e99c10910d202a6999c1583a",
+      "native_processes": 30,
+      "behavior_records": 16800,
+      "protected_binaries": {
+        "mutation-0": "dc99df7a6da7a4c65e648d8db9ea841925b4c1b835765e28f50818d83454bfe4",
+        "mutation-1": "06607a588e0cc22c61ed4142702fdac1f2f32a7d3c2657e60eccdc04be954f5f",
+        "mutation-12648430": "1c32a35c36cd78ca750fccb9516a0887246a6dcb5ecf0594b7650b92cd0d83ed",
+        "virtualization-0": "0da574daf01766471ae23496582be42945ed77dec97726de080f68feba45f2d6",
+        "virtualization-1": "881c7912465a839b58344d4c8d260dc991013382b3f6881ddac2d19c7d703d33",
+        "virtualization-12648430": "d804f18b479c2cd2a66b076eda094e2fb67eb0c0dad750efaf6254d887b8ffdb",
+        "combined-0": "a8e474f0033524bde7d5d4090d0e1fb2f8451f2ae55f59c33cc55de1c44b6d42",
+        "combined-1": "6f63fc2c8746f561716cdf004b62447afe3c2681210fd6ef33e53ce319411ac8",
+        "combined-12648430": "28afeb8f97e7bcd765f60daffbe10719b57caf9c005cc42fdfc883d43a23d5f5"
+      },
+      "all_repeated_builds_identical": true
+    }
+  ],
+  "capture_profile": {
+    "native_analysis_disabled": true,
+    "rax_enabled": false,
+    "parallel_processes": 2,
+    "process_wall_clock_cap_s": 300,
+    "report_byte_cap": 4194304,
+    "instruction_node_cap": 8192,
+    "depth_cap": 64,
+    "block_cap_per_stage": 256,
+    "native_chunk_cap_per_owner": 64,
+    "native_byte_cap_per_owner": 262144,
+    "retained_text_byte_cap": 524288,
+    "text_byte_cap_per_node": 1024,
+    "maturities": [
+      1,
+      2,
+      3,
+      5
+    ]
+  },
+  "diagnostic_retention": {
+    "distinct_key_cap": 32,
+    "reason_byte_cap": 256,
+    "snapshot_reset": "one mutex; completion counters; not persistent proof receipts"
+  },
+  "paired_sdk_counts_per_profile": {
+    "entry_owned": 40,
+    "paired_stages": 228,
+    "on_captured": 227,
+    "captured_shape_equal": 224,
+    "body_owned": 17,
+    "captured_shape_changed": 3,
+    "body_entry_inside_owner": 1,
+    "on_sdk_refused": 1,
+    "body_ownerless": 18
+  },
+  "enabled_cohorts": [
+    {
+      "architecture": "x86_64",
+      "mode": "original",
+      "enabled_processes": 1,
+      "counts": {
+        "owned": 2,
+        "captured": 8,
+        "total_matches": 1079,
+        "successful_matches": 0,
+        "instance_verified": 0,
+        "instance_disproved": 0,
+        "instance_unsupported": 0,
+        "instance_unknown": 0
+      }
+    },
+    {
+      "architecture": "x86_64",
+      "mode": "mutation",
+      "enabled_processes": 3,
+      "counts": {
+        "owned": 6,
+        "captured": 24,
+        "total_matches": 0,
+        "successful_matches": 0,
+        "instance_verified": 0,
+        "instance_disproved": 0,
+        "instance_unsupported": 0,
+        "instance_unknown": 0,
+        "ownerless": 6
+      }
+    },
+    {
+      "architecture": "x86_64",
+      "mode": "virtualization",
+      "enabled_processes": 3,
+      "counts": {
+        "owned": 6,
+        "captured": 24,
+        "total_matches": 0,
+        "successful_matches": 0,
+        "instance_verified": 0,
+        "instance_disproved": 0,
+        "instance_unsupported": 0,
+        "instance_unknown": 0,
+        "ownerless": 6
+      }
+    },
+    {
+      "architecture": "x86_64",
+      "mode": "combined",
+      "enabled_processes": 3,
+      "counts": {
+        "owned": 6,
+        "captured": 24,
+        "total_matches": 0,
+        "successful_matches": 0,
+        "instance_verified": 0,
+        "instance_disproved": 0,
+        "instance_unsupported": 0,
+        "instance_unknown": 0,
+        "ownerless": 6
+      }
+    },
+    {
+      "architecture": "i386",
+      "mode": "original",
+      "enabled_processes": 1,
+      "counts": {
+        "owned": 2,
+        "captured": 8,
+        "total_matches": 994,
+        "successful_matches": 0,
+        "instance_verified": 0,
+        "instance_disproved": 0,
+        "instance_unsupported": 0,
+        "instance_unknown": 0
+      }
+    },
+    {
+      "architecture": "i386",
+      "mode": "mutation",
+      "enabled_processes": 3,
+      "counts": {
+        "owned": 11,
+        "captured": 44,
+        "total_matches": 3322,
+        "successful_matches": 0,
+        "instance_verified": 0,
+        "instance_disproved": 0,
+        "instance_unsupported": 0,
+        "instance_unknown": 0,
+        "entry_inside_owner": 1
+      }
+    },
+    {
+      "architecture": "i386",
+      "mode": "virtualization",
+      "enabled_processes": 3,
+      "counts": {
+        "owned": 12,
+        "captured": 47,
+        "total_matches": 4345,
+        "successful_matches": 2,
+        "instance_verified": 2,
+        "instance_disproved": 0,
+        "instance_unsupported": 0,
+        "instance_unknown": 0,
+        "sdk_refused": 1
+      }
+    },
+    {
+      "architecture": "i386",
+      "mode": "combined",
+      "enabled_processes": 3,
+      "counts": {
+        "owned": 12,
+        "captured": 48,
+        "total_matches": 4330,
+        "successful_matches": 4,
+        "instance_verified": 2,
+        "instance_disproved": 0,
+        "instance_unsupported": 2,
+        "instance_unknown": 0
+      }
+    }
+  ],
+  "actual_rejection_groups": [
+    {
+      "architecture": "i386",
+      "label": "combined-12648430",
+      "disabled": false,
+      "name": "corpus_transform",
+      "kind": "body",
+      "maturity": 5,
+      "statistics": {
+        "total_matches": 405,
+        "successful_matches": 2,
+        "instance_verified": 0,
+        "instance_disproved": 0,
+        "instance_unsupported": 2,
+        "instance_unknown": 0,
+        "reasons_available": true,
+        "unrecorded_rejections": 0,
+        "rejection_reasons": [
+          {
+            "status": "unsupported",
+            "width_bits": 32,
+            "reason": "unsupported instruction opcode or effects",
+            "count": 2
+          }
+        ]
+      }
+    }
+  ],
+  "capture_corruption_controls": {
+    "current": 432,
+    "prior": 392
+  },
+  "prior_current_comparison": {
+    "schema": 1,
+    "passed": true,
+    "scope": "telemetry preservation and two isolated 32-bit SDK value expressions; no whole-function ISA/flags/fault or recovery-accuracy claim",
+    "comparison": {
+      "native_rows": 152,
+      "stages": 456,
+      "captured_stages": 454
+    },
+    "isolated_value_checks": [
+      {
+        "architecture": "i386",
+        "label": "virtualization-0",
+        "name": "corpus_transform",
+        "kind": "body",
+        "maturity": 3,
+        "ea": 135086230,
+        "before": "neg    (edx.4+#0x106CB8A8.4), edx.4",
+        "after": "sub    -(edx.4), #0x106CB8A8.4, edx.4",
+        "width_bits": 32,
+        "input_seed": 653490612917,
+        "comparisons": 65547,
+        "wrong_proposal_rejected": true,
+        "before_tree_sha256": "36dcfca3be776e820236313dcfe4c00ce785c8f6ee52db0cb0712568cf10eea3",
+        "after_tree_sha256": "4360ae5fc56f5076fafe232c458309190b772748a663fa706624ebec35b169c2"
+      },
+      {
+        "architecture": "i386",
+        "label": "combined-0",
+        "name": "corpus_transform",
+        "kind": "body",
+        "maturity": 3,
+        "ea": 134814424,
+        "before": "bnot   (ecx.4-#1.4), ecx.4",
+        "after": "neg    ecx.4, ecx.4",
+        "width_bits": 32,
+        "input_seed": 653490612917,
+        "comparisons": 65547,
+        "wrong_proposal_rejected": true,
+        "before_tree_sha256": "46578d426684af9726cbfcced0dd18afe36d44b718a6da7e0289201198ffa0a1",
+        "after_tree_sha256": "ada58e914db678e827172c46a8c3b239912364ae591ae98023214b3f764f4e82"
+      }
+    ],
+    "mutation_controls": [
+      "changed prior profile",
+      "missing process",
+      "duplicate process"
+    ],
+    "input_sha256": {
+      "build/vmp-mba-protected-prior-v3/protected_mba_analysis.json": "2b2f8c68ff331224696f5173e0c95798ecf5ec868846838b2474fd1dba7e5aa7",
+      "build/vmp-mba-protected-current-v3/protected_mba_analysis.json": "601e01c0d1df9540eeff1ceb6196f23de60865d1da9722c8111dbae0d639632a"
+    },
+    "verifier_sha256": "e25e5828162e574e04269067e1d7caece500569bdb2b12bcd8bb685472db01e5"
+  },
+  "catalog_controls": {
+    "initial_results": 69,
+    "verified": 9,
+    "disproved": 9,
+    "unsupported": 50,
+    "unknown": 1,
+    "retained_keys": 32,
+    "unrecorded_rejections": 17,
+    "reset_and_one_new_disproved_result": true,
+    "registered_rules": 108,
+    "verified_rules": 108,
+    "deliberately_false_rule_rejected": true
+  },
+  "ctest": {
+    "passed": 21,
+    "total": 21
+  },
+  "current_runner_accounting": {
+    "min_elapsed_ns": 986326500,
+    "max_elapsed_ns": 14768611209,
+    "max_wait4_peak_resident_bytes": 205684736,
+    "scope": "platform wait4 runner accounting with startup, capture and two concurrent jobs; not isolated SDK or whole-system memory"
+  },
+  "initial_native_analysis_failure": {
+    "first_matrix_complete_manifests": 39,
+    "first_matrix_reported_complete_rows": 33,
+    "first_matrix_wall_clock_cap_s": 120,
+    "diagnostic_elapsed_ns": 188082124791,
+    "diagnostic_process_return_code": -15,
+    "diagnostic_phase": "initial auto_wait; explicitly stopped",
+    "cause": "unknown; sampled callbacks include native proof revalidation and dataflow recomputation",
+    "production_latency_fix": "unknown; MBA capture uses explicit native-analysis-disabled profile"
+  },
+  "unknown_or_incomplete": [
+    "whole-function protected ISA/flags/fault equivalence",
+    "unavailable body recognition/alias/reaching-definition/identity coverage",
+    "literal/edge recovery accuracy",
+    "default native-analysis latency fix",
+    "physical x86 equivalence",
+    "protector source-build attestation",
+    "complete original review"
+  ],
+  "artifact_sha256": {
+    "build/vmp-mba-protected-current-v3/protected_mba_analysis.json": "601e01c0d1df9540eeff1ceb6196f23de60865d1da9722c8111dbae0d639632a",
+    "build/vmp-mba-protected-prior-v3/protected_mba_analysis.json": "2b2f8c68ff331224696f5173e0c95798ecf5ec868846838b2474fd1dba7e5aa7",
+    "build/vmp-mba-protected-comparison-v3.json": "da75f60ea9f5f0bf29dab5c0fedd957b3e40df09810ba57be344a3449aa84985",
+    "build/vmp-mba-reasons-catalog-final.log": "66b46ed3832a4da66e500c4d96b509ee9ddc773b93cbe050da3c33dc191be258",
+    "build/vmp-mba-reasons-ctest-final.log": "737606278855259712f615f26154e52dcc422cd01e6fd1fd8e0ae859dbb001ba",
+    "build/vmp-mba-reasons-build-final2.log": "bb673784df465f68892228152b99d3b6652baf6e8f6d9a5b2b2f4e82c521a90d",
+    "build/vmp-mba-reasons-candidate/chernobog.dylib": "3148dd96e89b14759458bda63801bd24aeb519da41dc95903e8bd0a7339972a7",
+    "build/vmp-mba-reasons-prior/chernobog.dylib": "b1fd20025f63b66c9803a03a8226a556624a601ab31bff61c2ee44baa8647473",
+    "build/vmp-mba-protected-current/protected_mba_analysis.json": "53460f2c4fcb95c46e3a2b80b720ae5d7c2ec4109ef321ed516cde74810fdac4",
+    "build/vmp-mba-timeout-diagnostic/run.json": "3031aa6af38b5ea9d046d30392d18508458365e33fd92465b8cf7933d28e3d06",
+    "build/vmp-mba-timeout-stack.txt": "dbdcc61c31cc7243683b1928925e69f93054e9238151acc07f8001197b493cb2"
+  }
+}

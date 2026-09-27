@@ -1778,6 +1778,22 @@ error_t idaapi idc_rule_stats(idc_value_t *, idc_value_t *r)
     set_size(r, "instance_disproved", instances.disproved);
     set_size(r, "instance_unsupported", instances.unsupported);
     set_size(r, "instance_unknown", instances.unknown);
+    set_size(r, "instance_unrecorded_rejections", instances.unrecorded_rejections);
+    std::ostringstream reasons;
+    reasons << '[';
+    for (size_t i = 0; i < instances.rejection_reasons.size(); ++i)
+    {
+        const auto &entry = instances.rejection_reasons[i];
+        if (i != 0)
+            reasons << ',';
+        reasons << "{\"status\":"
+                << inspection_json_quote(rules::rule_verification_status_name(entry.status))
+                << ",\"width_bits\":" << entry.bit_width
+                << ",\"reason\":" << inspection_json_quote(entry.detail)
+                << ",\"count\":" << entry.count << '}';
+    }
+    reasons << ']';
+    set_str(r, "instance_rejection_reasons", reasons.str().c_str());
     return eOk;
 }
 

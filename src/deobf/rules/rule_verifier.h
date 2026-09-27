@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 #include <z3++.h>
 
 namespace chernobog
@@ -33,11 +34,24 @@ struct RuleVerificationResult
 
 const char *rule_verification_status_name(RuleVerificationStatus status);
 
+struct InstanceRejectionCount
+{
+    RuleVerificationStatus status;
+    unsigned bit_width;
+    std::string detail;
+    size_t count = 0;
+};
+
 struct InstanceVerificationStats
 {
     size_t verified = 0, disproved = 0, unsupported = 0, unknown = 0;
+    std::vector<InstanceRejectionCount> rejection_reasons;
+    size_t unrecorded_rejections = 0;
 };
-// Process-local diagnostic counters; they are not persistent proof receipts.
+// Process-local diagnostic counters, atomically snapshotted/reset under one
+// lock. At most 32 distinct status/width/reason keys and 256 bytes per reason
+// are retained. Unrecorded reasons still contribute to their status counters.
+// These diagnostics are not persistent proof receipts or IR applicability.
 InstanceVerificationStats instance_verification_stats();
 void reset_instance_verification_stats();
 

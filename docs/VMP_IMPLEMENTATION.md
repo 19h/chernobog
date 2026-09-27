@@ -1048,3 +1048,20 @@ Relational/SDK regressions and all 21 CTest suites pass. The supplied VMP
 initializer retains its three unresolved facts. See `VMP_BOUNDED_STRING_MEMORY.md`
 and its evidence JSON. Broader protected recovery, fault equivalence, unknown
 segment contracts and full review completion remain unknown or in progress.
+
+Protected MBA diagnostic checkpoint for rows 4a, 4b and V: bounded process-local
+status/width/reason histograms preserve all measured verifier outcomes. Fresh
+full protector matrices pass 33,600 native behavior records; paired SDK capture
+inspects both original entries and existing one-hop protected target owners.
+All 18 x86-64 targets are ownerless, while i386 has 17 exact owners, one
+inside-owner target and one SDK stage refusal. The two complete prior/current
+matrices retain identical recorded shapes and outcomes in all 456 stages.
+Three enabled capture stages change under existing value rewrites; two isolated
+32-bit expressions pass 131,094 independent integer comparisons. Four typed
+attempts verify and two reserved-seed attempts reject with an explicit unsupported
+reason. The MBA profile disables native analysis after a default-profile timeout;
+it establishes neither a native latency fix nor full protected recovery.
+The 32-key quota/reset controls, 432 current capture mutations and all 21 CTest
+suites pass. See `VMP_PROTECTED_MBA_DIAGNOSTICS.md` and its evidence JSON.
+Ownership availability, default-profile latency, complete miss classification,
+literal/edge accuracy and the original review remain in progress or unknown.
