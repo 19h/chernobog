@@ -1031,3 +1031,20 @@ Current variable-count repeat and i386 string-memory abstentions remain
 explicit. See `VMP_NATIVE_EDGE_BENCHMARK_V2.md` and its evidence JSON.
 Historical scorer/evidence pins remain unchanged; protected-mode recovery,
 literal accuracy, solver reasons and the full review remain in progress.
+
+Bounded repeated-string checkpoint for rows 1 and V: immediate AND now retains
+known register bits, and natural-address REP MOVS/STOS intersect locally
+established memory across every compatible count up to eight and both DF
+directions. Sequential overlapping reads precede each write; unsupported
+domains retain abstention. Zero STOS preserves facts on both architectures.
+The version-3 contract keeps the native population and historical version-2
+evidence unchanged. Byte-identical paired binaries improve x86-64 owned and
+ownerless scalar recovery from 42/50 to 44/50, and exact covers from 45/47
+to 47/47, with zero false edges. i386 remains 33/50 and 36/47. Each profile
+passes 4,521 production assertions, 147,960 primary native checks, 9,212
+auxiliary native checks and 67 scoring controls. Portable checks pass 1,480,534
+repeat assertions; 19,200 native REP cases pass 1,595,734 repeat assertions.
+Relational/SDK regressions and all 21 CTest suites pass. The supplied VMP
+initializer retains its three unresolved facts. See `VMP_BOUNDED_STRING_MEMORY.md`
+and its evidence JSON. Broader protected recovery, fault equivalence, unknown
+segment contracts and full review completion remain unknown or in progress.

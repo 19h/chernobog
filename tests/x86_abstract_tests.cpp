@@ -1,5 +1,6 @@
 #include "common/x86_abstract.h"
 #include "common/bounded_dataflow.h"
+#include "common/x86_string_memory.h"
 
 #include <array>
 #include <cstdio>
@@ -10,13 +11,278 @@ using namespace chernobog::x86_abstract;
 namespace
 {
 int failures = 0;
+uint64_t assertions = 0, native_repeat_cases = 0;
 void check(bool ok, const char *what)
 {
+    ++assertions;
     if (ok)
         return;
     if (failures < 20)
         std::fprintf(stderr, "FAIL: %s\n", what);
     ++failures;
+}
+
+#ifdef CHERNOBOG_NATIVE_REPEAT_ORACLE
+void native_repeat(std::array<uint8_t, 512> &memory, unsigned bytes, bool move, unsigned count,
+                   int direction, unsigned destination, unsigned source, uint64_t accumulator)
+{
+    auto *d = memory.data() + destination;
+    auto *s = memory.data() + source;
+    const auto *initial_d = d, *initial_s = s;
+    size_t remaining = count, flags = 0;
+    const unsigned pattern = (count + destination + source + bytes + unsigned(move)) & 63;
+    size_t seed = 0x202;
+    const unsigned status_bits[] = {1, 4, 16, 64, 128, 2048};
+    for (unsigned i = 0; i < 6; ++i)
+        if (pattern & (1u << i))
+            seed |= status_bits[i];
+    ++native_repeat_cases;
+#if defined(__x86_64__)
+#define INIT_STRING_FLAGS "pushq %[seed]; popfq; "
+#define READ_STRING_FLAGS "pushfq; popq %[flags]; cld"
+#elif defined(__i386__)
+#define INIT_STRING_FLAGS "pushl %[seed]; popfl; "
+#define READ_STRING_FLAGS "pushfl; popl %[flags]; cld"
+#else
+#error Native repeat oracle requires an x86 target
+#endif
+#define REPEAT_ASM(OP, DF)                                                                         \
+    asm volatile(INIT_STRING_FLAGS DF "; rep " OP "; " READ_STRING_FLAGS                           \
+                 : "+D"(d), "+S"(s), "+c"(remaining), [flags] "=r"(flags)                          \
+                 : "a"(size_t(accumulator)), [seed] "r"(seed)                                      \
+                 : "memory", "cc")
+#define RUN_REPEAT(OP)                                                                             \
+    do                                                                                             \
+    {                                                                                              \
+        if (direction < 0)                                                                         \
+            REPEAT_ASM(OP, "std");                                                                 \
+        else                                                                                       \
+            REPEAT_ASM(OP, "cld");                                                                 \
+    } while (false)
+    if (move)
+        switch (bytes)
+        {
+        case 1:
+            RUN_REPEAT("movsb");
+            break;
+        case 2:
+            RUN_REPEAT("movsw");
+            break;
+        case 4:
+            RUN_REPEAT("movsl");
+            break;
+#if defined(__x86_64__)
+        case 8:
+            RUN_REPEAT("movsq");
+            break;
+#endif
+        default:
+            check(false, "native repeat width is supported");
+            return;
+        }
+    else
+        switch (bytes)
+        {
+        case 1:
+            RUN_REPEAT("stosb");
+            break;
+        case 2:
+            RUN_REPEAT("stosw");
+            break;
+        case 4:
+            RUN_REPEAT("stosl");
+            break;
+#if defined(__x86_64__)
+        case 8:
+            RUN_REPEAT("stosq");
+            break;
+#endif
+        default:
+            check(false, "native repeat width is supported");
+            return;
+        }
+#undef RUN_REPEAT
+#undef REPEAT_ASM
+#undef READ_STRING_FLAGS
+#undef INIT_STRING_FLAGS
+    check(remaining == 0, "native repeat normal completion clears count");
+    check(d == initial_d + direction * int(count * bytes), "native repeat advances DI");
+    check(s == initial_s + (move ? direction * int(count * bytes) : 0),
+          "native repeat advances SI only for MOVS");
+    check((flags & 0x8d5) == (seed & 0x8d5), "native MOVS/STOS preserve six status flags");
+    check(bool(flags & 0x400) == (direction < 0), "native repeat preserves DF");
+}
+#endif
+
+void repeated_memory_regressions()
+{
+    // Independent enumeration of all 3^8 low-byte known-bit domains. The
+    // other count bits are zero; poisoned unknown value bits are irrelevant.
+    for (unsigned encoding = 0; encoding < 6561; ++encoding)
+    {
+        unsigned known = 0, value = 0, digits = encoding;
+        for (unsigned bit = 0; bit < 8; ++bit, digits /= 3)
+            if (digits % 3)
+            {
+                known |= 1u << bit;
+                if (digits % 3 == 2)
+                    value |= 1u << bit;
+            }
+        std::array<unsigned, 256> concrete{};
+        unsigned size = 0;
+        for (unsigned i = 0; i < 256; ++i)
+            if ((i & known) == value)
+                concrete[size++] = i;
+        for (unsigned bits : {32u, 64u})
+        {
+            const Word count{(mask(bits) & ~uint64_t{255}) | known,
+                             value | (uint64_t{255} & ~known)};
+            const auto actual = repeat_counts(count, bits);
+            const bool bounded = concrete[size - 1] <= 8;
+            check(bool(actual) == bounded, "repeat domain never clips counts above eight");
+            if (actual)
+            {
+                check(actual->size == size, "repeat domain includes every compatible count");
+                for (unsigned i = 0; i < size; ++i)
+                    check(actual->values[i] == concrete[i], "repeat domain exact enumeration");
+            }
+        }
+        for (unsigned immediate : {0u, 1u, 3u, 7u, 8u, 15u, 127u, 255u})
+        {
+            Word actual{known, value | (uint64_t{255} & ~known)};
+            and_constant(actual, 8, 0, immediate, false);
+            unsigned all_one = 255, all_zero = 255;
+            for (unsigned i = 0; i < size; ++i)
+            {
+                all_one &= concrete[i] & immediate;
+                all_zero &= ~(concrete[i] & immediate);
+            }
+            check(actual.known == ((all_one | all_zero) & 255) && actual.value == all_one,
+                  "immediate AND known bits match every concretization");
+        }
+    }
+    Word partial{UINT64_MAX, UINT64_MAX};
+    and_constant(partial, 8, 8, 0x12, true);
+    check(partial.read(64) == UINT64_C(0xffffffffffff12ff),
+          "AH immediate AND preserves every other register byte");
+    partial = {};
+    and_constant(partial, 32, 0, 1, true);
+    check(partial.known == (UINT64_MAX - 1) && partial.value == 0,
+          "masked ECX has only its low bit unknown and zero-extends RCX");
+    and_constant(partial, 64, 1, 0, true);
+    check(partial.known == 0, "invalid immediate AND slice rejects register fact");
+    check(!repeat_counts(Word{}, 64), "unknown high count bits reject finite model");
+    check(!repeat_counts(Word{UINT64_MAX, 0}, 16), "unsupported count width rejects model");
+    const auto range = [](uint64_t a, unsigned n) { return a < 512 && n <= 512 - a; };
+    for (unsigned bits : {32u, 64u})
+        for (unsigned bytes : {1u, 2u, 4u, 8u})
+            for (bool move : {false, true})
+                for (int delta : {-16, -1, 0, 1, 16, 64})
+                    for (unsigned domain = 0; domain < 13; ++domain)
+                        for (bool unknown : {false, true})
+                        {
+                            const unsigned low_unknown = domain == 9    ? 1
+                                                         : domain == 10 ? 3
+                                                         : domain == 11 ? 2
+                                                         : domain == 12 ? 7
+                                                                        : 0;
+                            const unsigned fixed = domain == 11 ? 1 : domain < 9 ? domain : 0;
+                            const Word count{mask(bits) & ~uint64_t(low_unknown), fixed};
+                            std::array<uint8_t, 512> initial{};
+                            for (unsigned i = 0; i < initial.size(); ++i)
+                                initial[i] = uint8_t(i * 37 + (i / 7));
+                            StringMemory memory;
+                            for (unsigned i = 96; i < 192; ++i)
+                                memory[i] = initial[i];
+                            memory[450] = initial[450];
+                            const StringRepeat repeat{
+                                bits,
+                                bytes,
+                                move,
+                                uint64_t(128 + delta),
+                                unknown ? std::nullopt : std::optional<uint64_t>{128},
+                                unknown ? std::nullopt
+                                        : std::optional<uint64_t>{UINT64_C(0x8877665544332211)}};
+                            check(repeat_string_memory(memory, count, repeat, range, range),
+                                  "bounded repeat with mapped destinations is admitted");
+                            check(memory.count(450) && memory.at(450) == initial[450],
+                                  "repeat preserves unrelated local memory");
+                            check(memory.size() <= 128, "repeat obeys retained-byte cap");
+                            // A concrete byte-array machine does not use the helper,
+                            // its count enumerator, memory map or join operation.
+                            for (unsigned n = 0; n < 256; ++n)
+                                if ((uint64_t(n) & count.known) == count.value)
+                                    for (int direction : {-1, 1})
+                                        for (unsigned hidden = 0; hidden < 2; ++hidden)
+                                        {
+                                            auto concrete = initial;
+                                            for (unsigned i = 0; i < n; ++i)
+                                            {
+                                                const int destination =
+                                                    128 + delta + direction * int(i * bytes);
+                                                const int source = (unknown ? 320 : 128) +
+                                                                   direction * int(i * bytes);
+                                                std::array<uint8_t, 8> payload{};
+                                                for (unsigned j = 0; j < bytes; ++j)
+                                                    payload[j] =
+                                                        move ? concrete[size_t(source) + j]
+                                                        : unknown
+                                                            ? uint8_t(hidden * 255)
+                                                            : uint8_t(
+                                                                  UINT64_C(0x8877665544332211) >>
+                                                                  (j * 8));
+                                                for (unsigned j = 0; j < bytes; ++j)
+                                                    concrete[size_t(destination) + j] = payload[j];
+                                            }
+                                            for (const auto &byte : memory)
+                                                check(
+                                                    byte.second == concrete[size_t(byte.first)],
+                                                    "retained repeat byte agrees with concrete machine");
+#ifdef CHERNOBOG_NATIVE_REPEAT_ORACLE
+                                            auto native = initial;
+                                            native_repeat(native, bytes, move, n, direction,
+                                                          unsigned(128 + delta),
+                                                          unknown ? 320 : 128,
+                                                          unknown ? hidden ? UINT64_MAX : 0
+                                                                  : UINT64_C(0x8877665544332211));
+                                            check(
+                                                native == concrete,
+                                                "native repeat agrees with full-buffer concrete oracle");
+#endif
+                                        }
+                        }
+    const Word eight{UINT64_MAX, 8}, zero{UINT64_MAX, 0}, one{UINT64_MAX, 1};
+    StringMemory memory{{100, 42}, {450, 19}};
+    const auto before = memory;
+    check(repeat_string_memory(memory, zero, {64, 8, true, {}, {}, {}}, range, range) &&
+              memory == before,
+          "zero repeats preserve all bytes without known pointers");
+    check(!repeat_string_memory(memory, Word{UINT64_MAX, 9}, {64, 1, false, 100, {}, 7}, range,
+                                range) &&
+              memory == before,
+          "nine iterations reject without dropping a state or changing input");
+    check(!repeat_string_memory(memory, eight, {64, 1, false, 100, {}, 7}, range,
+                                [](uint64_t a, unsigned) { return a >= 100; }) &&
+              memory == before,
+          "one invalid DF direction rejects the whole repeat");
+    check(!repeat_string_memory(memory, one, {32, 8, false, UINT32_MAX - 3, {}, 7}, range,
+                                [](uint64_t, unsigned) { return true; }) &&
+              memory == before,
+          "element spanning the address boundary rejects repeat");
+    check(!repeat_string_memory(memory, one, {64, 1, false, {}, {}, 7}, range, range) &&
+              memory == before,
+          "unknown destination rejects nonzero repeat");
+    check(repeat_string_memory(
+              memory, one, {64, 1, true, 100, 450, {}}, [](uint64_t, unsigned) { return false; },
+              range) &&
+              !memory.count(100) && memory.at(450) == 19,
+          "unreadable source forgets written byte and preserves disjoint source");
+    memory.clear();
+    for (unsigned i = 0; i < 128; ++i)
+        memory[i] = uint8_t(i);
+    check(repeat_string_memory(memory, eight, {64, 8, false, 200, {}, UINT64_MAX}, range, range) &&
+              memory.size() <= 128,
+          "repeat store evictions retain bounded memory");
 }
 
 struct FlowState
@@ -947,6 +1213,8 @@ void mapping_counterexamples()
 
 int main()
 {
+    repeated_memory_regressions();
+    const uint64_t repeat_assertions = assertions;
     dataflow_regressions();
     alternative_regressions();
     explicit_entry_regressions();
@@ -964,5 +1232,8 @@ int main()
 #endif
     if (failures)
         std::fprintf(stderr, "%d failures\n", failures);
+    std::printf("{\"repeat_assertions\": %llu, \"native_repeat_cases\": %llu, \"passed\": %s}\n",
+                static_cast<unsigned long long>(repeat_assertions),
+                static_cast<unsigned long long>(native_repeat_cases), failures ? "false" : "true");
     return failures ? 1 : 0;
 }

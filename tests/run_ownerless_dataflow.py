@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--stos-local-baseline", action="store_true")
     parser.add_argument("--movs-local-baseline", action="store_true")
     parser.add_argument("--rep-movs-local-baseline", action="store_true")
+    parser.add_argument("--bounded-repeat-baseline", action="store_true")
     parser.add_argument("--rep-compare-local-baseline", action="store_true")
     parser.add_argument("--lods-local-baseline", action="store_true")
     args = parser.parse_args()
@@ -34,6 +35,7 @@ def main():
     sources = [
         "src/common/bounded_dataflow.h",
         "src/common/x86_abstract.h",
+        "src/common/x86_string_memory.h",
         "src/ida_analysis/x86_analysis.cpp",
         "src/ida_analysis/x86_analysis.hpp",
         "src/ida_analysis/native_engine.cpp",
@@ -211,6 +213,11 @@ def main():
                     *(
                         ["--set", "CHERNOBOG_REP_MOVS_LOCAL_BASELINE=1"]
                         if args.rep_movs_local_baseline
+                        else []
+                    ),
+                    *(
+                        ["--set", "CHERNOBOG_BOUNDED_REPEAT_BASELINE=1"]
+                        if args.bounded_repeat_baseline
                         else []
                     ),
                     *(

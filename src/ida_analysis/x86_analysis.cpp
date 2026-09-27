@@ -1,6 +1,7 @@
 #include "x86_analysis.hpp"
 #include "native_classifier.hpp"
 #include "../common/bounded_dataflow.h"
+#include "../common/x86_string_memory.h"
 
 #include "../common/warn_off.h"
 #include <bytes.hpp>
@@ -572,6 +573,51 @@ struct State
         const bool is64 = mode64(insn);
         const unsigned width = unsigned(get_dtype_size(insn.Op1.dtype) * 8);
         const unsigned word_bits = is64 ? 64 : 32;
+        if ((insn.itype == NN_movs || insn.itype == NN_stos) && (is64 || mode32(insn)) &&
+            valid_width(width) && natad(insn) && insn.segpref == 0 && (insn.auxpref & aux_rep) &&
+            !(insn.auxpref & (aux_repne | aux_lock)))
+        {
+            const bool move = insn.itype == NN_movs;
+            const Slice accumulator = register_slice(insn.Op2);
+            const bool matched_source =
+                move
+                    ? insn.Op2.type == o_phrase && x86_base_reg(insn, insn.Op2) == R_si &&
+                          x86_index_reg(insn, insn.Op2) == R_none
+                    : accumulator.reg == 0 && accumulator.offset == 0 && accumulator.width == width;
+            const bool matched = insn.Op1.type == o_phrase &&
+                                 x86_base_reg(insn, insn.Op1) == R_di &&
+                                 x86_index_reg(insn, insn.Op1) == R_none && matched_source &&
+                                 get_dtype_size(insn.Op2.dtype) == get_dtype_size(insn.Op1.dtype);
+            const auto counts = matched ? repeat_counts(regs[1], word_bits) : std::nullopt;
+            const bool zero = counts && counts->size == 1 && counts->values[0] == 0;
+            // Only long mode supplies matching zero DS/ES bases. Count zero
+            // performs no access and is also independent of i386 segments.
+            if (counts && (is64 || zero))
+            {
+                const StringRepeat repeat{word_bits,
+                                          width / 8,
+                                          move,
+                                          memory_address(insn, insn.Op1),
+                                          move ? memory_address(insn, insn.Op2) : std::nullopt,
+                                          move ? std::nullopt : read(insn.Op2)};
+                if (repeat_string_memory(
+                        memory, regs[1], repeat, [word_bits](uint64_t a, unsigned n)
+                        { return readable_range(a, n, word_bits); },
+                        [word_bits](uint64_t a, unsigned n)
+                        { return writable_range(a, n, word_bits); }))
+                {
+                    if (!zero)
+                    {
+                        stack.clear();
+                        if (move)
+                            regs[6] = {};
+                        regs[7] = {};
+                    }
+                    finish_unconditional_repeat(insn, is64);
+                    return;
+                }
+            }
+        }
         const auto algebra = operation(insn.itype);
         if (insn.itype == NN_mul || insn.itype == NN_imul)
         {
@@ -1283,7 +1329,15 @@ struct State
             algebra != Operation::clear_carry && algebra != Operation::set_carry &&
             algebra != Operation::complement_carry)
         {
-            write(insn.Op1, result, is64);
+            if (algebra == Operation::bit_and && a.reg >= 0 && algebra_right &&
+                insn.Op2.type == o_imm)
+            {
+                if (a.reg == 4)
+                    stack.clear();
+                and_constant(regs[size_t(a.reg)], a.width, a.offset, *algebra_right, is64);
+            }
+            else
+                write(insn.Op1, result, is64);
             if (result && algebra_address && writable_range(*algebra_address, width / 8, word_bits))
                 store_memory(*algebra_address, width, *result);
         }

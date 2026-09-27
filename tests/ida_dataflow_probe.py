@@ -61,6 +61,53 @@ def current_set(snapshot):
     return [r for r in snapshot["records"] if r["kind"] == "setcc-value" and r["fresh"] == "true"]
 
 
+def bounded_repeat_controls():
+    enabled = os.environ.get("CHERNOBOG_BOUNDED_REPEAT_BASELINE") != "1"
+    for name in ("df_rep_movs_disjoint_target", "df_rep_stos_disjoint_target"):
+        root = address(name)
+        function = ida_funcs.get_func(root)
+        masks = []
+        for site in idautils.Heads(root, function.end_ea):
+            instruction = ida_ua.insn_t()
+            if ida_ua.decode_insn(instruction, site) > 0 and instruction.get_canon_mnem() == "and":
+                masks.append(instruction)
+        assert len(masks) == 1
+        instruction = masks[0]
+        raw = ida_bytes.get_bytes(instruction.ea, instruction.size)
+        assert raw == bytes.fromhex("83e101")
+        try:
+            for mask in (0, 7, 8, 9, 15, 1):
+                assert ida_bytes.patch_byte(instruction.ea + 2, mask)
+                reanalyze(root)
+                snapshot = inspect(root)
+                captures[name + "_mask_" + str(mask)] = snapshot
+                rows = [
+                    row
+                    for row in snapshot["records"]
+                    if row["kind"] == "stack-transfer" and row["fresh"] == "true"
+                ]
+                expected = (
+                    name == "df_rep_movs_disjoint_target" or enabled
+                    if mask == 0
+                    else enabled and ida_ida.inf_is_64bit() and mask in (1, 7, 8)
+                )
+                check(
+                    name + " mask " + str(mask) + " current target",
+                    len(rows) == 1
+                    and (rows[0]["truth"] == "native-proof") == expected
+                    and rows[0].get("target", "unknown")
+                    == (hex(address("df_memory_target")) if expected else "unknown"),
+                )
+                check(
+                    name + " mask " + str(mask) + " actual user edge",
+                    len(rows) == 1 and bool(snapshot["user_edges"][rows[0]["site"]]) == expected,
+                )
+        finally:
+            ida_bytes.patch_bytes(instruction.ea, raw)
+            reanalyze(root)
+        check(name + " restores count-mask bytes", ida_bytes.get_bytes(instruction.ea, 3) == raw)
+
+
 def adjacent_external_flow():
     root, root_end, source, tail, branch, taken, tail_end = (
         address("df_flow_" + name)
@@ -279,6 +326,9 @@ try:
     )
     rep_movs_zero_proofs = os.environ.get("CHERNOBOG_REP_MOVS_LOCAL_BASELINE") != "1"
     rep_movs_one_proofs = rep_movs_zero_proofs and ida_ida.inf_is_64bit()
+    bounded_repeat_proofs = (
+        os.environ.get("CHERNOBOG_BOUNDED_REPEAT_BASELINE") != "1" and ida_ida.inf_is_64bit()
+    )
     rep_compare_zero_proofs = os.environ.get("CHERNOBOG_REP_COMPARE_LOCAL_BASELINE") != "1"
     rep_compare_one_proofs = rep_compare_zero_proofs and ida_ida.inf_is_64bit()
     lods_local_proofs = (
@@ -582,13 +632,13 @@ try:
         ("df_movs_disjoint_target", movs_local_proofs),
         ("df_movs_unknown_source_disjoint_target", movs_local_proofs),
         ("df_movs_self_copy_target", movs_local_proofs),
-        ("df_rep_movs_disjoint_target", False),
+        ("df_rep_movs_disjoint_target", bounded_repeat_proofs),
         ("df_rep_movs_zero_target", rep_movs_zero_proofs),
         ("df_rep_movs_one_disjoint_target", rep_movs_one_proofs),
         ("df_stos_alias", False),
         ("df_stos_disjoint_target", stos_local_proofs),
         ("df_stos_unknown_value_disjoint_target", stos_local_proofs),
-        ("df_rep_stos_disjoint_target", False),
+        ("df_rep_stos_disjoint_target", bounded_repeat_proofs),
         ("df_stos_overlap_known_target", stos_local_proofs),
         ("df_lods_memory_target", string_io_proofs),
     ):
@@ -638,6 +688,7 @@ try:
                 )
                 == expected,
             )
+    bounded_repeat_controls()
     exchange_root = address("df_memory_xchg_load")
     reanalyze(exchange_root)
     captures["df_memory_xchg_load"] = inspect(exchange_root)
