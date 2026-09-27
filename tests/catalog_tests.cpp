@@ -799,6 +799,126 @@ bool test_typed_instances()
             okay &= expect(before, after, RuleVerificationStatus::UNSUPPORTED,
                            "diagnostic quota retains rejection");
         }
+    const auto expect_constant =
+        [&](minsn_t &before, uint64_t proposed, RuleVerificationStatus status, const char *label)
+    {
+        const auto result = verifier.verify_constant(&before, proposed);
+        observations.push_back(result);
+        if (result.status == status)
+            return true;
+        std::cerr << label << ": " << rule_verification_status_name(result.status) << " "
+                  << result.detail << '\n';
+        return false;
+    };
+    for (int bytes : {1, 2, 4, 8})
+    {
+        for (const auto &[opcode, self_value] :
+             std::array<std::pair<mcode_t, uint64_t>, 10>{{{m_setz, 1},
+                                                           {m_setnz, 0},
+                                                           {m_setae, 1},
+                                                           {m_setb, 0},
+                                                           {m_seta, 0},
+                                                           {m_setbe, 1},
+                                                           {m_setg, 0},
+                                                           {m_setge, 1},
+                                                           {m_setl, 0},
+                                                           {m_setle, 1}}})
+        {
+            ValueInsn comparison(opcode, 1);
+            reg(comparison.l, 100, bytes);
+            reg(comparison.r, 100, bytes);
+            okay &= expect_constant(comparison, self_value, RuleVerificationStatus::VERIFIED,
+                                    "typed self comparison");
+            okay &= expect_constant(comparison, self_value ^ 1, RuleVerificationStatus::DISPROVED,
+                                    "wrong self comparison proposal");
+            comparison.r.valnum = 1;
+            okay &= expect_constant(comparison, self_value, RuleVerificationStatus::DISPROVED,
+                                    "different comparison value numbers");
+            comparison.r.valnum = 0;
+            comparison.r.size = bytes == 8 ? 4 : bytes * 2;
+            okay &= expect_constant(comparison, self_value, RuleVerificationStatus::UNSUPPORTED,
+                                    "comparison widths must match each other");
+            comparison.r.size = bytes;
+            comparison.d.size = 4;
+            okay &= expect_constant(comparison, self_value, RuleVerificationStatus::UNSUPPORTED,
+                                    "set result must retain byte width");
+        }
+        mnumber_t sign_bit(uint64_t{1} << (8 * bytes - 1));
+        mnumber_t zero_number(0);
+        for (const auto &[opcode, value] : std::array<std::pair<mcode_t, uint64_t>, 4>{
+                 {{m_setl, 1}, {m_setge, 0}, {m_setb, 0}, {m_setae, 1}}})
+        {
+            ValueInsn comparison(opcode, 1);
+            constant(comparison.l, sign_bit, bytes);
+            constant(comparison.r, zero_number, bytes);
+            okay &= expect_constant(comparison, value, RuleVerificationStatus::VERIFIED,
+                                    "signed and unsigned sign-bit comparisons differ");
+        }
+        ValueInsn sign(m_sets, 1);
+        constant(sign.l, sign_bit, bytes);
+        okay &=
+            expect_constant(sign, 1, RuleVerificationStatus::VERIFIED, "explicit sign extraction");
+        for (int result_bytes : {1, 2, 4, 8})
+        {
+            ValueInsn logical(m_lnot, result_bytes);
+            constant(logical.l, zero_number, bytes);
+            okay &= expect_constant(logical, 1, RuleVerificationStatus::VERIFIED,
+                                    "logical zero writes one at result width");
+            constant(logical.l, sign_bit, bytes);
+            okay &= expect_constant(logical, 0, RuleVerificationStatus::VERIFIED,
+                                    "logical nonzero writes zero at result width");
+        }
+    }
+    ValueInsn comparison(m_setz, 1), read(m_ldx, 4);
+    reg(read.l, 500, 2);
+    reg(read.r, 600, 8);
+    nested(comparison.l, read);
+    nested(comparison.r, read);
+    okay &= expect_constant(comparison, 1, RuleVerificationStatus::UNSUPPORTED,
+                            "constant comparison must not drop explicit reads");
+    comparison.l.t = comparison.r.t = mop_S;
+    comparison.l.size = comparison.r.size = 4;
+    comparison.l.s = comparison.r.s = &first_frame;
+    okay &= expect_constant(comparison, 1, RuleVerificationStatus::VERIFIED,
+                            "same stable frame comparison");
+    comparison.r.s = &second_frame;
+    okay &= expect_constant(comparison, 1, RuleVerificationStatus::DISPROVED,
+                            "different frame comparison rejects");
+    reg(comparison.l, 100, 4);
+    reg(comparison.r, 100, 4);
+    comparison.iprops = IPROP_MBARRIER;
+    okay &= expect_constant(comparison, 1, RuleVerificationStatus::UNSUPPORTED,
+                            "predicate barrier rejects before mutation");
+    comparison.iprops = 0;
+    comparison.l.oprops = OPROP_UDEFVAL;
+    okay &= expect_constant(comparison, 1, RuleVerificationStatus::UNSUPPORTED,
+                            "undefined predicate input rejects");
+    comparison.l.oprops = 0;
+    for (mcode_t opcode : {m_setp, m_seto, m_cfadd, m_ofadd})
+    {
+        comparison.opcode = opcode;
+        okay &= expect_constant(comparison, 1, RuleVerificationStatus::UNSUPPORTED,
+                                "unmodeled flag semantics reject");
+    }
+    ValueInsn conjunction(m_and, 4), disjunction(m_or, 4), combined(m_add, 4),
+        ordinary_sum(m_add, 4), equivalent(m_setz, 1);
+    for (auto *node : {&conjunction, &disjunction, &ordinary_sum})
+    {
+        reg(node->l, 100, 4);
+        reg(node->r, 200, 4);
+    }
+    nested(combined.l, conjunction);
+    nested(combined.r, disjunction);
+    nested(equivalent.l, combined);
+    nested(equivalent.r, ordinary_sum);
+    okay &= expect_constant(equivalent, 1, RuleVerificationStatus::VERIFIED,
+                            "typed comparison of a carry identity");
+    RuleVerifier predicate_exhausted(10'000, 1);
+    const auto exhausted_predicate = predicate_exhausted.verify_constant(&equivalent, 1);
+    observations.push_back(exhausted_predicate);
+    okay &= exhausted_predicate.status == RuleVerificationStatus::UNKNOWN &&
+            !exhausted_predicate.verified() && !exhausted_predicate.detail.empty();
+
     const auto stats = instance_verification_stats();
     using Key = std::tuple<RuleVerificationStatus, unsigned, std::string>;
     std::map<Key, size_t> expected;

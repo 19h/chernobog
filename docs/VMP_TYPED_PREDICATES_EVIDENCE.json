@@ -1,0 +1,1425 @@
+{
+  "schema": 1,
+  "feature": "Typed predicate constant admission and live MBA traversal integration",
+  "source_parent": "0e9dbb49407ad9392352c3c8926d11054f03c97a",
+  "candidate_source_fingerprint": "b56b175c28b0",
+  "scope": "straight-line scalar result and one memory cell on normal completion; no fault, concurrent-memory, all-ISA flag or protected recovery claim",
+  "sdk_primary": {
+    "identifier": "IDA SDK 9.40 include/hexrays.hpp",
+    "sha256": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff",
+    "contracts": {
+      "logical_not": 616,
+      "sign_and_integer_comparisons": 639,
+      "operand_metadata": 2611
+    }
+  },
+  "z3_primary": {
+    "tag": "z3-4.16.0",
+    "revision": "ddb49568d3520e99799e364fb22f35fc67d887b1"
+  },
+  "compiler": {
+    "version": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "sha256": "5922f5f7843fee699497c45cc98134b6686e0a5e2fa8a5866ab74c5482fa87a5"
+  },
+  "source_sha256": {
+    "src/deobf/handlers/mba_simplify.cpp": "7a2c3d54dd107ea1bc4586c683233728ee468fd3502157deb7bb44de47635663",
+    "src/deobf/rules/rule_verifier.cpp": "88ff2f28c6a2e01959f570529905e7a0794a9013ebebbc85cb425234a3cf082d",
+    "src/deobf/rules/rule_verifier.h": "8c56abf4307159f77f25836359036245338e0134f16329928c0e604923f04afb",
+    "src/deobf/rules/rules_predicate.cpp": "73f51e0a03da081b274773b8e357b962cc803f4b28da1d3ab4ec9bbe39384791",
+    "src/deobf/rules/rules_predicate.h": "4ee18856a2aa2f261379ab4c648980f22221f453233e410c42785da0df00308f",
+    "tests/catalog_tests.cpp": "ca035298edf019aa51c9d43d154d1e7e04b7d7d393d7f32dd144a64f7e66dae3",
+    "tests/vmp_native/predicate_shapes_oracle.c": "75cf455d964633ba0ae62b38fc2c2b199ccb070e553edbf0bb988deac0fb732e",
+    "tests/ida_predicate_shapes_probe.py": "caf6ef7806c95ffbbc117dc0d3cf5caa43e23c8f235e27867ee0b82adc58d15f",
+    "tests/verify_predicate_shapes.py": "083853d2635cd4bf4e993daa42d4348e4120da63a23c78c9e8f737c8b528b797",
+    "tests/verify_mba_shapes.py": "36301d1aa01ee9ac2fde5aee38e5ac9b5191166535f3fe57d4be8a85fc86d8e0",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "CMakeLists.txt": "29ef15bf519a2472abb09bdfacaa38d61ec69a17951163bb31375ea1b5437f99"
+  },
+  "artifact_sha256": {
+    "build/predicate-shapes-prior-v2/run.json": "7835753e444467d5bf71470e1231095e674685443a61f9a9e3009d68ce834a10",
+    "build/predicate-shapes-prior-v2/predicate_shapes.json": "15e135db1cc81cefd7674c1b47cab61fa7d15aab9b43dfa5651771cb6303f7e0",
+    "build/predicate-shapes-prior-v2/ida.log": "7ec229c1838a8e06dc25f9d4f7fce8b459bc6fc90d4c9b95b804e8337d4d9762",
+    "build/predicate-shapes-candidate-v2/run.json": "feef794869c9fa56e16c48df4dd7d32e24b10b1381f4208460b2d02eb5b4c3c8",
+    "build/predicate-shapes-candidate-v2/predicate_shapes.json": "948ae7f4447b273b194e3b9aafb31ed75e97206a5fbb1d324f0431d453d79d1d",
+    "build/predicate-shapes-candidate-v2/ida.log": "f59050ce4dc7073e419dd9c26f2e3e135479d69451ec207d4d11da0babda1f8a",
+    "build/predicate-shapes-audit-v2.json": "4bee73a1e425b0346fb7a804a1f015f5d2b803b80cb755ffd56eb94650dc0f27",
+    "build/predicate-ctest-accepted.json": "45379a94aadc5edc333f8fb431185feda126f516f05cccb2d8e39d89c829958c",
+    "build/predicate-native-oracle.json": "6f3003dbef52c2cab4733908f80a7085548f4a867f321b131ef99d56385c7504",
+    "build/predicate-prior-0e9dbb49.dylib": "80b02f885247a2142adb04bdfab764dd2d932eca64ca7e908f8415dd6d503b31",
+    "build/predicate-candidate.dylib": "6e39bd33d3ab1352791de1e1d87c10e710a91898aa5a6489448d5d0982229382",
+    "build/predicate-shapes": "b08987f15eb3f50f38f092164c844486b47be5970dd73ae84dca25e1fb34b0eb",
+    "build/predicate-reconfigure.log": "3cc7a77c1bb1691273d0db4b7cab512b40c85342361a186d794960ee0ac4be8d",
+    "build/predicate-rebuild.log": "f6d1934e6efb4bd8d82078098ae50c47a6052f305960e3ef91132b2d8398125a",
+    "build/predicate-catalog-rebuild.log": "2e5bed53231af65b2528b2fd6043a14c0c475b7399a263f91000a9256135a3b5",
+    "build/predicate-shapes-prior-v2-process.json": "924e769c6c03a9d9b8d67314f3407b87dfdb5edda521cb98486f616e7f6fb78c",
+    "build/predicate-shapes-candidate-v2-process.json": "ba1b303b9586ee12853ebde4208c9445febbf212aa55aae3b3c2a40bdcbd2bfa",
+    "build/predicate-shapes-prior/run.json": "c4f750f2111da9733aebb9ad8e11b2b393b52a2fae7cec9a8e1446acc43a51ec",
+    "build/predicate-shapes-prior/predicate_shapes.json": "6bfce10258b98808bcad083dec763b9c2ced60ff8dba2448982f21aac0d75b44",
+    "build/predicate-shapes-candidate/run.json": "8f5c25c495d656373fc420040cb845dc9d3d7007e5fdb1cb7b1c09506c2e5966",
+    "build/predicate-shapes-candidate/predicate_shapes.json": "162cf2cc13085dbc72f48284690b7660ebbd94bfbe620690139221cce6c1819a",
+    "build/predicate-shapes-audit.json": "f3ac396dd7ee28ea26d308982a16cf0481cbdf71366f7138301f3e0b06f8d4be"
+  },
+  "audit": {
+    "passed": true,
+    "comparisons_per_profile": [
+      66831,
+      66831
+    ],
+    "native_functions_per_profile": 6,
+    "sdk_captures_per_profile": 24,
+    "changed_glbopt1_functions": [
+      "predicate_zext_not8"
+    ],
+    "typed_proofs": 2,
+    "false_constant_rejected": true,
+    "scope": "straight-line scalar result and one memory cell on normal completion; no fault, concurrent-memory, all-ISA flag or protected recovery claim"
+  },
+  "component_controls": {
+    "added_predicate_results": 263,
+    "typed_instance_results": 453,
+    "verified": 119,
+    "disproved": 99,
+    "unsupported": 233,
+    "unknown": 2,
+    "ctest_count": 23,
+    "typed_summary": [
+      "MBA typed instances: 453 initial results, 119 verified, 99 disproved, 233 unsupported, 2 unknown; 32-key quota, 125 unrecorded; reset and one new rejection passed"
+    ]
+  },
+  "measurements": {
+    "ctest": {
+      "exit_code": 0,
+      "elapsed_ns": 21628514792,
+      "peak_resident_bytes": 120733696,
+      "timed_out": false,
+      "output_exceeded": false,
+      "stdout_sha256": "854daf50687a2434edc619d408fdb58b690828b61c46bcb7a01405445376b1ad",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native": {
+      "exit_code": 0,
+      "elapsed_ns": 29157792,
+      "peak_resident_bytes": 3407872,
+      "timed_out": false,
+      "output_exceeded": false,
+      "stdout_sha256": "68d361ff725c0969a166356a2b5f9c8a64555e6a621c350d4b1b0d7e588f3eb2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "prior_sdk_wrapper": {
+      "exit_code": 0,
+      "elapsed_ns": 3113378917,
+      "peak_resident_bytes": 178569216,
+      "timed_out": false,
+      "output_exceeded": false,
+      "stdout_sha256": "8f6ef4337eb0e9d794fe7b98444e54252b4477a5d8fc108c0a448deea7b775c7",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "candidate_sdk_wrapper": {
+      "exit_code": 0,
+      "elapsed_ns": 3093253667,
+      "peak_resident_bytes": 186941440,
+      "timed_out": false,
+      "output_exceeded": false,
+      "stdout_sha256": "0eedb8ac6d1e8a043c2e17f2b186b58ef8e56c3e343ee25a99dd2d80847d4b57",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "limits": {
+    "result_width_bytes": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "comparison_result_bytes": 1,
+    "scalar_operand_bytes": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "joint_translation_visits": 512,
+    "translation_depth": 64,
+    "collection_nodes": 256,
+    "collection_depth": 64,
+    "default_query_timeout_ms": 250,
+    "resource_exhaustion_control_units": 1,
+    "whole_function_time_and_memory_bounds": "unknown"
+  },
+  "historical_artifact_boundary": "The build directory disappeared between commands; cause unknown. Earlier untracked raw matrix/receipts are unavailable. Historical recorded hashes are unchanged. This feature rebuilds current tests and regenerates paired native controls; it does not claim a new 40-process protected matrix. Archived GLBOPT1 snapshots below survive future build cleanup.",
+  "captured_glbopt1_sha256": "e8347f611a4127b5c55500c8b01a348df2457db625ff6e4c63b9065638cfe9b3",
+  "captured_glbopt1": {
+    "prior": {
+      "abi": {
+        "rax": 8,
+        "rdi": 56,
+        "rsi": 64,
+        "rdx": 16,
+        "rsp": 40,
+        "ds": 256
+      },
+      "records": [
+        {
+          "name": "predicate_or_odd32",
+          "entry": 4294968432,
+          "native_bytes_unchanged": true,
+          "captures": [
+            {
+              "maturity": 5,
+              "blocks": [
+                {
+                  "index": 0,
+                  "instructions": []
+                },
+                {
+                  "index": 1,
+                  "instructions": [
+                    {
+                      "opcode": "m_mov",
+                      "ea": 4294968444,
+                      "properties": 0,
+                      "left": {
+                        "kind": 2,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_n",
+                        "value": 1
+                      },
+                      "right": {
+                        "kind": 0,
+                        "bytes": -1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_z"
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    }
+                  ]
+                },
+                {
+                  "index": 2,
+                  "instructions": []
+                }
+              ],
+              "statistics": {
+                "total_matches": 188,
+                "successful_matches": 0,
+                "instance_verified": 0,
+                "instance_disproved": 0,
+                "instance_unsupported": 0,
+                "instance_unknown": 0
+              }
+            }
+          ],
+          "ctree": "__int64 predicate_or_odd32()\n{\n  return 1;\n}\n",
+          "statistics": {
+            "total_matches": 261,
+            "successful_matches": 0,
+            "instance_verified": 0,
+            "instance_disproved": 0,
+            "instance_unsupported": 0,
+            "instance_unknown": 0
+          }
+        },
+        {
+          "name": "predicate_and_zero32",
+          "entry": 4294968464,
+          "native_bytes_unchanged": true,
+          "captures": [
+            {
+              "maturity": 5,
+              "blocks": [
+                {
+                  "index": 0,
+                  "instructions": []
+                },
+                {
+                  "index": 1,
+                  "instructions": [
+                    {
+                      "opcode": "m_mov",
+                      "ea": 4294968476,
+                      "properties": 0,
+                      "left": {
+                        "kind": 2,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_n",
+                        "value": 1
+                      },
+                      "right": {
+                        "kind": 0,
+                        "bytes": -1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_z"
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    }
+                  ]
+                },
+                {
+                  "index": 2,
+                  "instructions": []
+                }
+              ],
+              "statistics": {
+                "total_matches": 119,
+                "successful_matches": 0,
+                "instance_verified": 0,
+                "instance_disproved": 0,
+                "instance_unsupported": 0,
+                "instance_unknown": 0
+              }
+            }
+          ],
+          "ctree": "__int64 predicate_and_zero32()\n{\n  return 1;\n}\n",
+          "statistics": {
+            "total_matches": 159,
+            "successful_matches": 0,
+            "instance_verified": 0,
+            "instance_disproved": 0,
+            "instance_unsupported": 0,
+            "instance_unknown": 0
+          }
+        },
+        {
+          "name": "predicate_unsigned_bound32",
+          "entry": 4294968496,
+          "native_bytes_unchanged": true,
+          "captures": [
+            {
+              "maturity": 5,
+              "blocks": [
+                {
+                  "index": 0,
+                  "instructions": []
+                },
+                {
+                  "index": 1,
+                  "instructions": [
+                    {
+                      "opcode": "m_mov",
+                      "ea": 4294968506,
+                      "properties": 0,
+                      "left": {
+                        "kind": 2,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_n",
+                        "value": 0
+                      },
+                      "right": {
+                        "kind": 0,
+                        "bytes": -1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_z"
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    }
+                  ]
+                },
+                {
+                  "index": 2,
+                  "instructions": []
+                }
+              ],
+              "statistics": {
+                "total_matches": 119,
+                "successful_matches": 0,
+                "instance_verified": 0,
+                "instance_disproved": 0,
+                "instance_unsupported": 0,
+                "instance_unknown": 0
+              }
+            }
+          ],
+          "ctree": "__int64 predicate_unsigned_bound32()\n{\n  return 0;\n}\n",
+          "statistics": {
+            "total_matches": 164,
+            "successful_matches": 0,
+            "instance_verified": 0,
+            "instance_disproved": 0,
+            "instance_unsupported": 0,
+            "instance_unknown": 0
+          }
+        },
+        {
+          "name": "predicate_signed_negative8",
+          "entry": 4294968512,
+          "native_bytes_unchanged": true,
+          "captures": [
+            {
+              "maturity": 5,
+              "blocks": [
+                {
+                  "index": 0,
+                  "instructions": []
+                },
+                {
+                  "index": 1,
+                  "instructions": [
+                    {
+                      "opcode": "m_xdu",
+                      "ea": 4294968523,
+                      "properties": 0,
+                      "left": {
+                        "kind": 4,
+                        "bytes": 1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_d",
+                        "instruction": {
+                          "opcode": "m_sets",
+                          "ea": 4294968520,
+                          "properties": 0,
+                          "left": {
+                            "kind": 1,
+                            "bytes": 1,
+                            "properties": 0,
+                            "value_number": 0,
+                            "kind_name": "mop_r",
+                            "register": 56
+                          },
+                          "right": {
+                            "kind": 0,
+                            "bytes": -1,
+                            "properties": 0,
+                            "value_number": 0,
+                            "kind_name": "mop_z"
+                          },
+                          "destination": {
+                            "kind": 0,
+                            "bytes": 1,
+                            "properties": 0,
+                            "value_number": 0,
+                            "kind_name": "mop_z"
+                          }
+                        }
+                      },
+                      "right": {
+                        "kind": 0,
+                        "bytes": -1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_z"
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    }
+                  ]
+                },
+                {
+                  "index": 2,
+                  "instructions": []
+                }
+              ],
+              "statistics": {
+                "total_matches": 204,
+                "successful_matches": 0,
+                "instance_verified": 0,
+                "instance_disproved": 0,
+                "instance_unsupported": 0,
+                "instance_unknown": 0
+              }
+            }
+          ],
+          "ctree": "_BOOL8 __fastcall predicate_signed_negative8(char a1)\n{\n  return a1 < 0;\n}\n",
+          "statistics": {
+            "total_matches": 297,
+            "successful_matches": 0,
+            "instance_verified": 0,
+            "instance_disproved": 0,
+            "instance_unsupported": 0,
+            "instance_unknown": 0
+          }
+        },
+        {
+          "name": "predicate_zext_not8",
+          "entry": 4294968528,
+          "native_bytes_unchanged": true,
+          "captures": [
+            {
+              "maturity": 5,
+              "blocks": [
+                {
+                  "index": 0,
+                  "instructions": []
+                },
+                {
+                  "index": 1,
+                  "instructions": [
+                    {
+                      "opcode": "m_xdu",
+                      "ea": 4294968550,
+                      "properties": 0,
+                      "left": {
+                        "kind": 4,
+                        "bytes": 1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_d",
+                        "instruction": {
+                          "opcode": "m_setz",
+                          "ea": 4294968547,
+                          "properties": 0,
+                          "left": {
+                            "kind": 4,
+                            "bytes": 4,
+                            "properties": 0,
+                            "value_number": 0,
+                            "kind_name": "mop_d",
+                            "instruction": {
+                              "opcode": "m_xdu",
+                              "ea": 4294968536,
+                              "properties": 0,
+                              "left": {
+                                "kind": 4,
+                                "bytes": 1,
+                                "properties": 0,
+                                "value_number": 0,
+                                "kind_name": "mop_d",
+                                "instruction": {
+                                  "opcode": "m_bnot",
+                                  "ea": 4294968534,
+                                  "properties": 0,
+                                  "left": {
+                                    "kind": 1,
+                                    "bytes": 1,
+                                    "properties": 0,
+                                    "value_number": 1,
+                                    "kind_name": "mop_r",
+                                    "register": 56
+                                  },
+                                  "right": {
+                                    "kind": 0,
+                                    "bytes": -1,
+                                    "properties": 0,
+                                    "value_number": 0,
+                                    "kind_name": "mop_z"
+                                  },
+                                  "destination": {
+                                    "kind": 0,
+                                    "bytes": 1,
+                                    "properties": 0,
+                                    "value_number": 0,
+                                    "kind_name": "mop_z"
+                                  }
+                                }
+                              },
+                              "right": {
+                                "kind": 0,
+                                "bytes": -1,
+                                "properties": 0,
+                                "value_number": 0,
+                                "kind_name": "mop_z"
+                              },
+                              "destination": {
+                                "kind": 0,
+                                "bytes": 4,
+                                "properties": 0,
+                                "value_number": 0,
+                                "kind_name": "mop_z"
+                              }
+                            }
+                          },
+                          "right": {
+                            "kind": 4,
+                            "bytes": 4,
+                            "properties": 0,
+                            "value_number": 0,
+                            "kind_name": "mop_d",
+                            "instruction": {
+                              "opcode": "m_bnot",
+                              "ea": 4294968543,
+                              "properties": 0,
+                              "left": {
+                                "kind": 4,
+                                "bytes": 4,
+                                "properties": 0,
+                                "value_number": 0,
+                                "kind_name": "mop_d",
+                                "instruction": {
+                                  "opcode": "m_xdu",
+                                  "ea": 4294968539,
+                                  "properties": 0,
+                                  "left": {
+                                    "kind": 1,
+                                    "bytes": 1,
+                                    "properties": 0,
+                                    "value_number": 1,
+                                    "kind_name": "mop_r",
+                                    "register": 56
+                                  },
+                                  "right": {
+                                    "kind": 0,
+                                    "bytes": -1,
+                                    "properties": 0,
+                                    "value_number": 0,
+                                    "kind_name": "mop_z"
+                                  },
+                                  "destination": {
+                                    "kind": 0,
+                                    "bytes": 4,
+                                    "properties": 0,
+                                    "value_number": 0,
+                                    "kind_name": "mop_z"
+                                  }
+                                }
+                              },
+                              "right": {
+                                "kind": 0,
+                                "bytes": -1,
+                                "properties": 0,
+                                "value_number": 0,
+                                "kind_name": "mop_z"
+                              },
+                              "destination": {
+                                "kind": 0,
+                                "bytes": 4,
+                                "properties": 0,
+                                "value_number": 0,
+                                "kind_name": "mop_z"
+                              }
+                            }
+                          },
+                          "destination": {
+                            "kind": 0,
+                            "bytes": 1,
+                            "properties": 0,
+                            "value_number": 0,
+                            "kind_name": "mop_z"
+                          }
+                        }
+                      },
+                      "right": {
+                        "kind": 0,
+                        "bytes": -1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_z"
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    }
+                  ]
+                },
+                {
+                  "index": 2,
+                  "instructions": []
+                }
+              ],
+              "statistics": {
+                "total_matches": 726,
+                "successful_matches": 0,
+                "instance_verified": 0,
+                "instance_disproved": 0,
+                "instance_unsupported": 0,
+                "instance_unknown": 0
+              }
+            }
+          ],
+          "ctree": "_BOOL8 __fastcall predicate_zext_not8(unsigned __int8 a1)\n{\n  return (unsigned __int8)~a1 == ~a1;\n}\n",
+          "statistics": {
+            "total_matches": 1118,
+            "successful_matches": 0,
+            "instance_verified": 0,
+            "instance_disproved": 0,
+            "instance_unsupported": 0,
+            "instance_unknown": 0
+          }
+        },
+        {
+          "name": "predicate_alias_write32",
+          "entry": 4294968560,
+          "native_bytes_unchanged": true,
+          "captures": [
+            {
+              "maturity": 5,
+              "blocks": [
+                {
+                  "index": 0,
+                  "instructions": []
+                },
+                {
+                  "index": 1,
+                  "instructions": [
+                    {
+                      "opcode": "m_ldx",
+                      "ea": 4294968564,
+                      "properties": 0,
+                      "left": {
+                        "kind": 1,
+                        "bytes": 2,
+                        "properties": 0,
+                        "value_number": 1,
+                        "kind_name": "mop_r",
+                        "register": 256
+                      },
+                      "right": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 2,
+                        "kind_name": "mop_r",
+                        "register": 56
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 4,
+                        "properties": 0,
+                        "value_number": 3,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    },
+                    {
+                      "opcode": "m_stx",
+                      "ea": 4294968566,
+                      "properties": 0,
+                      "left": {
+                        "kind": 1,
+                        "bytes": 4,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 64
+                      },
+                      "right": {
+                        "kind": 1,
+                        "bytes": 2,
+                        "properties": 0,
+                        "value_number": 1,
+                        "kind_name": "mop_r",
+                        "register": 256
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 2,
+                        "kind_name": "mop_r",
+                        "register": 56
+                      }
+                    },
+                    {
+                      "opcode": "m_xdu",
+                      "ea": 4294968573,
+                      "properties": 0,
+                      "left": {
+                        "kind": 4,
+                        "bytes": 1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_d",
+                        "instruction": {
+                          "opcode": "m_setz",
+                          "ea": 4294968570,
+                          "properties": 0,
+                          "left": {
+                            "kind": 1,
+                            "bytes": 4,
+                            "properties": 0,
+                            "value_number": 3,
+                            "kind_name": "mop_r",
+                            "register": 8
+                          },
+                          "right": {
+                            "kind": 4,
+                            "bytes": 4,
+                            "properties": 0,
+                            "value_number": 0,
+                            "kind_name": "mop_d",
+                            "instruction": {
+                              "opcode": "m_ldx",
+                              "ea": 4294968568,
+                              "properties": 0,
+                              "left": {
+                                "kind": 1,
+                                "bytes": 2,
+                                "properties": 0,
+                                "value_number": 1,
+                                "kind_name": "mop_r",
+                                "register": 256
+                              },
+                              "right": {
+                                "kind": 1,
+                                "bytes": 8,
+                                "properties": 0,
+                                "value_number": 2,
+                                "kind_name": "mop_r",
+                                "register": 56
+                              },
+                              "destination": {
+                                "kind": 0,
+                                "bytes": 4,
+                                "properties": 0,
+                                "value_number": 0,
+                                "kind_name": "mop_z"
+                              }
+                            }
+                          },
+                          "destination": {
+                            "kind": 0,
+                            "bytes": 1,
+                            "properties": 0,
+                            "value_number": 0,
+                            "kind_name": "mop_z"
+                          }
+                        }
+                      },
+                      "right": {
+                        "kind": 0,
+                        "bytes": -1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_z"
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    }
+                  ]
+                },
+                {
+                  "index": 2,
+                  "instructions": []
+                }
+              ],
+              "statistics": {
+                "total_matches": 254,
+                "successful_matches": 0,
+                "instance_verified": 0,
+                "instance_disproved": 0,
+                "instance_unsupported": 0,
+                "instance_unknown": 0
+              }
+            }
+          ],
+          "ctree": "_BOOL8 __fastcall predicate_alias_write32(int *a1, int a2)\n{\n  int v2; // eax\n\n  v2 = *a1;\n  *a1 = a2;\n  return v2 == *a1;\n}\n",
+          "statistics": {
+            "total_matches": 371,
+            "successful_matches": 0,
+            "instance_verified": 0,
+            "instance_disproved": 0,
+            "instance_unsupported": 0,
+            "instance_unknown": 0
+          }
+        }
+      ]
+    },
+    "candidate": {
+      "abi": {
+        "rax": 8,
+        "rdi": 56,
+        "rsi": 64,
+        "rdx": 16,
+        "rsp": 40,
+        "ds": 256
+      },
+      "records": [
+        {
+          "name": "predicate_or_odd32",
+          "entry": 4294968432,
+          "native_bytes_unchanged": true,
+          "captures": [
+            {
+              "maturity": 5,
+              "blocks": [
+                {
+                  "index": 0,
+                  "instructions": []
+                },
+                {
+                  "index": 1,
+                  "instructions": [
+                    {
+                      "opcode": "m_mov",
+                      "ea": 4294968444,
+                      "properties": 0,
+                      "left": {
+                        "kind": 2,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_n",
+                        "value": 1
+                      },
+                      "right": {
+                        "kind": 0,
+                        "bytes": -1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_z"
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    }
+                  ]
+                },
+                {
+                  "index": 2,
+                  "instructions": []
+                }
+              ],
+              "statistics": {
+                "total_matches": 188,
+                "successful_matches": 0,
+                "instance_verified": 0,
+                "instance_disproved": 0,
+                "instance_unsupported": 0,
+                "instance_unknown": 0
+              }
+            }
+          ],
+          "ctree": "__int64 predicate_or_odd32()\n{\n  return 1;\n}\n",
+          "statistics": {
+            "total_matches": 261,
+            "successful_matches": 0,
+            "instance_verified": 0,
+            "instance_disproved": 0,
+            "instance_unsupported": 0,
+            "instance_unknown": 0
+          }
+        },
+        {
+          "name": "predicate_and_zero32",
+          "entry": 4294968464,
+          "native_bytes_unchanged": true,
+          "captures": [
+            {
+              "maturity": 5,
+              "blocks": [
+                {
+                  "index": 0,
+                  "instructions": []
+                },
+                {
+                  "index": 1,
+                  "instructions": [
+                    {
+                      "opcode": "m_mov",
+                      "ea": 4294968476,
+                      "properties": 0,
+                      "left": {
+                        "kind": 2,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_n",
+                        "value": 1
+                      },
+                      "right": {
+                        "kind": 0,
+                        "bytes": -1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_z"
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    }
+                  ]
+                },
+                {
+                  "index": 2,
+                  "instructions": []
+                }
+              ],
+              "statistics": {
+                "total_matches": 119,
+                "successful_matches": 0,
+                "instance_verified": 0,
+                "instance_disproved": 0,
+                "instance_unsupported": 0,
+                "instance_unknown": 0
+              }
+            }
+          ],
+          "ctree": "__int64 predicate_and_zero32()\n{\n  return 1;\n}\n",
+          "statistics": {
+            "total_matches": 159,
+            "successful_matches": 0,
+            "instance_verified": 0,
+            "instance_disproved": 0,
+            "instance_unsupported": 0,
+            "instance_unknown": 0
+          }
+        },
+        {
+          "name": "predicate_unsigned_bound32",
+          "entry": 4294968496,
+          "native_bytes_unchanged": true,
+          "captures": [
+            {
+              "maturity": 5,
+              "blocks": [
+                {
+                  "index": 0,
+                  "instructions": []
+                },
+                {
+                  "index": 1,
+                  "instructions": [
+                    {
+                      "opcode": "m_mov",
+                      "ea": 4294968506,
+                      "properties": 0,
+                      "left": {
+                        "kind": 2,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_n",
+                        "value": 0
+                      },
+                      "right": {
+                        "kind": 0,
+                        "bytes": -1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_z"
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    }
+                  ]
+                },
+                {
+                  "index": 2,
+                  "instructions": []
+                }
+              ],
+              "statistics": {
+                "total_matches": 119,
+                "successful_matches": 0,
+                "instance_verified": 0,
+                "instance_disproved": 0,
+                "instance_unsupported": 0,
+                "instance_unknown": 0
+              }
+            }
+          ],
+          "ctree": "__int64 predicate_unsigned_bound32()\n{\n  return 0;\n}\n",
+          "statistics": {
+            "total_matches": 164,
+            "successful_matches": 0,
+            "instance_verified": 0,
+            "instance_disproved": 0,
+            "instance_unsupported": 0,
+            "instance_unknown": 0
+          }
+        },
+        {
+          "name": "predicate_signed_negative8",
+          "entry": 4294968512,
+          "native_bytes_unchanged": true,
+          "captures": [
+            {
+              "maturity": 5,
+              "blocks": [
+                {
+                  "index": 0,
+                  "instructions": []
+                },
+                {
+                  "index": 1,
+                  "instructions": [
+                    {
+                      "opcode": "m_xdu",
+                      "ea": 4294968523,
+                      "properties": 0,
+                      "left": {
+                        "kind": 4,
+                        "bytes": 1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_d",
+                        "instruction": {
+                          "opcode": "m_sets",
+                          "ea": 4294968520,
+                          "properties": 0,
+                          "left": {
+                            "kind": 1,
+                            "bytes": 1,
+                            "properties": 0,
+                            "value_number": 0,
+                            "kind_name": "mop_r",
+                            "register": 56
+                          },
+                          "right": {
+                            "kind": 0,
+                            "bytes": -1,
+                            "properties": 0,
+                            "value_number": 0,
+                            "kind_name": "mop_z"
+                          },
+                          "destination": {
+                            "kind": 0,
+                            "bytes": 1,
+                            "properties": 0,
+                            "value_number": 0,
+                            "kind_name": "mop_z"
+                          }
+                        }
+                      },
+                      "right": {
+                        "kind": 0,
+                        "bytes": -1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_z"
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    }
+                  ]
+                },
+                {
+                  "index": 2,
+                  "instructions": []
+                }
+              ],
+              "statistics": {
+                "total_matches": 204,
+                "successful_matches": 0,
+                "instance_verified": 0,
+                "instance_disproved": 0,
+                "instance_unsupported": 0,
+                "instance_unknown": 0
+              }
+            }
+          ],
+          "ctree": "_BOOL8 __fastcall predicate_signed_negative8(char a1)\n{\n  return a1 < 0;\n}\n",
+          "statistics": {
+            "total_matches": 297,
+            "successful_matches": 0,
+            "instance_verified": 0,
+            "instance_disproved": 0,
+            "instance_unsupported": 0,
+            "instance_unknown": 0
+          }
+        },
+        {
+          "name": "predicate_zext_not8",
+          "entry": 4294968528,
+          "native_bytes_unchanged": true,
+          "captures": [
+            {
+              "maturity": 5,
+              "blocks": [
+                {
+                  "index": 0,
+                  "instructions": []
+                },
+                {
+                  "index": 1,
+                  "instructions": [
+                    {
+                      "opcode": "m_mov",
+                      "ea": 4294968550,
+                      "properties": 0,
+                      "left": {
+                        "kind": 2,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_n",
+                        "value": 0
+                      },
+                      "right": {
+                        "kind": 0,
+                        "bytes": -1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_z"
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    }
+                  ]
+                },
+                {
+                  "index": 2,
+                  "instructions": []
+                }
+              ],
+              "statistics": {
+                "total_matches": 707,
+                "successful_matches": 0,
+                "instance_verified": 1,
+                "instance_disproved": 0,
+                "instance_unsupported": 0,
+                "instance_unknown": 0
+              }
+            }
+          ],
+          "ctree": "__int64 predicate_zext_not8()\n{\n  return 0;\n}\n",
+          "statistics": {
+            "total_matches": 1074,
+            "successful_matches": 0,
+            "instance_verified": 2,
+            "instance_disproved": 0,
+            "instance_unsupported": 0,
+            "instance_unknown": 0
+          }
+        },
+        {
+          "name": "predicate_alias_write32",
+          "entry": 4294968560,
+          "native_bytes_unchanged": true,
+          "captures": [
+            {
+              "maturity": 5,
+              "blocks": [
+                {
+                  "index": 0,
+                  "instructions": []
+                },
+                {
+                  "index": 1,
+                  "instructions": [
+                    {
+                      "opcode": "m_ldx",
+                      "ea": 4294968564,
+                      "properties": 0,
+                      "left": {
+                        "kind": 1,
+                        "bytes": 2,
+                        "properties": 0,
+                        "value_number": 1,
+                        "kind_name": "mop_r",
+                        "register": 256
+                      },
+                      "right": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 2,
+                        "kind_name": "mop_r",
+                        "register": 56
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 4,
+                        "properties": 0,
+                        "value_number": 3,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    },
+                    {
+                      "opcode": "m_stx",
+                      "ea": 4294968566,
+                      "properties": 0,
+                      "left": {
+                        "kind": 1,
+                        "bytes": 4,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 64
+                      },
+                      "right": {
+                        "kind": 1,
+                        "bytes": 2,
+                        "properties": 0,
+                        "value_number": 1,
+                        "kind_name": "mop_r",
+                        "register": 256
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 2,
+                        "kind_name": "mop_r",
+                        "register": 56
+                      }
+                    },
+                    {
+                      "opcode": "m_xdu",
+                      "ea": 4294968573,
+                      "properties": 0,
+                      "left": {
+                        "kind": 4,
+                        "bytes": 1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_d",
+                        "instruction": {
+                          "opcode": "m_setz",
+                          "ea": 4294968570,
+                          "properties": 0,
+                          "left": {
+                            "kind": 1,
+                            "bytes": 4,
+                            "properties": 0,
+                            "value_number": 3,
+                            "kind_name": "mop_r",
+                            "register": 8
+                          },
+                          "right": {
+                            "kind": 4,
+                            "bytes": 4,
+                            "properties": 0,
+                            "value_number": 0,
+                            "kind_name": "mop_d",
+                            "instruction": {
+                              "opcode": "m_ldx",
+                              "ea": 4294968568,
+                              "properties": 0,
+                              "left": {
+                                "kind": 1,
+                                "bytes": 2,
+                                "properties": 0,
+                                "value_number": 1,
+                                "kind_name": "mop_r",
+                                "register": 256
+                              },
+                              "right": {
+                                "kind": 1,
+                                "bytes": 8,
+                                "properties": 0,
+                                "value_number": 2,
+                                "kind_name": "mop_r",
+                                "register": 56
+                              },
+                              "destination": {
+                                "kind": 0,
+                                "bytes": 4,
+                                "properties": 0,
+                                "value_number": 0,
+                                "kind_name": "mop_z"
+                              }
+                            }
+                          },
+                          "destination": {
+                            "kind": 0,
+                            "bytes": 1,
+                            "properties": 0,
+                            "value_number": 0,
+                            "kind_name": "mop_z"
+                          }
+                        }
+                      },
+                      "right": {
+                        "kind": 0,
+                        "bytes": -1,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_z"
+                      },
+                      "destination": {
+                        "kind": 1,
+                        "bytes": 8,
+                        "properties": 0,
+                        "value_number": 0,
+                        "kind_name": "mop_r",
+                        "register": 8
+                      }
+                    }
+                  ]
+                },
+                {
+                  "index": 2,
+                  "instructions": []
+                }
+              ],
+              "statistics": {
+                "total_matches": 254,
+                "successful_matches": 0,
+                "instance_verified": 0,
+                "instance_disproved": 0,
+                "instance_unsupported": 0,
+                "instance_unknown": 0
+              }
+            }
+          ],
+          "ctree": "_BOOL8 __fastcall predicate_alias_write32(int *a1, int a2)\n{\n  int v2; // eax\n\n  v2 = *a1;\n  *a1 = a2;\n  return v2 == *a1;\n}\n",
+          "statistics": {
+            "total_matches": 371,
+            "successful_matches": 0,
+            "instance_verified": 0,
+            "instance_disproved": 0,
+            "instance_unsupported": 0,
+            "instance_unknown": 0
+          }
+        }
+      ]
+    }
+  }
+}

@@ -7,6 +7,7 @@
 #include "../../common/bitvector.h"
 #include "../../common/z3_utils.h"
 #include "../rules/rule_verifier.h"
+#include "../rules/rules_predicate.h"
 #include <functional>
 
 // Include all rule headers to trigger registration
@@ -763,6 +764,18 @@ int mba_simplify_handler_t::try_simplify_node(mblock_t *blk, minsn_t *ins, const
     if (!initialized_)
     {
         initialize();
+    }
+
+    if (is_mcode_set(ins->opcode) || ins->opcode == m_lnot)
+    {
+        const int predicate_changes =
+            predicate_optimizer_handler_t::simplify_set(blk, ins, nullptr);
+        if (predicate_changes > 0)
+        {
+            blk->mark_lists_dirty();
+            total_simplified_ += static_cast<size_t>(predicate_changes);
+            return predicate_changes;
+        }
     }
 
     int changes = chernobog::chain::chain_simplify_handler_t::simplify_insn(blk, ins, nullptr);

@@ -1,5 +1,6 @@
 #include "rules_predicate.h"
 #include "../../common/bitvector.h"
+#include "rule_verifier.h"
 
 namespace chernobog
 {
@@ -723,7 +724,13 @@ int PredicateRuleRegistry::try_apply(minsn_t *ins)
     {
         if (p->matches(ins))
         {
-            return p->apply(ins);
+            const int proposed = p->apply(ins);
+            if (proposed != 0 && proposed != 1)
+                return -1;
+            // Pattern matches and the older general translator are proposals.
+            // Admission uses the original typed tree and independent reads.
+            thread_local RuleVerifier verifier;
+            return verifier.verify_constant(ins, uint64_t(proposed)).verified() ? proposed : -1;
         }
     }
 

@@ -165,11 +165,24 @@ struct InstanceTranslator
         case m_and:
         case m_or:
         case m_xor:
+        case m_lnot:
+        case m_sets:
+        case m_setnz:
+        case m_setz:
+        case m_setae:
+        case m_setb:
+        case m_seta:
+        case m_setbe:
+        case m_setg:
+        case m_setge:
+        case m_setl:
+        case m_setle:
             break;
         default:
             return reject("unsupported instruction opcode or effects");
         }
-        const bool binary = value->opcode == m_add || value->opcode == m_sub ||
+        const bool comparison = value->opcode >= m_setnz && value->opcode <= m_setle;
+        const bool binary = comparison || value->opcode == m_add || value->opcode == m_sub ||
                             value->opcode == m_mul || value->opcode == m_and ||
                             value->opcode == m_or || value->opcode == m_xor;
         auto left = operand(value->l, depth + 1, binary ? branch + "L" : branch);
@@ -179,6 +192,47 @@ struct InstanceTranslator
         const unsigned left_bits = left->get_sort().bv_size();
         if (!binary && value->r.t != mop_z)
             return reject("unexpected unary right operand");
+        const auto boolean_value = [&](const z3::expr &condition)
+        { return z3::ite(condition, context.bv_val(1, bits), context.bv_val(0, bits)); };
+        if (value->opcode == m_lnot)
+            return boolean_value(*left == 0);
+        if (value->opcode == m_sets || comparison)
+        {
+            if (bits != 8)
+                return reject("comparison result must be one byte");
+            if (value->opcode == m_sets)
+                return boolean_value(left->extract(left_bits - 1, left_bits - 1) == 1);
+            auto right = operand(value->r, depth + 1, branch + "R");
+            if (!right)
+                return {};
+            if (right->get_sort().bv_size() != left_bits)
+                return reject("comparison operand widths differ");
+            switch (value->opcode)
+            {
+            case m_setnz:
+                return boolean_value(*left != *right);
+            case m_setz:
+                return boolean_value(*left == *right);
+            case m_setae:
+                return boolean_value(z3::uge(*left, *right));
+            case m_setb:
+                return boolean_value(z3::ult(*left, *right));
+            case m_seta:
+                return boolean_value(z3::ugt(*left, *right));
+            case m_setbe:
+                return boolean_value(z3::ule(*left, *right));
+            case m_setg:
+                return boolean_value(*left > *right);
+            case m_setge:
+                return boolean_value(*left >= *right);
+            case m_setl:
+                return boolean_value(*left < *right);
+            case m_setle:
+                return boolean_value(*left <= *right);
+            default:
+                return reject("unsupported comparison opcode");
+            }
+        }
         if (value->opcode == m_xdu || value->opcode == m_xds)
         {
             if (left_bits > bits)
@@ -280,6 +334,28 @@ RuleVerificationResult RuleVerifier::verify_instance(const minsn_t *original,
         ++stats.unrecorded_rejections;
     }
     return result;
+}
+
+RuleVerificationResult RuleVerifier::verify_constant(const minsn_t *original, uint64_t value)
+{
+    if (!original)
+        return verify_instance(nullptr, nullptr);
+    // Borrow the numeric payload for this synchronous query. No SDK heap
+    // allocation or recursive operand copy is needed for the proposal.
+    struct ConstantProposal : minsn_t
+    {
+        explicit ConstantProposal(ea_t ea) : minsn_t(ea) {}
+        ~ConstantProposal() { l.zero(); }
+    } replacement(original->ea);
+    mnumber_t number(value);
+    replacement.opcode = m_mov;
+    replacement.iprops = original->iprops;
+    replacement.d.size = original->d.size;
+    replacement.d.oprops = original->d.oprops;
+    replacement.l.t = mop_n;
+    replacement.l.size = original->d.size;
+    replacement.l.nnn = &number;
+    return verify_instance(original, &replacement);
 }
 
 RuleVerificationResult RuleVerifier::verify_instance_impl(const minsn_t *original,

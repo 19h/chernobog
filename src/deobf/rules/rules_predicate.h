@@ -346,7 +346,8 @@ class PredicateRuleRegistry
     void initialize();
 
     // Try to match and apply a rule
-    // Returns: 0 or 1 if simplified, -1 if no rule matched
+    // Returns: a typed-instance-verified 0 or 1 proposal; -1 for no
+    // proposal or a disproved, unsupported or unknown proof. No IR mutation.
     int try_apply(minsn_t *ins);
 
     // Get statistics

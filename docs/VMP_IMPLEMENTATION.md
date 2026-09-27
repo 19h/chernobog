@@ -56,6 +56,17 @@ counterexamples. Integer replay verifies the witnesses; 3,421 unsupported and
 identity search, ordering and native reachability remain open. See
 `VMP_MBA_SEMANTIC_MISSES.md` and its evidence JSON.
 
+Typed predicate checkpoint for rows 4a/4b: the previously dormant predicate
+registry now runs in the bounded MBA traversal and admits only typed verified
+constants. A paired native mixed-width NOT comparison changes from a retained
+comparison to zero, while signed and intervening-write controls remain unchanged.
+263 added predicate component results, 23 CTest suites and 133,662 independent
+captured-IR result/memory checks pass. GLBOPT1 snapshots are archived in the
+evidence JSON. Earlier untracked build artifacts became unavailable following
+a build-directory disappearance of unknown cause; historical hashes are retained
+and a fresh complete protected matrix remains outstanding. See
+`VMP_TYPED_PREDICATES.md` and its evidence JSON.
+
 Protected hello call-use checkpoint for rows 3a, 3b, 6a and V: an explicit
 bounded shadow query joins one observed CALL edge, its same-sequence argument
 register state and loaded read-only NUL-terminated bytes. Two current IDA

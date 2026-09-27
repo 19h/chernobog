@@ -80,6 +80,11 @@ class RuleVerifier
     // Unsupported effects and widths reject the replacement.
     RuleVerificationResult verify_instance(const minsn_t *original, const minsn_t *replacement);
 
+    // Verify a constant proposal before the caller changes the instruction.
+    // The caller retains the original destination, width and instruction
+    // properties. This builds a borrowed value tree without copying payloads.
+    RuleVerificationResult verify_constant(const minsn_t *original, uint64_t value);
+
   private:
     RuleVerificationResult verify_instance_impl(const minsn_t *original,
                                                 const minsn_t *replacement);
