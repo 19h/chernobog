@@ -1454,6 +1454,9 @@ static std::string trace_native_region_impl(
     inspection_json_rows(out, "environment_bindings", models);
     inspection_json_rows(out, "allocations", allocations);
     inspection_json_rows(out, "uses", uses);
+    if (bindings)
+        out << ",\"native_vm_candidates\":"
+            << inspect_observed_vm_candidates(region, events, outcome, mode);
     out << ",\"undefined_result_slices\":[";
     bool first_slice = true;
     for (const auto &record : outcome.native_undefined_slices)

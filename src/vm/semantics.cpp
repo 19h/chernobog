@@ -137,7 +137,7 @@ class Evaluator
     void step(const Instruction &i)
     {
         site = i.address;
-        if (i.op == Op::direct_jump)
+        if (i.op == Op::direct_jump || i.op == Op::nop)
             return; // validated next support instruction
         if (i.op == Op::jump_above)
         {
@@ -160,6 +160,52 @@ class Evaluator
         if (i.op == Op::carry_toggle)
         {
             out.flags[0] = !out.flags[0];
+            return;
+        }
+        if (i.op == Op::set_carry_byte)
+        {
+            if (!out.defined[0])
+                throw std::runtime_error("undefined carry consumed by SETB");
+            write(i.dst, z3::ite(out.flags[0], bv(ctx, 1, 8), bv(ctx, 0, 8)));
+            return;
+        }
+        if (i.op == Op::load_flags_ah)
+        {
+            for (unsigned flag : {0u, 1u, 2u, 3u, 4u})
+                if (!out.defined[flag])
+                    throw std::runtime_error("undefined flag consumed by LAHF");
+            auto bit = [&](unsigned flag)
+            { return z3::ite(out.flags[flag], bv(ctx, 1, 1), bv(ctx, 0, 1)); };
+            const auto value = z3::concat(
+                bit(4),
+                z3::concat(
+                    bit(3),
+                    z3::concat(
+                        bv(ctx, 0, 1),
+                        z3::concat(bit(2), z3::concat(bv(ctx, 0, 1),
+                                                      z3::concat(bit(1), z3::concat(bv(ctx, 1, 1),
+                                                                                    bit(0))))))));
+            write(i.dst, value);
+            return;
+        }
+        if (i.op == Op::rotate_carry_left)
+        {
+            const unsigned bits = i.dst.bits;
+            const unsigned count = unsigned(i.src.value & (bits == 64 ? 63u : 31u)) % (bits + 1);
+            if (!count)
+                return;
+            const auto input = read(i.dst, bits);
+            const auto carry = z3::ite(out.flags[0], bv(ctx, 1, 1), bv(ctx, 0, 1));
+            const auto combined = z3::concat(input, carry);
+            const auto rotated = (combined << bv(ctx, count, bits + 1)) |
+                                 z3::lshr(combined, bv(ctx, bits + 1 - count, bits + 1));
+            write(i.dst, rotated.extract(bits, 1));
+            out.flags[0] = rotated.extract(0, 0) == bv(ctx, 1, 1);
+            out.defined[5] = count == 1;
+            if (count == 1)
+                out.flags[5] = (rotated.extract(bits, bits) == bv(ctx, 1, 1)) != out.flags[0];
+            else
+                out.flags[5] = ctx.bool_const(("undefined_rcl_of_" + std::to_string(site)).c_str());
             return;
         }
         if (i.op == Op::compare || i.op == Op::test)

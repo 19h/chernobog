@@ -172,6 +172,34 @@ int main()
     for (size_t i = 0; i < long_decode.size(); ++i)
         long_decode[i].address = 0x1000 + i * 4;
     require(bool(recognize(long_decode, 64)), "101-transform source budget");
+    for (unsigned mode : {32u, 64u})
+    {
+        auto scaffold = make(mode, true, true, true, 6, 0, 3, 7);
+        auto ah = r(0, 8);
+        ah.bit_offset = 8;
+        scaffold.insert(scaffold.begin() + 1,
+                        {{0, 4, Op::rotate_carry_left, r(0, 16), imm(0xb9), false},
+                         {0, 4, Op::set_carry_byte, ah, {}, false},
+                         {0, 4, Op::load_flags_ah, ah, {}, false}});
+        scaffold.insert(scaffold.end() - 1, {0, 4, Op::nop, {}, {}, false});
+        for (size_t index = 0; index < scaffold.size(); ++index)
+            scaffold[index].address = 0x5000 + index * 4;
+        require(bool(recognize(scaffold, mode)), "pre-read flags and exact no-op scaffold");
+        auto bad = scaffold;
+        bad[2].dst.reg = 1;
+        require(!recognize(bad, mode), "pre-read write to non-value register rejected");
+        bad = scaffold;
+        bad[3].dst.bit_offset = 0;
+        require(!recognize(bad, mode), "LAHF must write AH");
+        bad = scaffold;
+        bad[1].src.value = 256;
+        require(!recognize(bad, mode), "RCL immediate exceeds encoding width");
+        bad = scaffold;
+        for (auto &i : bad)
+            if (i.op == Op::nop)
+                i.dst = r(3, 8);
+        require(!recognize(bad, mode), "no-op cannot hide register writes");
+    }
     LogicalState a{1, 0x1000, 2, 3, 0x2000, 4, 0x3000, 0x4000};
     require(same_logical_state(a, a, true), "complete state identity");
     auto b = a;

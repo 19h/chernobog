@@ -52,8 +52,11 @@ enum class Op
     carry_toggle,
     scan_forward,
     near_return,
-    address,   // LEA: compute the memory operand address without reading memory
-    jump_above // observed taken JA; the alternative successor is outside this path
+    address,    // LEA: compute the memory operand address without reading memory
+    jump_above, // observed taken JA; the alternative successor is outside this path
+    rotate_carry_left,
+    set_carry_byte,
+    load_flags_ah
 };
 struct Instruction
 {

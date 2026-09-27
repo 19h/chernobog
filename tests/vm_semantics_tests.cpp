@@ -495,6 +495,28 @@ int main(int argc, char **argv)
             for (bool relative : {false, true})
                 concrete(64, false, relative, true, 0x81234567u, UINT64_C(0xfedcba9812345678),
                          false, op, count);
+    for (unsigned mode : {32u, 64u})
+        for (uint64_t count : {0u, 1u, 0xb9u})
+        {
+            z3::context context;
+            const auto base = vm_test::candidate(mode, true, true, true);
+            auto code = base.support;
+            auto ah = vm_test::reg(base.value, 8);
+            ah.bit_offset = 8;
+            code.insert(code.begin() + 1,
+                        {{0, 4, Op::rotate_carry_left, vm_test::reg(base.value, 16),
+                          vm_test::imm(count), false},
+                         {0, 4, Op::set_carry_byte, ah, {}, false},
+                         {0, 4, Op::load_flags_ah, ah, {}, false}});
+            code.insert(code.end() - 1, {0, 4, Op::nop, {}, {}, false});
+            for (size_t index = 0; index < code.size(); ++index)
+                code[index].address = 0x5000 + index * 4;
+            auto changed = *recognize(code, mode);
+            auto x = summarize(context, base), y = summarize(context, changed);
+            require(bool(x) && bool(y), "pre-read flags and no-op summary constructed");
+            require(compare(*x, *y).result == Equivalence::equivalent,
+                    "pre-read overwritten value and no-op preserve complete summary");
+        }
     z3::context ctx;
     auto c = vm_test::candidate(64, false, true, true);
     c.vip = -1;

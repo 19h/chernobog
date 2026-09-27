@@ -1338,3 +1338,20 @@ certificates pass independent symbolic replay. All six virtualized/combined
 variants remain incomplete. See `VMP_NATIVE_EXTENSION_QUOTA.md` and its evidence
 JSON. Strict query latency, full protected topology and complete review
 implementation remain in progress.
+
+## Ownerless protected VM scaffold checkpoint
+
+Review rows 6a, 6b and V now have a read-only projection from exact entered
+native instruction bytes to local VM candidates even when IDA classifies the
+bytes as data without a function owner. Bounded decoding models `RCL`, `SETB`,
+`LAHF`, and exact byte-register self-`XCHG` effects. A fixed-seed protected
+strings trace yields four local candidates, including a 28-instruction
+backward-read relative dispatcher with an independently decoded span and an
+observed indirect edge. The 40-run paired matrix yields zero candidates in 16
+original/native-mutation captures and 79 candidate occurrences in 24 protected
+captures. All six protected variants remain execution-incomplete. The five
+probed IDB sites remain ownerless data before and after the query; no VM
+identity, single-entry handler, complete transition, or ordinary function
+publication is claimed. All 23 CTest suites and the existing paired temporal
+matrix pass. See `VMP_OBSERVED_SCAFFOLD.md` and its evidence JSON. Complete VM
+recovery and the remaining review requirements remain in progress.

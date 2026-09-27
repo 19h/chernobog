@@ -9,7 +9,8 @@ namespace chernobog::vm
 // Normal-completion semantics in flat little-endian modular-address memory.
 // All accesses succeed; exceptions, concurrency, devices and segment bases are
 // outside this contract. Near returns additionally require CET shadow stacks
-// disabled. The summary never authorizes suppressing an access.
+// disabled. LAHF in long mode additionally assumes CPUID.80000001H:ECX.LAHF_LM.
+// The summary never authorizes suppressing an access.
 struct Access
 {
     bool write;

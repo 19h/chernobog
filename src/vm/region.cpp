@@ -256,12 +256,20 @@ bool register_effect(const Instruction &i, unsigned mode)
 {
     if (!register_operand(i.dst, mode) || i.dst.reg == 4)
         return false;
+    if (i.op == Op::load_flags_ah)
+        return i.dst.reg == 0 && i.dst.bits == 8 && i.dst.bit_offset == 8 &&
+               i.src.kind == Kind::none;
+    if (i.op == Op::set_carry_byte)
+        return i.dst.bits == 8 && i.src.kind == Kind::none;
     const bool source = i.src.kind == Kind::immediate ||
                         (register_operand(i.src, mode) && i.src.bits == i.dst.bits);
     if (arithmetic(i.op))
         return source;
     if (i.op == Op::rotate_left || i.op == Op::rotate_right)
         return i.src.kind == Kind::immediate;
+    if (i.op == Op::rotate_carry_left)
+        return (i.dst.bits == 8 || i.dst.bits == 16 || i.dst.bits == 32 || i.dst.bits == 64) &&
+               i.src.kind == Kind::immediate && i.src.value <= 255;
     if (i.op == Op::negate || i.op == Op::bit_not || i.op == Op::increment || i.op == Op::decrement)
         return i.src.kind == Kind::none;
     if (i.op == Op::byte_swap)
@@ -316,6 +324,12 @@ std::optional<Candidate> recognize(const std::vector<Instruction> &code, unsigne
     for (size_t index = 0; index < code.size(); ++index)
     {
         const auto &i = code[index];
+        if (i.op == Op::nop)
+        {
+            if (i.dst.kind != Kind::none || i.src.kind != Kind::none)
+                return {};
+            continue;
+        }
         if (i.op == Op::direct_jump || i.op == Op::jump_above)
         {
             if (index + 1 == code.size() || i.dst.kind != Kind::immediate || i.dst.bits != mode ||

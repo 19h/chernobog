@@ -3,6 +3,8 @@
 #include "boundary.hpp"
 #include "summary_view.hpp"
 #include "observations.hpp"
+#include "native_undefined.hpp"
+#include "../hybrid/emu_driver.hpp"
 #include "../hybrid/evidence.hpp"
 #include "../common/inspection_json.hpp"
 #include "../common/warn_off.h"
@@ -113,8 +115,55 @@ Instruction decode(const insn_t &i, unsigned mode)
         return r;
     r.dst = operand(i, i.Op1, mode);
     r.src = operand(i, i.Op2, mode);
+    std::vector<uint8_t> encoding;
+    if (i.itype == NN_rcl || i.itype == NN_setb || i.itype == NN_setc || i.itype == NN_lahf ||
+        i.itype == NN_xchg || i.itype == NN_nop)
+    {
+        encoding.resize(i.size);
+        unsigned operands = 0;
+        for (unsigned index = 0; index < UA_MAXOP; ++index)
+            operands += i.ops[index].type != o_void;
+        if (i.size == 0 || i.size > 15 ||
+            get_bytes(encoding.data(), encoding.size(), i.ea) != ssize_t(encoding.size()) ||
+            !native_undefined_encoding_supported(encoding, mode, operands))
+            return r;
+    }
     switch (i.itype)
     {
+    case NN_rcl:
+        if (r.dst.kind == Kind::reg && r.src.kind == Kind::immediate && r.dst.bits >= 8 &&
+            r.dst.bits <= mode && r.src.value <= 255)
+            r.op = Op::rotate_carry_left;
+        break;
+    case NN_setb:
+    case NN_setc:
+        if (r.dst.kind == Kind::reg && r.dst.bits == 8 && r.src.kind == Kind::none)
+            r.op = Op::set_carry_byte;
+        break;
+    case NN_lahf:
+        if (encoding == std::vector<uint8_t>{0x9f} && r.dst.kind == Kind::reg && r.dst.reg == 0 &&
+            r.dst.bits == 8 && r.dst.bit_offset == 8 && r.src.kind == Kind::none)
+        {
+            r.op = Op::load_flags_ah;
+        }
+        break;
+    case NN_xchg:
+        if (r.dst.kind == Kind::reg && r.src.kind == Kind::reg && r.dst.bits == 8 &&
+            r.src.bits == 8 && r.dst.reg == r.src.reg && r.dst.bit_offset == r.src.bit_offset)
+        {
+            r.op = Op::nop;
+            r.dst = {};
+            r.src = {};
+        }
+        break;
+    case NN_nop:
+        if (encoding == std::vector<uint8_t>{0x90})
+        {
+            r.op = Op::nop;
+            r.dst = {};
+            r.src = {};
+        }
+        break;
     case NN_mov:
     case NN_movzx:
         r.op = Op::load;
@@ -407,6 +456,136 @@ bool decode_native_semantic_heads(const NativeRegion &region, unsigned mode,
         out.emplace(head.address, decode(instruction, mode));
     }
     return true;
+}
+
+std::string inspect_observed_vm_candidates(const NativeRegion &region,
+                                           const hybrid::EmuEvents &events,
+                                           const hybrid::EmuOutcome &outcome, unsigned mode)
+{
+    using Row = std::map<std::string, std::string>;
+    std::vector<Row> rows;
+    std::map<uint64_t, Instruction> decoded;
+    std::string reason;
+    size_t starts = 0, steps = 0, omitted = 0;
+    bool limited = false;
+    if (!outcome.native_region || !region.available() ||
+        outcome.region_identity != region.identity() || mode != region.address_bits() ||
+        events.execution.empty() || events.execution.size() > 65536 ||
+        !decode_native_semantic_heads(region, mode, decoded))
+        reason = "exact native plan and IDB byte decode required";
+    else
+    {
+        uint64_t previous = 0;
+        bool first_point = true;
+        const auto run = events.execution.front().run_id;
+        const auto seed = events.execution.front().seed;
+        for (const auto &point : events.execution)
+        {
+            const auto *head = region.at(point.pc);
+            const auto found = decoded.find(point.pc);
+            if (point.run_id != run || point.seed != seed ||
+                (!first_point && point.sequence <= previous) || !head || found == decoded.end() ||
+                head->bytes.size() != point.size || found->second.size != point.size)
+            {
+                reason = "observed instruction order or planned span differs";
+                break;
+            }
+            previous = point.sequence;
+            first_point = false;
+        }
+        if (reason.empty())
+        {
+            std::set<std::pair<uint64_t, uint64_t>> recorded;
+            for (size_t start = 0; start < events.execution.size(); ++start)
+            {
+                const auto &first = decoded.at(events.execution[start].pc);
+                if (!((first.op == Op::load && first.src.kind == Kind::memory) ||
+                      (first.op == Op::sub && first.dst.kind == Kind::reg &&
+                       first.src.kind == Kind::immediate &&
+                       (first.src.value == 1 || first.src.value == 2 || first.src.value == 4 ||
+                        first.src.value == 8))))
+                    continue;
+                if (++starts > 4096)
+                {
+                    limited = true;
+                    break;
+                }
+                std::vector<Instruction> path;
+                for (size_t at = start;
+                     at < events.execution.size() && path.size() < instruction_limit; ++at)
+                {
+                    if (++steps > 32768)
+                    {
+                        limited = true;
+                        break;
+                    }
+                    const auto &instruction = decoded.at(events.execution[at].pc);
+                    if (instruction.op == Op::unsupported)
+                        break;
+                    path.push_back(instruction);
+                    if (instruction.op != Op::jump && instruction.op != Op::near_return)
+                        continue;
+                    const auto candidate = recognize(path, mode);
+                    if (!candidate ||
+                        !recorded.emplace(candidate->start, candidate->dispatch).second)
+                        break;
+                    if (rows.size() == 64)
+                    {
+                        ++omitted;
+                        break;
+                    }
+                    const auto &c = *candidate;
+                    std::string target = "unknown";
+                    if (at + 1 < events.execution.size())
+                    {
+                        const auto &next = events.execution[at + 1];
+                        for (const auto &edge : events.edges)
+                            if (edge.sequence == next.sequence && edge.from == c.dispatch &&
+                                edge.to == next.pc &&
+                                edge.kind == (c.stack_dispatch ? hybrid::ExecEdge::Kind::Return
+                                                               : hybrid::ExecEdge::Kind::Jump))
+                            {
+                                target = hex(next.pc);
+                                break;
+                            }
+                    }
+                    rows.push_back(
+                        {{"site", hex(c.start)},
+                         {"dispatch", hex(c.dispatch)},
+                         {"read", hex(c.read)},
+                         {"observed_target", target},
+                         {"first_sequence", hex(events.execution[start].sequence)},
+                         {"last_sequence", hex(events.execution[at].sequence)},
+                         {"read_bits", std::to_string(c.read_bits)},
+                         {"direction", c.direction == Direction::forward ? "forward" : "backward"},
+                         {"vip_register", std::to_string(c.vip)},
+                         {"value_register", std::to_string(c.value)},
+                         {"key_register", std::to_string(c.key)},
+                         {"dispatch_base_register", std::to_string(c.dispatch_base)},
+                         {"region_identity", hex(region.identity())},
+                         {"image_hash", hex(region.image_hash())},
+                         {"truth", "observed local candidate"},
+                         {"ownership", "unknown; IDB mutation not performed"},
+                         {"semantic_validation", "not performed"},
+                         {"other_entries", "unknown"},
+                         {"vm_identity", "unknown"},
+                         {"instruction_spans", spans(c)},
+                         {"bytes", bytes(c)}});
+                    break;
+                }
+                if (limited)
+                    break;
+            }
+        }
+    }
+    std::ostringstream out;
+    out << "{\"schema\":1,\"available\":" << (reason.empty() ? "true" : "false")
+        << ",\"reason\":" << inspection_json_quote(reason) << ",\"starts_examined\":" << starts
+        << ",\"path_steps\":" << steps << ",\"limited\":" << (limited ? "true" : "false")
+        << ",\"omitted\":" << omitted;
+    inspection_json_rows(out, "records", rows);
+    out << '}';
+    return out.str();
 }
 
 std::string inspect_regions(uint64_t function, bool include_summaries,
