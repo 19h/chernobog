@@ -3373,6 +3373,45 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         return std::min<size_t>(config.maximum_direct_jump_targets, 4096);
     }
 
+    bool direct_jump_head_needs_flow(ea_t target) const
+    {
+        const flags64_t flags = get_flags(target);
+        const segment_t *segment = getseg(target);
+        insn_t head, next;
+        if (!is_code(flags) || !is_head(flags) || get_func(target) != nullptr ||
+            segment == nullptr || decode_insn(&head, target) <= 0 ||
+            get_item_end(target) != target + head.size ||
+            (head.get_canon_feature(PH) & (CF_STOP | CF_CALL)) != 0 ||
+            segment->end_ea - target <= ea_t(head.size))
+            return false;
+        const ea_t fallthrough = target + head.size;
+        for (ea_t byte = target; byte < fallthrough; ++byte)
+            if (!is_loaded(byte))
+                return false;
+        if (!is_unknown(get_flags(fallthrough)) || get_func(fallthrough) != nullptr ||
+            decode_insn(&next, fallthrough) <= 0 || segment->end_ea - fallthrough < ea_t(next.size))
+            return false;
+        // Reanalysis must not be used to skip the existing byte-admission
+        // guards at an undecoded successor, including interior user labels.
+        for (ea_t byte = fallthrough; byte < fallthrough + next.size; ++byte)
+            if (!is_unknown(get_flags(byte)) || !is_loaded(byte) ||
+                (byte != fallthrough && has_user_name(get_flags(byte))))
+                return false;
+        return true;
+    }
+
+    void schedule_direct_jump_head_flow(ea_t target)
+    {
+        if (direct_jump_head_needs_flow(target))
+        {
+            insn_t head;
+            if (decode_insn(&head, target) > 0)
+                auto_make_code(target + head.size);
+        }
+        ++statistics.direct_jump_heads_reanalyzed;
+        plan_ea(target);
+    }
+
     void remember_direct_jump_decode(const insn_t &instruction)
     {
         if (!config.direct_jump_decode || architecture != Architecture::X86 ||
@@ -3383,7 +3422,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         // Sectionless executable Mach-O segments can be classified SEG_DATA by
         // the loader. Follow an existing exact jump without retyping that segment.
         if (segment == nullptr || segment->type != SEG_DATA ||
-            (segment->perm & SEGPERM_EXEC) == 0 || !is_unknown(get_flags(target)))
+            (segment->perm & SEGPERM_EXEC) == 0 ||
+            (!is_unknown(get_flags(target)) && !direct_jump_head_needs_flow(target)))
             return;
         const std::pair<ea_t, ea_t> edge{instruction.ea, target};
         if (pending_direct_jump_decodes.count(edge) != 0)
@@ -3421,9 +3461,15 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 source_segment->bitness == 0 ||
                 source_segment->bitness != target_segment->bitness ||
                 target_segment->type != SEG_DATA || (target_segment->perm & SEGPERM_EXEC) == 0 ||
-                !is_unknown(get_flags(target)) || get_func(target) != nullptr ||
-                decode_insn(&decoded, target) <= 0 ||
+                get_func(target) != nullptr || decode_insn(&decoded, target) <= 0 ||
                 target_segment->end_ea - target < ea_t(decoded.size))
+                continue;
+            if (direct_jump_head_needs_flow(target))
+            {
+                schedule_direct_jump_head_flow(target);
+                continue;
+            }
+            if (!is_unknown(get_flags(target)))
                 continue;
             bool admissible = true;
             for (ea_t byte = target; byte < target + decoded.size; ++byte)
@@ -3440,7 +3486,12 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                 }
             }
             if (admissible && create_insn(target) > 0)
+            {
                 ++statistics.direct_jump_targets_decoded;
+                // Executable SEG_DATA can retain only this first head after
+                // loading. Explicitly queue processor reanalysis of its flow.
+                schedule_direct_jump_head_flow(target);
+            }
             // IDA owns subsequent ordinary decoding and function-tail decisions.
             // No bytes, permissions, user xrefs, or inferred proof edges are changed.
         }

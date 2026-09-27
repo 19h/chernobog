@@ -972,6 +972,7 @@ error_t native_stats_result(idc_value_t *r, bool run_analysis)
     set_bool(r, "post_scan_truncated", stats.post_scan_truncated);
     set_size(r, "direct_jump_decode_attempts", stats.direct_jump_decode_attempts);
     set_size(r, "direct_jump_targets_decoded", stats.direct_jump_targets_decoded);
+    set_size(r, "direct_jump_heads_reanalyzed", stats.direct_jump_heads_reanalyzed);
     set_size(r, "function_updates_scoped", stats.function_updates_scoped);
     set_size(r, "function_updates_global", stats.function_updates_global);
     set_size(r, "proof_revalidation_calls", stats.proof_revalidation_calls);

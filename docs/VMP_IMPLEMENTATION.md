@@ -1098,3 +1098,21 @@ controls, existing 108-rule catalog and all 21 CTest suites pass. See
 `VMP_MBA_LOAD_EFFECTS.md` and its evidence JSON. Whole-function, native flags,
 hardware exceptions, broader protected ownership and full review completion
 remain unknown or in progress.
+
+## Direct-jump flow and protected snippet checkpoint
+
+Rows 1b, 4a and V now include guarded processor reanalysis at admitted
+executable-data jump targets, including existing ownerless heads with unknown
+loaded successors. Two counterfactual successor-item deletions remain unresolved
+under the preceding artifact and are repaired by the current pass without
+forcing owners or changing bytes. Current admission, successor data/label,
+zero/one-cap and disabled controls pass 227 checks; 21/21 CTest suites pass.
+The complete 40-process protected matrix preserves all 456 outcomes and 454
+captured typed trees. A separate equal-wave x86-64 snippet matrix records 20
+paired prefixes and 160 actual SDK stages, with 102 independent file/Capstone
+instruction checks and ten corrupted captures rejected. Those paired prefix
+inventories match: no protected recovery gain is attributed to this production
+change. Prefixes and absent snippet output contracts do not establish complete
+body recovery or canonicalization success. See `VMP_DIRECT_JUMP_FLOW.md` and
+its evidence JSON. Full protected ownership, miss classification, exceptions,
+lifecycle coverage and the complete review remain in progress or unknown.

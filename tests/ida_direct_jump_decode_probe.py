@@ -9,6 +9,7 @@ import traceback
 import ida_auto
 import ida_bytes
 import ida_expr
+import ida_funcs
 import ida_idaapi
 import ida_kernwin
 import ida_loader
@@ -27,17 +28,21 @@ def check(name, value):
         errors.append(name)
 
 
-def stats():
+def stats(run=True):
     result = {}
-    for field in (
+    snapshot = ida_expr.idc_value_t()
+    query = "chernobog_native_analysis()" if run else "chernobog_native_stats()"
+    assert not ida_expr.eval_idc_expr(snapshot, ida_idaapi.BADADDR, query)
+    fields = [
         "direct_jump_decode_attempts",
         "direct_jump_targets_decoded",
         "direct_jump_decode_truncated",
-    ):
+    ]
+    if os.environ.get("CHERNOBOG_FLOW_LEGACY_STATS") != "1":
+        fields.append("direct_jump_heads_reanalyzed")
+    for field in fields:
         value = ida_expr.idc_value_t()
-        assert not ida_expr.eval_idc_expr(
-            value, ida_idaapi.BADADDR, "chernobog_native_analysis()." + field
-        )
+        assert not ida_expr.get_idcv_attr(value, snapshot, field)
         result[field] = int(value.num)
     return result
 
@@ -159,6 +164,9 @@ try:
         )
         row["decoded"] = ida_bytes.is_code(ida_bytes.get_full_flags(target))
         check(name + " admission", row["decoded"] == expected)
+        if expected:
+            row["successor_decoded"] = ida_bytes.is_code(ida_bytes.get_full_flags(target + 5))
+            check(name + " ordinary successor decoding", row["successor_decoded"])
         if not expected:
             check(
                 name + " item definitions preserved",
@@ -179,6 +187,94 @@ try:
             current.perm == row["permissions"] and current.type == row["segment_type"],
         )
     previous = measured["direct_jump_targets_decoded"]
+    if not disabled and cap > 2:
+        before_repair = stats()
+        for row in rows:
+            if row["name"] not in ("named_positive", "positive"):
+                continue
+            target = row["target"]
+            function = ida_funcs.get_func(target)
+            if function is not None:
+                assert function.start_ea == target
+                assert ida_funcs.del_func(target)
+            assert ida_bytes.del_items(target + 5, ida_bytes.DELIT_SIMPLE, 1)
+            for queue in (ida_auto.AU_CODE, ida_auto.AU_PROC, ida_auto.AU_USED):
+                ida_auto.auto_unmark(target, target + 6, queue)
+            check(
+                row["name"] + " first head retained",
+                ida_bytes.is_code(ida_bytes.get_full_flags(target)),
+            )
+            check(
+                row["name"] + " successor is unknown before source reanalysis",
+                ida_bytes.is_unknown(ida_bytes.get_full_flags(target + 5)),
+            )
+            ida_auto.plan_ea(row["source"])
+            ida_auto.auto_wait()
+            stats()
+            ida_auto.auto_wait()
+            ida_auto.auto_wait()
+            row["repair_diagnostics"] = {
+                "statistics": stats(False),
+                "code_queue": int(ida_auto.peek_auto_queue(target + 5, ida_auto.AU_CODE)),
+                "used_queue": int(ida_auto.peek_auto_queue(target, ida_auto.AU_USED)),
+                "auto_complete": bool(ida_auto.auto_is_ok()),
+                "head_end": int(ida_bytes.get_item_end(target)),
+                "successor_flags": int(ida_bytes.get_full_flags(target + 5)),
+                "successor_loaded": bool(ida_bytes.is_loaded(target + 5)),
+            }
+            row["repaired_successor"] = ida_bytes.is_code(ida_bytes.get_full_flags(target + 5))
+            check(
+                row["name"] + " existing-head successor repair",
+                row["repaired_successor"] == (os.environ.get("CHERNOBOG_FLOW_LEGACY_STATS") != "1"),
+            )
+            check(
+                row["name"] + " repair does not force an owner", ida_funcs.get_func(target) is None
+            )
+        after_repair = stats()
+        check(
+            "existing-head repair creates no target head",
+            after_repair["direct_jump_targets_decoded"]
+            == before_repair["direct_jump_targets_decoded"],
+        )
+        if "direct_jump_heads_reanalyzed" in after_repair:
+            check(
+                "existing-head repair schedules processor reanalysis",
+                after_repair["direct_jump_heads_reanalyzed"]
+                > before_repair["direct_jump_heads_reanalyzed"],
+            )
+        row = next(row for row in rows if row["name"] == "positive")
+        target = row["target"]
+        for guard in ("defined successor", "interior successor data", "interior successor label"):
+            ida_bytes.del_items(target + 5, ida_bytes.DELIT_SIMPLE, 6)
+            ida_bytes.put_bytes(target + 5, b"\xbb\x2b\x00\x00\x00\xc3")
+            for queue in (ida_auto.AU_CODE, ida_auto.AU_PROC, ida_auto.AU_USED):
+                ida_auto.auto_unmark(target, target + 11, queue)
+            if guard == "defined successor":
+                assert ida_bytes.create_data(target + 5, ida_bytes.FF_BYTE, 5, ida_idaapi.BADADDR)
+            elif guard == "interior successor data":
+                assert ida_bytes.create_data(target + 7, ida_bytes.FF_BYTE, 1, ida_idaapi.BADADDR)
+            else:
+                assert ida_name.set_name(target + 7, "guarded_successor_label", ida_name.SN_NOWARN)
+            items_before = [item_state(target + i) for i in range(5, 11)]
+            before_guard = stats()
+            ida_auto.plan_ea(row["source"])
+            ida_auto.auto_wait()
+            ida_auto.auto_wait()
+            after_guard = stats()
+            check(
+                guard + " items preserved",
+                items_before == [item_state(target + i) for i in range(5, 11)],
+            )
+            check(
+                guard + " bytes preserved",
+                ida_bytes.get_bytes(target + 5, 6) == b"\xbb\x2b\x00\x00\x00\xc3",
+            )
+            if "direct_jump_heads_reanalyzed" in after_guard:
+                check(
+                    guard + " not scheduled",
+                    after_guard["direct_jump_heads_reanalyzed"]
+                    == before_guard["direct_jump_heads_reanalyzed"],
+                )
     check(
         "repeated analysis does not re-admit code",
         stats()["direct_jump_targets_decoded"] == previous,
