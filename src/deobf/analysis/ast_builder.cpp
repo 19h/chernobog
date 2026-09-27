@@ -36,18 +36,20 @@ uint64_t MopKey::hash_insn(const minsn_t *ins)
 
     // Include destination size
     h = simd::hash_combine(h, static_cast<uint64_t>(ins->d.size));
+    h = simd::hash_combine(h, static_cast<uint64_t>(ins->d.valnum));
+    h = simd::hash_combine(h, static_cast<uint64_t>(ins->d.oprops));
+    h = simd::hash_combine(h, static_cast<uint64_t>(ins->iprops));
 
     return h;
 }
 
 MopKey MopKey::from_mop(const mop_t &mop)
 {
-    MopKey key;
+    MopKey key{};
     key.type = static_cast<uint16_t>(mop.t);
-    key.size = static_cast<uint16_t>(mop.size);
-    key.value1 = 0;
-    key.value2 = 0;
-    key._pad = 0;
+    key.size = mop.size;
+    key.valnum = mop.valnum;
+    key.properties = mop.oprops;
 
     switch (mop.t)
     {
@@ -68,6 +70,7 @@ MopKey MopKey::from_mop(const mop_t &mop)
         if (mop.s)
         {
             key.value1 = static_cast<uint64_t>(mop.s->off);
+            key.frame = reinterpret_cast<uintptr_t>(mop.s->mba);
         }
         break;
 
@@ -80,6 +83,7 @@ MopKey MopKey::from_mop(const mop_t &mop)
         {
             key.value1 = mop.l->idx;
             key.value2 = mop.l->off;
+            key.frame = reinterpret_cast<uintptr_t>(mop.l->mba);
         }
         break;
 
@@ -130,6 +134,9 @@ MopKey MopKey::from_mop(const mop_t &mop)
     key.hash = simd::hash_combine(key.hash, simd::hash_u64(key.size));
     key.hash = simd::hash_combine(key.hash, simd::hash_u64(key.value1));
     key.hash = simd::hash_combine(key.hash, simd::hash_u64(key.value2));
+    key.hash = simd::hash_combine(key.hash, simd::hash_u64(key.frame));
+    key.hash = simd::hash_combine(key.hash, simd::hash_u64(key.valnum));
+    key.hash = simd::hash_combine(key.hash, simd::hash_u64(key.properties));
 
     return key;
 }

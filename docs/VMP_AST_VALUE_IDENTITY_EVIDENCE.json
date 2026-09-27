@@ -1,0 +1,330 @@
+{
+  "schema": 1,
+  "feature": "AST operand snapshot identity",
+  "review_rows": [
+    "4a",
+    "4b",
+    "V"
+  ],
+  "scope": "component identity correction with unchanged measured protected behavior; full review remains in progress",
+  "source_parent": "f534cbdc2caa836f25b03fdb4399fe65332e696a",
+  "changes": {
+    "identity_fields": [
+      "type",
+      "full signed SDK size",
+      "scalar payload",
+      "valnum",
+      "oprops",
+      "stack/local mba owner"
+    ],
+    "nested_metadata": [
+      "source operands",
+      "destination valnum and oprops",
+      "instruction iprops"
+    ],
+    "comparison_maximum_depth": 64,
+    "comparison_maximum_operand_pair_visits": 512,
+    "explicit_load_source_ea_required": true,
+    "key_size_prior_bytes": 32,
+    "key_size_current_bytes": 64,
+    "key_alignment_bytes": 32,
+    "composite_hashes_are_semantic_proofs": false,
+    "different_valnums_prove_runtime_inequality": false
+  },
+  "component_control": {
+    "prior": {
+      "source_revision": "f534cbdc2caa836f25b03fdb4399fe65332e696a",
+      "exit_code": 1,
+      "elapsed_ns": 5504625,
+      "stdout": "AST leaf value identity: 1232 checks; failures=1184; key bytes=32\n",
+      "binary_sha256": "3537d3bc050ee3edbce24a0ae217899231110b6abc02dce99b777a1db28604df",
+      "test_source_sha256": "a01b764083265f992dd5cac31c422c5da3b9c6d30a4e7081064d8ec60089adf1",
+      "legacy_source_sha256": {
+        "src/deobf/analysis/ast_builder.h": "a0a0b4105f4908688ba4b323efcc3d471dc4fbf83c634a859069fd36c2781c89",
+        "src/deobf/analysis/ast_builder.cpp": "ac4e3cc4fe86d9619ba42a6b91b36130036aaab8b75581d4df857352830c6d82",
+        "src/deobf/analysis/ast.cpp": "02ea7b88d4aec277eb9b9975fc2a407e995e2c10e26861da59336f92fe618380",
+        "src/deobf/analysis/ast.h": "32f4b66a9d527030a3b3deedff2dc477b78dfdb42054b3a4bf707f88da5e977f"
+      }
+    },
+    "current_identity_checks": 1247,
+    "current_identity_failures": 0,
+    "current_catalog_rules_verified": 108,
+    "false_rule_control_rejected": 1,
+    "typed_initial_results": {
+      "total": 190,
+      "verified": 25,
+      "disproved": 18,
+      "unsupported": 146,
+      "unknown": 1
+    },
+    "ctest_suites_passed": 22,
+    "measurements": {
+      "catalog": {
+        "exit_code": 0,
+        "elapsed_ns": 3422942416,
+        "command": [
+          "build/chernobog_catalog_tests"
+        ],
+        "log": "build/ast-value-catalog.log",
+        "output": "AST value identity: 1247 checks; key bytes=64; failures=0; passed=1\nMBA typed instances: 190 initial results, 25 verified, 18 disproved, 146 unsupported, 1 unknown; 32-key quota, 39 unrecorded; reset and one new rejection passed\nMBA verifier rejection states: UNKNOWN, UNSUPPORTED, and 64-bit DISPROVED checked\nMBA attempt admission controls: 2 passed\nMBA catalog: 108 registered, 108 verified, 0 rejected\nMBA rejection control: 109 registered, 108 verified, 1 rejected\nrejected MBA rule 'catalog_intentionally_rejected': disproved at 8 bits (simplification produced a counterexample-independent mismatch)\n"
+      },
+      "fixture": {
+        "exit_code": 0,
+        "elapsed_ns": 96679416,
+        "command": [
+          "build/ast-value-mba-shapes"
+        ],
+        "log": "build/ast-value-fixture.log",
+        "output": "native MBA oracle passed; comparisons=70656; seeds=0x390fe14891,0x9827136ab5\n"
+      },
+      "ctest": {
+        "exit_code": 0,
+        "elapsed_ns": 7161534375,
+        "command": [
+          "ctest",
+          "--test-dir",
+          "build",
+          "--output-on-failure",
+          "--parallel",
+          "8"
+        ],
+        "log": "build/ast-value-ctest.log"
+      }
+    }
+  },
+  "protected_matrix": {
+    "passed": true,
+    "processes": 40,
+    "native_enabled_processes": 20,
+    "architectures": [
+      "x86_64",
+      "i386"
+    ],
+    "modes": [
+      "original",
+      "mutation",
+      "virtualization",
+      "combined"
+    ],
+    "protector_seeds": [
+      0,
+      1,
+      12648430
+    ],
+    "counts": {
+      "total_matches": 14065,
+      "successful_matches": 5,
+      "instance_verified": 5,
+      "instance_disproved": 0,
+      "instance_unsupported": 0,
+      "instance_unknown": 0
+    },
+    "mutations_rejected": 602,
+    "maximum_runner_elapsed_ns": 26913515041,
+    "maximum_peak_resident_bytes": 203227136,
+    "preservation": {
+      "passed": true,
+      "profiles_compared": 40,
+      "preservation": {
+        "native_rows": 152,
+        "stages": 456,
+        "captured": 454
+      },
+      "matching_diagnostics_exact": 456,
+      "baseline_revision": "266d59e999aa35e86bc4da5c01e3469c86eb1c59",
+      "report_sha256": {
+        "build/ast-value-protected-final/protected_mba_analysis.json": "3ddd13023dd200e679aa06054e7bb12a4f102fb84cb28b49386beaa5872400cb",
+        "build/mba-constraint-protected-accepted/protected_mba_analysis.json": "cb1da950bfd20cae5a15709988761126f492db85d78da76e312b6837caef4498"
+      },
+      "scope": "complete stage diagnostics and trees compared to constraint-binding matrix; subsequent native REP checkpoints are separate source changes"
+    },
+    "constant_gate_events": 1483,
+    "unrecorded_events": 6953,
+    "constraint_family_comparisons": 196608,
+    "constraint_corruptions_rejected": 11,
+    "sdk_refusals": 2,
+    "report_artifact_pins_verified": true,
+    "report_source_pins_verified": true,
+    "additional_protected_applications": 0
+  },
+  "immediate_predecessor_production": {
+    "passed": true,
+    "comparison": {
+      "native_rows": 4,
+      "stages": 16,
+      "captured": 16
+    },
+    "matching_diagnostics_exact": 16,
+    "prior_summary": {
+      "owned": 4,
+      "captured": 16,
+      "total_matches": 1888,
+      "successful_matches": 1,
+      "instance_verified": 1,
+      "instance_disproved": 0,
+      "instance_unsupported": 0,
+      "instance_unknown": 0
+    },
+    "current_summary": {
+      "owned": 4,
+      "captured": 16,
+      "total_matches": 1888,
+      "successful_matches": 1,
+      "instance_verified": 1,
+      "instance_disproved": 0,
+      "instance_unsupported": 0,
+      "instance_unknown": 0
+    },
+    "artifact_sha256": {
+      "build/ast-value-prior-heldout/protected_mba.json": "abc960bf491c9051949be956ebbc81c754ef78ef1ab30f534ad98c9bc4f35bbd",
+      "build/ast-value-protected-final/i386/combined-12648430-on/protected_mba.json": "2f595145fe7ce3559a03a7d5702a67a1299f0f319357c4a98b1d21de78e5cda1",
+      "build/ast-value-protected-final/i386/combined-12648430-on/combined-12648430": "28afeb8f97e7bcd765f60daffbe10719b57caf9c005cc42fdfc883d43a23d5f5",
+      "build/ast-value-prior-heldout/run.json": "9830513fbb6488e9ebdf3b797cf0bf0867a3947015d21fb420d5b4463564950e",
+      "build/ast-value-prior-f534cbdc.dylib": "54c49335251d98359838aab4b025a64bc823661e200908fec097e62b68fe0b33"
+    },
+    "scope": "immediate predecessor installed plugin versus candidate; reserved-seed i386 combined profile; native engine enabled",
+    "prior_process_elapsed_ns": 10713279417,
+    "prior_installed_revision": "f534cbdc2caa836f25b03fdb4399fe65332e696a"
+  },
+  "shapes": {
+    "captures": {
+      "off": {
+        "routine_count": 10,
+        "checks_passed": 10,
+        "process_elapsed_ns": 1048288291,
+        "plugin_sha256": "8ffd51551007af5c9be3b9ee412f68ff31f4de643cf185da1de8d0e9ad954c09",
+        "input_sha256": "f82838b370486dbfcf715b33ed073a84f53a4aec0657b5c43a4b60a5cfff049a",
+        "environment_sha256": "ed681407225d938bf5e7022549ffcadcd632b856eb82cfb55ad0a62c522cdbc7"
+      },
+      "on": {
+        "routine_count": 10,
+        "checks_passed": 15,
+        "process_elapsed_ns": 2769836500,
+        "plugin_sha256": "8ffd51551007af5c9be3b9ee412f68ff31f4de643cf185da1de8d0e9ad954c09",
+        "input_sha256": "f82838b370486dbfcf715b33ed073a84f53a4aec0657b5c43a4b60a5cfff049a",
+        "environment_sha256": "487d9ce83534f89e3bd97fc5560a2c5d68c1114779dd71e964eb5a860589e319"
+      }
+    },
+    "native_comparisons": 70656,
+    "independent_ir": {
+      "command": [
+        "python3",
+        "-B",
+        "tests/verify_mba_shapes.py",
+        "build/ast-value-shapes-off",
+        "build/ast-value-shapes-on"
+      ],
+      "exit_code": 0,
+      "elapsed_ns": 862696167,
+      "result": {
+        "status": "PASS",
+        "comparisons_per_run": [
+          70656,
+          70656
+        ],
+        "compared_result_bits": 64,
+        "observable_memory_cell_bytes": 4,
+        "seeds": [
+          "0x390fe14891",
+          "0x9827136ab5"
+        ]
+      }
+    },
+    "host_architecture": "arm64",
+    "native_x86_64_execution": "macOS translation",
+    "physical_x86_64_execution": "unknown",
+    "result_bits": 64,
+    "observable_memory_cell_bytes": 4
+  },
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "ida_components_sha256": {
+    "<ida>/libida.dylib": "c723167ed12fcb001774e10cb5a05035c96858da1b2a6c5761e553c6346e78ab",
+    "<ida>/libidalib.dylib": "0bb76152d5ce1b164d1715d289f17ee7db87a74ee1e5223fd232829ed33855d8",
+    "<ida>/procs/pc.dylib": "09165b45c585c5c156797a9bd0ca5147f33ee99f12b82a6130fd7cc07707b43d",
+    "<ida>/plugins/hexx64.dylib": "6d0ad64715eeb88966091e2df788b3d1283546a95b4b1002c2bb11918bfa4caf",
+    "<ida>/plugins/goomba.dylib": "fd9c98d862bdd08753c12fca2a5319a67ecbb45161b1cd00600f4047c8f835ec",
+    "<ida>/cfg/goomba.cfg": "cf3eea65229dde0a2028eeb74debab36f30419f3bb0385f87e36cbee2945ccb5"
+  },
+  "source_sha256": {
+    "../ida-sdk/src/include/hexrays.hpp": "7ced9073b5b1fe06357f51e5983e041cae0b6b0f8f69d790f443031ec05022ff",
+    "src/deobf/analysis/ast.cpp": "506defa1a6b425855762609dbfcfcdc60d9ea353b80ba0bab01ad75829cbbb55",
+    "src/deobf/analysis/ast.h": "32f4b66a9d527030a3b3deedff2dc477b78dfdb42054b3a4bf707f88da5e977f",
+    "src/deobf/analysis/ast_builder.cpp": "a2c09f48c4830533e5d017d6adcfe3d18380b7204d62add354a37ff9ac677020",
+    "src/deobf/analysis/ast_builder.h": "0c796ecfd184696112566f4c71261beaafe493afdfaa2ee259cece17707b53e1",
+    "src/deobf/analysis/mba_diagnostics.cpp": "4a16c3dda47a6f459c2a8441255ed7a257f367d5146902255245e0c09da72626",
+    "src/deobf/analysis/mba_diagnostics.hpp": "30188e9a79dc7add135515fa09c653f3f7c6674f49d4e66f5445d44808b4ff54",
+    "src/deobf/handlers/mba_simplify.cpp": "8bff29e2c93148ff00c14875fa768410b332990c8a50fc5945fe0f30025ccf41",
+    "src/deobf/rules/pattern_rule.cpp": "92dfd20a6f2182c90f5c97eab9206e291374b5137c4ac50ab5a81b0ccfff260d",
+    "src/deobf/rules/pattern_rule.h": "95f84426c250c3172b65e216af09a4924a50c960b2a30526c6feca1ef1a51bc2",
+    "src/deobf/rules/rule_registry.cpp": "2f0f08352cc37378411415826d35eb5ec8476ab9cbf4c0ba3109aad6e0121ce4",
+    "src/deobf/rules/rule_registry.h": "97ae89a96b266c1f9bfa723e9a1b1d42fe1060a075d930036b5e9ce3f7ce4c3b",
+    "src/deobf/rules/rule_verifier.cpp": "a5f020d93d4e45d932d42cfda0a879bc2de6a2afbd60aa44d3c7987a623bf435",
+    "src/deobf/rules/rule_verifier.h": "dbfa01190d7dfc5551e6d54e5b7fb72ae657043fe968bbe20990075336941eaf",
+    "src/ida_analysis/native_engine.cpp": "d919fed9c99160a8f4dfe7e4b71e66bf3dc389858018776f3339ee8e40d39fef",
+    "src/ida_analysis/native_engine.hpp": "4ccbbcb86d833db26529fbc729dbfa42c9a8649fb3c29167a34faa3178724657",
+    "src/plugin/idc_api.cpp": "ebd7d977a363249fa0a899121f5115ef3ec0e3bb2f30daad5e787123e7e64d1c",
+    "tests/catalog_tests.cpp": "a01b764083265f992dd5cac31c422c5da3b9c6d30a4e7081064d8ec60089adf1",
+    "tests/ida_mba_shapes_probe.py": "534f65b6537af5c89db9a9754e305c8afe88d31a22c964418425cfc1ce581e45",
+    "tests/ida_protected_mba_probe.py": "e3d79014adde2c448b20afe5f07915c1d5b3834dbafdef5151b4272e6e2df488",
+    "tests/mba_matching_diagnostics.py": "6b5ed769cc25fbb78387d06bd0bf80ba45f7a8c149c2ac04b19dd02e2e858279",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_protected_mba_corpus.py": "dcb9738481450b7d84016868de9bcbe6d073f7ac32f2b0cf45284530a7cbce34",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc",
+    "tests/verify_mba_constraint_capture.py": "c57ba968079dec34a5f19b4bd4144526dc37e7b6d1e3c42252c5024e722d7f80",
+    "tests/verify_mba_matching_capture.py": "497ec250b3601eebd5c41809cc5c211c82bfe929d2026b44b1f12a131bdff327",
+    "tests/verify_mba_shapes.py": "36301d1aa01ee9ac2fde5aee38e5ac9b5191166535f3fe57d4be8a85fc86d8e0",
+    "tests/vmp_native/mba_shapes.S": "8ef8debf6d566864f8c0c4481c10bd93ea74c87a6f1b795a87a1c122023b46aa",
+    "tests/vmp_native/mba_shapes_oracle.c": "3eec4a02e0d6a2bdeb52c52cfa80ade0b1dda0eedbecbc1d883ad4af415fb58c"
+  },
+  "artifact_sha256": {
+    "build/ast-value-candidate.dylib": "8ffd51551007af5c9be3b9ee412f68ff31f4de643cf185da1de8d0e9ad954c09",
+    "build/ast-value-prior-f534cbdc.dylib": "54c49335251d98359838aab4b025a64bc823661e200908fec097e62b68fe0b33",
+    "build/ast-value-legacy/catalog-legacy": "3537d3bc050ee3edbce24a0ae217899231110b6abc02dce99b777a1db28604df",
+    "build/ast-value-legacy.json": "71065cff6c4575d98cfde6c004ad7d8e71f224a023e55d132d5d17f22d53d998",
+    "build/ast-value-legacy.log": "04d6dbbb49ae634c4c35ac9ee3d233d2a2aaaa5ff0a59b50dc113b82bdbe42b1",
+    "build/ast-value-tests.json": "1ca8cad89e60ab14fc73a9f5906755594edbbd6d95b495cdf2f7ce03b10749b6",
+    "build/ast-value-catalog.log": "4e371de94dad75fd93a161e244afc9ba3b322577139abc4ca5d307a9bea30942",
+    "build/ast-value-fixture.log": "9d716e697faaa718cecb0b3283ee16fff6d8f1f3a769d37e33f26d655cb44260",
+    "build/ast-value-ctest.log": "5d3e1ddb08d0a51f06246a823b8bf32e08afb5b1f7cc65cefb568748222ab769",
+    "build/ast-value-mba-shapes": "f82838b370486dbfcf715b33ed073a84f53a4aec0657b5c43a4b60a5cfff049a",
+    "build/ast-value-shapes-off/run.json": "fe0a5c079513c1a51e44e1a35084643a3dc9761963e1eff1626dafcaf8598c1a",
+    "build/ast-value-shapes-off/mba_shapes.json": "2e03a6e8f666909e4b76a9ff376240704ebd81424de7537183cb4597771f6550",
+    "build/ast-value-shapes-on/run.json": "1fb1ec412d46613aa69239cccc38c1b3141e0e754d491a2638c55b235581868e",
+    "build/ast-value-shapes-on/mba_shapes.json": "07b34e97336fa4f135cecf4e6b1d97a0b734a42f22d0429f46f871886cfe40c5",
+    "build/ast-value-shapes-ir.json": "9ec9da50660e19ac538bdfc2a5211efa7512683389f0c2057e7a0e2d39c4fac3",
+    "build/ast-value-protected-final/protected_mba_analysis.json": "3ddd13023dd200e679aa06054e7bb12a4f102fb84cb28b49386beaa5872400cb",
+    "build/ast-value-protected-audit.json": "35f3fb2e02b6b67ca86905b5096013cc3b963629fed17fa6e17109478dbede80",
+    "build/ast-value-matching-preservation.json": "e12278f27218ab2fc985979aea42982ef8ff7c98f24009cb3b26987472ccbbfd",
+    "build/ast-value-prior-heldout/run.json": "9830513fbb6488e9ebdf3b797cf0bf0867a3947015d21fb420d5b4463564950e",
+    "build/ast-value-prior-heldout/protected_mba.json": "abc960bf491c9051949be956ebbc81c754ef78ef1ab30f534ad98c9bc4f35bbd",
+    "build/ast-value-prior-heldout-audit.json": "04f3b1f44e5e353183310b16acf08dfb1e18d44dcd1002f9c4233c35cc7ac4f8",
+    "build/mba-constraint-protected-accepted/protected_mba_analysis.json": "cb1da950bfd20cae5a15709988761126f492db85d78da76e312b6837caef4498"
+  },
+  "limitations": [
+    "composite keys retain hash-based indexing",
+    "hash recursion behavior is unchanged",
+    "comparison budgets can conservatively reject",
+    "value identity is process/frame specific",
+    "no cross-instruction reaching-definition implementation",
+    "no protected simplification gain",
+    "no whole-function flag, alias, ordering or exception proof",
+    "no complete review completion claim"
+  ],
+  "assumptions": [
+    "A1 pinned SDK operand/frame contract",
+    "A2 metadata snapshot distinction does not imply runtime inequality",
+    "A3 bounded comparisons can conservatively reject valid larger trees",
+    "A4 independent typed verifier gates actual replacements",
+    "A5 source/artifact/profile pins bind attribution",
+    "A6 finite/seeded checks establish only stated observables"
+  ],
+  "quality_gates": {
+    "QG1": "no normative content required",
+    "QG2": "A1-A6 and probes documented",
+    "QG3": "component changeset covered; full review remains open",
+    "QG4": "exact counts, bytes, bits and nanoseconds",
+    "QG5": "collision, budget, temporal and attribution limits explicit",
+    "QG6": "SDK/source/artifact provenance pinned",
+    "QG7": "cache cost, lifetime and remaining work bounded"
+  }
+}

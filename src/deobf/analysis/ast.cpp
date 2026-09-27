@@ -107,13 +107,14 @@ const char *opcode_name(mcode_t op)
 }
 
 //--------------------------------------------------------------------------
-// Strict mop comparison - optimized for common leaf kinds
-// Uses equal_insns() for mop_d instead of expensive dstr() string comparison
+// Strict value-snapshot comparison, including nested operand metadata.
+// Bounded recursion rejects cyclic or excessively large comparisons.
 //--------------------------------------------------------------------------
-bool mops_equal_strict(const mop_t &a, const mop_t &b)
+static bool mops_equal_strict_internal(const mop_t &a, const mop_t &b, unsigned depth,
+                                       unsigned &visited)
 {
-    // Fast path: type must match
-    if (SIMD_UNLIKELY(a.t != b.t || a.size != b.size))
+    if (SIMD_UNLIKELY(depth > 64 || ++visited > 512 || a.t != b.t || a.size != b.size ||
+                      a.valnum != b.valnum || a.oprops != b.oprops))
         return false;
 
     switch (a.t)
@@ -127,19 +128,21 @@ bool mops_equal_strict(const mop_t &a, const mop_t &b)
     case mop_S: // Stack variable
         if (SIMD_UNLIKELY(!a.s || !b.s))
             return a.s == b.s;
-        return a.s->off == b.s->off;
+        return a.s->mba == b.s->mba && a.s->off == b.s->off;
     case mop_v: // Global variable - single uint64 comparison
         return a.g == b.g;
     case mop_l: // Local variable
         if (SIMD_UNLIKELY(!a.l || !b.l))
             return a.l == b.l;
-        return (a.l->idx == b.l->idx) & (a.l->off == b.l->off);
+        return a.l->mba == b.l->mba && a.l->idx == b.l->idx && a.l->off == b.l->off;
     case mop_d: // Result of another instruction
-        // OPTIMIZED: Use equal_insns() instead of expensive dstr() string comparison
-        // dstr() creates a string allocation on every call - extremely slow
         if (SIMD_UNLIKELY(!a.d || !b.d))
             return a.d == b.d;
-        return a.d->equal_insns(*b.d, 0);
+        return a.d->opcode == b.d->opcode && a.d->iprops == b.d->iprops &&
+               (a.d->opcode != m_ldx || a.d->ea == b.d->ea) &&
+               mops_equal_strict_internal(a.d->d, b.d->d, depth + 1, visited) &&
+               mops_equal_strict_internal(a.d->l, b.d->l, depth + 1, visited) &&
+               mops_equal_strict_internal(a.d->r, b.d->r, depth + 1, visited);
     case mop_b: // Block reference
         return a.b == b.b;
     case mop_f:       // Function call
@@ -147,7 +150,7 @@ bool mops_equal_strict(const mop_t &a, const mop_t &b)
     case mop_a:       // Address
         if (SIMD_UNLIKELY(!a.a || !b.a))
             return a.a == b.a;
-        return mops_equal_strict(*a.a, *b.a);
+        return mops_equal_strict_internal(*a.a, *b.a, depth + 1, visited);
     case mop_h: // Helper function
         if (SIMD_UNLIKELY(!a.helper || !b.helper))
             return a.helper == b.helper;
@@ -161,6 +164,12 @@ bool mops_equal_strict(const mop_t &a, const mop_t &b)
     default:
         return false;
     }
+}
+
+bool mops_equal_strict(const mop_t &a, const mop_t &b)
+{
+    unsigned visited = 0;
+    return mops_equal_strict_internal(a, b, 0, visited);
 }
 
 //--------------------------------------------------------------------------

@@ -22,16 +22,18 @@ namespace ast
 //--------------------------------------------------------------------------
 // Cache key for mop_t - OPTIMIZED
 // Uses hash-based comparison to eliminate string allocations and comparisons.
-// The key is designed to fit in 32 bytes for cache efficiency.
+// Scalar identity includes value numbers, properties and frame ownership.
 //--------------------------------------------------------------------------
 struct alignas(32) MopKey
 {
     uint64_t hash;   // Pre-computed hash for fast comparison
     uint64_t value1; // Primary identifier (depends on type)
     uint64_t value2; // Secondary identifier / hash extension
+    uint64_t frame;  // Parent mba_t identity for stack/local operands
+    int32_t size;    // Full SDK size, including NOSIZE and aggregate widths
     uint16_t type;   // mopt_t (fits in 16 bits)
-    uint16_t size;   // operand size
-    uint32_t _pad;   // Alignment padding
+    uint16_t valnum; // Zero is unknown; different numbers remain distinct
+    uint8_t properties;
 
     static MopKey from_mop(const mop_t &mop);
 
@@ -49,7 +51,13 @@ struct alignas(32) MopKey
             return value1 < other.value1;
         if (value2 != other.value2)
             return value2 < other.value2;
-        return size < other.size;
+        if (size != other.size)
+            return size < other.size;
+        if (frame != other.frame)
+            return frame < other.frame;
+        if (valnum != other.valnum)
+            return valnum < other.valnum;
+        return properties < other.properties;
     }
 
     bool operator==(const MopKey &other) const
@@ -59,7 +67,8 @@ struct alignas(32) MopKey
             return false;
         // Full comparison for hash collision resolution
         return type == other.type && value1 == other.value1 && value2 == other.value2 &&
-               size == other.size;
+               size == other.size && frame == other.frame && valnum == other.valnum &&
+               properties == other.properties;
     }
 
     // Hash function for unordered_map

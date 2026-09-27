@@ -1,6 +1,7 @@
 #include "deobf/rules/rule_registry.h"
 #include "deobf/rules/rule_verifier.h"
 #include "deobf/rules/rules_sub.h"
+#include "deobf/analysis/ast_builder.h"
 #include <cstdarg>
 #include <cstdlib>
 #include <iostream>
@@ -99,6 +100,182 @@ void constant(mop_t &operand, mnumber_t &number, int bytes)
     operand.t = mop_n;
     operand.nnn = &number;
     operand.size = bytes;
+}
+
+bool test_builder_value_identity()
+{
+    using chernobog::ast::AstBuilderContext;
+    using chernobog::ast::MopKey;
+    size_t checks = 0, failures = 0;
+    bool okay = true;
+    const auto check = [&](bool condition)
+    {
+        ++checks;
+        failures += !condition;
+        okay &= condition;
+    };
+    const auto separate = [&](const MopKey &first, const MopKey &second)
+    {
+        check(!(first == second));
+        AstBuilderContext context;
+        const auto a = make_leaf("first"), b = make_leaf("second");
+        context.add(first, a);
+        context.add(second, b);
+        check(context.get(first) == a && context.get(second) == b);
+        // Equality and ordering must inspect metadata even on a hash collision.
+        auto collision = second;
+        collision.hash = first.hash;
+        check(!(first == collision));
+        check((first < collision) != (collision < first));
+        AstBuilderContext colliding;
+        colliding.add(first, a);
+        colliding.add(collision, b);
+        check(colliding.get(first) == a && colliding.get(collision) == b);
+    };
+    // Borrow SDK descriptors without owning or dereferencing the dummy frames.
+    const auto frame1 = reinterpret_cast<mba_t *>(uintptr_t{0x1000});
+    const auto frame2 = reinterpret_cast<mba_t *>(uintptr_t{0x2000});
+    for (int bytes : {1, 2, 4, 8})
+        for (mopt_t type : {mop_r, mop_v, mop_S, mop_l})
+        {
+            ValueInsn fixture(m_mov, bytes), reference(m_mov, bytes);
+            stkvar_ref_t stack1(frame1, 24), stack2(frame2, 24);
+            lvar_ref_t local1(frame1, 3, 8), local2(frame2, 3, 8);
+            auto &operand = fixture.l;
+            operand.t = type;
+            operand.size = bytes;
+            if (type == mop_r)
+                operand.r = 100;
+            else if (type == mop_v)
+                operand.g = 0x3000;
+            else if (type == mop_S)
+                operand.s = &stack1;
+            else
+                operand.l = &local1;
+            reference.l.t = type;
+            reference.l.size = bytes;
+            if (type == mop_r)
+                reference.l.r = operand.r;
+            else if (type == mop_v)
+                reference.l.g = operand.g;
+            else if (type == mop_S)
+                reference.l.s = &stack1;
+            else
+                reference.l.l = &local1;
+            const auto base = MopKey::from_mop(operand);
+            check(base == MopKey::from_mop(operand));
+            check(chernobog::ast::mops_equal_strict(reference.l, operand));
+            for (unsigned number : {1u, 65535u})
+            {
+                operand.valnum = number;
+                separate(base, MopKey::from_mop(operand));
+                check(!chernobog::ast::mops_equal_strict(reference.l, operand));
+            }
+            operand.valnum = 0;
+            for (unsigned property : {1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u, 255u})
+            {
+                operand.oprops = property;
+                separate(base, MopKey::from_mop(operand));
+                check(!chernobog::ast::mops_equal_strict(reference.l, operand));
+            }
+            operand.oprops = 0;
+            if (type == mop_S || type == mop_l)
+            {
+                if (type == mop_S)
+                    operand.s = &stack2;
+                else
+                    operand.l = &local2;
+                separate(base, MopKey::from_mop(operand));
+                check(!chernobog::ast::mops_equal_strict(reference.l, operand));
+            }
+            operand.size = bytes + 65536;
+            separate(base, MopKey::from_mop(operand));
+            check(!chernobog::ast::mops_equal_strict(reference.l, operand));
+        }
+    if (!okay)
+    {
+        std::cerr << "AST leaf value identity: " << checks << " checks; failures=" << failures
+                  << "; key bytes=" << sizeof(MopKey) << '\n';
+        return false;
+    }
+    ValueInsn first(m_add, 4), second(m_add, 4);
+    reg(first.l, 100, 4);
+    reg(first.r, 200, 4);
+    reg(second.l, 100, 4);
+    reg(second.r, 200, 4);
+    const auto initial = MopKey::hash_insn(&first);
+    check(initial == MopKey::hash_insn(&second));
+    second.l.valnum = 1;
+    check(initial != MopKey::hash_insn(&second));
+    second.l.valnum = 0;
+    second.r.oprops = OPROP_ABI;
+    check(initial != MopKey::hash_insn(&second));
+    second.r.oprops = 0;
+    second.d.valnum = 1;
+    check(initial != MopKey::hash_insn(&second));
+    second.d.valnum = 0;
+    second.d.oprops = OPROP_UDEFVAL;
+    check(initial != MopKey::hash_insn(&second));
+    second.d.oprops = 0;
+    second.iprops = IPROP_MBARRIER;
+    check(initial != MopKey::hash_insn(&second));
+    second.iprops = 0;
+    ValueInsn left(m_mov, 4), right(m_mov, 4);
+    nested(left.l, first);
+    nested(right.l, second);
+    check(chernobog::ast::mops_equal_strict(left.l, right.l));
+    second.r.valnum = 2;
+    check(!chernobog::ast::mops_equal_strict(left.l, right.l));
+    second.r.valnum = 0;
+    second.l.oprops = OPROP_UDEFVAL;
+    check(!chernobog::ast::mops_equal_strict(left.l, right.l));
+    second.l.oprops = 0;
+    second.iprops = IPROP_MBARRIER;
+    check(!chernobog::ast::mops_equal_strict(left.l, right.l));
+    second.iprops = 0;
+    first.opcode = second.opcode = m_ldx;
+    first.ea = 0x4000;
+    second.ea = 0x4001;
+    check(!chernobog::ast::mops_equal_strict(left.l, right.l));
+    second.ea = first.ea;
+    check(chernobog::ast::mops_equal_strict(left.l, right.l));
+    first.opcode = second.opcode = m_mov;
+    nested(first.l, first);
+    nested(second.l, second);
+    check(!chernobog::ast::mops_equal_strict(left.l, right.l));
+    // The holder uses the C++ allocator; minsn_t's class allocator needs IDA.
+    struct OwnedValue
+    {
+        ValueInsn instruction;
+        explicit OwnedValue(mcode_t opcode) : instruction(opcode, 4) {}
+    };
+    const auto balanced = [](unsigned depth, std::vector<std::unique_ptr<OwnedValue>> &nodes,
+                             const auto &self) -> ValueInsn &
+    {
+        auto node = std::make_unique<OwnedValue>(depth ? m_add : m_mov);
+        auto &result = node->instruction;
+        if (depth)
+        {
+            nested(result.l, self(depth - 1, nodes, self));
+            nested(result.r, self(depth - 1, nodes, self));
+        }
+        else
+            reg(result.l, 100, 4);
+        nodes.push_back(std::move(node));
+        return result;
+    };
+    for (unsigned depth : {5u, 7u})
+    {
+        std::vector<std::unique_ptr<OwnedValue>> a, b;
+        nested(left.l, balanced(depth, a, balanced));
+        nested(right.l, balanced(depth, b, balanced));
+        check(chernobog::ast::mops_equal_strict(left.l, right.l) == (depth == 5));
+        left.l.zero();
+        right.l.zero();
+    }
+    std::cout << "AST value identity: " << checks << " checks; key bytes=" << sizeof(MopKey)
+              << "; failures=" << failures << "; passed=" << okay << '\n';
+    return okay;
 }
 
 bool test_typed_instances()
@@ -545,6 +722,8 @@ bool test_ast_destruction()
 
 int main()
 {
+    if (!test_builder_value_identity())
+        return EXIT_FAILURE;
     if (!test_typed_instances())
         return EXIT_FAILURE;
     if (!test_verifier_rejection_states())

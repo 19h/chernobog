@@ -1186,3 +1186,21 @@ See `VMP_REPEAT_INDEX_POSTCONDITIONS.md` and its evidence JSON for assumptions,
 primary provenance and artifact pins. Existing bounds, configured/default scan
 budgets, zero-count behavior and i386 segment abstention remain; this checkpoint
 establishes no protected recovery gain. The complete review remains in progress.
+
+## AST operand snapshot identity checkpoint
+
+Review rows 4a, 4b and V now preserve SDK value numbers, operand properties,
+stack/local frame owners and full operand sizes in AST cache identity and strict
+pattern bindings. Nested comparisons retain operand/instruction metadata and
+use conservative depth/visit bounds. The exact predecessor sources fail 1,184
+of 1,232 leaf identity checks; the corrected catalog passes all 1,247 checks,
+108 rules and 190 typed controls. All 22 CTest suites pass. Forty protected
+processes preserve 152 native rows, 456 SDK outcomes, 454 typed captures and
+all matching diagnostics; an actual immediate-predecessor held-out run preserves
+all 16 SDK captures and diagnostics. Native and independent captured-IR oracles
+pass 70,656 and 141,312 result/memory cases. See `VMP_AST_VALUE_IDENTITY.md`
+and its evidence JSON. Composite keys remain indices under the typed verifier,
+different value numbers do not prove runtime inequality, and the measured key
+size rises from 32 to 64 bytes. No protected simplification gain is established.
+Reaching definitions, alias/order completeness and full review implementation
+remain in progress.
