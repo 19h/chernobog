@@ -44,6 +44,14 @@ but behavioral equivalence and emitted transformation settings remain
 unknown. No original executable counterpart is pinned here for the Morok
 or Hikari samples.
 
+A later exact-sample control compares the supplied keygen ELF with a clean
+build of the candidate Morok source on five stdin cases. Ten same-second,
+reversed-order pairs match exit status, stdout and stderr byte for byte;
+three valid cases reach password output. See
+`VMP_SUPPLIED_MOROK_KEYGEN_BEHAVIOR.md` and its complete capture. This finite
+behavioral match does not establish the supplied binary's build lineage or
+an original executable counterpart.
+
 ## Assumption register and bounded expansion
 
 | ID | Assumption and dependent result | Stress test or falsification probe |

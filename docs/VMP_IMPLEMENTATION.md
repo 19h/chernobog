@@ -1508,3 +1508,16 @@ checks. One paired protected process fell from 74.053455917 s to
 hashes. The complete condition matrix comparison and exact artifact hashes
 are recorded in `VMP_OVERSIZED_OWNER_CACHE.md` and its evidence manifest.
 The full review implementation remains in progress.
+
+## Exact supplied Morok keygen behavior checkpoint
+
+Review row 0b now has a finite-input process comparison for the exact
+user-supplied packed keygen, distinct from the earlier fixed-seed fixture.
+A clean build of the candidate Morok source and the supplied ELF match exit
+status, stdout and stderr byte for byte in ten accepted same-second pairs
+across five inputs, including both valid version paths and default expiry.
+Both execution orders are checked, a valid output changes across seconds,
+and five discarded temporal attempts remain in the captured report. See
+`VMP_SUPPLIED_MOROK_KEYGEN_BEHAVIOR.md` and its evidence and capture files.
+Source-to-artifact lineage, other inputs, internal states and protected
+recovery remain unknown or in progress.

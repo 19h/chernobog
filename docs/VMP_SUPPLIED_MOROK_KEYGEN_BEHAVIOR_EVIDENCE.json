@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "scope": "finite-input behavior of exact supplied Morok keygen compared with a clean build of candidate source; no lineage or whole-program equivalence claim",
+  "source_sha256": "988a6144b6b3924c7ed432486d114c327f837e4ef424abb29c220fe6ee4f3628",
+  "sample_sha256": "7d1971b1db221174caac0a5922a7452e1bebe214ca2355ab36c889a635699fd9",
+  "clean_sha256": "40d45fa9921d6b34ce545b8f7ecef620cea28ee50d2ae86793e4be15d9f472f2",
+  "runner_sha256": "e97d3e98741281b37e8d725143545d09c72dc593452da9e672d8b3020ffe6872",
+  "shared_runner_sha256": {
+    "tests/run_morok_keygen_control.py": "be8e2cfef178582ee7647d5bf665fd2d04750abbca21b0b6283ee7f13c13153c",
+    "tests/run_morok_paired_control.py": "20ba2d9d77fdf9c131fce5da6cd2f903101a9acd9c210add9b5dbdbc962cc20e",
+    "tests/run_vmp_corpus.py": "2bddd14e6007d6fd18112b951fb3a652d91c7c1408345badf4035fa6d36566fc"
+  },
+  "tool_sha256": {
+    "clang-23": "6acca6b9583c9270f8606d026bab0015a4f82affd5610606f97fef6e606bde00",
+    "musl-gcc": "b36dc26ec4f18d72cd9eb9667dd718baeece2120e94b6142ec8131073b2926cf",
+    "musl-strip": "9048e0f07a4f91f1d11495fd03b14afaf6a3ae979d43bb3ad156b6553fc0b038",
+    "docker": "70d5a06adf388bd09b652f47ddc9ca31663a3e5353d24188bdb0054b3014ab3e",
+    "crt1": "aa793f0e693e90d877bc8f1b5620f0888977eb5da66bd1d8c887ea8800284ac7",
+    "libgcc": "03288004271e83e5cc939019d4fff2d74fdb356b5a56e5de64aaddce7f7f68a6"
+  },
+  "container_image": {
+    "id": "sha256:6232b38791000e3818b58d8847b5a8f5612d606929e01156dd8febc423e0f2ef",
+    "architecture": "amd64",
+    "os": "linux"
+  },
+  "captured_report_sha256": "342fae9503234c785bf071957b034a787173f6e6022d0b1b3509ae214b2b24ca",
+  "accepted_pair_count": 10,
+  "accepted_process_count": 20,
+  "discarded_pair_count": 5,
+  "selected_cases": ["empty", "bad_mathid", "valid_v14_1", "valid_v14_0", "default_date"],
+  "all_accepted_pairs_same_second": true,
+  "all_accepted_pairs_byte_equal": true,
+  "both_orders_exercised_per_case": true,
+  "valid_v14_1_changed_across_seconds": true,
+  "wrong_sample_rejected_before_execution": true
+}
