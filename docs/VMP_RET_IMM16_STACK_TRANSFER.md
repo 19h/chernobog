@@ -32,6 +32,13 @@ the return remain rejected.
 The installed, signed plugin used for the following fresh IDA 9.4 runs had
 SHA-256 `992a685a19cabb62e640585347f60f91b591c784e01f0c34cc633d00f11dad5e`.
 `ctest --test-dir build --output-on-failure -j 20` passed 23/23 suites.
+After commit `5049c460`, `make install -j 20` installed a signed plugin with
+SHA-256 `053227360d8215069e676acbfff8935b249cb8fb87232e64765b966535c174e9`.
+Five new isolated runs under `build/vmp-stack-ret-postcommit-*` and
+`build/vmp-get-pc32-ret-postcommit-smoke` repeated the 64-bit, 32-bit,
+native-evidence, lifecycle and ownerless probes successfully. The recorded
+table below identifies the precommit artifacts rather than conflating their
+hashes with the installed revision.
 
 | Control | Fresh run directory | Result |
 | --- | --- | --- |

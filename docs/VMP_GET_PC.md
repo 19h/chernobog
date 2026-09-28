@@ -21,6 +21,9 @@ under the tested current IDA versions.
 The [executed rejection controls](VMP_GET_PC32_REJECTIONS.md) then compare
 multi-target and adjusted-return behavior with production IDA abstentions on
 the same ELF32 binary.
+The later [RET imm16 metadata checkpoint](VMP_RET_IMM16_STACK_TRANSFER.md)
+admits adjusted returns as stack-transfer facts without plugin jump edges; the
+results and artifact hashes below remain those of this earlier checkpoint.
 
 The primary transformation source is `vmp/core/intel.cc:16218–16248`: a near
 CALL-next becomes a 32-bit PUSH of its continuation, or a full-width x64

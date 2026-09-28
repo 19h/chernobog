@@ -50,6 +50,12 @@ lifecycle checkpoint below records the current artifact and additional checks.
 | Native stack transfer in IDA | 12 cases pass: 3 exact, 5 unresolved, 4 rejected; target function ownership retained |
 | Broader CTest baseline | 12/12 pass, including static analysis, block merge, program model, evidence, rax hybrid, core, Z3, symbolic executor, and MBA catalog; 8.06 s reported for that single run |
 
+This table records the earlier plugin checkpoint. The current
+`RET imm16` implementation changes the 12-case stack fixture's classification
+to three exact, five unresolved, three rejected and one adjusted metadata
+case. The current plugin retains the adjustment and stack write without adding
+a jump edge; see `docs/VMP_RET_IMM16_STACK_TRANSFER.md` for fresh controls.
+
 The final IDA artifact for this checkpoint has SHA-256
 `d4d331daa93784b18ed4c320cbf3417cb8a78c0a0a0735e2fa8b1191df53e343`.
 The full CTest run preceded the final adapter-only BSWAP/PUSHA/POPA preservation

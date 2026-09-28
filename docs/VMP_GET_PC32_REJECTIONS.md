@@ -1,5 +1,10 @@
 # Executed ELF32 stack-transfer abstention controls
 
+The later [RET imm16 metadata checkpoint](VMP_RET_IMM16_STACK_TRANSFER.md)
+records an exact target and `+4` byte stack adjustment for the same
+hash-matched ELF32 binary without adding a plugin jump reference. The
+abstention and artifact hashes below describe the earlier plugin revision.
+
 Review items 1a and 1b require unresolved targets to remain unresolved and
 stack effects to remain explicit. A new static ELF32/i386 fixture executes the
 same four rejection shapes that the linked analysis fixture previously checked
