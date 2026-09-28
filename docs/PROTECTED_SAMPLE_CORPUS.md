@@ -59,6 +59,12 @@ packed keygen positive control does. The supplied artifact's pack-format
 audit and its tested output behavior remain separate from executed packed
 path coverage.
 
+The separate `VMP_SUPPLIED_MOROK_SYSCALL_CENSUS.md` records four forked
+children per supplied keygen input and no `mprotect` call intersecting its
+packed section across those five runs. The fixed-seed positive control records
+the expected read/write and read/execute transitions on its own packed
+section. Source-to-artifact lineage and untested paths remain unknown.
+
 ## Assumption register and bounded expansion
 
 | ID | Assumption and dependent result | Stress test or falsification probe |

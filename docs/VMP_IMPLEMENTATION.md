@@ -1534,3 +1534,16 @@ ELF range identities and an offline PC-mutation verifier are retained in
 `VMP_SUPPLIED_MOROK_PACKED_CENSUS.md` and its capture archive. Forked-child
 trace coverage, other inputs and Chernobog recovery remain unknown or in
 progress; the full review is incomplete.
+
+## Supplied Morok keygen process-tree checkpoint
+
+Review rows 0b and V now include a separate guest syscall capture for the
+exact supplied keygen. All five selected inputs fork four children, with 20
+forks and 70 parsed `mprotect` calls across the runs; none changes the
+262,144-byte packed section's protection. The distinct fixed-seed positive
+control makes both expected packed-page transitions. Raw logs, outputs and an
+offline forged-call rejection are retained in
+`VMP_SUPPLIED_MOROK_SYSCALL_CENSUS.md` and its archive. This measures the
+observed process tree but does not establish complete child instruction
+coverage, exact source lineage or Chernobog protected recovery. The full
+review remains in progress.

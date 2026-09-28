@@ -49,7 +49,10 @@ logs contain 4,920,111 translated-block records in total and no block start
 in the supplied packed-section range. The full raw-log byte total is
 352,088,821 bytes. These are QEMU block-start observations, not instruction
 counts, native edge proofs, or a claim that no other code in `.text` is
-obfuscated. Forked-child trace coverage and other input paths are unknown.
+obfuscated. A later separate QEMU syscall capture observes four forked
+children per supplied input and no packed-range `mprotect` call in its logged
+process tree; see `VMP_SUPPLIED_MOROK_SYSCALL_CENSUS.md`. Complete instruction
+coverage of those children and other input paths remain unknown.
 
 This result changes benchmark eligibility: the five supplied inputs are
 process-behavior controls, but they do not provide a positive oracle for

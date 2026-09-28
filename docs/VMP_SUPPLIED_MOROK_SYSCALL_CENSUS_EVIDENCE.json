@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "scope": "QEMU 10.0.13 guest syscall census for five exact supplied-keygen inputs and one distinct packed positive control",
+  "source_sha256": {
+    "tests/run_morok_syscall_census.py": "860e06510747e4ce5e8c0127363a2983e3cbe187e121dede60c47a67a2f07f09",
+    "tests/verify_morok_syscall_census.py": "354db26c8a6306f9da3cc82b9057aa70d5dd282a7db1a029ef6a8d6f2dc61683",
+    "../morok/runtime/native_pack_loader.c": "42fd68c3d7882a76fd8737d8aa5a96373e63eac0be2459ab9fbd6466a486cf91"
+  },
+  "binary_sha256": {
+    "supplied": "7d1971b1db221174caac0a5922a7452e1bebe214ca2355ab36c889a635699fd9",
+    "fixed_seed_positive": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae"
+  },
+  "image_id": "sha256:a4d366ca019230fb6e3f0423bf0cbebaab63d7f32336f19ab007cb18063a7d12",
+  "report_sha256": "47581d10cc0b0fe1350e81ce221ab7cd96ecade7e51206498147e753e9446b60",
+  "raw_capture_sha256": "8f2d29aa068b9133ceba89d30619dc8902c216c6ca110d010cc21722dbf8b99d",
+  "supplied_runs": 5,
+  "supplied_forks": 20,
+  "supplied_mprotect_calls": 70,
+  "supplied_packed_mprotect_calls": 0,
+  "positive_packed_mprotect_calls": 2,
+  "raw_syscall_log_bytes": 197610,
+  "offline_verification_passed": true,
+  "forged_packed_mprotect_rejected_after_hash_and_inventory_update": true
+}
