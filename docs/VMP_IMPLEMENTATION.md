@@ -249,8 +249,10 @@ the read-only IDB inventory is unchanged. Exact 128/129-node synthetic controls
 pass on x64/i386, with 3,582 native checks and 332 IDA assertions per
 architecture; all 21 CTest suites pass. See `VMP_OWNERLESS_128.md`. The earlier
 64-node checkpoint and its recorded hashes remain historical evidence. The
-historical 97-node protected corpus root has not been rerun under the new bound
-because its archived inputs are absent from this workspace.
+historical 97-node protected corpus root was not rerun at that checkpoint
+because its inputs were absent. A later exact-file reproduction admits 97
+heads and 97 direct edges, with three unresolved conditions and one unresolved
+transfer; see `VMP_PROTECTED_OWNERLESS_97.md`.
 
 Direction-flag transfer checkpoint: `CLD` and `STD` now retain CF, PF, AF, ZF,
 SF and OF in the native abstract state. Matched prior-plugin probes reject one
@@ -1445,3 +1447,14 @@ repeat inspection; an actual Qt run displays the results and checks source
 navigation. The diagnostics do not lower these conditions or claim proof.
 See `VMP_CONDITION_DIAGNOSTICS.md` and its pinned evidence manifest. Broader
 protected effectiveness and the complete review remain in progress.
+
+## Historical 97-head ownerless root checkpoint
+
+Review rows 1b, 2a and V now have a current-limit measurement for the exact
+historical x64 `combined-0` binary and root. The 128-node inspector converges
+on 97 heads and 97 direct edges; independent Capstone decoding matches every
+head, byte span and direct edge. Three conditions and one PUSH/RET target
+remain unresolved. The inspected IDB inventory is unchanged. The original
+frozen plan file remains unavailable, so its recorded contents are not
+reverified. See `VMP_PROTECTED_OWNERLESS_97.md` and its retained capture
+archive. The complete review remains in progress.

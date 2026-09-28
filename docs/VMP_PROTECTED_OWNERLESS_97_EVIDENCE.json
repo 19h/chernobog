@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "scope": "current-limit read-only inspection of the historical exact-file protected 97-head root; original frozen plan file remains unavailable",
+  "input_sha256": "1c14af5156970789fd75a758cadb3cbda8248849acabd2106a2e5ba907fb6b74",
+  "reference_input_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+  "corpus_report_sha256": "5cde8eda02d502ffdee68c3606b5ffc14faae9fd7d8e24d746639d6cfa81c0dd",
+  "root": "0x1000ab676",
+  "historical_frozen_plan_sha256": "3672ea45aa96c47e6b592b64574d711e21e21e31fa400a54a4e2c244ada47d0b",
+  "historical_frozen_plan_available": false,
+  "plugin_sha256": "1918942592ed53bdd2ed08ae9d8941c42b5247e334b2ee1f8f4e5cf61b8cf346",
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "5922909426e6052b6aeac97f651d78821c3029fde009ec4284e641355fd902cb",
+    "src/ida_analysis/x86_analysis.hpp": "96e24cb78759947b3e0f112a87fd406c7eef35b635e307eeac9af7fcfe696285",
+    "src/ida_analysis/native_engine.cpp": "4b4ff98b52295d4484ec5a389c1b6269ffa80addffb05eec06a555c67dff5a34",
+    "src/ida_analysis/native_engine.hpp": "c8e01d1cd05a7cf0f2505db680371b4eee2ced6d91a50711fe1ab57f40a91dd7",
+    "src/plugin/idc_api.cpp": "ad26f2726ec3f9a66a633f3e94979dfc7b7fc6f8894383fc058367e3b8148512",
+    "tests/ida_protected_region_inspect.py": "7e26c05106cd5deb1422ee195e0ad6a25d8532a74029100431c07808bd6f5fe0",
+    "tests/verify_protected_ownerless_97.py": "7b79d86c89383d9a261e4c70a9f4d9e0b1a6e8304ebaf577e5e69c7b2a1826a3",
+    "tests/verify_protected_ownerless_97_archive.py": "cbce87d39474558e120d7e724cdb464d34676bcded5e1fa1604016658808df94",
+    "tests/verify_vm_native_region_decode.py": "d3e75430de5530227e755a44d7537dae49f3a87d361d3f048ea2580466960bfe",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248"
+  },
+  "artifact_sha256": {
+    "run.json": "042c437a20912ee65263eb8235165248caffbb92d6ce4338cb242dc371438c96",
+    "protected_region.json": "5e708397fc45c69da00b2aee966de60a653c9eda7d58f61b34cb902026108701",
+    "independent_verify.json": "ea0094d48cf347c45227550d62368700354c0313809c9cff4682b2e6d1133652",
+    "reference_75_run.json": "fb5773dee862c7a1405d5545669c915cf2935b73cb9b3dcff4aab22b1096c0ca",
+    "reference_75_protected_region.json": "9ae4fcb040908b7497ba35400ace41f5bb26b13427a0c12a87249dea3ff5f4c6"
+  },
+  "archive_sha256": "f3290d9c8c2987ad9bcad9cbffc7bde0e915f8e7d45346426e7c5cd07619df63",
+  "result": {
+    "ida_nodes": 97,
+    "independently_decoded_nodes": 97,
+    "direct_edges": 97,
+    "return_frontiers": 1,
+    "condition_sites": 3,
+    "proved_conditions": 0,
+    "unresolved_transfer_sites": 1,
+    "inventory_preserved": true,
+    "reference_75_checks_passed": 8,
+    "runner_return_code": 0
+  }
+}

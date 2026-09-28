@@ -97,7 +97,7 @@ def check(name, condition):
 try:
     root = int(os.environ["CHERNOBOG_PROTECTED_REGION_ROOT"], 0)
     expected = os.environ["CHERNOBOG_PROTECTED_REGION_EXPECT"]
-    assert expected in ("truncated", "complete", "undecoded")
+    assert expected in ("truncated", "complete", "expanded97", "undecoded")
     ida_auto.auto_wait()
     value = ida_expr.idc_value_t()
     assert not ida_expr.eval_idc_expr(value, ida_idaapi.BADADDR, "chernobog_native_analysis()")
@@ -160,6 +160,35 @@ try:
         check(
             "limit frontier",
             ("node_limit", "0x1001d6c0f", "0x1001d6c12") in frontiers,
+        )
+    elif expected == "expanded97":
+        check(
+            "97-node protected graph completion",
+            view["available"]
+            and view["converged"]
+            and not view["truncated"]
+            and view["reason"] == "complete_bounded_region"
+            and len(nodes) == 97
+            and len(view["edges"]) == 98,
+        )
+        check(
+            "historical protected condition sites abstain",
+            sorted(
+                (row["site"], row["kind"], row["status"], row.get("outcome"))
+                for row in view["records"]
+            )
+            == sorted(
+                [
+                    ("0x10006e5b9", "branch-condition", "unresolved", "unknown"),
+                    ("0x10006e5fb", "cmov-condition", "unresolved", "unknown"),
+                    ("0x10006e610", "setcc-value", "unresolved", "unknown"),
+                    ("0x10008145f", "push-return", "unresolved", None),
+                ]
+            ),
+        )
+        check(
+            "unresolved return frontier retained",
+            frontiers == [("return_target", "0x100081460", "0x100081460")],
         )
     else:
         check(

@@ -52,10 +52,12 @@ pass. Historical 64-node measurements and hashes in
 The historical protected-corpus plan also records a 97-node root as exceeding
 its original 64-node budget. Its inspection harness now interprets that same
 frozen plan under the 128-node bound and will require exact head and condition
-coverage for that root. The archived protected binaries and corpus report are
-absent from this workspace, so the current result for that 97-node root is
-**unknown**. The 75-node supplied-sample result above is a separate observed
-measurement.
+coverage for that root. At this checkpoint the archived protected binaries
+and corpus report were absent, so the 97-node root's current-limit result was
+**unknown**. A later regenerated binary has the historical SHA-256 and a
+fresh 128-node inspection admits all 97 heads with zero proved conditions;
+see `VMP_PROTECTED_OWNERLESS_97.md`. The original frozen plan file remains
+absent. The 75-node supplied-sample result above is a separate observation.
 
 ## Assumption register and falsification probes
 
@@ -65,7 +67,7 @@ measurement.
 | B2 | IDA's existing decoded spans and ownerless labels describe the local graph. The 75-node result depends on those inputs. | Recompute in fresh databases; check every admitted owner and the whole checked IDB inventory before/after; alter the decode switch and require abstention. Unknown remote predecessors still prevent global publication. |
 | B3 | The flat unchanged-code, normal-return model applies only up to represented frontiers. The convergence label depends on this scope. | Require visible call and unsupported-control frontiers; do not infer their successors. Dynamic unpacking, exceptions and reentry would falsify a whole-program interpretation. |
 | B4 | Node-bound behavior is exact and architecture independent. The resource conclusion depends on this boundary. | Execute independent x64/i386 128-node and 129-node oracles; require an admitted fact at 128 and no partial facts at 129. |
-| B5 | The archived 97-node plan's historical 64-node classification remains immutable. Any future current-limit corpus result depends on having its exact binary and report. | Retain the frozen plan field and hash; require the 97-node graph under the 128-node current limit when the hash-matched archived inputs are available. Until then its current condition yield is unknown. |
+| B5 | The archived 97-node plan's historical 64-node classification remains immutable. Its later current-limit result depends on an exact binary and root match; the original frozen plan is unavailable. | Retain the frozen plan field and hash; independently decode the hash-matched 97-node graph and compare every current head, byte and direct edge. Do not claim the missing plan itself was reverified. |
 
 ## Bounds, cost and impact
 
@@ -84,7 +86,8 @@ memory were not used to infer a performance gain.
   this local completion from being counted as protected semantic recovery.
 - **Medium impact:** predecessor discovery, larger graphs, ordinary proof
   publication and supported indirect control remain open requirements. The
-  archived 97-node protected result is unmeasured under the new limit.
+  later exact-file 97-node measurement is recorded separately in
+  `VMP_PROTECTED_OWNERLESS_97.md`.
 
 QG1: technical scope. QG2: B1–B5 and their probes. QG3: both architectures,
 protected prior/new/decode-off controls and installation are covered. QG4:
