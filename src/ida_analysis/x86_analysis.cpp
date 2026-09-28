@@ -1260,6 +1260,53 @@ struct State
                 const auto counts = repeat_counts(regs[1], word_bits);
                 if (counts && counts->size == 1 && counts->values[0] == 0)
                     return;
+                if (is64 && counts)
+                {
+                    const auto source = memory_address(insn, insn.Op2);
+                    if (source)
+                    {
+                        Word common;
+                        bool first = true, admitted = true;
+                        for (unsigned candidate = 0; candidate < counts->size && admitted;
+                             ++candidate)
+                            for (unsigned reverse = 0; reverse < 2 && admitted; ++reverse)
+                            {
+                                if (direction && *direction != bool(reverse))
+                                    continue;
+                                Word value = regs[0];
+                                const unsigned count = counts->values[candidate];
+                                for (unsigned iteration = 0; iteration < count; ++iteration)
+                                {
+                                    const auto address = repeated_address(
+                                        *source, iteration, width / 8, bool(reverse), word_bits);
+                                    if (!address || !readable_range(*address, width / 8, word_bits))
+                                    {
+                                        admitted = false;
+                                        break;
+                                    }
+                                    if (iteration + 1 == count)
+                                        value.write(width, 0, read_memory(*address, width), is64);
+                                }
+                                if (!admitted)
+                                    break;
+                                if (first)
+                                {
+                                    common = value;
+                                    first = false;
+                                }
+                                else
+                                    common.join(value);
+                            }
+                        if (admitted && !first)
+                        {
+                            regs[0] = common;
+                            regs[6] =
+                                repeat_index(regs[1], source, word_bits, width / 8, direction);
+                            finish_unconditional_repeat(insn, is64);
+                            return;
+                        }
+                    }
+                }
             }
             if (is64 && !repeated && valid_width(width) && matched_accumulator && matched_memory)
             {

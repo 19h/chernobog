@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "scope": "bounded x86-64 REP LODS value and target control; one supplied protected root",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "a87ea4bb02a16f13ac1898b1b3a77f858609cec10a3df32a0f21b3b3ec454867",
+    "tests/vmp_native/rep_lods_bounded.S": "985aade3b10a9ece22565634c3cffffeef0d0052de86937f5dd18e8dec5cfbb8",
+    "tests/vmp_native/rep_lods_bounded_main.c": "6194e0efa812ea2ad0f5f2beb8d0cbd67214f7200f6b0ab1213e7991ca5738e7",
+    "tests/ida_rep_lods_bounded_probe.py": "c34c0ec3007c2e17fdac68c9c055360a4682dc7fcf4c331b4d915b2a97623607",
+    "tests/ida_protected_region_inspect.py": "7e26c05106cd5deb1422ee195e0ad6a25d8532a74029100431c07808bd6f5fe0"
+  },
+  "artifact_sha256": {
+    "fixture_x86_64": "848b88ccc724a28976426c11eac5e09bc65e54607a53e90c652b08ac9bd11016",
+    "supplied_vmp_x86_64": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+    "ida_executable": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+    "prior_signed_plugin": "d10283ccabbcdb090a92591f58591d23eb8ffe2c0b8f3e9dead2530d191f5306",
+    "current_precommit_plugin": "3f866b591dd41b837abb3581282d95418dbc8ff7da3d32a4336a33684f5a8f1a"
+  },
+  "process": {
+    "calls": 2560,
+    "passed": true,
+    "expected_result_for_nine_transfer_routines": 73,
+    "expected_result_for_dword_value_routine": 1
+  },
+  "ida_fixture": {
+    "prior_probe_sha256": "87402201aa98cb504dc87c897bae1fd8ddc11e167654841ad9c3e61e12815da4",
+    "prior_runner_sha256": "d928d04186a01136ce953d9c950d69a06c9f3c345ded5b4e3bb8e3b6989f31ab",
+    "current_probe_sha256": "16d6894eadcc91610a63999f5b6e87d2f0ca22b33062eafea1565c4a442c19a8",
+    "current_runner_sha256": "9a9cf8c2198180f2396b5c42a6b2c4239d21c059e4adc000b318cf51f71ba093",
+    "prior_checks": "34/34",
+    "current_checks": "37/37",
+    "prior_exact_targets": 0,
+    "current_exact_targets": 7,
+    "prior_dword_setcc_facts": 0,
+    "current_dword_setcc_facts": 1,
+    "nine_count_candidate_in_both": true,
+    "missing_final_byte_revokes_and_restores": true
+  },
+  "zero_count_regression": {
+    "x86_64_probe_sha256": "aa595f7fb06f92aeb802c51203e35924c372396a2be82913b5d1fadb72a7acd3",
+    "i386_probe_sha256": "ef9b5906bf3969ae3ac05aad3c3e54f2474be03d0f4968fb9ce43c820dafa7fe",
+    "checks_per_architecture": "6/6"
+  },
+  "protected_root": {
+    "address": "0x1002946b5",
+    "prior_probe_sha256": "b17ba5c63907fcca36fc5af3d437500366db2cef4f3018b80b3367eef3e3c22e",
+    "prior_runner_sha256": "6c94a18675eb26a30f25d9e760a22a9d772122cfebfc0ac3d0b5f1e117e2e96a",
+    "current_probe_sha256": "b17ba5c63907fcca36fc5af3d437500366db2cef4f3018b80b3367eef3e3c22e",
+    "current_runner_sha256": "2616ef8e1dd08e17594e1166e3b218e2bad7c9cd778b54780dbc45e33138a311",
+    "checks_per_profile": "8/8",
+    "nodes_per_profile": 75,
+    "edges_per_profile": 77,
+    "records_per_profile": 3,
+    "raw_inspections_equal": true
+  },
+  "repository_ctest": "23/23 passed"
+}

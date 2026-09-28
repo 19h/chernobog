@@ -1579,3 +1579,15 @@ inspections change one unresolved transfer per architecture into an exact
 register target and user edge. A partial-count byte mutation revokes the
 proof and restoration republishes it. See `VMP_REP_LODS_ZERO.md` and its
 evidence JSON. Nonzero counts and protected effectiveness remain in progress.
+
+## Bounded repeated-LODS value checkpoint
+
+Review rows 1b, 2a and V now enumerate up to eight `REP LODS` reads per
+compatible count and direction on x86-64, validate each accessed address,
+and join the final accumulator and index states. Seven newly proved target
+edges and one dword `SETcc` value fact appear in a same-binary prior/current
+IDA comparison. A 2,560-call process control, nine-count abstention,
+missing-final-byte revocation, both zero-count architecture regressions and
+one unchanged 75-node supplied VMP root bound the result. See
+`VMP_REP_LODS_BOUNDED.md` and its evidence JSON. i386 nonzero segment bases,
+larger counts and protected-path effectiveness remain open.
