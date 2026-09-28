@@ -57,6 +57,15 @@ mutation remain unchanged; native read aliasing, effects, arbitrary identities
 and protected recovery remain open. See `VMP_MBA_NESTED_READ_AUDIT.md` and its
 full compressed audit.
 
+Complete-matrix shift checkpoint for row 4a: a pinned SDK operator oracle
+matches independent integer and symbolic results for 192 boundary cases.
+The 14,047-event matcher audit reclassifies 61 shift roots and 42 shallow
+nested shifts as refuted constant/current-operand reductions. Totals become
+13,393 refuted, 649 unsupported and five existing catalog applications.
+Production rewrites, wider shift-count semantics, native reachability and
+arbitrary missing identities remain open. See `VMP_MBA_SHIFT_AUDIT.md` and
+its exact SDK output and full audit.
+
 Transient MBA input checkpoint for row 4a: actual pre-scan candidate and
 consecutive block-prefix projections are retained separately from historical
 diagnostics. Independent structural replay uses the exact certified templates

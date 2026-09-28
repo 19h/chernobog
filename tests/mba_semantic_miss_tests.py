@@ -6,6 +6,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import z3
+
 from mba_matching_diagnostics import require
 from mba_semantic_miss import (
     NestedPrimitive,
@@ -54,6 +56,28 @@ def controls(model):
         x, y = leaf("r", width, 8), leaf("r", width, 32)
         for op in ("add", "sub", "mul", "and", "or", "xor"):
             check(f"{op}:{width}:distinct", root(op, width, x, y), "primitive_reduction_refuted")
+        for op in ("shl", "shr", "sar"):
+            check(
+                f"{op}:{width}:byte-count",
+                root(op, width, x, leaf("r", 1, 32)),
+                "primitive_reduction_refuted",
+            )
+            check(
+                f"{op}:{width}:wide-count",
+                root(op, width, x, leaf("r", 2, 32)),
+                "unsupported",
+            )
+            for value in (0, 1, 1 << (8 * width - 1), mask(width)):
+                for count in (0, 8 * width - 1, 8 * width, 255):
+                    expression = root(op, width, leaf("n", width, value), leaf("n", 1, count))
+                    primitive = Primitive(expression, model)
+                    actual = primitive.integer({"L": value, "R": count})
+                    symbolic, _, _ = primitive.symbolic("shift_boundary")
+                    require(
+                        z3.simplify(symbolic).as_long() == actual,
+                        "shift symbolic/integer boundary",
+                    )
+            passed.append(f"{op}:{width}:boundaries")
         for op in ("bnot", "neg"):
             check(f"{op}:{width}:free", root(op, width, x), "primitive_reduction_refuted")
         for op in ("sub", "xor", "and", "or"):
@@ -92,6 +116,8 @@ def controls(model):
         check(f"nested identity:{width}", expression, "value_reduction", root_iprops=0)
         expression = root("setz", 1, nested("add", width, x, y), x)
         check(f"nested free:{width}", expression, "primitive_reduction_refuted", root_iprops=0)
+        expression = root("setz", 1, nested("shl", width, x, leaf("r", 1, 32)), x)
+        check(f"nested shift:{width}", expression, "primitive_reduction_refuted", root_iprops=0)
 
     x = leaf("r", 2, 8)
     expression = root("setz", 1, nested("sub", 2, x, copy.deepcopy(x)), leaf("n", 2, 0))

@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "rows": 64,
+  "checks": 192,
+  "corruption_rejected": true,
+  "sdk_output_sha256": "bacdb52b40640dcda3d6a4da333bfd81db9487f7e4a3391a73b2b5f72e84a5f1",
+  "fixture_sha256": "59c710238da87c2cd7f802432305966971e0c5423e950c8ed9d742d5a7bd73b1"
+}

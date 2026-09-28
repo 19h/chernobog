@@ -19,6 +19,7 @@ from mba_matching_diagnostics import parse_constant_failure, require
 ENGINE = "4.16.0"
 PACKAGE = "4.16.0.0"
 BINARY = {"add", "sub", "mul", "and", "or", "xor"}
+SHIFTS = {"shl", "shr", "sar"}
 UNARY = {"bnot", "neg"}
 CONVERSION = {"mov", "xdu", "xds", "low", "high"}
 FLAGS = {"cfadd", "ofadd", "seto", "setp"}
@@ -69,7 +70,7 @@ class Primitive:
             raise Unsupported("root instruction properties")
         if self.op in PREDICATE and root_iprops is None:
             raise Unsupported("predicate integer/effect metadata unavailable")
-        if self.op not in BINARY | UNARY | CONVERSION | PREDICATE:
+        if self.op not in BINARY | SHIFTS | UNARY | CONVERSION | PREDICATE:
             raise Unsupported("unsupported arithmetic root")
         if root[4] is None or (root[5] is None) != (
             self.op in UNARY | CONVERSION | {"sets", "lnot"}
@@ -87,8 +88,12 @@ class Primitive:
             kind, width, version, props, value = node[2]
             if width not in (1, 2, 4, 8) or node[1] != width:
                 raise Unsupported("operand width or nested result mismatch")
-            if self.op not in CONVERSION | PREDICATE and width != self.width:
+            if self.op in SHIFTS and path == "R" and width != 1:
+                raise Unsupported("shift count must be one byte")
+            if self.op not in CONVERSION | PREDICATE | SHIFTS and width != self.width:
                 raise Unsupported("implicit operand width conversion")
+            if self.op in SHIFTS and path == "L" and width != self.width:
+                raise Unsupported("implicit shift value width conversion")
             if self.op == "mov" and width != self.width:
                 raise Unsupported("implicit MOV width conversion")
             if self.op in ("xdu", "xds") and width > self.width:
@@ -179,6 +184,11 @@ class Primitive:
             "and": lambda: x & y,
             "or": lambda: x | y,
             "xor": lambda: x ^ y,
+            "shl": lambda: 0 if y >= self.bits else x << y,
+            "shr": lambda: 0 if y >= self.bits else x >> y,
+            "sar": lambda: (
+                (mask(self.width) if x & sign else 0) if y >= self.bits else signed(x) >> y
+            ),
             "bnot": lambda: ~x,
             "neg": lambda: -x,
             "mov": lambda: x,
@@ -217,6 +227,7 @@ class Primitive:
                 parts = [cells[k] for k in reversed(value["bytes"])]
                 values[path] = parts[0] if len(parts) == 1 else z3.Concat(*parts)
         x, y = values["L"], values.get("R")
+        shift = z3.ZeroExt(self.bits - 8, y) if self.op in SHIFTS else None
         left_bits = self.widths["L"] * 8
         boolean = lambda condition: z3.If(
             condition, z3.BitVecVal(1, self.bits), z3.BitVecVal(0, self.bits)
@@ -245,6 +256,9 @@ class Primitive:
             "and": lambda: x & y,
             "or": lambda: x | y,
             "xor": lambda: x ^ y,
+            "shl": lambda: x << shift,
+            "shr": lambda: z3.LShR(x, shift),
+            "sar": lambda: x >> shift,
             "bnot": lambda: ~x,
             "neg": lambda: -x,
             "mov": lambda: x,
@@ -321,7 +335,7 @@ class NestedPrimitive:
             or ins[3] != child[4][2]
             or ins[4] != child[5][2]
             or ins[5] != [tags["z"], child[1], 0, 0, 0]
-            or child[3] not in {model["ops"][op] for op in BINARY}
+            or child[3] not in {model["ops"][op] for op in BINARY | SHIFTS}
         ):
             raise Unsupported("nested arithmetic instruction contract")
         self.child = Primitive(child, model, 0, read_scope="child")
