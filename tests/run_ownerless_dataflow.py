@@ -140,7 +140,7 @@ def main():
                 )
                 if args.edge_oracle_driver:
                     assert results[0] == {
-                        "checks": 37630 if architecture == "x86_64" else 36350,
+                        "checks": 38142 if architecture == "x86_64" else 36862,
                         "passed": True,
                     }
                     row["executions"][-1]["edge_native_result"] = results[0]

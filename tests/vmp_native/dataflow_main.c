@@ -62,6 +62,7 @@ extern int df_repne_scas_one_zf(int), df_repne_scas_one_count_target(int);
 extern int df_repe_cmps_zero_preserve(int), df_repne_cmps_one_cf(int);
 extern int df_repe_cmps_one_zf(int), df_repe_cmps_one_count_target(int);
 extern int df_repe_scas_two_early_stop(int), df_repne_cmps_two_early_stop(int);
+extern int df_repe_scas_two_count_target(int), df_repne_cmps_two_count_target(int);
 extern int df_stos_register_target(int), df_lods_memory_target(int);
 extern int df_lods_full_target(int), df_lods_byte_preserved_target(int);
 extern int df_lods_byte_value(int), df_lods_word_value(int), df_lods_dword_value(int);
@@ -143,7 +144,8 @@ int main(void)
             df_rep_cmps_count_ambiguity(input) != ((input & 1) == 0) ||
             df_repe_cmps_zero_preserve(input) != 1 || df_repne_cmps_one_cf(input) != 1 ||
             df_repe_cmps_one_zf(input) != 1 || df_repe_cmps_one_count_target(input) != 7 ||
-            df_repne_cmps_two_early_stop(input) != 1 || df_rep_movs_register_target(input) != 7 ||
+            df_repne_cmps_two_early_stop(input) != 1 ||
+            df_repne_cmps_two_count_target(input) != 7 || df_rep_movs_register_target(input) != 7 ||
             df_movs_plain_count_target(input) != 7 || df_rep_movs_count_unknown(input) != 7 ||
             df_rep_stos_cf(input) != 1 || df_rep_stos_count_target(input) != 7 ||
             df_lods_plain_cf(input) != 1 || df_rep_lods_zf(input) != 1 ||
@@ -154,8 +156,9 @@ int main(void)
             df_rep_scas_count_ambiguity(input) != ((input & 1) == 0) ||
             df_repne_scas_zero_preserve(input) != 1 || df_repe_scas_one_cf(input) != 1 ||
             df_repne_scas_one_zf(input) != 1 || df_repne_scas_one_count_target(input) != 7 ||
-            df_repe_scas_two_early_stop(input) != 1 || df_stos_alias(input, &disjoint) != 7 ||
-            df_stos_register_target(input) != 7 || df_stos_disjoint_target(input) != 7 ||
+            df_repe_scas_two_early_stop(input) != 1 || df_repe_scas_two_count_target(input) != 7 ||
+            df_stos_alias(input, &disjoint) != 7 || df_stos_register_target(input) != 7 ||
+            df_stos_disjoint_target(input) != 7 ||
             df_stos_unknown_value_disjoint_target(input) != 7 ||
             df_rep_stos_disjoint_target(input) != 7 || df_stos_overlap_known_target(input) != 7 ||
             df_stos_byte_reload(input) != 1 || df_stos_word_reload(input) != 1 ||
@@ -168,7 +171,7 @@ int main(void)
             df_rep_lods_ambiguous_value(input) != (input & 1) ||
             df_lods_unknown_source_high_value(input) != 1)
             return 1;
-        checks += 140;
+        checks += 142;
 #ifndef __i386__
         if (df_scas_qword_zf(input) != 1 || df_cmps_qword_zf(input) != 1 ||
             df_stos_qword_reload(input) != 1 || df_movs_qword_reload(input) != 1 ||

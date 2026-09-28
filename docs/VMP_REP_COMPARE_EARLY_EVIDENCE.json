@@ -1,0 +1,120 @@
+{
+  "archive_sha256": "3154a67eeb37028378c23ad3003aa64c1b3b671c0cf7b43baae2112d69bffad2",
+  "artifacts": {
+    "delta_current_report": {
+      "bytes": 2133,
+      "path": "build/rep-compare-early-delta-current-v2/rep_compare_early_delta.json",
+      "sha256": "43fc164242e9ac3fc1e21cb1d0d121d7893dc3904922a9b746aa05a93d93ef75"
+    },
+    "delta_current_run": {
+      "bytes": 1302,
+      "path": "build/rep-compare-early-delta-current-v2/run.json",
+      "sha256": "9caa685419edb5f87141b46b19f223c106fabe91d3764153c503e111ff75cf77"
+    },
+    "delta_prior_report": {
+      "bytes": 2045,
+      "path": "build/rep-compare-early-delta-prior-v2/rep_compare_early_delta.json",
+      "sha256": "e0e319592249c7fe091ba27a4459140e18395962f52e732c218018eb32846633"
+    },
+    "delta_prior_run": {
+      "bytes": 1302,
+      "path": "build/rep-compare-early-delta-prior-v2/run.json",
+      "sha256": "83d22cebafe737bfed587c841b5c0bcb4f67fbf471518382f78775e5d10f66f4"
+    },
+    "owned_i386_binary": {
+      "bytes": 30044,
+      "path": "build/rep-compare-early-owned-target-v1/i386/dataflow",
+      "sha256": "02e50b17d1703f3d6d8abd74de3ca18aacc7486322d0f710fdb331670b34cccc"
+    },
+    "owned_i386_inspection": {
+      "bytes": 627046,
+      "path": "build/rep-compare-early-owned-target-v1/i386/inspection/dataflow.json",
+      "sha256": "b87d3ad9ad8f93808b4f1bf3b35bfdb25852e927f99c480a8ccf0a212f6ba5da"
+    },
+    "owned_i386_run": {
+      "bytes": 1302,
+      "path": "build/rep-compare-early-owned-target-v1/i386/inspection/run.json",
+      "sha256": "c321784f530a83932761fdbcadd83a24d7e24b410b6a180796aaaa4c0876cae8"
+    },
+    "owned_report": {
+      "bytes": 7425,
+      "path": "build/rep-compare-early-owned-target-v1/dataflow_analysis.json",
+      "sha256": "091013f3079914cf3a0115ef77d1fba06abffd65cf369c4a3347a8a42c48ce67"
+    },
+    "owned_x86_64_binary": {
+      "bytes": 31792,
+      "path": "build/rep-compare-early-owned-target-v1/x86_64/dataflow",
+      "sha256": "0700b01d5c01b56361e8428efaa42cf61d4e713eb74978ba51585d39e6094365"
+    },
+    "owned_x86_64_inspection": {
+      "bytes": 663476,
+      "path": "build/rep-compare-early-owned-target-v1/x86_64/inspection/dataflow.json",
+      "sha256": "e1c15315c03f8c7ad13df477aaec1502345daad45dc09bee35144a9bef82b4e5"
+    },
+    "owned_x86_64_run": {
+      "bytes": 1302,
+      "path": "build/rep-compare-early-owned-target-v1/x86_64/inspection/run.json",
+      "sha256": "16c8c9c00b792373e2edbac907c8884366b3bc225fa025d87b9207bd68b78b6c"
+    },
+    "ownerless_i386_binary": {
+      "bytes": 33184,
+      "path": "build/rep-compare-early-ownerless-edge-v1/i386/ownerless",
+      "sha256": "cabf2979c5e7b5a45d2731d1ddd033e879ef88dbd683faf5718e3a9c18acc249"
+    },
+    "ownerless_i386_inspection": {
+      "bytes": 2936089,
+      "path": "build/rep-compare-early-ownerless-edge-v1/i386/inspection/ownerless_dataflow.json",
+      "sha256": "70ab37c93d6df7c7b76119ad97c7f5acd14db75e33e3b343e8883dbf47b8ee79"
+    },
+    "ownerless_i386_run": {
+      "bytes": 1303,
+      "path": "build/rep-compare-early-ownerless-edge-v1/i386/inspection/run.json",
+      "sha256": "cfd1a8e4bdda86f62f46c54249a3f8dc549e59bb5fe8f83988de95308f4a2a56"
+    },
+    "ownerless_report": {
+      "bytes": 15927,
+      "path": "build/rep-compare-early-ownerless-edge-v1/ownerless_dataflow_analysis.json",
+      "sha256": "bc60e526bda0bd8cdf3044b38778934d10207e35a36771c609c367a47d372024"
+    },
+    "ownerless_x86_64_binary": {
+      "bytes": 40624,
+      "path": "build/rep-compare-early-ownerless-edge-v1/x86_64/ownerless",
+      "sha256": "ed9e619623e44ec425f3f0218ab2ea082dcf41219c7a9451d7b9e45e4e24e130"
+    },
+    "ownerless_x86_64_inspection": {
+      "bytes": 2848305,
+      "path": "build/rep-compare-early-ownerless-edge-v1/x86_64/inspection/ownerless_dataflow.json",
+      "sha256": "410c9c928f4c7d3e715f9eeaa5ea36527c6e93143fda942772866aec476da45e"
+    },
+    "ownerless_x86_64_run": {
+      "bytes": 1303,
+      "path": "build/rep-compare-early-ownerless-edge-v1/x86_64/inspection/run.json",
+      "sha256": "e0681e7d33951668fe8b694a6e0c48ee2202c13685ffe2f4b04ce4ce2f0c9026"
+    },
+    "protected_report": {
+      "bytes": 52777,
+      "path": "build/rep-compare-early-protected-v1/protected_region.json",
+      "sha256": "9ae4fcb040908b7497ba35400ace41f5bb26b13427a0c12a87249dea3ff5f4c6"
+    },
+    "protected_run": {
+      "bytes": 1302,
+      "path": "build/rep-compare-early-protected-v1/run.json",
+      "sha256": "6ad060176e976c9768604617cba9e5b2e95e95f9d904e827f0e1281b06bcadc3"
+    },
+    "score": {
+      "bytes": 235914,
+      "path": "build/rep-compare-early-score-v1/rep_compare_early_score.json",
+      "sha256": "7cb3b95547845ad7882a4605d67a9e588613b91af34d646e4f9a222f2892db8e"
+    }
+  },
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "oracle_delta_sha256": "19c5041faba7214f5c0037ccbc79279a70c41a86aa64554ba171080553fb36b8",
+  "passed": true,
+  "plugin_sha256": "5551e69f8bc6feadab2e15c612c1ac4237f3deb2335c4af3161305c5ea39ff58",
+  "prior_plugin_sha256": "47bee5494702aa6072b331591075138132708216f0f45124f7c48099c7b863ad",
+  "probe_sha256": "4078935d20a31dfc5816f1312694c63186dfbe2c5a57464dc376e2c91a18ba88",
+  "schema": 1,
+  "scope": "matched x86-64/i386 owned and ownerless early-stop edge oracle",
+  "scorer_sha256": "055ffe6a1ba27276d8d1fcfc07b80a2ccad88a2d79a34bdff7424bd0445d5976",
+  "verifier_sha256": "c53e8b96a5173e6813818bca075b3cd06417f302aeb7a5ab31a6138180234c5d"
+}

@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "base": "tests/vmp_native/edge_oracle_v3.json",
+  "base_sha256": "6376601f6d4b75748bc9b4d9ebd03bee3e74f6e6e652bce4dcb69ab1e7af07ed",
+  "scope": "64 reviewed named PUSH/RET roots; two count-two REPE/REPNE early-stop targets extend the frozen 62-root oracle. The executable i386 oracle uses its process segment bases; static i386 analysis receives no segment-base contract.",
+  "source_sha256": {
+    "tests/vmp_native/dataflow.S": "fe45129cada195adfe6618f700956549bcdc64145e1cad9b4ac78f772c8aab8c",
+    "tests/vmp_native/dataflow_main.c": "82b13a70191e5abe1167d6dd3ba001c06ef9875873b0a3c0ba382c5aa70b10a0",
+    "tests/ida_dataflow_probe.py": "59308d940658aa8f3f9dbdd6c4873c3425c20d043f994a599fb84b741616b8e5",
+    "tests/ida_ownerless_dataflow_probe.py": "beed7b6a08a83ebdc0ae36e3a534c6dddecbb5698ce8656a2a6cea31f637a4f5",
+    "tests/run_native_dataflow.py": "e4012b4e3f1d991a32d9d27f70860f84c05209478ecd977504436073ffcc097f",
+    "tests/run_ownerless_dataflow.py": "b25c6a80a52a490f80a4f17e096e4b02c7ea78ceaed4075cb094ad8dd54d7b03"
+  },
+  "fixed": {
+    "df_repne_cmps_two_count_target": "df_memory_target",
+    "df_repe_scas_two_count_target": "df_memory_target"
+  },
+  "native_checks": {
+    "owned": {
+      "x86_64": 38142,
+      "i386": 36862
+    },
+    "ownerless": {
+      "x86_64": 4606,
+      "i386": 4606
+    }
+  },
+  "expected_population": {
+    "fixed_sites": 46,
+    "dynamic_sites": 3,
+    "eligible_sites": 49,
+    "oracle_edges": 52,
+    "concrete_only_sites": 15
+  },
+  "review_basis": "Both roots start with ECX=2 and an exact first comparison that fails the repeat condition in long mode. The fixture adds post-count ECX to df_memory_target minus one; one completed iteration yields the named target. The native driver executes all inputs 0..255 on both architectures. Static i386 must abstain because ES may differ from DS."
+}

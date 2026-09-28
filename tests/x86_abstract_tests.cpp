@@ -366,6 +366,37 @@ void repeated_memory_regressions()
           "repeat store evictions retain bounded memory");
 }
 
+void repeat_compare_early_stop_regressions()
+{
+    using namespace chernobog::x86_abstract;
+    for (unsigned width : {8u, 16u, 32u, 64u})
+        for (uint64_t count : {uint64_t{2}, uint64_t{3}, UINT64_MAX})
+        {
+            const Flags prior{ALL, ALL};
+            const auto repe =
+                first_compare_early_stop(width, count, true, 0x10, 0x20, false, prior);
+            check(repe && repe->remaining == count - 1 && repe->flags.get(ZF) == false &&
+                      repe->flags.get(CF) == true,
+                  "REPE unequal first comparison stops with one decrement and new flags");
+            const auto repne = first_compare_early_stop(width, count, false, {}, {}, true, prior);
+            check(repne && repne->remaining == count - 1 && repne->flags.get(ZF) == true &&
+                      repne->flags.get(CF) == false,
+                  "REPNE equal first comparison stops with one decrement and new flags");
+            check(!first_compare_early_stop(width, count, true, {}, {}, true, prior),
+                  "REPE equal first comparison must continue");
+            check(!first_compare_early_stop(width, count, false, 0x10, 0x20, false, prior),
+                  "REPNE unequal first comparison must continue");
+            check(!first_compare_early_stop(width, count, true, {}, {}, false, prior),
+                  "prior known ZF cannot replace unknown first comparison");
+        }
+    check(!first_compare_early_stop(8, 0, true, 0x10, 0x20, false, {}),
+          "zero-count comparison does not execute");
+    check(!first_compare_early_stop(8, 1, true, 0x10, 0x20, false, {}),
+          "single-count comparison uses the existing exact-one path");
+    check(!first_compare_early_stop(24, 2, true, 0x10, 0x20, false, {}),
+          "unsupported comparison width abstains");
+}
+
 struct FlowState
 {
     Word word;
@@ -1379,6 +1410,7 @@ void mapping_counterexamples()
 int main()
 {
     repeated_memory_regressions();
+    repeat_compare_early_stop_regressions();
     const uint64_t repeat_assertions = assertions;
     dataflow_regressions();
     backward_slice_regressions();

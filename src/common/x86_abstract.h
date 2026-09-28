@@ -596,4 +596,29 @@ inline std::optional<uint64_t> transfer(Operation op, unsigned width, std::optio
     return result;
 }
 
+struct CompareRepeatStop
+{
+    uint64_t remaining = 0;
+    Flags flags;
+};
+
+// REPE continues after a comparison only while ZF=1; REPNE continues only
+// while ZF=0. When the first comparison proves the opposite, one iteration
+// has completed even if the initial count exceeds one. The caller establishes
+// the architectural count width and exact single-iteration operand identity.
+inline std::optional<CompareRepeatStop> first_compare_early_stop(unsigned width, uint64_t count,
+                                                                 bool repeat_while_equal,
+                                                                 std::optional<uint64_t> left,
+                                                                 std::optional<uint64_t> right,
+                                                                 bool same_operand, Flags before)
+{
+    if (count < 2 || !valid_width(width))
+        return std::nullopt;
+    transfer(Operation::compare, width, left, right, same_operand, before);
+    const auto equal = before.get(ZF);
+    if (!equal || *equal == repeat_while_equal)
+        return std::nullopt;
+    return CompareRepeatStop{count - 1, before};
+}
+
 } // namespace chernobog::x86_abstract

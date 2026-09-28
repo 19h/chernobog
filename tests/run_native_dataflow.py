@@ -109,7 +109,7 @@ def main():
             )
             row["native_result"] = json.loads(stdout)
             assert row["native_result"] == {
-                "checks": 37630 if architecture == "x86_64" else 36350,
+                "checks": 38142 if architecture == "x86_64" else 36862,
                 "passed": True,
             }
             row["binary_sha256"] = digest(binary)
@@ -200,7 +200,7 @@ def main():
                 json.dumps(
                     {
                         "architecture": architecture,
-                        "native_checks": 37630 if architecture == "x86_64" else 36350,
+                        "native_checks": 38142 if architecture == "x86_64" else 36862,
                         "inspection_checks": row["checks"],
                     }
                 ),

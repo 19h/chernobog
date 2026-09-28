@@ -1405,3 +1405,17 @@ and unchanged-source checks. Both selected startup paths run 33 instructions
 but lack a complete temporal prefix; no VM transition or identity is claimed.
 See `VMP_VM_EMPTY_BINDINGS.md` and its archived reports. Full review
 requirements remain open.
+
+## First-comparison REP termination checkpoint
+
+Review rows 1b, 2a and V now retain an exact remaining count and comparison
+flags when a known-count x86-64 `REPE` or `REPNE` `SCAS`/`CMPS` operation
+provably stops after its first comparison. Both new count-derived target
+edges change from unresolved to exact native proofs in matched same-binary
+prior/current IDA runs. An independently decoded 52-edge oracle scores
+46/52 correct x86-64 edges and 33/52 i386 edges in each ownership mode,
+with zero false edges. The two new sites remain unresolved in i386 because
+the comparison segment base is not established. The selected supplied VMP
+root remains at 75 nodes, 77 edges and three unresolved facts. All 23
+CTest suites pass. See `VMP_REP_COMPARE_EARLY.md` and its offline-verifiable
+capture archive. The full review implementation remains in progress.

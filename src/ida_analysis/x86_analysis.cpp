@@ -1211,8 +1211,8 @@ struct State
             // SCAS compares the accumulator against ES:[DI] and advances DI.
             // ES and DS have the same zero base in long mode. In i386, ES may
             // differ from the segment used for a local store, so no retained
-            // byte can supply the comparison. One exact repeated iteration
-            // has the plain SCAS comparison effect.
+            // byte can supply the comparison. An exact first comparison that
+            // fails the repeat condition has the plain SCAS flag effect.
             const bool repeated = (insn.auxpref & (aux_rep | aux_repne)) != 0;
             const Slice accumulator = register_slice(insn.Op2);
             const bool matched_accumulator =
@@ -1221,19 +1221,29 @@ struct State
                                         x86_base_reg(insn, insn.Op1) == R_di &&
                                         x86_index_reg(insn, insn.Op1) == R_none;
             std::optional<uint64_t> compared;
-            if (is64 && (!repeated || single_compare) && valid_width(width) &&
-                matched_accumulator && matched_memory)
+            if (is64 && (!repeated || compare_count) && valid_width(width) && matched_accumulator &&
+                matched_memory)
             {
                 const auto address = memory_address(insn, insn.Op1);
                 if (address && writable_range(*address, width / 8, word_bits))
                     compared = read_memory(*address, width);
             }
             const auto value = matched_accumulator ? read(insn.Op2) : std::nullopt;
+            const auto early_stop =
+                repeated && compare_count
+                    ? first_compare_early_stop(width, *compare_count, (insn.auxpref & aux_rep) != 0,
+                                               value, compared, false, flags)
+                    : std::nullopt;
             regs[7] = {};
             if (repeated)
             {
                 if (single_compare)
                     regs[1].write(word_bits, 0, 0, is64);
+                else if (early_stop)
+                {
+                    regs[1].write(word_bits, 0, early_stop->remaining, is64);
+                    flags = early_stop->flags;
+                }
                 else
                 {
                     regs[1] = {};
@@ -1250,7 +1260,8 @@ struct State
             // compares both current memory elements before advancing SI/DI.
             // Equal exact addresses give equal values even when the initial
             // byte is unknown. One exact repeated iteration has the plain
-            // CMPS comparison effect.
+            // CMPS comparison effect. An exact first comparison that fails
+            // the repeat condition likewise completes one iteration.
             const bool repeated = (insn.auxpref & (aux_rep | aux_repne)) != 0;
             const bool matched_operands =
                 insn.Op1.type == o_phrase && insn.Op2.type == o_phrase &&
@@ -1259,7 +1270,7 @@ struct State
                 get_dtype_size(insn.Op2.dtype) == get_dtype_size(insn.Op1.dtype);
             std::optional<uint64_t> source_value, destination_value;
             bool same_address = false;
-            if (is64 && (!repeated || single_compare) && valid_width(width) && matched_operands)
+            if (is64 && (!repeated || compare_count) && valid_width(width) && matched_operands)
             {
                 const auto source = memory_address(insn, insn.Op1);
                 const auto destination = memory_address(insn, insn.Op2);
@@ -1274,12 +1285,22 @@ struct State
                     }
                 }
             }
+            const auto early_stop =
+                repeated && compare_count
+                    ? first_compare_early_stop(width, *compare_count, (insn.auxpref & aux_rep) != 0,
+                                               source_value, destination_value, same_address, flags)
+                    : std::nullopt;
             regs[6] = {};
             regs[7] = {};
             if (repeated)
             {
                 if (single_compare)
                     regs[1].write(word_bits, 0, 0, is64);
+                else if (early_stop)
+                {
+                    regs[1].write(word_bits, 0, early_stop->remaining, is64);
+                    flags = early_stop->flags;
+                }
                 else
                 {
                     regs[1] = {};

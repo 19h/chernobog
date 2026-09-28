@@ -667,7 +667,7 @@ def main():
             ("df_repe_cmps_zero_preserve", True if rep_compare_zero_proofs else None),
             ("df_repne_cmps_one_cf", True if rep_compare_one_proofs else None),
             ("df_repe_cmps_one_zf", True if rep_compare_one_proofs else None),
-            ("df_repne_cmps_two_early_stop", None),
+            ("df_repne_cmps_two_early_stop", True if rep_compare_one_proofs else None),
             ("df_rep_stos_cf", True if string_io_proofs else None),
             ("df_lods_plain_cf", True if string_io_proofs else None),
             ("df_rep_lods_zf", True if string_io_proofs else None),
@@ -681,7 +681,7 @@ def main():
             ("df_repne_scas_zero_preserve", True if rep_compare_zero_proofs else None),
             ("df_repe_scas_one_cf", True if rep_compare_one_proofs else None),
             ("df_repne_scas_one_zf", True if rep_compare_one_proofs else None),
-            ("df_repe_scas_two_early_stop", None),
+            ("df_repe_scas_two_early_stop", True if rep_compare_one_proofs else None),
             ("df_stos_byte_reload", True if stos_local_proofs else None),
             ("df_stos_word_reload", True if stos_local_proofs else None),
             ("df_stos_dword_reload", True if stos_local_proofs else None),
@@ -953,6 +953,8 @@ def main():
             ("df_rep_lods_count_target", string_io_proofs and string_count_proofs),
             ("df_repe_cmps_one_count_target", rep_compare_zero_proofs),
             ("df_repne_scas_one_count_target", rep_compare_zero_proofs),
+            ("df_repne_cmps_two_count_target", rep_compare_one_proofs),
+            ("df_repe_scas_two_count_target", rep_compare_one_proofs),
             ("df_lods_full_target", lods_local_proofs),
             ("df_lods_byte_preserved_target", lods_local_proofs),
         ):
@@ -972,6 +974,7 @@ def main():
                     "df_movs_plain_count_target",
                     "df_rep_movs_count_unknown",
                     "df_repe_cmps_one_count_target",
+                    "df_repne_cmps_two_count_target",
                 )
                 else (
                     2
@@ -982,6 +985,7 @@ def main():
                         "df_rep_stos_count_target",
                         "df_rep_lods_count_target",
                         "df_repne_scas_one_count_target",
+                        "df_repe_scas_two_count_target",
                         "df_lods_full_target",
                         "df_lods_byte_preserved_target",
                     )
