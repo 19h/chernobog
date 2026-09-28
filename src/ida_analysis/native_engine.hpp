@@ -25,6 +25,18 @@ struct NativeInspection
     std::vector<std::map<std::string, std::string>> records;
 };
 
+// Bounded, read-only condition-site inventory. Rows are recomputed observations,
+// not native proofs or authorization to lower the corresponding instruction.
+struct NativeConditionInspection
+{
+    static constexpr size_t head_limit = 4096, site_limit = 64, support_limit = 64;
+    bool available = false, truncated = false;
+    int64_t database = -1;
+    uint64_t function = 0;
+    size_t heads_examined = 0, condition_sites = 0, omitted = 0;
+    std::vector<std::map<std::string, std::string>> records;
+};
+
 struct NativeAnalysisStats
 {
     size_t redundant_prefixes = 0;
@@ -70,6 +82,7 @@ class NativeAnalysisEngine
     void on_database_event(int event, va_list arguments);
     const NativeAnalysisStats &stats() const;
     NativeInspection inspect(uint64_t function_start) const;
+    NativeConditionInspection inspect_conditions(uint64_t function_start) const;
     X86RegionInspection inspect_region(uint64_t root, bool candidate_decode = false) const;
 
   private:

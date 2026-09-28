@@ -179,6 +179,24 @@ def current_native_publications(snapshot, state):
     }
 
 
+def matching_condition_sources(snapshot):
+    """Source navigation only; matching bytes do not refresh model decisions."""
+    if not snapshot.get("available"):
+        return set()
+    matching = set()
+    for row in snapshot.get("records", []):
+        site, encoded = int(row["site"], 0), row.get("site_bytes", "")
+        owner = ida_funcs.get_func(site)
+        if (
+            encoded
+            and owner is not None
+            and owner.start_ea == int(snapshot["function"], 0)
+            and ida_bytes.get_bytes(site, len(encoded) // 2) == bytes.fromhex(encoded)
+        ):
+            matching.add(row["site"])
+    return matching
+
+
 def current_native_region(snapshot, state):
     """Exact recomputation of a scoped graph, not ordinary proof publication."""
     return bool(
@@ -238,6 +256,7 @@ def current_solver_sources(snapshot, state):
 def load_inspection(ea):
     snapshot = api("chernobog_evidence_view", ea)
     native = api("chernobog_native_evidence", ea)
+    conditions = api("chernobog_native_condition_diagnostics", ea)
     if not snapshot.get("available"):
         snapshot = {
             "available": False,
@@ -253,6 +272,7 @@ def load_inspection(ea):
             "claims": [],
         }
     snapshot["native"] = native
+    snapshot["conditions"] = conditions
     snapshot["vm"] = api("chernobog_vm_summaries", ea)
     snapshot["vm_states"] = api("chernobog_vm_transitions", ea)
     snapshot["solver"] = api("chernobog_solver_evidence", ea)
@@ -340,6 +360,10 @@ if ida_kernwin.is_idaq():
             self.ea, self.snapshot = ea, snapshot
             self.native = snapshot.get("native") or api("chernobog_native_evidence", ea)
             self.native_current = set()
+            self.conditions = snapshot.get("conditions") or api(
+                "chernobog_native_condition_diagnostics", ea
+            )
+            self.condition_sources = set()
             self.solver_sources_current = set()
             self.vm = snapshot.get("vm") or api("chernobog_vm_summaries", ea)
             self.vm_current = set()
@@ -398,29 +422,39 @@ if ida_kernwin.is_idaq():
                 ("runs", "Run stops"),
                 ("claims", "Branch claims"),
                 ("native", "Native proofs"),
+                ("conditions", "Condition sites"),
                 ("solver", "SMT queries"),
                 ("vm", "VM candidates"),
                 ("vm_states", "VM states"),
             ):
                 table = QtWidgets.QTreeWidget()
                 table.setHeaderLabels(
-                    ["Role / result", "Query", "Source bytes", "Instruction"]
-                    if key == "solver"
+                    ["Use", "Model decision", "Source bytes", "Site"]
+                    if key == "conditions"
                     else (
-                        ["Dispatch / direction", "Shape group", "Recognition", "Source"]
-                        if key == "vm"
+                        ["Role / result", "Query", "Source bytes", "Instruction"]
+                        if key == "solver"
                         else (
-                            ["VIP / key", "Run / seed", "Sequence / validity", "Native candidate"]
-                            if key == "vm_states"
+                            ["Dispatch / direction", "Shape group", "Recognition", "Source"]
+                            if key == "vm"
                             else (
-                                ["Conclusion", "Publication", "Validation", "Source / target"]
-                                if key == "native"
-                                else [
-                                    "Kind / state",
+                                [
+                                    "VIP / key",
                                     "Run / seed",
-                                    "Sequence / lifetime",
-                                    "Source / address",
+                                    "Sequence / validity",
+                                    "Native candidate",
                                 ]
+                                if key == "vm_states"
+                                else (
+                                    ["Conclusion", "Publication", "Validation", "Source / target"]
+                                    if key == "native"
+                                    else [
+                                        "Kind / state",
+                                        "Run / seed",
+                                        "Sequence / lifetime",
+                                        "Source / address",
+                                    ]
+                                )
                             )
                         )
                     )
@@ -461,6 +495,7 @@ if ida_kernwin.is_idaq():
             sites = sorted(
                 {row[key] for row in self.edges for key in ("site", "target")}
                 | {r["site"] for r in self.native.get("records", [])}
+                | {r["site"] for r in self.conditions.get("records", [])}
                 | {r[key] for r in self.vm.get("records", []) for key in ("site", "dispatch")}
                 | {
                     r["site"]
@@ -495,6 +530,7 @@ if ida_kernwin.is_idaq():
             for key in ("lifetimes", "runs", "claims", "read_streams"):
                 self.populate(key, self.snapshot.get(key, []))
             self.populate("native", self.native.get("records", []))
+            self.populate("conditions", self.conditions.get("records", []))
             self.populate("solver", self.queries.get("records", []))
             self.populate("vm", self.vm.get("records", []))
             self.populate("vm_states", self.vm_states.get("states", []))
@@ -521,6 +557,13 @@ if ida_kernwin.is_idaq():
                     order += " .. " + ("live" if row["live"] == "true" else row["released"])
                 if key == "read_streams":
                     order = row["first_sequence"] + " .. " + row["last_sequence"]
+                if key == "conditions":
+                    item = QtWidgets.QTreeWidgetItem(
+                        [kind, row["decision"], "captured", row["site"]]
+                    )
+                    item.setData(0, QtCore.Qt.ItemDataRole.UserRole, row)
+                    table.addTopLevelItem(item)
+                    continue
                 columns = (
                     [
                         row["dispatch_kind"] + " / " + row["direction"],
@@ -625,6 +668,8 @@ if ida_kernwin.is_idaq():
             )
 
         def record_current(self, row):
+            if "decision" in row and "site_bytes" in row:
+                return row["site"] in self.condition_sources
             if "vm_state" in row:
                 return self.vm_states_current and row["vm_candidate"] in self.vm_state_candidates
             if "vm_candidate" in row:
@@ -680,7 +725,7 @@ if ida_kernwin.is_idaq():
                     row.get(k) for k in ("run", "seed", "allocation", "generation")
                 )
                 self.update_events()
-            elif key in ("claims", "native", "solver", "vm"):
+            elif key in ("claims", "native", "conditions", "solver", "vm"):
                 self.site, self.run, self.allocation = row["site"], None, None
                 self.run_filter.setCurrentIndex(0)
                 self.update_events()
@@ -724,6 +769,11 @@ if ida_kernwin.is_idaq():
                 },
                 "selected": row,
             }
+            if "decision" in row and "site_bytes" in row:
+                detail.pop("current")
+                detail["source_bytes_current"] = self.record_current(row)
+                detail["decision_current"] = "recompute with Reload"
+                detail["condition_scope"] = self.conditions.get("scope")
             if "query_id" in row:
                 detail.pop("current")
                 detail["source_bytes_current"] = self.record_current(row)
@@ -923,6 +973,7 @@ if ida_kernwin.is_idaq():
                 )
             except (RuntimeError, ValueError):
                 self.native_current = set()
+            self.condition_sources = matching_condition_sources(self.conditions)
             try:
                 self.solver_sources_current = current_solver_sources(
                     self.queries, api("chernobog_solver_state", self.ea)
@@ -981,6 +1032,18 @@ if ida_kernwin.is_idaq():
                         else "historical / invalidated"
                     ),
                 )
+            condition_table = self.tables["conditions"]
+            for index in range(condition_table.topLevelItemCount()):
+                item = condition_table.topLevelItem(index)
+                row = item.data(0, QtCore.Qt.ItemDataRole.UserRole)
+                item.setText(
+                    2,
+                    (
+                        "match; reload decision"
+                        if row["site"] in self.condition_sources
+                        else "changed / unavailable"
+                    ),
+                )
             self.status.setText(
                 reason
                 + " | native current "
@@ -989,6 +1052,12 @@ if ida_kernwin.is_idaq():
                 + str(len(self.native.get("records", [])))
                 + " (omitted "
                 + str(self.native.get("omitted", 0))
+                + ") | condition sites "
+                + str(len(self.conditions.get("records", [])))
+                + "/"
+                + str(self.conditions.get("condition_sites", 0))
+                + " (truncated "
+                + str(self.conditions.get("truncated", False))
                 + ") | function "
                 + self.snapshot["function"]
                 + " | SMT queries "
@@ -1053,6 +1122,7 @@ if ida_kernwin.is_idaq():
                     return
                 self.snapshot = snapshot
                 self.native = snapshot["native"]
+                self.conditions = snapshot["conditions"]
                 self.queries = snapshot["solver"]
                 self.vm = snapshot["vm"]
                 self.vm_states = snapshot["vm_states"]
@@ -2047,6 +2117,7 @@ class EvidenceAction(ida_kernwin.action_handler_t):
             if (
                 not snapshot.get("available")
                 and not snapshot["native"].get("records")
+                and not snapshot["conditions"].get("records")
                 and not snapshot["solver"].get("records")
                 and not snapshot["vm"].get("records")
             ):

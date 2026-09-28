@@ -1631,6 +1631,111 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         return result;
     }
 
+    NativeConditionInspection inspect_conditions(uint64_t function_start) const
+    {
+        NativeConditionInspection result;
+        result.database = int64_t(get_dbctx_id());
+        result.function = function_start;
+        func_t *function = get_func(ea_t(function_start));
+        if (result.database != owner_database || closing_database || replaying_undo ||
+            pending_ownership_recovery || native_mutation_depth != 0 || !config.enabled ||
+            function == nullptr || function->start_ea != function_start)
+            return result;
+        result.available = true;
+        const auto hex = [](uint64_t value)
+        {
+            std::ostringstream out;
+            out << "0x" << std::hex << value;
+            return out.str();
+        };
+        static constexpr char digits[] = "0123456789abcdef";
+        function_item_iterator_t items;
+        for (bool valid = items.set(function->start_ea); valid; valid = items.next_code())
+        {
+            if (result.heads_examined == NativeConditionInspection::head_limit)
+            {
+                result.truncated = true;
+                break;
+            }
+            ++result.heads_examined;
+            const ea_t address = items.current();
+            if (!is_code(get_flags(address)))
+                continue;
+            insn_t instruction;
+            if (decode_insn(&instruction, address) <= 0 || instruction.ea != address)
+                continue;
+            const auto condition = x86_condition(instruction.itype);
+            if (!condition)
+                continue;
+            ++result.condition_sites;
+            if (result.records.size() == NativeConditionInspection::site_limit)
+            {
+                ++result.omitted;
+                result.truncated = true;
+                continue;
+            }
+            std::string bytes;
+            bool loaded = true;
+            for (size_t offset = 0; offset < instruction.size; ++offset)
+            {
+                if (!is_loaded(address + offset))
+                {
+                    loaded = false;
+                    break;
+                }
+                const uint8_t value = get_byte(address + offset);
+                bytes += digits[value >> 4];
+                bytes += digits[value & 15];
+            }
+            std::map<std::string, std::string> row{
+                {"site", hex(address)},
+                {"kind", condition->use == X86ConditionUse::branch     ? "branch"
+                         : condition->use == X86ConditionUse::set_byte ? "setcc"
+                                                                       : "cmov"},
+                {"instruction_type", std::to_string(instruction.itype)},
+                {"site_bytes", loaded ? bytes : ""},
+                {"size", std::to_string(instruction.size)},
+                {"decision", "unknown"},
+                {"status", "unresolved"},
+                {"scan_depth", std::to_string(config.flag_scan_depth)},
+                {"support_count", "0"},
+                {"support_omitted", "0"},
+                {"scope",
+                 "bounded owned-function read-only diagnostic; no proof or IDA publication"},
+            };
+            if (!loaded)
+                row["status"] = "site-bytes-unavailable";
+            else if (!x86_condition_prefix_supported(instruction))
+                row["status"] = "unsupported-prefix";
+            else
+            {
+                const auto fact =
+                    analyze_x86_condition_before(instruction, size_t(config.flag_scan_depth));
+                row["flags_known"] = hex(fact.flags.known);
+                row["flags_value"] = hex(fact.flags.value);
+                row["condition_basis"] =
+                    fact.alternatives ? "universal-alternatives" : "joined-or-prefix-flags";
+                row["condition_widened"] = fact.widened ? "true" : "false";
+                row["support_count"] = std::to_string(fact.support.size());
+                row["support_omitted"] = std::to_string(
+                    fact.support.size() > NativeConditionInspection::support_limit
+                        ? fact.support.size() - NativeConditionInspection::support_limit
+                        : 0);
+                for (size_t index = 0; index < std::min(fact.support.size(),
+                                                        NativeConditionInspection::support_limit);
+                     ++index)
+                    row["support_" + std::to_string(index)] = hex(fact.support[index]);
+                if (fact.value)
+                {
+                    row["decision"] = *fact.value ? "true" : "false";
+                    row["status"] = "decided-under-model";
+                }
+            }
+            result.records.push_back(std::move(row));
+        }
+        return result;
+    }
+
     X86RegionInspection inspect_region(uint64_t root, bool candidate_decode) const
     {
         X86RegionInspection result;
@@ -3730,6 +3835,12 @@ const NativeAnalysisStats &NativeAnalysisEngine::stats() const
 NativeInspection NativeAnalysisEngine::inspect(uint64_t function_start) const
 {
     return impl_ != nullptr ? impl_->inspect(function_start) : NativeInspection{};
+}
+
+NativeConditionInspection NativeAnalysisEngine::inspect_conditions(uint64_t function_start) const
+{
+    return impl_ != nullptr ? impl_->inspect_conditions(function_start)
+                            : NativeConditionInspection{};
 }
 
 X86RegionInspection NativeAnalysisEngine::inspect_region(uint64_t root, bool candidate_decode) const

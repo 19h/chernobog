@@ -1434,3 +1434,14 @@ false edges. A matched supplied VMP root inspection is unchanged at 75
 nodes, 77 edges and three unresolved facts. All 23 CTest suites pass. See
 `VMP_REP_COMPARE_BOUNDED.md` and its offline-verifiable archive. The full
 review implementation remains in progress.
+
+## Protected condition diagnostic checkpoint
+
+Review rows 2b and 5 now expose bounded, read-only condition decisions for
+existing owned function instructions. Two protected i386 `CMOV` sites and one
+`SETcc` site report unknown model decisions with their exact bytes. Two IDA
+console runs preserve function inventories and native proof lists across
+repeat inspection; an actual Qt run displays the results and checks source
+navigation. The diagnostics do not lower these conditions or claim proof.
+See `VMP_CONDITION_DIAGNOSTICS.md` and its pinned evidence manifest. Broader
+protected effectiveness and the complete review remain in progress.

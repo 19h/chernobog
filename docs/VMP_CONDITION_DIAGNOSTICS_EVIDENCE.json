@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "scope": "read-only owned-function condition diagnostics on two validated protected i386 artifacts; full review remains in progress",
+  "source_sha256": {
+    "src/ida_analysis/native_engine.hpp": "c8e01d1cd05a7cf0f2505db680371b4eee2ced6d91a50711fe1ab57f40a91dd7",
+    "src/ida_analysis/native_engine.cpp": "4b4ff98b52295d4484ec5a389c1b6269ffa80addffb05eec06a555c67dff5a34",
+    "src/ida_analysis/x86_analysis.hpp": "96e24cb78759947b3e0f112a87fd406c7eef35b635e307eeac9af7fcfe696285",
+    "src/ida_analysis/x86_analysis.cpp": "5922909426e6052b6aeac97f651d78821c3029fde009ec4284e641355fd902cb",
+    "src/plugin/idc_api.cpp": "ad26f2726ec3f9a66a633f3e94979dfc7b7fc6f8894383fc058367e3b8148512",
+    "python/chernobog_evidence.py": "ad56f691989cf01d9255d2aa490714dd6453c36dbcc6214585baa189c0416f7d",
+    "tests/ida_condition_diagnostics_probe.py": "1104446b0a35ec27050d0c6e80cf21e7690081bbc234b5f83fead287da590d0d",
+    "tests/ida_condition_diagnostics_gui_probe.py": "b3ffdb0d54da7d84de68256a8fd9a99ca436b66547a400a16c04bace13d6e1d5",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248"
+  },
+  "candidate_plugin_sha256": "625ed907528c756bb4f10108bb7592d06ace852156ccd91d05874b7a65120cf3",
+  "ida_console_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "ida_gui_sha256": "c0ada391b4d241fdef7d28bcbf8a9315f2bcbd94b397227331d3bc38a510e71d",
+  "limits": {"heads": 4096, "sites": 64, "support": 64},
+  "runs": [
+    {
+      "label": "virtualization-0",
+      "input_sha256": "0da574daf01766471ae23496582be42945ed77dec97726de080f68feba45f2d6",
+      "owner": "0x806f37b",
+      "heads_examined": 63,
+      "condition_sites": 3,
+      "selected_sites": ["0x8073520", "0x8089c3f"],
+      "selected_decisions": ["unknown", "unknown"],
+      "read_only": true,
+      "repeat_equal": true,
+      "runner_return_code": 0,
+      "run_sha256": "d7a4371da171da4b9944d1575f11d8f1fcc47d69d05c10bdc972c2b40b2d7954",
+      "report_sha256": "a4fb6f983e62c8eeb428857c4a2e33d4203b392b999b69af1ab57b91f328fdf3"
+    },
+    {
+      "label": "combined-12648430",
+      "input_sha256": "28afeb8f97e7bcd765f60daffbe10719b57caf9c005cc42fdfc883d43a23d5f5",
+      "owner": "0x8053948",
+      "heads_examined": 43,
+      "condition_sites": 1,
+      "selected_sites": ["0x80c8325"],
+      "selected_decisions": ["unknown"],
+      "read_only": true,
+      "repeat_equal": true,
+      "runner_return_code": 0,
+      "run_sha256": "1c445e65c38b44fcab951ee0c505e27459146ff775c86b2cd21b2f26cdb54728",
+      "report_sha256": "407dd2826f1c563d6b8107aaa96d7eeb26e2993d7c828542c762f96a30e9ea21"
+    },
+    {
+      "label": "virtualization-0-qt",
+      "input_sha256": "0da574daf01766471ae23496582be42945ed77dec97726de080f68feba45f2d6",
+      "owner": "0x806f37b",
+      "checks_passed": 3,
+      "checks_total": 3,
+      "runner_return_code": 0,
+      "run_sha256": "25e0463c5fe7ae3c7aea2c193bb84b92ad3fa14c1a6f592f174c685ebf213259",
+      "report_sha256": "c8bbb2b09c95e8aa33b42a111832fa769e83a0bcf579f6e5d4921a56211b1eed"
+    }
+  ],
+  "test_scope": "console inventory/proof stability and exact site decisions; one actual IDA Qt display and source selection; no protected lowering or ownerless census claim"
+}

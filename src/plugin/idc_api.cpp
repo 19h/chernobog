@@ -1420,6 +1420,30 @@ error_t idaapi idc_native_evidence(idc_value_t *argv, idc_value_t *r)
     return eOk;
 }
 
+error_t idaapi idc_native_condition_diagnostics(idc_value_t *argv, idc_value_t *r)
+{
+    const ea_t function = resolve_function(argv[0]);
+    Host *host = current_host();
+    const auto *engine = host ? host->native_analysis_engine() : nullptr;
+    const auto view = engine && function != BADADDR ? engine->inspect_conditions(uint64_t(function))
+                                                    : ida_analysis::NativeConditionInspection{};
+    std::ostringstream out;
+    out << "{\"schema\":1,\"available\":" << (view.available ? "true" : "false")
+        << ",\"database\":" << inspection_json_quote(std::to_string(view.database))
+        << ",\"function\":" << inspection_json_quote(hybrid::view_hex(view.function))
+        << ",\"heads_examined\":" << view.heads_examined
+        << ",\"condition_sites\":" << view.condition_sites << ",\"omitted\":" << view.omitted
+        << ",\"truncated\":" << (view.truncated ? "true" : "false")
+        << ",\"limits\":{\"heads\":4096,\"sites\":64,\"support\":64}"
+        << ",\"scope\":"
+        << inspection_json_quote(
+               "Read-only bounded owned-function condition diagnostics; model decisions are not lowering proofs or IDA publications");
+    inspection_json_rows(out, "records", view.records);
+    out << '}';
+    r->set_string(out.str().c_str());
+    return eOk;
+}
+
 error_t native_region_facts(idc_value_t *argv, idc_value_t *r, bool candidate_decode)
 {
     const ea_t root = arg_ea(argv[0]);
@@ -2053,6 +2077,9 @@ const idc_entry_t idc_entries[] = {
      "Inspection identity and exact freshness without rebuilding the view"},
     {"chernobog_native_evidence", idc_native_evidence, args_ea, "chernobog_native_evidence(ea)",
      "Read-only native conclusions with current dependency and recognizer checks"},
+    {"chernobog_native_condition_diagnostics", idc_native_condition_diagnostics, args_ea,
+     "chernobog_native_condition_diagnostics(ea)",
+     "Read-only bounded owned-function condition sites and model decisions; no proof publication"},
     {"chernobog_native_region_facts", idc_native_region_facts, args_ea,
      "chernobog_native_region_facts(root_ea)",
      "Read-only root-scoped ownerless graph facts; preserves both direct successors and never publishes IDA edges"},
