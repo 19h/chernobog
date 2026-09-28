@@ -1901,8 +1901,9 @@ error_t idaapi idc_rule_inputs(idc_value_t *, idc_value_t *r)
 {
     const auto value = mba_diagnostics::snapshot(true);
     std::ostringstream out;
-    out << "{\"schema\":1,\"events\":" << value.input_events
-        << ",\"unrecorded\":" << value.input_unrecorded << ",\"counts\":{";
+    out << "{\"schema\":2,\"sample_limit\":" << value.input_limit
+        << ",\"events\":" << value.input_events << ",\"unrecorded\":" << value.input_unrecorded
+        << ",\"counts\":{";
     for (size_t index = 0; index < mba_diagnostics::capture_status_count; ++index)
     {
         if (index)

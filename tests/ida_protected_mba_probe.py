@@ -309,7 +309,8 @@ except BaseException as error:
         tb = tb.tb_next
     report["exception_frames"] = frames
 payload = json.dumps(report, indent=2) + "\n"
-if len(payload.encode()) > 8388608:
+report_byte_limit = 33554432 if os.environ.get("CHERNOBOG_MBA_INPUT_LIMIT") == "1024" else 8388608
+if len(payload.encode()) > report_byte_limit:
     report["passed"] = False
     report["errors"].append("report byte quota")
     for row in [

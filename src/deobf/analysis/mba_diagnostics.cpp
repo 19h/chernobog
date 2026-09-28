@@ -1,6 +1,7 @@
 #include "mba_diagnostics.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <mutex>
 #include <sstream>
 
@@ -10,6 +11,17 @@ namespace
 {
 std::mutex counters_mutex;
 Snapshot counters;
+
+size_t input_sample_limit()
+{
+    static const size_t limit = []
+    {
+        const char *value = std::getenv("CHERNOBOG_MBA_INPUT_LIMIT");
+        return value && std::string_view(value) == "1024" ? expanded_input_sample_limit
+                                                          : sample_limit;
+    }();
+    return limit;
+}
 
 bool same_site(const Site &a, const Site &b)
 {
@@ -115,7 +127,7 @@ void record(Outcome outcome, Site site, uint64_t indexed_patterns, uint64_t stru
         }
         if (!found)
         {
-            if (counters.inputs.size() == sample_limit)
+            if (counters.inputs.size() == input_sample_limit())
                 ++counters.input_unrecorded;
             else
                 counters.inputs.push_back(
@@ -157,6 +169,7 @@ Snapshot snapshot(bool include_inputs)
     result.samples = counters.samples;
     if (include_inputs)
     {
+        result.input_limit = input_sample_limit();
         result.input_counts = counters.input_counts;
         result.input_events = counters.input_events;
         result.input_unrecorded = counters.input_unrecorded;

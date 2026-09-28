@@ -1,5 +1,6 @@
 #include "deobf/analysis/mba_diagnostics.hpp"
 
+#include <cstdlib>
 #include <iostream>
 #include <numeric>
 #include <stdexcept>
@@ -113,15 +114,19 @@ int main()
         reset();
         account(snapshot());
         const CapturedInput input{CaptureStatus::Complete, "{\"root\":1}"};
-        for (size_t i = 0; i < sample_limit + 1; ++i)
+        const char *expanded = std::getenv("CHERNOBOG_MBA_INPUT_LIMIT");
+        const size_t input_limit = expanded && std::string_view(expanded) == "1024"
+                                       ? expanded_input_sample_limit
+                                       : sample_limit;
+        for (size_t i = 0; i < input_limit + 1; ++i)
         {
             const CapturedInput different{CaptureStatus::Complete, std::to_string(i)};
             record(Outcome::StructuralMismatch, site, 1, 0, 0, 0, {}, {}, &different);
         }
         auto inputs = snapshot(true);
-        require(inputs.inputs.size() == sample_limit && inputs.input_events == sample_limit + 1 &&
-                    inputs.input_unrecorded == 1 && inputs.samples.size() == 1 &&
-                    inputs.samples[0].count == sample_limit + 1,
+        require(inputs.input_limit == input_limit && inputs.inputs.size() == input_limit &&
+                    inputs.input_events == input_limit + 1 && inputs.input_unrecorded == 1 &&
+                    inputs.samples.size() == 1 && inputs.samples[0].count == input_limit + 1,
                 "independent input quota preserves old aggregation");
         const CapturedInput repeated{CaptureStatus::Complete, "0"};
         record(Outcome::StructuralMismatch, site, 1, 0, 0, 0, {}, {}, &repeated);

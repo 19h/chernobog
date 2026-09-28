@@ -502,6 +502,7 @@ def main():
     parser.add_argument("--legacy-diagnostics", action="store_true")
     parser.add_argument("--native-analysis", action="store_true")
     parser.add_argument("--matcher-inputs", action="store_true")
+    parser.add_argument("--input-limit", type=int, choices=(64, 1024), default=64)
     parser.add_argument(
         "--workers", type=int, default=2, help="Concurrent SDK processes, from 1 to 2"
     )
@@ -519,12 +520,16 @@ def main():
         "matching_diagnostics": not (args.legacy_diagnostics or args.legacy_reasons),
         "native_analysis_disabled": not args.native_analysis,
         "matcher_inputs": args.matcher_inputs,
+        "input_limit": args.input_limit,
         "workers": args.workers,
         "process_timeout_seconds": args.timeout,
     }
     try:
         require(1 <= args.timeout <= 600, "process timeout bound")
         require(1 <= args.workers <= 2, "SDK worker bound")
+        require(
+            args.matcher_inputs or args.input_limit == 64, "input limit requires matcher capture"
+        )
         pins = {ROOT / name: digest(ROOT / name) for name in SOURCES}
         pins[args.ida], pins[args.plugin] = digest(args.ida), digest(args.plugin)
         ida_components = {}
@@ -578,6 +583,8 @@ def main():
                 command += ["--set", "CHERNOBOG_CAPTURE_NATIVE_STATS=1"]
             if args.matcher_inputs:
                 command += ["--set", "CHERNOBOG_MBA_CAPTURE_INPUTS=1"]
+                if args.input_limit != 64:
+                    command += ["--set", f"CHERNOBOG_MBA_INPUT_LIMIT={args.input_limit}"]
             if disabled:
                 command += ["--set", "CHERNOBOG_DISABLE=1"]
             if args.legacy_reasons:
@@ -610,6 +617,17 @@ def main():
                 ("matcher_catalog" in probe) == args.matcher_inputs,
                 "matcher input profile attribution",
             )
+            if args.matcher_inputs:
+                for item in probe["entries"]:
+                    for row in (item, item.get("body")):
+                        if row is None:
+                            continue
+                        for stage in row["stages"]:
+                            require(
+                                stage["statistics"]["matching_inputs"]["sample_limit"]
+                                == args.input_limit,
+                                "requested input limit differs from SDK capture",
+                            )
             require(probe["architecture"] == corpus["architecture"], "SDK architecture")
             totals = check_probe(
                 probe,

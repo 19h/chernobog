@@ -84,6 +84,15 @@ def audit(current_path, baseline_path):
                 after_outcomes.update(diagnostic(b, new, key[2])["counts"])
                 stats = b["statistics"]
                 inventory = stats["matching_inputs"]
+                prior_inventory = a["statistics"]["matching_inputs"]
+                require(
+                    inventory["events"] == prior_inventory["events"]
+                    and inventory["counts"] == prior_inventory["counts"]
+                    and inventory["samples"][: len(prior_inventory["samples"])]
+                    == prior_inventory["samples"],
+                    "expanded matcher input prefix changed",
+                )
+                counts["input_prefix_stages"] += 1
                 samples = validate_inputs(
                     inventory, stats, new["entry"], b["maturity"], key[2], model, patterns
                 )
@@ -125,7 +134,7 @@ def audit(current_path, baseline_path):
         "admissions": admissions,
         "current_report_sha256": digest(current_path),
         "baseline_report_sha256": digest(baseline_path),
-        "scope": "matched selected native rows and captured typed trees remain equal; extra transient verified flag admissions reduce catalog attempts; no protected recovery or whole-program semantic gain established",
+        "scope": "matched selected native rows, captured typed trees, matcher outcomes and retained input prefixes remain equal; no protected recovery or whole-program semantic gain established",
     }
 
 

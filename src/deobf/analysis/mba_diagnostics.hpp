@@ -29,6 +29,7 @@ enum class Outcome
 
 constexpr size_t outcome_count = static_cast<size_t>(Outcome::Count);
 constexpr size_t sample_limit = 64;
+constexpr size_t expanded_input_sample_limit = 1024;
 constexpr size_t detail_byte_limit = 256;
 constexpr size_t rule_byte_limit = 128;
 constexpr size_t binding_limit = 4;
@@ -95,6 +96,7 @@ struct Snapshot
     };
     std::array<uint64_t, capture_status_count> input_counts{};
     uint64_t input_events = 0, input_unrecorded = 0;
+    size_t input_limit = sample_limit;
     std::vector<InputSample> inputs;
 };
 

@@ -501,11 +501,19 @@ def local_constants(value, model):
 
 
 def validate_inputs(value, statistics, entry, maturity, disabled, model, patterns):
+    schema = value.get("schema")
     require(
-        set(value) == {"schema", "events", "unrecorded", "counts", "samples"}
-        and value["schema"] == 1,
+        (schema == 1 and set(value) == {"schema", "events", "unrecorded", "counts", "samples"})
+        or (
+            schema == 2
+            and set(value)
+            == {"schema", "sample_limit", "events", "unrecorded", "counts", "samples"}
+            and type(value["sample_limit"]) is int
+            and value["sample_limit"] in (64, 1024)
+        ),
         "input inventory schema",
     )
+    limit = value.get("sample_limit", 64)
     require(set(value["counts"]) == set(STATUSES), "capture status population")
     for count in (*value["counts"].values(), value["events"], value["unrecorded"]):
         integer(count)
@@ -514,8 +522,8 @@ def validate_inputs(value, statistics, entry, maturity, disabled, model, pattern
         "input event accounting",
     )
     samples = value["samples"]
-    require(type(samples) is list and len(samples) <= 64, "input key quota")
-    require(len(samples) == 64 or value["unrecorded"] == 0, "premature input omission")
+    require(type(samples) is list and len(samples) <= limit, "input key quota")
+    require(len(samples) == limit or value["unrecorded"] == 0, "premature input omission")
     require(
         sum(s["count"] for s in samples) + value["unrecorded"] == value["events"],
         "input retained accounting",
@@ -577,5 +585,5 @@ def validate_inputs(value, statistics, entry, maturity, disabled, model, pattern
         )
     else:
         adjusted = statistics
-    validate_matching(synthetic, adjusted, entry, maturity, disabled)
+    validate_matching(synthetic, adjusted, entry, maturity, disabled, sample_limit=limit)
     return samples

@@ -102,7 +102,7 @@ def parse_match_failure(reason):
     return result
 
 
-def validate_matching(value, statistics, entry, maximum_maturity, disabled):
+def validate_matching(value, statistics, entry, maximum_maturity, disabled, sample_limit=64):
     require(value["schema"] == 1, "matching diagnostic schema")
     counts = value["counts"]
     require(set(counts) == set(OUTCOMES), "matching outcome population")
@@ -110,9 +110,10 @@ def validate_matching(value, statistics, entry, maximum_maturity, disabled):
         require(type(count) is int and count >= 0, "matching nonnegative integer count")
     require(sum(counts.values()) == value["events"], "matching outcome accounting")
     require(value["events"] == statistics["total_matches"], "matching attempt accounting")
-    require(len(value["samples"]) <= 64, "matching sample quota")
+    require(sample_limit in (64, 1024), "matching sample limit")
+    require(len(value["samples"]) <= sample_limit, "matching sample quota")
     require(
-        len(value["samples"]) == 64 or value["unrecorded"] == 0,
+        len(value["samples"]) == sample_limit or value["unrecorded"] == 0,
         "matching premature unrecorded events",
     )
     observed = {name: 0 for name in OUTCOMES}
