@@ -39,6 +39,12 @@ Its SHA-256 is
 `342fae9503234c785bf071957b034a787173f6e6022d0b1b3509ae214b2b24ca`.
 The companion evidence manifest pins source, tool, image and runner hashes.
 
+A subsequent QEMU `exec,nochain` census of the exact supplied ELF logs no
+block start in its 262,144-byte native-pack section for these five inputs,
+while a distinct fixed-seed protected control logs 9,638 such blocks. See
+`VMP_SUPPLIED_MOROK_PACKED_CENSUS.md`. Finite process-output agreement is
+therefore not evidence of packed-section execution on these paths.
+
 The container has no network, no capabilities, a read-only root, a 512 MiB
 memory limit, 64-process limit, 16 MiB temporary filesystem, 2 MiB output
 limit per stream and a 15 s wrapper timeout per attempted pair. Accepted

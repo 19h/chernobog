@@ -1521,3 +1521,16 @@ and five discarded temporal attempts remain in the captured report. See
 `VMP_SUPPLIED_MOROK_KEYGEN_BEHAVIOR.md` and its evidence and capture files.
 Source-to-artifact lineage, other inputs, internal states and protected
 recovery remain unknown or in progress.
+
+## Supplied Morok packed-path census checkpoint
+
+Review rows 0b and V now distinguish pack-format validity from observed
+packed-section execution for the exact supplied keygen. Across five
+completed input cases, QEMU 10.0.13 `exec,nochain` records 4,920,111
+translated-block starts, none inside its 262,144-byte packed section. The
+same image and log options record 9,638 starts in the packed section of a
+distinct fixed-seed positive control. Complete raw traces, stdout/stderr,
+ELF range identities and an offline PC-mutation verifier are retained in
+`VMP_SUPPLIED_MOROK_PACKED_CENSUS.md` and its capture archive. Forked-child
+trace coverage, other inputs and Chernobog recovery remain unknown or in
+progress; the full review is incomplete.

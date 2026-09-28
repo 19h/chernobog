@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "scope": "QEMU 10.0.13 exec,nochain block-start census for five supplied-keygen inputs and one distinct fixed-seed packed positive control",
+  "source_sha256": {
+    "tests/run_morok_packed_execution_census.py": "a7f89e7024f1fce74acce7aa974a68d08754ccac40e47b5d13deed30a72dffd5",
+    "tests/verify_morok_packed_execution_census.py": "e22eda9e42571b6c6f90a8a74ad8c6f4bbf7b6364e20e01e9bdd5c8e9dff9015",
+    "tests/run_morok_keygen_control.py": "be8e2cfef178582ee7647d5bf665fd2d04750abbca21b0b6283ee7f13c13153c"
+  },
+  "binary_sha256": {
+    "supplied": "7d1971b1db221174caac0a5922a7452e1bebe214ca2355ab36c889a635699fd9",
+    "fixed_seed_positive": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae"
+  },
+  "fixed_seed_build_report_sha256": "f41301ca38b60e7330c5896cb5ef0acf15ec2e44076367e28ad2f51f80296a81",
+  "docker_sha256": "70d5a06adf388bd09b652f47ddc9ca31663a3e5353d24188bdb0054b3014ab3e",
+  "qemu_binary_sha256": "9af86352fd463ad9ec25bdd6a4b891ac6b6a7f3d46a7db3da6f23e2c09094a59",
+  "image": {
+    "id": "sha256:a4d366ca019230fb6e3f0423bf0cbebaab63d7f32336f19ab007cb18063a7d12",
+    "architecture": "arm64",
+    "os": "linux"
+  },
+  "qemu_version": "10.0.13",
+  "qemu_log_options": "exec,nochain",
+  "regions": {
+    "supplied": {
+      "address": "0x4c0000",
+      "end": "0x500000",
+      "file_offset_bytes": 786432,
+      "file_size_bytes": 262144,
+      "file_sha256": "119e147cb06e47eb427e2f4ee6d1ff8b0eda601520d71b16882477f38bb9a42d"
+    },
+    "fixed_seed_positive": {
+      "address": "0x430000",
+      "end": "0x440000",
+      "file_offset_bytes": 196608,
+      "file_size_bytes": 65536,
+      "file_sha256": "bf85bf0f311c33ee8137644a8c513c3aa1582f0e225dd03a19b663cc270bd385"
+    }
+  },
+  "report_sha256": "5e21eed122d3e7f707ab59f2cd78117a3b7c08bb1a4fef4f777925c61d18a086",
+  "raw_capture_sha256": "ca331305f90453a5ece6097a8bb63ddaa67379fdc44e37391ff4d4d25bca1f1d",
+  "supplied_runs": 5,
+  "supplied_logged_blocks": 4920111,
+  "supplied_packed_blocks": 0,
+  "positive_logged_blocks": 38870,
+  "positive_packed_blocks": 9638,
+  "positive_first_packed_pc": "0x430000",
+  "raw_trace_bytes": 352088821,
+  "offline_verification_passed": true,
+  "changed_pc_rejected_after_hash_update": true
+}

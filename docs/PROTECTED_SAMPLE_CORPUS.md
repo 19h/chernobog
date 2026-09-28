@@ -52,6 +52,13 @@ three valid cases reach password output. See
 behavioral match does not establish the supplied binary's build lineage or
 an original executable counterpart.
 
+The later `VMP_SUPPLIED_MOROK_PACKED_CENSUS.md` retains full QEMU
+`exec,nochain` traces for those five inputs. None logs a block start inside
+the supplied keygen's packed executable section; a distinct fixed-seed
+packed keygen positive control does. The supplied artifact's pack-format
+audit and its tested output behavior remain separate from executed packed
+path coverage.
+
 ## Assumption register and bounded expansion
 
 | ID | Assumption and dependent result | Stress test or falsification probe |
