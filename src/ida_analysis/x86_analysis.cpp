@@ -1424,13 +1424,19 @@ struct State
         const Slice a = register_slice(insn.Op1), b = register_slice(insn.Op2);
         const bool same =
             a.reg >= 0 && a.reg == b.reg && a.width == b.width && a.offset == b.offset;
+        const auto register_result =
+            a.reg >= 0 && b.reg >= 0 && a.width == width && b.width == width
+                ? bitwise_register_result(algebra, width, regs[size_t(a.reg)], a.offset,
+                                          regs[size_t(b.reg)], b.offset, same)
+                : std::nullopt;
         const auto result = transfer(algebra, width, algebra_left, algebra_right, same, flags);
-        if (algebra == Operation::test && a.reg >= 0 && a.width == width &&
-            ((insn.Op2.type == o_imm && algebra_right) || same))
+        if (algebra == Operation::test && register_result)
+            partial_result_flags(flags, *register_result, width);
+        else if (algebra == Operation::test && a.reg >= 0 && a.width == width &&
+                 insn.Op2.type == o_imm && algebra_right)
         {
             Word tested = regs[size_t(a.reg)];
-            if (!same)
-                and_constant(tested, a.width, a.offset, *algebra_right, false);
+            and_constant(tested, a.width, a.offset, *algebra_right, false);
             partial_result_flags(flags, tested, a.width, a.offset);
         }
         if (algebra != Operation::compare && algebra != Operation::test &&
@@ -1452,6 +1458,13 @@ struct State
                     xor_constant(destination, a.width, a.offset, *algebra_right, is64);
                 // CF/OF are already cleared and AF remains unknown by transfer().
                 partial_result_flags(flags, destination, a.width, a.offset);
+            }
+            else if (register_result)
+            {
+                if (a.reg == 4)
+                    stack.clear();
+                regs[size_t(a.reg)].write_partial(a.width, a.offset, *register_result, is64);
+                partial_result_flags(flags, *register_result, width);
             }
             else
                 write(insn.Op1, result, is64);

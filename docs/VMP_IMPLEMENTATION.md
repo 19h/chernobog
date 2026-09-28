@@ -1483,3 +1483,17 @@ restoration recovers the new result. The prior logic fixture, independently
 decoded 97-head protected root and all 23 CTest suites pass. See
 `VMP_PARTIAL_STATUS.md` and its retained capture. Full protected recovery
 and the remaining review items remain in progress.
+
+## Two-register partial logic checkpoint
+
+Review rows 2a and 2b now preserve partial facts through register-to-register
+`AND`, `OR`, `XOR` and `TEST`, including the correlated identical-slice XOR
+case and x86-64 zero extension. An exhaustive four-bit two-input oracle
+checks 6,561 profile pairs and 262,144 compatible concrete result pairs.
+Native x86-64/i386 fixtures each pass 330,752 results. Matched fresh IDA
+runs gain 13 exact `SETcc` values per architecture, retain one prior
+reflexive-XOR proof and leave three dynamic controls unresolved. The earlier
+partial-status fixtures, independently decoded 97-head protected root and
+all 23 CTest suites pass. See `VMP_REGISTER_LOGIC.md` and its retained
+capture. Full protected recovery and remaining review items remain in
+progress.

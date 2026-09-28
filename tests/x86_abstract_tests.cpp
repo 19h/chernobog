@@ -198,6 +198,80 @@ void repeated_memory_regressions()
             }
         }
     }
+    const auto nibble_profile = [](unsigned encoding)
+    {
+        Word result{0xf0, 0};
+        for (unsigned bit = 0; bit < 4; ++bit, encoding /= 3)
+        {
+            const unsigned digit = encoding % 3;
+            if (digit)
+            {
+                result.known |= uint64_t{1} << bit;
+                if (digit == 2)
+                    result.value |= uint64_t{1} << bit;
+            }
+        }
+        result.value |= (~result.known) & 15;
+        return result;
+    };
+    for (unsigned left_profile = 0; left_profile < 81; ++left_profile)
+        for (unsigned right_profile = 0; right_profile < 81; ++right_profile)
+        {
+            const Word left = nibble_profile(left_profile);
+            const Word right = nibble_profile(right_profile);
+            for (Operation op :
+                 {Operation::bit_and, Operation::bit_or, Operation::bit_xor, Operation::test})
+            {
+                const auto actual = bitwise_register_result(op, 8, left, 0, right, 0, false);
+                unsigned all_one = 255, all_zero = 255;
+                for (unsigned a = 0; a < 16; ++a)
+                {
+                    if ((a & left.known) != (left.value & left.known))
+                        continue;
+                    for (unsigned b = 0; b < 16; ++b)
+                    {
+                        if ((b & right.known) != (right.value & right.known))
+                            continue;
+                        const unsigned result = op == Operation::bit_or    ? a | b
+                                                : op == Operation::bit_xor ? a ^ b
+                                                                           : a & b;
+                        all_one &= result;
+                        all_zero &= ~result;
+                    }
+                }
+                check(actual && actual->known == ((all_one | all_zero) & 255) &&
+                          actual->value == all_one,
+                      "two partial register operands match every concrete pair");
+            }
+        }
+    const Word same_partial{UINT64_C(0xfffffffffffffffe), 0};
+    const auto same_xor =
+        bitwise_register_result(Operation::bit_xor, 32, same_partial, 0, same_partial, 0, true);
+    check(same_xor && same_xor->known == UINT32_MAX && same_xor->value == 0,
+          "reflexive XOR retains the correlated zero result");
+    const auto mixed_slices =
+        bitwise_register_result(Operation::bit_or, 8, Word{UINT64_C(0xff00), UINT64_C(0x1200)}, 8,
+                                Word{UINT64_C(0xff), UINT64_C(0x34)}, 0, false);
+    check(mixed_slices && mixed_slices->read(8) == 0x36,
+          "distinct high-byte and low-byte register slices retain their offsets");
+    check(!bitwise_register_result(Operation::add, 8, Word{}, 0, Word{}, 0, false) &&
+              !bitwise_register_result(Operation::bit_and, 64, Word{}, 1, Word{}, 0, false),
+          "unsupported operation and invalid register slice abstain");
+    Word partial_write{UINT64_MAX, UINT64_MAX};
+    partial_write.write_partial(16, 0, Word{UINT64_C(0xfffe), UINT64_C(0x1201)}, true);
+    check(partial_write.known == (UINT64_MAX ^ uint64_t{1}) &&
+              partial_write.value == ((UINT64_MAX & ~UINT64_C(0xffff)) | UINT64_C(0x1200)),
+          "partial write masks poisoned unknown bits and preserves other slices");
+    partial_write.write_partial(32, 0, Word{1, 1}, true);
+    check(partial_write.known == UINT64_C(0xffffffff00000001) && partial_write.value == 1,
+          "partial 32-bit write zero-extends a partially known value");
+    partial_write = {UINT64_MAX ^ UINT64_C(0xff00), UINT64_MAX ^ UINT64_C(0xff00)};
+    partial_write.write_partial(8, 8, Word{UINT64_C(0xfe), UINT64_C(0x11)}, true);
+    check(partial_write.known == (UINT64_MAX ^ UINT64_C(0x0100)) &&
+              partial_write.value == ((UINT64_MAX ^ UINT64_C(0xff00)) | UINT64_C(0x1000)),
+          "partial AH write preserves other bytes and discards unknown source value bits");
+    partial_write.write_partial(64, 1, Word{}, true);
+    check(partial_write.known == 0, "invalid partial destination slice rejects register fact");
     Word partial{UINT64_MAX, UINT64_MAX};
     and_constant(partial, 8, 8, 0x12, true);
     check(partial.read(64) == UINT64_C(0xffffffffffff12ff),

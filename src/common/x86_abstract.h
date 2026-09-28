@@ -198,6 +198,20 @@ struct Word
             value &= UINT64_C(0xffffffff);
         }
     }
+
+    void write_partial(unsigned bits, unsigned offset, const Word &source, bool zero_extend_32)
+    {
+        if (!valid_width(bits) || offset > 64 - bits)
+        {
+            *this = {};
+            return;
+        }
+        const uint64_t known_bits = source.known & mask(bits);
+        const uint64_t value_bits = source.value & known_bits;
+        write(bits, offset, std::nullopt, zero_extend_32);
+        known |= known_bits << offset;
+        value |= value_bits << offset;
+    }
 };
 
 // Immediate AND fixes every masked-out bit even when the register is partial.
@@ -396,6 +410,47 @@ enum class Operation : uint8_t
     set_carry,
     complement_carry,
 };
+
+// Two register slices have independent unknown bits except when they are the
+// exact same slice. Return a result aligned to bit zero; the caller handles
+// destination aliasing and x86-64 zero extension after both inputs are read.
+inline std::optional<Word> bitwise_register_result(Operation op, unsigned bits, const Word &left,
+                                                   unsigned left_offset, const Word &right,
+                                                   unsigned right_offset, bool same_operand)
+{
+    if (!valid_width(bits) || left_offset > 64 - bits || right_offset > 64 - bits ||
+        (op != Operation::bit_and && op != Operation::bit_or && op != Operation::bit_xor &&
+         op != Operation::test))
+        return std::nullopt;
+    const uint64_t m = mask(bits);
+    const uint64_t a_known = (left.known >> left_offset) & m;
+    const uint64_t b_known = (right.known >> right_offset) & m;
+    const uint64_t a_value = (left.value >> left_offset) & a_known;
+    const uint64_t b_value = (right.value >> right_offset) & b_known;
+    if (same_operand && op == Operation::bit_xor)
+        return Word{m, 0};
+    uint64_t known, value;
+    if (op == Operation::bit_and || op == Operation::test)
+    {
+        const uint64_t one = a_value & b_value;
+        const uint64_t zero = (a_known & ~a_value) | (b_known & ~b_value);
+        known = one | zero;
+        value = one;
+    }
+    else if (op == Operation::bit_or)
+    {
+        const uint64_t one = a_value | b_value;
+        const uint64_t zero = a_known & b_known & ~(a_value | b_value);
+        known = one | zero;
+        value = one;
+    }
+    else
+    {
+        known = a_known & b_known;
+        value = (a_value ^ b_value) & known;
+    }
+    return Word{known & m, value & m};
+}
 
 inline void result_flags(Flags &flags, uint64_t result, unsigned width)
 {
