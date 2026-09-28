@@ -33,6 +33,10 @@ bool x86_condition_prefix_supported(const insn_t &instruction);
 // with the loaded bytes. Return the actual sign-extended machine-word value.
 std::optional<uint64_t> decode_x86_push_immediate(const insn_t &instruction, unsigned mode_bits);
 
+// Cross-check the unsigned near-RET adjustment against the exact C2 iw bytes.
+// Operand-free near returns retain their existing decoded zero adjustment.
+std::optional<uint16_t> decode_x86_near_return_adjustment(const insn_t &instruction);
+
 // Bounded owned-function must-analysis with architectural direct successors and
 // conservative joins. A complete inventory of at most 4096 heads supplies a
 // predecessor slice of at most min(depth, 64) preceding nodes plus the query. Cut

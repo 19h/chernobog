@@ -24,7 +24,7 @@ CASES = {
     "vt_writable": "unresolved",
     "vt_unknown_index": "unresolved",
     "vt_load_writable": "unresolved",
-    "vt_adjust": "rejected",
+    "vt_adjust": "adjusted",
     "vt_far": "rejected",
     "vt_width": "rejected",
     "vt_alternate": "rejected",
@@ -62,6 +62,17 @@ def jump_targets(ea):
     return result
 
 
+def user_jump_targets(ea):
+    result = set()
+    xref = ida_xref.xrefblk_t()
+    ok = xref.first_from(ea, ida_xref.XREF_ALL)
+    while ok:
+        if xref.iscode and (xref.type & ida_xref.XREF_MASK) == ida_xref.fl_JN and xref.user:
+            result.add(int(xref.to))
+        ok = xref.next_from()
+    return result
+
+
 def finish(code, message):
     line = "[chernobog][stack-transfer] " + message
     print(line, flush=True)
@@ -85,6 +96,17 @@ try:
             errors.append("%s: exact annotation mismatch %r" % (name, comment))
         if expected == "unresolved" and "unresolved target" not in comment:
             errors.append("%s: unresolved annotation absent %r" % (name, comment))
+        if expected == "adjusted" and not all(
+            token in comment
+            for token in (
+                "exact target",
+                "width=64 bits",
+                "net SP delta=+8 bytes",
+                "stack write=8 bytes retained",
+                "adjusted RET edge withheld",
+            )
+        ):
+            errors.append("%s: adjusted stack fact absent %r" % (name, comment))
         if expected == "rejected" and "stack-mediated transfer candidate" in comment:
             errors.append("%s: unsupported pair admitted" % name)
         records.append(
@@ -94,6 +116,7 @@ try:
                 "push": int(push.ea),
                 "return": int(ret),
                 "targets": sorted(edges),
+                "user_targets": sorted(user_jump_targets(ret)),
                 "comment": comment,
             }
         )

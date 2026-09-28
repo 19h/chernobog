@@ -72,7 +72,7 @@ try:
             "vt_unknown_reg": "candidate",
             "vt_alias": "candidate",
             "vt_writable": "candidate",
-            "vt_adjust": None,
+            "vt_adjust": "adjusted-transfer",
             "vt_far": None,
             "vt_width": None,
             "vt_alternate": None,
@@ -110,7 +110,12 @@ try:
             admitted = [
                 r
                 for r in rows
-                if (r["truth"] == "candidate" if expected == "candidate" else r["kind"] == expected)
+                if (
+                    r["truth"] == "candidate"
+                    if expected == "candidate"
+                    else r["kind"]
+                    == ("stack-transfer" if expected == "adjusted-transfer" else expected)
+                )
             ]
             check(
                 name + " current typed conclusion",
@@ -140,6 +145,20 @@ try:
                         and r["width_bits"] == "64"
                         and r["stack_delta_bytes"] == "0"
                         and r["stack_write_bytes"] == "8"
+                        for r in admitted
+                    ),
+                )
+            if expected == "adjusted-transfer":
+                check(
+                    name + " target and adjusted stack without plugin edge",
+                    all(
+                        r["target"] == hex(address("vt_target"))
+                        and r["width_bits"] == "64"
+                        and r["stack_delta_bytes"] == "8"
+                        and r["stack_write_bytes"] == "8"
+                        and r["stack_write_offset_bytes"] == "-8"
+                        and r["edge"] == "false"
+                        and r["truth"] == "native-proof"
                         for r in admitted
                     ),
                 )

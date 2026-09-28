@@ -154,7 +154,7 @@ std::optional<stack_transfer_t> classify_push_return(const instruction_t &push,
 {
     if ((mode != 32 && mode != 64) || push.stack_width_bits != mode ||
         ret.stack_width_bits != mode || ret.kind != instruction_kind_t::return_instruction ||
-        ret.far_transfer || ret.immediate != 0 || ret.alternate_predecessor ||
+        ret.far_transfer || ret.immediate > UINT16_MAX || ret.alternate_predecessor ||
         push.end() == k_bad_address || push.end() != ret.address || ret.end() == k_bad_address ||
         (push.kind != instruction_kind_t::push_immediate &&
          push.kind != instruction_kind_t::push_register &&
@@ -203,6 +203,7 @@ std::optional<stack_transfer_t> classify_push_return(const instruction_t &push,
     result.push = push.address;
     result.transfer = ret.address;
     result.width_bits = mode;
+    result.stack_delta_bytes = int(ret.immediate);
     result.stack_write_bytes = mode / 8;
     result.stack_write_offset_bytes = -int(mode / 8);
     result.target = target;

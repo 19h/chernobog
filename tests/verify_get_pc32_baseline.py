@@ -22,12 +22,17 @@ def main():
     assert not actual["errors"] and not baseline["errors"]
     left = {row["case"]: row for row in actual["records"] if row["case"].endswith(" rejected")}
     right = {row["case"]: row for row in baseline["records"] if row["case"].endswith(" rejected")}
-    assert left.keys() == right.keys() and len(left) == 4
+    assert left.keys() == right.keys() and len(left) == 3
     for name, row in left.items():
         assert row["passed"] and right[name]["passed"], name
         assert row["targets"] == right[name]["targets"], name + " changed baseline edges"
         assert row["comment"] == right[name]["comment"], name + " changed baseline comments"
-    print("[chernobog][get-pc32-baseline] PASS rejected_controls=4")
+    adjusted = next(
+        row for row in actual["records"] if row["case"] == "gp32_extra adjusted metadata"
+    )
+    assert adjusted["passed"] and not adjusted["user_targets"]
+    assert "adjusted RET edge withheld" in adjusted["comment"]
+    print("[chernobog][get-pc32-baseline] PASS rejected_controls=3 adjusted_metadata=1")
 
 
 if __name__ == "__main__":

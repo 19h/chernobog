@@ -469,9 +469,10 @@ std::optional<classifier::stack_transfer_t> classify_ida_push_return(const insn_
     r.size = ret.size;
     r.stack_width_bits = uint16_t(mode);
     r.kind = instruction_kind_t::return_instruction;
-    if (ret.Op1.type != o_void && ret.Op1.type != o_imm)
+    const auto adjustment = decode_x86_near_return_adjustment(ret);
+    if (!adjustment)
         return std::nullopt;
-    r.immediate = ret.Op1.type == o_imm ? ret.Op1.value : 0;
+    r.immediate = *adjustment;
     target_proof_t proof;
     auto tracked = [&](const op_t &operand) -> std::optional<uint64_t>
     {

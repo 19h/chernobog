@@ -52,6 +52,17 @@ def jumps(ea):
     return result
 
 
+def user_jumps(ea):
+    result = set()
+    xref = ida_xref.xrefblk_t()
+    ok = xref.first_from(ea, ida_xref.XREF_ALL)
+    while ok:
+        if xref.iscode and (xref.type & ida_xref.XREF_MASK) == ida_xref.fl_JN and xref.user:
+            result.add(int(xref.to))
+        ok = xref.next_from()
+    return result
+
+
 records, errors, diagnostics = [], [], []
 baseline = os.environ.get("CHERNOBOG_GET_PC32_BASELINE") == "1"
 
@@ -105,10 +116,27 @@ try:
             targets=sorted(jumps(site)),
             comment=comment(site),
         )
+    site = nth("gp32_extra", 1)
+    check(
+        "gp32_extra adjusted metadata",
+        not user_jumps(site)
+        and all(
+            token in comment(site)
+            for token in (
+                "exact target",
+                "width=32 bits",
+                "net SP delta=+4 bytes",
+                "stack write=4 bytes retained",
+                "adjusted RET edge withheld",
+            )
+        ),
+        targets=sorted(jumps(site)),
+        user_targets=sorted(user_jumps(site)),
+        comment=comment(site),
+    )
     for name, index in (
         ("gp32_width", 1),
         ("gp32_far", 1),
-        ("gp32_extra", 1),
         ("gp32_alternate", 3),
     ):
         site = nth(name, index)

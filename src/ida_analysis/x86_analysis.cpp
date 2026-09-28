@@ -41,6 +41,24 @@ std::optional<uint64_t> decode_x86_push_immediate(const insn_t &instruction, uns
                                                    instruction.Op1.value);
 }
 
+std::optional<uint16_t> decode_x86_near_return_adjustment(const insn_t &instruction)
+{
+    if (instruction.itype != NN_retn)
+        return std::nullopt;
+    if (instruction.Op1.type == o_void)
+        return uint16_t{0};
+    if (instruction.Op1.type != o_imm || instruction.size != 3 ||
+        instruction.Op1.value > UINT16_MAX)
+        return std::nullopt;
+    std::array<uint8_t, 3> bytes{};
+    if (get_bytes(bytes.data(), bytes.size(), instruction.ea) != bytes.size() || bytes[0] != 0xc2)
+        return std::nullopt;
+    const uint16_t encoded = uint16_t(bytes[1]) | (uint16_t(bytes[2]) << 8);
+    if (instruction.Op1.value != encoded)
+        return std::nullopt;
+    return encoded;
+}
+
 std::optional<X86Condition> x86_condition(uint16_t type)
 {
     using C = x86_abstract::Condition;
@@ -2601,8 +2619,10 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
             continue;
         const auto &ret = instructions[next->second];
         if (ret.itype != NN_retn || !natad(ret) ||
-            (result.address_bits == 64 ? !op64(ret) : !op32(ret)) ||
-            (ret.Op1.type != o_void && ret.Op1.type != o_imm))
+            (result.address_bits == 64 ? !op64(ret) : !op32(ret)))
+            continue;
+        const auto adjustment = decode_x86_near_return_adjustment(ret);
+        if (!adjustment)
             continue;
         classifier::instruction_t push_model, ret_model;
         push_model.address = instruction.ea;
@@ -2612,7 +2632,7 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         ret_model.size = ret.size;
         ret_model.stack_width_bits = uint16_t(result.address_bits);
         ret_model.kind = classifier::instruction_kind_t::return_instruction;
-        ret_model.immediate = ret.Op1.type == o_imm ? ret.Op1.value : 0;
+        ret_model.immediate = *adjustment;
         const auto &ret_node = graph[next->second];
         ret_model.alternate_predecessor = ret_node.unknown_entry ||
                                           ret_node.predecessors.size() != 1 ||

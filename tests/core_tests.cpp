@@ -350,7 +350,21 @@ void test_stack_transfer_classifier()
         check(!classify_push_return(push, ret, mode, proof), "alternate entry into RET rejected");
         ret.alternate_predecessor = false;
         ret.immediate = 8;
-        check(!classify_push_return(push, ret, mode, proof), "RET with stack adjustment rejected");
+        result = classify_push_return(push, ret, mode, proof);
+        check(result && result->stack_delta_bytes == 8 &&
+                  result->stack_write_offset_bytes == -int(mode / 8) &&
+                  result->stack_write_bytes == mode / 8 && result->target.value == 0x2000,
+              "RET imm16 retains target, stack write, and net adjustment");
+        result = classify_push_return(push, ret, mode, {});
+        check(result && !result->target.value && result->stack_delta_bytes == 8,
+              "unresolved RET imm16 retains adjustment without an invented target");
+        ret.immediate = UINT16_MAX;
+        result = classify_push_return(push, ret, mode, proof);
+        check(result && result->stack_delta_bytes == UINT16_MAX,
+              "maximum RET imm16 adjustment accepted");
+        ret.immediate = uint64_t{UINT16_MAX} + 1;
+        check(!classify_push_return(push, ret, mode, proof),
+              "adjustment wider than RET imm16 rejected");
         ret.immediate = 0;
         ret.far_transfer = true;
         check(!classify_push_return(push, ret, mode, proof), "far return rejected");

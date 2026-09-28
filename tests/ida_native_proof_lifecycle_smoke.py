@@ -42,6 +42,17 @@ def outgoing(ea):
     return result
 
 
+def user_jumps(ea):
+    result = set()
+    xref = ida_xref.xrefblk_t()
+    ok = xref.first_from(ea, ida_xref.XREF_ALL)
+    while ok:
+        if xref.iscode and (xref.type & ida_xref.XREF_MASK) == ida_xref.fl_JN and xref.user:
+            result.add(int(xref.to))
+        ok = xref.next_from()
+    return result
+
+
 def settle(*addresses):
     for ea in addresses:
         ida_auto.plan_range(ea, ea + instruction(ea).size)
@@ -111,6 +122,60 @@ def flag_checks():
 
 
 def stack_checks():
+    adjust_root = address("vt_adjust")
+    adjust_push = instruction(adjust_root + instruction(adjust_root).size)
+    adjust_ret = adjust_push.ea + adjust_push.size
+    adjust_target = address("vt_target")
+    check("adjusted RET has no plugin jump", not user_jumps(adjust_ret))
+    check("fixture has RET imm16 eight", ida_bytes.get_bytes(adjust_ret, 3) == b"\xc2\x08\x00")
+    ida_bytes.patch_byte(adjust_ret + 1, 0)
+    settle(adjust_push.ea, adjust_ret)
+    check(
+        "zero-adjustment RET has exact target",
+        outgoing(adjust_ret) == {adjust_target} and "net SP delta=0" in comment(adjust_ret),
+    )
+    ida_bytes.patch_byte(adjust_ret + 1, 8)
+    check("restored adjustment revokes plugin jump", not user_jumps(adjust_ret))
+    settle(adjust_push.ea, adjust_ret)
+    check(
+        "restored adjustment republishes metadata only",
+        not user_jumps(adjust_ret)
+        and "net SP delta=+8 bytes" in comment(adjust_ret)
+        and "adjusted RET edge withheld" in comment(adjust_ret),
+    )
+
+    reg_root = address("vt_reg")
+    reg_push = instruction(reg_root + instruction(reg_root).size)
+    reg_ret = reg_push.ea + reg_push.size
+    original_ret_bytes = ida_bytes.get_bytes(reg_ret, 3)
+    check(
+        "plain RET fixture has exact target",
+        outgoing(reg_ret) == {adjust_target}
+        and user_jumps(reg_ret) == {adjust_target}
+        and "net SP delta=0" in comment(reg_ret),
+    )
+    ida_bytes.patch_bytes(reg_ret, b"\xc2\x08\x00")
+    check("adjusted RET revokes owned jump synchronously", not user_jumps(reg_ret))
+    check(
+        "adjusted RET revokes exact annotation synchronously",
+        "exact push/return" not in comment(reg_ret),
+    )
+    settle(reg_push.ea, reg_ret)
+    check(
+        "adjusted RET remains metadata only after reanalysis",
+        not user_jumps(reg_ret)
+        and "net SP delta=+8 bytes" in comment(reg_ret)
+        and "adjusted RET edge withheld" in comment(reg_ret),
+    )
+    ida_bytes.patch_bytes(reg_ret, original_ret_bytes)
+    settle(reg_push.ea, reg_ret)
+    check(
+        "restored plain RET republishes exact target",
+        outgoing(reg_ret) == {adjust_target}
+        and user_jumps(reg_ret) == {adjust_target}
+        and "net SP delta=0" in comment(reg_ret),
+    )
+
     push = instruction(address("vt_mem"))
     site, pointer = push.ea + push.size, push.Op1.addr
     target, replacement = address("vt_target"), address("vt_unknown_reg")

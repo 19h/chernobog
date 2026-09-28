@@ -1372,13 +1372,19 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                                                });
                 if (!current)
                     break;
-                current = proof.intended_edge
-                              ? candidate->target.value &&
-                                    *candidate->target.value == proof.intended_edge->target
-                              : !candidate->target.value;
+                if (proof.intended_edge)
+                    current = candidate->stack_delta_bytes == 0 && candidate->target.value &&
+                              *candidate->target.value == proof.intended_edge->target;
+                else if (proof.value)
+                    current =
+                        candidate->stack_delta_bytes != 0 && candidate->target.value == proof.value;
+                else
+                    current = !candidate->target.value;
                 row["width_bits"] = std::to_string(candidate->width_bits);
                 row["stack_delta_bytes"] = std::to_string(candidate->stack_delta_bytes);
                 row["stack_write_bytes"] = std::to_string(candidate->stack_write_bytes);
+                row["stack_write_offset_bytes"] =
+                    std::to_string(candidate->stack_write_offset_bytes);
                 switch (candidate->target.kind)
                 {
                 case classifier::target_proof_kind_t::immediate:
@@ -1409,7 +1415,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                         : "IDA loaded immutable bytes and current write-reference checks; external runtime mutations unmodeled";
                 if (candidate->target.source_address)
                     row["memory_address"] = hex(*candidate->target.source_address);
-                if (!proof.intended_edge)
+                if (!proof.intended_edge && !proof.value)
                     row["truth"] = "candidate";
                 if (current && details != nullptr)
                 {
@@ -1597,6 +1603,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                  "bounded local x86 model; native memory/stack effects retained; not whole-program reachability"}};
             if (proof.intended_edge)
                 row["target"] = hex(proof.intended_edge->target);
+            else if (proof.kind == NativeProof::Kind::StackTransfer && proof.value)
+                row["target"] = hex(*proof.value);
             bool current = proof.publication != 0 && proof_is_fresh(proof);
             const bool dependencies_current = current;
             current = current && current_proof_conclusion(proof, &row);
@@ -2636,9 +2644,12 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         const auto before = collect_code_edges(return_ea);
         if (!transfer->target.value)
         {
-            record_proof(
-                std::move(proof), before,
-                "stack-mediated transfer candidate; unresolved target; stack write retained");
+            qstring comment;
+            comment.sprnt("stack-mediated transfer candidate; unresolved target; width=%u bits; "
+                          "net SP delta=%d bytes; stack write=%u bytes retained",
+                          transfer->width_bits, transfer->stack_delta_bytes,
+                          transfer->stack_write_bytes);
+            record_proof(std::move(proof), before, comment.c_str());
             return false;
         }
         const ea_t target = ea_t(*transfer->target.value);
@@ -2646,6 +2657,17 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             return false;
         if (!add_dependency(proof, target, 1, false))
             return false;
+        if (transfer->stack_delta_bytes != 0)
+        {
+            proof.value = *transfer->target.value;
+            qstring comment;
+            comment.sprnt("stack-mediated transfer candidate; exact target %a; width=%u bits; "
+                          "net SP delta=+%d bytes; stack write=%u bytes retained; "
+                          "adjusted RET edge withheld",
+                          target, transfer->width_bits, transfer->stack_delta_bytes,
+                          transfer->stack_write_bytes);
+            return record_proof(std::move(proof), before, comment.c_str());
+        }
         proof.intended_edge = desired_code_edge_t{target, fl_JN, true};
         // The RET may not yet be an instruction head during the PUSH callback.
         // Decode it without changing either instruction's native bytes or SP effect.

@@ -179,7 +179,8 @@ struct stack_transfer_t
     target_proof_t target;
 };
 
-// Metadata summary only: a zero net SP delta does not remove the stack write.
+// Metadata summary only: the net SP delta is RET's unsigned imm16 adjustment;
+// zero net delta does not remove the stack write.
 // The caller proves target facts and memory dependencies before supplying them.
 std::optional<stack_transfer_t> classify_push_return(const instruction_t &push,
                                                      const instruction_t &ret,

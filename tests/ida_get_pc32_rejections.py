@@ -42,6 +42,17 @@ def code_targets(ea):
     return sorted(targets)
 
 
+def user_jump_targets(ea):
+    targets = set()
+    xref = ida_xref.xrefblk_t()
+    more = xref.first_from(ea, ida_xref.XREF_ALL)
+    while more:
+        if xref.iscode and (xref.type & ida_xref.XREF_MASK) == ida_xref.fl_JN and xref.user:
+            targets.add(int(xref.to))
+        more = xref.next_from()
+    return sorted(targets)
+
+
 def writes_to(ea):
     sources = set()
     xref = ida_xref.xrefblk_t()
@@ -93,7 +104,7 @@ try:
             comment=comment,
         )
 
-    for name, index in (("gp32_alternate", 3), ("gp32_extra", 1)):
+    for name, index in (("gp32_alternate", 3),):
         site = nth(name, index)
         comment = ida_bytes.get_cmt(site, True) or ""
         check(
@@ -102,6 +113,30 @@ try:
             targets=code_targets(site),
             comment=comment,
         )
+    site = nth("gp32_extra", 1)
+    comment = ida_bytes.get_cmt(site, True) or ""
+    users = user_jump_targets(site)
+    check(
+        "gp32_extra adjusted metadata",
+        not users
+        and (
+            "[chernobog][ida-analysis]" not in comment
+            if baseline
+            else all(
+                token in comment
+                for token in (
+                    "exact target",
+                    "width=32 bits",
+                    "net SP delta=+4 bytes",
+                    "stack write=4 bytes retained",
+                    "adjusted RET edge withheld",
+                )
+            )
+        ),
+        targets=code_targets(site),
+        user_targets=users,
+        comment=comment,
+    )
 except BaseException as error:
     errors.append(type(error).__name__ + ": " + str(error))
 
