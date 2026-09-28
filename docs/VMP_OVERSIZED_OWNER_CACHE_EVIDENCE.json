@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "scope": "negative cache for oversized x86 owned-function inventories; full VMP review remains in progress",
+  "source_sha256": {
+    "src/ida_analysis/native_engine.cpp": "f2a55552eda23bb4d55df36b6921fe745347815aa39d4d745643d0d068c58078",
+    "src/ida_analysis/x86_analysis.cpp": "b9817d74331135e3f633270a970fa0fa5554ca2f7e9a97a5fccbdbb7e9e91f87",
+    "src/ida_analysis/x86_analysis.hpp": "5aa281861da72656ed410143096f44b58e473f3fb5316eca687f381f1637a9ac",
+    "tests/vmp_native/oversized_owner_cache.c": "ed9300e29da59d5dba90a8dd139b49ca2d7c5383ad576b5adc6a37620e7773bb",
+    "tests/ida_oversized_owner_cache_probe.py": "295e38883bc5d8d3a3ddf1ec50a14a854bfca5e17954d35351f91b701c209b65",
+    "tests/ida_pushret_latency_probe.py": "79e27e21a77add43f670d6c802448b1d6b3c033f8a774cb83d263e03361031f6",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "tests/run_vmp_conditions.py": "49995cf87a791a421fbafb9959da55962f72d3f11242af25401b9034cf056690",
+    "tests/ida_vmp_conditions_probe.py": "4834f57e5de7bef169ad0175ffa05a8548d73455ede7c319ccb1aad777ec3aac"
+  },
+  "ida_console_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "preceding_plugin_sha256": "ea6a6abe434e90634367e0772a7f9bb7b6db859ab7583f218106eaca050e7896",
+  "candidate_plugin_sha256": "041d4f01918659777daad261063aa1190e2b18b7c925ac528e3841a46d5fb761",
+  "inventory_probe": {
+    "input_idb_sha256": "5f820e3041cca0c76078bfc0e58bf86cf80ffec90ad0fe89329dc1ec4009c59d",
+    "code_heads": 183458,
+    "push_heads": 1431,
+    "adjacent_push_ret_pairs": 1160,
+    "owner": "0x80521b9",
+    "owner_heads": 7443,
+    "owner_pairs": 100,
+    "run_sha256": "078802f4c640b123bfe64bc937da6618e12b435ba318597b06fe48f2d0cb707c",
+    "report_sha256": "fe25c89917d7d401a7fec592f80e1ca11f423bb77c701e473b0a707994d0988b",
+    "runner_return_code": 0
+  },
+  "boundary_probe": {
+    "fixture_sha256": "58bbfb313f1c8fef1d61ed1c96be1f5b939d70eef106b79a8e942e45230ab511",
+    "checks_passed": 12,
+    "checks_total": 12,
+    "baseline_heads": 9,
+    "oversized_heads": 4097,
+    "exact_limit_heads": 4096,
+    "decisions": ["false", "unknown", "false", "unknown", "false", "unknown"],
+    "run_sha256": "53f8fd84a45d3b19985e49ff27b942a090f45bbe2a9a1fdcf4ae7b82f27fa0ee",
+    "report_sha256": "637715904c9e9ebf5e1ca17e824bce5a13f15449ea2925e98322a21d222e2d6f",
+    "runner_return_code": 0,
+    "first_version_failure_report_sha256": "51ef38b0cdae4070eebcc802fd2a5b35f5b585b272a1c32025e53db2086088a7"
+  },
+  "paired_protected_run": {
+    "case": "i386 virtualization-12648430-off",
+    "input_sha256": "d804f18b479c2cd2a66b076eda094e2fb67eb0c0dad750efaf6254d887b8ffdb",
+    "preceding_elapsed_ns": 74053455917,
+    "candidate_elapsed_ns": 35797892333,
+    "difference_ns": 38255563584,
+    "elapsed_reduction_percent": 51.65938997752825,
+    "preceding_run_sha256": "766051dae86c6274e3098b3787c84389cb748ef0a8c91f713d158d379224d6e2",
+    "candidate_run_sha256": "6d6824b5335ac5cb020f093b3d6799174a745422cabefeb918682588d2ea4b6e",
+    "selected_raw_report_equal_excluding_elapsed_ns": true,
+    "trials_per_plugin": 1
+  },
+  "protected_condition_matrix": {
+    "architectures": ["x86-64", "i386"],
+    "runs_per_architecture": 20,
+    "compared_raw_reports": 40,
+    "differences_excluding_elapsed_ns": 0,
+    "preceding_x64_analysis_sha256": "fea0b99aa6f66181db1f032562ddc7e3e4075777875cb01a8b77de375eba8b29",
+    "candidate_x64_analysis_sha256": "ce711f4c71777f1e91e8a462b980934ea5ac7011945bff104564791bfdd51040",
+    "preceding_i386_analysis_sha256": "4cb7f40be15d6cf13f8fe7ce06f73fc087f6de52451bcbe4dea626cd4b39190a",
+    "candidate_i386_analysis_sha256": "d0bfac9cf750f7a1d8f03eb33ed74e3932cd2579002d8b48bc802019a4d56d3c",
+    "both_matrices_passed": true
+  },
+  "ctest": {
+    "command": "ctest --test-dir build --output-on-failure --parallel 1",
+    "passed": 23,
+    "total": 23
+  }
+}

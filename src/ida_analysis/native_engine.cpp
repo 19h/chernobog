@@ -2979,6 +2979,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             return 0;
         if (code == processor_t::ev_replaying_undo)
         {
+            invalidate_x86_oversized_owner_cache();
             replaying_undo = true;
             return 0;
         }
@@ -3004,6 +3005,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
 #endif
         )
         {
+            invalidate_x86_oversized_owner_cache();
             if (pending_ownership_recovery)
                 recover_ownership_receipts();
             for (const auto &[source, proof] : native_proofs)
@@ -3810,6 +3812,7 @@ bool NativeAnalysisEngine::enabled() const
 
 void NativeAnalysisEngine::reset()
 {
+    invalidate_x86_oversized_owner_cache();
     if (impl_ != nullptr)
         impl_->reset();
 }
@@ -3822,6 +3825,63 @@ void NativeAnalysisEngine::on_autoanalysis_complete()
 
 void NativeAnalysisEngine::on_database_event(int event, va_list arguments)
 {
+    // The oversized-owner result is only an early rejection of graph analysis.
+    // Invalidate it before proof callbacks, including self-authored IDB edits.
+    if (event == idb_event::make_code || event == idb_event::make_data ||
+        event == idb_event::destroyed_items || event == idb_event::byte_patched)
+    {
+        va_list copy;
+        va_copy(copy, arguments);
+        ea_t first = BADADDR, end = BADADDR;
+        if (event == idb_event::make_code)
+        {
+            const insn_t *instruction = va_arg(copy, const insn_t *);
+            if (instruction != nullptr && instruction->ea <= BADADDR - instruction->size)
+            {
+                first = instruction->ea;
+                end = first + instruction->size;
+            }
+        }
+        else if (event == idb_event::make_data)
+        {
+            first = va_arg(copy, ea_t);
+            (void)va_arg(copy, flags64_t);
+            (void)va_arg(copy, tid_t);
+            const asize_t size = va_arg(copy, asize_t);
+            if (first <= BADADDR - size)
+                end = first + size;
+        }
+        else if (event == idb_event::destroyed_items)
+        {
+            first = va_arg(copy, ea_t);
+            end = va_arg(copy, ea_t);
+        }
+        else
+        {
+            first = va_arg(copy, ea_t);
+            if (first != BADADDR)
+                end = first + 1;
+        }
+        va_end(copy);
+        invalidate_x86_oversized_owner_cache(first, end);
+    }
+    else if (event == idb_event::set_func_start || event == idb_event::set_func_end ||
+             event == idb_event::deleting_func || event == idb_event::deleting_func_tail ||
+             event == idb_event::func_added || event == idb_event::func_tail_appended ||
+             event == idb_event::func_tail_deleted || event == idb_event::tail_owner_changed ||
+             event == idb_event::closebase || event == idb_event::segm_moved ||
+             event == idb_event::allsegs_moved || event == idb_event::deleting_segm ||
+             event == idb_event::segm_attrs_updated
+#if IDA_SDK_VERSION >= 940
+             || event == idb_event::set_function_start || event == idb_event::set_function_end ||
+             event == idb_event::deleting_function || event == idb_event::deleting_function_tail ||
+             event == idb_event::function_added || event == idb_event::function_tail_appended ||
+             event == idb_event::function_tail_deleted ||
+             event == idb_event::function_tail_owner_changed ||
+             event == idb_event::segment_attrs_updated
+#endif
+    )
+        invalidate_x86_oversized_owner_cache();
     if (impl_ != nullptr)
         impl_->on_database_event(event, arguments);
 }

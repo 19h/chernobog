@@ -81,6 +81,10 @@ X86RegisterFact analyze_x86_stack_top_before(const insn_t &instruction, size_t d
 X86RegisterFact analyze_x86_memory_before(const insn_t &instruction, uint64_t address,
                                           size_t depth);
 
+// Invalidate cached oversized owned-function inventories after IDB item or
+// function-topology changes. An omitted range clears every cached owner.
+void invalidate_x86_oversized_owner_cache(uint64_t first = 0, uint64_t end = UINT64_MAX);
+
 // A complete cover contains the destination of every represented normal
 // completion. It does not assert that any member is reachable, and does not
 // authorize unconditional edges or publication. Recomputed from current bytes.

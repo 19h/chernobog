@@ -6,8 +6,10 @@
 #include "../common/warn_off.h"
 #include <bytes.hpp>
 #include <funcs.hpp>
+#include <ida.hpp>
 #include <idp.hpp>
 #include <intel.hpp>
+#include <range.hpp>
 #include <segment.hpp>
 #include <ua.hpp>
 #include <xref.hpp>
@@ -18,6 +20,7 @@
 #include <cstring>
 #include <deque>
 #include <map>
+#include <mutex>
 #include <set>
 #include <sstream>
 #include <type_traits>
@@ -1682,6 +1685,61 @@ template <class Domain = State> struct FlowFact
     bool reached = true;
 };
 
+struct OversizedOwnerCache
+{
+    ssize_t database = -1;
+    std::map<ea_t, rangeset_t> owners;
+    std::mutex lock;
+};
+
+OversizedOwnerCache &oversized_owner_cache()
+{
+    static OversizedOwnerCache cache;
+    return cache;
+}
+
+bool cached_oversized_owner(const func_t &owner)
+{
+    rangeset_t ranges;
+    if (get_func_ranges_ea(&ranges, owner.start_ea) == BADADDR || ranges.empty())
+        return false;
+    auto &cache = oversized_owner_cache();
+    std::lock_guard guard(cache.lock);
+    const ssize_t database = get_dbctx_id();
+    if (cache.database != database)
+    {
+        cache.database = database;
+        cache.owners.clear();
+    }
+    const auto found = cache.owners.find(owner.start_ea);
+    if (found == cache.owners.end())
+        return false;
+    if (found->second != ranges)
+    {
+        cache.owners.erase(found);
+        return false;
+    }
+    return true;
+}
+
+void remember_oversized_owner(const func_t &owner)
+{
+    rangeset_t ranges;
+    if (get_func_ranges_ea(&ranges, owner.start_ea) == BADADDR || ranges.empty())
+        return;
+    auto &cache = oversized_owner_cache();
+    std::lock_guard guard(cache.lock);
+    const ssize_t database = get_dbctx_id();
+    if (cache.database != database)
+    {
+        cache.database = database;
+        cache.owners.clear();
+    }
+    if (cache.owners.size() >= 64)
+        cache.owners.clear();
+    cache.owners[owner.start_ea] = std::move(ranges);
+}
+
 template <class Domain = State>
 std::optional<FlowFact<Domain>> flow_before(const insn_t &insn, size_t depth)
 {
@@ -1692,6 +1750,8 @@ std::optional<FlowFact<Domain>> flow_before(const insn_t &insn, size_t depth)
         return std::nullopt;
     const size_t limit = std::min<size_t>(depth, 64);
     if (!limit)
+        return std::nullopt;
+    if (cached_oversized_owner(*owner))
         return std::nullopt;
     // Inventory and transfer budgets are separate. Keep every decoded head in
     // the freshness support, including sources outside the predecessor slice.
@@ -1706,7 +1766,10 @@ std::optional<FlowFact<Domain>> flow_before(const insn_t &insn, size_t depth)
         if (!is_code(get_flags(ea)))
             continue;
         if (heads.size() >= inventory_limit)
+        {
+            remember_oversized_owner(*owner);
             return std::nullopt;
+        }
         heads.push_back(ea);
     } while (iterator.next_code());
     // Oversized owners can have many candidate sites. Reject their inventory
@@ -1859,6 +1922,25 @@ std::optional<X86RegisterFact> flow_value(const insn_t &insn, size_t depth, Read
     return X86RegisterFact{value, flow->support};
 }
 } // namespace
+
+void invalidate_x86_oversized_owner_cache(uint64_t first, uint64_t end)
+{
+    auto &cache = oversized_owner_cache();
+    std::lock_guard guard(cache.lock);
+    if (cache.database != get_dbctx_id() || first >= end)
+    {
+        cache.owners.clear();
+        cache.database = get_dbctx_id();
+        return;
+    }
+    for (auto it = cache.owners.begin(); it != cache.owners.end();)
+    {
+        if (it->second.has_common(range_t(first, end)))
+            it = cache.owners.erase(it);
+        else
+            ++it;
+    }
+}
 
 x86_abstract::Flags analyze_x86_flags_before(const insn_t &insn, size_t depth)
 {

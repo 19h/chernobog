@@ -1497,3 +1497,14 @@ partial-status fixtures, independently decoded 97-head protected root and
 all 23 CTest suites pass. See `VMP_REGISTER_LOGIC.md` and its retained
 capture. Full protected recovery and remaining review items remain in
 progress.
+
+## Oversized owned-function inventory checkpoint
+
+Repeated rejection of an i386 protected owner with 7,443 instruction heads
+is now cached per IDB. A same-IDB fixture crosses the exact 4,096-head limit
+through edits in an attached tail and passes 12 decision and invalidation
+checks. One paired protected process fell from 74.053455917 s to
+35.797892333 s with identical selected native condition and Hex-Rays output
+hashes. The complete condition matrix comparison and exact artifact hashes
+are recorded in `VMP_OVERSIZED_OWNER_CACHE.md` and its evidence manifest.
+The full review implementation remains in progress.
