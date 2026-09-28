@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "base": "tests/vmp_native/edge_oracle_early_stop.json",
+  "base_sha256": "19c5041faba7214f5c0037ccbc79279a70c41a86aa64554ba171080553fb36b8",
+  "scope": "68 reviewed named PUSH/RET roots; four bounded REPE/REPNE comparison targets extend the frozen 64-root oracle. The executable i386 oracle uses its process segment bases; static i386 analysis receives no segment-base contract.",
+  "source_sha256": {
+    "tests/vmp_native/dataflow.S": "2b3cc5af555824557958867fd8ab820e3c572844e93d4775be7ec7c3b7c3cd0a",
+    "tests/vmp_native/dataflow_main.c": "e43609fb584fb5d16d842be33732e01cd8aa37c3014550654af2d059c96e8452",
+    "tests/ida_dataflow_probe.py": "04f7fb447d869b7ce2a2cf167b87903d35ce08eab458b174f0f4f85f23f40ed5",
+    "tests/ida_ownerless_dataflow_probe.py": "a31b2e8dd53f2ae237614b27120aefcc41536262df46040fb12458249a185cbf",
+    "tests/run_native_dataflow.py": "78e5ef85d76bd848f7d0feca7f405ec002fbb648c091c76357cb0a5fc1d1c0ce",
+    "tests/run_ownerless_dataflow.py": "eaf5d77295f55349016a6ac3dfcc73f1c500a2d401a7e022bc62c03412545d82"
+  },
+  "fixed": {
+    "df_repe_cmps_three_exhaust_target": "df_memory_target",
+    "df_repne_cmps_three_second_target": "df_memory_target",
+    "df_repe_scas_three_second_target": "df_memory_target",
+    "df_repe_scas_reverse_second_target": "df_memory_target"
+  },
+  "native_checks": {
+    "owned": {
+      "x86_64": 39166,
+      "i386": 37886
+    },
+    "ownerless": {
+      "x86_64": 4606,
+      "i386": 4606
+    }
+  },
+  "expected_population": {
+    "fixed_sites": 50,
+    "dynamic_sites": 3,
+    "eligible_sites": 53,
+    "oracle_edges": 56,
+    "concrete_only_sites": 15
+  },
+  "review_basis": "One count-three REPE CMPS root compares the same address three times and exhausts RCX. Two forward roots stop after their second comparison under opposite prefixes. One backward SCAS root stops after its second comparison with DF=1 and restores DF before return. Each adds the final count to the reviewed target offset. The native driver executes inputs 0..255 on both architectures; static i386 abstains because ES may differ from DS."
+}

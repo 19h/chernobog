@@ -1454,6 +1454,62 @@ BEGIN NAME(df_repne_cmps_two_count_target)
 #endif
     ret
 
+BEGIN NAME(df_repe_cmps_three_exhaust_target)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_cmps_source), %esi
+    movl %esi, %edi
+#else
+    leaq NAME(df_cmps_source)(%rip), %rsi
+    movq %rsi, %rdi
+#endif
+    cld
+    movl $3, %ecx
+    repe cmpsb
+#ifdef __i386__
+    popl %edi
+    popl %esi
+    movl $NAME(df_memory_target), %eax
+    addl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)(%rip), %rax
+    addq %rcx, %rax
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_repne_cmps_three_second_target)
+#ifdef __i386__
+    pushl %esi
+    pushl %edi
+    movl $NAME(df_cmps_source), %esi
+    movl $NAME(df_cmps_dest), %edi
+#else
+    leaq NAME(df_cmps_source)(%rip), %rsi
+    leaq NAME(df_cmps_dest)(%rip), %rdi
+#endif
+    movb $0x10, (CMPS_SI)
+    movb $0x20, (CMPS_DI)
+    movb $0x30, 1(CMPS_SI)
+    movb $0x30, 1(CMPS_DI)
+    cld
+    movl $3, %ecx
+    repne cmpsb
+#ifdef __i386__
+    popl %edi
+    popl %esi
+    movl $NAME(df_memory_target)-1, %eax
+    addl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)-1(%rip), %rax
+    addq %rcx, %rax
+    pushq %rax
+#endif
+    ret
+
 BEGIN NAME(df_repne_cmps_one_cf)
 #ifdef __i386__
     pushl %esi
@@ -1799,6 +1855,57 @@ BEGIN NAME(df_repe_scas_two_count_target)
     movb $0x10, %al
     movl $2, %ecx
     repe scasb
+#ifdef __i386__
+    popl %edi
+    movl $NAME(df_memory_target)-1, %eax
+    addl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)-1(%rip), %rax
+    addq %rcx, %rax
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_repe_scas_three_second_target)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest), %edi
+#else
+    leaq NAME(df_string_dest)(%rip), %rdi
+#endif
+    movb $0x10, (CMPS_DI)
+    movb $0x20, 1(CMPS_DI)
+    movb $0x10, %al
+    cld
+    movl $3, %ecx
+    repe scasb
+#ifdef __i386__
+    popl %edi
+    movl $NAME(df_memory_target)-1, %eax
+    addl %ecx, %eax
+    pushl %eax
+#else
+    leaq NAME(df_memory_target)-1(%rip), %rax
+    addq %rcx, %rax
+    pushq %rax
+#endif
+    ret
+
+BEGIN NAME(df_repe_scas_reverse_second_target)
+#ifdef __i386__
+    pushl %edi
+    movl $NAME(df_string_dest)+1, %edi
+#else
+    leaq NAME(df_string_dest)+1(%rip), %rdi
+#endif
+    movb $0x20, -1(CMPS_DI)
+    movb $0x10, (CMPS_DI)
+    movb $0x10, %al
+    movl $3, %ecx
+    std
+    repe scasb
+    cld
 #ifdef __i386__
     popl %edi
     movl $NAME(df_memory_target)-1, %eax

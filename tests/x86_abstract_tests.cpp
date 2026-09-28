@@ -397,6 +397,73 @@ void repeat_compare_early_stop_regressions()
           "unsupported comparison width abstains");
 }
 
+void repeat_compare_bounded_regressions()
+{
+    using namespace chernobog::x86_abstract;
+    for (unsigned width : {8u, 16u, 32u, 64u})
+    {
+        const auto repe =
+            bounded_compare_repeat(width, 3, true, false, Flags{ALL, ALL},
+                                   [](uint64_t iteration, bool) -> std::optional<CompareOperands>
+                                   {
+                                       return iteration == 0 ? CompareOperands{0x10, 0x10, false}
+                                                             : CompareOperands{0x10, 0x20, false};
+                                   });
+        check(repe && repe->remaining == 1 && repe->flags.get(ZF) == false &&
+                  repe->flags.get(CF) == true,
+              "REPE second unequal comparison stops with count one and second flags");
+        const auto repne =
+            bounded_compare_repeat(width, 3, false, true, Flags{ALL, ALL},
+                                   [](uint64_t iteration, bool) -> std::optional<CompareOperands>
+                                   {
+                                       return iteration == 0 ? CompareOperands{0x10, 0x20, false}
+                                                             : CompareOperands{{}, {}, true};
+                                   });
+        check(repne && repne->remaining == 1 && repne->flags.get(ZF) == true &&
+                  repne->flags.get(CF) == false,
+              "REPNE second equal comparison stops with count one and second flags");
+    }
+    const auto exhausted = bounded_compare_repeat(
+        8, 3, true, {}, {}, [](uint64_t, bool) -> std::optional<CompareOperands>
+        { return CompareOperands{{}, {}, true}; });
+    check(exhausted && exhausted->remaining == 0 && exhausted->flags.get(ZF) == true &&
+              exhausted->flags.get(CF) == false,
+          "both direction completions exhaust a three-iteration REPE CMPS count");
+    const auto last_unknown = bounded_compare_repeat(
+        8, 2, true, false, {},
+        [](uint64_t iteration, bool) -> std::optional<CompareOperands>
+        {
+            return iteration == 0 ? CompareOperands{{}, {}, true} : CompareOperands{{}, {}, false};
+        });
+    check(last_unknown && last_unknown->remaining == 0 && last_unknown->flags.known == 0,
+          "unknown final comparison preserves exact exhausted count but no flags");
+    check(!bounded_compare_repeat(
+              8, 3, true, {}, {},
+              [](uint64_t iteration, bool reverse) -> std::optional<CompareOperands>
+              {
+                  return iteration == 1 && reverse ? CompareOperands{0x10, 0x20, false}
+                                                   : CompareOperands{{}, {}, true};
+              }),
+          "different direction counts cannot yield one exact repeat result");
+    check(!bounded_compare_repeat(8, 3, true, false, {},
+                                  [](uint64_t iteration, bool) -> std::optional<CompareOperands>
+                                  {
+                                      return iteration == 1
+                                                 ? std::nullopt
+                                                 : std::optional<CompareOperands>{{{}, {}, true}};
+                                  }),
+          "missing second comparison cannot establish repeat continuation");
+    check(!bounded_compare_repeat(8, 129, true, false, {},
+                                  [](uint64_t, bool) -> std::optional<CompareOperands>
+                                  { return CompareOperands{{}, {}, true}; }),
+          "repeat beyond the finite replay budget abstains without a stop");
+    const auto huge_first = bounded_compare_repeat(
+        8, UINT64_MAX, true, {}, {}, [](uint64_t, bool) -> std::optional<CompareOperands>
+        { return CompareOperands{0x10, 0x20, false}; });
+    check(huge_first && huge_first->remaining == UINT64_MAX - 1,
+          "first-iteration stop does not unroll a huge initial count");
+}
+
 struct FlowState
 {
     Word word;
@@ -1411,6 +1478,7 @@ int main()
 {
     repeated_memory_regressions();
     repeat_compare_early_stop_regressions();
+    repeat_compare_bounded_regressions();
     const uint64_t repeat_assertions = assertions;
     dataflow_regressions();
     backward_slice_regressions();

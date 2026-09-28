@@ -738,6 +738,10 @@ try:
         ("df_repne_scas_one_count_target", rep_compare_zero_proofs),
         ("df_repne_cmps_two_count_target", rep_compare_one_proofs),
         ("df_repe_scas_two_count_target", rep_compare_one_proofs),
+        ("df_repe_cmps_three_exhaust_target", rep_compare_one_proofs),
+        ("df_repne_cmps_three_second_target", rep_compare_one_proofs),
+        ("df_repe_scas_three_second_target", rep_compare_one_proofs),
+        ("df_repe_scas_reverse_second_target", rep_compare_one_proofs),
         ("df_lods_full_target", lods_local_proofs),
         ("df_lods_byte_preserved_target", lods_local_proofs),
     ):

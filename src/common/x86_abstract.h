@@ -602,6 +602,12 @@ struct CompareRepeatStop
     Flags flags;
 };
 
+struct CompareOperands
+{
+    std::optional<uint64_t> left, right;
+    bool same_operand = false;
+};
+
 // REPE continues after a comparison only while ZF=1; REPNE continues only
 // while ZF=0. When the first comparison proves the opposite, one iteration
 // has completed even if the initial count exceeds one. The caller establishes
@@ -619,6 +625,54 @@ inline std::optional<CompareRepeatStop> first_compare_early_stop(unsigned width,
     if (!equal || *equal == repeat_while_equal)
         return std::nullopt;
     return CompareRepeatStop{count - 1, before};
+}
+
+// Replay only comparisons whose operands are available at their use. A
+// missing comparison before the last iteration cannot establish whether the
+// repeat continues. Once the exact count is exhausted, its value is zero
+// even if the last comparison leaves flags unknown. Both possible DF paths
+// must agree on the remaining count when direction is not known.
+template <class OperandsAt>
+inline std::optional<CompareRepeatStop>
+bounded_compare_repeat(unsigned width, uint64_t count, bool repeat_while_equal,
+                       std::optional<bool> reverse, Flags before, OperandsAt operands_at)
+{
+    constexpr uint64_t max_iterations = 128;
+    if (count < 2 || !valid_width(width))
+        return std::nullopt;
+    const auto replay = [&](bool descending) -> std::optional<CompareRepeatStop>
+    {
+        Flags flags = before;
+        for (uint64_t iteration = 0; iteration < count && iteration < max_iterations; ++iteration)
+        {
+            const auto operands = operands_at(iteration, descending);
+            if (!operands)
+                return std::nullopt;
+            if (iteration == 0)
+                if (const auto stop =
+                        first_compare_early_stop(width, count, repeat_while_equal, operands->left,
+                                                 operands->right, operands->same_operand, flags))
+                    return stop;
+            transfer(Operation::compare, width, operands->left, operands->right,
+                     operands->same_operand, flags);
+            const uint64_t remaining = count - iteration - 1;
+            if (remaining == 0)
+                return CompareRepeatStop{0, flags};
+            const auto equal = flags.get(ZF);
+            if (!equal)
+                return std::nullopt;
+            if (*equal != repeat_while_equal)
+                return CompareRepeatStop{remaining, flags};
+        }
+        return std::nullopt;
+    };
+    if (reverse)
+        return replay(*reverse);
+    auto forward = replay(false), backward = replay(true);
+    if (!forward || !backward || forward->remaining != backward->remaining)
+        return std::nullopt;
+    forward->flags.join(backward->flags);
+    return forward;
 }
 
 } // namespace chernobog::x86_abstract

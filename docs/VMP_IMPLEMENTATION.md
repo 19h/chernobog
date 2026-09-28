@@ -1419,3 +1419,18 @@ the comparison segment base is not established. The selected supplied VMP
 root remains at 75 nodes, 77 edges and three unresolved facts. All 23
 CTest suites pass. See `VMP_REP_COMPARE_EARLY.md` and its offline-verifiable
 capture archive. The full review implementation remains in progress.
+
+## Bounded repeated-comparison checkpoint
+
+Review rows 1b, 2a and V now replay up to 128 exact x86-64 `REPE`/`REPNE`
+`SCAS`/`CMPS` comparisons, retaining the final count and common status flags
+when every required continuation decision is known. Four new count-three
+targets cover same-address exhaustion, both prefixes stopping after their
+second comparison, and backward DF progression. Matched prior/current IDA
+runs change all four from unresolved to exact edges while two first-stop
+controls remain unchanged. The independently decoded 56-edge oracle scores
+50/56 x86-64 and 33/56 i386 correct edges per ownership mode, with zero
+false edges. A matched supplied VMP root inspection is unchanged at 75
+nodes, 77 edges and three unresolved facts. All 23 CTest suites pass. See
+`VMP_REP_COMPARE_BOUNDED.md` and its offline-verifiable archive. The full
+review implementation remains in progress.
