@@ -133,6 +133,25 @@ void repeated_memory_regressions()
         for (unsigned i = 0; i < 256; ++i)
             if ((i & known) == value)
                 concrete[size++] = i;
+        Flags partial_flags;
+        partial_flags.set(CF | OF, false);
+        partial_flags.set(AF, true);
+        partial_result_flags(partial_flags, Word{known, value | (uint64_t{255} & ~known)}, 8);
+        unsigned all_one_flags = ZF | SF | PF, all_zero_flags = ZF | SF | PF;
+        for (unsigned i = 0; i < size; ++i)
+        {
+            const unsigned byte = concrete[i];
+            unsigned parity = 0;
+            for (unsigned bit = 0; bit < 8; ++bit)
+                parity ^= (byte >> bit) & 1;
+            const unsigned status =
+                (byte == 0 ? ZF : 0) | (byte & 128 ? SF : 0) | (parity == 0 ? PF : 0);
+            all_one_flags &= status;
+            all_zero_flags &= ~status;
+        }
+        check(partial_flags.known == (CF | OF | AF | all_one_flags | all_zero_flags) &&
+                  partial_flags.value == (AF | all_one_flags),
+              "partial result flags match every concrete byte completion");
         for (unsigned bits : {32u, 64u})
         {
             const Word count{(mask(bits) & ~uint64_t{255}) | known,
@@ -209,6 +228,17 @@ void repeated_memory_regressions()
     check(partial.known == 0, "invalid immediate OR slice rejects register fact");
     xor_constant(partial, 64, 1, 0, true);
     check(partial.known == 0, "invalid immediate XOR slice rejects register fact");
+    Flags wide_flags;
+    partial_result_flags(wide_flags,
+                         Word{UINT64_C(0xfffffffffffffeff), UINT64_C(0x8000000000000003)}, 64);
+    check(wide_flags.get(ZF) == false && wide_flags.get(SF) == true && wide_flags.get(PF) == true,
+          "partial 64-bit result fixes zero, sign and low-byte parity independently");
+    partial_result_flags(wide_flags, Word{UINT64_C(0xff00), UINT64_C(0x0200)}, 8, 8);
+    check(wide_flags.get(ZF) == false && wide_flags.get(SF) == false && wide_flags.get(PF) == false,
+          "partial AH result uses its own byte for status flags");
+    partial_result_flags(wide_flags, Word{}, 64, 1);
+    check(!wide_flags.get(ZF) && !wide_flags.get(SF) && !wide_flags.get(PF),
+          "invalid result slice establishes no status fact");
     check(!repeat_counts(Word{}, 64), "unknown high count bits reject finite model");
     check(!repeat_counts(Word{UINT64_MAX, 0}, 16), "unsupported count width rejects model");
     const auto range = [](uint64_t a, unsigned n) { return a < 512 && n <= 512 - a; };

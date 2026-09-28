@@ -1470,3 +1470,16 @@ input-dependent controls per architecture remain unresolved. The historical
 97-head protected inspection retains all four abstentions, and all 23 CTest
 suites pass. See `VMP_PARTIAL_LOGIC.md` and its retained capture. Full
 protected recovery and the remaining review items remain in progress.
+
+## Partial-result status checkpoint
+
+Review rows 2a and 2b now derive ZF, SF and PF independently from partially
+known logical results and from supported register `TEST` operands. An
+exhaustive byte-state oracle checks 6,561 profiles and 65,536 concrete
+completions. Matched x86-64 and i386 native/IDA runs add eight exact
+`SETcc` values per architecture, while two dynamic controls per architecture
+remain unresolved. A decoded `LOCK TEST` mutation publishes no proof and
+restoration recovers the new result. The prior logic fixture, independently
+decoded 97-head protected root and all 23 CTest suites pass. See
+`VMP_PARTIAL_STATUS.md` and its retained capture. Full protected recovery
+and the remaining review items remain in progress.

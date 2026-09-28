@@ -687,6 +687,17 @@ struct State
             *this = {};
             return;
         }
+        if ((insn.auxpref & aux_lock) &&
+            (algebra == Operation::test ||
+             ((algebra == Operation::bit_and || algebra == Operation::bit_or ||
+               algebra == Operation::bit_xor) &&
+              insn.Op1.type == o_reg)))
+        {
+            // LOCK TEST and register-destination LOCK logic have no normal
+            // completion. Their decoded fallthrough cannot supply flags.
+            *this = {};
+            return;
+        }
         const auto memory_operand = [](const op_t &operand)
         { return operand.type == o_mem || operand.type == o_displ || operand.type == o_phrase; };
         const auto algebra_address =
@@ -1414,6 +1425,14 @@ struct State
         const bool same =
             a.reg >= 0 && a.reg == b.reg && a.width == b.width && a.offset == b.offset;
         const auto result = transfer(algebra, width, algebra_left, algebra_right, same, flags);
+        if (algebra == Operation::test && a.reg >= 0 && a.width == width &&
+            ((insn.Op2.type == o_imm && algebra_right) || same))
+        {
+            Word tested = regs[size_t(a.reg)];
+            if (!same)
+                and_constant(tested, a.width, a.offset, *algebra_right, false);
+            partial_result_flags(flags, tested, a.width, a.offset);
+        }
         if (algebra != Operation::compare && algebra != Operation::test &&
             algebra != Operation::clear_carry && algebra != Operation::set_carry &&
             algebra != Operation::complement_carry)
@@ -1431,10 +1450,8 @@ struct State
                     or_constant(destination, a.width, a.offset, *algebra_right, is64);
                 else
                     xor_constant(destination, a.width, a.offset, *algebra_right, is64);
-                // A partial input may become an exact result after the mask.
                 // CF/OF are already cleared and AF remains unknown by transfer().
-                if (const auto exact = destination.read(a.width, a.offset))
-                    result_flags(flags, *exact, a.width);
+                partial_result_flags(flags, destination, a.width, a.offset);
             }
             else
                 write(insn.Op1, result, is64);

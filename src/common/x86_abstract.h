@@ -407,6 +407,32 @@ inline void result_flags(Flags &flags, uint64_t result, unsigned width)
     flags.set(PF, parity == 0);
 }
 
+// Derive only status bits fixed by every concrete completion of a partial
+// result. This does not define CF/OF or the architecturally undefined AF.
+inline void partial_result_flags(Flags &flags, const Word &result, unsigned width,
+                                 unsigned offset = 0)
+{
+    flags.forget(ZF | SF | PF);
+    if (!valid_width(width) || offset > 64 - width)
+        return;
+    const uint64_t m = mask(width), known = (result.known >> offset) & m;
+    const uint64_t value = (result.value >> offset) & known;
+    if (value)
+        flags.set(ZF, false);
+    else if (known == m)
+        flags.set(ZF, true);
+    const uint64_t sign = uint64_t{1} << (width - 1);
+    if (known & sign)
+        flags.set(SF, (value & sign) != 0);
+    if ((known & 255) == 255)
+    {
+        unsigned parity = 0;
+        for (unsigned i = 0; i < 8; ++i)
+            parity ^= unsigned((value >> i) & 1);
+        flags.set(PF, parity == 0);
+    }
+}
+
 inline bool rotate_operation(Operation op)
 {
     return op == Operation::rotate_left || op == Operation::rotate_right ||
