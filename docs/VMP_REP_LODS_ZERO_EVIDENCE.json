@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "scope": "exact zero-count REP LODS transfer in x86-64 and i386 process and IDA controls",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "590b4905b6556b86d5f30b03b5e3c296cc0840bc1bc6aeae337482a441c52db4",
+    "tests/vmp_native/rep_lods_zero.S": "e5202d084a9023691271193539ab980c31dc59108c1c3764073aff8728572296",
+    "tests/vmp_native/rep_lods_zero_main.c": "4b4b3788327bcabbb9549b1fa2f338773a8fcfeb6cb6dfed76556b47fbcd6dba",
+    "tests/ida_rep_lods_zero_probe.py": "654422f7c44a571dfd90fa411f03d3ebf83319de013f1fb47d79ecbd7b2ec2e0"
+  },
+  "toolchain": {
+    "host_clang": "Apple clang 21.0.0 (clang-2100.3.34.2)",
+    "linux32_image_sha256": "91a6e07bec9b5ef76ccee2f076aa419b5e79a93e15c69de67017e0b8a3a38bc2",
+    "linux32_guest_architecture": "arm64",
+    "qemu_i386_version": "9.2.0",
+    "ida_executable_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+    "prior_plugin_sha256": "df60bb3610680b26a3ef6de76141e283d8ea62dbdcb9a3b9af725bc732caa854",
+    "current_precommit_plugin_sha256": "cbe5c4296518f8b13bbc2bfbf136aa07361796b85593c4f7ecfad24f12032334"
+  },
+  "process_checks_per_architecture": 256,
+  "runs": {
+    "x86_64_prior": {
+      "binary_sha256": "4567f96d9ba3dd47427e0e36296b071b5d62702c956b593becd2e49caf023c4e",
+      "probe_report_sha256": "e0fc2f96722c1476694be89ff070aba90bed3689fa24636d8787a40406da7d15",
+      "runner_report_sha256": "6f3bb665439281a2ea46e1e4619323c9758e084015f01a133f3d08c1e5817654",
+      "checks_passed": 4,
+      "checks_total": 4,
+      "truth": "candidate",
+      "target": "unknown",
+      "user_edge": false
+    },
+    "x86_64_current": {
+      "binary_sha256": "4567f96d9ba3dd47427e0e36296b071b5d62702c956b593becd2e49caf023c4e",
+      "probe_report_sha256": "aa595f7fb06f92aeb802c51203e35924c372396a2be82913b5d1fadb72a7acd3",
+      "runner_report_sha256": "6c908b05be0e063b75a91068383e6d59e0ef1be750b57e1407294fbd6b365ed3",
+      "checks_passed": 6,
+      "checks_total": 6,
+      "truth": "native-proof",
+      "target": "0x100000480",
+      "user_edge": true
+    },
+    "i386_prior": {
+      "binary_sha256": "dae241071516fd57bdce73f77d321dcde6eea7e306c4ac09d40a3a42c85147cf",
+      "probe_report_sha256": "fd9446e965c0097a1a6b780768e2f4b2f0da72023064ba4fe18960c7fefc2f0f",
+      "runner_report_sha256": "501706f8ed7b7c88721ddc98bea7062b7b47b340dd2fab6a92563166bf482684",
+      "checks_passed": 4,
+      "checks_total": 4,
+      "truth": "candidate",
+      "target": "unknown",
+      "user_edge": false
+    },
+    "i386_current": {
+      "binary_sha256": "dae241071516fd57bdce73f77d321dcde6eea7e306c4ac09d40a3a42c85147cf",
+      "probe_report_sha256": "ef9b5906bf3969ae3ac05aad3c3e54f2474be03d0f4968fb9ce43c820dafa7fe",
+      "runner_report_sha256": "882f6cd8578ae28eab3927b2c6860181184eca8bed256e136fe50a2cd4c840db",
+      "checks_passed": 6,
+      "checks_total": 6,
+      "truth": "native-proof",
+      "target": "0x80491e0",
+      "user_edge": true
+    }
+  },
+  "repository_ctest": "23/23 passed"
+}

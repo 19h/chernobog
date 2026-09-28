@@ -1569,3 +1569,13 @@ passes 1,900/1,850 inspection checks and proves both negative-immediate
 encoding controls per mode. See `VMP_PUSH_IMMEDIATE_PROOFS.md` and its evidence
 manifest. Wider prefixes, exceptional stack effects and protected recovery
 remain in progress.
+
+## Zero-count REP LODS checkpoint
+
+Review rows 1b and V now preserve the accumulator and source index when a
+natural-address-size `REP LODS` has an exact zero count. Same-binary x86-64
+and i386 process oracles pass 256 calls each. Matched prior/current IDA
+inspections change one unresolved transfer per architecture into an exact
+register target and user edge. A partial-count byte mutation revokes the
+proof and restoration republishes it. See `VMP_REP_LODS_ZERO.md` and its
+evidence JSON. Nonzero counts and protected effectiveness remain in progress.

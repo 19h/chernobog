@@ -1244,6 +1244,7 @@ struct State
             // Plain long-mode LODS reads DS:[SI] into the accumulator slice.
             // A known local source supplies the loaded value; an unknown
             // source still leaves unaffected upper accumulator bits intact.
+            // An exact zero-count REP executes no load and changes no index.
             const bool repeated = (insn.auxpref & (aux_rep | aux_repne)) != 0;
             const Slice accumulator = register_slice(insn.Op1);
             const bool matched_accumulator =
@@ -1252,6 +1253,14 @@ struct State
                 insn.Op2.type == o_phrase && x86_base_reg(insn, insn.Op2) == R_si &&
                 x86_index_reg(insn, insn.Op2) == R_none &&
                 get_dtype_size(insn.Op2.dtype) == get_dtype_size(insn.Op1.dtype);
+            if ((insn.auxpref & aux_rep) && !(insn.auxpref & (aux_repne | aux_lock)) &&
+                natad(insn) && insn.segpref == 0 && valid_width(width) && matched_accumulator &&
+                matched_memory)
+            {
+                const auto counts = repeat_counts(regs[1], word_bits);
+                if (counts && counts->size == 1 && counts->values[0] == 0)
+                    return;
+            }
             if (is64 && !repeated && valid_width(width) && matched_accumulator && matched_memory)
             {
                 std::optional<uint64_t> loaded;
