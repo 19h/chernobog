@@ -8,6 +8,7 @@ from pathlib import Path
 
 from mba_matching_diagnostics import require
 from mba_semantic_miss import (
+    NestedPrimitive,
     Primitive,
     constraint_reduction,
     engine_provenance,
@@ -27,6 +28,17 @@ def controls(model):
 
     def root(op, width, left, right=None):
         return ["n", width, [tags["z"], width, 0, 0, 0], ops[op], left, right]
+
+    def nested(op, width, left, right):
+        expression = root(op, width, left, right)
+        expression[2] = [
+            tags["d"],
+            width,
+            0,
+            0,
+            [ops[op], 0, 0x1000, left[2], right[2], [tags["z"], width, 0, 0, 0]],
+        ]
+        return expression
 
     def check(label, expression, expected, **options):
         budgets = {"timeout_ms": 1000, "resource_limit": 1000000, **options}
@@ -73,6 +85,56 @@ def controls(model):
             require(proof["status"] == "sat", "actual typed constant rejection")
             verify_constraint_witness(sample, model, proof)
             passed.append(rule + ":" + str(width))
+
+    for width in (1, 2, 4, 8):
+        x, y = leaf("r", width, 8), leaf("r", width, 32)
+        expression = root("setz", 1, nested("add", width, x, leaf("n", width, 0)), x)
+        check(f"nested identity:{width}", expression, "value_reduction", root_iprops=0)
+        expression = root("setz", 1, nested("add", width, x, y), x)
+        check(f"nested free:{width}", expression, "primitive_reduction_refuted", root_iprops=0)
+
+    x = leaf("r", 2, 8)
+    expression = root("setz", 1, nested("sub", 2, x, copy.deepcopy(x)), leaf("n", 2, 0))
+    check("nested constant result", expression, "value_reduction", root_iprops=0)
+    expression = root("setz", 1, nested("add", 2, x, leaf("r", 2, 9)), leaf("r", 2, 8))
+    proof = check(
+        "nested overlapping bytes", expression, "primitive_reduction_refuted", root_iprops=0
+    )
+    require(len(NestedPrimitive(expression, model, 0).cells) == 3, "nested shared-byte population")
+    require(all(q["state"] == "sat" for q in proof["queries"]), "nested overlap witnesses")
+    numbered = copy.deepcopy(expression)
+    numbered[4][2][2] = 3
+    check("nested value number", numbered, "primitive_reduction_refuted", root_iprops=0)
+
+    def replace_nested_left(candidate, operand):
+        candidate[4][4] = operand
+        candidate[4][2][4][3] = operand[2]
+
+    read = [
+        ops["ldx"],
+        0,
+        0x1000,
+        [tags["r"], 2, 0, 0, 116],
+        [tags["r"], 8, 0, 0, 16],
+        [tags["z"], 2, 0, 0, 0],
+    ]
+    for label, edit in (
+        ("nested missing metadata", lambda e: None),
+        ("nested instruction opcode", lambda e: e[4][2][4].__setitem__(0, ops["sub"])),
+        ("nested instruction operand", lambda e: e[4][2][4].__setitem__(3, leaf("r", 2, 40)[2])),
+        ("nested value properties", lambda e: e[4][2].__setitem__(3, 1)),
+        ("nested effects", lambda e: e[4][2][4].__setitem__(1, 4096)),
+        ("nested depth", lambda e: replace_nested_left(e, nested("add", 2, x, x))),
+        ("nested explicit load", lambda e: replace_nested_left(e, leaf("d", 2, read))),
+    ):
+        altered = copy.deepcopy(expression)
+        edit(altered)
+        options = {} if label == "nested missing metadata" else {"root_iprops": 0}
+        proof = check(label, altered, "unsupported", **options)
+        if label == "nested depth":
+            require(proof["reason"] == "nested arithmetic instruction contract", label)
+        if label == "nested explicit load":
+            require(proof["reason"] == "nested explicit read contract", label)
 
     for width in (1, 2, 4, 8):
         x, y = leaf("r", width, 8), leaf("r", width, 32)

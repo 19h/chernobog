@@ -277,6 +277,109 @@ class Primitive:
         return {"bytes": data, "operands": values, "result": self.integer(values)}
 
 
+class NestedPrimitive:
+    """One arithmetic child beneath a scalar root, with shared snapshot bytes."""
+
+    def __init__(self, root, model, root_iprops=None):
+        paths = [
+            path
+            for path, index in (("L", 4), ("R", 5))
+            if root[index] is not None and root[index][0] == "n"
+        ]
+        if len(paths) != 1:
+            raise Unsupported("nested arithmetic child count")
+        self.path = paths[0]
+        child = root[4 if self.path == "L" else 5]
+        tags = model["mops"]
+        value = child[2]
+        if (
+            child[1] not in (1, 2, 4, 8)
+            or not isinstance(value, list)
+            or len(value) != 5
+            or value[:2] != [tags["d"], child[1]]
+            or type(value[2]) is not int
+            or not 0 <= value[2] <= 65535
+            or value[3] != 0
+            or not isinstance(value[4], list)
+            or len(value[4]) != 6
+        ):
+            raise Unsupported("nested arithmetic value contract")
+        ins = value[4]
+        if (
+            ins[0] != child[3]
+            or ins[1] != 0
+            or type(ins[2]) is not int
+            or ins[2] < 0
+            or child[4] is None
+            or child[5] is None
+            or child[4][0] != "v"
+            or child[5][0] != "v"
+            or ins[3] != child[4][2]
+            or ins[4] != child[5][2]
+            or ins[5] != [tags["z"], child[1], 0, 0, 0]
+            or child[3] not in {model["ops"][op] for op in BINARY}
+        ):
+            raise Unsupported("nested arithmetic instruction contract")
+        self.child = Primitive(child, model, 0)
+        synthetic = ["v", child[1], [tags["r"], child[1], -1, 0, 1 << 63]]
+        flat = list(root)
+        flat[4 if self.path == "L" else 5] = synthetic
+        self.root = Primitive(flat, model, root_iprops)
+        self.synthetic = self.root.leaves[self.path]["bytes"]
+        other = "R" if self.path == "L" else "L"
+        other_keys = self.root.leaves.get(other, {}).get("bytes", [])
+        if set(self.synthetic) & (set(self.child.cells) | set(other_keys)):
+            raise Unsupported("nested synthetic identity collision")
+        if self.child.loads or self.root.loads:
+            raise Unsupported("nested explicit read contract")
+        self.cells = {k: v for k, v in self.root.cells.items() if k not in self.synthetic}
+        self.cells.update(self.child.cells)
+        self.loads = self.root.loads + self.child.loads
+        self.op, self.width, self.bits = self.root.op, self.root.width, self.root.bits
+        self.widths = self.root.widths
+        self.leaves = self.root.leaves
+
+    def values(self, cells):
+        require(set(cells) == set(self.cells), "counterexample byte population")
+        child_result = self.child.integer(
+            self.child.values({k: cells[k] for k in self.child.cells})
+        )
+        expanded = {k: cells[k] for k in self.root.cells if k not in self.synthetic}
+        expanded.update(
+            {key: (child_result >> (8 * i)) & 255 for i, key in enumerate(self.synthetic)}
+        )
+        return self.root.values(expanded)
+
+    def integer(self, values):
+        return self.root.integer(values)
+
+    def symbolic(self, prefix):
+        result, root_cells, operands = self.root.symbolic(prefix)
+        child_result, child_cells, _ = self.child.symbolic(prefix)
+        substitutions = [
+            (root_cells[key], z3.Extract(8 * i + 7, 8 * i, child_result))
+            for i, key in enumerate(self.synthetic)
+        ]
+        result = z3.substitute(result, *substitutions)
+        operands = {path: z3.substitute(value, *substitutions) for path, value in operands.items()}
+        cells = {key: value for key, value in root_cells.items() if key not in self.synthetic}
+        cells.update(child_cells)
+        return result, cells, operands
+
+    def witness(self, model, cells):
+        data = {
+            key: model.eval(value, model_completion=True).as_long() for key, value in cells.items()
+        }
+        values = self.values(data)
+        return {"bytes": data, "operands": values, "result": self.integer(values)}
+
+
+def reduction_model(root, model, root_iprops=None):
+    if root[0] == "n" and any(node is not None and node[0] == "n" for node in root[4:6]):
+        return NestedPrimitive(root, model, root_iprops)
+    return Primitive(root, model, root_iprops)
+
+
 def solve(condition, timeout_ms=250, resource_limit=100000):
     require(type(timeout_ms) is int and 1 <= timeout_ms <= 10000, "solver time budget")
     require(
@@ -295,7 +398,7 @@ def solve(condition, timeout_ms=250, resource_limit=100000):
 
 def primitive_reductions(root, model, timeout_ms=250, resource_limit=100000, root_iprops=None):
     try:
-        primitive = Primitive(root, model, root_iprops)
+        primitive = reduction_model(root, model, root_iprops)
     except Unsupported as error:
         return {"status": "unsupported", "reason": str(error)}
     first, a, values = primitive.symbolic("first")
@@ -396,7 +499,7 @@ def constraint_reduction(sample, model, timeout_ms=250, resource_limit=100000):
 
 def verify_primitive_witness(root, sdk_model, query, root_iprops=None):
     """Recheck SAT witnesses with integer arithmetic, without a solver query."""
-    primitive = Primitive(root, sdk_model, root_iprops)
+    primitive = reduction_model(root, sdk_model, root_iprops)
     require(query["state"] == "sat", "only SAT has a reduction counterexample")
     require(
         query["target"] == "any_constant"

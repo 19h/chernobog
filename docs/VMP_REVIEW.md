@@ -23,6 +23,9 @@ The later user-supplied VMP, Morok and Hikari binaries are catalogued with
 exact hashes and provenance bounds in
 [PROTECTED_SAMPLE_CORPUS.md](PROTECTED_SAMPLE_CORPUS.md). Subsequent
 fixed-seed Morok measurements use a distinct keygen binary.
+The bounded nested MBA miss audit is recorded in
+[VMP_NESTED_MBA_AUDIT.md](VMP_NESTED_MBA_AUDIT.md); it classifies the
+historical protected matrix without changing the original source-only review.
 
 This review assesses native binary analysis. No supplied VMP executable was
 run, no protected-binary recovery benchmark was performed, and no production

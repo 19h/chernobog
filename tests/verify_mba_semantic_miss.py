@@ -3,6 +3,8 @@
 import argparse
 from collections import Counter
 import copy
+import gzip
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -75,14 +77,32 @@ def controls(root, model, proof, root_iprops=None):
     return rejected
 
 
-def audit(report_path, timeout_ms, resource_limit):
+def audit(report_path, timeout_ms, resource_limit, archive_path=None):
     report = json.loads(report_path.read_text())
     require(report["passed"] and report["matcher_inputs"], "complete actual input matrix required")
     root_dir = Path(__file__).resolve().parent.parent
-    require(
-        all(digest(root_dir / p) == h for p, h in report["source_sha256"].items()),
-        "captured matcher source changed",
-    )
+    if archive_path is None:
+        require(
+            all(digest(root_dir / p) == h for p, h in report["source_sha256"].items()),
+            "captured matcher source changed",
+        )
+    else:
+        with gzip.open(archive_path, "rt") as stream:
+            archive = json.load(stream)
+        captured = archive["files"]
+        report_key = str(report_path.relative_to(root_dir))
+        require(
+            hashlib.sha256(captured[report_key]["text"].encode()).hexdigest()
+            == digest(report_path),
+            "captured report differs from source archive",
+        )
+        require(
+            all(
+                hashlib.sha256(captured[p]["text"].encode()).hexdigest() == h
+                for p, h in report["source_sha256"].items()
+            ),
+            "captured matcher source differs from source archive",
+        )
     counts, classifications, gates, unsupported, solver_states = [Counter() for _ in range(5)]
     findings, proofs, proof_keys = [], [], {}
     first = None
@@ -214,7 +234,7 @@ def audit(report_path, timeout_ms, resource_limit):
         "proofs": proofs,
         "findings": findings,
         "corruption_controls": controls(*first),
-        "scope": "actual retained typed primitive value snapshots: refute reduction to any constant or current operand and check three captured rejected-rule instances; values may be unreachable in the native program; different storage classes have no inferred alias relation; no full-state/CFG, fault, side-effect, missing-identity completeness, live rewrite or protected recovery claim",
+        "scope": "actual retained typed scalar value snapshots with at most one arithmetic child: refute reduction to any constant or current operand and check three captured rejected-rule instances; values may be unreachable in the native program; different storage classes have no inferred alias relation; no full-state/CFG, fault, side-effect, missing-identity completeness, live rewrite or protected recovery claim",
     }
 
 
@@ -222,6 +242,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--archive", type=Path)
     parser.add_argument("--timeout-ms", type=int, default=250)
     parser.add_argument("--resource-limit", type=int, default=100000)
     args = parser.parse_args()
@@ -229,9 +250,12 @@ def main():
     start = time.monotonic_ns()
     try:
         report_path = local(args.report)
+        archive_path = local(args.archive) if args.archive is not None else None
         pins = {p: digest(p) for p in (*SOURCES, str(report_path))}
+        if archive_path is not None:
+            pins[str(archive_path)] = digest(archive_path)
         engine = engine_provenance()
-        result = audit(report_path, args.timeout_ms, args.resource_limit)
+        result = audit(report_path, args.timeout_ms, args.resource_limit, archive_path)
         require(all(digest(p) == h for p, h in pins.items()), "semantic audit inputs changed")
         require(engine == engine_provenance(), "semantic engine changed")
         result.update(
@@ -240,6 +264,11 @@ def main():
             report_sha256=pins[str(report_path)],
             report=str(report_path.relative_to(Path(__file__).resolve().parent.parent)),
         )
+        if archive_path is not None:
+            result["capture_archive"] = str(
+                archive_path.relative_to(Path(__file__).resolve().parent.parent)
+            )
+            result["capture_archive_sha256"] = pins[str(archive_path)]
     except Exception as error:
         result["failure"] = type(error).__name__ + ": " + str(error)
     result.update(
