@@ -28,6 +28,8 @@ The bounded nested MBA miss audit is recorded in
 historical protected matrix without changing the original source-only review.
 The complete paired matcher inventory and its remaining unsupported cases are
 recorded in [VMP_MBA_COMPLETE_CAPTURE.md](VMP_MBA_COMPLETE_CAPTURE.md).
+The nested explicit-read follow-up is in
+[VMP_MBA_NESTED_READ_AUDIT.md](VMP_MBA_NESTED_READ_AUDIT.md).
 
 This review assesses native binary analysis. No supplied VMP executable was
 run, no protected-binary recovery benchmark was performed, and no production

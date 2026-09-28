@@ -47,6 +47,16 @@ abstentions; they cannot be counted as successful recovery.
 Quality gates are applied to each completed change and again to the complete
 objective. Neither baseline test success nor this ledger proves completion.
 
+Complete-matrix nested-read checkpoint for row 4a: the source-pinned
+14,047-event matcher inventory has zero omissions. Independent root/child
+explicit-read identities and integer witnesses reclassify 290 shallow
+nested-load events as refuted constant/current-operand reductions under the
+declared snapshot model. The complete totals are 13,290 refuted, 752
+unsupported and five existing catalog applications. Production rules and
+mutation remain unchanged; native read aliasing, effects, arbitrary identities
+and protected recovery remain open. See `VMP_MBA_NESTED_READ_AUDIT.md` and its
+full compressed audit.
+
 Transient MBA input checkpoint for row 4a: actual pre-scan candidate and
 consecutive block-prefix projections are retained separately from historical
 diagnostics. Independent structural replay uses the exact certified templates

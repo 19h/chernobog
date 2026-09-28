@@ -57,7 +57,7 @@ class Unsupported(ValueError):
 class Primitive:
     """One scalar root; operands preserve width, versions and byte overlap."""
 
-    def __init__(self, root, model, root_iprops=None):
+    def __init__(self, root, model, root_iprops=None, read_scope=None):
         tags = model["mops"]
         self.op = {code: name for name, code in model["ops"].items()}.get(root[3])
         self.width = root[1]
@@ -130,7 +130,11 @@ class Primitive:
                 ):
                     raise Unsupported("unsupported nested value or explicit-load contract")
                 # Separate occurrences remain independent, even for equal EAs.
-                base = ["explicit_read", path, 0]
+                base = (
+                    ["explicit_read", path, 0]
+                    if read_scope is None
+                    else ["explicit_read", read_scope, path, 0]
+                )
                 self.loads.append({"path": path, "instruction": ins})
             else:
                 raise Unsupported("unsupported operand effect or storage")
@@ -320,21 +324,21 @@ class NestedPrimitive:
             or child[3] not in {model["ops"][op] for op in BINARY}
         ):
             raise Unsupported("nested arithmetic instruction contract")
-        self.child = Primitive(child, model, 0)
+        self.child = Primitive(child, model, 0, read_scope="child")
         synthetic = ["v", child[1], [tags["r"], child[1], -1, 0, 1 << 63]]
         flat = list(root)
         flat[4 if self.path == "L" else 5] = synthetic
-        self.root = Primitive(flat, model, root_iprops)
+        self.root = Primitive(flat, model, root_iprops, read_scope="root")
         self.synthetic = self.root.leaves[self.path]["bytes"]
         other = "R" if self.path == "L" else "L"
         other_keys = self.root.leaves.get(other, {}).get("bytes", [])
         if set(self.synthetic) & (set(self.child.cells) | set(other_keys)):
             raise Unsupported("nested synthetic identity collision")
-        if self.child.loads or self.root.loads:
-            raise Unsupported("nested explicit read contract")
         self.cells = {k: v for k, v in self.root.cells.items() if k not in self.synthetic}
         self.cells.update(self.child.cells)
-        self.loads = self.root.loads + self.child.loads
+        self.loads = [{**load, "path": "root/" + load["path"]} for load in self.root.loads] + [
+            {**load, "path": "child/" + load["path"]} for load in self.child.loads
+        ]
         self.op, self.width, self.bits = self.root.op, self.root.width, self.root.bits
         self.widths = self.root.widths
         self.leaves = self.root.leaves

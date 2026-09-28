@@ -118,6 +118,23 @@ def controls(model):
         [tags["r"], 8, 0, 0, 16],
         [tags["z"], 2, 0, 0, 0],
     ]
+    with_load = copy.deepcopy(expression)
+    replace_nested_left(with_load, leaf("d", 2, read))
+    proof = check("nested explicit load", with_load, "primitive_reduction_refuted", root_iprops=0)
+    require([load["path"] for load in proof["explicit_reads"]] == ["child/L"], "nested load scope")
+    two_loads = root(
+        "setz", 1, leaf("d", 2, copy.deepcopy(read)), nested("add", 2, leaf("d", 2, read), x)
+    )
+    proof = check(
+        "nested equal-address reads", two_loads, "primitive_reduction_refuted", root_iprops=0
+    )
+    require(
+        len(proof["snapshot_cells"]) == 6
+        and [load["path"] for load in proof["explicit_reads"]] == ["root/L", "child/L"],
+        "independent nested read occurrences",
+    )
+    bad_read = copy.deepcopy(read)
+    bad_read[1] = 4096
     for label, edit in (
         ("nested missing metadata", lambda e: None),
         ("nested instruction opcode", lambda e: e[4][2][4].__setitem__(0, ops["sub"])),
@@ -125,7 +142,7 @@ def controls(model):
         ("nested value properties", lambda e: e[4][2].__setitem__(3, 1)),
         ("nested effects", lambda e: e[4][2][4].__setitem__(1, 4096)),
         ("nested depth", lambda e: replace_nested_left(e, nested("add", 2, x, x))),
-        ("nested explicit load", lambda e: replace_nested_left(e, leaf("d", 2, read))),
+        ("nested effectful load", lambda e: replace_nested_left(e, leaf("d", 2, bad_read))),
     ):
         altered = copy.deepcopy(expression)
         edit(altered)
@@ -133,8 +150,8 @@ def controls(model):
         proof = check(label, altered, "unsupported", **options)
         if label == "nested depth":
             require(proof["reason"] == "nested arithmetic instruction contract", label)
-        if label == "nested explicit load":
-            require(proof["reason"] == "nested explicit read contract", label)
+        if label == "nested effectful load":
+            require(proof["reason"] == "unsupported nested value or explicit-load contract", label)
 
     for width in (1, 2, 4, 8):
         x, y = leaf("r", width, 8), leaf("r", width, 32)
