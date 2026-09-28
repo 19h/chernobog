@@ -159,6 +159,24 @@ void repeated_memory_regressions()
             }
             check(actual.known == ((all_one | all_zero) & 255) && actual.value == all_one,
                   "immediate AND known bits match every concretization");
+            for (unsigned operation = 0; operation < 2; ++operation)
+            {
+                Word bits{known, value | (uint64_t{255} & ~known)};
+                if (operation == 0)
+                    or_constant(bits, 8, 0, immediate, false);
+                else
+                    xor_constant(bits, 8, 0, immediate, false);
+                all_one = all_zero = 255;
+                for (unsigned i = 0; i < size; ++i)
+                {
+                    const unsigned result =
+                        operation == 0 ? concrete[i] | immediate : concrete[i] ^ immediate;
+                    all_one &= result;
+                    all_zero &= ~result;
+                }
+                check(bits.known == ((all_one | all_zero) & 255) && bits.value == all_one,
+                      "immediate OR/XOR known bits match every concretization");
+            }
         }
     }
     Word partial{UINT64_MAX, UINT64_MAX};
@@ -171,6 +189,26 @@ void repeated_memory_regressions()
           "masked ECX has only its low bit unknown and zero-extends RCX");
     and_constant(partial, 64, 1, 0, true);
     check(partial.known == 0, "invalid immediate AND slice rejects register fact");
+    partial = {UINT64_MAX ^ UINT64_C(0xff00), UINT64_MAX ^ UINT64_C(0xff00)};
+    or_constant(partial, 8, 8, 0x12, true);
+    check(partial.known == ((UINT64_MAX ^ UINT64_C(0xff00)) | UINT64_C(0x1200)) &&
+              partial.value == ((UINT64_MAX ^ UINT64_C(0xff00)) | UINT64_C(0x1200)),
+          "AH immediate OR fixes ones and preserves other register bytes");
+    xor_constant(partial, 8, 8, 0x12, true);
+    check(partial.known == ((UINT64_MAX ^ UINT64_C(0xff00)) | UINT64_C(0x1200)) &&
+              partial.value == (UINT64_MAX ^ UINT64_C(0xff00)),
+          "AH immediate XOR toggles only known source bits");
+    partial = {};
+    or_constant(partial, 32, 0, UINT64_C(0xffff0000), true);
+    check(partial.known == UINT64_C(0xffffffffffff0000) && partial.value == UINT64_C(0xffff0000),
+          "immediate OR fixes low 32-bit ones and zero-extends high 32 bits");
+    xor_constant(partial, 32, 0, UINT64_C(0x00ff0000), true);
+    check(partial.known == UINT64_C(0xffffffffffff0000) && partial.value == UINT64_C(0xff000000),
+          "immediate XOR changes only known low 32-bit values");
+    or_constant(partial, 64, 1, 0, true);
+    check(partial.known == 0, "invalid immediate OR slice rejects register fact");
+    xor_constant(partial, 64, 1, 0, true);
+    check(partial.known == 0, "invalid immediate XOR slice rejects register fact");
     check(!repeat_counts(Word{}, 64), "unknown high count bits reject finite model");
     check(!repeat_counts(Word{UINT64_MAX, 0}, 16), "unsupported count width rejects model");
     const auto range = [](uint64_t a, unsigned n) { return a < 512 && n <= 512 - a; };

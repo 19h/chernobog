@@ -217,6 +217,40 @@ inline void and_constant(Word &destination, unsigned bits, unsigned offset, uint
     destination.value |= value << offset;
 }
 
+// Immediate OR fixes every set bit; immediate XOR preserves which bits are
+// known while toggling their values. Both retain unaffected register slices.
+inline void or_constant(Word &destination, unsigned bits, unsigned offset, uint64_t immediate,
+                        bool zero_extend_32)
+{
+    if (!valid_width(bits) || offset > 64 - bits)
+    {
+        destination = {};
+        return;
+    }
+    const uint64_t m = mask(bits), operand = immediate & m;
+    const uint64_t known = ((destination.known >> offset) | operand) & m;
+    const uint64_t value = ((destination.value >> offset) | operand) & known;
+    destination.write(bits, offset, std::nullopt, zero_extend_32);
+    destination.known |= known << offset;
+    destination.value |= value << offset;
+}
+
+inline void xor_constant(Word &destination, unsigned bits, unsigned offset, uint64_t immediate,
+                         bool zero_extend_32)
+{
+    if (!valid_width(bits) || offset > 64 - bits)
+    {
+        destination = {};
+        return;
+    }
+    const uint64_t m = mask(bits), operand = immediate & m;
+    const uint64_t known = (destination.known >> offset) & m;
+    const uint64_t value = ((destination.value >> offset) ^ operand) & known;
+    destination.write(bits, offset, std::nullopt, zero_extend_32);
+    destination.known |= known << offset;
+    destination.value |= value << offset;
+}
+
 struct Product
 {
     std::optional<uint64_t> low, high;

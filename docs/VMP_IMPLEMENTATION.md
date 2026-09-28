@@ -1458,3 +1458,15 @@ remain unresolved. The inspected IDB inventory is unchanged. The original
 frozen plan file remains unavailable, so its recorded contents are not
 reverified. See `VMP_PROTECTED_OWNERLESS_97.md` and its retained capture
 archive. The complete review remains in progress.
+
+## Partial-register immediate logic checkpoint
+
+Review rows 2a and 2b now preserve known register bits through immediate
+`OR` and `XOR`, and derive ZF/SF/PF when immediate `AND`/`OR`/`XOR` leaves an
+exact slice. Exhaustive partial-byte comparisons and both x86-64 and i386
+native fixtures pass. Matched fresh IDA processes gain three exact `SETcc`
+facts per architecture relative to the preceding plugin, while two
+input-dependent controls per architecture remain unresolved. The historical
+97-head protected inspection retains all four abstentions, and all 23 CTest
+suites pass. See `VMP_PARTIAL_LOGIC.md` and its retained capture. Full
+protected recovery and the remaining review items remain in progress.

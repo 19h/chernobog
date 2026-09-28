@@ -1418,12 +1418,23 @@ struct State
             algebra != Operation::clear_carry && algebra != Operation::set_carry &&
             algebra != Operation::complement_carry)
         {
-            if (algebra == Operation::bit_and && a.reg >= 0 && algebra_right &&
-                insn.Op2.type == o_imm)
+            if ((algebra == Operation::bit_and || algebra == Operation::bit_or ||
+                 algebra == Operation::bit_xor) &&
+                a.reg >= 0 && algebra_right && insn.Op2.type == o_imm)
             {
                 if (a.reg == 4)
                     stack.clear();
-                and_constant(regs[size_t(a.reg)], a.width, a.offset, *algebra_right, is64);
+                auto &destination = regs[size_t(a.reg)];
+                if (algebra == Operation::bit_and)
+                    and_constant(destination, a.width, a.offset, *algebra_right, is64);
+                else if (algebra == Operation::bit_or)
+                    or_constant(destination, a.width, a.offset, *algebra_right, is64);
+                else
+                    xor_constant(destination, a.width, a.offset, *algebra_right, is64);
+                // A partial input may become an exact result after the mask.
+                // CF/OF are already cleared and AF remains unknown by transfer().
+                if (const auto exact = destination.read(a.width, a.offset))
+                    result_flags(flags, *exact, a.width);
             }
             else
                 write(insn.Op1, result, is64);
