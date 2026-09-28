@@ -29,6 +29,10 @@ struct X86Condition
 std::optional<X86Condition> x86_condition(uint16_t instruction_type);
 bool x86_condition_prefix_supported(const insn_t &instruction);
 
+// Accept only unprefixed PUSH imm8/imm32 encodings whose IDA operand agrees
+// with the loaded bytes. Return the actual sign-extended machine-word value.
+std::optional<uint64_t> decode_x86_push_immediate(const insn_t &instruction, unsigned mode_bits);
+
 // Bounded owned-function must-analysis with architectural direct successors and
 // conservative joins. A complete inventory of at most 4096 heads supplies a
 // predecessor slice of at most min(depth, 64) preceding nodes plus the query. Cut

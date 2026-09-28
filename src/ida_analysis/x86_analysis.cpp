@@ -29,6 +29,18 @@
 namespace chernobog::ida_analysis
 {
 
+std::optional<uint64_t> decode_x86_push_immediate(const insn_t &instruction, unsigned mode_bits)
+{
+    if ((mode_bits != 32 && mode_bits != 64) || instruction.itype != NN_push ||
+        instruction.Op1.type != o_imm || (instruction.size != 2 && instruction.size != 5))
+        return std::nullopt;
+    std::array<uint8_t, 5> bytes{};
+    if (get_bytes(bytes.data(), instruction.size, instruction.ea) != instruction.size)
+        return std::nullopt;
+    return classifier::decode_push_immediate_bytes(bytes.data(), instruction.size, mode_bits,
+                                                   instruction.Op1.value);
+}
+
 std::optional<X86Condition> x86_condition(uint16_t type)
 {
     using C = x86_abstract::Condition;
@@ -2620,12 +2632,12 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
         if (instruction.Op1.type == o_imm)
         {
             push_model.kind = classifier::instruction_kind_t::push_immediate;
-            target.kind = classifier::target_proof_kind_t::immediate;
-            const auto immediate = state.read(instruction.Op1, result.address_bits);
+            const auto immediate = decode_x86_push_immediate(instruction, result.address_bits);
             if (!immediate)
                 continue;
-            target.value = result.address_bits == 64 ? uint64_t(int64_t(int32_t(*immediate)))
-                                                     : uint64_t(uint32_t(*immediate));
+            push_model.immediate = *immediate;
+            target.kind = classifier::target_proof_kind_t::immediate;
+            target.value = *immediate;
         }
         else if (instruction.Op1.type == o_reg)
         {

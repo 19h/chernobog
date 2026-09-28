@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "scope": "Exact PUSH immediate bytes, proof-source consistency, ELF32 execution and two IDA analysis paths",
+  "specification": "https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2b-manual.pdf#page=513",
+  "source_sha256": {
+    "src/ida_analysis/native_classifier.cpp": "11c962c17832fe7afaf3b885646d2a122a6bc6c13d0d5ba41d7737acca4552d8",
+    "src/ida_analysis/native_classifier.hpp": "cbf96c5e36594f93143c0f58b0f9e285502bfb3afb9653d5b23563b0891f2a9d",
+    "src/ida_analysis/get_pc_ida.cpp": "854bc4a6e78b009216765dfe7f543fd3da9714ae724f2b4b2fffa035a2567d80",
+    "src/ida_analysis/x86_analysis.cpp": "09be5b7c9051302c7430efbfe828844c0e5c17ff62097b0039706ce19ae171a2",
+    "src/ida_analysis/x86_analysis.hpp": "48b6111043dcfc07cf3e6e91e13c6a0acd70eb85e7686ca85cc446b408cb5df1",
+    "tests/core_tests.cpp": "7e98a57e5ae5d51e8c0a59481d3bf4fd8def03a11d173d1a3ea07ef647c1a2ff",
+    "tests/run_ownerless_dataflow.py": "0090c954c6862dab24515f28a1d03f5d032e57367fe4c584023574a926feedef",
+    "tests/vmp_native/push_immediate32.S": "f3b3689d5375507c9abbab7ef00adb0fc5da5499df400a96b296f3360ca0dcac",
+    "tests/ida_push_immediate32_probe.py": "cfadb2639a73d6aca21fdff99b473f66e83d060ed1203f36827a29e33b3d1113"
+  },
+  "elf32_binary_sha256": "d014051fa62cad3d344ffca665297b2b9a019f75df9172be6618cad2d763c991",
+  "elf32_qemu_exit_code": 0,
+  "elf32_qemu_image_id": "sha256:a4d366ca019230fb6e3f0423bf0cbebaab63d7f32336f19ab007cb18063a7d12",
+  "ida_sha256": "613d9ff7cda10686fefde8fee90ec5cbd0d2dc656bb8eaf737cbd5f9b3021ffd",
+  "plugin_sha256": {
+    "prior_installed": "ad8e07aa72f0ee22ec5f927f7cd680510a46c7d1d7e617f6279e2a0fefd8d139",
+    "rebuilt": "56b921073fe891b9d2b5b92e92a4dd06bda096f4569bf1ac063a3789ea6b2e56"
+  },
+  "elf32_ida": {
+    "prior_checks": 12,
+    "rebuilt_checks": 12,
+    "prior_and_rebuilt_report_sha256": "81c4e28c95079baf7d07b5e704c3ba45fcff3494e4f7640ed5b8446ea3708af2",
+    "proved_target": "0x4010f0",
+    "negative_imm8_decoded_32bit": "0xffffff80"
+  },
+  "ownerless_report_sha256": "a6cf7960a7ba5d1b7ef63b3fe008620e9412b71419c0fc23daa0324d11adaedc",
+  "ownerless": {
+    "x86_64": {
+      "ida_checks": 1900,
+      "native_checks": 4606,
+      "corrupt_oracles_rejected": 2,
+      "negative_imm8_and_imm32_target": "0xffffffffffffffff",
+      "inspection_sha256": "18af06b3fa8289404d8955ff858d39ec406536f34a66fc42a267e94e2444b77a"
+    },
+    "i386": {
+      "ida_checks": 1850,
+      "native_checks": 4606,
+      "corrupt_oracles_rejected": 2,
+      "negative_imm8_and_imm32_target": "0xffffffff",
+      "inspection_sha256": "e387f6a7b5b99d21144e335320d16692b85c12ea472e3f190da4df6f3238be14"
+    }
+  },
+  "portable_core_ctest_passed": true,
+  "formatter_checks_passed": true
+}

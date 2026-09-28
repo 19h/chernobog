@@ -493,10 +493,12 @@ std::optional<classifier::stack_transfer_t> classify_ida_push_return(const insn_
     if (push.Op1.type == o_imm)
     {
         p.kind = instruction_kind_t::push_immediate;
+        const auto immediate = decode_x86_push_immediate(push, mode);
+        if (!immediate)
+            return std::nullopt;
+        p.immediate = *immediate;
         proof.kind = target_proof_kind_t::immediate;
-        // Architectural PUSH in 64-bit mode sign-extends its immediate encoding.
-        proof.value = mode == 64 ? uint64_t(int64_t(int32_t(push.Op1.value)))
-                                 : uint64_t(uint32_t(push.Op1.value));
+        proof.value = p.immediate;
     }
     else if (push.Op1.type == o_reg)
     {

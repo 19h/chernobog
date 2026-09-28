@@ -326,6 +326,26 @@ void test_stack_transfer_classifier()
         proof.registers = {push.source};
         result = classify_push_return(push, ret, mode, proof);
         check(result && result->target.value == 0x2000, "register definition target");
+        proof.registers = {{1, 0, uint16_t(mode)}};
+        check(!classify_push_return(push, ret, mode, proof),
+              "register proof must name the pushed register");
+        proof.registers = {push.source};
+        push.kind = instruction_kind_t::push_immediate;
+        push.immediate = 0x2000;
+        proof = {};
+        proof.kind = target_proof_kind_t::immediate;
+        proof.value = 0x2000;
+        result = classify_push_return(push, ret, mode, proof);
+        check(result && result->target.value == 0x2000, "matching immediate proof accepted");
+        proof.value = 0x2001;
+        check(!classify_push_return(push, ret, mode, proof),
+              "immediate proof must match the pushed value");
+        push.kind = instruction_kind_t::push_register;
+        proof = {};
+        proof.kind = target_proof_kind_t::register_definition;
+        proof.value = 0x2000;
+        proof.definitions = {0xFF0};
+        proof.registers = {push.source};
         ret.alternate_predecessor = true;
         check(!classify_push_return(push, ret, mode, proof), "alternate entry into RET rejected");
         ret.alternate_predecessor = false;
@@ -416,6 +436,50 @@ void test_stack_transfer_classifier()
         ret.address = k_bad_address;
         check(!classify_push_return(push, ret, mode, proof), "invalid address rejected");
     }
+}
+
+void test_push_immediate_bytes()
+{
+    using chernobog::ida_analysis::classifier::decode_push_immediate_bytes;
+    for (const unsigned mode : {32u, 64u})
+    {
+        for (unsigned value = 0; value < 256; ++value)
+        {
+            const uint8_t bytes[] = {0x6a, uint8_t(value)};
+            const uint64_t expected =
+                value < 128
+                    ? value
+                    : (mode == 32 ? UINT64_C(0xffffff00) : UINT64_C(0xffffffffffffff00)) | value;
+            check(decode_push_immediate_bytes(bytes, sizeof(bytes), mode, value) == expected,
+                  "PUSH imm8 exact sign extension");
+            check(!decode_push_immediate_bytes(bytes, sizeof(bytes), mode, value ^ 1),
+                  "PUSH imm8 decoder disagreement rejected");
+        }
+        for (const uint32_t value : {0u, 1u, 0x7fffffffu, 0x80000000u, 0xffffffffu})
+        {
+            const uint8_t bytes[] = {0x68, uint8_t(value), uint8_t(value >> 8),
+                                     uint8_t(value >> 16), uint8_t(value >> 24)};
+            const uint64_t expected =
+                mode == 64 && (value & 0x80000000u) ? UINT64_C(0xffffffff00000000) | value : value;
+            check(decode_push_immediate_bytes(bytes, sizeof(bytes), mode, value) == expected,
+                  "PUSH imm32 exact sign extension");
+            check(!decode_push_immediate_bytes(bytes, sizeof(bytes), mode, value ^ 1),
+                  "PUSH imm32 decoder disagreement rejected");
+        }
+        const uint8_t prefixed[] = {0x66, 0x6a, 0x80};
+        const uint8_t wrong_opcode[] = {0x6b, 0x80};
+        const uint8_t truncated[] = {0x68, 0x01};
+        check(!decode_push_immediate_bytes(prefixed, sizeof(prefixed), mode, 0x80),
+              "prefixed PUSH immediate abstains");
+        check(!decode_push_immediate_bytes(wrong_opcode, sizeof(wrong_opcode), mode, 0x80),
+              "wrong PUSH opcode abstains");
+        check(!decode_push_immediate_bytes(truncated, sizeof(truncated), mode, 1),
+              "truncated PUSH immediate abstains");
+    }
+    const uint8_t bytes[] = {0x6a, 0x80};
+    check(!decode_push_immediate_bytes(bytes, sizeof(bytes), 16, 0x80),
+          "unsupported 16-bit mode abstains");
+    check(!decode_push_immediate_bytes(nullptr, sizeof(bytes), 32, 0x80), "missing bytes abstain");
 }
 
 void test_get_pc_classifier()
@@ -1080,6 +1144,7 @@ int main()
     test_get_pc_classifier();
     test_push_get_pc_classifier();
     test_stack_transfer_classifier();
+    test_push_immediate_bytes();
     test_switch_dispatch_classifier();
     test_arm64_direct_branch_encoding();
     test_arm64_predicates();

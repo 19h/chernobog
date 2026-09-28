@@ -186,4 +186,10 @@ std::optional<stack_transfer_t> classify_push_return(const instruction_t &push,
                                                      unsigned execution_mode_bits,
                                                      const target_proof_t &target);
 
+// Decode unprefixed PUSH imm8/imm32 from exact bytes and cross-check the
+// decoder's low immediate bits before sign extension to the stack width.
+std::optional<uint64_t> decode_push_immediate_bytes(const uint8_t *bytes, size_t size,
+                                                    unsigned execution_mode_bits,
+                                                    uint64_t decoded_operand);
+
 } // namespace chernobog::ida_analysis::classifier

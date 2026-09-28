@@ -1547,3 +1547,17 @@ offline forged-call rejection are retained in
 observed process tree but does not establish complete child instruction
 coverage, exact source lineage or Chernobog protected recovery. The full
 review remains in progress.
+
+## PUSH immediate proof-source checkpoint
+
+Review rows 1a, 1b and V now reject classifier-supplied immediate targets
+that differ from the PUSH source and register proofs that omit the pushed
+register. Both IDA adapters derive immediate targets from checked loaded
+`6A ib` or `68 id` bytes with exact sign extension. Portable controls cover
+all 256 byte immediates in each admitted mode plus mismatch and encoding
+negatives. An executed ELF32 transfer and matched prior/current 12/12 IDA
+reports retain the correct published target. The ownerless x86-64/i386 suite
+passes 1,900/1,850 inspection checks and proves both negative-immediate
+encoding controls per mode. See `VMP_PUSH_IMMEDIATE_PROOFS.md` and its evidence
+manifest. Wider prefixes, exceptional stack effects and protected recovery
+remain in progress.

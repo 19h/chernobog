@@ -168,11 +168,12 @@ std::optional<stack_transfer_t> classify_push_return(const instruction_t &push,
     if (target.value && (mode == 32 && *target.value > UINT32_MAX))
         return std::nullopt;
     if (target.kind == target_proof_kind_t::immediate &&
-        push.kind != instruction_kind_t::push_immediate)
+        (push.kind != instruction_kind_t::push_immediate || *target.value != push.immediate))
         return std::nullopt;
     if (target.kind == target_proof_kind_t::register_definition &&
         (push.kind != instruction_kind_t::push_register || target.definitions.empty() ||
-         target.registers.empty()))
+         std::none_of(target.registers.begin(), target.registers.end(),
+                      [&](const register_slice_t &source) { return source.same(push.source); })))
         return std::nullopt;
     if (target.stack_top_source &&
         (push.kind != instruction_kind_t::push_memory || !push.source_is_stack_pointer))
@@ -206,6 +207,24 @@ std::optional<stack_transfer_t> classify_push_return(const instruction_t &push,
     result.stack_write_offset_bytes = -int(mode / 8);
     result.target = target;
     return result;
+}
+
+std::optional<uint64_t> decode_push_immediate_bytes(const uint8_t *bytes, size_t size,
+                                                    unsigned mode, uint64_t decoded_operand)
+{
+    if (bytes == nullptr || (mode != 32 && mode != 64) || (size != 2 && size != 5) ||
+        bytes[0] != (size == 2 ? 0x6a : 0x68))
+        return std::nullopt;
+    const unsigned encoded_bits = size == 2 ? 8 : 32;
+    const uint64_t encoded_mask = encoded_bits == 8 ? UINT8_MAX : UINT32_MAX;
+    uint64_t encoded = 0;
+    for (unsigned i = 0; i < encoded_bits / 8; ++i)
+        encoded |= uint64_t(bytes[i + 1]) << (8 * i);
+    if ((decoded_operand & encoded_mask) != encoded)
+        return std::nullopt;
+    if (encoded & (uint64_t{1} << (encoded_bits - 1)))
+        encoded |= ~encoded_mask;
+    return mode == 32 ? encoded & UINT32_MAX : encoded;
 }
 
 std::optional<get_pc_candidate_t> classify_get_pc_gadget(const instruction_t &call,
