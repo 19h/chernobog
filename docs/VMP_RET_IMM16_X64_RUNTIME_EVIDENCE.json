@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "checkpoint": "x86-64 near RET imm16 process and same-binary IDA metadata",
+  "execution": {
+    "host_os": "macOS 27.2",
+    "host_architecture": "arm64",
+    "guest_architecture": "x86-64 Mach-O",
+    "translation_implementation": "unknown",
+    "compiler": "Apple clang 21.0.0 (clang-2100.3.34.2)",
+    "positive_status": 0,
+    "negative_status": 1,
+    "positive_stdout_bytes": 0,
+    "positive_stderr_bytes": 0,
+    "negative_stdout_bytes": 0,
+    "negative_stderr_bytes": 0
+  },
+  "sha256": {
+    "tests/vmp_native/ret_adjust_runtime.S": "f2facb7fce82f8d6a2e23fd932f15238e74d02426d666ac48a96a1b71e1e662c",
+    "tests/ida_ret_adjust_runtime_probe.py": "36306e0cca8bd245607996a4ff650dff1936358cad61703f133fe87d1b8d4faf",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248",
+    "build/vmp-ret-adjust-runtime": "a50bf8f7a17d13502b1da651e0c97d96695a81f1318ea71c12d5a0b350c119c6",
+    "build/vmp-ret-adjust-runtime-negative": "2755b065c784d5a4e197e21186b2b4153f00ff4ac57e33f42ed078c87c101ad3",
+    "build/vmp-ret-adjust-runtime-ida/run.json": "8626a53156368f69d1d80aba3d9053eb31e59514c8d59b7c579a5d262e9e2afa",
+    "build/vmp-ret-adjust-runtime-ida/ret_adjust_runtime.json": "dd12c10b6f5aece551033088e0f2a5a85783a5328fab52566bdc1d4b4dc3fc4e",
+    "installed_signed_plugin": "e0bbfa98c29a2f70208c44f1816c37360028123802a6dc8a33617b5c6671f146",
+    "IDA_9_4_executable": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28"
+  },
+  "ida_run": {
+    "runner_return_code": 0,
+    "checks_passed": 7,
+    "checks_failed": 0,
+    "expected_log_found": true,
+    "internal_error_found": false,
+    "artifacts_unchanged": true,
+    "source_script_unchanged": true,
+    "source_input_unchanged": true,
+    "plugin_unchanged": true,
+    "ida_unchanged": true
+  }
+}
