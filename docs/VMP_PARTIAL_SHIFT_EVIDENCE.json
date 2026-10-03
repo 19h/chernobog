@@ -1,0 +1,52 @@
+{
+  "schema": "chernobog.partial-shift-evidence.v1",
+  "source_sha256": {
+    "src/common/x86_abstract.h": "5dddfa711d66eee32f64d603e50d6c9e16dfac20294f895f69ab97d4cf6f79d3",
+    "src/ida_analysis/x86_analysis.cpp": "5908559b98303ca2694149608e33c386ae49b17556db1a715f2e2b8119315ae3",
+    "tests/x86_abstract_tests.cpp": "a56fe9bab23f9f02b2c64f1674ad992ad48ecae8115d4335b2da9758036cf64d",
+    "tests/vmp_native/partial_shift.S": "cf885e3ca55ddd54356cc0a99a308d80fd8164901dd61927f64753a172c77c30",
+    "tests/ida_partial_shift_probe.py": "6cd78d9a812a0bd41c6cca69f872309e9ef3fbeeb8670e7bda46ba2ff4597fd4"
+  },
+  "x86_execution_oracle": {
+    "partial_shift_cases": 148104,
+    "concrete_completion_cases": 14400,
+    "executable_sha256": "1dca5fdf128fa6fe9664a59c41214fad6c091fc0758bc7b52b380237e3652049"
+  },
+  "binary_sha256": "6583c4d0f296e0311ec6f92deb313c45f6d3df511e44d7aec647a11c27aed525",
+  "ida_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+  "probe_sha256": "6cd78d9a812a0bd41c6cca69f872309e9ef3fbeeb8670e7bda46ba2ff4597fd4",
+  "prior_plugin_sha256": "994cc226220f9a5c0dc029246b92166ef8b3e04c635fc175dc1706840ff54cd6",
+  "current_plugin_sha256": "fb4895678b51912028898af991cb0199be0e7b7c25ce8e0865927902099f6249",
+  "prior_report_sha256": "fcc3895a6d767da9cb48299358186778acbd250d23a00aa6b21cf63b2db878ae",
+  "current_report_sha256": "9f1455cf02682ab63bdfa4b95290be76a1c4bf3f2dc00519034382d8c206ff50",
+  "prior_runner_sha256": "12a1d42d598e8cc30e792d60540ec4da04bcf4a6c0d9bdcd8a61e75e220819cf",
+  "current_runner_sha256": "c0c83c009a42550b66b4abf09e19f54da1d92d3e64b3677ccde4f0875c584183",
+  "prior_proofs": 1,
+  "current_proofs": 7,
+  "expected_prior_values": {
+    "shift_right_upper_a": [],
+    "shift_right_upper_d": [],
+    "shift_left_inserted_zero": [],
+    "shift_right_sign": [],
+    "shift_arithmetic_zero_sign": [],
+    "shift_arithmetic_one_sign": [],
+    "shift_masked_zero": ["0x1"],
+    "shift_unknown_low": [],
+    "shift_unknown_count": [],
+    "shift_unknown_carry": [],
+    "shift_locked": []
+  },
+  "expected_current_values": {
+    "shift_right_upper_a": ["0x1"],
+    "shift_right_upper_d": ["0x1"],
+    "shift_left_inserted_zero": ["0x1"],
+    "shift_right_sign": ["0x1"],
+    "shift_arithmetic_zero_sign": ["0x1"],
+    "shift_arithmetic_one_sign": ["0x1"],
+    "shift_masked_zero": ["0x1"],
+    "shift_unknown_low": [],
+    "shift_unknown_count": [],
+    "shift_unknown_carry": [],
+    "shift_locked": []
+  }
+}

@@ -1610,3 +1610,15 @@ missing-final-byte revocation, both zero-count architecture regressions and
 one unchanged 75-node supplied VMP root bound the result. See
 `VMP_REP_LODS_BOUNDED.md` and its evidence JSON. i386 nonzero segment bases,
 larger counts and protected-path effectiveness remain open.
+
+## Protected post-syscall owned-tail checkpoint
+
+Review rows 0b, 6a and V now admit a read-only observed checkpoint at an exact
+owned code head inside a function. On the two fixed-seed Morok keygen inputs,
+QEMU/GDB records the syscall and four-entry helper return, then fresh IDA
+replays match 38 post-helper instruction entries, 608 GPR values, 228 defined
+status-flag bits and 10,752 selected boundary bytes. Both replays stop at the
+same caller return; neither syscall nor helper semantics are inferred. The
+raw capture, mutations, IDB inventory and provenance qualification are in
+`VMP_NATIVE_POST_SYSCALL.md` and its evidence archive. Later protected paths,
+other syscalls and full VM semantics remain in progress.

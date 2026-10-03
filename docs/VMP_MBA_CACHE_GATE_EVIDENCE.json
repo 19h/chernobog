@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "passed": true,
+  "verifier_sha256": "3cffea343fd75882f9cfa8b29a65c839128e45fb8541e9af311a5467732d6181",
+  "dependency_sha256": "d16aef68da68e2b790d60dea8a13240586ce195327030e0532d458afb4626a31",
+  "result": {
+    "schema": 1,
+    "passed": true,
+    "scope": "40 matched x86-64/i386 SDK profiles; exact schema-2 report equality excluding stage elapsed time",
+    "prior_matrix_sha256": "8d80d9f7a3183eb5da5b66fc200cc2a7280cb322250c68d78593270f2391fff9",
+    "current_matrix_sha256": "3dbaf050cc0dea70768a99ba7cf9f2615d48b608dae7bc716c960ef6ac30769d",
+    "prior_plugin_sha256": "e264c7cfac50da572faf1b0b977db7d2d7e0a842790eaa6e358f1facb08a817f",
+    "current_plugin_sha256": "b94678b6758326da50c4e796f551eb9928c1e8f6a4d2ae920470f8fb3f21ba45",
+    "ida_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+    "normalized_reports_sha256": "3a4ffcd23f348ec0081db46bee6c10be808cfe22e7618ea4065c971f8fd6a8e6",
+    "counts": {
+      "events": 14047,
+      "unrecorded": 0,
+      "retained_samples": 9729,
+      "successful_matches": 5
+    },
+    "report_count_mutation_rejected": true
+  }
+}

@@ -178,6 +178,9 @@ static bool mops_equal_strict_internal(const mop_t &a, const mop_t &b, unsigned 
     case mop_a:                                              // Address
         if (SIMD_UNLIKELY(!a.a || !b.a))
             return null_payload(a.a, b.a);
+        if (!equal(a.a->insize, b.a->insize, MatchFailureKind::AddressInputSize) ||
+            !equal(a.a->outsize, b.a->outsize, MatchFailureKind::AddressOutputSize))
+            return false;
         return mops_equal_strict_internal(*a.a, *b.a, depth + 1, visited, difference);
     case mop_h: // Helper function
         if (SIMD_UNLIKELY(!a.helper || !b.helper))
@@ -518,6 +521,8 @@ const char *match_failure_kind_name(MatchFailureKind kind)
         "nested_opcode",
         "instruction_props",
         "load_source",
+        "address_input_size",
+        "address_output_size",
         "block_identity",
         "text_value",
         "unsupported_mop",

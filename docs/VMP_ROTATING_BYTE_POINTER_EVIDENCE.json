@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "scope": "exact x64 byte-source postincrement recovery with a loaded-global-pointer control",
+  "sources": {
+    "tests/vmp_native/byte_pointer_stream.c": "5396f569212c2d71a731a4cc57452ae0a6224d556a6b1ee043d7802f20a5b704",
+    "tests/ida_byte_pointer_stream_probe.py": "a67a4ef007da98361a019f39fa8eb826e03952a0471bf6f7c5d4493076491e3d",
+    "tests/verify_rotating_byte_pointer.py": "25bc8d24ba25ab5e7a5f247ec48c89b238d0c637fe8408268b33336b710c570b"
+  },
+  "binary_sha256": "8ad0b91919336dd6ab97785987f49b58f0ef069397083a2b3cacaca7719b5518",
+  "runs": {
+    "prior": {
+      "directory": "build/byte-pointer-x64-prior",
+      "plugin_sha256": "b94678b6758326da50c4e796f551eb9928c1e8f6a4d2ae920470f8fb3f21ba45",
+      "run_sha256": "f8a04a71b0d3c22ec91d62ac745a19231ec5f6248f1067706ee076bc01f0b8c0",
+      "capture_sha256": "29dbad82166cbbc45ff8877a35b9a5440168054e3d230f9dcd9ae6bb437a4d5d",
+      "return_code": 2,
+      "checks": 18
+    },
+    "current": {
+      "directory": "build/byte-pointer-x64-pointer-current",
+      "plugin_sha256": "a51168b34f249db7dc69654f7a013116663f386e0e1273d69eb500e00fd9a0ba",
+      "run_sha256": "46dd8b59db40fd1563ba25f440dad10c892be13600e9caf6f4b3032994373e7d",
+      "capture_sha256": "e5c147dc41df0debb93c30fe0c87a5a3f18a263bf9716701ce2fcfdae4e845bb",
+      "return_code": 0,
+      "checks": 18
+    }
+  }
+}

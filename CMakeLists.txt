@@ -479,6 +479,19 @@ ida_add_plugin(
     src/hybrid/solver_inspection.cpp
     src/hybrid/session.cpp)
 
+# A workspace-local output keeps read-only SDK checkouts usable for analysis builds. The default
+# remains the SDK plugin directory used by make install.
+set(CHERNOBOG_PLUGIN_OUTPUT_DIR
+    ""
+    CACHE PATH "Optional workspace-local plugin output")
+if(CHERNOBOG_PLUGIN_OUTPUT_DIR)
+    get_filename_component(_chernobog_plugin_output "${CHERNOBOG_PLUGIN_OUTPUT_DIR}" ABSOLUTE
+                           BASE_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+    set_target_properties(
+        chernobog PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${_chernobog_plugin_output}"
+                             RUNTIME_OUTPUT_DIRECTORY "${_chernobog_plugin_output}")
+endif()
+
 target_include_directories(chernobog SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS}
                                                     "${_chernobog_rax_capi}/include")
 target_link_libraries(chernobog PRIVATE libz3 chernobog::rax ${_chernobog_thread_libraries})

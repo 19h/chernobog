@@ -1,0 +1,45 @@
+{
+  "schema": "chernobog.protected-indirect-census-evidence.v1",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "7ea1614ea9b45ca1867ba76fa1a93eee1646bc6ee4fb6a29d43c234b45639805",
+    "tests/ida_protected_indirect_census.py": "236f97b70e479c57ea3319156a64da5e9e7a852770f6f1080af8dae3039d1e86",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248"
+  },
+  "ida_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+  "plugin_sha256": "eee26a113ea82abdfe600958a04215e01655d788c9ff3b80e92f1907b68938c6",
+  "environment_sha256": "71b70ca46de8198444f415c56b18b1f9c6d38ae10ba4c91a2524291c9c8ae40b",
+  "cases": {
+    "foo_original": {
+      "input_sha256": "443b0a464d7de68c5a26a3e31a92e694356ccd1eef3127d522309ac672ecc7c7",
+      "report_sha256": "d5138f15a65336cc2ec5598104536bd7e723a583e21d9110667a92a3b1eb6971",
+      "run_sha256": "f63009aa7327efa35d9159dc330ad90e999f3a7cfd54e7bbd136c1992fe4b182",
+      "code_heads": 9,
+      "indirect_jumps": 1,
+      "counts": {"direct-memory": 1, "other": 0, "register": 0, "rex-register": 0, "rex-stack-top": 0, "stack-top": 0}
+    },
+    "foo_vmp": {
+      "input_sha256": "c61935fe4f8a66a6d36e8c0027341a55b816833005dc0006dc0fdbdb342938a5",
+      "report_sha256": "d7930a83c89cc86055704188264f1d36857e4b1473d723c5456fa300797a0610",
+      "run_sha256": "26ccc22d0b5bfcce93330b2293b59c9c4510c605b7e10267b3ba871c532cf26a",
+      "code_heads": 219,
+      "indirect_jumps": 2,
+      "counts": {"direct-memory": 0, "other": 0, "register": 1, "rex-register": 1, "rex-stack-top": 0, "stack-top": 0}
+    },
+    "morok_boo": {
+      "input_sha256": "730f6adfba4cb7179320c96a3a5b24856059f1c4ba24bad25b969d74e4054a27",
+      "report_sha256": "d25cb1f40f8dcab17f8d6d20d45d388d89328603d96e46dcad5aff3a6823e920",
+      "run_sha256": "ef146bf383eb19515f1eb935b641e7de55cb97a3e5a50c9085ed211276c9192a",
+      "code_heads": 187675,
+      "indirect_jumps": 13,
+      "counts": {"direct-memory": 0, "other": 4, "register": 9, "rex-register": 0, "rex-stack-top": 0, "stack-top": 0}
+    },
+    "morok_keygen": {
+      "input_sha256": "7d1971b1db221174caac0a5922a7452e1bebe214ca2355ab36c889a635699fd9",
+      "report_sha256": "bc479d0039964456ef9aaed49ee9f76dcf174b693da979b62bada85133e8be9b",
+      "run_sha256": "09a3bbd9e757fdc3dc1ed538ad93fb1c7db63ec2749a02d5cf3a1b0467f06393",
+      "code_heads": 175092,
+      "indirect_jumps": 17,
+      "counts": {"direct-memory": 0, "other": 8, "register": 9, "rex-register": 0, "rex-stack-top": 0, "stack-top": 0}
+    }
+  }
+}

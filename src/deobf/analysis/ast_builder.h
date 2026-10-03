@@ -49,15 +49,18 @@ bool validate_ast_structure(const minsn_t *ins, AstBuildReport *report = nullptr
 
 //--------------------------------------------------------------------------
 // Cache key for mop_t - OPTIMIZED
-// Uses hash-based comparison to eliminate string allocations and comparisons.
-// Scalar identity includes value numbers, properties and frame ownership.
+// Uses hash-based comparison to eliminate string allocations. A key match is
+// only a candidate for reuse: nested instruction hashes can collide or omit
+// metadata that the strict operand comparator retains.
+// Scalar identity includes value numbers, properties, frame ownership and
+// address-operand read/write extents.
 //--------------------------------------------------------------------------
 struct alignas(32) MopKey
 {
     uint64_t hash;   // Pre-computed hash for fast comparison
     uint64_t value1; // Primary identifier (depends on type)
     uint64_t value2; // Secondary identifier / hash extension
-    uint64_t frame;  // Parent mba_t identity for stack/local operands
+    uint64_t frame;  // Parent mba_t identity, or packed address extents for mop_a
     int32_t size;    // Full SDK size, including NOSIZE and aggregate widths
     uint16_t type;   // mopt_t (fits in 16 bits)
     uint16_t valnum; // Zero is unknown; different numbers remain distinct
@@ -140,6 +143,15 @@ class AstBuilderContext
             return nullptr;
         auto p = mop_to_ast_.find(key);
         return (p != mop_to_ast_.end()) ? p->second : nullptr;
+    }
+
+    // Reuse a cached AST only when its copied SDK operand is structurally
+    // equal to the source operand. A key collision may reduce deduplication,
+    // but it must never merge two distinct value snapshots.
+    SIMD_FORCE_INLINE AstPtr get_exact(const MopKey &key, const mop_t &source) const
+    {
+        AstPtr cached = get(key);
+        return cached && mops_equal_strict(cached->mop, source) ? cached : nullptr;
     }
 
     // Add new AST to context

@@ -34,10 +34,11 @@ def integer(value, low=0, high=UINT64):
 
 
 class Grammar:
-    def __init__(self, model, maximum=512):
+    def __init__(self, model, maximum=512, address_extents_required=False):
         self.tags = {code: name for name, code in model["mops"].items()}
         self.visits = 0
         self.maximum = maximum
+        self.address_extents_required = address_extents_required
 
     def charge(self, depth):
         self.visits += 1
@@ -74,7 +75,15 @@ class Grammar:
             self.instruction(payload, depth + 1)
         elif name == "a":
             if payload is not None:
-                self.operand(payload, depth + 1)
+                if self.address_extents_required:
+                    require(type(payload) is list and len(payload) == 3, "address extent shape")
+                    self.operand(payload[0], depth + 1)
+                    integer(payload[1], -(2**31), 2**31 - 1)
+                    integer(payload[2], -(2**31), 2**31 - 1)
+                else:
+                    # Historical source-pinned captures predate extent fields.
+                    require(type(payload) is list and len(payload) == 5, "legacy address shape")
+                    self.operand(payload, depth + 1)
         elif name in ("h", "str") and payload is not None:
             require(
                 isinstance(payload, str) and re.fullmatch(r"(?:[0-9a-f]{2}){0,4095}", payload),
@@ -182,7 +191,11 @@ def catalog(value, names=None, disabled=False):
 
 def capture(value, model):
     fields = {"root", "enclosing", "anchor", "prefix_status", "prefix"}
-    require(set(value) in (fields, fields | {"root_iprops"}), "input schema")
+    require(
+        set(value) in (fields, fields | {"root_iprops"}, fields | {"root_iprops", "schema"}),
+        "input schema",
+    )
+    require("schema" not in value or value["schema"] == 2, "input schema version")
     if value.get("root_iprops") is not None:
         integer(value["root_iprops"], 0, 2**32 - 1)
     require(len(packed(value).encode()) <= 8192, "input byte quota")
@@ -198,7 +211,7 @@ def capture(value, model):
         "untrusted prefix",
     )
     require(value["prefix_status"] != "head_limit" or len(value["prefix"]) == 64, "head frontier")
-    grammar = Grammar(model)
+    grammar = Grammar(model, address_extents_required=value.get("schema") == 2)
     require(value["root"] is not None and value["root"][0] == "n", "matcher root node")
     grammar.candidate(value["root"])
     grammar.instruction(value["enclosing"])
@@ -268,6 +281,12 @@ def operand_difference(left, right, model):
                         return result
                 return None
             if kind == tags["a"]:
+                if len(x) == len(y) == 3:
+                    for i, name in ((1, "address_input_size"), (2, "address_output_size")):
+                        if x[i] != y[i]:
+                            return name, x[i] & UINT64, y[i] & UINT64
+                    return diff(x[0], y[0], depth + 1)
+                require(len(x) == len(y) == 5, "mixed address capture formats")
                 return diff(x, y, depth + 1)
             return None if x == y else ("text_value",)
         return ("unsupported_mop",)

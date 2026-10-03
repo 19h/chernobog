@@ -16,6 +16,9 @@ const uint8_t transform_bytes_source[] = {ENC8('V', 0), ENC8('M', 1), ENC8('P', 
                                           ENC8('t', 6), ENC8('e', 7), ENC8(0, 8)};
 const uint16_t transform_words_source[] = {ENC16('V', 0), ENC16('M', 1), ENC16('P', 2),
                                            ENC16(0x03A9, 3), ENC16(0, 4)};
+const uint16_t transform_long_words_source[] = {
+    ENC16('V', 0), ENC16('M', 1), ENC16('P', 2), ENC16(0x03A9, 3), ENC16(0, 4),
+    0x3412,        0x7856,        0xBC9A,        0xF0DE,           0x2468};
 /* UTF-16LE content encrypted by the BYTE transform, not the wide overload. */
 const uint8_t transform_byte_utf16_source[] = {ENC8('W', 0), ENC8(0, 1), ENC8('i', 2), ENC8(0, 3),
                                                ENC8('d', 4), ENC8(0, 5), ENC8('e', 6), ENC8(0, 7),
@@ -27,6 +30,8 @@ uint8_t transform_negative_output[sizeof(transform_bytes_source)];
 uint8_t transform_mutable_source[] = {ENC8('V', 0), ENC8('M', 1), ENC8('P', 2),
                                       ENC8(' ', 3), ENC8('b', 4), ENC8('y', 5),
                                       ENC8('t', 6), ENC8('e', 7), ENC8(0, 8)};
+uint16_t transform_mutable_words_source[] = {ENC16('V', 0), ENC16('M', 1), ENC16('P', 2),
+                                             ENC16(0x03A9, 3), ENC16(0, 4)};
 uint16_t transform_negative_words[sizeof(transform_words_source) / sizeof(uint16_t)];
 unsigned transform_side_effect;
 
@@ -98,6 +103,24 @@ FIXTURE void transform_mutable(void)
         transform_negative_output[i] = transform_mutable_source[i] ^ (uint8_t)(ROT32(KEY, i) + i);
 }
 
+FIXTURE void transform_mutable_word_pointer(void)
+{
+    uint16_t *source = transform_mutable_words_source;
+    for (size_t i = 0; i < sizeof(transform_words_source) / sizeof(uint16_t); ++i)
+        transform_negative_words[i] = *source++ ^ (uint16_t)(ROT32(KEY, i) + i);
+}
+
+FIXTURE void transform_multiple_pointer_reads(void)
+{
+    const uint16_t *source = transform_long_words_source;
+    for (size_t i = 0; i < sizeof(transform_words_source) / sizeof(uint16_t); ++i)
+    {
+        const uint16_t before = source[i];
+        const uint16_t current = *source++;
+        transform_negative_words[i] = before ^ current ^ source[i] ^ (uint16_t)(ROT32(KEY, i) + i);
+    }
+}
+
 FIXTURE void transform_alias(void)
 {
     for (size_t i = 0; i < sizeof(transform_mutable_source); ++i)
@@ -118,6 +141,7 @@ int main(void)
     transform_bytes();
     transform_words();
     transform_byte_utf16();
+    transform_multiple_pointer_reads();
     const uint8_t expected_bytes[] = "VMP byte";
     const uint16_t expected_words[] = {'V', 'M', 'P', 0x03A9, 0};
     const uint8_t expected_byte_utf16[] = {'W', 0, 'i', 0, 'd', 0, 'e', 0, 0, 0};
@@ -130,5 +154,15 @@ int main(void)
     for (size_t i = 0; i < sizeof(expected_byte_utf16); ++i)
         if (transform_byte_utf16_output[i] != expected_byte_utf16[i])
             return 3;
+    for (size_t i = 0; i < sizeof(transform_words_source) / sizeof(uint16_t); ++i)
+    {
+        const uint16_t expected =
+            transform_long_words_source[2 * i] ^ transform_long_words_source[i] ^
+            transform_long_words_source[2 * i + 1] ^ (uint16_t)(ROT32(KEY, i) + i);
+        if (transform_negative_words[i] != expected)
+            return 4;
+    }
+    if (transform_negative_words[0] == expected_words[0])
+        return 5;
     return 0;
 }

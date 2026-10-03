@@ -31,14 +31,21 @@ def controls(model):
     def root(op, width, left, right=None):
         return ["n", width, [tags["z"], width, 0, 0, 0], ops[op], left, right]
 
-    def nested(op, width, left, right):
+    def nested(op, width, left, right=None):
         expression = root(op, width, left, right)
         expression[2] = [
             tags["d"],
             width,
             0,
             0,
-            [ops[op], 0, 0x1000, left[2], right[2], [tags["z"], width, 0, 0, 0]],
+            [
+                ops[op],
+                0,
+                0x1000,
+                left[2],
+                right[2] if right is not None else [tags["z"], -1, 0, 0, 0],
+                [tags["z"], width, 0, 0, 0],
+            ],
         ]
         return expression
 
@@ -132,6 +139,48 @@ def controls(model):
     numbered[4][2][2] = 3
     check("nested value number", numbered, "primitive_reduction_refuted", root_iprops=0)
 
+    two_level = root(
+        "setz",
+        1,
+        nested("add", 2, nested("xor", 2, x, leaf("n", 2, 7)), leaf("r", 2, 9)),
+        x,
+    )
+    check("two arithmetic children", two_level, "primitive_reduction_refuted", root_iprops=0)
+    require(
+        len(NestedPrimitive(two_level, model, 0).cells) == 3,
+        "two-level shared snapshot bytes",
+    )
+    three_level = root(
+        "setz",
+        1,
+        nested(
+            "add",
+            2,
+            nested("xor", 2, nested("sub", 2, x, x), leaf("n", 2, 7)),
+            leaf("r", 2, 9),
+        ),
+        x,
+    )
+    proof = check("three arithmetic children", three_level, "unsupported", root_iprops=0)
+    require(proof["reason"] == "nested arithmetic depth budget", "bounded nested depth")
+
+    unary_shapes = (
+        ("neg", 2, leaf("r", 2, 8)),
+        ("bnot", 2, leaf("r", 2, 8)),
+        ("mov", 2, leaf("r", 2, 8)),
+        ("xdu", 2, leaf("r", 1, 8)),
+        ("xds", 2, leaf("r", 1, 8)),
+        ("low", 2, leaf("r", 4, 8)),
+        ("high", 2, leaf("r", 4, 8)),
+    )
+    for operation, width, operand in unary_shapes:
+        candidate = root("xor", width, nested(operation, width, operand), leaf("r", width, 32))
+        check("nested unary " + operation, candidate, "primitive_reduction_refuted")
+
+    invalid_unary = root("xor", 2, nested("neg", 2, leaf("r", 2, 8)), leaf("r", 2, 32))
+    invalid_unary[4][2][4][4] = leaf("n", 2, 0)[2]
+    check("nested unary nonvoid right operand", invalid_unary, "unsupported")
+
     def replace_nested_left(candidate, operand):
         candidate[4][4] = operand
         candidate[4][2][4][3] = operand[2]
@@ -144,6 +193,80 @@ def controls(model):
         [tags["r"], 8, 0, 0, 16],
         [tags["z"], 2, 0, 0, 0],
     ]
+    stack_read = copy.deepcopy(read)
+    stack_read[4] = [tags["S"], 4, 0, 0, [1, 12]]
+    stack_expression = root("xor", 2, x, leaf("d", 2, stack_read))
+    proof = check("explicit load stack offset", stack_expression, "primitive_reduction_refuted")
+    require(
+        proof["explicit_reads"][0]["instruction"][4] == stack_read[4],
+        "stack offset source retained",
+    )
+    check(
+        "stack load same scalar bytes",
+        root("xor", 2, leaf("S", 2, [1, 12]), leaf("d", 2, stack_read)),
+        "unsupported",
+    )
+    check(
+        "stack load disjoint scalar bytes",
+        root("xor", 2, leaf("S", 2, [1, 8]), leaf("d", 2, stack_read)),
+        "primitive_reduction_refuted",
+    )
+    for label, edit in (
+        ("stack offset properties", lambda ins: ins[4].__setitem__(3, 1)),
+        ("stack offset width", lambda ins: ins[4].__setitem__(1, 2)),
+        ("stack offset identity", lambda ins: ins[4].__setitem__(4, [1])),
+        ("stack selector", lambda ins: ins.__setitem__(3, copy.deepcopy(stack_read[4]))),
+    ):
+        invalid_read = copy.deepcopy(stack_read)
+        edit(invalid_read)
+        check(
+            "explicit load " + label,
+            root("xor", 2, x, leaf("d", 2, invalid_read)),
+            "unsupported",
+        )
+    for offset_op in ("add", "sub"):
+        computed = copy.deepcopy(read)
+        computed[4] = [
+            tags["d"],
+            4,
+            0,
+            0,
+            [
+                ops[offset_op],
+                0,
+                0x1000,
+                [tags["r"], 4, 0, 0, 32],
+                [tags["n"], 4, 0, 0, 4],
+                [tags["z"], 4, 0, 0, 0],
+            ],
+        ]
+        proof = check(
+            "explicit load computed " + offset_op,
+            root("xor", 2, x, leaf("d", 2, computed)),
+            "primitive_reduction_refuted",
+        )
+        require(
+            proof["explicit_reads"][0]["instruction"][4] == computed[4],
+            "computed offset descriptor retained",
+        )
+        for label, edit in (
+            ("opcode", lambda operand: operand[4].__setitem__(0, ops["xor"])),
+            ("effects", lambda operand: operand[4].__setitem__(1, 1)),
+            ("result width", lambda operand: operand[4][5].__setitem__(1, 8)),
+            ("left width", lambda operand: operand[4][3].__setitem__(1, 8)),
+            ("reserved register", lambda operand: operand[4][3].__setitem__(4, 1)),
+            ("right width", lambda operand: operand[4][4].__setitem__(1, 8)),
+            ("right properties", lambda operand: operand[4][4].__setitem__(3, 1)),
+            ("right domain", lambda operand: operand[4][4].__setitem__(4, 1 << 32)),
+            ("nested offset", lambda operand: operand[4][4].__setitem__(0, tags["d"])),
+        ):
+            invalid = copy.deepcopy(computed)
+            edit(invalid[4])
+            check(
+                "explicit load computed " + offset_op + " " + label,
+                root("xor", 2, x, leaf("d", 2, invalid)),
+                "unsupported",
+            )
     with_load = copy.deepcopy(expression)
     replace_nested_left(with_load, leaf("d", 2, read))
     proof = check("nested explicit load", with_load, "primitive_reduction_refuted", root_iprops=0)
@@ -159,6 +282,23 @@ def controls(model):
         and [load["path"] for load in proof["explicit_reads"]] == ["root/L", "child/L"],
         "independent nested read occurrences",
     )
+    deep_loads = root(
+        "setz",
+        1,
+        leaf("d", 2, copy.deepcopy(read)),
+        nested("add", 2, nested("neg", 2, leaf("d", 2, read)), x),
+    )
+    proof = check(
+        "two-level equal-address reads", deep_loads, "primitive_reduction_refuted", root_iprops=0
+    )
+    require(
+        [load["path"] for load in proof["explicit_reads"]] == ["root/L", "child/child/L"],
+        "two-level independent read occurrences",
+    )
+    altered_deep = copy.deepcopy(two_level)
+    altered_deep[4][4][2][4][3] = leaf("r", 2, 32)[2]
+    proof = check("two-level altered source", altered_deep, "unsupported", root_iprops=0)
+    require(proof["reason"] == "nested arithmetic instruction contract", "deep source identity")
     bad_read = copy.deepcopy(read)
     bad_read[1] = 4096
     for label, edit in (
@@ -167,15 +307,12 @@ def controls(model):
         ("nested instruction operand", lambda e: e[4][2][4].__setitem__(3, leaf("r", 2, 40)[2])),
         ("nested value properties", lambda e: e[4][2].__setitem__(3, 1)),
         ("nested effects", lambda e: e[4][2][4].__setitem__(1, 4096)),
-        ("nested depth", lambda e: replace_nested_left(e, nested("add", 2, x, x))),
         ("nested effectful load", lambda e: replace_nested_left(e, leaf("d", 2, bad_read))),
     ):
         altered = copy.deepcopy(expression)
         edit(altered)
         options = {} if label == "nested missing metadata" else {"root_iprops": 0}
         proof = check(label, altered, "unsupported", **options)
-        if label == "nested depth":
-            require(proof["reason"] == "nested arithmetic instruction contract", label)
         if label == "nested effectful load":
             require(proof["reason"] == "unsupported nested value or explicit-load contract", label)
 

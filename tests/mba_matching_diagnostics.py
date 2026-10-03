@@ -33,6 +33,8 @@ FAILURE_KINDS_WITH_VALUES = {
     "nested_opcode",
     "instruction_props",
     "load_source",
+    "address_input_size",
+    "address_output_size",
     "block_identity",
 }
 FAILURE_KINDS_WITHOUT_VALUES = {

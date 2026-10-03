@@ -1,0 +1,18 @@
+{
+  "schema": "chernobog.indirect-jump-rexw-evidence.v1",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "aff37e4f2b050de5d569d0903bcdeb8e4436e742afc504fc0c050a89acfb6acc",
+    "tests/vmp_native/indirect_jump_rexw.S": "09c946aa7f1f19a1f35be8d0716041c5b5f5f825466a340936727d07384ba35b",
+    "tests/ida_indirect_jump_rexw_probe.py": "666d7a033a3bff565133bb9a055364abc4282906a7e101e30d15581e917f895b",
+    "tests/run_ida_smoke.py": "bf0c10aa4f86f66d0a764ad9bde1385c1714dbd91f091a9d8cb61f468d6c6248"
+  },
+  "ida_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+  "prior_plugin_sha256": "e7b85cb0bc16c293f1526905a2fd21108b85fa5bba83aabd8c660fc917b1c391",
+  "current_plugin_sha256": "2dc595a9d6c6b362289e21d93110de0a435f91979561b42dd2ac854522ba111c",
+  "binary_sha256": "67a1b5ffc00c7e4f4f03d71029df3aa12cc2ccf986daed85aa05361615d71ec6",
+  "probe_sha256": "666d7a033a3bff565133bb9a055364abc4282906a7e101e30d15581e917f895b",
+  "prior_report_sha256": "1060c0a6005b55532d93d1f2b5f85345833186523e1736cf2243e56757187399",
+  "prior_run_sha256": "d03387deee8b72f0ad6c0ce72294b3410a792c4a1f525a1717758296b8454fa2",
+  "current_report_sha256": "dbfbb22c09c0e9d19c776e414458c5f01fe0e9e2bcb95556ff70c01cfc7aa80f",
+  "current_run_sha256": "80be93a326154c102315596afe3c1bc6480cbbaa48c1d7674e19aab03e13dcb8"
+}

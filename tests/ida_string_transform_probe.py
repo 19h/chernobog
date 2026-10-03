@@ -29,6 +29,8 @@ names = (
     "transform_narrow_rotate",
     "transform_word_byte_index",
     "transform_mutable",
+    "transform_mutable_word_pointer",
+    "transform_multiple_pointer_reads",
     "transform_alias",
     "transform_extra_write",
 )
@@ -112,6 +114,24 @@ try:
                 "instructions": shapes.instructions,
             }
         )
+        if os.environ.get("CHERNOBOG_EXPECT_POSTINC_WORD") == "1" and name in (
+            "transform_words",
+            "transform_mutable_word_pointer",
+        ):
+            check(
+                name + " source pointer advances once per unit",
+                "*result++" in str(cfunc)
+                and any(expression["op"] == "cot_postinc" for expression in shapes.expressions),
+            )
+        if (
+            os.environ.get("CHERNOBOG_EXPECT_POSTINC_WORD") == "1"
+            and name == "transform_multiple_pointer_reads"
+        ):
+            check(
+                "multiple pointer reads remain visible in ctree",
+                any(expression["op"] == "cot_ptr" for expression in shapes.expressions)
+                and sum(expression["op"] == "cot_idx" for expression in shapes.expressions) >= 3,
+            )
         if os.environ.get("CHERNOBOG_EXPECT_STRING_TRANSFORMS") != "1":
             continue
         expected = {

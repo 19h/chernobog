@@ -1,0 +1,35 @@
+{
+  "schema": "chernobog.rdtsc-garbage-evidence.v1",
+  "source_sha256": {
+    "src/ida_analysis/x86_analysis.cpp": "805e41ded30ddcf640113931b51fe8855279d07d9d0ad72d13294e5ca7d6bfb7",
+    "tests/x86_abstract_tests.cpp": "72ea63c09a32ff9e94c31a2c6cdeeabdc2dc5cebaf2e02afe67c455414bb0f7c",
+    "tests/vmp_native/rdtsc.S": "d5da60792ebc749220ea140caae6dd9f7ebe7693111200be567b21129d8bf4a1",
+    "tests/ida_rdtsc_probe.py": "01cb7b8ce5c73a9fdd01d707082d6ccf7e4b3cd9c46a408a6a4c127f04c2d47d"
+  },
+  "binary_sha256": "d62e21e92905b4adc292c919c64930b99524d13a92b674d0c40bc82ce7f408d3",
+  "x86_execution_oracle": {
+    "cases": 2,
+    "executable_sha256": "3794f9568ee03da70a751f453a556a35bf6958b4defc7294ce53f4a2d9ae129a"
+  },
+  "ida_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+  "probe_sha256": "01cb7b8ce5c73a9fdd01d707082d6ccf7e4b3cd9c46a408a6a4c127f04c2d47d",
+  "prior_plugin_sha256": "13d735f1b8e791f29de33bafdbafc6eec3c1599b2ddd4d694ac0c3c90589fa20",
+  "current_plugin_sha256": "994cc226220f9a5c0dc029246b92166ef8b3e04c635fc175dc1706840ff54cd6",
+  "prior_report_sha256": "3bc4cbf106d30450c51bfea06c3164330dfad52c7e3fa058afcd887e5bdf8270",
+  "current_report_sha256": "cd8e36634257580a768ee67b0dff09c4cda80fc0b82cdcb1cf4a2e6779b64372",
+  "prior_runner_sha256": "c6cc1b17d401689464c21c8d5e162479301f3bb585ee64eb742c5aede03baab6",
+  "current_runner_sha256": "c35688f2dd2a43c8e1217709db19e5ff059da1158372d13cc2717b2c808061e2",
+  "prior_proofs": 0,
+  "current_proofs": 6,
+  "expected_values": {
+    "tsc_flags_carry": ["0x1"],
+    "tsc_flags_zero": ["0x1"],
+    "tsc_unrelated_register": ["0x1"],
+    "tsc_disjoint_memory": ["0x1"],
+    "tsc_zero_extend_a": ["0x1"],
+    "tsc_zero_extend_d": ["0x1"],
+    "tsc_unknown_a": [],
+    "tsc_unknown_d": [],
+    "tsc_locked": []
+  }
+}

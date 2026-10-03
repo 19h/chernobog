@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "passed": true,
+  "verifier_sha256": "e6cefd1eec568720113ea252420df7f128e52ae382b1d271ab866d826b79ee24",
+  "bridge_source_sha256": "78b7b9edbcecd0535156ed2f272b73d18014f0914041b0c4acc3a846b1bb29bb",
+  "probe_source_sha256": "fea05e87ac5480b0f5509d8cf5f0e520222e606cfe4c5dc22160b064b0008c40",
+  "result": {
+    "schema": 1,
+    "passed": true,
+    "scope": "constructed SDK-owned nested operand collision in paired isolated IDA processes",
+    "prior_report_sha256": "e3ff9390827fe3a8a15d6308b4374a4fcaf2870912f3752d0038239281162e51",
+    "current_report_sha256": "d8452cfc87205da503ed19865e5cc6ff8f308980f3efa87099760b1237efcc3d",
+    "prior_run_sha256": "44d0aff8e4bcab7da0730367bf732c2587f927b199f9f20872c005c72c236bce",
+    "current_run_sha256": "9962935972c6cd7b4e2028252f5064e09b97409e6b3ec833fd8a8bedf6fd78f2",
+    "prior_plugin_sha256": "e264c7cfac50da572faf1b0b977db7d2d7e0a842790eaa6e358f1facb08a817f",
+    "current_plugin_sha256": "b94678b6758326da50c4e796f551eb9928c1e8f6a4d2ae920470f8fb3f21ba45",
+    "bridge_sha256": "b29f14ef5cec98fe30661640f3fa800fcd45198ac693a072d3a93f8671f71fb7",
+    "probe_sha256": "fea05e87ac5480b0f5509d8cf5f0e520222e606cfe4c5dc22160b064b0008c40",
+    "input_sha256": "871ba8d25785b7ab7b6f56d85c76ee7ac97a3d02ce1d519c7582e8464586446f",
+    "ida_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+    "environment_sha256": "a0c1eefb34c76385f5840ccd7e16ccf2f0c7cb4c3008ce79bb6dfecdb3b1d2ec",
+    "prior_status": 6,
+    "current_status": 0,
+    "key_bytes": 64,
+    "ast_visits": 11,
+    "destinations": [102, 103],
+    "distinct_children": true,
+    "copied_operands_equal": true,
+    "destination_mutation_rejected": true
+  }
+}

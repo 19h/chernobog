@@ -1,0 +1,65 @@
+{
+  "archive_base64_sha256": "8daae3a51cf78249d138600f1fcc9787895fe0cb34a311635718d4d6ffe0f5e5",
+  "archive_gzip_sha256": "1f4073dcb26dfc9a0af2b1f56b4087060947ba84859d3e3fad91c501a5b354cc",
+  "capstone_binding_sha256": "6f8a27fe069aa89a46974e189b5365d56eb5e02c2fd581d2fbfad7fbba51549f",
+  "capstone_library_sha256": "016084c6e70d929249a2abb22f1afda95095294e6cd70f509964ffc54006bf94",
+  "capstone_version": "5.0.7",
+  "passed": true,
+  "prior_archive_sha256": "dbd7eb385128aac84ea61682254231a8a455a213188e45a245a70c13db2dba7d",
+  "schema": 1,
+  "sources_sha256": {
+    "tests/ida_native_after_return_probe.py": "4a8389e761b9e87d16839135c874d6bae6bb6bd946afea881c3c28be3de8621a",
+    "tests/morok_qemu_post_syscall.py": "017d33988b749e9f3467313031e14c7cc3258e69bfb89edbcf4c45a5f6ab5c69",
+    "tests/verify_native_after_return.py": "bf373a3c5b3b5c431fe38c3edd84368a7d60b96ae9e019c3c19d109865901b12",
+    "tests/verify_native_after_return_archive.py": "310188d7d4bb54cf3dd7c4bd8f70146eac24ff2c3f16e6a293cb6eb283f546fa"
+  },
+  "verification": {
+    "binary_sha256": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+    "cases": [
+      {
+        "changed_data_bytes": 9,
+        "derived_final_gpr_comparisons": 16,
+        "derived_gpr_entry_comparisons": 288,
+        "entered": 18,
+        "ida_executable_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+        "ida_sha256": "dc54dc0ed6f8d91a82f1a442a32caa6735adcc8c27e8defa355214aba54d41cd",
+        "input_sha256": "e19b1a7e7df224c8d242640e0a7b491ef593b37f9cdc49e597f813412502614f",
+        "inventory_unchanged": true,
+        "planned_heads": 43,
+        "plugin_sha256": "9bd8f870e79bc3af5cf5d4ec507cba4711d3bb8af6a85973139e7b767ad51cbd",
+        "post_sha256": "1e3e86721240c75b02c4703f469799f45fef93f8e79a45686c1edd6ac570fab1",
+        "run_sha256": "472ea814ddc22300454c9dd14d1555f9f7d39c6cb5e86657c9710796bdfb4552",
+        "shadow_sha256": "7dc940ef7be4d0dd9aefa008f0c8ee8d0dbc085c189ac376abe27c24745cdbe9",
+        "source_derived_return_target": "0x430584",
+        "written_bytes": 40
+      },
+      {
+        "changed_data_bytes": 9,
+        "derived_final_gpr_comparisons": 16,
+        "derived_gpr_entry_comparisons": 288,
+        "entered": 18,
+        "ida_executable_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+        "ida_sha256": "a9a8e20a3669f29d9d2423745e9cf4b9e67782d3e90a443df2c8781c45a2d3bf",
+        "input_sha256": "4115827e67efb477877223d5908bec1debf6d7b027842313a9b1704cd5977e32",
+        "inventory_unchanged": true,
+        "planned_heads": 43,
+        "plugin_sha256": "9bd8f870e79bc3af5cf5d4ec507cba4711d3bb8af6a85973139e7b767ad51cbd",
+        "post_sha256": "09ab9eb3a5fff18ff9558dbbd9e6bb14fd95131638c47eb783d75ef3688b1241",
+        "run_sha256": "557dce68898454fb720e5f698a2f621b43d1b425876a2e627aaa32abe4b49665",
+        "shadow_sha256": "7dc940ef7be4d0dd9aefa008f0c8ee8d0dbc085c189ac376abe27c24745cdbe9",
+        "source_derived_return_target": "0x43068f",
+        "written_bytes": 40
+      }
+    ],
+    "mutations_rejected": {
+      "branch_input": true,
+      "final_register": true,
+      "final_write": true,
+      "head_byte": true,
+      "stack_return": true
+    },
+    "passed": true,
+    "schema": 1,
+    "scope": "source-derived 18-entry caller transfer from observed pre-caller state; no observed post-return process trace"
+  }
+}

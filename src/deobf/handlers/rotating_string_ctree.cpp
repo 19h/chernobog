@@ -87,7 +87,34 @@ bool pure_address_expression(const cexpr_t *expression, unsigned depth = 0)
            pure_address_expression(expression->x, depth + 1);
 }
 
-bool initialize(const cexpr_t *expression, std::map<int, Induction> &variables)
+bool image_pointer(const cexpr_t *expression, const std::map<int, uint64_t> &pointers,
+                   uint64_t *address, unsigned depth = 0)
+{
+    if (!expression || !address || depth > 8)
+        return false;
+    if (expression->op == cot_cast && expression->type.is_ptr() && expression->x &&
+        width(expression) == width(expression->x))
+        return image_pointer(expression->x, pointers, address, depth + 1);
+    if (expression->op == cot_var && expression->type.is_ptr())
+    {
+        const auto found = pointers.find(expression->v.idx);
+        if (found == pointers.end())
+            return false;
+        *address = found->second;
+        return true;
+    }
+    const cexpr_t *object = expression;
+    if (expression->op == cot_ref)
+        object = expression->x;
+    if (!object || object->op != cot_obj ||
+        (expression->op != cot_ref && !object->type.is_array()) || object->obj_ea == BADADDR)
+        return false;
+    *address = uint64_t(object->obj_ea);
+    return true;
+}
+
+bool initialize(const cexpr_t *expression, std::map<int, Induction> &variables,
+                std::map<int, uint64_t> &pointers)
 {
     if (!expression || expression->op != cot_asg || !expression->x ||
         expression->x->op != cot_var || !expression->y || !width(expression->x))
@@ -96,6 +123,7 @@ bool initialize(const cexpr_t *expression, std::map<int, Induction> &variables)
     uint64_t value = 0;
     if (integer_width(expression->x) && number(expression->y, &value))
     {
+        pointers.erase(variable);
         rs::SymbolicValue initial;
         initial.constant = value;
         initial.bits = width(expression->y);
@@ -106,8 +134,11 @@ bool initialize(const cexpr_t *expression, std::map<int, Induction> &variables)
     else
     {
         variables.erase(variable); // An address-valued preheader alias is not a scalar fact.
+        pointers.erase(variable);
         if (!pure_address_expression(expression->y))
             return false;
+        if (expression->x->type.is_ptr() && image_pointer(expression->y, pointers, &value))
+            pointers[variable] = value;
     }
     return true;
 }
@@ -173,13 +204,33 @@ bool scalar_address(const cexpr_t *expression, const std::map<int, Induction> &v
 }
 
 bool pointer_address(const cexpr_t *expression, const std::map<int, Induction> &variables,
-                     size_t count, Address *out, unsigned depth = 0)
+                     const std::map<int, uint64_t> &pointers, size_t count, Address *out,
+                     bool allow_postinc = false, unsigned depth = 0)
 {
     if (!expression || depth > 12)
         return false;
     if (expression->op == cot_cast && expression->type.is_ptr() &&
         width(expression) == width(expression->x))
-        return pointer_address(expression->x, variables, count, out, depth + 1);
+        return pointer_address(expression->x, variables, pointers, count, out, allow_postinc,
+                               depth + 1);
+    if (expression->op == cot_var && expression->type.is_ptr())
+    {
+        const auto found = pointers.find(expression->v.idx);
+        if (found == pointers.end())
+            return false;
+        *out = {found->second, 0};
+        return true;
+    }
+    if (allow_postinc && expression->op == cot_postinc && expression->x &&
+        expression->x->op == cot_var && expression->type.is_ptr())
+    {
+        const auto found = pointers.find(expression->x->v.idx);
+        const int step = expression->type.get_ptrarr_objsize();
+        if (found == pointers.end() || (step != 1 && step != 2))
+            return false;
+        *out = {found->second, uint64_t(step)};
+        return true;
+    }
     if (expression->op == cot_obj && expression->type.is_array())
     {
         *out = {uint64_t(expression->obj_ea), 0};
@@ -195,7 +246,7 @@ bool pointer_address(const cexpr_t *expression, const std::map<int, Induction> &
         Address base, offset;
         const int scale = expression->x->type.get_ptrarr_objsize();
         if (scale < 1 || scale > 8 ||
-            !pointer_address(expression->x, variables, count, &base, depth + 1) ||
+            !pointer_address(expression->x, variables, pointers, count, &base, false, depth + 1) ||
             !scalar_address(expression->y, variables, count, &offset, depth + 1) ||
             offset.start > UINT64_MAX / uint64_t(scale) ||
             offset.step > UINT64_MAX / uint64_t(scale) ||
@@ -208,18 +259,19 @@ bool pointer_address(const cexpr_t *expression, const std::map<int, Induction> &
 }
 
 bool memory_address(const cexpr_t *expression, const std::map<int, Induction> &variables,
-                    size_t count, Address *out)
+                    const std::map<int, uint64_t> &pointers, size_t count, Address *out,
+                    bool allow_postinc = false)
 {
     if (!expression || (integer_width(expression) != 8 && integer_width(expression) != 16))
         return false;
     if (expression->op == cot_ptr)
-        return pointer_address(expression->x, variables, count, out);
+        return pointer_address(expression->x, variables, pointers, count, out, allow_postinc);
     if (expression->op != cot_idx || !expression->x)
         return false;
     Address base, offset;
     const int scale = expression->x->type.get_ptrarr_objsize();
     if (scale != width(expression) / 8 ||
-        !pointer_address(expression->x, variables, count, &base) ||
+        !pointer_address(expression->x, variables, pointers, count, &base) ||
         !scalar_address(expression->y, variables, count, &offset) ||
         offset.start > UINT64_MAX / uint64_t(scale) || offset.step > UINT64_MAX / uint64_t(scale) ||
         !safe_add(base.start, offset.start * uint64_t(scale), &out->start) ||
@@ -251,8 +303,10 @@ struct Builder
 {
     Shape &shape;
     const std::map<int, Induction> &variables;
+    const std::map<int, uint64_t> &pointers;
     std::map<int, size_t> temporaries;
     bool key_found = false;
+    unsigned pointer_updates = 0, source_reads = 0;
     std::optional<size_t> expression(const cexpr_t *value, unsigned depth = 0)
     {
         if (!value || depth > 24 || !integer_width(value) ||
@@ -282,14 +336,18 @@ struct Builder
         else if (value->op == cot_idx || value->op == cot_ptr)
         {
             Address address;
+            const bool postinc = value->op == cot_ptr && value->x && value->x->op == cot_postinc;
             if (node.bits != shape.contract.unit_bytes * 8 ||
-                !memory_address(value, variables, shape.contract.units, &address) ||
+                !memory_address(value, variables, pointers, shape.contract.units, &address,
+                                postinc) ||
                 address.step != shape.contract.unit_bytes || address.start >= uint64_t(BADADDR) ||
-                !native_memory(value->ea, shape.contract.unit_bytes, false, shape.entry))
+                !native_memory(value->ea, shape.contract.unit_bytes, false, shape.entry) ||
+                (postinc && ++pointer_updates > 1))
                 return {};
             if (shape.source != BADADDR && shape.source != ea_t(address.start))
                 return {};
             shape.source = ea_t(address.start);
+            ++source_reads;
             node.operation = rs::Operation::INPUT;
         }
         else if (value->op == cot_cast)
@@ -353,6 +411,7 @@ std::optional<Shape> extract(cfunc_t *function)
         !function->body.cblock || function->body.cblock->size() > 64)
         return {};
     std::map<int, Induction> variables;
+    std::map<int, uint64_t> pointers;
     cloop_t *loop = nullptr;
     cfor_t *for_loop = nullptr;
     for (auto &statement : *function->body.cblock)
@@ -365,7 +424,7 @@ std::optional<Shape> extract(cfunc_t *function)
                 return {};
             continue;
         }
-        if (statement.op == cit_expr && initialize(statement.cexpr, variables))
+        if (statement.op == cit_expr && initialize(statement.cexpr, variables, pointers))
             continue;
         if (statement.op == cit_do)
             loop = statement.cdo;
@@ -374,7 +433,7 @@ std::optional<Shape> extract(cfunc_t *function)
         else if (statement.op == cit_for)
         {
             loop = for_loop = statement.cfor;
-            if (for_loop->init.op != cot_empty && !initialize(&for_loop->init, variables))
+            if (for_loop->init.op != cot_empty && !initialize(&for_loop->init, variables, pointers))
                 return {};
         }
         else
@@ -449,14 +508,14 @@ std::optional<Shape> extract(cfunc_t *function)
         bound > rs::maximum_bytes / shape.contract.unit_bytes)
         return {};
     Address destination;
-    if (!memory_address(store->x, variables, size_t(bound), &destination) ||
+    if (!memory_address(store->x, variables, pointers, size_t(bound), &destination) ||
         destination.step != shape.contract.unit_bytes || destination.start >= uint64_t(BADADDR) ||
         !native_memory(store->ea, shape.contract.unit_bytes, true, shape.entry))
         return {};
     shape.destination = ea_t(destination.start);
     shape.store = store->ea;
     shape.store_expression = store;
-    Builder builder{shape, variables, {}, false};
+    Builder builder{shape, variables, pointers, {}, false, 0, 0};
     for (const auto *definition : definitions)
     {
         if (variables.count(definition->x->v.idx))
@@ -470,7 +529,11 @@ std::optional<Shape> extract(cfunc_t *function)
         builder.temporaries[definition->x->v.idx] = shape.program.nodes.size() - 1;
     }
     const auto result = builder.expression(store->y);
-    if (!result || !builder.key_found || shape.source == BADADDR)
+    // A postincrement changes the pointer's value for any later read in this
+    // iteration. The address extractor does not model that within-iteration
+    // sequence, so admit only its single source read.
+    if (!result || !builder.key_found || shape.source == BADADDR ||
+        (builder.pointer_updates && builder.source_reads != 1))
         return {};
     shape.program.result = *result;
     const uint64_t bytes = bound * shape.contract.unit_bytes;

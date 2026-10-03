@@ -1,0 +1,72 @@
+{
+  "schema": "chernobog.partial-bswap-evidence.v1",
+  "source_sha256": {
+    "src/common/x86_abstract.h": "be337bc77983ceba1d2183329e0ad4cf90b9cf8fe4583fc4cbd39a35a12450e9",
+    "src/ida_analysis/x86_analysis.cpp": "8f0e7697e7126297092b8355d75cbd7c928d3ef4047904d11d0210dd7c371164",
+    "tests/x86_abstract_tests.cpp": "d8d1f8afbe3870e696ee6c0995d50e7a97080bafbe1043674de5854bc8d34fb3",
+    "tests/vmp_native/partial_bswap.S": "d88c7f008a887505d0f7eb486dbcdd9f12f5f8c7bd4192837db1258241390a0c",
+    "tests/ida_partial_bswap_probe.py": "da6948366a8ca4360a2ff4c7168fb8983bb644232f6bd178dd0e3024617aeb6b",
+    "tests/vmp_native/partial_bswap32.S": "3f94f87391b451a6b7aece048e5ee0893ee82e85f3a528499edde8a8242afd3c",
+    "tests/ida_partial_bswap32_probe.py": "4a83207b3d2c653ea5b7271a93aa5a8683d0dd7fe933056750abb8ec6b0e29ab"
+  },
+  "x86_execution_oracle": {
+    "portable_patterns": 48,
+    "native_completions": 320,
+    "executable_sha256": "70934474ed32d35f1431704465b56059ad4b356b9e5f7da3d354cbafba5d1295"
+  },
+  "binary_sha256": "2a2f85dc458813c439836b15e59387ad611c1761b9f3dc38994e629722684890",
+  "ida_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+  "probe_sha256": "da6948366a8ca4360a2ff4c7168fb8983bb644232f6bd178dd0e3024617aeb6b",
+  "prior_plugin_sha256": "fb4895678b51912028898af991cb0199be0e7b7c25ce8e0865927902099f6249",
+  "current_plugin_sha256": "89daa946a7a4fa322e9bcf81f6192b12c405d339f3b4dc3fcc057078f9ea15c4",
+  "prior_report_sha256": "a1f9f2720af2bc3171fd54c2b47cd75e16e305413cb29b2c203169cda1f01953",
+  "current_report_sha256": "35c6bbab0d3ed1af230387500a6dc2fd7d5a2f831538030f9353a99597744eed",
+  "prior_runner_sha256": "fe9300db9c7e4c9c3ec43b26fc8c55996859ec288c3864c672845f93bc5533bb",
+  "current_runner_sha256": "ace68508c91a5f2748c75747ac77a4d28e70a6e0932622039b52ce4cbb6d6202",
+  "prior_proofs": 3,
+  "current_proofs": 5,
+  "expected_prior_values": {
+    "bswap64_known_zero": [],
+    "bswap64_known_one": [],
+    "bswap32_masked_byte": [],
+    "bswap32_zero_extend": ["0x1"],
+    "bswap_flags": ["0x1"],
+    "bswap32_unknown": [],
+    "bswap64_unknown": [],
+    "bswap_locked": ["0x1"]
+  },
+  "expected_current_values": {
+    "bswap64_known_zero": ["0x1"],
+    "bswap64_known_one": ["0x1"],
+    "bswap32_masked_byte": ["0x1"],
+    "bswap32_zero_extend": ["0x1"],
+    "bswap_flags": ["0x1"],
+    "bswap32_unknown": [],
+    "bswap64_unknown": [],
+    "bswap_locked": []
+  },
+  "i386": {
+    "binary_sha256": "24233cd837d538823826612dc418bd7c266765daa88250873ea5ceba46decb16",
+    "probe_sha256": "4a83207b3d2c653ea5b7271a93aa5a8683d0dd7fe933056750abb8ec6b0e29ab",
+    "prior_plugin_sha256": "fb4895678b51912028898af991cb0199be0e7b7c25ce8e0865927902099f6249",
+    "current_plugin_sha256": "89daa946a7a4fa322e9bcf81f6192b12c405d339f3b4dc3fcc057078f9ea15c4",
+    "prior_report_sha256": "8bcf7987d2864c428ba3a53231e7c64c19635451f0c9c4e93298c4ce68e36942",
+    "current_report_sha256": "349668c11c6a74d3f8d1f3690b555b4f635b1b8b8ef2785be129fd2478c51954",
+    "prior_runner_sha256": "3ab51bc69e716ede9888de363ba869b5eb5f8acfe390b3b5bbd7e9c50cc47829",
+    "current_runner_sha256": "2ae8b043ab2833630a3a303413933415a6499bd5bace8470bc65b347c443670d",
+    "prior_proofs": 1,
+    "current_proofs": 3,
+    "expected_prior_values": {
+      "bswap32_masked_byte": [],
+      "bswap32_known_one": [],
+      "bswap32_flags": ["0x1"],
+      "bswap32_unknown": []
+    },
+    "expected_current_values": {
+      "bswap32_masked_byte": ["0x1"],
+      "bswap32_known_one": ["0x1"],
+      "bswap32_flags": ["0x1"],
+      "bswap32_unknown": []
+    }
+  }
+}

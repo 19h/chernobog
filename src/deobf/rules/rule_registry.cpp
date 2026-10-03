@@ -101,7 +101,11 @@ void RuleRegistry::rebuild_storage_locked()
     // Every identity must still prove; UNKNOWN remains a rejected rule.
     RuleVerifier verifier(10'000);
 #else
+    // Keep the normal startup bound for easy proofs. Scheduler-sensitive
+    // timeouts get bounded retries; every attempt must still prove the rule.
     RuleVerifier verifier;
+    RuleVerifier timeout_retry_verifier(2'000);
+    RuleVerifier final_timeout_verifier(10'000);
 #endif
     for (auto &rule : rules_)
     {
@@ -112,6 +116,14 @@ void RuleRegistry::rebuild_storage_locked()
         AstPtr replacement = rule->get_replacement();
         semantic_roots_.push_back(replacement);
         RuleVerificationResult verification = verifier.verify(pattern, replacement);
+#if !defined(CHERNOBOG_CATALOG_TEST)
+        if (verification.status == RuleVerificationStatus::UNKNOWN &&
+            verification.detail == "timeout")
+            verification = timeout_retry_verifier.verify(pattern, replacement);
+        if (verification.status == RuleVerificationStatus::UNKNOWN &&
+            verification.detail == "timeout")
+            verification = final_timeout_verifier.verify(pattern, replacement);
+#endif
         if (!verification.verified())
         {
             ++rejected_rule_count_;

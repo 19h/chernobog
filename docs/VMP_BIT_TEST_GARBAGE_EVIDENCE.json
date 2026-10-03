@@ -1,0 +1,47 @@
+{
+  "schema": "chernobog.bit-test-garbage-evidence.v1",
+  "source_sha256": {
+    "src/common/x86_abstract.h": "8a36c07c7fbffe33324fe3c96d773e8efe9ae051d86c77be6eb6a4f3728e1545",
+    "src/ida_analysis/x86_analysis.cpp": "9ee1abda04ef7c17186fb35b69233649a5e40c8226fb71f88f73a64c03df0c71",
+    "tests/x86_abstract_tests.cpp": "d7e328840b5e8ba094b1d3945926f167cd03129d4e25de762c184c6b93b2e0df",
+    "tests/vmp_native/bit_test.S": "fca8d8c2ff36aa969b1627915c41f5e7968d16eb2ecd294de1ee9236b581c0cb",
+    "tests/ida_bit_test_probe.py": "7e3e0bd99e0511371c629b97f5ebe3b80a4468485f5b1af0cdea733b03b595e9"
+  },
+  "binary_sha256": "bbe132f8f81f0058fddc12a627c2d9088d41c597d63072db6e8e55e37614b922",
+  "x86_execution_oracle": {
+    "register_cases": 12288,
+    "memory_cases": 6218,
+    "executable_sha256": "c8d888248e658f659652f1ec3bfe5c170c7030c80f2d87cbd68a64eba81af61e"
+  },
+  "ida_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+  "probe_sha256": "7e3e0bd99e0511371c629b97f5ebe3b80a4468485f5b1af0cdea733b03b595e9",
+  "prior_plugin_sha256": "b07488540f467f592196cd247d73c5c7528707e0bd06ee420ffa64868e97680f",
+  "current_plugin_sha256": "51d9f45eef95d991750afa4f5bb9464cad9937138d43d8f8c31e576a76979a69",
+  "prior_report_sha256": "6c1095022c67cc7d201afb81681bb5f82eb2edb3191167cb3b8f74878ae66fca",
+  "current_report_sha256": "00fef397d7207805761cfd97c7f634e3fe3ea085deb667a8ca818541ab42357b",
+  "prior_runner_sha256": "5b5411038d79bee8d5070771fb49269b9734ce5cb00221aca231dccfb73999df",
+  "current_runner_sha256": "baf608e9791c6ef4225e7c14c9c57eb820e0b6c3e63915a562304eed09801d12",
+  "prior_proofs": 0,
+  "current_proofs": 15,
+  "expected_values": {
+    "bt_register_carry": ["0x1"],
+    "bt_register_zero_preserved": ["0x1"],
+    "bt_register_wrap": ["0x1"],
+    "bt_register_unknown_uniform": ["0x1"],
+    "btc_register": ["0x1"],
+    "btr_register": ["0x1"],
+    "bts_register": ["0x1"],
+    "btc_alias": ["0x1"],
+    "bt_memory_carry": ["0x1"],
+    "bts_memory_positive_index": ["0x1"],
+    "bts_memory_negative_index": ["0x1"],
+    "btr_memory_immediate": ["0x1"],
+    "bts_memory_high_immediate": ["0x1"],
+    "btc_locked_memory": ["0x1"],
+    "bt_preserve_disjoint_memory": ["0x1"],
+    "bt_unknown_offset": [],
+    "bts_unknown_memory_offset": [],
+    "bt_locked_register": [],
+    "bt_locked_memory": []
+  }
+}

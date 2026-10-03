@@ -18,6 +18,24 @@ def main():
     model, production = catalog(fixtures["catalog"])
     require(len(production) == 108, "actual wholly certified production catalog")
     controls = []
+    boundary_run = subprocess.run(
+        [sys.argv[1], "--address-limit-fixture"], capture_output=True, check=True
+    )
+    boundary = json.loads(boundary_run.stdout)
+    require(boundary["schema"] == 2, "near-limit input schema")
+    require(boundary["prefix_status"] == "byte_limit", "address prefix byte frontier")
+    require(7000 < len(boundary_run.stdout.strip()) <= 8192, "bounded address input bytes")
+    require(boundary["prefix"], "retained complete address prefix")
+    capture(boundary, model)
+    controls.append("near-limit address input")
+    changed = copy.deepcopy(boundary)
+    changed["prefix"][0][3][4][1] = 2**31
+    try:
+        capture(changed, model)
+    except ValueError:
+        controls.append("near-limit address extent corruption")
+    else:
+        raise ValueError("near-limit address extent corruption accepted")
     names = [name for name, _ in production]
     for label, kept in (
         ("partial certified catalog", production[::2]),
@@ -43,6 +61,7 @@ def main():
             raise ValueError("catalog corruption accepted: " + label)
     for row in fixtures["fixtures"]:
         _, templates = catalog(row["pattern_catalog"])
+        require(row["input"]["schema"] == 2, "current fixture input schema")
         value = capture(row["input"], model)
         matched, failure = match(templates[0][1], value["root"], model)
         require(matched == row["matched"], "C++/independent match disagreement: " + row["name"])
@@ -66,6 +85,7 @@ def main():
             )
         controls.append(row["name"])
     for row in fixtures["equalities"]:
+        require(row["input"]["schema"] == 2, "current equality input schema")
         value = capture(row["input"], model)
         difference = operand_difference(value["root"][4][2], value["root"][5][2], model)
         require((difference is None) == row["equal"], "C++/independent strict equality")
@@ -75,6 +95,23 @@ def main():
             if len(difference) == 3:
                 require((failure["expected"], failure["actual"]) == difference[1:], "strict values")
         controls.append(row["name"])
+    address = next(row["input"] for row in fixtures["equalities"] if row["name"] == "address_equal")
+    for label, edit in (
+        (
+            "missing address extents",
+            lambda v: v["root"][4][2].__setitem__(4, v["root"][4][2][4][0]),
+        ),
+        ("invalid input extent", lambda v: v["root"][4][2][4].__setitem__(1, 2**31)),
+        ("legacy schema downgrade", lambda v: v.pop("schema")),
+    ):
+        altered = copy.deepcopy(address)
+        edit(altered)
+        try:
+            capture(altered, model)
+        except ValueError:
+            controls.append(label)
+        else:
+            raise ValueError("address capture corruption accepted: " + label)
     value = fixtures["fixtures"][0]["input"]
     for name, mutate in (
         ("wrong schema", lambda v: v.update(host_pointer=1)),

@@ -1,0 +1,45 @@
+{
+  "schema": "chernobog.bit-scan-garbage-evidence.v1",
+  "source_sha256": {
+    "src/common/x86_abstract.h": "0fdc3525cf8e6eca969503a0512660bb148fb87db8c00cbeedabafc400e91ed8",
+    "src/ida_analysis/x86_analysis.cpp": "902cc3d091d01636fbb9beaf3e5d36871a827d63eaf11c309686410971e73399",
+    "tests/x86_abstract_tests.cpp": "eaf1c0e4578666e5c216cfe435c664e3343e6d80954f47f8c1884d4f09833bdf",
+    "tests/vmp_native/bit_scan.S": "3674612738d5bf95a14cb1058124183e699eea5af42d9459e5175e18583adb3f",
+    "tests/ida_bit_scan_probe.py": "d9238c8c27001ed37b000934daa2218e7847372d6c54ee03cf4524d781e920dd"
+  },
+  "binary_sha256": "e1749dda8d14fd27ac25589574a0872aa820656bb4a35bb2d88becc30939daff",
+  "x86_execution_oracle": {
+    "cases": 3168,
+    "executable_sha256": "8fb67faa0dac9f623c104fbb6a20572416b26c627c69eee5c835cb19aaab7db8"
+  },
+  "ida_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+  "probe_sha256": "d9238c8c27001ed37b000934daa2218e7847372d6c54ee03cf4524d781e920dd",
+  "prior_plugin_sha256": "51d9f45eef95d991750afa4f5bb9464cad9937138d43d8f8c31e576a76979a69",
+  "current_plugin_sha256": "13d735f1b8e791f29de33bafdbafc6eec3c1599b2ddd4d694ac0c3c90589fa20",
+  "prior_report_sha256": "58a7b98d169a585c63a7beaf24d9d052740d40d73a483ae82f48b7ef20c0264f",
+  "current_report_sha256": "946bd858858496545e46ac304fe3f4681a967975c0cbd550d2aeee34b9a31b6a",
+  "prior_runner_sha256": "69a3044d1942c451e0a60eb37940827201f84833bfc081a7d5a31fd379d63b4e",
+  "current_runner_sha256": "a0cdb22612a500b09f815d7bfdf6433c78b41cb6b95f4f57a035c0a00ce27bbd",
+  "prior_proofs": 0,
+  "current_proofs": 13,
+  "expected_values": {
+    "bs_forward": ["0x1"],
+    "bs_reverse": ["0x1"],
+    "bs_zero_flag": ["0x1"],
+    "bs_nonzero_flag": ["0x1"],
+    "bs_alias": ["0x1"],
+    "bs_zero_extend": ["0x1"],
+    "bs_preserve_upper_16": ["0x1"],
+    "bs_reverse_64": ["0x1"],
+    "bs_forward_memory": ["0x1"],
+    "bs_reverse_memory": ["0x1"],
+    "bs_partial_nonzero": ["0x1"],
+    "bs_preserve_unrelated": ["0x1"],
+    "bs_preserve_disjoint_memory": ["0x1"],
+    "bs_zero_destination": [],
+    "bs_unknown_forward": [],
+    "bs_unknown_reverse": [],
+    "bs_locked_register": [],
+    "bs_locked_memory": []
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "scope": "bounded source-pointer postincrement recognition in the rotating string ctree adapter",
+  "sources": {
+    "src/deobf/handlers/rotating_string_ctree.cpp": "e10598b5b58d463c293036ad443c22de8bacdcb5ce5c612e87e73ef95938e871",
+    "tests/vmp_native/string_transforms.c": "64270339c97658c46fee2f8a31757752ca50b0324c22c4cca3726a3b5c607011",
+    "tests/ida_string_transform_probe.py": "6b27b4dacefed918935265305769b91a9822d8872a462eec685e0b3585f48b62"
+  },
+  "runs": {
+    "x64_prior": {
+      "directory": "build/string-pointer-hardened-x64-prior",
+      "input_sha256": "99b0a23e8022f9f1390e3ee9dc594b92706d576f77db0e35c3fdcbbdea3ee71e",
+      "plugin_sha256": "b94678b6758326da50c4e796f551eb9928c1e8f6a4d2ae920470f8fb3f21ba45",
+      "run_sha256": "6e7cc9894055297190e6b7d1e494f2a370ed5c0664d6553e57f113c3db91faaa",
+      "capture_sha256": "985b0b5f9c873b690c1ece4dd23372d01c52b9382e77d2604cffcc8fd679307e",
+      "return_code": 2,
+      "checks": 60
+    },
+    "x64_current": {
+      "directory": "build/string-pointer-hardened-x64-current",
+      "input_sha256": "99b0a23e8022f9f1390e3ee9dc594b92706d576f77db0e35c3fdcbbdea3ee71e",
+      "plugin_sha256": "a51168b34f249db7dc69654f7a013116663f386e0e1273d69eb500e00fd9a0ba",
+      "run_sha256": "4de39dd9b9eb07f1727c98fb1065d387bf4b61b3b3e5996b186fa1c371011286",
+      "capture_sha256": "f4dbc76cb3334d1055b26aa8e077081e7ee02128c62d91c1ab88fbd57dcb3e56",
+      "return_code": 0,
+      "checks": 60
+    },
+    "i386_prior": {
+      "directory": "build/string-pointer-hardened-i386-prior",
+      "input_sha256": "6c30436e33032d58ebf410e60c427291fe6ceeb3687938df3b07aa86c47dfc13",
+      "plugin_sha256": "b94678b6758326da50c4e796f551eb9928c1e8f6a4d2ae920470f8fb3f21ba45",
+      "run_sha256": "c786f60c8b8b0eeece6dd73767081302d3b002c58c6dade3d4c70287b995e51f",
+      "capture_sha256": "84bb65a97c5ea37826dd1e7ffee89dee2abdfb378075b91ead26d34c3058f335",
+      "return_code": 0,
+      "checks": 57
+    },
+    "i386_current": {
+      "directory": "build/string-pointer-hardened-i386-current",
+      "input_sha256": "6c30436e33032d58ebf410e60c427291fe6ceeb3687938df3b07aa86c47dfc13",
+      "plugin_sha256": "a51168b34f249db7dc69654f7a013116663f386e0e1273d69eb500e00fd9a0ba",
+      "run_sha256": "5ac8928a8ebcb6a1f6d88f85e051d868198b2b3d7d47afc5baf7218bab8f39ba",
+      "capture_sha256": "84bb65a97c5ea37826dd1e7ffee89dee2abdfb378075b91ead26d34c3058f335",
+      "return_code": 0,
+      "checks": 57
+    }
+  }
+}

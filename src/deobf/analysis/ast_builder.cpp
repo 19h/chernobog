@@ -319,6 +319,10 @@ MopKey mop_key_unchecked(const mop_t &mop)
             MopKey inner = mop_key_unchecked(*mop.a);
             key.value1 = inner.hash; // Use inner hash
             key.value2 = inner.value1;
+            // Address access extents are part of SDK operand identity. Without
+            // them, AST deduplication can erase a strict matcher difference.
+            key.frame =
+                uint64_t(uint32_t(mop.a->insize)) | (uint64_t(uint32_t(mop.a->outsize)) << 32);
         }
         break;
 
@@ -408,11 +412,10 @@ static AstPtr mop_to_ast_internal(const mop_t &mop, AstBuilderContext &ctx)
     // The public entry point audited the complete immutable operand tree.
     MopKey key = mop_key_unchecked(mop);
 
-    // Check context first (deduplication)
-    if (ctx.has(key))
-    {
-        return ctx.get(key);
-    }
+    // The compact key is an index, not an exact structural identity. The
+    // copied operand on the candidate AST guards against nested-key collisions.
+    if (AstPtr cached = ctx.get_exact(key, mop))
+        return cached;
 
     AstPtr result = nullptr;
 

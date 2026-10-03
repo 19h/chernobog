@@ -1,0 +1,57 @@
+{
+  "archive_base64_sha256": "8daae3a51cf78249d138600f1fcc9787895fe0cb34a311635718d4d6ffe0f5e5",
+  "execution": {
+    "binary_sha256": "f479ae1ab6f03857a0598d61df4674e24c787328dcec77461be532e3d962bbae",
+    "cases": [
+      {
+        "data_bytes_compared": 64,
+        "defined_status_bits_compared": 5,
+        "ida_sha256": "dc54dc0ed6f8d91a82f1a442a32caa6735adcc8c27e8defa355214aba54d41cd",
+        "input_sha256": "e19b1a7e7df224c8d242640e0a7b491ef593b37f9cdc49e597f813412502614f",
+        "live_code_bytes_compared": 75,
+        "output_sha256": "4900ba6ca7bb3abb160b895d7548703249cebb72fb2f76806550388871d77d07",
+        "post_sha256": "1e3e86721240c75b02c4703f469799f45fef93f8e79a45686c1edd6ac570fab1",
+        "process_exit": 0,
+        "registers_compared": 5,
+        "stack_restored": true,
+        "variant": "v14-1"
+      },
+      {
+        "data_bytes_compared": 64,
+        "defined_status_bits_compared": 5,
+        "ida_sha256": "a9a8e20a3669f29d9d2423745e9cf4b9e67782d3e90a443df2c8781c45a2d3bf",
+        "input_sha256": "4115827e67efb477877223d5908bec1debf6d7b027842313a9b1704cd5977e32",
+        "live_code_bytes_compared": 75,
+        "output_sha256": "4900ba6ca7bb3abb160b895d7548703249cebb72fb2f76806550388871d77d07",
+        "post_sha256": "09ab9eb3a5fff18ff9558dbbd9e6bb14fd95131638c47eb783d75ef3688b1241",
+        "process_exit": 0,
+        "registers_compared": 5,
+        "stack_restored": true,
+        "variant": "v14-0"
+      }
+    ],
+    "elf_slice_sha256": "c4c0a7748b9452e7dad77d3627bab8cac8eca816c19a1e1089334e09f83b5ee4",
+    "host_machine": "arm64",
+    "mutations_rejected": {
+      "embedded_byte": true,
+      "oracle_data": true,
+      "oracle_register": true,
+      "runtime_code_input": true
+    },
+    "oracle_assembly_sha256": "fb6bf8eb2e37dd5758c85b34c7330f8d1f5d84e53f4a1a7735b02b5ae53a0e60",
+    "oracle_c_sha256": "25f5d449dec5d7f6e877aeb6177e7a7f60a90e463ec00c8ffc0eacad0357afcf",
+    "oracle_format": "Mach-O x86-64",
+    "passed": true,
+    "schema": 1,
+    "scope": "exact 75-byte ELF slice executed under x86-64 Rosetta with captured input subset; separate process and stack layout"
+  },
+  "lief_version": "0.17.6-08dc3b7f",
+  "passed": true,
+  "prior_archive_sha256": "dbd7eb385128aac84ea61682254231a8a455a213188e45a245a70c13db2dba7d",
+  "schema": 1,
+  "sources_sha256": {
+    "tests/verify_native_after_return_execution.py": "10fe517ac28aea283cca90fd85f62cc9a19344060fe3fca55826a171e8ff413d",
+    "tests/vmp_native/after_return_slice.S": "fb6bf8eb2e37dd5758c85b34c7330f8d1f5d84e53f4a1a7735b02b5ae53a0e60",
+    "tests/vmp_native/after_return_slice.c": "25f5d449dec5d7f6e877aeb6177e7a7f60a90e463ec00c8ffc0eacad0357afcf"
+  }
+}

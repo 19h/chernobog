@@ -1,0 +1,314 @@
+{
+  "schema": "chernobog.xadd-garbage-evidence.v1",
+  "source_sha256": {
+    "src/common/x86_abstract.h": "431994ffed5ece5432f0f92780cc5605e81334242c660e02e48dbc647b9329b6",
+    "src/ida_analysis/x86_analysis.cpp": "3eeff4b4dc6901c38aff9e15d86a2809972da7f37c90c3d7603ea16cf7e9ead0",
+    "tests/x86_abstract_tests.cpp": "ed7ec014010b3afaeb5da4d091d943cec2c6620ccbf0756181c8c04e084c9dbf",
+    "tests/vmp_native/xadd.S": "1dd2af34aa01e5246c39f9d23eea467480a461df3379b218618452c407a5c5c9",
+    "tests/ida_xadd_probe.py": "a27b40ff34d879f98f78ae1570d9418b7ec7050506e68ee2520ebc2c3cd644a3"
+  },
+  "binary_sha256": "c01d014348768cd38d9ec48cb49f74736b92d2bd1c077d755f639fa2edbf5895",
+  "x86_execution_oracle": {
+    "cases": 131456,
+    "same_register_alias": true,
+    "executable_sha256": "85463a32822c0cc8597f80aed8b809c00f902b3a30d0e0c07f1d2a8466d8c170"
+  },
+  "ida_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+  "probe_sha256": "a27b40ff34d879f98f78ae1570d9418b7ec7050506e68ee2520ebc2c3cd644a3",
+  "prior_plugin_sha256": "b07488540f467f592196cd247d73c5c7528707e0bd06ee420ffa64868e97680f",
+  "current_plugin_sha256": "1f99b7beb4a5edc8487eae5b7d55191472fe634257acb52bd8dd8cd33d3d8832",
+  "prior_report_sha256": "46602b0678daf56a552be5e3cc9a5680cdf2d165bf026d37b4604c37e93a3548",
+  "current_report_sha256": "f932c0d127bd26fefe7ac6af5df65fa49f9e9521ccb5b0395fa718924c53b65d",
+  "prior_runner_sha256": "34e84ac4ef113997fef795cedf086dece74c24a767fdc88b5af09d6ed57f3eff",
+  "current_runner_sha256": "844bfa362a77d1d5137abd7aef30bfa5a95575bea7d2936e54741536d1538ca7",
+  "matched_input_probe_ida": true,
+  "artifacts_unchanged": true,
+  "prior_proofs": 0,
+  "current_proofs": 16,
+  "cases": [
+    {
+      "name": "xa_reg_value",
+      "operand_types": [
+        1,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_reg_source",
+      "operand_types": [
+        1,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_overflow",
+      "operand_types": [
+        1,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_carry",
+      "operand_types": [
+        1,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_same",
+      "operand_types": [
+        1,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_zero_extend_destination",
+      "operand_types": [
+        1,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_zero_extend_source",
+      "operand_types": [
+        1,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_unknown_source_exchange",
+      "operand_types": [
+        1,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_alias8",
+      "operand_types": [
+        1,
+        1
+      ],
+      "operand_dtypes": [
+        0,
+        0
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_memory",
+      "operand_types": [
+        2,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_memory_source",
+      "operand_types": [
+        2,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_memory_unknown_source_exchange",
+      "operand_types": [
+        2,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_address_alias",
+      "operand_types": [
+        3,
+        1
+      ],
+      "operand_dtypes": [
+        7,
+        7
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_locked_memory",
+      "operand_types": [
+        2,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6161,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_preserve_unrelated",
+      "operand_types": [
+        1,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_preserve_disjoint_memory",
+      "operand_types": [
+        2,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": [
+        "0x1"
+      ]
+    },
+    {
+      "name": "xa_unknown_destination",
+      "operand_types": [
+        1,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6160,
+      "prior_values": [],
+      "current_values": []
+    },
+    {
+      "name": "xa_locked_register",
+      "operand_types": [
+        1,
+        1
+      ],
+      "operand_dtypes": [
+        2,
+        2
+      ],
+      "auxpref": 6161,
+      "prior_values": [],
+      "current_values": []
+    }
+  ]
+}

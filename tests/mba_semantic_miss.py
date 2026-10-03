@@ -120,18 +120,69 @@ class Primitive:
                 base = ["local", version, value[0], value[1], value[2]]
             elif kind == tags["d"] and value is not None:
                 ins = value
+
+                def address_operand(operand, allow_stack=False):
+                    if operand[3] != 0:
+                        return False
+                    if operand[0] == tags["r"]:
+                        return type(operand[4]) is int and operand[4] >= 8
+                    if operand[0] == tags["n"]:
+                        return operand[4] is not None
+                    if operand[0] == tags["d"] and operand[1] in (4, 8):
+                        nested = operand[4]
+                        if (
+                            type(operand[2]) is not int
+                            or not 0 <= operand[2] <= 65535
+                            or not isinstance(nested, list)
+                            or len(nested) != 6
+                            or nested[0] not in (model["ops"]["add"], model["ops"]["sub"])
+                            or nested[1] != 0
+                            or type(nested[2]) is not int
+                            or nested[2] < 0
+                            or nested[5] != [tags["z"], operand[1], 0, 0, 0]
+                        ):
+                            return False
+                        left, right = nested[3:5]
+                        if (
+                            not isinstance(left, list)
+                            or len(left) != 5
+                            or not isinstance(right, list)
+                            or len(right) != 5
+                        ):
+                            return False
+                        return (
+                            left[0] == tags["r"]
+                            and left[1] == operand[1]
+                            and type(left[2]) is int
+                            and 0 <= left[2] <= 65535
+                            and left[3] == 0
+                            and type(left[4]) is int
+                            and left[4] >= 8
+                            and right[0] == tags["n"]
+                            and right[1] == operand[1]
+                            and right[3] == 0
+                            and type(right[4]) is int
+                            and 0 <= right[4] <= mask(operand[1])
+                        )
+                    return (
+                        allow_stack
+                        and operand[0] == tags["S"]
+                        and operand[1] in (4, 8)
+                        and type(operand[2]) is int
+                        and 0 <= operand[2] <= 65535
+                        and isinstance(operand[4], list)
+                        and len(operand[4]) == 2
+                        and all(type(part) is int for part in operand[4])
+                    )
+
                 if (
                     ins[0] != model["ops"]["ldx"]
                     or ins[1] != 0
                     or ins[5] != [tags["z"], width, 0, 0, 0]
                     or ins[3][1] != 2
                     or ins[4][1] not in (4, 8)
-                    or any(
-                        m[0] not in (tags["r"], tags["n"])
-                        or m[3] != 0
-                        or (m[4] is None if m[0] == tags["n"] else m[4] < 8)
-                        for m in ins[3:5]
-                    )
+                    or not address_operand(ins[3])
+                    or not address_operand(ins[4], allow_stack=True)
                 ):
                     raise Unsupported("unsupported nested value or explicit-load contract")
                 # Separate occurrences remain independent, even for equal EAs.
@@ -296,9 +347,9 @@ class Primitive:
 
 
 class NestedPrimitive:
-    """One arithmetic child beneath a scalar root, with shared snapshot bytes."""
+    """One checked arithmetic child beneath a scalar root, with shared bytes."""
 
-    def __init__(self, root, model, root_iprops=None):
+    def __init__(self, root, model, root_iprops=None, read_scope=None, depth=0):
         paths = [
             path
             for path, index in (("L", 4), ("R", 5))
@@ -323,26 +374,30 @@ class NestedPrimitive:
         ):
             raise Unsupported("nested arithmetic value contract")
         ins = value[4]
+        operation = {code: name for name, code in model["ops"].items()}.get(child[3])
+        unary = operation in UNARY | CONVERSION
         if (
             ins[0] != child[3]
             or ins[1] != 0
             or type(ins[2]) is not int
             or ins[2] < 0
             or child[4] is None
-            or child[5] is None
-            or child[4][0] != "v"
-            or child[5][0] != "v"
+            or (child[5] is None) != unary
+            or child[4][0] not in ("v", "n")
+            or (not unary and child[5][0] not in ("v", "n"))
             or ins[3] != child[4][2]
-            or ins[4] != child[5][2]
+            or ins[4] != ([tags["z"], -1, 0, 0, 0] if unary else child[5][2])
             or ins[5] != [tags["z"], child[1], 0, 0, 0]
-            or child[3] not in {model["ops"][op] for op in BINARY | SHIFTS}
+            or operation not in BINARY | SHIFTS | UNARY | CONVERSION
         ):
             raise Unsupported("nested arithmetic instruction contract")
-        self.child = Primitive(child, model, 0, read_scope="child")
+        child_scope = "child" if read_scope is None else read_scope + "/child"
+        root_scope = "root" if read_scope is None else read_scope + "/root"
+        self.child = reduction_model(child, model, 0, child_scope, depth + 1)
         synthetic = ["v", child[1], [tags["r"], child[1], -1, 0, 1 << 63]]
         flat = list(root)
         flat[4 if self.path == "L" else 5] = synthetic
-        self.root = Primitive(flat, model, root_iprops, read_scope="root")
+        self.root = Primitive(flat, model, root_iprops, read_scope=root_scope)
         self.synthetic = self.root.leaves[self.path]["bytes"]
         other = "R" if self.path == "L" else "L"
         other_keys = self.root.leaves.get(other, {}).get("bytes", [])
@@ -392,10 +447,27 @@ class NestedPrimitive:
         return {"bytes": data, "operands": values, "result": self.integer(values)}
 
 
-def reduction_model(root, model, root_iprops=None):
+def reduction_model(root, model, root_iprops=None, read_scope=None, depth=0):
     if root[0] == "n" and any(node is not None and node[0] == "n" for node in root[4:6]):
-        return NestedPrimitive(root, model, root_iprops)
-    return Primitive(root, model, root_iprops)
+        if depth >= 2:
+            raise Unsupported("nested arithmetic depth budget")
+        return NestedPrimitive(root, model, root_iprops, read_scope, depth)
+    return Primitive(root, model, root_iprops, read_scope)
+
+
+def require_disjoint_stack_reads(primitive, model):
+    for read in primitive.loads:
+        instruction = read["instruction"]
+        offset = instruction[4]
+        if offset[0] != model["mops"]["S"]:
+            continue
+        owner, start = offset[4]
+        end = start + max(offset[1], instruction[5][1])
+        if any(
+            identity[0] == "stack" and identity[2] == owner and start <= identity[3] < end
+            for identity in primitive.cells.values()
+        ):
+            raise Unsupported("stack-address read overlaps scalar snapshot")
 
 
 def solve(condition, timeout_ms=250, resource_limit=100000):
@@ -417,6 +489,7 @@ def solve(condition, timeout_ms=250, resource_limit=100000):
 def primitive_reductions(root, model, timeout_ms=250, resource_limit=100000, root_iprops=None):
     try:
         primitive = reduction_model(root, model, root_iprops)
+        require_disjoint_stack_reads(primitive, model)
     except Unsupported as error:
         return {"status": "unsupported", "reason": str(error)}
     first, a, values = primitive.symbolic("first")
@@ -467,6 +540,7 @@ def constraint_binding(sample, model):
     )
     root = sample["input"]["root"]
     primitive = Primitive(root, model, sample["input"].get("root_iprops"))
+    require_disjoint_stack_reads(primitive, model)
     operation, proposed = CONTRACTS[sample["rule"]]
     require(
         primitive.op == operation and primitive.width == sample["width_bytes"],

@@ -63,7 +63,10 @@ The current adapter accepts one top-level bounded do/while/for loop, a
 zero-initialized unit counter incremented by one, optional independently bounded
 offset counters, and one byte or word store per iteration. Scalar temporaries
 may precede the store; only admitted counter increments may follow it. Source
-and destination use resolved image objects and exact unit strides. The key is
+and destination use resolved image objects and exact unit strides. A later
+checkpoint also admits an immutable source object reached through one
+preheader pointer and one postincrement per unit; see
+[VMP_ROTATING_POINTER_STREAM.md](VMP_ROTATING_POINTER_STREAM.md). The key is
 literal. A source range must be wholly loaded, readable, and non-writable; the
 destination must be writable, nonoverlapping, and contained in one segment.
 Source loads and stores must have compatible native memory operand widths;
@@ -117,10 +120,12 @@ O(B+C) byte work. Receipt storage is O(K·(B+C+D·W)); printing rechecks the sto
 shape and bytes without rerunning the symbolic proof. These are algorithmic
 bounds, not measured latency or memory-consumption claims.
 
-**Measured validation**
+**Original checkpoint validation**
 
-The final validation uses the same plugin and probe hashes for both production
-architectures. The manifest records exact artifacts and elapsed times.
+The original checkpoint used the same plugin and probe hashes for both
+production architectures. Its manifest records exact artifacts and elapsed
+times. The later pointer-stream checkpoint has a separate paired manifest and
+13-routine fixture in [VMP_ROTATING_POINTER_STREAM.md](VMP_ROTATING_POINTER_STREAM.md).
 
 | Check | Result and scope |
 |---|---|

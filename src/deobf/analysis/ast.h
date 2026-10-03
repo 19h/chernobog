@@ -218,6 +218,8 @@ enum class MatchFailureKind
     NestedOpcode,
     InstructionProps,
     LoadSource,
+    AddressInputSize,
+    AddressOutputSize,
     BlockIdentity,
     TextValue,
     UnsupportedOperand,

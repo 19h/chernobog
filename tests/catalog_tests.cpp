@@ -11,8 +11,10 @@
 #include <cstdlib>
 #include <iostream>
 #include <map>
+#include <new>
 #include <stdexcept>
 #include <tuple>
+#include <unordered_set>
 
 namespace
 {
@@ -25,6 +27,29 @@ using chernobog::ast::match_pattern;
 
 std::size_t empty_operand_erases = 0;
 std::size_t operand_copies = 0;
+std::unordered_set<const minsn_t *> copied_nested_instructions;
+
+bool allocation_free_operand(mopt_t type)
+{
+    return type == mop_z || type == mop_r || type == mop_v;
+}
+
+void erase_test_operand(mop_t *operand)
+{
+    if (operand->t == mop_d)
+    {
+        minsn_t *nested = operand->d;
+        if (copied_nested_instructions.erase(nested) != 1)
+            std::abort();
+        nested->~minsn_t();
+        std::free(nested);
+    }
+    else if (!allocation_free_operand(operand->t))
+    {
+        std::abort();
+    }
+    operand->zero();
+}
 
 } // namespace
 
@@ -48,8 +73,9 @@ extern "C" void *chernobog_catalog_hexdsp(int code, ...)
         instruction->d.zero();
         return nullptr;
     }
-    // Copy only allocation-free SDK operands. Recursive payload copies remain
-    // real-runtime operations and are never emulated by these component tests.
+    // Copy allocation-free SDK operands and one explicitly bounded nested
+    // instruction shape. Owned copies are tracked so borrowed test operands
+    // can never be silently freed by the stand-alone dispatcher.
     if (code == hx_mop_t_copy || code == hx_mop_t_assign)
     {
         va_list arguments;
@@ -57,15 +83,14 @@ extern "C" void *chernobog_catalog_hexdsp(int code, ...)
         auto *destination = va_arg(arguments, mop_t *);
         const auto *source = va_arg(arguments, const mop_t *);
         va_end(arguments);
-        if (!destination || !source ||
-            (source->t != mop_z && source->t != mop_r && source->t != mop_v))
-            std::abort();
-        if (code == hx_mop_t_assign && destination->t != mop_z && destination->t != mop_r &&
-            destination->t != mop_v)
+        if (!destination || !source || (!allocation_free_operand(source->t) && source->t != mop_d))
             std::abort();
         if (destination == source)
             return destination;
-        destination->zero();
+        if (code == hx_mop_t_assign)
+            erase_test_operand(destination);
+        else
+            destination->zero();
         destination->t = source->t;
         destination->size = source->size;
         destination->oprops = source->oprops;
@@ -74,6 +99,24 @@ extern "C" void *chernobog_catalog_hexdsp(int code, ...)
             destination->r = source->r;
         else if (source->t == mop_v)
             destination->g = source->g;
+        else if (source->t == mop_d)
+        {
+            const minsn_t *nested = source->d;
+            if (!nested || !allocation_free_operand(nested->l.t) ||
+                !allocation_free_operand(nested->r.t) || !allocation_free_operand(nested->d.t))
+                std::abort();
+            void *storage = std::malloc(sizeof(minsn_t));
+            if (!storage)
+                std::abort();
+            auto *copy = new (storage) minsn_t(nested->ea);
+            copy->opcode = nested->opcode;
+            copy->iprops = nested->iprops;
+            copy->l = nested->l;
+            copy->r = nested->r;
+            copy->d = nested->d;
+            copied_nested_instructions.insert(copy);
+            destination->d = copy;
+        }
         ++operand_copies;
         return destination;
     }
@@ -88,12 +131,12 @@ extern "C" void *chernobog_catalog_hexdsp(int code, ...)
     va_start(arguments, code);
     mop_t *operand = va_arg(arguments, mop_t *);
     va_end(arguments);
-    if (operand == nullptr || (operand->t != mop_z && operand->t != mop_r && operand->t != mop_v))
+    if (operand == nullptr || (!allocation_free_operand(operand->t) && operand->t != mop_d))
     {
-        std::cerr << "catalog SDK erase requires a nonnull allocation-free operand\n";
+        std::cerr << "catalog SDK erase requires a nonnull supported operand\n";
         std::abort();
     }
-    operand->zero();
+    erase_test_operand(operand);
     ++empty_operand_erases;
     return nullptr;
 }
@@ -242,6 +285,79 @@ bool test_builder_value_identity()
             separate(base, MopKey::from_mop(operand));
             check(!chernobog::ast::mops_equal_strict(reference.l, operand));
         }
+    {
+        ValueInsn first_address(m_mov, 8), second_address(m_mov, 8);
+        mop_addr_t first_referent, second_referent;
+        first_referent.t = second_referent.t = mop_v;
+        first_referent.g = second_referent.g = 0x4000;
+        first_referent.size = second_referent.size = 4;
+        first_referent.insize = second_referent.insize = 4;
+        first_referent.outsize = second_referent.outsize = 0;
+        first_address.l.t = second_address.l.t = mop_a;
+        first_address.l.a = &first_referent;
+        second_address.l.a = &second_referent;
+        first_address.l.size = second_address.l.size = 8;
+        const auto base = MopKey::from_mop(first_address.l);
+        check(base == MopKey::from_mop(second_address.l));
+        check(chernobog::ast::mops_equal_strict(first_address.l, second_address.l));
+        second_referent.insize = 8;
+        separate(base, MopKey::from_mop(second_address.l));
+        check(!chernobog::ast::mops_equal_strict(first_address.l, second_address.l));
+        second_referent.insize = 4;
+        second_referent.outsize = 8;
+        separate(base, MopKey::from_mop(second_address.l));
+        check(!chernobog::ast::mops_equal_strict(first_address.l, second_address.l));
+        second_referent.outsize = 0;
+        second_referent.insize = NOSIZE;
+        separate(base, MopKey::from_mop(second_address.l));
+        second_referent.insize = 4;
+        second_referent.outsize = NOSIZE;
+        separate(base, MopKey::from_mop(second_address.l));
+        second_referent.outsize = 0;
+        second_referent.g = 0x4001;
+        separate(base, MopKey::from_mop(second_address.l));
+        second_referent.g = 0x4000;
+        check(base == MopKey::from_mop(second_address.l));
+        ValueInsn nested_first(m_mov, 8), nested_second(m_mov, 8);
+        nested_first.l.t = nested_second.l.t = mop_a;
+        nested_first.l.a = &first_referent;
+        nested_second.l.a = &second_referent;
+        nested_first.l.size = nested_second.l.size = 8;
+        const auto nested_base = MopKey::hash_insn(&nested_first);
+        check(nested_base == MopKey::hash_insn(&nested_second));
+        second_referent.insize = 8;
+        check(nested_base != MopKey::hash_insn(&nested_second));
+        second_referent.insize = 4;
+        second_referent.outsize = 8;
+        check(nested_base != MopKey::hash_insn(&nested_second));
+    }
+    {
+        ValueInsn inner_a(m_add, 4), inner_b(m_add, 4);
+        ValueInsn outer_a(m_mov, 4), outer_b(m_mov, 4);
+        reg(inner_a.l, 100, 4);
+        reg(inner_b.l, 100, 4);
+        reg(inner_a.r, 101, 4);
+        reg(inner_b.r, 101, 4);
+        reg(inner_a.d, 102, 4);
+        reg(inner_b.d, 103, 4);
+        nested(outer_a.l, inner_a);
+        nested(outer_b.l, inner_b);
+        // The compact nested key omits the destination register identifier.
+        // This is a deterministic key collision, not a probabilistic one.
+        const auto key = MopKey::from_mop(outer_a.l);
+        check(key == MopKey::from_mop(outer_b.l));
+        check(!chernobog::ast::mops_equal_strict(outer_a.l, outer_b.l));
+        AstBuilderContext context;
+        auto saved = make_leaf("saved");
+        saved->mop.t = mop_d;
+        saved->mop.d = &inner_a;
+        saved->mop.size = 4;
+        context.add(key, saved);
+        check(context.get_exact(key, outer_a.l) == saved);
+        check(context.get_exact(key, outer_b.l) == nullptr);
+        // The fixture borrows inner_a; do not let the SDK stub own it.
+        saved->mop.zero();
+    }
     if (!okay)
     {
         std::cerr << "AST leaf value identity: " << checks << " checks; failures=" << failures
@@ -326,6 +442,48 @@ bool test_builder_value_identity()
     std::cout << "AST value identity: " << checks << " checks; key bytes=" << sizeof(MopKey)
               << "; failures=" << failures << "; passed=" << okay << '\n';
     return okay;
+}
+
+bool test_builder_nested_collision_full_path()
+{
+    using namespace chernobog::ast;
+    size_t checks = 0, failures = 0;
+    const auto check = [&](bool condition)
+    {
+        ++checks;
+        failures += !condition;
+    };
+    ValueInsn root(m_sub, 4), first(m_add, 4), second(m_add, 4);
+    reg(first.l, 100, 4);
+    reg(second.l, 100, 4);
+    reg(first.r, 101, 4);
+    reg(second.r, 101, 4);
+    reg(first.d, 102, 4);
+    reg(second.d, 103, 4);
+    nested(root.l, first);
+    nested(root.r, second);
+    check(MopKey::from_mop(root.l) == MopKey::from_mop(root.r));
+    check(!mops_equal_strict(root.l, root.r));
+    const auto copies_before = operand_copies;
+    {
+        const AstPtr ast = minsn_to_ast(&root);
+        const auto node = std::dynamic_pointer_cast<AstNode>(ast);
+        const auto left = node ? std::dynamic_pointer_cast<AstNode>(node->left) : nullptr;
+        const auto right = node ? std::dynamic_pointer_cast<AstNode>(node->right) : nullptr;
+        check(node && left && right && left != right);
+        if (left && right)
+        {
+            check(left->dst_mop.t == mop_r && left->dst_mop.r == 102);
+            check(right->dst_mop.t == mop_r && right->dst_mop.r == 103);
+            check(mops_equal_strict(left->mop, root.l));
+            check(mops_equal_strict(right->mop, root.r));
+        }
+    }
+    check(operand_copies > copies_before);
+    check(copied_nested_instructions.empty());
+    std::cout << "AST nested collision full path: " << checks << " checks; failures=" << failures
+              << '\n';
+    return failures == 0;
 }
 
 #ifndef CHERNOBOG_LEGACY_AST_BOUNDS
@@ -1251,6 +1409,22 @@ bool test_match_failure_witnesses()
     a.l.helper = first;
     b.l.helper = second;
     difference(a.l, b.l, MatchFailureKind::TextValue);
+    mop_addr_t address_a, address_b;
+    address_a.t = address_b.t = mop_v;
+    address_a.g = address_b.g = 0x4000;
+    address_a.size = address_b.size = 4;
+    address_a.insize = 4;
+    address_b.insize = 8;
+    address_a.outsize = address_b.outsize = 0;
+    a.l.t = b.l.t = mop_a;
+    a.l.a = &address_a;
+    b.l.a = &address_b;
+    difference(a.l, b.l, MatchFailureKind::AddressInputSize);
+    address_b.insize = 4;
+    address_b.outsize = 8;
+    difference(a.l, b.l, MatchFailureKind::AddressOutputSize);
+    address_b.outsize = 0;
+    check(mops_equal_strict(a.l, b.l));
     nested(a.l, inner_a);
     nested(b.l, inner_b);
     inner_b.opcode = m_neg;
@@ -1331,7 +1505,7 @@ bool test_ast_destruction()
     return true;
 }
 
-bool test_input_capture_bounds()
+bool test_input_capture_bounds(std::string *address_boundary = nullptr)
 {
     using namespace chernobog::ast;
     using chernobog::mba_diagnostics::CaptureStatus;
@@ -1347,6 +1521,7 @@ bool test_input_capture_bounds()
     const auto plain = capture_match_input(root);
     check(plain.status == CaptureStatus::Complete &&
           plain.payload.find("\"prefix_status\":\"missing_anchor\"") != std::string::npos);
+    check(plain.payload.find("\"schema\":2") != std::string::npos);
     check(plain.payload.find("\"root_iprops\":null") != std::string::npos);
     ValueInsn original(m_add, 4);
     original.iprops = IPROP_FPINSN;
@@ -1398,11 +1573,60 @@ bool test_input_capture_bounds()
     encoded = capture_match_input(root, &heads[65]->instruction, &heads[0]->instruction);
     check(encoded.payload.find("\"prefix_status\":\"link_error\",\"prefix\":[]") !=
           std::string::npos);
+    heads[64]->instruction.next = &heads[65]->instruction;
+    mop_addr_t address;
+    address.t = mop_v;
+    address.g = UINT64_MAX;
+    address.size = 8;
+    address.insize = address.outsize = 0x7fffffff;
+    for (size_t index = 0; index <= 64; ++index)
+    {
+        auto &instruction = heads[index]->instruction;
+        instruction.l.t = instruction.r.t = mop_a;
+        instruction.l.a = instruction.r.a = &address;
+        instruction.l.size = instruction.r.size = 8;
+    }
+    size_t last_complete = 0;
+    size_t first_limited_count = 0;
+    size_t first_limited_bytes = 0;
+    bool reached_byte_limit = false;
+    for (size_t count = 0; count <= 64; ++count)
+    {
+        const auto captured =
+            capture_match_input(root, &heads[count]->instruction, &heads[0]->instruction);
+        if (captured.status == CaptureStatus::Complete &&
+            captured.payload.find("\"prefix_status\":\"byte_limit\"") == std::string::npos)
+        {
+            last_complete = captured.payload.size();
+            continue;
+        }
+        reached_byte_limit =
+            captured.status == CaptureStatus::Complete &&
+            captured.payload.find("\"prefix_status\":\"byte_limit\"") != std::string::npos &&
+            captured.payload.size() <= chernobog::mba_diagnostics::input_byte_limit;
+        if (address_boundary)
+            *address_boundary = captured.payload;
+        first_limited_count = count;
+        first_limited_bytes = captured.payload.size();
+        break;
+    }
+    for (size_t index = 0; index <= 64; ++index)
+    {
+        heads[index]->instruction.l.zero();
+        heads[index]->instruction.r.zero();
+    }
+    check(reached_byte_limit && last_complete > 7000 &&
+          last_complete <= chernobog::mba_diagnostics::input_byte_limit);
+    if (!address_boundary)
+        std::cout << "MBA address capture boundary: last complete " << last_complete
+                  << " bytes; first limited at " << first_limited_count << " predecessors with "
+                  << first_limited_bytes << " retained bytes\n";
     check(capture_catalog_patterns({{"bad-name", root}}, true).find("\"status\":\"malformed\"") !=
           std::string::npos);
     check(capture_catalog_patterns({}, false).find("\"status\":\"not_initialized\"") !=
           std::string::npos);
-    std::cout << "MBA matcher input capture bounds: " << checks << " passed\n";
+    if (!address_boundary)
+        std::cout << "MBA matcher input capture bounds: " << checks << " passed\n";
     return true;
 }
 
@@ -1536,6 +1760,22 @@ int export_matcher_inputs()
     local_b.idx = 3;
     local_b.off = 9;
     equality("local_offset");
+    mop_addr_t address_a, address_b;
+    address_a.t = address_b.t = mop_v;
+    address_a.g = address_b.g = 0x4000;
+    address_a.size = address_b.size = 4;
+    address_a.insize = 4;
+    address_b.insize = 8;
+    address_a.outsize = address_b.outsize = 0;
+    a->mop.t = b->mop.t = mop_a;
+    a->mop.a = &address_a;
+    b->mop.a = &address_b;
+    equality("address_input_size");
+    address_b.insize = 4;
+    address_b.outsize = 8;
+    equality("address_output_size");
+    address_b.outsize = 0;
+    equality("address_equal");
     a->mop.t = b->mop.t = mop_h;
     char text_a[] = "a\"\n", text_b[] = "b\"\n";
     a->mop.helper = text_a;
@@ -1617,6 +1857,14 @@ int main(int argc, char **argv)
         return verify_native_flags(argv[2]);
     if (argc == 2 && std::string(argv[1]) == "--matcher-input-fixtures")
         return export_matcher_inputs();
+    if (argc == 2 && std::string(argv[1]) == "--address-limit-fixture")
+    {
+        std::string input;
+        if (!test_input_capture_bounds(&input))
+            return EXIT_FAILURE;
+        std::cout << input << '\n';
+        return EXIT_SUCCESS;
+    }
     if (argc == 2 && std::string(argv[1]) == "--ast-cycle-control")
     {
         ValueInsn cycle(m_add, 4);
@@ -1630,6 +1878,8 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
 #endif
     if (!test_builder_value_identity())
+        return EXIT_FAILURE;
+    if (!test_builder_nested_collision_full_path())
         return EXIT_FAILURE;
     if (!test_typed_instances())
         return EXIT_FAILURE;

@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdio>
 #include <cstdlib>
+#include <tuple>
 
 using namespace chernobog::x86_abstract;
 
@@ -1314,6 +1315,250 @@ uint8_t arithmetic_oracle(unsigned a, unsigned b, unsigned carry, bool sub)
                    (byte >= 128 ? SF : 0) | (signed_exact < -128 || signed_exact > 127 ? OF : 0));
 }
 
+void double_shift_regressions()
+{
+    for (const bool left : {false, true})
+    {
+        Flags flags{ALL, CF | AF | OF};
+        const Word destination{UINT64_C(0xffff), UINT64_C(0x8123)};
+        const Word source{UINT64_C(0xffff), UINT64_C(0x5678)};
+        const Word unchanged = double_shift(left, 16, destination, source, 32, flags);
+        check(unchanged.known == destination.known && unchanged.value == destination.value &&
+                  flags.known == ALL && flags.value == (CF | AF | OF),
+              "masked zero double shift preserves destination and every status flag");
+
+        flags = Flags{ALL, AF};
+        const Word one = double_shift(left, 16, destination, source, 1, flags);
+        const uint64_t expected = left ? 0x0246 : 0x4091;
+        check(one.known == 0xffff && one.value == expected,
+              "one-bit double shift combines the old destination and source");
+        check(flags.known == (CF | OF | SF | ZF | PF) && flags.value == (CF | OF),
+              "one-bit double shift derives carry, overflow, sign, zero, parity");
+
+        flags = Flags{ALL, ALL};
+        const Word full = double_shift(left, 16, destination, source, 16, flags);
+        check(full.known == source.known && full.value == source.value && flags.get(CF) == true &&
+                  !flags.get(OF) && !flags.get(AF),
+              "full-width double shift returns source and forgets undefined flags");
+
+        flags = Flags{ALL, ALL};
+        const Word undefined = double_shift(left, 16, destination, source, 17, flags);
+        check(undefined.known == 0 && flags.known == 0,
+              "oversized 16-bit double shift claims no undefined destination or flags");
+
+        flags = Flags{ALL, ALL};
+        const Word unknown = double_shift(left, 16, destination, source, std::nullopt, flags);
+        check(unknown.known == 0 && flags.known == 0,
+              "unknown count includes zero and oversized cases");
+    }
+    Flags flags{ALL, ALL};
+    const Word partial = double_shift(true, 16, Word{0x4000, 0x4000}, Word{}, 1, flags);
+    check((partial.known & 0x8000) != 0 && (partial.value & 0x8000) != 0 && flags.get(SF) == true &&
+              flags.get(ZF) == false && !flags.get(CF) && !flags.get(OF),
+          "partial destination bit fixes sign and nonzero without inventing carry");
+}
+
+void partial_shift_regressions()
+{
+    Flags flags{ALL, ALL};
+    const Word high_zero{UINT64_C(0xffffffff00000000), 0};
+    const Word low_zero = partial_shift(Operation::shift_right, 64, high_zero, 32, flags);
+    check(low_zero.read(64) == 0 && flags.get(ZF) == true && flags.get(SF) == false &&
+              flags.get(PF) == true && !flags.get(AF) && !flags.get(OF),
+          "known RDTSC high half survives a 64-bit right shift");
+
+    flags = Flags{ALL, ALL};
+    const Word zero_count =
+        partial_shift(Operation::shift_left, 32, Word{0x8000, 0x8000}, 32, flags);
+    check(zero_count.known == 0x8000 && zero_count.value == 0x8000 && flags.known == ALL &&
+              flags.value == ALL,
+          "masked-zero partial shift preserves all input and flag facts");
+
+    flags = Flags{ALL, ALL};
+    const Word sign_fill =
+        partial_shift(Operation::arithmetic_right, 16, Word{0x8000, 0x8000}, 4, flags);
+    check((sign_fill.known & 0xf000) == 0xf000 && (sign_fill.value & 0xf000) == 0xf000 &&
+              flags.get(SF) == true && flags.get(ZF) == false && !flags.get(CF),
+          "arithmetic shift copies a known sign without inventing low bits or carry");
+
+    flags = Flags{ALL, ALL};
+    const Word full_zero = partial_shift(Operation::shift_left, 8, Word{}, 8, flags);
+    check(full_zero.read(8) == 0 && flags.get(ZF) == true && !flags.get(CF),
+          "full-width 8-bit logical shift fixes zero but leaves carry undefined");
+
+    size_t cases = 0;
+    for (unsigned width : {8u, 16u, 32u, 64u})
+        for (Operation op :
+             {Operation::shift_left, Operation::shift_right, Operation::arithmetic_right})
+            for (uint64_t raw_count : {uint64_t{0}, uint64_t{1}, uint64_t{2}, uint64_t{7},
+                                       uint64_t{8}, uint64_t{15}, uint64_t{16}, uint64_t{31},
+                                       uint64_t{32}, uint64_t{33}, uint64_t{63}, uint64_t{255}})
+                for (uint64_t known : {uint64_t{0}, uint64_t{1}, uint64_t{0x55aa55aa55aa55aa},
+                                       uint64_t{0x8000000080000080}, UINT64_MAX})
+                    for (uint64_t wanted :
+                         {uint64_t{0}, uint64_t{1}, uint64_t{0xa5a5a5a5a5a5a5a5}, UINT64_MAX})
+                    {
+                        const uint64_t m = mask(width), fixed = known & m;
+                        const Word input{fixed, wanted & fixed};
+                        Flags actual{ALL, ALL};
+                        const Word result = partial_shift(op, width, input, raw_count, actual);
+                        for (uint64_t variable :
+                             {uint64_t{0}, uint64_t{1}, uint64_t{0x3333333333333333},
+                              uint64_t{0xcccccccccccccccc}, UINT64_MAX})
+                        {
+                            const uint64_t concrete = input.value | (variable & ~fixed & m);
+                            Flags expected{ALL, ALL};
+                            const auto value =
+                                transfer(op, width, concrete, raw_count, false, expected);
+                            check(value && (*value & result.known) == result.value &&
+                                      (expected.value & actual.known) == actual.value,
+                                  "partial shift facts hold for each matching concrete word");
+                            ++cases;
+                        }
+                    }
+    std::printf("partial shift concrete completions: %zu; passed\n", cases);
+}
+
+void byte_swap_regressions()
+{
+    size_t cases = 0;
+    for (unsigned width : {32u, 64u})
+        for (uint64_t known :
+             {uint64_t{0}, uint64_t{1}, uint64_t{0xff}, uint64_t{0x8080808080808080},
+              uint64_t{0x55aa55aa55aa55aa}, UINT64_MAX})
+            for (uint64_t wanted :
+                 {uint64_t{0}, uint64_t{1}, uint64_t{0x1122334455667788}, UINT64_MAX})
+            {
+                const uint64_t fixed = known & mask(width);
+                const Word input{fixed, wanted & fixed};
+                const Word actual = byte_swap(width, input);
+                Word expected;
+                for (unsigned bit = 0; bit < width; ++bit)
+                {
+                    const uint64_t source = uint64_t{1} << bit;
+                    const unsigned destination = width - 8 - (bit & ~7u) + (bit & 7u);
+                    const uint64_t target = uint64_t{1} << destination;
+                    if (input.known & source)
+                    {
+                        expected.known |= target;
+                        if (input.value & source)
+                            expected.value |= target;
+                    }
+                }
+                check(actual.known == expected.known && actual.value == expected.value,
+                      "partial BSWAP follows independent bit positions");
+                ++cases;
+            }
+    check(byte_swap(16, Word{UINT64_MAX, UINT64_MAX}).known == 0,
+          "undefined 16-bit BSWAP has no portable result");
+    std::printf("partial BSWAP bit-pattern cases: %zu; passed\n", cases);
+}
+
+void bit_test_regressions()
+{
+    for (const unsigned width : {16u, 32u, 64u})
+    {
+        const uint64_t m = mask(width);
+        for (const BitAction action :
+             {BitAction::test, BitAction::complement, BitAction::reset, BitAction::set})
+            for (const uint64_t value : {uint64_t{0}, uint64_t{1}, m / 2, m})
+                for (unsigned offset = 0; offset < 128; ++offset)
+                {
+                    Flags flags{ALL, ZF | AF};
+                    const Word result =
+                        bit_test_register(action, width, Word{m, value}, offset, flags);
+                    const uint64_t bit = uint64_t{1} << (offset % width);
+                    const uint64_t expected = action == BitAction::complement ? value ^ bit
+                                              : action == BitAction::reset    ? value & ~bit
+                                              : action == BitAction::set      ? value | bit
+                                                                              : value;
+                    check(result.read(width) == (expected & m) && flags.known == (CF | ZF) &&
+                              flags.value == (ZF | ((value & bit) ? CF : 0)),
+                          "register bit operation matches concrete bit and defined flags");
+                }
+        for (int index = -129; index <= 129; ++index)
+        {
+            const auto delta = bit_string_word_delta(width, uint64_t(int64_t(index)), false);
+            const int64_t quotient =
+                index >= 0 ? index / int(width) : -((int64_t(-index) + width - 1) / int64_t(width));
+            check(delta == uint64_t(quotient * int64_t(width / 8)),
+                  "signed memory bit index selects its containing operand word");
+        }
+        for (unsigned immediate = 0; immediate < 256; ++immediate)
+            check(bit_string_word_delta(width, immediate, true) == 0,
+                  "immediate high bits do not advance memory bit base");
+        Flags flags{ALL, ZF};
+        const Word all_zero{m, 0};
+        const Word tested =
+            bit_test_register(BitAction::test, width, all_zero, std::nullopt, flags);
+        check(tested.read(width) == 0 && flags.known == (CF | ZF) && flags.value == ZF,
+              "unknown register bit offset preserves a uniform carry and ZF");
+        flags = Flags{ALL, ZF};
+        const Word reset =
+            bit_test_register(BitAction::reset, width, all_zero, std::nullopt, flags);
+        check(reset.read(width) == 0 && flags.get(CF) == false && flags.get(ZF) == true,
+              "unknown reset offset preserves an all-zero register");
+        flags = Flags{ALL, ZF};
+        const Word set = bit_test_register(BitAction::set, width, all_zero, std::nullopt, flags);
+        check(set.known == 0 && flags.get(CF) == false && flags.get(ZF) == true,
+              "unknown set offset cannot identify the modified bit");
+    }
+}
+
+void bit_scan_regressions()
+{
+    for (const unsigned width : {16u, 32u, 64u})
+    {
+        const uint64_t m = mask(width);
+        for (const bool reverse : {false, true})
+        {
+            for (const uint64_t value : {uint64_t{0}, uint64_t{1}, uint64_t{3}, m / 2, m})
+            {
+                Flags flags{ALL, ALL};
+                const BitScanResult result = bit_scan(reverse, width, Word{m, value}, flags);
+                if (value == 0)
+                    check(!result.nonzero_guaranteed && result.destination.known == 0 &&
+                              flags.known == ZF && flags.value == ZF,
+                          "zero bit-scan source has undefined destination and sets ZF");
+                else
+                {
+                    unsigned expected = 0;
+                    for (unsigned i = 0; i < width; ++i)
+                    {
+                        const unsigned bit = reverse ? width - 1 - i : i;
+                        if (value & (uint64_t{1} << bit))
+                        {
+                            expected = bit;
+                            break;
+                        }
+                    }
+                    check(result.nonzero_guaranteed && result.destination.read(width) == expected &&
+                              flags.known == ZF && flags.value == 0,
+                          "known nonzero bit scan yields first selected index and clears ZF");
+                }
+            }
+            Flags flags{ALL, ALL};
+            const BitScanResult unknown = bit_scan(reverse, width, Word{}, flags);
+            check(!unknown.nonzero_guaranteed && unknown.destination.known == 0 && flags.known == 0,
+                  "unknown bit-scan source cannot determine ZF or destination");
+            flags = Flags{ALL, ALL};
+            const uint64_t selected = uint64_t{1} << 3;
+            const uint64_t clear_prefix = reverse ? m & ~uint64_t{15} : 7;
+            const BitScanResult partial =
+                bit_scan(reverse, width, Word{clear_prefix | selected, selected}, flags);
+            check(partial.nonzero_guaranteed && partial.destination.read(width) == 3 &&
+                      flags.known == ZF && flags.value == 0,
+                  "known first set bit determines index despite later unknown bits");
+            flags = Flags{ALL, ALL};
+            const BitScanResult ambiguous =
+                bit_scan(reverse, width, Word{selected, selected}, flags);
+            check(ambiguous.nonzero_guaranteed && ambiguous.destination.known == 0 &&
+                      flags.known == ZF && flags.value == 0,
+                  "earlier unknown bits prevent an exact bit-scan index");
+        }
+    }
+}
+
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
 uint8_t architectural_flags(uint64_t flags)
 {
@@ -1376,6 +1621,370 @@ std::pair<uint8_t, uint8_t> native_shift(uint8_t a, uint8_t count, uint64_t init
     return {a, architectural_flags(flags)};
 }
 
+std::pair<uint64_t, uint8_t> native_byte_swap(uint64_t input, unsigned width, uint64_t initial)
+{
+    uint64_t flags = 0;
+    if (width == 32)
+        asm volatile("pushq %[seed]; popfq; bswapl %k[value]; pushfq; popq %[flags]"
+                     : [value] "+r"(input), [flags] "=r"(flags)
+                     : [seed] "r"(initial)
+                     : "cc", "memory");
+    else
+        asm volatile("pushq %[seed]; popfq; bswapq %[value]; pushfq; popq %[flags]"
+                     : [value] "+r"(input), [flags] "=r"(flags)
+                     : [seed] "r"(initial)
+                     : "cc", "memory");
+    return {input, architectural_flags(flags)};
+}
+
+std::pair<uint64_t, uint8_t> native_double_shift(bool left, unsigned width, uint64_t destination,
+                                                 uint64_t source, uint8_t count, uint64_t initial)
+{
+    uint64_t flags = 0;
+#define NATIVE_DOUBLE(INSTRUCTION, FORMAT)                                                         \
+    asm volatile("pushq %[initial]; popfq; " INSTRUCTION " %%cl, %" FORMAT "[source], %" FORMAT    \
+                 "[destination]; pushfq; popq %[flags]"                                            \
+                 : [destination] "+&r"(destination), [flags] "=r"(flags)                           \
+                 : [source] "r"(source), "c"(count), [initial] "r"(initial)                        \
+                 : "cc", "memory")
+    if (left)
+    {
+        if (width == 16)
+            NATIVE_DOUBLE("shldw", "w");
+        else if (width == 32)
+            NATIVE_DOUBLE("shldl", "k");
+        else
+            NATIVE_DOUBLE("shldq", "q");
+    }
+    else if (width == 16)
+        NATIVE_DOUBLE("shrdw", "w");
+    else if (width == 32)
+        NATIVE_DOUBLE("shrdl", "k");
+    else
+        NATIVE_DOUBLE("shrdq", "q");
+#undef NATIVE_DOUBLE
+    return {destination & mask(width), architectural_flags(flags)};
+}
+
+std::tuple<uint64_t, uint64_t, uint8_t> native_xadd(unsigned width, uint64_t destination,
+                                                    uint64_t source, uint64_t initial)
+{
+    uint64_t flags = 0;
+#define NATIVE_XADD(INSTRUCTION, FORMAT)                                                           \
+    asm volatile("pushq %[initial]; popfq; " INSTRUCTION " %" FORMAT "[source], %" FORMAT          \
+                 "[destination]; pushfq; popq %[flags]"                                            \
+                 : [destination] "+&r"(destination), [source] "+&r"(source), [flags] "=r"(flags)   \
+                 : [initial] "r"(initial)                                                          \
+                 : "cc", "memory")
+    switch (width)
+    {
+    case 8:
+        NATIVE_XADD("xaddb", "b");
+        break;
+    case 16:
+        NATIVE_XADD("xaddw", "w");
+        break;
+    case 32:
+        NATIVE_XADD("xaddl", "k");
+        break;
+    case 64:
+        NATIVE_XADD("xaddq", "q");
+        break;
+    default:
+        std::abort();
+    }
+#undef NATIVE_XADD
+    return {destination & mask(width), source & mask(width), architectural_flags(flags)};
+}
+
+std::pair<uint64_t, uint8_t> native_bit_register(BitAction action, unsigned width, uint64_t base,
+                                                 uint64_t offset, uint64_t initial)
+{
+    uint64_t flags = 0;
+#define NATIVE_BIT_REGISTER(INSTRUCTION, FORMAT)                                                   \
+    asm volatile("pushq %[initial]; popfq; " INSTRUCTION " %" FORMAT "[offset], %" FORMAT          \
+                 "[base]; pushfq; popq %[flags]"                                                   \
+                 : [base] "+&r"(base), [flags] "=r"(flags)                                         \
+                 : [offset] "r"(offset), [initial] "r"(initial)                                    \
+                 : "cc", "memory")
+#define NATIVE_BIT_WIDTH(OP)                                                                       \
+    if (width == 16)                                                                               \
+        NATIVE_BIT_REGISTER(OP "w", "w");                                                          \
+    else if (width == 32)                                                                          \
+        NATIVE_BIT_REGISTER(OP "l", "k");                                                          \
+    else                                                                                           \
+        NATIVE_BIT_REGISTER(OP "q", "q")
+    switch (action)
+    {
+    case BitAction::test:
+        NATIVE_BIT_WIDTH("bt");
+        break;
+    case BitAction::complement:
+        NATIVE_BIT_WIDTH("btc");
+        break;
+    case BitAction::reset:
+        NATIVE_BIT_WIDTH("btr");
+        break;
+    case BitAction::set:
+        NATIVE_BIT_WIDTH("bts");
+        break;
+    }
+#undef NATIVE_BIT_WIDTH
+#undef NATIVE_BIT_REGISTER
+    return {base & mask(width), architectural_flags(flags)};
+}
+
+uint8_t native_bit_memory(BitAction action, unsigned width, uint8_t *base, int64_t offset,
+                          uint64_t initial)
+{
+    uint64_t flags = 0;
+#define NATIVE_BIT_MEMORY(INSTRUCTION, FORMAT)                                                     \
+    asm volatile("pushq %[initial]; popfq; " INSTRUCTION " %" FORMAT "[offset], (%[base]); "       \
+                 "pushfq; popq %[flags]"                                                           \
+                 : [flags] "=r"(flags)                                                             \
+                 : [offset] "r"(offset), [base] "r"(base), [initial] "r"(initial)                  \
+                 : "cc", "memory")
+#define NATIVE_MEMORY_WIDTH(OP)                                                                    \
+    if (width == 16)                                                                               \
+        NATIVE_BIT_MEMORY(OP "w", "w");                                                            \
+    else if (width == 32)                                                                          \
+        NATIVE_BIT_MEMORY(OP "l", "k");                                                            \
+    else                                                                                           \
+        NATIVE_BIT_MEMORY(OP "q", "q")
+    switch (action)
+    {
+    case BitAction::test:
+        NATIVE_MEMORY_WIDTH("bt");
+        break;
+    case BitAction::complement:
+        NATIVE_MEMORY_WIDTH("btc");
+        break;
+    case BitAction::reset:
+        NATIVE_MEMORY_WIDTH("btr");
+        break;
+    case BitAction::set:
+        NATIVE_MEMORY_WIDTH("bts");
+        break;
+    }
+#undef NATIVE_MEMORY_WIDTH
+#undef NATIVE_BIT_MEMORY
+    return architectural_flags(flags);
+}
+
+std::pair<uint64_t, uint8_t> native_bit_scan(bool reverse, unsigned width, uint64_t destination,
+                                             uint64_t source, uint64_t initial)
+{
+    uint64_t flags = 0;
+#define NATIVE_BIT_SCAN(INSTRUCTION, FORMAT)                                                       \
+    asm volatile("pushq %[initial]; popfq; " INSTRUCTION " %" FORMAT "[source], %" FORMAT          \
+                 "[destination]; pushfq; popq %[flags]"                                            \
+                 : [destination] "+&r"(destination), [flags] "=r"(flags)                           \
+                 : [source] "r"(source), [initial] "r"(initial)                                    \
+                 : "cc", "memory")
+#define NATIVE_SCAN_WIDTH(OP)                                                                      \
+    if (width == 16)                                                                               \
+        NATIVE_BIT_SCAN(OP "w", "w");                                                              \
+    else if (width == 32)                                                                          \
+        NATIVE_BIT_SCAN(OP "l", "k");                                                              \
+    else                                                                                           \
+        NATIVE_BIT_SCAN(OP "q", "q")
+    if (reverse)
+    {
+        NATIVE_SCAN_WIDTH("bsr");
+    }
+    else
+    {
+        NATIVE_SCAN_WIDTH("bsf");
+    }
+#undef NATIVE_SCAN_WIDTH
+#undef NATIVE_BIT_SCAN
+    return {destination & mask(width), architectural_flags(flags)};
+}
+
+void native_bit_scan_regressions()
+{
+    size_t cases = 0;
+    uint64_t sequence = UINT64_C(0x9e3779b97f4a7c15);
+    for (const unsigned width : {16u, 32u, 64u})
+    {
+        const uint64_t m = mask(width);
+        const uint64_t sign = uint64_t{1} << (width - 1);
+        const std::array<uint64_t, 8> corners = {0, 1, 2, 3, sign, sign | 1, m / 2, m};
+        for (const bool reverse : {false, true})
+            for (unsigned sample = 0; sample < 264; ++sample)
+            {
+                sequence ^= sequence << 13;
+                sequence ^= sequence >> 7;
+                sequence ^= sequence << 17;
+                const uint64_t source = sample < corners.size() ? corners[sample] : sequence & m;
+                for (const uint64_t initial : {UINT64_C(0x202), UINT64_C(0xad7)})
+                {
+                    Flags flags{ALL, architectural_flags(initial)};
+                    const BitScanResult result = bit_scan(reverse, width, Word{m, source}, flags);
+                    const auto native = native_bit_scan(
+                        reverse, width, UINT64_C(0xaabbccddeeff0011), source, initial);
+                    check(flags.known == ZF && (flags.value & ZF) == (native.second & ZF) &&
+                              (!source || result.destination.read(width) == native.first),
+                          "bit-scan result and defined zero flag match x86 execution");
+                    ++cases;
+                }
+            }
+    }
+    std::printf("native bit scan cases: %zu; nonzero results and ZF passed\n", cases);
+}
+
+void native_rdtsc_regressions()
+{
+    size_t cases = 0;
+    for (const uint64_t initial : {UINT64_C(0x202), UINT64_C(0xad7)})
+    {
+        uint64_t accumulator = UINT64_MAX, data = UINT64_MAX, flags = 0;
+        asm volatile("pushq %[initial]; popfq; rdtsc; pushfq; popq %[flags]"
+                     : "+a"(accumulator), "+d"(data), [flags] "=r"(flags)
+                     : [initial] "r"(initial)
+                     : "cc", "memory");
+        check((accumulator >> 32) == 0 && (data >> 32) == 0 &&
+                  architectural_flags(flags) == architectural_flags(initial),
+              "RDTSC zero-extends EDX:EAX and preserves six status flags");
+        ++cases;
+    }
+    std::printf("native RDTSC cases: %zu; flags and zero extension passed\n", cases);
+}
+
+void native_bit_test_regressions()
+{
+    size_t register_cases = 0, memory_cases = 0;
+    for (const unsigned width : {16u, 32u, 64u})
+        for (const BitAction action :
+             {BitAction::test, BitAction::complement, BitAction::reset, BitAction::set})
+        {
+            const uint64_t m = mask(width);
+            for (const uint64_t value : {uint64_t{0}, uint64_t{1}, m / 2, m})
+                for (unsigned offset = 0; offset < 128; ++offset)
+                    for (const uint64_t initial : {UINT64_C(0x202), UINT64_C(0xad7)})
+                    {
+                        Flags flags{ALL, architectural_flags(initial)};
+                        const Word result =
+                            bit_test_register(action, width, Word{m, value}, offset, flags);
+                        const auto native =
+                            native_bit_register(action, width, value, offset, initial);
+                        check(
+                            result.read(width) == native.first &&
+                                (flags.value & flags.known) == (native.second & flags.known),
+                            "register bit operation result and claimed flags match x86 execution");
+                        ++register_cases;
+                    }
+            for (int offset = -129; offset <= 129; ++offset)
+                for (const uint64_t initial : {UINT64_C(0x202), UINT64_C(0xad7)})
+                {
+                    alignas(8) std::array<uint8_t, 128> bytes;
+                    for (unsigned i = 0; i < bytes.size(); ++i)
+                        bytes[i] = uint8_t(i * 37 + 11);
+                    auto expected = bytes;
+                    const int byte_delta = offset >= 0 ? offset / 8 : -((-offset + 7) / 8);
+                    const unsigned bit = unsigned(offset - byte_delta * 8);
+                    const unsigned byte = unsigned(64 + byte_delta);
+                    const uint8_t selected = uint8_t(1u << bit);
+                    const bool carry = (bytes[byte] & selected) != 0;
+                    if (action == BitAction::complement)
+                        expected[byte] ^= selected;
+                    else if (action == BitAction::reset)
+                        expected[byte] &= uint8_t(~selected);
+                    else if (action == BitAction::set)
+                        expected[byte] |= selected;
+                    const uint8_t native =
+                        native_bit_memory(action, width, bytes.data() + 64, offset, initial);
+                    check(bytes == expected && bool(native & CF) == carry &&
+                              (native & ZF) == (architectural_flags(initial) & ZF),
+                          "signed memory bit offset, result, carry and ZF match x86 execution");
+                    ++memory_cases;
+                }
+        }
+    // Raw encoding prevents an assembler from moving high immediate bits into
+    // the memory displacement: 0F BA /5 23 targets bit 3 in the base dword.
+    for (const uint64_t initial : {UINT64_C(0x202), UINT64_C(0xad7)})
+    {
+        alignas(8) std::array<uint8_t, 128> bytes{};
+        uint64_t flags = 0;
+        uint8_t *base = bytes.data() + 64;
+        asm volatile("pushq %[initial]; popfq; .byte 0x0f, 0xba, 0x28, 0x23; "
+                     "pushfq; popq %[flags]"
+                     : [flags] "=r"(flags)
+                     : "a"(base), [initial] "r"(initial)
+                     : "cc", "memory");
+        check(bytes[64] == 8 && bytes[68] == 0 &&
+                  (architectural_flags(flags) & ZF) == (architectural_flags(initial) & ZF),
+              "raw high immediate selects bit in the base memory word");
+        ++memory_cases;
+    }
+    std::printf("native bit operation cases: %zu register, %zu memory; passed\n", register_cases,
+                memory_cases);
+}
+
+void native_xadd_regressions()
+{
+    size_t cases = 0;
+    for (const unsigned width : {8u, 16u, 32u, 64u})
+    {
+        const uint64_t sign = uint64_t{1} << (width - 1);
+        const std::array<uint64_t, 8> corners = {0,        1,    3,        15,
+                                                 sign - 1, sign, sign | 1, mask(width)};
+        const uint64_t limit = width == 8 ? 256 : corners.size();
+        for (uint64_t i = 0; i < limit; ++i)
+            for (uint64_t j = 0; j < limit; ++j)
+                for (const uint64_t initial : {UINT64_C(0x202), UINT64_C(0xad7)})
+                {
+                    const uint64_t destination = width == 8 ? i : corners[i];
+                    const uint64_t source = width == 8 ? j : corners[j];
+                    Flags flags{ALL, architectural_flags(initial)};
+                    const auto sum =
+                        transfer(Operation::add, width, destination, source, false, flags);
+                    const auto native = native_xadd(width, destination, source, initial);
+                    check(sum == std::get<0>(native) && destination == std::get<1>(native) &&
+                              flags.known == ALL && flags.value == std::get<2>(native),
+                          "XADD sum, exchanged source and six flags match x86 execution");
+                    ++cases;
+                }
+    }
+    uint64_t alias = 7;
+    asm volatile("xaddl %k0, %k0" : "+r"(alias) : : "cc");
+    check(alias == 14, "same-register XADD stores the sum after exchange");
+    std::printf("native XADD cases: %zu; same-register alias passed\n", cases);
+}
+
+void native_double_shift_regressions()
+{
+    size_t cases = 0;
+    for (const bool left : {false, true})
+        for (const unsigned width : {16u, 32u, 64u})
+        {
+            const uint64_t sign = uint64_t{1} << (width - 1);
+            const std::array<uint64_t, 7> values = {0, 1, 3, sign - 1, sign, sign | 1, mask(width)};
+            for (const uint64_t destination : values)
+                for (const uint64_t source : values)
+                    for (unsigned count = 0; count < 256; ++count)
+                    {
+                        const unsigned masked = count & (width == 64 ? 63 : 31);
+                        if (masked > width)
+                            continue;
+                        for (const uint64_t initial : {UINT64_C(0x202), UINT64_C(0xad7)})
+                        {
+                            Flags flags{ALL, architectural_flags(initial)};
+                            const Word result =
+                                double_shift(left, width, Word{mask(width), destination},
+                                             Word{mask(width), source}, count, flags);
+                            const auto native = native_double_shift(
+                                left, width, destination, source, uint8_t(count), initial);
+                            check(result.read(width) == native.first &&
+                                      (flags.value & flags.known) == (native.second & flags.known),
+                                  "double shift result and claimed flags match x86 execution");
+                            ++cases;
+                        }
+                    }
+        }
+    std::printf("native double shift cases: %zu; defined result and flags passed\n", cases);
+}
+
 void native_shift_and_partial_writes()
 {
     size_t cases = 0;
@@ -1399,6 +2008,62 @@ void native_shift_and_partial_writes()
     asm volatile("cmpq %1, %1; setne %b0" : "+q"(a) : "r"(source) : "cc");
     check(a == UINT64_C(0xffffffffffffff00), "false SETcc stores zero and preserves other bytes");
     std::printf("native shift cases: %zu; CMOV/SET partial-write controls passed\n", cases);
+}
+
+void native_partial_shift_regressions()
+{
+    size_t cases = 0;
+    for (Operation op :
+         {Operation::shift_left, Operation::shift_right, Operation::arithmetic_right})
+        for (unsigned count : {0u, 1u, 2u, 7u, 8u, 9u, 15u, 31u, 32u, 33u, 255u})
+            for (unsigned known : {0u, 1u, 0x0fu, 0x55u, 0x80u, 0xf0u, 0xffu})
+                for (unsigned wanted : {0u, 0x55u, 0xaau, 0xffu})
+                    for (uint64_t initial : {UINT64_C(0x202), UINT64_C(0xad7)})
+                    {
+                        Flags flags{ALL, architectural_flags(initial)};
+                        const Word result =
+                            partial_shift(op, 8, Word{known, known & wanted}, count, flags);
+                        for (unsigned input = 0; input < 256; ++input)
+                        {
+                            if ((input & known) != (known & wanted))
+                                continue;
+                            const auto native =
+                                native_shift(uint8_t(input), uint8_t(count), initial, op);
+                            check((native.first & result.known) == result.value &&
+                                      (native.second & flags.known) == flags.value,
+                                  "partial shift result and flags hold on native x86");
+                            ++cases;
+                        }
+                    }
+    std::printf("native partial shift cases: %zu; passed\n", cases);
+}
+
+void native_byte_swap_regressions()
+{
+    size_t cases = 0;
+    for (unsigned width : {32u, 64u})
+        for (uint64_t known :
+             {uint64_t{0}, uint64_t{1}, uint64_t{0xff}, uint64_t{0x8080808080808080}, UINT64_MAX})
+            for (uint64_t wanted :
+                 {uint64_t{0}, uint64_t{1}, uint64_t{0x1122334455667788}, UINT64_MAX})
+            {
+                const uint64_t fixed = known & mask(width);
+                const Word input{fixed, wanted & fixed};
+                const Word result = byte_swap(width, input);
+                for (uint64_t variable :
+                     {uint64_t{0}, uint64_t{1}, uint64_t{0xa5a5a5a5a5a5a5a5}, UINT64_MAX})
+                    for (uint64_t initial : {UINT64_C(0x202), UINT64_C(0xad7)})
+                    {
+                        const uint64_t concrete = input.value | (variable & ~fixed & mask(width));
+                        const auto native = native_byte_swap(concrete, width, initial);
+                        check((native.first & result.known) == result.value &&
+                                  native.second == architectural_flags(initial) &&
+                                  (width != 32 || (native.first >> 32) == 0),
+                              "partial BSWAP bits, flags and zero extension match native x86");
+                        ++cases;
+                    }
+            }
+    std::printf("native partial BSWAP cases: %zu; passed\n", cases);
 }
 #endif
 
@@ -1630,13 +2295,25 @@ int main()
     accumulator_extension_regressions();
     multiply_regressions();
     rotate_regressions();
+    double_shift_regressions();
+    partial_shift_regressions();
+    byte_swap_regressions();
+    bit_test_regressions();
+    bit_scan_regressions();
     exhaustive_arithmetic();
     exhaustive_conditions();
     alternative_condition_regressions();
     boundaries();
     mapping_counterexamples();
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+    native_double_shift_regressions();
+    native_xadd_regressions();
+    native_bit_test_regressions();
+    native_bit_scan_regressions();
+    native_rdtsc_regressions();
     native_shift_and_partial_writes();
+    native_partial_shift_regressions();
+    native_byte_swap_regressions();
 #endif
     if (failures)
         std::fprintf(stderr, "%d failures\n", failures);

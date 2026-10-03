@@ -15,7 +15,8 @@ constexpr size_t match_prefix_head_limit = 64;
 constexpr size_t catalog_capture_byte_limit = 32768;
 
 // Capture the fields actually consulted by structural matching and strict
-// operand comparison. Unsupported comparison payloads stay opaque. Owner
+// operand comparison, including address read/write extents in schema 2.
+// Unsupported comparison payloads stay opaque. Owner
 // identities are event-local tokens; host pointers and SDK objects never escape.
 // Context contains a consecutive predecessor suffix before the enclosing top
 // level instruction. A missing/broken anchor supplies no predecessor facts.

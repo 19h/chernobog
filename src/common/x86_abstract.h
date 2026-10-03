@@ -488,6 +488,263 @@ inline void partial_result_flags(Flags &flags, const Word &result, unsigned widt
     }
 }
 
+// Carry known source bits through a shift with an exact masked count. Bits
+// shifted in by SHL/SHR are zero; SAR copies the old sign bit. The caller
+// handles register aliasing and 32-bit zero extension after reading the input.
+inline Word partial_shift(Operation op, unsigned width, Word input, uint64_t raw_count,
+                          Flags &flags)
+{
+    if (!valid_width(width) || (op != Operation::shift_left && op != Operation::shift_right &&
+                                op != Operation::arithmetic_right))
+    {
+        flags.forget();
+        return {};
+    }
+    const uint64_t m = mask(width), sign = uint64_t{1} << (width - 1);
+    input.known &= m;
+    input.value &= input.known;
+    const unsigned count = unsigned(raw_count & (width == 64 ? 63 : 31));
+    if (count == 0)
+        return input;
+
+    flags.forget();
+    Word result;
+    if (op == Operation::shift_left)
+    {
+        result.known = count >= width ? m : ((input.known << count) | mask(count)) & m;
+        result.value = count >= width ? 0 : (input.value << count) & m;
+    }
+    else if (op == Operation::shift_right)
+    {
+        result.known = count >= width ? m : (input.known >> count) | (m ^ (m >> count));
+        result.value = count >= width ? 0 : input.value >> count;
+    }
+    else
+    {
+        const unsigned steps = count >= width ? width : count;
+        const uint64_t fill = steps == width ? m : m ^ (m >> steps);
+        result.known = steps == width ? 0 : input.known >> steps;
+        result.value = steps == width ? 0 : input.value >> steps;
+        if (input.known & sign)
+        {
+            result.known |= fill;
+            if (input.value & sign)
+                result.value |= fill;
+        }
+    }
+    result.known &= m;
+    result.value &= result.known;
+    if (count < width || op == Operation::arithmetic_right)
+    {
+        const unsigned carry_bit = op == Operation::shift_left ? width - count
+                                   : count >= width            ? width - 1
+                                                               : count - 1;
+        const uint64_t bit = uint64_t{1} << carry_bit;
+        if (input.known & bit)
+            flags.set(CF, (input.value & bit) != 0);
+    }
+    if (count == 1)
+    {
+        if (op == Operation::arithmetic_right)
+            flags.set(OF, false);
+        else if (op == Operation::shift_right && (input.known & sign))
+            flags.set(OF, (input.value & sign) != 0);
+        else if (op == Operation::shift_left && (input.known & sign) && (result.known & sign))
+            flags.set(OF, ((input.value ^ result.value) & sign) != 0);
+    }
+    partial_result_flags(flags, result, width);
+    return result;
+}
+
+// BSWAP permutes bytes without changing status flags. A known bit remains
+// known at its new byte position even when the rest of the register is unknown.
+// The architecturally undefined 16-bit form is deliberately excluded.
+inline Word byte_swap(unsigned width, Word input)
+{
+    if (width != 32 && width != 64)
+        return {};
+    input.known &= mask(width);
+    input.value &= input.known;
+    Word result;
+    for (unsigned byte = 0; byte < width / 8; ++byte)
+    {
+        const unsigned source = byte * 8;
+        const unsigned destination = width - 8 - source;
+        result.known |= ((input.known >> source) & 255) << destination;
+        result.value |= ((input.value >> source) & 255) << destination;
+    }
+    return result;
+}
+
+// SHLD/SHRD read both operands before writing the destination. An unknown
+// count can include zero, so the caller must join the unchanged and written
+// register states when applying an unknown result to a 32-bit destination.
+inline Word double_shift(bool left, unsigned width, Word destination, Word source,
+                         std::optional<uint64_t> raw_count, Flags &flags)
+{
+    if ((width != 16 && width != 32 && width != 64) || !raw_count)
+    {
+        flags.forget();
+        return {};
+    }
+    const unsigned count = unsigned(*raw_count & (width == 64 ? 63 : 31));
+    const uint64_t m = mask(width);
+    destination.known &= m;
+    destination.value &= destination.known;
+    source.known &= m;
+    source.value &= source.known;
+    if (count == 0)
+        return destination;
+    flags.forget();
+    // Intel leaves both the destination and all status flags undefined when a
+    // 16-bit operand has a masked count greater than its width.
+    if (count > width)
+        return {};
+
+    const uint64_t old_sign = uint64_t{1} << (width - 1);
+    const unsigned carry_bit = left ? width - count : count - 1;
+    if (destination.known & (uint64_t{1} << carry_bit))
+        flags.set(CF, (destination.value & (uint64_t{1} << carry_bit)) != 0);
+    Word result;
+    if (count == width)
+        result = source;
+    else if (left)
+    {
+        result.known = ((destination.known << count) | (source.known >> (width - count))) & m;
+        result.value = ((destination.value << count) | (source.value >> (width - count))) & m;
+    }
+    else
+    {
+        result.known = (destination.known >> count) | ((source.known << (width - count)) & m);
+        result.value = (destination.value >> count) | ((source.value << (width - count)) & m);
+    }
+    result.value &= result.known;
+    if (count == 1 && (destination.known & old_sign) && (result.known & old_sign))
+        flags.set(OF, ((destination.value ^ result.value) & old_sign) != 0);
+    partial_result_flags(flags, result, width);
+    return result;
+}
+
+enum class BitAction : uint8_t
+{
+    test,
+    complement,
+    reset,
+    set,
+};
+
+// The register-index form addresses a signed bit string in memory. Return the
+// containing operand-word displacement modulo 2^64 without signed overflow.
+// Immediate high bits do not advance the memory word.
+inline std::optional<uint64_t> bit_string_word_delta(unsigned width, uint64_t index, bool immediate)
+{
+    if (width != 16 && width != 32 && width != 64)
+        return std::nullopt;
+    if (immediate)
+        return uint64_t{0};
+    const unsigned shift = width == 16 ? 4 : width == 32 ? 5 : 6;
+    const uint64_t bits = index & mask(width);
+    uint64_t quotient = bits >> shift;
+    if (bits & (uint64_t{1} << (width - 1)))
+        quotient |= ~mask(width - shift);
+    return quotient * (width / 8);
+}
+
+// Register bit offsets wrap within the operand. Enumerating an unknown offset
+// joins at most 64 concrete bit positions and retains only invariant facts.
+inline Word bit_test_register(BitAction action, unsigned width, Word base,
+                              std::optional<uint64_t> offset, Flags &flags)
+{
+    if (width != 16 && width != 32 && width != 64)
+    {
+        flags.forget();
+        return {};
+    }
+    const uint64_t m = mask(width);
+    base.known &= m;
+    base.value &= base.known;
+    flags.forget(CF | OF | SF | AF | PF);
+    Word joined;
+    bool first = true, carry_known = true, carry_value = false;
+    const unsigned choices = offset ? 1 : width;
+    for (unsigned choice = 0; choice < choices; ++choice)
+    {
+        const unsigned bit = offset ? unsigned(*offset % width) : choice;
+        const uint64_t selected = uint64_t{1} << bit;
+        if (!(base.known & selected))
+            carry_known = false;
+        else if (first)
+            carry_value = (base.value & selected) != 0;
+        else if (carry_value != ((base.value & selected) != 0))
+            carry_known = false;
+        Word candidate = base;
+        if (action == BitAction::complement)
+            candidate.value ^= selected & candidate.known;
+        else if (action == BitAction::set)
+        {
+            candidate.known |= selected;
+            candidate.value |= selected;
+        }
+        else if (action == BitAction::reset)
+        {
+            candidate.known |= selected;
+            candidate.value &= ~selected;
+        }
+        if (first)
+            joined = candidate;
+        else
+            joined.join(candidate);
+        first = false;
+    }
+    if (carry_known)
+        flags.set(CF, carry_value);
+    return joined;
+}
+
+struct BitScanResult
+{
+    Word destination;
+    bool nonzero_guaranteed = false;
+};
+
+// BSF/BSR define only ZF. A zero source makes the destination undefined;
+// retaining an old destination value or assuming a 32-bit write is unsound.
+// For a partial nonzero source, an index is exact only when every preceding
+// bit in the scan direction is known zero.
+inline BitScanResult bit_scan(bool reverse, unsigned width, Word source, Flags &flags)
+{
+    flags.forget();
+    if (width != 16 && width != 32 && width != 64)
+        return {};
+    const uint64_t m = mask(width);
+    source.known &= m;
+    source.value &= source.known;
+    const bool nonzero = source.value != 0;
+    if (nonzero)
+        flags.set(ZF, false);
+    else if (source.known == m)
+        flags.set(ZF, true);
+    BitScanResult result;
+    result.nonzero_guaranteed = nonzero;
+    if (!nonzero)
+        return result;
+    bool preceding_clear = true;
+    for (unsigned i = 0; i < width; ++i)
+    {
+        const unsigned index = reverse ? width - 1 - i : i;
+        const uint64_t bit = uint64_t{1} << index;
+        if (!(source.known & bit))
+            preceding_clear = false;
+        else if (source.value & bit)
+        {
+            if (preceding_clear)
+                result.destination = Word{m, index};
+            break;
+        }
+    }
+    return result;
+}
+
 inline bool rotate_operation(Operation op)
 {
     return op == Operation::rotate_left || op == Operation::rotate_right ||

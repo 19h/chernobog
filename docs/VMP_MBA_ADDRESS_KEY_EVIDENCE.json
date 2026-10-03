@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "passed": true,
+  "verifier_sha256": "e1bcd724f48a5ec32ab7d23bc7a2c73921bb3da506ae4d4e0b1aa5172d12c2a3",
+  "result": {
+    "schema": 1,
+    "passed": true,
+    "scope": "two selected i386 protected entries; exact report equality excluding elapsed time",
+    "input_sha256": "0da574daf01766471ae23496582be42945ed77dec97726de080f68feba45f2d6",
+    "probe_sha256": "f4b52bc7a6bb987e67f8ba679b6a1c50e3007d797ab9904f8a94bbb99c16cca2",
+    "ida_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+    "environment_sha256": "639711a685c6bb62c0e1f0a4497436343fe910d7407bac56b4041e03410d1758",
+    "prior_plugin_sha256": "9bd8f870e79bc3af5cf5d4ec507cba4711d3bb8af6a85973139e7b767ad51cbd",
+    "current_plugin_sha256": "e264c7cfac50da572faf1b0b977db7d2d7e0a842790eaa6e358f1facb08a817f",
+    "prior_report_sha256": "e09062e42a279e46e5fe994bcbded7fe1953aa835a0ce53ead3a8a20f513a12f",
+    "current_report_sha256": "882b52dcd31a57049b64a2e95c49f4191936c1159d67d7c0558f4f1ad0b02b3b",
+    "normalized_report_sha256": "dcf22f2f5f98d0537ee067a7993a35ce2f06ab2636f04acfecadf4d15571acf5",
+    "counts": {
+      "events": 1693,
+      "retained_samples": 1138,
+      "unrecorded": 0,
+      "address_samples": 12,
+      "address_events_weighted": 24,
+      "address_occurrences_weighted": 28,
+      "address_extents": [-1, -1],
+      "live_extent_corruption_rejected": true
+    },
+    "report_count_mutation_rejected": true
+  }
+}

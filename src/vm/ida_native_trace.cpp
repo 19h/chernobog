@@ -233,6 +233,8 @@ struct RuntimeDataPatch
     std::vector<uint8_t> bytes;
     uint64_t instruction_budget = 4096;
     bool instruction_budget_explicit = false;
+    uint64_t observed_pc = 0;
+    bool observed_pc_explicit = false;
 };
 bool parse_entry_replay(const std::string &request, std::string &shadow_path,
                         hybrid::EmuInput &input, RuntimeDataPatch *data_patch = nullptr,
@@ -276,16 +278,29 @@ bool parse_entry_replay(const std::string &request, std::string &shadow_path,
         return false;
     if (data_patch)
     {
-        const bool bounded = root.obj().size() == 12;
+        const auto *observed_pc = root.obj().get_value("observed_pc", JT_STR);
+        const bool bounded = root.obj().size() == (observed_pc ? 13 : 12);
         if (!(bounded
-                  ? keys(root.obj(),
-                         {"shadow_file", "observed_sp", "gprs", "rflags", "stack_above",
-                          "stack_relative_gprs", "stack_relative_words", "stack_below",
-                          "stack_relative_below_words", "data_start", "data_hex", "max_insns"})
+                  ? (observed_pc ? keys(root.obj(), {"shadow_file", "observed_sp", "observed_pc",
+                                                     "gprs", "rflags", "stack_above",
+                                                     "stack_relative_gprs", "stack_relative_words",
+                                                     "stack_below", "stack_relative_below_words",
+                                                     "data_start", "data_hex", "max_insns"})
+                                 : keys(root.obj(), {"shadow_file", "observed_sp", "gprs", "rflags",
+                                                     "stack_above", "stack_relative_gprs",
+                                                     "stack_relative_words", "stack_below",
+                                                     "stack_relative_below_words", "data_start",
+                                                     "data_hex", "max_insns"}))
                   : keys(root.obj(), {"shadow_file", "observed_sp", "gprs", "rflags", "stack_above",
                                       "stack_relative_gprs", "stack_relative_words", "stack_below",
                                       "stack_relative_below_words", "data_start", "data_hex"})))
             return false;
+        if (observed_pc)
+        {
+            if (!parse_hex_u64(observed_pc->qstr(), data_patch->observed_pc))
+                return false;
+            data_patch->observed_pc_explicit = true;
+        }
         if (bounded)
         {
             const auto *maximum = root.obj().get_value("max_insns", JT_NUM);
@@ -969,11 +984,14 @@ static std::string trace_native_region_impl(
     if (runtime_data && (!sample_states || !explicit_input || !explicit_input->native_entry ||
                          runtime_data->bytes.empty() || runtime_data->bytes.size() > 4096))
         return unavailable("invalid bounded runtime data request", candidate_entry);
+    if (runtime_data && runtime_data->observed_pc_explicit && runtime_data->observed_pc != function)
+        return unavailable("observed checkpoint PC mismatch", candidate_entry);
     const auto *api = rax_load();
     if (!api || !api->decode)
         return unavailable("native decoder/emulator unavailable", candidate_entry);
     bool shadow_unloaded_entry = false, observed_tail_checkpoint = false;
     bool observed_unloaded_checkpoint = false;
+    uint64_t owner_start = function;
     if (candidate_entry)
     {
         const auto *segment = getseg(ea_t(function));
@@ -1025,11 +1043,17 @@ static std::string trace_native_region_impl(
     }
     else
     {
-        const auto *owner = get_func(ea_t(function));
-        if (!owner || owner->start_ea != function)
+        if (function == BADADDR || uint64_t(ea_t(function)) != function)
             return unavailable("selected function unavailable");
+        const auto *owner = get_func(ea_t(function));
+        if (!owner || (!owned_checkpoint && owner->start_ea != function))
+            return unavailable("selected function unavailable");
+        owner_start = uint64_t(owner->start_ea);
         if (owned_checkpoint)
         {
+            if (owner_start != function &&
+                (!runtime_data->observed_pc_explicit || runtime_data->observed_pc != function))
+                return unavailable("observed owned tail PC mismatch");
             const auto *segment = getseg(ea_t(function));
             const auto flags = get_flags(ea_t(function));
             if (PH.id != PLFM_386 || !segment || segment->type == SEG_XTRN ||
@@ -1049,7 +1073,7 @@ static std::string trace_native_region_impl(
     config.max_runtime_bytes = 65536;
     ProgramImage image;
     const auto snapshot = candidate_entry ? hybrid_snapshot_image(image, config)
-                                          : hybrid_snapshot_function(image, config, function);
+                                          : hybrid_snapshot_function(image, config, owner_start);
     if (!snapshot.complete)
         return unavailable("incomplete or unsupported image snapshot", candidate_entry);
     size_t shadow_changed = 0, shadow_newly_loaded = 0, shadow_segments = 0;
@@ -1283,7 +1307,7 @@ static std::string trace_native_region_impl(
         const auto *actual = get_func(ea_t(point.pc));
         if (!actual)
             ownerless.insert(point.pc);
-        else if (actual->start_ea != function)
+        else if (actual->start_ea != owner_start)
             foreign.insert(point.pc);
         execution.push_back({{"site", hex(point.pc)},
                              {"size", std::to_string(point.size)},
@@ -1335,6 +1359,8 @@ static std::string trace_native_region_impl(
         << ",\"database\":" << inspection_json_quote(std::to_string(int64_t(get_dbctx_id())))
         << (candidate_entry ? ",\"root\":" : ",\"function\":")
         << inspection_json_quote(hex(function)) << ",\"seed\":" << inspection_json_quote(hex(seed))
+        << (owned_checkpoint ? ",\"checkpoint_owner\":" + inspection_json_quote(hex(owner_start))
+                             : "")
         << ",\"region_identity\":" << inspection_json_quote(hex(region.identity()))
         << ",\"initial_region_identity\":" << inspection_json_quote(hex(initial_identity))
         << ",\"native_walk\":" << (walk ? "true" : "false")

@@ -171,7 +171,15 @@ class Encoder
             break;
         case mop_a:
             if (value.a)
+            {
+                put("[");
                 operand(*value.a, depth + 1);
+                put(",");
+                number(value.a->insize);
+                put(",");
+                number(value.a->outsize);
+                put("]");
+            }
             else
                 put("null");
             break;
@@ -432,7 +440,7 @@ mba_diagnostics::CapturedInput capture_match_input(const AstPtr &candidate, cons
         if (cursor == block_head && frontier == "head_limit")
             frontier = "block_entry";
     }
-    std::string result = "{\"root\":" + root +
+    std::string result = "{\"schema\":2,\"root\":" + root +
                          ",\"root_iprops\":" + (source ? std::to_string(source->iprops) : "null") +
                          ",\"enclosing\":" + enclosing + ",\"anchor\":" +
                          std::to_string(anchor ? uint64_t(anchor->ea) : UINT64_MAX) +

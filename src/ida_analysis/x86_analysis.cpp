@@ -190,13 +190,93 @@ Slice register_slice(const op_t &operand)
 
 bool abstract_bswap16_fallthrough(const insn_t &insn)
 {
-    // Intel defines no 16-bit result, but this unprefixed encoding has a
-    // fallthrough and preserves flags. Keep other prefix combinations outside
-    // this deliberately narrow static transfer contract.
-    return insn.itype == NN_bswap && insn.Op1.type == o_reg &&
-           get_dtype_size(insn.Op1.dtype) == 2 && insn.size == 3 &&
-           (mode32(insn) || mode64(insn)) && get_byte(insn.ea) == 0x66 &&
-           get_byte(insn.ea + 1) == 0x0f && (get_byte(insn.ea + 2) & 0xf8) == 0xc8;
+    // The 16-bit result is undefined, while flags and normal fallthrough
+    // survive. REX.B extends the opcode register field in long mode. Admit
+    // only exact 66 [40|41] 0F C8+rd forms with REX.W clear, and require the
+    // decoded register to agree with those bytes.
+    if (insn.itype != NN_bswap || insn.Op1.type != o_reg || get_dtype_size(insn.Op1.dtype) != 2 ||
+        (!mode32(insn) && !mode64(insn)) || get_byte(insn.ea) != 0x66)
+        return false;
+    const Slice target = register_slice(insn.Op1);
+    if (target.reg < 0 || target.width != 16 || target.offset != 0)
+        return false;
+    if (insn.size == 3 && get_byte(insn.ea + 1) == 0x0f)
+    {
+        const uint8_t opcode = get_byte(insn.ea + 2);
+        return (opcode & 0xf8) == 0xc8 && target.reg == int(opcode & 7);
+    }
+    if (insn.size == 4 && mode64(insn))
+    {
+        const uint8_t rex = get_byte(insn.ea + 1);
+        const uint8_t opcode = get_byte(insn.ea + 3);
+        return (rex == 0x40 || rex == 0x41) && get_byte(insn.ea + 2) == 0x0f &&
+               (opcode & 0xf8) == 0xc8 && target.reg == int((opcode & 7) | ((rex & 1) << 3));
+    }
+    return false;
+}
+
+bool exact_near_register_jump(const insn_t &insn)
+{
+    if (insn.itype != NN_jmpni || insn.Op1.type != o_reg || (!mode32(insn) && !mode64(insn)))
+        return false;
+    const Slice target = register_slice(insn.Op1);
+    const unsigned width = mode64(insn) ? 64 : 32;
+    if (target.reg < 0 || target.width != width || target.offset != 0)
+        return false;
+    if (insn.size == 2 && get_byte(insn.ea) == 0xff)
+    {
+        const uint8_t modrm = get_byte(insn.ea + 1);
+        return (modrm & 0xf8) == 0xe0 && target.reg == int(modrm & 7);
+    }
+    if (insn.size == 3 && mode64(insn))
+    {
+        const uint8_t rex = get_byte(insn.ea);
+        const uint8_t modrm = get_byte(insn.ea + 2);
+        // FF /4 fixes ModR/M.reg as an opcode extension. REX.R and REX.X
+        // cannot select a register here; REX.B alone extends ModR/M.r/m.
+        // The near jump already has a 64-bit target in long mode, so REX.W
+        // does not change the transfer width.
+        return rex >= 0x40 && rex <= 0x4f && get_byte(insn.ea + 1) == 0xff &&
+               (modrm & 0xf8) == 0xe0 && target.reg == int((modrm & 7) | ((rex & 1) << 3));
+    }
+    return false;
+}
+
+bool exact_near_stack_jump(const insn_t &insn)
+{
+    if (insn.itype != NN_jmpni || (!mode32(insn) && !mode64(insn)) || !natad(insn) ||
+        insn.segpref != 0 || get_dtype_size(insn.Op1.dtype) != (mode64(insn) ? 8 : 4))
+        return false;
+    if (insn.size == 3)
+        return get_byte(insn.ea) == 0xff && get_byte(insn.ea + 1) == 0x24 &&
+               get_byte(insn.ea + 2) == 0x24;
+    if (insn.size == 4 && mode64(insn))
+    {
+        const uint8_t rex = get_byte(insn.ea);
+        // REX.B would select R12, and REX.X would select an index instead
+        // of the no-index SIB encoding. REX.W/R do not change this [RSP].
+        return rex >= 0x40 && rex <= 0x4f && (rex & 3) == 0 && get_byte(insn.ea + 1) == 0xff &&
+               get_byte(insn.ea + 2) == 0x24 && get_byte(insn.ea + 3) == 0x24;
+    }
+    return false;
+}
+
+std::optional<uint64_t> exact_near_direct_memory_jump(const insn_t &insn)
+{
+    if (insn.itype != NN_jmpni || insn.Op1.type != o_mem || (!mode32(insn) && !mode64(insn)) ||
+        !natad(insn) || insn.segpref != 0 ||
+        get_dtype_size(insn.Op1.dtype) != (mode64(insn) ? 8 : 4) || insn.size != 6)
+        return std::nullopt;
+    std::array<uint8_t, 6> bytes{};
+    if (get_bytes(bytes.data(), bytes.size(), insn.ea) != bytes.size() || bytes[0] != 0xff ||
+        bytes[1] != 0x25)
+        return std::nullopt;
+    const uint32_t displacement = uint32_t(bytes[2]) | (uint32_t(bytes[3]) << 8) |
+                                  (uint32_t(bytes[4]) << 16) | (uint32_t(bytes[5]) << 24);
+    const uint64_t address = mode64(insn)
+                                 ? uint64_t(insn.ea + 6) + uint64_t(int64_t(int32_t(displacement)))
+                                 : uint64_t(displacement);
+    return insn.Op1.addr == address ? std::optional<uint64_t>{address} : std::nullopt;
 }
 
 bool exact_status_ah_encoding(const insn_t &insn)
@@ -626,6 +706,258 @@ struct State
         const bool is64 = mode64(insn);
         const unsigned width = unsigned(get_dtype_size(insn.Op1.dtype) * 8);
         const unsigned word_bits = is64 ? 64 : 32;
+        if (insn.itype == NN_rdtsc)
+        {
+            // RDTSC has nondeterministic EDX:EAX data but preserves status
+            // flags and all unrelated architectural registers and memory.
+            if ((!is64 && !mode32(insn)) || insn.size != 2 || get_byte(insn.ea) != 0x0f ||
+                get_byte(insn.ea + 1) != 0x31 || insn.Op1.type != o_void || insn.Op2.type != o_void)
+            {
+                *this = {};
+                return;
+            }
+            regs[0].write(32, 0, std::nullopt, is64);
+            regs[2].write(32, 0, std::nullopt, is64);
+            return;
+        }
+        if (insn.itype == NN_shld || insn.itype == NN_shrd)
+        {
+            const Slice destination = register_slice(insn.Op1);
+            const Slice source = register_slice(insn.Op2);
+            const Slice count_register = register_slice(insn.Op3);
+            const bool memory_destination =
+                insn.Op1.type == o_mem || insn.Op1.type == o_displ || insn.Op1.type == o_phrase;
+            if ((!is64 && !mode32(insn)) || (width != 16 && width != 32 && width != 64) ||
+                (width == 64 && !is64) || (insn.auxpref & (aux_lock | aux_rep | aux_repne)) ||
+                (destination.reg < 0 && !memory_destination) ||
+                (destination.reg >= 0 && (destination.width != width || destination.offset != 0)) ||
+                source.reg < 0 || source.width != width || source.offset != 0 ||
+                (insn.Op3.type != o_imm &&
+                 (insn.Op3.type != o_reg || count_register.reg != 1 || count_register.width != 8 ||
+                  count_register.offset != 0)))
+            {
+                *this = {};
+                return;
+            }
+            const std::optional<uint64_t> count =
+                insn.Op3.type == o_imm ? std::optional<uint64_t>{insn.Op3.value} : regs[1].read(8);
+            // A zero masked count leaves the destination and all flags intact.
+            if (count && (*count & (width == 64 ? 63 : 31)) == 0)
+                return;
+            const Word old_source{regs[size_t(source.reg)].known & mask(width),
+                                  regs[size_t(source.reg)].value & mask(width)};
+            Word old_destination;
+            std::optional<uint64_t> address;
+            if (destination.reg >= 0)
+            {
+                old_destination = regs[size_t(destination.reg)];
+                old_destination.known &= mask(width);
+                old_destination.value &= mask(width);
+            }
+            else
+            {
+                address = memory_address(insn, insn.Op1);
+                const auto value = address && writable_range(*address, width / 8, word_bits)
+                                       ? read_memory(*address, width)
+                                   : stack_top(insn, insn.Op1) ? read_stack_top(width)
+                                                               : std::nullopt;
+                if (value)
+                    old_destination = Word{mask(width), *value};
+            }
+            const Word result = double_shift(insn.itype == NN_shld, width, old_destination,
+                                             old_source, count, flags);
+            if (destination.reg >= 0)
+            {
+                Word written = regs[size_t(destination.reg)];
+                written.write_partial(width, 0, result, is64);
+                if (!count)
+                    written.join(regs[size_t(destination.reg)]);
+                regs[size_t(destination.reg)] = written;
+                if (destination.reg == 4)
+                    stack.clear();
+            }
+            else
+            {
+                stack.clear();
+                invalidate_memory(address, width / 8);
+                const auto value = result.read(width);
+                if (address && value && writable_range(*address, width / 8, word_bits))
+                    store_memory(*address, width, *value);
+            }
+            return;
+        }
+        if (insn.itype == NN_xadd)
+        {
+            const Slice destination = register_slice(insn.Op1);
+            const Slice source = register_slice(insn.Op2);
+            const bool memory_destination =
+                insn.Op1.type == o_mem || insn.Op1.type == o_displ || insn.Op1.type == o_phrase;
+            if ((!is64 && !mode32(insn)) || !valid_width(width) || (width == 64 && !is64) ||
+                (insn.auxpref & (aux_rep | aux_repne)) ||
+                ((insn.auxpref & aux_lock) && !memory_destination) ||
+                (destination.reg < 0 && !memory_destination) ||
+                (destination.reg >= 0 && destination.width != width) || source.reg < 0 ||
+                source.width != width)
+            {
+                *this = {};
+                return;
+            }
+            // The source write may change a register used by the destination's
+            // address. Capture the address and both input slices first.
+            const std::optional<uint64_t> address =
+                memory_destination ? memory_address(insn, insn.Op1) : std::nullopt;
+            Word old_destination;
+            if (destination.reg >= 0)
+            {
+                const Word input = regs[size_t(destination.reg)];
+                old_destination.known = (input.known >> destination.offset) & mask(width);
+                old_destination.value = (input.value >> destination.offset) & old_destination.known;
+            }
+            else
+            {
+                auto input = address && writable_range(*address, width / 8, word_bits)
+                                 ? read_memory(*address, width)
+                                 : std::nullopt;
+                if (!input && stack_top(insn, insn.Op1))
+                    input = read_stack_top(width);
+                if (input)
+                    old_destination = Word{mask(width), *input};
+            }
+            const Word source_register = regs[size_t(source.reg)];
+            const Word old_source{(source_register.known >> source.offset) & mask(width),
+                                  (source_register.value >> source.offset) & mask(width)};
+            const auto sum = transfer(Operation::add, width, old_destination.read(width),
+                                      old_source.read(width), false, flags);
+            if (source.reg == 4 || destination.reg == 4 || memory_destination)
+                stack.clear();
+            regs[size_t(source.reg)].write_partial(width, source.offset, old_destination, is64);
+            if (destination.reg >= 0)
+                regs[size_t(destination.reg)].write(width, destination.offset, sum, is64);
+            else
+            {
+                invalidate_memory(address, width / 8);
+                if (address && sum && writable_range(*address, width / 8, word_bits))
+                    store_memory(*address, width, *sum);
+            }
+            return;
+        }
+        if (insn.itype == NN_bt || insn.itype == NN_btc || insn.itype == NN_btr ||
+            insn.itype == NN_bts)
+        {
+            const BitAction action = insn.itype == NN_btc   ? BitAction::complement
+                                     : insn.itype == NN_btr ? BitAction::reset
+                                     : insn.itype == NN_bts ? BitAction::set
+                                                            : BitAction::test;
+            const bool modifies = action != BitAction::test;
+            const Slice base = register_slice(insn.Op1);
+            const Slice bit_register = register_slice(insn.Op2);
+            const bool memory_base =
+                insn.Op1.type == o_mem || insn.Op1.type == o_displ || insn.Op1.type == o_phrase;
+            const bool immediate = insn.Op2.type == o_imm;
+            if ((!is64 && !mode32(insn)) || (width != 16 && width != 32 && width != 64) ||
+                (width == 64 && !is64) || (insn.auxpref & (aux_rep | aux_repne)) ||
+                ((insn.auxpref & aux_lock) && (!modifies || !memory_base)) ||
+                (base.reg < 0 && !memory_base) ||
+                (base.reg >= 0 && (base.width != width || base.offset != 0)) ||
+                (!immediate &&
+                 (bit_register.reg < 0 || bit_register.width != width || bit_register.offset != 0)))
+            {
+                *this = {};
+                return;
+            }
+            const std::optional<uint64_t> offset = immediate
+                                                       ? std::optional<uint64_t>{insn.Op2.value}
+                                                       : regs[size_t(bit_register.reg)].read(width);
+            if (base.reg >= 0)
+            {
+                Word old = regs[size_t(base.reg)];
+                old.known &= mask(width);
+                old.value &= old.known;
+                const Word result = bit_test_register(action, width, old, offset, flags);
+                if (modifies)
+                {
+                    regs[size_t(base.reg)].write_partial(width, 0, result, is64);
+                    if (base.reg == 4)
+                        stack.clear();
+                }
+                return;
+            }
+            flags.forget(CF | OF | SF | AF | PF);
+            std::optional<uint64_t> word_address, byte_address, old_byte;
+            unsigned bit = 0;
+            if (offset)
+            {
+                bit = unsigned(*offset & (width - 1));
+                const auto address = memory_address(insn, insn.Op1);
+                const auto delta = bit_string_word_delta(width, *offset, immediate);
+                if (address && delta)
+                    word_address = (*address + *delta) & mask(word_bits);
+                if (word_address && readable_range(*word_address, width / 8, word_bits))
+                {
+                    byte_address = *word_address + bit / 8;
+                    old_byte = read_memory(*byte_address, 8);
+                    if (old_byte)
+                        flags.set(CF, ((*old_byte >> (bit & 7)) & 1) != 0);
+                }
+            }
+            if (modifies)
+            {
+                stack.clear();
+                invalidate_memory(byte_address, 1);
+                if (byte_address && old_byte && word_address &&
+                    writable_range(*word_address, width / 8, word_bits))
+                {
+                    const uint64_t selected = uint64_t{1} << (bit & 7);
+                    const uint64_t updated = action == BitAction::set     ? *old_byte | selected
+                                             : action == BitAction::reset ? *old_byte & ~selected
+                                                                          : *old_byte ^ selected;
+                    store_memory(*byte_address, 8, updated);
+                }
+            }
+            return;
+        }
+        if (insn.itype == NN_bsf || insn.itype == NN_bsr)
+        {
+            const Slice destination = register_slice(insn.Op1);
+            const Slice source = register_slice(insn.Op2);
+            const bool memory_source =
+                insn.Op2.type == o_mem || insn.Op2.type == o_displ || insn.Op2.type == o_phrase;
+            if ((!is64 && !mode32(insn)) || (width != 16 && width != 32 && width != 64) ||
+                (width == 64 && !is64) || (insn.auxpref & (aux_lock | aux_rep | aux_repne)) ||
+                destination.reg < 0 || destination.width != width || destination.offset != 0 ||
+                (source.reg < 0 && !memory_source) ||
+                (source.reg >= 0 && (source.width != width || source.offset != 0)) ||
+                get_dtype_size(insn.Op2.dtype) * 8 != width)
+            {
+                *this = {};
+                return;
+            }
+            Word input;
+            if (source.reg >= 0)
+            {
+                input = regs[size_t(source.reg)];
+                input.known &= mask(width);
+                input.value &= input.known;
+            }
+            else
+            {
+                const auto address = memory_address(insn, insn.Op2);
+                auto value = address && readable_range(*address, width / 8, word_bits)
+                                 ? read_memory(*address, width)
+                             : stack_top(insn, insn.Op2) ? read_stack_top(width)
+                                                         : std::nullopt;
+                if (value)
+                    input = Word{mask(width), *value};
+            }
+            const BitScanResult result = bit_scan(insn.itype == NN_bsr, width, input, flags);
+            if (destination.reg == 4)
+                stack.clear();
+            if (!result.nonzero_guaranteed)
+                regs[size_t(destination.reg)] = {};
+            else
+                regs[size_t(destination.reg)].write_partial(width, 0, result.destination, is64);
+            return;
+        }
         if ((insn.itype == NN_movs || insn.itype == NN_stos) && (is64 || mode32(insn)) &&
             valid_width(width) && natad(insn) && insn.segpref == 0 && (insn.auxpref & aux_rep) &&
             !(insn.auxpref & (aux_repne | aux_lock)))
@@ -717,6 +1049,14 @@ struct State
         }
         if (rotate_operation(algebra) && ((!mode32(insn) && !is64) || (insn.auxpref & aux_lock)))
         {
+            *this = {};
+            return;
+        }
+        if ((algebra == Operation::shift_left || algebra == Operation::shift_right ||
+             algebra == Operation::arithmetic_right) &&
+            (insn.auxpref & aux_lock))
+        {
+            // LOCK-prefixed shifts fault instead of producing a successor state.
             *this = {};
             return;
         }
@@ -1460,6 +1800,11 @@ struct State
         }
         case NN_bswap:
         {
+            if (insn.auxpref & (aux_lock | aux_rep | aux_repne))
+            {
+                *this = {};
+                return;
+            }
             if (width != 32 && width != 64)
             {
                 if (!abstract_bswap16_fallthrough(insn))
@@ -1482,16 +1827,17 @@ struct State
                 }
                 return;
             }
-            const auto input = read(insn.Op1);
-            std::optional<uint64_t> output;
-            if (input && (width == 32 || width == 64))
+            const Slice target = register_slice(insn.Op1);
+            if ((!is64 && !mode32(insn)) || target.reg < 0 || target.width != width ||
+                target.offset != 0 || (width == 64 && !is64))
             {
-                uint64_t value = 0;
-                for (unsigned i = 0; i < width / 8; ++i)
-                    value = (value << 8) | ((*input >> (8 * i)) & 255);
-                output = value;
+                *this = {};
+                return;
             }
-            write(insn.Op1, output, is64);
+            if (target.reg == 4)
+                stack.clear();
+            regs[size_t(target.reg)].write_partial(
+                width, 0, byte_swap(width, regs[size_t(target.reg)]), is64);
             return;
         }
         case NN_pusha:
@@ -1519,6 +1865,19 @@ struct State
                                           regs[size_t(b.reg)], b.offset, same)
                 : std::nullopt;
         const auto result = transfer(algebra, width, algebra_left, algebra_right, same, flags);
+        const bool exact_shift =
+            (mode32(insn) || is64) && a.reg >= 0 && a.width == width && algebra_right &&
+            (algebra == Operation::shift_left || algebra == Operation::shift_right ||
+             algebra == Operation::arithmetic_right) &&
+            !(insn.auxpref & (aux_lock | aux_rep | aux_repne)) &&
+            (insn.Op2.type == o_imm || (b.reg == 1 && b.width == 8 && b.offset == 0));
+        const auto shift_result =
+            exact_shift
+                ? std::optional<Word>{partial_shift(algebra, width,
+                                                    Word{regs[size_t(a.reg)].known >> a.offset,
+                                                         regs[size_t(a.reg)].value >> a.offset},
+                                                    *algebra_right, flags)}
+                : std::nullopt;
         if (algebra == Operation::test && register_result)
             partial_result_flags(flags, *register_result, width);
         else if (algebra == Operation::test && a.reg >= 0 && a.width == width &&
@@ -1548,12 +1907,14 @@ struct State
                 // CF/OF are already cleared and AF remains unknown by transfer().
                 partial_result_flags(flags, destination, a.width, a.offset);
             }
-            else if (register_result)
+            else if (register_result || shift_result)
             {
                 if (a.reg == 4)
                     stack.clear();
-                regs[size_t(a.reg)].write_partial(a.width, a.offset, *register_result, is64);
-                partial_result_flags(flags, *register_result, width);
+                const Word &partial = shift_result ? *shift_result : *register_result;
+                regs[size_t(a.reg)].write_partial(a.width, a.offset, partial, is64);
+                if (register_result)
+                    partial_result_flags(flags, partial, width);
             }
             else
                 write(insn.Op1, result, is64);
@@ -2338,6 +2699,8 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
                  get_dtype_size(instruction.Op1.dtype) != 8 &&
                  !abstract_bswap16_fallthrough(instruction))
             flow.stop = "unsupported_bswap_width";
+        else if (instruction.itype == NN_jmpni)
+            flow.stop = "indirect_target";
         else if (instruction.Op1.type == o_far || instruction.itype == NN_callfi ||
                  instruction.itype == NN_jmpfi || (is_ret_insn(instruction) && !flow.ret) ||
                  instruction.itype == NN_int || instruction.itype == NN_int3 ||
@@ -2666,6 +3029,68 @@ X86RegionInspection analyze_x86_region(uint64_t root, size_t node_limit, size_t 
                 row["width_bits"] = "8";
             }
             result.records.push_back(std::move(row));
+        }
+        if (instruction.itype == NN_jmpni)
+        {
+            std::optional<uint64_t> target;
+            const bool exact_register = exact_near_register_jump(instruction);
+            const bool exact_stack = exact_near_stack_jump(instruction) &&
+                                     State::stack_top(instruction, instruction.Op1);
+            const auto direct_memory = exact_near_direct_memory_jump(instruction);
+            const bool exact_memory =
+                direct_memory && State::writable_word(*direct_memory, result.address_bits);
+            if (exact_register)
+            {
+                target = state.read(instruction.Op1);
+                if (!target && has_join)
+                {
+                    ensure_alternatives();
+                    if (alternatives && (*alternatives)[i])
+                        target = (*alternatives)[i]->common().read(instruction.Op1);
+                }
+            }
+            else if (exact_stack)
+            {
+                target = state.read_stack_top(result.address_bits);
+                if (!target && has_join)
+                {
+                    ensure_alternatives();
+                    if (alternatives && (*alternatives)[i])
+                        target = (*alternatives)[i]->common().read_stack_top(result.address_bits);
+                }
+            }
+            else if (exact_memory)
+            {
+                target = state.read_memory(*direct_memory, result.address_bits);
+                if (!target && has_join)
+                {
+                    ensure_alternatives();
+                    if (alternatives && (*alternatives)[i])
+                        target = (*alternatives)[i]->common().read_memory(*direct_memory,
+                                                                          result.address_bits);
+                }
+            }
+            result.records.push_back(
+                {{"site", hex(instruction.ea)},
+                 {"kind", "indirect-jump-target"},
+                 {"truth", candidate_decode ? "conditional-byte-decode" : "static-region-fact"},
+                 {"status", target ? "proved" : "unresolved"},
+                 {"target", target ? hex(*target) : "unknown"},
+                 {"target_proof", target ? (exact_stack    ? "local-stack-word"
+                                            : exact_memory ? "local-memory-word"
+                                                           : "register-definition")
+                                         : "unresolved"},
+                 {"source_kind", exact_stack                     ? "stack"
+                                 : exact_memory                  ? "memory"
+                                 : instruction.Op1.type == o_reg ? "register"
+                                                                 : "other"},
+                 {"admission", exact_register ? "exact-register-encoding"
+                               : exact_stack  ? "exact-stack-top-encoding"
+                               : exact_memory ? "exact-writable-memory-encoding"
+                                              : "unresolved-encoding"},
+                 {"width_bits", std::to_string(result.address_bits)},
+                 {"publication", "none"},
+                 {"support", support}});
         }
         if (instruction.itype != NN_push || !natad(instruction) ||
             (result.address_bits == 64 ? !op64(instruction) : !op32(instruction)))
