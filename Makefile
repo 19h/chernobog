@@ -15,6 +15,15 @@ NPROC = $(shell sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
 # IDA SDK cmake outputs to bin/plugins (or src/bin/plugins for GitHub SDK structure)
 IDASDK_PLUGINS = $(IDASDK)/bin/plugins
 IDASDK_PLUGINS_SRC = $(IDASDK)/src/bin/plugins
+# install copies the newest plugin. CHERNOBOG_PLUGIN_OUTPUT_DIR builds land in
+# build/local-plugins and must beat a stale copy left in the SDK plugin directory.
+ifeq ($(HOST_OS),Darwin)
+PLUGIN_SUFFIX = dylib
+MTIME = stat -f %m
+else
+PLUGIN_SUFFIX = $(if $(filter Linux,$(HOST_OS)),so,dll)
+MTIME = stat -c %Y
+endif
 
 ifeq ($(HOST_OS),Darwin)
 ALL_PLATFORM_TARGETS = build-macos-arm64 build-macos-x86_64 build-linux-clang build-windows-clang
@@ -111,38 +120,29 @@ clean:
 install: build
 	@echo "Installing plugin..."
 	@mkdir -p ~/.idapro/plugins
-ifeq ($(shell uname -s),Darwin)
-	@cp $(BUILD_DIR)/plugins/$(PLUGIN_NAME)64.dylib ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(BUILD_DIR)/plugins/$(PLUGIN_NAME).dylib ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(BUILD_DIR)/$(PLUGIN_NAME)64.dylib ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(BUILD_DIR)/$(PLUGIN_NAME).dylib ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(IDASDK_PLUGINS)/$(PLUGIN_NAME)64.dylib ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(IDASDK_PLUGINS)/$(PLUGIN_NAME).dylib ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(IDASDK_PLUGINS_SRC)/$(PLUGIN_NAME)64.dylib ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(IDASDK_PLUGINS_SRC)/$(PLUGIN_NAME).dylib ~/.idapro/plugins/ 2>/dev/null || \
-	 echo "Plugin not found - check build output"
+	@newest=; newest_m=0; \
+	for f in \
+		"$(BUILD_DIR)/local-plugins/$(PLUGIN_NAME).$(PLUGIN_SUFFIX)" \
+		"$(BUILD_DIR)/local-plugins/$(PLUGIN_NAME)64.$(PLUGIN_SUFFIX)" \
+		"$(BUILD_DIR)/plugins/$(PLUGIN_NAME)64.$(PLUGIN_SUFFIX)" \
+		"$(BUILD_DIR)/plugins/$(PLUGIN_NAME).$(PLUGIN_SUFFIX)" \
+		"$(BUILD_DIR)/$(PLUGIN_NAME)64.$(PLUGIN_SUFFIX)" \
+		"$(BUILD_DIR)/$(PLUGIN_NAME).$(PLUGIN_SUFFIX)" \
+		"$(IDASDK_PLUGINS)/$(PLUGIN_NAME)64.$(PLUGIN_SUFFIX)" \
+		"$(IDASDK_PLUGINS)/$(PLUGIN_NAME).$(PLUGIN_SUFFIX)" \
+		"$(IDASDK_PLUGINS_SRC)/$(PLUGIN_NAME)64.$(PLUGIN_SUFFIX)" \
+		"$(IDASDK_PLUGINS_SRC)/$(PLUGIN_NAME).$(PLUGIN_SUFFIX)"; do \
+		if [ -f "$$f" ]; then \
+			m=$$($(MTIME) "$$f" 2>/dev/null || echo 0); \
+			if [ "$$m" -gt "$$newest_m" ]; then newest="$$f"; newest_m="$$m"; fi; \
+		fi; \
+	done; \
+	if [ -z "$$newest" ]; then echo "Plugin not found - check build output"; exit 1; fi; \
+	echo "Installing $$newest"; \
+	cp "$$newest" ~/.idapro/plugins/
+ifeq ($(HOST_OS),Darwin)
 	@echo "Signing plugin (macOS)..."
 	@codesign -s - -f ~/.idapro/plugins/$(PLUGIN_NAME)*.dylib 2>/dev/null || true
-else ifeq ($(shell uname -s),Linux)
-	@cp $(BUILD_DIR)/plugins/$(PLUGIN_NAME)64.so ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(BUILD_DIR)/plugins/$(PLUGIN_NAME).so ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(BUILD_DIR)/$(PLUGIN_NAME)64.so ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(BUILD_DIR)/$(PLUGIN_NAME).so ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(IDASDK_PLUGINS)/$(PLUGIN_NAME)64.so ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(IDASDK_PLUGINS)/$(PLUGIN_NAME).so ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(IDASDK_PLUGINS_SRC)/$(PLUGIN_NAME)64.so ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(IDASDK_PLUGINS_SRC)/$(PLUGIN_NAME).so ~/.idapro/plugins/ 2>/dev/null || \
-	 echo "Plugin not found - check build output"
-else
-	@cp $(BUILD_DIR)/plugins/$(PLUGIN_NAME)64.dll ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(BUILD_DIR)/plugins/$(PLUGIN_NAME).dll ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(BUILD_DIR)/$(PLUGIN_NAME)64.dll ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(BUILD_DIR)/$(PLUGIN_NAME).dll ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(IDASDK_PLUGINS)/$(PLUGIN_NAME)64.dll ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(IDASDK_PLUGINS)/$(PLUGIN_NAME).dll ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(IDASDK_PLUGINS_SRC)/$(PLUGIN_NAME)64.dll ~/.idapro/plugins/ 2>/dev/null || \
-	 cp $(IDASDK_PLUGINS_SRC)/$(PLUGIN_NAME).dll ~/.idapro/plugins/ 2>/dev/null || \
-	 echo "Plugin not found - check build output"
 endif
 	@cp python/chernobog_evidence.py ~/.idapro/plugins/
 	@echo "Done!"
