@@ -59,7 +59,7 @@ inline bool parse_decompiler_version(const char *text, decompiler_version_t *ver
 // Hex-Rays commit e6b9fe2ef765f04feab2ab3cd63884b3103825cf,
 // committed on 2026-06-30, inserted MERR_TIMEOUT before the internal
 // MERR_LOOP value. Some 9.4 SDK headers predate that enum-layout change while
-// loading a newer 9.4 decompiler at runtime.
+// loading a newer 9.4 decompiler at runtime. IDA 9.5 keeps the shifted numbering.
 inline bool uses_timeout_merror_layout(const char *runtime_version)
 {
     decompiler_version_t version;
@@ -74,6 +74,19 @@ inline bool uses_timeout_merror_layout(const char *runtime_version)
     if (version.revision != first_timeout_layout.revision)
         return version.revision > first_timeout_layout.revision;
     return version.build_date >= first_timeout_layout.build_date;
+}
+
+// MERR_LOOP is -36 before the timeout insertion and -37 after it, including
+// every 9.5 decompiler. compiled_merr_loop is the enumerator in the SDK this
+// binary was built against. An unreadable runtime version keeps that value.
+inline int merr_loop_value(const char *runtime_version, int compiled_merr_loop)
+{
+    constexpr int pre_timeout_loop = -36;
+    constexpr int timeout_loop = -37;
+    decompiler_version_t version;
+    if (!parse_decompiler_version(runtime_version, &version))
+        return compiled_merr_loop;
+    return uses_timeout_merror_layout(runtime_version) ? timeout_loop : pre_timeout_loop;
 }
 
 } // namespace chernobog::hexrays_compat

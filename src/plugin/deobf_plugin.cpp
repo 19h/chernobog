@@ -6,6 +6,7 @@
 #include "component_registry.h"
 #include "idc_api.h"
 #include "../common/hexrays_compat.h"
+#include "../common/hexrays_handshake.hpp"
 #include <chernobog/build_provenance.hpp>
 
 // Include component headers to trigger registration
@@ -46,28 +47,21 @@ static void debug_log(const char *fmt, ...)
 // MERR_LOOP is an internal callback control value and therefore must match the
 // loaded decompiler, not merely the header used to compile this plugin. The
 // 2026-06-30 timeout addition inserted MERR_TIMEOUT at -36 and shifted
-// MERR_LOOP to -37. Some public 9.4 SDK headers still define the old layout.
+// MERR_LOOP to -37. IDA 9.5 keeps that numbering. A 9.4 header still defines
+// -36; a 9.5 header already defines -37.
 static merror_t compatible_merr_loop()
 {
     static const merror_t runtime_value = []() -> merror_t
     {
-        // A header containing the timeout addition already has the correct
-        // runtime value. Unknown layouts are likewise safer when left intact.
-        if constexpr (static_cast<int>(MERR_MAX_ERR) != 35 || static_cast<int>(MERR_LOOP) != -36)
-        {
-            return MERR_LOOP;
-        }
-
         const char *runtime_version = get_hexrays_version();
-        if (chernobog::hexrays_compat::uses_timeout_merror_layout(runtime_version))
+        const int compiled = static_cast<int>(MERR_LOOP);
+        const int resolved = chernobog::hexrays_compat::merr_loop_value(runtime_version, compiled);
+        if (resolved != compiled)
         {
-            constexpr int timeout_layout_merr_loop = -37;
-            debug_log("[chernobog] Hex-Rays %s uses shifted merror layout; "
-                      "MERR_LOOP=%d\n",
-                      runtime_version, timeout_layout_merr_loop);
-            return static_cast<merror_t>(timeout_layout_merr_loop);
+            debug_log("[chernobog] Hex-Rays %s MERR_LOOP=%d (header %d)\n",
+                      runtime_version != nullptr ? runtime_version : "unknown", resolved, compiled);
         }
-        return MERR_LOOP;
+        return static_cast<merror_t>(resolved);
     }();
     return runtime_value;
 }
@@ -876,13 +870,14 @@ bool chernobog_plugmod_t::activate()
         chernobog::build_provenance::source_fingerprint, chernobog::build_provenance::ida_sdk,
         chernobog::build_provenance::rax_revision, static_cast<long long>(database_id));
 
-    if (!init_hexrays_plugin())
+    if (!chernobog::hexrays::handshake())
     {
-        debug_log("[chernobog] init_hexrays_plugin() failed\n");
+        debug_log("[chernobog] Hex-Rays handshake failed\n");
         return false;
     }
 
-    debug_log("[chernobog] init_hexrays_plugin() succeeded\n");
+    debug_log("[chernobog] Hex-Rays handshake accepted, layout=%s\n",
+              chernobog::hexrays_abi::layout_name(chernobog::hexrays::layout()));
 
     if (!configure_max_funcsize())
         return false;

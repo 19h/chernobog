@@ -39,7 +39,7 @@ The obfuscation dissolves. The algorithm emerges.
 > - **Select/cmov cascade collapse** and static XOR/NOT stack-string recovery
 > - **Multi-database support** (`PLUGIN_MULTI`) — isolated state per open database
 >
-> Chernobog 6 **requires IDA Pro 9.4** (SDK `940`); older SDKs are rejected at build time.
+> Chernobog 6 **runs on IDA Pro 9.4 and 9.5**. One build, compiled against SDK `940`, serves both. Older SDKs are rejected at build time.
 
 ## Features
 
@@ -191,7 +191,7 @@ Applied after microcode optimization for additional cleanup:
 
 ## Requirements
 
-- IDA Pro 9.4 with Hex-Rays decompiler (the build rejects any SDK whose `IDA_SDK_VERSION` is not `940`)
+- IDA Pro 9.4 or 9.5 with the Hex-Rays decompiler. The build requires SDK `IDA_SDK_VERSION` `940` (the oldest supported IDA). That binary connects to both decompilers.
 - CMake 3.27+
 - Ninja build system
 - Rust stable toolchain with Cargo

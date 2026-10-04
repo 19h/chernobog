@@ -299,9 +299,12 @@ include(${CMAKE_CURRENT_LIST_DIR}/ida-cmake/bootstrap.cmake)
 find_package(idasdk REQUIRED)
 
 # Windows CI pins the base IDA 9.4 release SDK so release DLLs retain the original 9.4 export set.
-# Caller-owned IDASDK overrides must still resolve to that ABI version; Windows CI additionally
-# rejects imports introduced by later SDK patches.
+# That is the oldest IDA one binary supports. The same binary connects to the IDA 9.4 and 9.5
+# decompilers (src/common/hexrays_abi.hpp). Caller-owned IDASDK overrides must still resolve to
+# the 9.4 kernel ABI; Windows CI additionally rejects imports introduced by later SDK patches.
 set(CHERNOBOG_REQUIRED_IDA_SDK_VERSION 940)
+set(CHERNOBOG_HEXRAYS_MAGIC_94 "00DEC0DE00000005")
+set(CHERNOBOG_HEXRAYS_MAGIC_95 "00DEC0DE00000006")
 if(NOT DEFINED IDASDK OR NOT EXISTS "${IDASDK}/include/pro.h")
     message(FATAL_ERROR "Could not resolve the IDA SDK include directory after bootstrap: "
                         "IDASDK='${IDASDK}'.")
@@ -315,8 +318,27 @@ if(NOT CHERNOBOG_IDA_SDK_VERSION_LINE MATCHES "IDA_SDK_VERSION[ \t]+([0-9]+)")
 endif()
 set(CHERNOBOG_IDA_SDK_VERSION "${CMAKE_MATCH_1}")
 if(NOT CHERNOBOG_IDA_SDK_VERSION STREQUAL "${CHERNOBOG_REQUIRED_IDA_SDK_VERSION}")
-    message(FATAL_ERROR "chernobog requires IDA SDK 9.4 (IDA_SDK_VERSION=940); "
+    message(FATAL_ERROR "chernobog builds against IDA SDK 9.4 (IDA_SDK_VERSION=940) so one "
+                        "binary loads in IDA 9.4 and IDA 9.5; "
                         "resolved IDA_SDK_VERSION=${CHERNOBOG_IDA_SDK_VERSION}.")
+endif()
+if(NOT EXISTS "${IDASDK}/include/hexrays.hpp")
+    message(FATAL_ERROR "Could not find hexrays.hpp under ${IDASDK}.")
+endif()
+file(
+    STRINGS "${IDASDK}/include/hexrays.hpp" CHERNOBOG_HEXRAYS_MAGIC_LINE
+    REGEX "HEXRAYS_API_MAGIC[ \t]*=[ \t]*0[xX][0-9A-Fa-f]+"
+    LIMIT_COUNT 1)
+if(NOT CHERNOBOG_HEXRAYS_MAGIC_LINE MATCHES "0[xX]([0-9A-Fa-f]+)")
+    message(FATAL_ERROR "Could not read HEXRAYS_API_MAGIC from ${IDASDK}.")
+endif()
+string(TOUPPER "${CMAKE_MATCH_1}" CHERNOBOG_HEXRAYS_MAGIC)
+if(NOT CHERNOBOG_HEXRAYS_MAGIC STREQUAL "${CHERNOBOG_HEXRAYS_MAGIC_94}" AND
+   NOT CHERNOBOG_HEXRAYS_MAGIC STREQUAL "${CHERNOBOG_HEXRAYS_MAGIC_95}")
+    message(FATAL_ERROR "chernobog supports the IDA 9.4 and 9.5 Hex-Rays APIs "
+                        "(HEXRAYS_API_MAGIC 0x${CHERNOBOG_HEXRAYS_MAGIC_94} or "
+                        "0x${CHERNOBOG_HEXRAYS_MAGIC_95}); "
+                        "resolved HEXRAYS_API_MAGIC=0x${CHERNOBOG_HEXRAYS_MAGIC}.")
 endif()
 
 # Generate a reproducible identity for the exact binary loaded by IDA. No wall-clock timestamp is
@@ -375,7 +397,8 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/build_provenance.hpp.in"
                "${CMAKE_CURRENT_BINARY_DIR}/include/chernobog/build_provenance.hpp" @ONLY)
 message(STATUS "Chernobog build: revision=${CHERNOBOG_BUILD_REVISION}, "
                "dirty=${CHERNOBOG_BUILD_DIRTY}, source=${CHERNOBOG_SOURCE_FINGERPRINT}, "
-               "IDA_SDK_VERSION=${CHERNOBOG_IDA_SDK_VERSION}")
+               "IDA_SDK_VERSION=${CHERNOBOG_IDA_SDK_VERSION}, "
+               "HEXRAYS_API_MAGIC=0x${CHERNOBOG_HEXRAYS_MAGIC}")
 
 # Set plugin variables before including addons.cmake
 ida_add_plugin(

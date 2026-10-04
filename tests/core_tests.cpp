@@ -2,6 +2,7 @@
 #include "common/arm64_branch.h"
 #include "common/arm64_predicate.h"
 #include "common/bitvector.h"
+#include "common/hexrays_abi.hpp"
 #include "common/hexrays_compat.h"
 #include "common/simd.h"
 #include "common/string_recovery.h"
@@ -16,6 +17,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <vector>
 
 namespace
@@ -239,6 +241,96 @@ void test_hexrays_merror_layout_compatibility()
               !uses_timeout_merror_layout("9.4.0.260717-extra") &&
               !uses_timeout_merror_layout("9.4.0.99999999999999999999"),
           "malformed Hex-Rays versions fail closed");
+
+    using chernobog::hexrays_compat::merr_loop_value;
+    check(merr_loop_value("9.4.0.260629", -36) == -36 &&
+              merr_loop_value("9.4.0.260629", -37) == -36,
+          "pre-timeout decompiler keeps MERR_LOOP at -36");
+    check(merr_loop_value("9.4.0.260630", -36) == -37 &&
+              merr_loop_value("9.5.0.260701", -36) == -37 &&
+              merr_loop_value("9.5.0.260701", -37) == -37 &&
+              merr_loop_value("10.0.0.270101", -36) == -37,
+          "timeout-era and 9.5 decompilers use MERR_LOOP -37");
+    check(merr_loop_value(nullptr, -36) == -36 && merr_loop_value(nullptr, -37) == -37 &&
+              merr_loop_value("9.4.0", -37) == -37 &&
+              merr_loop_value("9.4.0.99999999999999999999", -36) == -36,
+          "unreadable decompiler versions keep the compiled MERR_LOOP");
+}
+
+void test_hexrays_abi()
+{
+    using chernobog::hexrays_abi::decompiler_layout_t;
+    using chernobog::hexrays_abi::kernel_version_t;
+    namespace abi = chernobog::hexrays_abi;
+
+    constexpr std::int64_t magic_93 = 0x00DEC0DE00000004LL;
+    check(abi::hexrays_magic_94 == 0x00DEC0DE00000005LL &&
+              abi::hexrays_magic_95 == 0x00DEC0DE00000006LL,
+          "9.4 and 9.5 handshake magics");
+    check(abi::handshake_reply(abi::hexrays_magic_94) == 0x00DEC0DE &&
+              abi::handshake_reply(abi::hexrays_magic_95) == 0x00DEC0DE,
+          "both magics share a reply, so the reply cannot tell them apart");
+    check(abi::exfl_bitfield_95 == 0x0400, "IDA 9.5 EXFL_BITFIELD");
+
+    const auto parsed_94 = abi::parse_kernel_version("9.4");
+    const auto parsed_95 = abi::parse_kernel_version("9.5.260915");
+    const auto parsed_sp = abi::parse_kernel_version("9.5sp1");
+    check(parsed_94.has_value() && parsed_94->major == 9 && parsed_94->minor == 4 &&
+              parsed_95.has_value() && parsed_95->major == 9 && parsed_95->minor == 5 &&
+              parsed_sp.has_value() && parsed_sp->major == 9 && parsed_sp->minor == 5,
+          "kernel version keeps the major.minor prefix");
+    check(!abi::parse_kernel_version("").has_value() &&
+              !abi::parse_kernel_version("9").has_value() &&
+              !abi::parse_kernel_version("9.").has_value() &&
+              !abi::parse_kernel_version("v9.5").has_value() &&
+              !abi::parse_kernel_version("9-5").has_value(),
+          "unreadable kernel versions have no prefix");
+
+    const auto on_94 = abi::handshake_order(kernel_version_t{9, 4});
+    const auto on_95 = abi::handshake_order(kernel_version_t{9, 5});
+    const auto unknown = abi::handshake_order(std::nullopt);
+    const auto later = abi::handshake_order(kernel_version_t{10, 0});
+    check(on_94[0] == abi::hexrays_magic_94 && on_94[1] == abi::hexrays_magic_95 &&
+              unknown[0] == abi::hexrays_magic_94 && unknown[1] == abi::hexrays_magic_95,
+          "9.4 and an unreadable kernel offer magic 5 first");
+    check(on_95[0] == abi::hexrays_magic_95 && on_95[1] == abi::hexrays_magic_94 &&
+              later[0] == abi::hexrays_magic_95 && later[1] == abi::hexrays_magic_94,
+          "9.5 and later offer magic 6 first and still offer magic 5");
+    for (const std::int64_t magic : abi::handshake_order(kernel_version_t{9, 3}))
+        check(magic != magic_93, "the 9.3 decompiler ABI is never offered");
+
+    check(abi::layout_for_handshake(abi::hexrays_magic_94, kernel_version_t{9, 4}) ==
+                  decompiler_layout_t::v94 &&
+              abi::layout_for_handshake(abi::hexrays_magic_94, std::nullopt) ==
+                  decompiler_layout_t::v94,
+          "magic 5 on 9.4 is the 9.4 layout");
+    check(abi::layout_for_handshake(abi::hexrays_magic_95, kernel_version_t{9, 5}) ==
+                  decompiler_layout_t::v95 &&
+              abi::layout_for_handshake(abi::hexrays_magic_95, kernel_version_t{9, 4}) ==
+                  decompiler_layout_t::v95 &&
+              abi::layout_for_handshake(abi::hexrays_magic_95, std::nullopt) ==
+                  decompiler_layout_t::v95,
+          "magic 6 is the 9.5 layout");
+    check(abi::layout_for_handshake(abi::hexrays_magic_94, kernel_version_t{9, 5}) ==
+              decompiler_layout_t::v95,
+          "9.5.0-beta.1 answers magic 5 with the 9.5 layout");
+    check(abi::layout_for_handshake(magic_93, kernel_version_t{9, 3}) ==
+                  decompiler_layout_t::unknown &&
+              abi::layout_for_handshake(0, kernel_version_t{9, 4}) == decompiler_layout_t::unknown,
+          "an unknown magic has no layout");
+
+    check(abi::member_byte_offset(0xDEADBEEF00000020ull, 0, decompiler_layout_t::v94) == 0x20 &&
+              abi::member_byte_offset(0x20, abi::exfl_bitfield_95, decompiler_layout_t::v94) ==
+                  0x20 &&
+              abi::member_byte_offset(0xDEADBEEF00000020ull, abi::exfl_bitfield_95,
+                                      decompiler_layout_t::unknown) == 0x20,
+          "9.4 and unknown layouts keep the low 32 bits of m");
+    check(abi::member_byte_offset(0x100000020ull, 0, decompiler_layout_t::v95) == 0x100000020ull &&
+              abi::member_byte_offset(35, abi::exfl_bitfield_95, decompiler_layout_t::v95) == 4 &&
+              abi::member_byte_offset(7, abi::exfl_bitfield_95, decompiler_layout_t::v95) == 0 &&
+              abi::member_byte_offset(64, abi::exfl_bitfield_95 | 0x0001,
+                                      decompiler_layout_t::v95) == 8,
+          "9.5 member offsets are bytes, and bitfield offsets are converted");
 }
 
 void test_dependency_liveness()
@@ -1153,6 +1245,7 @@ int main()
     test_bitvectors();
     test_aarch64_address_origin();
     test_hexrays_merror_layout_compatibility();
+    test_hexrays_abi();
     test_deobfuscation_execution_policy();
     test_dependency_liveness();
     test_get_pc_classifier();

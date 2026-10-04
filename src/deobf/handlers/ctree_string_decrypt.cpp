@@ -4,6 +4,7 @@
 #include "../analysis/arch_utils.h"
 #include "../../common/bitvector.h"
 #include "../../common/aarch64_address_origin.h"
+#include "../../common/hexrays_handshake.hpp"
 #include "../../common/ida_memory.h"
 #include "../../hybrid/z3_bridge.hpp"
 
@@ -1673,7 +1674,10 @@ struct encrypted_string_replacer_t : public ctree_visitor_t
             return nullptr;
         if (referent->op == cot_obj)
             return referent;
-        if (referent->op != cot_memref || referent->m != 0)
+        // 9.5 stores a bit offset in m when EXFL_BITFIELD is set, and a 9.4
+        // build's 32-bit m shares its slot with a pointer. Compare the byte
+        // offset both layouts agree on.
+        if (referent->op != cot_memref || chernobog::hexrays::member_byte_offset(*referent) != 0)
             return nullptr;
         cexpr_t *object = strip_expression_casts(referent->x);
         return object != nullptr && object->op == cot_obj ? object : nullptr;
