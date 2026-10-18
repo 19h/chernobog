@@ -543,7 +543,10 @@ import slot, not an invented runtime address. Native, modeled and unverified
 behavior therefore remain distinguishable when constructing a later lowering.
 
 Each artifact owns its Z3 context, declared before its expression-bearing
-members so it outlives them. Publication occurs after the worker finishes;
+members so it outlives them. Arena ownership is immutable, and value assignment
+and move construction are disabled: replacing the arena before old expressions
+are released would invalidate those expressions. Copy construction retains the
+same owner. Publication occurs after the worker finishes;
 consumers must serialize access to that context. The IDA session retains the
 complete report after freshness checks and releases it on invalidation,
 cancellation or replacement. Starting another job releases completed artifacts
@@ -593,3 +596,9 @@ The exact source record and the partial eleven-entry sweep are
 Loop/PHI construction, complete helper/fault semantics, independent whole-entry
 equivalence and normal-view lowering remain required. No retained artifact is
 authority to replace ordinary pseudocode.
+
+
+Model-9 arena-ownership follow-up: `docs/evidence/warbird-model9-ownership.json`
+and `docs/evidence/warbird-model9-ownership.jsonl` record the non-assignable,
+non-movable owner contract and last-owner destruction checks. The original
+model-9 source hashes and reports remain historical evidence for their revision.

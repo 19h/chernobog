@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <type_traits>
 using namespace chernobog;
 namespace
 {
@@ -493,12 +494,28 @@ int main()
     warbird::Recovery damaged = *artifact;
     damaged.effects.back().previous = uint32_t(damaged.effects.size() - 1);
     require(!damaged.valid(), "cyclic recovery effects accepted");
-    damaged = *artifact;
-    damaged.instructions.begin()->second.operations.front().opcode = 0;
-    require(!damaged.valid(), "corrupt retained SMIR operation accepted");
-    damaged = *artifact;
-    damaged.states.front().registers.pop_back();
-    require(!damaged.valid(), "malformed recovery register bank accepted");
+    warbird::Recovery damaged_instruction = *artifact;
+    damaged_instruction.instructions.begin()->second.operations.front().opcode = 0;
+    require(!damaged_instruction.valid(), "corrupt retained SMIR operation accepted");
+    warbird::Recovery damaged_state = *artifact;
+    damaged_state.states.front().registers.pop_back();
+    require(!damaged_state.valid(), "malformed recovery register bank accepted");
+    static_assert(!std::is_copy_assignable_v<warbird::Recovery> &&
+                      !std::is_move_assignable_v<warbird::Recovery> &&
+                      !std::is_move_constructible_v<warbird::Recovery>,
+                  "recovery arena must not be replaced while expressions are alive");
+    std::weak_ptr<z3::context> copied_context;
+    std::shared_ptr<const warbird::Recovery> copied_artifact;
+    {
+        auto original = run(fixture({0x31, 0xc0, 0xc3})).recovery;
+        copied_context = original->arena;
+        copied_artifact = std::make_shared<warbird::Recovery>(*original);
+        original.reset();
+        require(!copied_context.expired() && copied_artifact->valid(),
+                "copy construction failed to retain the recovery arena");
+    }
+    copied_artifact.reset();
+    require(copied_context.expired(), "recovery context outlived its final artifact owner");
     warbird::Limits no_capture;
     no_capture.recovery_bytes = 0;
     const auto omitted = run(zero, 1, no_capture);

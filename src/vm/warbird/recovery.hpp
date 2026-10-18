@@ -77,8 +77,13 @@ struct HandlerRelation
 // Consumers serialize all access to an artifact; Z3 contexts are not reentrant.
 struct Recovery
 {
-    std::shared_ptr<z3::context> arena;
+    const std::shared_ptr<z3::context> arena;
     Lease lease;
+    Recovery(std::shared_ptr<z3::context>, const Lease &);
+    Recovery(const Recovery &) = default;
+    Recovery(Recovery &&) = delete;
+    Recovery &operator=(const Recovery &) = delete;
+    Recovery &operator=(Recovery &&) = delete;
     bool capture_complete = true;
     bool exploration_complete = false;
     size_t estimated_bytes = 0;

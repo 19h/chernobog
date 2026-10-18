@@ -21,14 +21,18 @@ bool memory_array(const z3::expr &value, const z3::context &context)
            sort.array_range().is_bv() && sort.array_range().bv_size() == 8;
 }
 }
+Recovery::Recovery(std::shared_ptr<z3::context> context, const Lease &source)
+    : arena(std::move(context)), lease(source)
+{
+    if (!arena)
+        throw std::invalid_argument("recovery requires an owning context");
+}
 RecoveryRecorder::RecoveryRecorder(std::shared_ptr<z3::context> arena, const Lease &lease,
                                    size_t bytes)
-    : data_(std::make_shared<Recovery>()), limit_(bytes)
+    : data_(std::make_shared<Recovery>(std::move(arena), lease)), limit_(bytes)
 {
-    if (!arena || bytes > 32 * 1024 * 1024)
+    if (bytes > 32 * 1024 * 1024)
         throw std::invalid_argument("invalid recovery recorder arena or budget");
-    data_->arena = std::move(arena);
-    data_->lease = lease;
 }
 bool RecoveryRecorder::reserve(size_t bytes)
 {
