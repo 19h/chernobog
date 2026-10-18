@@ -48,6 +48,7 @@ struct State
     EffectOrigin effect_origin = EffectOrigin::Setup;
     bool table_unchanged = true;
     bool imports_unchanged = true;
+    bool dispatch_unchanged = true;
     std::vector<z3::expr> registers;
     std::vector<z3::expr> temporary;
     std::vector<z3::expr> vectors;
@@ -83,12 +84,13 @@ class Explorer
     Report report;
     z3::params simplify_params{ctx};
     AliasOracle aliases{ctx};
-    AddressRanges readonly_ranges, table_ranges, import_ranges, private_ranges;
+    AddressRanges readonly_ranges, table_ranges, import_ranges, dispatch_ranges, private_ranges;
     std::map<uint64_t, std::pair<rax_smir_instruction, std::vector<rax_smir_op>>> cache;
     std::set<std::vector<unsigned>> seen;
     std::map<unsigned, z3::expr> identity_roots;
     std::set<uint64_t> keys;
     uint64_t initial_floor = virtual_stack, initial_native_top = native_stack;
+    uint64_t handler_return = return_sentinel;
     size_t symbolic_serial = 0;
     size_t identity_bytes = 0;
     z3::expr bv(uint64_t v, unsigned w = 64) { return ctx.bv_val(v, w); }
@@ -99,7 +101,8 @@ class Explorer
     uint32_t snapshot(const State &s)
     {
         return recovery.state(s.key, s.pc, s.effect_tail, s.table_unchanged, s.imports_unchanged,
-                              s.registers, s.vectors, s.flags, s.memory, s.stack, s.pool, s.domain);
+                              s.dispatch_unchanged, s.registers, s.vectors, s.flags, s.memory,
+                              s.stack, s.pool, s.domain);
     }
     Report finish_report()
     {
@@ -211,6 +214,12 @@ class Explorer
                 guard_write(s, at, width / 8, import_ranges, "possible import table write");
                 unchanged.insert(unchanged.end(), import_ranges.begin(), import_ranges.end());
             }
+            if (s.dispatch_unchanged)
+            {
+                guard_write(s, at, width / 8, dispatch_ranges,
+                            "possible dispatcher transfer pointer write");
+                unchanged.insert(unchanged.end(), dispatch_ranges.begin(), dispatch_ranges.end());
+            }
             if (aliases.classify(at, width / 8, s.domain, private_ranges) == AliasResult::DISJOINT)
             {
                 unchanged.insert(unchanged.end(), private_ranges.begin(), private_ranges.end());
@@ -226,6 +235,9 @@ class Explorer
                     throw std::runtime_error("write to immutable image");
                 if (image.writable(table_start) && address >= table_start && address < table_end)
                     s.table_unchanged = false;
+                if (admission.dispatch_pointer_writable && address >= admission.dispatch_pointer &&
+                    address - admission.dispatch_pointer < 8)
+                    s.dispatch_unchanged = false;
                 for (const auto &binding : admission.imports)
                     if (address >= binding.slot && address - binding.slot < 8)
                         s.imports_unchanged = false;
@@ -707,9 +719,25 @@ class Explorer
     bool enter(State &s, uint64_t key)
     {
         s.effect_origin = EffectOrigin::Dispatcher;
+        if (!s.dispatch_unchanged)
+            throw std::runtime_error("dispatcher transfer pointer overwritten");
         if (!s.table_unchanged)
             throw std::runtime_error("mutable dispatch table may have been overwritten");
         s.key = key;
+        if (!admission.abstract_handler_abi)
+        {
+            const auto pointer = bv(admission.dispatch_pointer);
+            const auto bound = load(s, pointer, 64) == bv(admission.dispatch_target);
+            if (feasible(s.domain && !bound))
+                frontier(s, "dispatcher transfer binding unverified");
+            s.domain = (s.domain && bound).simplify(simplify_params);
+            if (!feasible(s.domain))
+                return false;
+            // This is normalization under an equality guard, not a guest write.
+            // It preserves the same byte array and keeps later reads coherent.
+            if (admission.dispatch_pointer_writable)
+                s.memory.write(pointer, bv(admission.dispatch_target), 64);
+        }
         if (admission.stack_maintenance)
         {
             const auto slot = admission.zero_slots.front();
@@ -735,9 +763,9 @@ class Explorer
         }
         ++report.states;
         s.pc = admission.handlers.at(key & (admission.handlers.size() - 1));
-        // Caller-saved registers and incoming flags are not handler inputs
-        // promised by the validated RCX/RDX contract. Never carry values from
-        // the preceding handler through the native dispatch thunk.
+        // This partial boundary model still leaves volatile inputs fresh.
+        // The transfer proof establishes the return address; full register
+        // propagation through dispatcher instructions remains separate.
         for (unsigned r : {0u, 8u, 9u, 10u, 11u})
             s.registers[r] = fresh();
         for (auto &flag : s.flags)
@@ -749,7 +777,7 @@ class Explorer
         s.registers[2] = bv(key);
         s.registers[4] = s.stack.native_top;
         s.calls.clear();
-        store(s, s.stack.native_top, bv(return_sentinel), 64);
+        store(s, s.stack.native_top, bv(handler_return), 64);
         keys.insert(key);
         s.entry_snapshot = snapshot(s);
         return true;
@@ -849,7 +877,7 @@ class Explorer
     bool return_from_native(State &s, const z3::expr &native_return, std::deque<State> &work)
     {
         uint64_t returned = 0;
-        const auto expected = s.calls.empty() ? return_sentinel : s.calls.back();
+        const auto expected = s.calls.empty() ? handler_return : s.calls.back();
         if (!number(native_return, returned) || returned != expected)
         {
             // A symbolic write may overlap the saved return address.
@@ -1009,6 +1037,14 @@ class Explorer
         report.context_zero_slots = a.zero_slots;
         report.stack_maintenance = a.stack_maintenance;
         report.context_stack_gap = a.context_stack_gap;
+        report.dispatch_pointer = a.dispatch_pointer;
+        report.dispatch_target = a.dispatch_target;
+        report.abstract_handler_abi = a.abstract_handler_abi;
+        if (!a.abstract_handler_abi)
+            handler_return = a.handler_return;
+        report.handler_return = handler_return;
+        if (a.dispatch_pointer_writable)
+            dispatch_ranges.emplace_back(a.dispatch_pointer, a.dispatch_pointer + 8);
         if (a.stack_maintenance && (a.context_stack_gap == 96 || a.context_stack_gap == 112))
         {
             initial_floor = context_base - a.context_stack_gap;
@@ -1037,6 +1073,13 @@ class Explorer
         if (!admission.valid())
         {
             report.frontiers.push_back({report.lease.key, 0, admission.rejection});
+            return finish_report();
+        }
+        if (!admission.abstract_handler_abi &&
+            (!admission.handler_return || !admission.dispatch_pointer ||
+             !admission.dispatch_target))
+        {
+            report.frontiers.push_back({report.lease.key, 0, "dispatcher transfer proof missing"});
             return finish_report();
         }
         const auto zero_slot = admission.profile->zero_slot;
@@ -1123,7 +1166,8 @@ class Explorer
 
                                                       s.domain.id(),
                                                       unsigned(s.table_unchanged),
-                                                      unsigned(s.imports_unchanged)};
+                                                      unsigned(s.imports_unchanged),
+                                                      unsigned(s.dispatch_unchanged)};
                     identity.push_back(s.stack.floor.id());
                     identity.push_back(s.stack.native_top.id());
                     identity.push_back(s.stack.reserved.id());
@@ -1273,7 +1317,7 @@ class Explorer
                     }
                     if (d.flow == 9)
                     {
-                        const auto target = s.calls.empty() ? return_sentinel : s.calls.back();
+                        const auto target = s.calls.empty() ? handler_return : s.calls.back();
                         recovery.flow(
                             s.key, s.pc, target, FlowKind::Return,
                             (s.domain && native_return == bv(target)).simplify(simplify_params));

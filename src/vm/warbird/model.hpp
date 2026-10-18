@@ -12,7 +12,7 @@
 namespace chernobog::warbird
 {
 struct Recovery;
-constexpr uint32_t model_version = 9;
+constexpr uint32_t model_version = 10;
 constexpr size_t context_bytes = 448;
 struct Profile
 {
@@ -63,6 +63,9 @@ struct Admission
     std::vector<unsigned> zero_slots;
     bool stack_maintenance = false;
     unsigned context_stack_gap = 0;
+    uint64_t dispatch_pointer = 0, dispatch_target = 0, handler_return = 0;
+    bool dispatch_pointer_writable = false;
+    bool abstract_handler_abi = false; // Explicitly selected by standalone control fixtures only.
     std::string rejection;
     bool valid() const { return profile != nullptr && rejection.empty(); }
 };
@@ -120,6 +123,8 @@ struct Report
     size_t stack_growth_paths = 0;
     bool stack_maintenance = false;
     unsigned context_stack_gap = 0;
+    uint64_t dispatch_pointer = 0, dispatch_target = 0, handler_return = 0;
+    bool abstract_handler_abi = false;
     std::vector<uint64_t> keys;
     std::vector<Edge> edges;
     std::vector<Frontier> frontiers;

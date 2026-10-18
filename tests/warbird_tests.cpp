@@ -44,6 +44,7 @@ warbird::Report run(const hybrid::ProgramImage &image, uint64_t key = 1,
     static warbird::Profile profile{"fixture", "", 0, 0, 0, 2, {0, 1, 2, 3}, {4, 5}, 4, false, {1}};
     warbird::Admission a;
     a.profile = &profile;
+    a.abstract_handler_abi = true;
     a.handlers = {0x1000, 0x1000};
     warbird::bind_imports(image, a, std::move(imports));
     warbird::Lease lease;
@@ -418,6 +419,26 @@ int main()
     rejects_imports([&] { wide_quota.write(numeral(0), wide_value, 128); },
                     "128-bit store exceeded concrete-byte quota");
     require(wide_quota.concrete_bytes() == 0, "128-bit rejected store partially committed");
+    // Caching a dispatch pointer under its equality guard must preserve every
+    // byte of memory; without that guard the same replacement is not valid.
+    warbird::ByteMemory binding_memory(context);
+    const auto binding_before = binding_memory.materialize();
+    const auto binding_slot = numeral(0x7800);
+    const auto binding_expected = numeral(0x12345678abcdef00ULL);
+    const auto binding_equal = binding_memory.read(binding_slot, 64) == binding_expected;
+    binding_memory.write(binding_slot, binding_expected, 64);
+    const auto binding_probe = context.bv_const("dispatch_binding_probe", 64);
+    const auto binding_difference =
+        z3::select(binding_before, binding_probe) != binding_memory.read(binding_probe, 8);
+    z3::solver binding_solver(context);
+    binding_solver.set("timeout", 1000u);
+    binding_solver.add(binding_equal && binding_difference);
+    require(binding_solver.check() == z3::unsat,
+            "guarded dispatch pointer normalization changed memory");
+    binding_solver.reset();
+    binding_solver.add(binding_difference);
+    require(binding_solver.check() == z3::sat,
+            "dispatch pointer normalization guard necessity was not exercised");
     auto conditional =
         fixture({0x83, 0xfa, 1, 0x75, 0x13, 0x48, 0x83, 0x39, 0,    0xb8, 0,    0,    0,   0,
                  0xba, 2,    0, 0,    0,    0x48, 0x0f, 0x45, 0xc2, 0xc3, 0x31, 0xc0, 0xc3});
@@ -533,7 +554,7 @@ int main()
         },
         "recovery accepted a foreign expression context");
     const auto deep_input =
-        recording.state(1, 0x1000, warbird::no_record, true, true, entry_state.registers,
+        recording.state(1, 0x1000, warbird::no_record, true, true, true, entry_state.registers,
                         entry_state.vectors, entry_state.flags, entry_state.memory,
                         entry_state.stack, entry_state.pool, entry_state.domain);
     uint32_t tail = warbird::no_record;
@@ -542,8 +563,8 @@ int main()
                                 0x1000, 8, context_address, retained_context.bv_val(0, 8),
                                 retained_context.bv_val(1, 64));
     const auto deep_output = recording.state(
-        1, 0x1000, tail, true, true, exit_state.registers, exit_state.vectors, exit_state.flags,
-        exit_state.memory, exit_state.stack, exit_state.pool, exit_state.domain);
+        1, 0x1000, tail, true, true, true, exit_state.registers, exit_state.vectors,
+        exit_state.flags, exit_state.memory, exit_state.stack, exit_state.pool, exit_state.domain);
     recording.relation(deep_input, deep_output, retained_context.bv_val(0, 64), entry_state.domain);
     auto deep = recording.finish(true);
     require(deep->valid() && deep->capture_complete &&
@@ -563,6 +584,7 @@ int main()
                                    {0, 1, 2, 3},    {4, 5}, 4,      false, {1}};
     warbird::Admission table_admission;
     table_admission.profile = &table_profile;
+    table_admission.abstract_handler_abi = true;
     table_admission.handlers = {0x1100, 0x1000};
     warbird::Lease table_lease;
     table_lease.database = 1;
@@ -669,21 +691,43 @@ int main()
     native.segs[0].bytes[0x61] = 0xc0;
     hybrid::SegImage table;
     table.start = 0x3000;
-    table.end = 0x3010;
+    table.end = 0x3020;
     table.perm = 4;
     table.bitness = 2;
-    table.mask = {255, 255};
-    table.bytes.resize(16);
+    table.mask = {255, 255, 255, 255};
+    table.bytes.resize(32);
     for (unsigned i = 0; i < 2; ++i)
     {
         table.bytes[i * 8] = 0x80;
         table.bytes[i * 8 + 1] = 0x10;
     }
+    table.bytes[16] = 0;
+    table.bytes[17] = 0x1f;
+    native.segs[0].bytes[0xf00] = 0xff;
+    native.segs[0].bytes[0xf01] = 0xe0;
+    for (unsigned i = 0; i < 4; ++i)
+        native.segs[0].bytes[25 + i] = uint8_t((0x2010 - 29) >> (i * 8));
     native.segs.push_back(table);
     warbird::Profile profile{"test", "", 0x2000, 0,   0,    2,           {0, 1, 2, 3},
                              {4, 5}, 4,  false,  {1}, 0x60, {0x31, 0xc0}};
     auto accepted = warbird::admit(native, 0x1000, profile);
     require(accepted.valid(), "valid dispatcher rejected");
+    require(accepted.handler_return == 0x101d && accepted.dispatch_pointer == 0x3010 &&
+                accepted.dispatch_target == 0x1f00 && !accepted.abstract_handler_abi,
+            "native dispatcher transfer contract was not derived from bytes");
+    auto bad_thunk = native;
+    bad_thunk.segs[0].bytes[0xf00] = 0xc3;
+    require(!warbird::admit(bad_thunk, 0x1000, profile).valid(),
+            "returning thunk was admitted as a tail transfer");
+    auto missing_pointer = native;
+    missing_pointer.segs[1].mask[2] = 0;
+    require(!warbird::admit(missing_pointer, 0x1000, profile).valid(),
+            "unloaded dispatcher transfer pointer was admitted");
+    auto changed_pointer = native;
+    changed_pointer.segs[1].bytes[16] = 8;
+    require(!warbird::dependencies_match(changed_pointer, accepted.dependencies),
+            "dispatcher transfer pointer change did not invalidate its lease");
+
     auto zero_profile = profile;
     zero_profile.setup_rva = 0x70;
     zero_profile.setup_bytes = {0x48, 0x83, 0xa5, 0xc8, 1, 0, 0, 0};
@@ -766,6 +810,9 @@ int main()
     for (unsigned i = 0; i < 4; ++i)
         stack_native.segs[0].bytes[stack_profile.dispatch_rva + 6 + i] =
             uint8_t(displacement >> (8 * i));
+    for (unsigned i = 0; i < 4; ++i)
+        stack_native.segs[0].bytes[stack_profile.dispatch_rva + 25 + i] =
+            uint8_t((0x2010 - stack_profile.dispatch_rva - 29) >> (8 * i));
     stack_native.segs[1].bytes[0] = 0;
     stack_native.segs[1].bytes[1] = 0x15;
     stack_native.segs[1].bytes[8] = 0;
@@ -787,6 +834,48 @@ int main()
     require(stack_admission.valid() && stack_admission.stack_maintenance &&
                 stack_admission.context_stack_gap == 96,
             "stack maintenance witness rejected");
+    auto return_reader = stack_native;
+    std::vector<uint8_t> read_native_return = {0x48, 0x8b, 0x04, 0x24, 0x48, 0xba};
+    for (unsigned byte = 0; byte < 8; ++byte)
+        read_native_return.push_back(uint8_t(stack_admission.handler_return >> (byte * 8)));
+    read_native_return.insert(read_native_return.end(), {0x48, 0x31, 0xd0, 0xc3});
+    std::copy(read_native_return.begin(), read_native_return.end(),
+              return_reader.segs[0].bytes.begin() + 0x400);
+    auto observed_return =
+        warbird::explore(return_reader, stack_admission, zero_lease, {}, zero_cancel);
+    require(observed_return.exploration_complete() && observed_return.edges.size() == 1 &&
+                observed_return.edges[0].next == 0 &&
+                observed_return.handler_return == stack_admission.handler_return,
+            "native handler observed a synthetic return address");
+    auto writable_dispatch = stack_native;
+    writable_dispatch.segs[1].perm = 6;
+    const std::vector<uint8_t> symbolic_pointer_write = {0x48, 0x8b, 0x01, 0xc6, 0x00, 7,
+                                                         0xb8, 2,    0,    0,    0,    0xc3};
+    std::copy(symbolic_pointer_write.begin(), symbolic_pointer_write.end(),
+              writable_dispatch.segs[0].bytes.begin() + 0x400);
+    const std::vector<uint8_t> stop_dispatch = {0x31, 0xc0, 0xc3};
+    std::copy(stop_dispatch.begin(), stop_dispatch.end(),
+              writable_dispatch.segs[0].bytes.begin() + 0x500);
+    auto writable_admission = warbird::admit(writable_dispatch, 0x1000, stack_profile);
+    auto guarded_dispatch =
+        warbird::explore(writable_dispatch, writable_admission, zero_lease, {}, zero_cancel);
+    require(guarded_dispatch.keys == std::vector<uint64_t>({1, 2}) &&
+                std::any_of(guarded_dispatch.frontiers.begin(), guarded_dispatch.frontiers.end(),
+                            [](const auto &f)
+                            { return f.reason == "possible dispatcher transfer pointer write"; }),
+            "writable dispatcher pointer lost its guarded continuation");
+    const std::vector<uint8_t> definite_pointer_write = {0x48, 0xb8, 0x10, 0x30, 0,    0, 0,   0,
+                                                         0,    0,    0x48, 0xc7, 0x00, 0, 0,   0,
+                                                         0,    0xb8, 2,    0,    0,    0, 0xc3};
+    std::copy(definite_pointer_write.begin(), definite_pointer_write.end(),
+              writable_dispatch.segs[0].bytes.begin() + 0x400);
+    auto changed_dispatch =
+        warbird::explore(writable_dispatch, writable_admission, zero_lease, {}, zero_cancel);
+    require(changed_dispatch.keys == std::vector<uint64_t>({1}) &&
+                std::any_of(changed_dispatch.frontiers.begin(), changed_dispatch.frontiers.end(),
+                            [](const auto &f)
+                            { return f.reason == "dispatcher transfer pointer overwritten"; }),
+            "overwritten dispatcher pointer still entered another handler");
     auto wrong_maintenance = stack_native;
     auto wrong_maintenance_profile = stack_profile;
     wrong_maintenance.segs[0].bytes[stack_profile.setup_rva + maintenance_offset] ^= 1;
@@ -1034,6 +1123,16 @@ int main()
                                     0x41,
                                     uint8_t(destination + 16),
                                     0xc3}));
+    // A real CALL followed by JMP RAX leaves the CALL fallthrough as the
+    // handler's observable return address. Vary the key independently.
+    auto tail_call_program = fixture({0xb8, 0x40, 0x10, 0, 0, 0xe8, 0x16, 0, 0, 0, 0xc3});
+    tail_call_program.segs[0].bytes[0x20] = 0xff;
+    tail_call_program.segs[0].bytes[0x21] = 0xe0;
+    const std::vector<uint8_t> inspect_tail_return = {0x48, 0x8b, 0x04, 0x24, 0x48, 0x35, 0x0a,
+                                                      0x10, 0,    0,    0x48, 0x31, 0xd0, 0xc3};
+    std::copy(inspect_tail_return.begin(), inspect_tail_return.end(),
+              tail_call_program.segs[0].bytes.begin() + 0x40);
+    programs.push_back(std::move(tail_call_program));
     // Execute each complete real setup window with controlled register and
     // memory inputs through both native RAX and the symbolic SMIR interpreter.
     for (const auto &native_profile : warbird::profiles())
@@ -1142,7 +1241,7 @@ int main()
             ++comparisons;
         }
     }
-    require(comparisons == 39178, "incomplete direct comparison matrix");
+    require(comparisons == 40209, "incomplete direct comparison matrix");
     // Independent native integer sequence for the dispatcher's stack ledger.
     // R8/R9 represent its virtual floor/native top; no host stack is allocated.
     const std::vector<uint8_t> stack_reference = {

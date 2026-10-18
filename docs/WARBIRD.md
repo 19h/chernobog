@@ -33,8 +33,9 @@ handler entry. Their stores initialize the argument slots, virtual-stack slots,
 minimum-stack slot 55 and initial zero stack word. ClipSp's initial 24-byte stack
 copy retains its source-memory relationship and native read/write order.
 
-Caller-saved registers and incoming flags are fresh symbolic values at each
-handler boundary; no values are carried through an unmodeled dispatch thunk.
+Caller-saved registers and incoming flags remain fresh symbolic values at each
+handler boundary in the current partial model. Exact register propagation
+through the dispatcher instructions remains outstanding.
 The explorer distinguishes full 64-bit keys, follows bounded native calls with
 per-path return stacks, retains unknown branch alternatives, and only closes a
 loop on an identical complete symbolic state. It does not merge states merely
@@ -58,7 +59,7 @@ The symbolic scalar interpreter now covers ADC/SBB, rotate through carry, and
 complete AX results from byte MUL/IMUL. Unselected flag updates are preserved.
 The scalar interpreter also covers BT/BTS/BTR/BTC, including memory operands
 exported by RAX as ordered loads, updates and flag operations. The semantic
-model version is 9, independent of the SMIR record ABI version.
+model version is 10, independent of the SMIR record ABI version.
 
 The optional scalar SMIR ABI is versioned and pointer-free. Unsupported operations
 and insufficient capacity publish no executable prefix. It retains instruction
@@ -576,7 +577,7 @@ semantics, memory-fault equivalence or eligibility for pseudocode replacement.
 | A34 | Every native return edge is unconditional | Rejected; require UNSAT for a retained return edge whose saved target differs |
 | A35 | A full retention budget may silently drop records | Rejected; zero-budget capture is explicitly incomplete while diagnostic execution still runs |
 | A36 | A well-formed retained artifact proves equivalence | Rejected; semantic, fault, coverage, ownership and lowering gates remain separate |
-| A37 | A normalized native return address is interchangeable with the original callsite for address-sensitive handlers | Unproved; compare native return-address reads against the dispatcher callsite before lowering |
+| A37 | A normalized native return address is interchangeable with the original callsite for address-sensitive handlers | Rejected by model-10 controls; admitted tail-dispatch snapshots now use the real callsite return address |
 
 Validation retains the 39178 native comparisons and checks every compared next
 key against its retained relation. Additional fixtures check input/output memory
@@ -602,3 +603,64 @@ Model-9 arena-ownership follow-up: `docs/evidence/warbird-model9-ownership.json`
 and `docs/evidence/warbird-model9-ownership.jsonl` record the non-assignable,
 non-movable owner contract and last-owner destruction checks. The original
 model-9 source hashes and reports remain historical evidence for their revision.
+
+
+## Model 10: native dispatcher call-return addresses
+
+The admitted corpus dispatchers call through a loaded pointer to an immutable
+`JMP RAX` instruction. `CALL` pushes its fallthrough address; the tail jump does
+not push another return address. The handler therefore observes the native
+callsite return address, including when it reads `[RSP]`. The native profiles
+now use this value instead of the abstract fixture return marker.
+
+| Profile | Dispatch pointer RVA | Tail-jump RVA | Handler return RVA |
+| --- | --- | --- | --- |
+| ci | 0x3e7d0 | 0x29670 | 0xb28d0 |
+| ClipSp | 0xa72e8 | 0x31560 | 0xd9df5 |
+| PEAuth | 0x41228 | 0x29a60 | 0xad11b |
+
+```text
+CALL [dispatch pointer] -> JMP RAX -> handler -> RET
+push callsite return      no push               pop callsite return
+```
+
+Admission derives the pointer from the validated RIP-relative call, checks all
+eight pointer bytes, requires an immutable executable `FF E0` target, and
+retains both regions as dependencies. An unavailable pointer, another thunk
+shape or pointer-address overflow rejects the contract. The return address is
+derived from the call's native fallthrough and the current image base.
+
+A writable dispatch pointer is handled conditionally: entry requires its value
+to equal the admitted target. An unresolved alternative remains a frontier.
+Normalization under that equality makes subsequent memory reads coherent; it
+is not recorded as a guest write. An independent arbitrary-byte comparison is
+UNSAT under the binding equality and has a SAT counterexample without it.
+Potential writes to the pointer retain their mutation frontier and a guarded non-overlap continuation. A definite pointer
+write prevents entry into another handler. The pointer's unchanged-state bit
+is retained in state identities and recovery snapshots.
+
+This proves the transfer shape for the current snapshot. It does not prove a
+Windows loader or another external agent left the runtime CFG binding intact.
+Normal-view admission still requires the broader runtime, fault and equivalence
+checks. Abstract control fixtures explicitly select their separate handler ABI;
+that marker is not used for native-profile admission.
+
+| ID | Assumption or boundary | Probe and disposition |
+| --- | --- | --- |
+| A38 | A CALL through the admitted tail jump pushes a second return address | Rejected; native CALL/JMP RAX execution and an address-reading handler observe the call fallthrough |
+| A39 | The dispatch pointer may be omitted from freshness and write checks | Rejected; changed bytes invalidate dependencies, and a definite write stops the next dispatch |
+| A40 | Any executable thunk has the same calling behavior | Rejected; a RET thunk and an unloaded pointer fail admission |
+| A41 | The stored CFG binding is necessarily the live kernel binding | Unproved; snapshot transfer evidence is not runtime binding evidence |
+
+The direct native/SMIR matrix now covers 39 programs with 1031 inputs each
+(40209 comparisons), including a CALL-to-JMP-RAX chain whose return-address
+observation contributes to its result. A separate admitted-dispatch fixture
+reads its actual saved return address. Further controls cover pointer mutation,
+missing bytes, unsuitable thunks and guarded pointer writes. IDA probes assert
+the corpus-specific return addresses and loaded tail-jump bytes.
+
+The additional fixed contract read is eight pointer bytes plus two instruction
+bytes. Pointer-overlap checks share the existing bounded range/alias machinery.
+Source hashes and the eleven-entry snapshot validation are recorded in
+`docs/evidence/warbird-model10.json` and `docs/evidence/warbird-model10.jsonl`.
+All entries remain partial; no checked pseudocode presentation is enabled.

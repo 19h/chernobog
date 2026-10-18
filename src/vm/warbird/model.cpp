@@ -147,8 +147,8 @@ Admission admit(const hybrid::ProgramImage &image, uint64_t base, const Profile 
         return fail("dispatcher bytes unavailable or mutable");
     // Native dispatch contract: mov rax,rdx; lea rcx,[rip+table]; and eax,mask;
     // mov rax,[rcx+rax*8]; lea rcx,[rbp+0x10]; call [guard_dispatch];
-    // mov rdx,rax; test rax,rax; jne loop. Keep the actual import target in
-    // the dependency but do not assume the import implements a direct call.
+    // mov rdx,rax; test rax,rax; jne loop. The pointer and exact JMP RAX
+    // transfer target are separately validated and retained below.
     const uint8_t prefix[] = {0x48, 0x8b, 0xc2, 0x48, 0x8d, 0x0d};
     if (!std::equal(std::begin(prefix), std::end(prefix), dispatch.begin()) || dispatch[10] != 0x25)
         return fail("dispatcher signature mismatch");
@@ -166,6 +166,23 @@ Admission admit(const hybrid::ProgramImage &image, uint64_t base, const Profile 
         !std::equal(std::begin(middle), std::end(middle), dispatch.begin() + 15) ||
         !std::equal(std::begin(suffix), std::end(suffix), dispatch.begin() + 29))
         return fail("table mask, handler ABI or zero-key exit mismatch");
+    out.handler_return = base + profile.dispatch_rva + 29;
+    const auto transfer_displacement = int64_t(int32_t(u32(25)));
+    if ((transfer_displacement < 0 && out.handler_return < uint64_t(-transfer_displacement)) ||
+        (transfer_displacement >= 0 && out.handler_return > std::numeric_limits<uint64_t>::max() -
+                                                                uint64_t(transfer_displacement)))
+        return fail("dispatcher transfer pointer overflow");
+    out.dispatch_pointer = out.handler_return + transfer_displacement;
+    std::vector<uint8_t> transfer;
+    if (!collect(image, out.dispatch_pointer, 8, out.dependencies, transfer, false))
+        return fail("dispatcher transfer pointer unavailable");
+    for (unsigned i = 0; i < 8; ++i)
+        out.dispatch_target |= uint64_t(transfer[i]) << (8 * i);
+    std::vector<uint8_t> thunk;
+    if (!collect(image, out.dispatch_target, 2, out.dependencies, thunk, true) ||
+        thunk != std::vector<uint8_t>({0xff, 0xe0}))
+        return fail("dispatcher target is not an admitted JMP RAX");
+    out.dispatch_pointer_writable = image.writable(out.dispatch_pointer);
     std::vector<uint8_t> bytes;
     if (!collect(image, table, size_t(profile.table_count) * 8, out.dependencies, bytes, false))
         return fail("handler table unavailable");
@@ -332,7 +349,11 @@ std::string Report::json() const
       << ",\"private_writes_isolated\":" << private_writes_isolated
       << ",\"stack_growth_paths\":" << stack_growth_paths
       << ",\"stack_maintenance\":" << (stack_maintenance ? "true" : "false")
-      << ",\"context_stack_gap\":" << context_stack_gap << ",\"keys\":[";
+      << ",\"context_stack_gap\":" << context_stack_gap
+      << ",\"dispatch_pointer\":" << inspection_json_quote(hex(dispatch_pointer))
+      << ",\"dispatch_target\":" << inspection_json_quote(hex(dispatch_target))
+      << ",\"handler_return\":" << inspection_json_quote(hex(handler_return))
+      << ",\"abstract_handler_abi\":" << (abstract_handler_abi ? "true" : "false") << ",\"keys\":[";
     for (size_t i = 0; i < keys.size(); ++i)
     {
         if (i)

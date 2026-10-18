@@ -69,6 +69,11 @@ if result.get("model_version", 0) >= 9:
     assert result["recovery"]["states"] > 0, result
     assert result["recovery"]["relations"] > 0, result
     assert result["recovery"]["estimated_bytes"] <= result["limits"]["recovery_bytes"], result
+if result.get("model_version", 0) >= 10:
+    return_rva = {0: 0xB28D0, 1: 0xD9DF5, 2: 0xAD11B}[profile]
+    assert int(result["handler_return"], 16) == ida_nalt.get_imagebase() + return_rva, result
+    assert result["abstract_handler_abi"] is False, result
+    assert ida_bytes.get_bytes(int(result["dispatch_target"], 16), 2) == b"\xff\xe0", result
 allocation_import = [
     entry
     for entry in result["imports"]

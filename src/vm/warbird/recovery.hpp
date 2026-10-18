@@ -60,7 +60,7 @@ struct RecoveryState
 {
     uint64_t key, site;
     uint32_t effects;
-    bool table_unchanged, imports_unchanged;
+    bool table_unchanged, imports_unchanged, dispatch_unchanged;
     std::vector<z3::expr> registers, vectors, flags;
     ByteMemory memory;
     StackState stack;
@@ -107,10 +107,10 @@ class RecoveryRecorder
   public:
     RecoveryRecorder(std::shared_ptr<z3::context>, const Lease &, size_t bytes);
     uint32_t state(uint64_t key, uint64_t site, uint32_t effects, bool table_unchanged,
-                   bool imports_unchanged, const std::vector<z3::expr> &registers,
-                   const std::vector<z3::expr> &vectors, const std::vector<z3::expr> &flags,
-                   const ByteMemory &, const StackState &, const PoolState &,
-                   const z3::expr &domain);
+                   bool imports_unchanged, bool dispatch_unchanged,
+                   const std::vector<z3::expr> &registers, const std::vector<z3::expr> &vectors,
+                   const std::vector<z3::expr> &flags, const ByteMemory &, const StackState &,
+                   const PoolState &, const z3::expr &domain);
     uint32_t effect(uint32_t previous, EffectOrigin, EffectKind, uint64_t site, unsigned bits,
                     const z3::expr &address, const z3::expr &value, const z3::expr &bytes);
     void instruction(uint64_t, const rax_smir_instruction &, const std::vector<rax_smir_op> &,

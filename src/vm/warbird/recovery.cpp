@@ -54,7 +54,7 @@ void RecoveryRecorder::expression(const z3::expr &value, unsigned bits, bool boo
 }
 uint32_t RecoveryRecorder::state(uint64_t key, uint64_t site, uint32_t effects,
                                  bool table_unchanged, bool imports_unchanged,
-                                 const std::vector<z3::expr> &registers,
+                                 bool dispatch_unchanged, const std::vector<z3::expr> &registers,
                                  const std::vector<z3::expr> &vectors,
                                  const std::vector<z3::expr> &flags, const ByteMemory &memory,
                                  const StackState &stack, const PoolState &pool,
@@ -87,8 +87,9 @@ uint32_t RecoveryRecorder::state(uint64_t key, uint64_t site, uint32_t effects,
     if (!reserve(cost))
         return no_record;
     const auto id = uint32_t(data_->states.size());
-    data_->states.push_back({key, site, effects, table_unchanged, imports_unchanged, registers,
-                             vectors, flags, memory, stack, pool, domain});
+    data_->states.push_back({key, site, effects, table_unchanged, imports_unchanged,
+                             dispatch_unchanged, registers, vectors, flags, memory, stack, pool,
+                             domain});
     return id;
 }
 uint32_t RecoveryRecorder::effect(uint32_t previous, EffectOrigin origin, EffectKind kind,
