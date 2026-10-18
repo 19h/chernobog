@@ -847,6 +847,55 @@ int main()
                 observed_return.edges[0].next == 0 &&
                 observed_return.handler_return == stack_admission.handler_return,
             "native handler observed a synthetic return address");
+    auto carry_native = stack_native;
+    const std::vector<uint8_t> set_carry = {
+        0x41, 0xb8, 0x11, 0,    0,    0,    0x41, 0xb9, 0x22, 0, 0,    0,    0x41, 0xba,
+        0x33, 0,    0,    0,    0x41, 0xbb, 0x44, 0,    0,    0, 0x66, 0x49, 0x0f, 0x6e,
+        0xc0, 0x66, 0x49, 0x0f, 0x6e, 0xe9, 0xb8, 2,    0,    0, 0,    0xc3};
+    const std::vector<uint8_t> check_carry = {
+        0x4c, 0x89, 0xc0, 0x48, 0x83, 0xf0, 0x11, 0x49, 0x83, 0xf1, 0x22, 0x4c, 0x09, 0xc8,
+        0x49, 0x83, 0xf2, 0x33, 0x4c, 0x09, 0xd0, 0x49, 0x83, 0xf3, 0x44, 0x4c, 0x09, 0xd8,
+        0x66, 0x48, 0x0f, 0x7e, 0xc2, 0x48, 0x83, 0xf2, 0x11, 0x48, 0x09, 0xd0, 0x66, 0x48,
+        0x0f, 0x7e, 0xea, 0x48, 0x83, 0xf2, 0x22, 0x48, 0x09, 0xd0, 0xc3};
+    std::copy(set_carry.begin(), set_carry.end(), carry_native.segs[0].bytes.begin() + 0x400);
+    std::copy(check_carry.begin(), check_carry.end(), carry_native.segs[0].bytes.begin() + 0x500);
+    const auto carried =
+        warbird::explore(carry_native, stack_admission, zero_lease, {}, zero_cancel);
+    require(carried.exploration_complete() && carried.edges.size() == 2 &&
+                carried.edges.back().next == 0 && carried.dispatch_instructions == 14,
+            "native dispatch lost volatile GPR or XMM values between handlers");
+    auto dispatch_flags = stack_native;
+    const std::vector<uint8_t> set_cf = {0xf9, 0xb8, 2, 0, 0, 0, 0xc3};
+    const std::vector<uint8_t> check_flags = {
+        0x0f, 0x92, 0xc0, 0x0f, 0x94, 0xc2, 0x0f, 0x98, 0xc1, 0x41, 0x0f, 0x9a,
+        0xc0, 0x0f, 0xb6, 0xc0, 0x0f, 0xb6, 0xd2, 0x0f, 0xb6, 0xc9, 0x45, 0x0f,
+        0xb6, 0xc0, 0xd1, 0xe2, 0xc1, 0xe1, 2,    0x41, 0xc1, 0xe0, 3,    0x09,
+        0xd0, 0x09, 0xc8, 0x44, 0x09, 0xc0, 0x83, 0xf0, 10,   0xc3};
+    std::copy(set_cf.begin(), set_cf.end(), dispatch_flags.segs[0].bytes.begin() + 0x400);
+    std::copy(check_flags.begin(), check_flags.end(), dispatch_flags.segs[0].bytes.begin() + 0x500);
+    const auto flag_result =
+        warbird::explore(dispatch_flags, stack_admission, zero_lease, {}, zero_cancel);
+    require(flag_result.exploration_complete() && flag_result.edges.size() == 2 &&
+                flag_result.edges.back().next == 0 && flag_result.dispatch_instructions == 14,
+            "native dispatch did not reproduce index-mask arithmetic flags");
+    auto growth_carry = carry_native;
+    std::vector<uint8_t> grow_then_set = {0x48, 0x8b, 0x41, 0x20, 0x48, 0x83, 0xe8, 17,
+                                          0x48, 0x89, 0x81, 0xb8, 1,    0,    0};
+    grow_then_set.insert(grow_then_set.end(), set_carry.begin(), set_carry.end());
+    std::copy(grow_then_set.begin(), grow_then_set.end(),
+              growth_carry.segs[0].bytes.begin() + 0x400);
+    const auto uncertain_carry =
+        warbird::explore(growth_carry, stack_admission, zero_lease, {}, zero_cancel);
+    require(!uncertain_carry.exploration_complete() && uncertain_carry.stack_growth_paths == 1 &&
+                uncertain_carry.edges.size() == 1,
+            "unmodeled stack probe acquired exact volatile-state preservation");
+    warbird::Limits dispatch_quota;
+    dispatch_quota.instructions = carried.initialization_instructions + 3;
+    const auto limited_dispatch =
+        warbird::explore(carry_native, stack_admission, zero_lease, dispatch_quota, zero_cancel);
+    require(limited_dispatch.keys.empty() && limited_dispatch.dispatch_instructions == 3 &&
+                !limited_dispatch.exploration_complete(),
+            "partial dispatcher execution was published as a handler entry");
     auto writable_dispatch = stack_native;
     writable_dispatch.segs[1].perm = 6;
     const std::vector<uint8_t> symbolic_pointer_write = {0x48, 0x8b, 0x01, 0xc6, 0x00, 7,
@@ -1173,6 +1222,41 @@ int main()
         std::copy(code.begin(), code.end(), native_setup_program.segs[0].bytes.begin());
         programs.push_back(std::move(native_setup_program));
     }
+    // Complete native dispatch scaffold, including the pointer call and tail
+    // jump. Its independent closed form below checks both flag and data flow.
+    auto dispatch_program = fixture({});
+    std::vector<uint8_t> dispatch_code = {0x48, 0x8d, 0x69, 0xf0, 0x41, 0xb8, 17,   0,
+                                          0,    0,    0x66, 0x49, 0x0f, 0x6e, 0xc0, 0xf9};
+    const size_t dispatch_offset = dispatch_code.size();
+    dispatch_code.insert(dispatch_code.end(), native.segs[0].bytes.begin(),
+                         native.segs[0].bytes.begin() + 29);
+    const uint32_t local_table = uint32_t(0x1800 - (0x1000 + dispatch_offset + 10));
+    const uint32_t local_pointer = uint32_t(0x1820 - (0x1000 + dispatch_offset + 29));
+    for (unsigned i = 0; i < 4; ++i)
+    {
+        dispatch_code[dispatch_offset + 6 + i] = uint8_t(local_table >> (8 * i));
+        dispatch_code[dispatch_offset + 25 + i] = uint8_t(local_pointer >> (8 * i));
+    }
+    dispatch_code.insert(dispatch_code.end(),
+                         {0x66, 0x48, 0x0f, 0x7e, 0xc2, 0x48, 0x31, 0xd0, 0xc3});
+    std::copy(dispatch_code.begin(), dispatch_code.end(), dispatch_program.segs[0].bytes.begin());
+    auto word_at = [&](size_t offset, uint64_t value)
+    {
+        for (unsigned i = 0; i < 8; ++i)
+            dispatch_program.segs[0].bytes[offset + i] = uint8_t(value >> (8 * i));
+    };
+    word_at(0x800, 0x1a00);
+    word_at(0x808, 0x1a40);
+    word_at(0x820, 0x1900);
+    dispatch_program.segs[0].bytes[0x900] = 0xff;
+    dispatch_program.segs[0].bytes[0x901] = 0xe0;
+    const std::vector<uint8_t> selected_handler = {0x48, 0x89, 0xd0, 0x41, 0x0f, 0x94,
+                                                   0xc1, 0x45, 0x0f, 0xb6, 0xc9, 0x4c,
+                                                   0x31, 0xc8, 0x4c, 0x31, 0xc0, 0xc3};
+    for (size_t offset : {0xa00u, 0xa40u})
+        std::copy(selected_handler.begin(), selected_handler.end(),
+                  dispatch_program.segs[0].bytes.begin() + offset);
+    programs.push_back(std::move(dispatch_program));
     std::vector<uint64_t> inputs = {1,
                                     2,
                                     UINT64_MAX,
@@ -1208,6 +1292,9 @@ int main()
             uint64_t observed = 0;
             require(rax_reg_read_u64(engine, RAX_X86_REG_RAX, &observed) == RAX_OK,
                     "direct result unavailable");
+            if (&program == &programs.back())
+                require(observed == (input ^ ((input & 1) ? uint64_t(0) : uint64_t(1))),
+                        "native dispatcher result violates its independent closed form");
             warbird::Limits first_transition;
             first_transition.states = 3;
             auto candidate = run(program, input, first_transition);
@@ -1241,7 +1328,7 @@ int main()
             ++comparisons;
         }
     }
-    require(comparisons == 40209, "incomplete direct comparison matrix");
+    require(comparisons == 41240, "incomplete direct comparison matrix");
     // Independent native integer sequence for the dispatcher's stack ledger.
     // R8/R9 represent its virtual floor/native top; no host stack is allocated.
     const std::vector<uint8_t> stack_reference = {

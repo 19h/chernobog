@@ -74,6 +74,8 @@ if result.get("model_version", 0) >= 10:
     assert int(result["handler_return"], 16) == ida_nalt.get_imagebase() + return_rva, result
     assert result["abstract_handler_abi"] is False, result
     assert ida_bytes.get_bytes(int(result["dispatch_target"], 16), 2) == b"\xff\xe0", result
+if result.get("model_version", 0) >= 11:
+    assert result["dispatch_instructions"] >= 7, result
 allocation_import = [
     entry
     for entry in result["imports"]

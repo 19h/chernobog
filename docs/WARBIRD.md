@@ -33,9 +33,10 @@ handler entry. Their stores initialize the argument slots, virtual-stack slots,
 minimum-stack slot 55 and initial zero stack word. ClipSp's initial 24-byte stack
 copy retains its source-memory relationship and native read/write order.
 
-Caller-saved registers and incoming flags remain fresh symbolic values at each
-handler boundary in the current partial model. Exact register propagation
-through the dispatcher instructions remains outstanding.
+Native handler boundaries now execute the admitted dispatcher instructions.
+Registers and vectors that those instructions leave untouched remain related
+across handlers; the index-mask instruction produces the incoming arithmetic
+flags. The unverified stack-probe path retains conservative volatile clobbers.
 The explorer distinguishes full 64-bit keys, follows bounded native calls with
 per-path return stacks, retains unknown branch alternatives, and only closes a
 loop on an identical complete symbolic state. It does not merge states merely
@@ -59,7 +60,7 @@ The symbolic scalar interpreter now covers ADC/SBB, rotate through carry, and
 complete AX results from byte MUL/IMUL. Unselected flag updates are preserved.
 The scalar interpreter also covers BT/BTS/BTR/BTC, including memory operands
 exported by RAX as ordered loads, updates and flag operations. The semantic
-model version is 10, independent of the SMIR record ABI version.
+model version is 11, independent of the SMIR record ABI version.
 
 The optional scalar SMIR ABI is versioned and pointer-free. Unsupported operations
 and insufficient capacity publish no executable prefix. It retains instruction
@@ -664,3 +665,59 @@ bytes. Pointer-overlap checks share the existing bounded range/alias machinery.
 Source hashes and the eleven-entry snapshot validation are recorded in
 `docs/evidence/warbird-model10.json` and `docs/evidence/warbird-model10.jsonl`.
 All entries remain partial; no checked pseudocode presentation is enabled.
+
+## Model 11: execute dispatcher state propagation
+
+The native profiles now execute the five dispatcher instructions, the indirect
+call, and the admitted `JMP RAX` tail transfer through the RAX SMIR interpreter.
+The return marker and argument registers are no longer sufficient substitutes
+for these operations: registers and XMM values untouched by the dispatcher must
+remain related to their preceding values, while `AND EAX,mask` changes the
+arithmetic flags. Every completed dispatch accounts for seven native instructions.
+
+```text
+handler return -> index-mask/table load -> CALL -> JMP RAX -> next handler
+                 exact flag updates     push    no push
+```
+
+The selected table slot is bound to its admitted value under the unchanged-table
+contract. For writable tables, that equality is retained in the path domain
+before the byte-memory representation is normalized. Earlier aliases must agree
+with it. The indirect-call pointer is read and checked at the call instruction,
+then the native return address is pushed. The completed boundary must prove its
+handler target, RCX context, RDX key and RSP relation before the next handler is
+queued. Unexpected control flow, unsupported operations, quota exhaustion or
+failed output invariants stop that path.
+
+The native dispatch window preserves R8-R11, XMM state and the direction flag
+unless an earlier modeled operation changes them. On a stack-growth path, the
+unverified probe helper still introduces conservative volatile GPR/XMM/flag
+values. These clobbers are conditional on growth; the no-growth alternative keeps
+its exact relationships. Native handler returns also check the frame-pointer
+and stack-pointer contract before another dispatch. Bare abstract test fixtures
+retain their explicitly selected abstract ABI.
+
+Native dispatch uses the existing job instruction, operation and time quotas.
+Its fixed window contains five straight-line instructions and two transfers;
+work outside that window is not silently included. Memory effects retain
+dispatcher origin tags; control-flow edges retain source addresses and guards.
+The recovery artifact retains the native bytes.
+
+| ID | Assumption or boundary | Probe and disposition |
+| --- | --- | --- |
+| A42 | A call boundary automatically destroys every volatile register | Rejected for the admitted dispatcher; two-handler tests preserve R8-R11 and XMM0/XMM5 |
+| A43 | Dispatcher flags can be copied from the preceding handler | Rejected; a handler sets CF, then the next handler observes the index mask's CF/ZF/SF/PF values |
+| A44 | An unverified stack probe preserves the same values as a no-growth dispatch | Rejected; growth retains an uncertainty frontier and conservative clobbers |
+| A45 | A partly executed dispatcher may be published as a handler entry | Rejected; a quota control stops inside the dispatch window before any handler is queued |
+
+The native matrix now contains 40 programs with 1031 inputs each (41240
+comparisons). The additional full dispatcher scaffold has an independent closed
+form checked against native RAX execution and the retained SMIR relation. The
+fixture exercises both table indices, flag-dependent output, indirect call,
+tail transfer and vector preservation. These are controlled comparisons, not
+whole-entry or kernel-runtime equivalence claims.
+
+The exact source, IDA probes and partial corpus sweep are recorded in
+`docs/evidence/warbird-model11.json` and `docs/evidence/warbird-model11.jsonl`.
+Runtime helper semantics, loop/PHI construction, caller binding and checked
+normal-view lowering remain required. Pseudocode replacement remains disabled.

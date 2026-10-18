@@ -106,6 +106,7 @@ class Explorer
     }
     Report finish_report()
     {
+        report.cancelled = report.cancelled || cancel.load();
         report.recovery = recovery.finish(report.exploration_complete());
         return std::move(report);
     }
@@ -717,6 +718,7 @@ class Explorer
         return solver.check() != z3::unsat;
     }
     bool enter(State &s, uint64_t key)
+    try
     {
         s.effect_origin = EffectOrigin::Dispatcher;
         if (!s.dispatch_unchanged)
@@ -724,20 +726,6 @@ class Explorer
         if (!s.table_unchanged)
             throw std::runtime_error("mutable dispatch table may have been overwritten");
         s.key = key;
-        if (!admission.abstract_handler_abi)
-        {
-            const auto pointer = bv(admission.dispatch_pointer);
-            const auto bound = load(s, pointer, 64) == bv(admission.dispatch_target);
-            if (feasible(s.domain && !bound))
-                frontier(s, "dispatcher transfer binding unverified");
-            s.domain = (s.domain && bound).simplify(simplify_params);
-            if (!feasible(s.domain))
-                return false;
-            // This is normalization under an equality guard, not a guest write.
-            // It preserves the same byte array and keeps later reads coherent.
-            if (admission.dispatch_pointer_writable)
-                s.memory.write(pointer, bv(admission.dispatch_target), 64);
-        }
         if (admission.stack_maintenance)
         {
             const auto slot = admission.zero_slots.front();
@@ -753,6 +741,16 @@ class Explorer
                 ++report.stack_growth_paths;
                 frontier(s, "dispatcher stack probe semantics unverified");
             }
+            // The unmodeled probe may clobber volatile state only on the
+            // growing alternative. The ordinary no-growth path keeps it.
+            for (unsigned reg : {8u, 9u, 10u, 11u})
+                s.registers[reg] =
+                    z3::ite(update.grows, fresh(), s.registers[reg]).simplify(simplify_params);
+            for (unsigned reg = 0; reg < 6; ++reg)
+                s.vectors[reg] =
+                    z3::ite(update.grows, fresh(128), s.vectors[reg]).simplify(simplify_params);
+            for (auto &flag : s.flags)
+                flag = z3::ite(update.grows, fresh(1) == bv(1, 1), flag).simplify(simplify_params);
             s.stack = std::move(update.state);
             s.stack.floor = s.stack.floor.simplify(simplify_params);
             s.stack.native_top = s.stack.native_top.simplify(simplify_params);
@@ -762,25 +760,41 @@ class Explorer
             s.registers[5] = bv(context_base - 16);
         }
         ++report.states;
-        s.pc = admission.handlers.at(key & (admission.handlers.size() - 1));
-        // This partial boundary model still leaves volatile inputs fresh.
-        // The transfer proof establishes the return address; full register
-        // propagation through dispatcher instructions remains separate.
-        for (unsigned r : {0u, 8u, 9u, 10u, 11u})
-            s.registers[r] = fresh();
-        for (auto &flag : s.flags)
-            flag = fresh(1) == bv(1, 1);
-        for (unsigned reg = 0; reg < 6; ++reg)
-            s.vectors[reg] = fresh(128);
-        s.registers[0] = bv(s.pc);
-        s.registers[1] = bv(context_base);
-        s.registers[2] = bv(key);
-        s.registers[4] = s.stack.native_top;
+        const auto target = admission.handlers.at(key & (admission.handlers.size() - 1));
+        if (!admission.abstract_handler_abi)
+        {
+            if (!dispatch(s, key, target))
+                return false;
+        }
+        else
+        {
+            // Bare control fixtures deliberately model only the handler ABI.
+            for (unsigned reg : {0u, 8u, 9u, 10u, 11u})
+                s.registers[reg] = fresh();
+            for (auto &flag : s.flags)
+                flag = fresh(1) == bv(1, 1);
+            for (unsigned reg = 0; reg < 6; ++reg)
+                s.vectors[reg] = fresh(128);
+            s.pc = target;
+            s.registers[0] = bv(target);
+            s.registers[1] = bv(context_base);
+            s.registers[2] = bv(key);
+            s.registers[4] = s.stack.native_top;
+            store(s, s.stack.native_top, bv(handler_return), 64);
+        }
         s.calls.clear();
-        store(s, s.stack.native_top, bv(handler_return), 64);
         keys.insert(key);
         s.entry_snapshot = snapshot(s);
         return true;
+    }
+    catch (const StopPath &)
+    {
+        return false;
+    }
+    catch (const std::exception &e)
+    {
+        frontier(s, e.what());
+        return false;
     }
     const std::pair<rax_smir_instruction, std::vector<rax_smir_op>> &decode(uint64_t pc)
     {
@@ -807,6 +821,89 @@ class Explorer
         return cache
             .emplace(pc, std::make_pair(info, std::vector<rax_smir_op>(ops, ops + info.op_count)))
             .first->second;
+    }
+
+    bool dispatch(State &s, uint64_t key, uint64_t target)
+    {
+        const auto start_pc = admission.image_base + admission.profile->dispatch_rva;
+        const auto call_pc = start_pc + 23;
+        const auto table_slot = admission.image_base + admission.profile->table_rva +
+                                (key & (admission.handlers.size() - 1)) * 8;
+        // The unchanged-table admission contract supplies this exact entry.
+        // Keep the equality in the domain so earlier aliased reads agree too.
+        if (image.writable(table_slot))
+        {
+            s.domain = (s.domain && s.memory.read(bv(table_slot), 64) == bv(target))
+                           .simplify(simplify_params);
+            if (!feasible(s.domain))
+                return false;
+            s.memory.write(bv(table_slot), bv(target), 64);
+        }
+        s.registers[2] = bv(key);
+        s.registers[4] = (s.stack.native_top + bv(8)).simplify(simplify_params);
+        s.registers[5] = bv(context_base - 16);
+        s.pc = start_pc;
+        auto execute = [&](const auto &decoded)
+        {
+            if (exhausted())
+                throw std::runtime_error(cancel.load() ? "cancelled" : "native dispatch quota");
+            const auto &d = decoded.first;
+            if (d.temporary_count > 4096 ||
+                decoded.second.size() > limits.operations - report.operations)
+                throw std::runtime_error("SMIR operation quota");
+            ++report.instructions;
+            ++report.dispatch_instructions;
+            s.temporary.clear();
+            s.vector_temporary.clear();
+            for (unsigned n = 0; n < d.temporary_count; ++n)
+                s.temporary.push_back(fresh());
+            report.operations += decoded.second.size();
+            for (const auto &op : decoded.second)
+                operation(s, op);
+        };
+        while (s.pc != call_pc)
+        {
+            const auto &decoded = decode(s.pc);
+            const auto &d = decoded.first;
+            if (d.flow != 0 || d.fallthrough <= s.pc || d.fallthrough > call_pc)
+                throw std::runtime_error("unexpected native dispatch control flow");
+            execute(decoded);
+            recovery.flow(s.key, s.pc, d.fallthrough, FlowKind::Next, s.domain);
+            s.pc = d.fallthrough;
+        }
+        const auto &call = decode(s.pc);
+        if (call.first.flow != 8 || call.first.fallthrough != handler_return ||
+            !((address(s, call.first.address) == bv(admission.dispatch_pointer))
+                  .simplify(simplify_params)
+                  .is_true()))
+            throw std::runtime_error("native dispatch call contract mismatch");
+        execute(call);
+        const auto pointer = bv(admission.dispatch_pointer);
+        const auto bound = load(s, pointer, 64) == bv(admission.dispatch_target);
+        if (feasible(s.domain && !bound))
+            frontier(s, "dispatcher transfer binding unverified");
+        s.domain = (s.domain && bound).simplify(simplify_params);
+        if (!feasible(s.domain))
+            return false;
+        if (admission.dispatch_pointer_writable)
+            s.memory.write(pointer, bv(admission.dispatch_target), 64);
+        s.registers[4] = (s.registers[4] - bv(8)).simplify(simplify_params);
+        store(s, s.registers[4], bv(handler_return), 64);
+        recovery.flow(s.key, s.pc, admission.dispatch_target, FlowKind::Call, s.domain);
+        s.pc = admission.dispatch_target;
+        const auto &jump = decode(s.pc);
+        if (jump.first.flow != 4)
+            throw std::runtime_error("native dispatch tail contract mismatch");
+        execute(jump);
+        if (!((get(s, jump.first.predicate) == bv(target) && s.registers[0] == bv(target) &&
+               s.registers[1] == bv(context_base) && s.registers[2] == bv(key) &&
+               s.registers[4] == s.stack.native_top)
+                  .simplify(simplify_params)
+                  .is_true()))
+            throw std::runtime_error("native dispatch output invariant unproved");
+        recovery.flow(s.key, s.pc, target, FlowKind::Branch, s.domain);
+        s.pc = target;
+        return true;
     }
 
     bool initialize(State &s)
@@ -897,12 +994,13 @@ class Explorer
             s.calls.pop_back();
             return true;
         }
-        if (admission.stack_maintenance)
+        if (!admission.abstract_handler_abi)
         {
-            const auto normal =
-                (s.registers[3] == s.stack.floor && s.registers[5] == bv(context_base - 16) &&
-                 s.registers[4] == s.stack.native_top + bv(8))
-                    .simplify(simplify_params);
+            const auto frame =
+                admission.stack_maintenance ? s.registers[3] == s.stack.floor : ctx.bool_val(true);
+            const auto normal = (frame && s.registers[5] == bv(context_base - 16) &&
+                                 s.registers[4] == s.stack.native_top + bv(8))
+                                    .simplify(simplify_params);
             if (feasible(s.domain && !normal))
                 frontier(s, "handler violates admitted nonvolatile stack ABI");
             s.domain = (s.domain && normal).simplify(simplify_params);

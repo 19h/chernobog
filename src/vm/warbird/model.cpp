@@ -342,10 +342,11 @@ std::string Report::json() const
       << ",\"instructions\":" << instructions
       << ",\"initialization_instructions\":" << initialization_instructions
       << ",\"initialization_copy_bytes\":" << initialization_copy_bytes
-      << ",\"operations\":" << operations << ",\"key_splits\":" << key_splits
-      << ",\"key_queries\":" << key_queries << ",\"return_splits\":" << return_splits
-      << ",\"external_calls\":" << external_calls << ",\"vector_operations\":" << vector_operations
-      << ",\"alias_queries\":" << alias_queries << ",\"write_guard_splits\":" << write_guard_splits
+      << ",\"dispatch_instructions\":" << dispatch_instructions << ",\"operations\":" << operations
+      << ",\"key_splits\":" << key_splits << ",\"key_queries\":" << key_queries
+      << ",\"return_splits\":" << return_splits << ",\"external_calls\":" << external_calls
+      << ",\"vector_operations\":" << vector_operations << ",\"alias_queries\":" << alias_queries
+      << ",\"write_guard_splits\":" << write_guard_splits
       << ",\"private_writes_isolated\":" << private_writes_isolated
       << ",\"stack_growth_paths\":" << stack_growth_paths
       << ",\"stack_maintenance\":" << (stack_maintenance ? "true" : "false")
