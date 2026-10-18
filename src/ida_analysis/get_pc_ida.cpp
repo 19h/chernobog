@@ -22,6 +22,93 @@
 
 namespace chernobog::ida_analysis
 {
+std::optional<classifier::stack_stub_t> classify_ida_stack_stub32(uint64_t start)
+{
+    if (PH.id != PLFM_386 || start > UINT32_MAX)
+        return std::nullopt;
+    const auto *segment = getseg(ea_t(start));
+    const auto *owner = get_func(ea_t(start));
+    const ea_t owner_start = owner != nullptr ? owner->start_ea : BADADDR;
+    if (segment == nullptr || segment->bitness != 1 ||
+        (segment->perm != 0 && (segment->perm & SEGPERM_EXEC) == 0))
+        return std::nullopt;
+    if (!is_loaded(ea_t(start)))
+        return std::nullopt;
+    const uint8_t first = get_byte(ea_t(start));
+    if (first != 0x8d && (first < 0x50 || first > 0x57 || first == 0x54))
+        return std::nullopt;
+    if (first == 0x8d)
+    {
+        const std::array<uint8_t, 4> prefix{{0x8d, 0x64, 0x24, 0xfc}};
+        for (size_t i = 0; i < prefix.size(); ++i)
+            if (start + i >= uint64_t(segment->end_ea) || !is_loaded(ea_t(start + i)) ||
+                get_byte(ea_t(start + i)) != prefix[i])
+                return std::nullopt;
+    }
+    std::array<uint8_t, classifier::stack_stub_maximum_bytes> bytes{};
+    size_t length = 0;
+    while (length < bytes.size() && start + length < uint64_t(segment->end_ea) &&
+           is_loaded(ea_t(start + length)))
+    {
+        bytes[length] = get_byte(ea_t(start + length));
+        ++length;
+    }
+    auto result = classifier::classify_stack_stub32(bytes.data(), length, start);
+    if (!result || (result->handler >= start && result->handler < result->end))
+        return std::nullopt;
+    size_t references = 0;
+    ea_t previous = BADADDR;
+    for (const auto &[address, size] : result->instructions)
+    {
+        insn_t instruction;
+        if (!is_code(get_flags(ea_t(address))))
+            return std::nullopt;
+        if (decode_insn(&instruction, ea_t(address)) != size || !mode32(instruction) ||
+            !natad(instruction))
+            return std::nullopt;
+        if (get_func_start(ea_t(address)) != owner_start || getseg(ea_t(address)) != segment)
+            return std::nullopt;
+        for (uint16_t offset = 0; offset < size; ++offset)
+        {
+            const ea_t at = ea_t(address + offset);
+            if (get_func_start(at) != owner_start || (offset != 0 && is_head(get_flags(at))))
+                return std::nullopt;
+            if (at == start)
+                continue;
+            xrefblk_t xref;
+            for (bool ok = xref.first_to(at, XREF_ALL); ok; ok = xref.next_to())
+            {
+                if (++references > 256 || (xref.iscode && (offset != 0 || xref.from != previous ||
+                                                           (int(xref.type) & XREF_MASK) != fl_F)))
+                    return std::nullopt;
+            }
+        }
+        previous = ea_t(address);
+    }
+    return result;
+}
+
+std::optional<classifier::stack_stub_t> find_ida_stack_stub32(uint64_t return_ea)
+{
+    if (PH.id != PLFM_386 || return_ea > UINT32_MAX)
+        return std::nullopt;
+    const uint64_t lower = return_ea > classifier::stack_stub_maximum_bytes
+                               ? return_ea - classifier::stack_stub_maximum_bytes
+                               : 0;
+    ea_t cursor = ea_t(return_ea);
+    for (size_t count = 0; count < classifier::stack_stub_maximum_instructions; ++count)
+    {
+        const ea_t previous = prev_head(cursor, ea_t(lower));
+        if (previous == BADADDR || previous >= cursor)
+            break;
+        cursor = previous;
+        const auto candidate = classify_ida_stack_stub32(cursor);
+        if (candidate && candidate->transfer == return_ea)
+            return candidate;
+    }
+    return std::nullopt;
+}
+
 namespace
 {
 

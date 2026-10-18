@@ -151,6 +151,26 @@ ea_t resolve_gadget_return(ea_t return_ea, int scan_depth)
     return summary ? ea_t(*summary->resumed_at) : BADADDR;
 }
 
+std::optional<classifier::stack_stub_t> resolve_stack_stub_return(ea_t return_ea)
+{
+    const auto summary = find_ida_stack_stub32(return_ea);
+    auto *owner = get_func(return_ea);
+    if (!summary || owner == nullptr || !executable_code(summary->handler) ||
+        !func_contains(owner, summary->handler))
+        return std::nullopt;
+    for (const auto &[address, size] : summary->instructions)
+        if (!func_contains(owner, ea_t(address)) || !func_contains(owner, ea_t(address + size - 1)))
+            return std::nullopt;
+    return summary;
+}
+
+ea_t resolve_early_return(ea_t return_ea, int scan_depth)
+{
+    if (const auto stub = resolve_stack_stub_return(return_ea))
+        return ea_t(stub->handler);
+    return resolve_gadget_return(return_ea, scan_depth);
+}
+
 template <class Flowchart> std::map<ea_t, int> index_blocks_by_start(const Flowchart &flowchart)
 {
     std::map<ea_t, int> result;
@@ -230,6 +250,21 @@ int repair_flowchart(Flowchart &flowchart, bitset_t *reachable, const EarlyHexRa
             }
 
             insn_t call;
+            if (decode_insn(&call, address) > 0 && call.itype == NN_retn)
+            {
+                const auto stub = resolve_stack_stub_return(address);
+                const auto target =
+                    stub ? blocks_by_start.find(ea_t(stub->handler)) : blocks_by_start.end();
+                if (target != blocks_by_start.end() && target->second != int(index) &&
+                    !contains_index(block.succ, target->second))
+                {
+                    block.succ.push_back(target->second);
+                    auto &destination = flowchart.blocks[target->second];
+                    if (!contains_index(destination.pred, int(index)))
+                        destination.pred.push_back(int(index));
+                    ++changes;
+                }
+            }
             if (is_marked_get_pc_call(address) && decode_insn(&call, address) > 0)
             {
                 const auto gadget =
@@ -321,7 +356,7 @@ int convert_resolved_returns(mba_t &mba, const EarlyHexRaysConfig &config)
         {
             continue;
         }
-        const ea_t target = resolve_gadget_return(block->tail->ea, config.gadget_scan_depth);
+        const ea_t target = resolve_early_return(block->tail->ea, config.gadget_scan_depth);
         if (target == BADADDR)
             continue;
 
@@ -1395,7 +1430,7 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
         return get_dbctx_id() == owner_database && config.enabled && is_x86_database() &&
                (known_condition(codegen).has_value() ||
                 (config.call_pop_codegen && is_return_instruction(codegen.insn) &&
-                 resolve_gadget_return(codegen.insn.ea, config.gadget_scan_depth) != BADADDR));
+                 resolve_early_return(codegen.insn.ea, config.gadget_scan_depth) != BADADDR));
     }
 
     merror_t apply(codegen_t &codegen) override
@@ -1404,6 +1439,36 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
             return MERR_INSN;
         if (const auto condition = known_condition(codegen))
             return apply_condition(codegen, *condition);
+        if (const auto stub = resolve_stack_stub_return(codegen.insn.ea))
+        {
+            if (codegen.mba == nullptr || codegen.mba->is_snippet())
+                return MERR_INSN;
+            for (const auto &[address, size] : stub->instructions)
+                if (!codegen.mba->range_contains(ea_t(address)) ||
+                    !codegen.mba->range_contains(ea_t(address + size - 1)))
+                    return MERR_INSN;
+            if (!codegen.mba->range_contains(ea_t(stub->handler)))
+                return MERR_INSN;
+            const mreg_t captured = codegen.mba->alloc_kreg(4);
+            const mreg_t sp = reg2mreg(R_sp);
+            if (captured == mr_none || sp == mr_none)
+                return MERR_INSN;
+            mop_t popped;
+            popped.make_reg(captured, 4);
+            codegen.emit(m_pop, nullptr, nullptr, &popped);
+            if (stub->return_adjustment != 0)
+            {
+                // RET imm16 skips bytes without reading them. A second POP
+                // would introduce an additional memory access and possible fault.
+                mop_t stack, adjustment;
+                stack.make_reg(sp, 4);
+                adjustment.make_number(stub->return_adjustment, 4, codegen.insn.ea);
+                codegen.emit(m_add, &stack, &adjustment, &stack);
+            }
+            codegen.emit(m_goto, 0, ea_t(stub->handler), 0, 0, 0);
+            ++statistics.codegen_returns;
+            return MERR_OK;
+        }
         const auto summary =
             resolve_gadget_return_summary(codegen.insn.ea, config.gadget_scan_depth);
         if (!summary || codegen.mba == nullptr ||

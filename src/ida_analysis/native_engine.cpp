@@ -432,6 +432,7 @@ struct NativeProof
         Return,
         Materialization,
         StackTransfer,
+        StackStub,
         Condition
     };
     Kind kind = Kind::Unknown;
@@ -503,6 +504,7 @@ bool is_value_proof(const NativeProof &proof)
         return false;
     return proof.kind == NativeProof::Kind::Condition ||
            proof.kind == NativeProof::Kind::StackTransfer ||
+           proof.kind == NativeProof::Kind::StackStub ||
            proof.kind == NativeProof::Kind::Materialization;
 }
 
@@ -1025,6 +1027,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
     std::set<std::pair<ea_t, ea_t>> pending_direct_jump_decodes;
     std::vector<std::pair<ea_t, ea_t>> pending_cfg_edges;
     std::set<ea_t> pending_call_returns;
+    std::set<ea_t> pending_stack_stubs;
     std::set<ea_t> pending_flag_fallthroughs;
     // Conclusions/dependencies are session-local. Persisted receipts authorize
     // cleanup only; every reopen recomputes proofs from the current database.
@@ -1102,6 +1105,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         pending_direct_jump_decodes.clear();
         pending_cfg_edges.clear();
         pending_call_returns.clear();
+        pending_stack_stubs.clear();
         pending_flag_fallthroughs.clear();
         statistics = NativeAnalysisStats{};
         post_metadata_scanned = false;
@@ -1352,6 +1356,34 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         if (current)
             switch (proof.kind)
             {
+            case NativeProof::Kind::StackStub:
+            {
+                row["kind"] = "stack-stub";
+                const auto candidate = classify_ida_stack_stub32(proof.source);
+                current = candidate && candidate->transfer == proof.site &&
+                          proof.value == candidate->handler;
+                if (!current)
+                    break;
+                for (const auto &[address, size] : candidate->instructions)
+                    current = current && covered({address});
+                if (proof.intended_edge)
+                    current = current && proof.intended_edge->target == candidate->handler &&
+                              proof.intended_edge->type ==
+                                  (candidate->handler == candidate->end ? fl_F : fl_JN) &&
+                              target_is_executable(ea_t(candidate->handler));
+                row["handler"] = hex(candidate->handler);
+                row["continuation"] = hex(candidate->continuation);
+                row["width_bits"] = "32";
+                row["stack_delta_bytes"] = "-4";
+                row["return_adjustment_bytes"] = std::to_string(candidate->return_adjustment);
+                row["saved_register_encoding"] = std::to_string(candidate->saved_register);
+                row["stack_access_count"] = std::to_string(candidate->stack_accesses.size());
+                row["atomic_exchange_retained"] =
+                    candidate->return_adjustment == 0 ? "true" : "false";
+                row["assumption"] =
+                    "flat 32-bit near transfer; original stack accesses, saved register and flags retained; handler is not bypassed";
+                break;
+            }
             case NativeProof::Kind::StackTransfer:
             {
                 row["kind"] = "stack-transfer";
@@ -1603,7 +1635,9 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
                  "bounded local x86 model; native memory/stack effects retained; not whole-program reachability"}};
             if (proof.intended_edge)
                 row["target"] = hex(proof.intended_edge->target);
-            else if (proof.kind == NativeProof::Kind::StackTransfer && proof.value)
+            else if ((proof.kind == NativeProof::Kind::StackTransfer ||
+                      proof.kind == NativeProof::Kind::StackStub) &&
+                     proof.value)
                 row["target"] = hex(*proof.value);
             bool current = proof.publication != 0 && proof_is_fresh(proof);
             const bool dependencies_current = current;
@@ -1980,7 +2014,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             // instructions, including those before a tail, do add an entry.
             const bool modeled = ordinary &&
                                  (proof.kind == NativeProof::Kind::Condition ||
-                                  proof.kind == NativeProof::Kind::StackTransfer) &&
+                                  proof.kind == NativeProof::Kind::StackTransfer ||
+                                  proof.kind == NativeProof::Kind::StackStub) &&
                                  covered(from) && covered(to);
             if (!dependency_intersects(proof, to, to + 1) || modeled)
             {
@@ -2615,6 +2650,47 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         return record_proof(std::move(proof), before, comment.c_str());
     }
 
+    bool handle_stack_stub(const insn_t &instruction, bool defer = true)
+    {
+        if (architecture != Architecture::X86 || !config.push_return)
+            return false;
+        const auto candidate = instruction.itype == NN_retn ? find_ida_stack_stub32(instruction.ea)
+                               : (instruction.itype == NN_push || instruction.itype == NN_lea)
+                                   ? classify_ida_stack_stub32(instruction.ea)
+                                   : std::nullopt;
+        if (!candidate || !can_record_proof(ea_t(candidate->start)))
+            return false;
+        NativeProof proof;
+        proof.kind = NativeProof::Kind::StackStub;
+        proof.source = ea_t(candidate->start);
+        proof.site = ea_t(candidate->transfer);
+        proof.value = candidate->handler;
+        for (const auto &[address, size] : candidate->instructions)
+            if (!add_instruction_dependency(proof, ea_t(address)))
+                return false;
+        const auto before = collect_code_edges(proof.site);
+        if (target_is_executable(ea_t(candidate->handler)))
+        {
+            if (!add_dependency(proof, ea_t(candidate->handler), 1, false))
+                return false;
+            const cref_t type = candidate->handler == candidate->end ? fl_F : fl_JN;
+            proof.intended_edge = desired_code_edge_t{ea_t(candidate->handler), type, type != fl_F};
+            if (!add_user_cref(proof.site, ea_t(candidate->handler), type, type != fl_F) &&
+                !exact_code_edge_exists(proof.site, *proof.intended_edge))
+                return false;
+        }
+        qstring comment;
+        comment.sprnt("stack stub handler %a; continuation %a; width=32 bits; "
+                      "handler-entry SP delta=-4 bytes; RET adjustment=%u bytes; "
+                      "saved register, flags and stack accesses retained; handler not bypassed",
+                      ea_t(candidate->handler), ea_t(candidate->continuation),
+                      unsigned(candidate->return_adjustment));
+        const bool recorded = record_proof(std::move(proof), before, comment.c_str());
+        if (recorded && defer)
+            pending_stack_stubs.insert(ea_t(candidate->start));
+        return recorded;
+    }
+
     bool handle_push_return(const insn_t &instruction)
     {
         if (architecture != Architecture::X86 || !config.push_return ||
@@ -2984,7 +3060,8 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
         // complete exclusive edge set own the event.
         // A PUSH-next/RET pair has a control-transfer fact at RET. Do not replace
         // its ownership record with the less specific address-materialization fact.
-        if (!handle_push_return(instruction))
+        const bool stack_stub = handle_stack_stub(instruction);
+        if (!stack_stub && !handle_push_return(instruction))
             (void)handle_push_get_pc(instruction);
         const bool zero_register = handle_zero_register(instruction);
         (void)handle_opposite_pair(instruction, revisiting);
@@ -3016,6 +3093,7 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
             pending_donor_revocations.clear();
             recover_rejected_donors();
             pending_flag_fallthroughs.clear();
+            pending_stack_stubs.clear();
             pending_ownership_recovery = true;
             return 0;
         }
@@ -3059,6 +3137,16 @@ struct NativeAnalysisEngine::Impl final : event_listener_t
 
     void fix_pending_cfg_edges()
     {
+        // IDA may remove RET edges in its final analysis pass. Reclassify the
+        // complete current stub before restoring an edge at auto_empty_finally.
+        const auto stubs = std::move(pending_stack_stubs);
+        pending_stack_stubs.clear();
+        for (ea_t start : stubs)
+        {
+            insn_t instruction;
+            if (decode_insn(&instruction, start) > 0)
+                handle_stack_stub(instruction, false);
+        }
         // A queued CALL-context return must be rederived from current instructions;
         // a stale (RET,target) pair cannot justify reinstating an edge after edits.
         const auto pending_calls = std::move(pending_call_returns);

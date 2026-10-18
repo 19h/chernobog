@@ -415,6 +415,7 @@ ida_add_plugin(
     src/plugin/idc_api.cpp
     src/ida_analysis/analysis_config.cpp
     src/ida_analysis/native_classifier.cpp
+    src/ida_analysis/stack_stub.cpp
     src/ida_analysis/x86_analysis.cpp
     src/ida_analysis/get_pc_ida.cpp
     src/ida_analysis/native_engine.cpp
@@ -738,6 +739,12 @@ if(BUILD_TESTING)
                                                             -Wshadow)
     endif()
     add_test(NAME chernobog.core COMMAND chernobog_core_tests)
+
+    add_executable(chernobog_stack_stub_tests tests/stack_stub_tests.cpp
+                                              src/ida_analysis/stack_stub.cpp)
+    target_include_directories(chernobog_stack_stub_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_features(chernobog_stack_stub_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.stack_stubs COMMAND chernobog_stack_stub_tests)
 
     add_executable(chernobog_z3_tests tests/z3_tests.cpp)
     target_include_directories(chernobog_z3_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")

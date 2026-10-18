@@ -1,6 +1,7 @@
 #pragma once
 
 #include "native_classifier.hpp"
+#include "stack_stub.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -21,5 +22,9 @@ std::optional<classifier::stack_transfer_t> classify_ida_push_return(const insn_
                                                                      int register_scan_depth);
 
 std::optional<classifier::push_get_pc_t> classify_ida_push_get_pc(const insn_t &push);
+
+// Exact loaded bytes plus current IDA instruction boundaries and entry topology.
+std::optional<classifier::stack_stub_t> classify_ida_stack_stub32(uint64_t start);
+std::optional<classifier::stack_stub_t> find_ida_stack_stub32(uint64_t return_ea);
 
 } // namespace chernobog::ida_analysis
