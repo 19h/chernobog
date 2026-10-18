@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstddef>
+#include <functional>
 #include <cstdint>
 #include <algorithm>
 #include <vector>
@@ -67,6 +68,7 @@ struct StaticAnalysisResult
 // thread only; all rax calls here are stateless.
 StaticAnalysisResult hybrid_analyze_current_function(const RaxApi *api, const ProgramImage &image,
                                                      const FuncRange &function,
-                                                     const HybridConfig &config);
+                                                     const HybridConfig &config,
+                                                     const std::function<bool()> &cancelled = {});
 
 } // namespace chernobog::hybrid

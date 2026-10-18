@@ -269,6 +269,7 @@ def load_inspection(ea):
             "events": [],
             "lifetimes": [],
             "runs": [],
+            "use_strings": [],
             "claims": [],
         }
     snapshot["native"] = native
@@ -418,6 +419,7 @@ if ida_kernwin.is_idaq():
             for key, title in (
                 ("events", "Event order"),
                 ("read_streams", "Read streams"),
+                ("use_strings", "Observed strings"),
                 ("lifetimes", "Allocations"),
                 ("runs", "Run stops"),
                 ("claims", "Branch claims"),
@@ -459,6 +461,8 @@ if ida_kernwin.is_idaq():
                         )
                     )
                 )
+                if key == "use_strings":
+                    table.setHeaderLabels(["Text", "Run / seed", "Observation", "Call site"])
                 table.setRootIsDecorated(False)
                 # IDA themes can override the base brush without overriding
                 # AlternateBase, producing unreadable light rows in dark mode.
@@ -527,7 +531,7 @@ if ida_kernwin.is_idaq():
                 self.run_filter.addItem(row["run"] + " / " + row["seed"], (row["run"], row["seed"]))
             self.run_filter.blockSignals(False)
             self.clear_filters()
-            for key in ("lifetimes", "runs", "claims", "read_streams"):
+            for key in ("lifetimes", "runs", "claims", "read_streams", "use_strings"):
                 self.populate(key, self.snapshot.get(key, []))
             self.populate("native", self.native.get("records", []))
             self.populate("conditions", self.conditions.get("records", []))
@@ -557,6 +561,19 @@ if ida_kernwin.is_idaq():
                     order += " .. " + ("live" if row["live"] == "true" else row["released"])
                 if key == "read_streams":
                     order = row["first_sequence"] + " .. " + row["last_sequence"]
+                if key == "use_strings":
+                    prefix = " / call prefix" if int(row.get("prefix_runs", "0")) else ""
+                    item = QtWidgets.QTreeWidgetItem(
+                        [
+                            row["value"],
+                            row["run"] + " / " + row["seed"],
+                            row["producer"] + prefix,
+                            row["site"],
+                        ]
+                    )
+                    item.setData(0, QtCore.Qt.ItemDataRole.UserRole, row)
+                    table.addTopLevelItem(item)
+                    continue
                 if key == "conditions":
                     item = QtWidgets.QTreeWidgetItem(
                         [kind, row["decision"], "captured", row["site"]]
@@ -725,7 +742,7 @@ if ida_kernwin.is_idaq():
                     row.get(k) for k in ("run", "seed", "allocation", "generation")
                 )
                 self.update_events()
-            elif key in ("claims", "native", "conditions", "solver", "vm"):
+            elif key in ("claims", "native", "conditions", "solver", "vm", "use_strings"):
                 self.site, self.run, self.allocation = row["site"], None, None
                 self.run_filter.setCurrentIndex(0)
                 self.update_events()

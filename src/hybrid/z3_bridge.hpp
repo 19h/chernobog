@@ -63,6 +63,10 @@ std::vector<RuntimeStringCandidate> hybrid_current_runtime_strings(uint64_t func
 // No address-only or post-materialization projection is admitted here.
 std::vector<RuntimeUseStringCandidate> hybrid_current_use_strings(uint64_t function_start);
 
+// Inspection only: complete or call-prefix observations with exact current identity.
+std::vector<RuntimeUseStringCandidate>
+hybrid_current_inspection_use_strings(uint64_t function_start);
+
 // Print-only: a finished owned display lease may admit Hex-Rays entry-profile
 // refinement. Original function bytes and ALL consumed bytes must still match.
 std::vector<RuntimeUseStringCandidate>

@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cstddef>
+#include <functional>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -24,6 +25,8 @@ struct EntryInputPlan
     HybridAbi abi = HybridAbi::UNKNOWN;
     std::string abi_name;
     std::vector<EmuInput> inputs;
+    bool truncated = false;
+    size_t sites_visited = 0;
 };
 
 HybridAbi hybrid_detect_abi(HybridArch arch);
@@ -32,6 +35,7 @@ HybridAbi hybrid_detect_abi(HybridArch arch);
 // retain the deterministic seeded value; only tracker-proven constants/addresses
 // are overridden. Main thread only.
 EntryInputPlan hybrid_build_entry_inputs(HybridArch arch, uint64_t function_start,
-                                         size_t max_inputs);
+                                         size_t max_inputs,
+                                         const std::function<bool()> &cancelled = {});
 
 } // namespace chernobog::hybrid

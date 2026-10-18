@@ -2085,12 +2085,175 @@ void native_single_read_regressions()
           "unavailable memory observation cannot support an executed string read");
 }
 
+void inspection_call_prefix_regressions()
+{
+    const uint8_t text[]{'p', 'r', 'e', 'f', 'i', 'x', '!', 0};
+    TargetEvidence evidence;
+    evidence.scope.function_start = 0x1000;
+    for (uint32_t id : {1u, 2u})
+    {
+        TemporalMemory memory;
+        memory.enabled = true;
+        memory.context = 0x1000;
+        memory.run_id = id;
+        memory.seed = 30 + id;
+        memory.heap_begin = 0x8000 + 0x1000 * id;
+        memory.heap_end = memory.heap_begin + 0x1000;
+        memory.entry_sp = 0x20000 + 0x1000 * id;
+        memory.capture(0x1200, 0x1800, 0, UseProducer::BOUNDARY_ARGUMENT, DataScope::STACK,
+                       memory.entry_sp - 0x40, text, sizeof(text), sizeof(text), 5);
+        RunObservation run;
+        run.ran = true;
+        run.provenance.run_id = id;
+        run.provenance.seed = memory.seed;
+        run.outcome.temporal_observation_available = true;
+        run.outcome.temporal_prefix_complete = true;
+        run.outcome.stop_valid = true;
+        run.outcome.stop_reason = RAX_STOP_STOPPED;
+        run.outcome.stop_pc = 0x1800;
+        run.outcome.prefix_call_source = 0x1200;
+        run.outcome.prefix_call_target = 0x1800;
+        run.outcome.function_boundary = true;
+        run.outcome.memory_observation_available = true;
+        evidence.runs.push_back(run);
+        evidence.events.edges.push_back({0x1200, 0x1800, id, memory.seed, ExecEdge::Kind::Call, 4});
+        evidence.events.uses.insert(evidence.events.uses.end(), memory.uses.begin(),
+                                    memory.uses.end());
+    }
+    check(hybrid_consensus_use_strings(evidence).empty(),
+          "prefix runs never satisfy the completed-run contract");
+    const auto admitted = hybrid_consensus_use_strings(evidence, 4, 4096, true);
+    check(admitted.size() == 1 && admitted[0].value == "prefix!" && admitted[0].prefix_runs == 2 &&
+              admitted[0].eligible_runs == 2 && admitted[0].witnesses.size() == 2 &&
+              admitted[0].use.producer == UseProducer::BOUNDARY_ARGUMENT &&
+              admitted[0].use.offset == -0x40 && admitted[0].use.callee == 0x1800,
+          "boundary text agrees by frame offset although each run has its own entry SP");
+    const auto view = project_evidence_view(evidence);
+    check(view.use_strings.size() == 2 &&
+              view.use_strings[0].at("producer") == "call-boundary-argument" &&
+              view.use_strings[0].at("prefix_runs") == "2" &&
+              view.use_strings[0].at("callee_executed") == "false" &&
+              view.runs[0].at("temporal_ledger") == "call_prefix",
+          "inspection view retains boundary text and explicitly unexecuted callee provenance");
+    auto mixed = evidence;
+    mixed.runs[0].outcome.temporal_capture_complete = true;
+    const auto mixed_result = hybrid_consensus_use_strings(mixed, 4, 4096, true);
+    check(mixed_result.empty(),
+          "a boundary-only snapshot cannot be relabeled as a completed-run use");
+    for (unsigned failure = 0; failure < 12; ++failure)
+    {
+        auto changed = evidence;
+        switch (failure)
+        {
+        case 0:
+            changed.runs[1].outcome.temporal_prefix_complete = false;
+            break;
+        case 1:
+            changed.runs[1].outcome.temporal_capture_truncated = true;
+            break;
+        case 2:
+            changed.runs[1].outcome.temporal_observation_available = false;
+            break;
+        case 3:
+            changed.runs[1].ran = false;
+            break;
+        case 4:
+            changed.events.uses[1].argument = 1;
+            break;
+        case 5:
+            changed.events.uses[1].callee += 1;
+            break;
+        case 6:
+            changed.events.uses[1].bytes[0] = 'X';
+            break;
+        case 7:
+            changed.events.edges.clear();
+            break;
+        case 8:
+            changed.events.edges[0].kind = ExecEdge::Kind::Jump;
+            break;
+        case 9:
+            changed.runs[0].outcome.stop_pc++;
+            break;
+        case 10:
+            changed.runs[0].outcome.cancelled = true;
+            break;
+        case 11:
+            changed.runs.push_back(changed.runs.front());
+            break;
+        }
+        check(hybrid_consensus_use_strings(changed, 4, 4096, true).empty(),
+              "prefix admission never shrinks the corpus or merges distinct call slots");
+    }
+    auto unterminated = evidence;
+    for (auto &use : unterminated.events.uses)
+        use.bytes.back() = '?';
+    check(hybrid_consensus_use_strings(unterminated, 4, 4096, true).empty(),
+          "boundary text needs a NUL terminator inside the snapshot");
+
+    TargetEvidence streams;
+    streams.scope.function_start = 0x1000;
+    for (uint32_t id : {1u, 2u})
+    {
+        TemporalMemory memory;
+        memory.enabled = true;
+        memory.context = 0x1000;
+        memory.run_id = id;
+        memory.seed = 40 + id;
+        memory.entry_sp = 0x30000 + 0x1000 * id;
+        for (size_t i = 0; i < sizeof(text); ++i)
+        {
+            const uint64_t sequence = 10 + 4 * i;
+            memory.capture(0x1210, 0, -1, UseProducer::EXECUTED_READ, DataScope::STACK,
+                           memory.entry_sp - 0x80 + i, text + i, 1, 1, sequence);
+            streams.events.data.push_back({0x1210, memory.entry_sp - 0x80 + i, text[i], 1,
+                                           RAX_MEM_READ, DataScope::STACK, sequence + 1, id,
+                                           memory.seed});
+        }
+        RunObservation run;
+        run.ran = true;
+        run.provenance.run_id = id;
+        run.provenance.seed = memory.seed;
+        run.outcome.temporal_observation_available = true;
+        run.outcome.temporal_prefix_complete = true;
+        run.outcome.stop_valid = true;
+        run.outcome.stop_reason = RAX_STOP_STOPPED;
+        run.outcome.stop_pc = 0x1800;
+        run.outcome.prefix_call_source = 0x1200;
+        run.outcome.prefix_call_target = 0x1800;
+        run.outcome.function_boundary = true;
+        run.outcome.memory_observation_available = true;
+        streams.runs.push_back(run);
+        streams.events.uses.insert(streams.events.uses.end(), memory.uses.begin(),
+                                   memory.uses.end());
+    }
+    check(hybrid_consensus_native_read_strings(streams).empty(),
+          "prefix stream corpora need explicit admission");
+    const auto stream = hybrid_consensus_native_read_strings(streams, 4, 4096, true);
+    check(stream.size() == 1 && stream[0].value == "prefix!" && stream[0].prefix_runs == 2 &&
+              stream[0].use.producer == UseProducer::EXECUTED_READ_STREAM,
+          "executed read streams publish from a complete prefix ledger");
+    auto mixed_streams = streams;
+    mixed_streams.runs[0].outcome.temporal_capture_complete = true;
+    const auto mixed_read = hybrid_consensus_native_read_strings(mixed_streams, 4, 4096, true);
+    check(mixed_read.size() == 1 && mixed_read[0].prefix_runs == 1,
+          "completed and prefix runs can agree on their original executed reads");
+    auto filtered = streams;
+    filtered.runs[0].outcome.data_trace_filtered = true;
+    check(hybrid_consensus_native_read_strings(filtered, 4, 4096, true).empty(),
+          "a filtered data trace cannot prove an uninterrupted stream");
+    check(use_producer_name(UseProducer::BOUNDARY_ARGUMENT) ==
+              std::string("call-boundary-argument"),
+          "boundary producer has a stable spelling");
+}
+
 int main(int argc, char **argv)
 {
     evidence_view_regressions();
     regressions();
     comparison_regressions();
     temporal_memory_regressions();
+    inspection_call_prefix_regressions();
     native_read_stream_regressions();
     native_interleaved_read_regressions();
     native_permuted_read_regressions();

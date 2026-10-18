@@ -21,7 +21,8 @@ namespace
 } // namespace
 
 std::vector<EmuCallSummary> hybrid_collect_call_summaries(const FuncRange &function,
-                                                          size_t maximum_instruction_heads)
+                                                          size_t maximum_instruction_heads,
+                                                          const std::function<bool()> &cancelled)
 {
     std::vector<EmuCallSummary> out;
     if (maximum_instruction_heads == 0)
@@ -31,7 +32,8 @@ std::vector<EmuCallSummary> hybrid_collect_call_summaries(const FuncRange &funct
     {
         ea_t address = ea_t(chunk.start);
         const ea_t end = ea_t(chunk.end);
-        while (address != BADADDR && address < end && visited < maximum_instruction_heads)
+        while (address != BADADDR && address < end && visited < maximum_instruction_heads &&
+               !(cancelled && cancelled()))
         {
             const flags64_t flags = get_flags(address);
             if (is_code(flags) && is_head(flags))

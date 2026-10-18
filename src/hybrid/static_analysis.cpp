@@ -97,7 +97,8 @@ DecoderArmState arm_state_at(const DecoderArchitecture &architecture, int t_regi
 
 StaticAnalysisResult hybrid_analyze_current_function(const RaxApi *api, const ProgramImage &image,
                                                      const FuncRange &function,
-                                                     const HybridConfig &config)
+                                                     const HybridConfig &config,
+                                                     const std::function<bool()> &cancelled)
 {
     StaticAnalysisResult result;
     result.function_start = function.start;
@@ -112,11 +113,12 @@ StaticAnalysisResult hybrid_analyze_current_function(const RaxApi *api, const Pr
 
     size_t remaining = config.max_static_instructions;
     size_t cancellation_steps = 0;
-    const auto check_cancelled = [&cancellation_steps]()
+    const auto check_cancelled = [&cancellation_steps, &cancelled]()
     {
         // Count traversal work rather than successful decodes: data/invalid heads
         // and the components of one large IDA macro must remain cancellable too.
-        return (cancellation_steps++ & 0xFFu) == 0 && user_cancelled();
+        return (cancellation_steps++ & 0xFFu) == 0 &&
+               ((cancelled && cancelled()) || user_cancelled());
     };
     for (const FuncChunk &chunk : function.chunks)
     {

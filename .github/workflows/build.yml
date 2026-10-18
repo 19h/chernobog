@@ -212,7 +212,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cmake -S . -B build -A "${{ matrix.cmake_arch }}" -DBUILD_TESTING=OFF
+          cmake -S . -B build -A "${{ matrix.cmake_arch }}" -DBUILD_TESTING=ON
 
           $compilerMetadata = @(
             Get-ChildItem -Path build -Recurse -Filter CMakeCXXCompiler.cmake -File
@@ -236,7 +236,12 @@ jobs:
       - name: Build (Windows MSVC)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cmake --build build --config Release --parallel $env:NUMBER_OF_PROCESSORS
+        run: cmake --build build --config Release --target chernobog chernobog_program_model_tests chernobog_evidence_tests chernobog_analysis_prefix_tests --parallel $env:NUMBER_OF_PROCESSORS
+
+      - name: Test analysis (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ctest --test-dir build --build-config Release --output-on-failure -R '^chernobog\.(program_model|evidence|analysis_prefix)$'
 
       # Publish before testing so a failed or flaky test still leaves a warm
       # cache to retry against. always() also covers a failed build: the

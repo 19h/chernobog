@@ -271,6 +271,9 @@ struct EmuOutcome
     bool temporal_observation_available = false;
     bool temporal_capture_complete = false;
     bool temporal_capture_truncated = false;
+    // Function-call prefix observations never establish complete-run facts.
+    bool temporal_prefix_complete = false;
+    uint64_t prefix_call_source = 0, prefix_call_target = 0;
     uint32_t summarized_calls = 0;
 
     bool definitive_terminal() const

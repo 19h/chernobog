@@ -194,6 +194,8 @@ struct Session::Impl
     StaticAnalysisResult static_analysis;
     std::vector<ConcreteInput> inputs;
     std::vector<EmuCallSummary> model_contract;
+    size_t entry_sites_visited = 0;
+    bool entry_inputs_truncated = false;
     EmulationJobResult accumulated;
     std::unique_ptr<EmulationWorkerPool> worker;
     std::shared_ptr<const TargetEvidence> evidence;
@@ -254,9 +256,12 @@ struct Session::Impl
         for (EmulationRunResult &run : result.runs)
             accumulated.runs.push_back(std::move(run));
 
-        std::shared_ptr<const TargetEvidence> candidate = std::make_shared<TargetEvidence>(
-            hybrid_build_target_evidence(*image, function, focus_address, static_analysis, inputs,
-                                         accumulated, model_contract));
+        auto collected = hybrid_build_target_evidence(
+            *image, function, focus_address, static_analysis, inputs, accumulated, model_contract);
+        collected.summary.entry_sites_visited = entry_sites_visited;
+        collected.summary.entry_inputs_truncated = entry_inputs_truncated;
+        std::shared_ptr<const TargetEvidence> candidate =
+            std::make_shared<TargetEvidence>(std::move(collected));
         if (hybrid_publish_evidence(owner->database_id(), candidate))
         {
             evidence = std::move(candidate);
@@ -739,8 +744,9 @@ bool Session::explore(vdui_t *view, uint64_t fallback_address)
     impl_->image = mutable_image;
     impl_->function = mutable_image->entries.front();
     impl_->focus_address = focus;
-    impl_->static_analysis =
-        hybrid_analyze_current_function(api, *mutable_image, impl_->function, impl_->config);
+    const auto cancelled = [] { return user_cancelled(); };
+    impl_->static_analysis = hybrid_analyze_current_function(api, *mutable_image, impl_->function,
+                                                             impl_->config, cancelled);
     if (user_cancelled())
     {
         msg("[chernobog][rax] Current-function exploration cancelled before execution\n");
@@ -751,8 +757,10 @@ bool Session::explore(vdui_t *view, uint64_t fallback_address)
     EmulationJob job;
     job.function = impl_->function;
     job.config = impl_->config;
-    const EntryInputPlan entry = hybrid_build_entry_inputs(mutable_image->arch, function_start,
-                                                           impl_->config.max_callsite_inputs);
+    const EntryInputPlan entry = hybrid_build_entry_inputs(
+        mutable_image->arch, function_start, impl_->config.max_callsite_inputs, cancelled);
+    impl_->entry_sites_visited = entry.sites_visited;
+    impl_->entry_inputs_truncated = entry.truncated;
     const size_t deterministic_runs = size_t(impl_->config.explore_runs);
     job.runs.reserve(deterministic_runs + entry.inputs.size());
     impl_->inputs.reserve(deterministic_runs + entry.inputs.size());
@@ -789,8 +797,14 @@ bool Session::explore(vdui_t *view, uint64_t fallback_address)
 
     const std::vector<EmuCallSummary> summaries =
         impl_->config.want_import_summaries
-            ? hybrid_collect_call_summaries(impl_->function, impl_->config.max_static_instructions)
+            ? hybrid_collect_call_summaries(impl_->function, impl_->config.max_static_instructions,
+                                            cancelled)
             : std::vector<EmuCallSummary>{};
+    if (cancelled())
+    {
+        clear();
+        return false;
+    }
     impl_->model_contract = summaries;
     RaxWorkerOptions options;
     options.api = api;
@@ -913,6 +927,8 @@ void Session::clear()
     impl_->static_analysis = StaticAnalysisResult{};
     impl_->inputs.clear();
     impl_->model_contract.clear();
+    impl_->entry_sites_visited = 0;
+    impl_->entry_inputs_truncated = false;
     impl_->accumulated = EmulationJobResult{};
     impl_->evidence.reset();
     impl_->next_run_id = 0;

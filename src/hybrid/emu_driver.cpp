@@ -176,6 +176,8 @@ struct HookCtx
     bool terminated_process = false;
     bool escaped_image = false;
     uint64_t escape_source = 0;
+    bool boundary_call = false;
+    uint64_t boundary_call_source = 0, boundary_call_target = 0;
     bool function_boundary = false;
     uint64_t function_boundary_source = 0;
     uint64_t function_boundary_target = 0;
@@ -458,6 +460,89 @@ bool read_c_string(HookCtx *c, rax_engine *engine, uint64_t address, std::vector
             return true;
     }
     return false;
+}
+
+// When a run reaches an unmodeled callee it stops before the callee's
+// first instruction. The text its integer arguments point to at that moment is
+// ordinary call-time memory; nothing claims the callee reads it as a string.
+// Probes never fail the run: an unreadable or non-text argument is skipped.
+constexpr size_t kBoundaryArgumentSlots = 8;
+constexpr size_t kBoundaryStackSlots = 4;
+constexpr size_t kBoundaryTextBytes = 1024;
+
+bool probe_readable(const HookCtx *c, uint64_t address, uint64_t size)
+{
+    return size != 0 && size <= std::numeric_limits<uint32_t>::max() &&
+           (!c->strict_permissions ||
+            image_access_allowed(c, address, uint32_t(size), HybridSegPerm::READ));
+}
+
+bool probe_argument(HookCtx *c, rax_engine *engine, size_t index, uint64_t *out)
+{
+    if (c->arg_regs != nullptr && !c->arg_regs->empty())
+        return index < c->arg_regs->size() &&
+               c->api->reg_read_u64(engine, (*c->arg_regs)[index], out) == RAX_OK;
+    // Stack-only conventions: at the callee's first instruction the return
+    // address occupies the top slot unless a link register carries it.
+    if (c->sp_reg < 0 || c->api->mem_read == nullptr)
+        return false;
+    const size_t ptr = c->is64 ? 8 : 4;
+    uint64_t sp = 0, address = 0;
+    if (c->api->reg_read_u64(engine, c->sp_reg, &sp) != RAX_OK ||
+        !checked_add(sp, c->lr_reg < 0 ? ptr : 0, &address) ||
+        !checked_add(address, c->stack_argument_offset, &address) ||
+        !checked_add(address, uint64_t(index) * ptr, &address) || !probe_readable(c, address, ptr))
+        return false;
+    uint8_t bytes[8] = {};
+    if (c->api->mem_read(engine, address, bytes, ptr) != RAX_OK)
+        return false;
+    *out = scalar_from_memory(c, bytes, ptr);
+    return true;
+}
+
+void capture_boundary_arguments(HookCtx *c, rax_engine *engine, uint64_t source, uint64_t callee)
+{
+    if (!c->temporal.enabled || !hook_in_function(c, source) || c->api->mem_read == nullptr)
+        return;
+    const size_t slots = c->arg_regs != nullptr && !c->arg_regs->empty()
+                             ? std::min(c->arg_regs->size(), kBoundaryArgumentSlots)
+                             : kBoundaryStackSlots;
+    std::vector<uint8_t> bytes;
+    for (size_t index = 0; index < slots; ++index)
+    {
+        uint64_t pointer = 0;
+        if (!probe_argument(c, engine, index, &pointer) || pointer == 0)
+            continue;
+        bool recordable = false;
+        const DataScope scope = access_scope(c, pointer, 1, &recordable);
+        if (!recordable)
+            continue;
+        bytes.clear();
+        bool terminated = false;
+        for (size_t offset = 0; offset < kBoundaryTextBytes; ++offset)
+        {
+            uint64_t current = 0;
+            uint8_t byte = 0;
+            bool byte_recordable = false;
+            if (!checked_add(pointer, offset, &current) || !probe_readable(c, current, 1) ||
+                access_scope(c, current, 1, &byte_recordable) != scope || !byte_recordable ||
+                c->api->mem_read(engine, current, &byte, 1) != RAX_OK)
+                break;
+            bytes.push_back(byte);
+            if (byte == 0)
+            {
+                terminated = true;
+                break;
+            }
+        }
+        // Four scalar values plus NUL is the smallest admissible consensus string;
+        // shorter or unterminated regions cannot publish and would only spend the
+        // per-run snapshot budget.
+        if (!terminated || bytes.size() < 5)
+            continue;
+        c->temporal.capture(source, callee, int(index), UseProducer::BOUNDARY_ARGUMENT, scope,
+                            pointer, bytes.data(), bytes.size(), bytes.size(), c->sequence++);
+    }
 }
 
 bool summary_return(HookCtx *c, rax_engine *engine, uint64_t value)
@@ -1139,6 +1224,13 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
             c->external_target = addr;
             if (summary != nullptr)
                 c->external_name = summary->name;
+            if (c->region == nullptr && summary_transfer && transfer_kind == ExecEdge::Kind::Call)
+            {
+                c->boundary_call = true;
+                c->boundary_call_source = c->prev_pc;
+                c->boundary_call_target = addr;
+                capture_boundary_arguments(c, engine, c->prev_pc, addr);
+            }
             c->api->emu_stop(engine);
         }
         c->prev_pc = addr;
@@ -1165,6 +1257,13 @@ void code_tr(rax_engine *engine, uint64_t addr, uint32_t size, void *user)
         c->function_boundary_source = c->has_prev ? c->prev_pc : addr;
         c->function_boundary_target = addr;
         c->function_boundary_kind = transfer_kind;
+        if (c->region == nullptr && summary_transfer && transfer_kind == ExecEdge::Kind::Call)
+        {
+            c->boundary_call = true;
+            c->boundary_call_source = c->prev_pc;
+            c->boundary_call_target = addr;
+            capture_boundary_arguments(c, engine, c->prev_pc, addr);
+        }
         c->api->emu_stop(engine);
         return;
     }
@@ -2782,6 +2881,21 @@ bool EmuDriver::emulate_scope(uint64_t entry, uint64_t func_end, const HybridCon
             !ctx.dependency_truncated && !ctx.permission_violation && !ctx.cancellation_requested &&
             !ctx.escaped_image && !ctx.function_boundary && !ctx.unmodeled_external &&
             !ctx.environment_model_failure && !synthetic_entry_context;
+        const bool call_prefix = !region && ctx.boundary_call && !outcome->returned &&
+                                 ctx.function_boundary != ctx.unmodeled_external &&
+                                 outcome->stop_valid && outcome->stop_reason == RAX_STOP_STOPPED &&
+                                 outcome->stop_pc == ctx.boundary_call_target;
+        outcome->temporal_prefix_complete =
+            !region && outcome->temporal_observation_available &&
+            (outcome->temporal_capture_complete || call_prefix) &&
+            !outcome->temporal_capture_truncated && !ctx.execution_truncated &&
+            !ctx.dependency_truncated && !ctx.permission_violation && !ctx.cancellation_requested &&
+            !ctx.escaped_image && !ctx.environment_model_failure && !synthetic_entry_context;
+        if (call_prefix)
+        {
+            outcome->prefix_call_source = ctx.boundary_call_source;
+            outcome->prefix_call_target = ctx.boundary_call_target;
+        }
         outcome->native_temporal_complete =
             region && native_temporal && outcome->temporal_observation_available &&
             !outcome->native_undefined_incomplete && outcome->returned &&

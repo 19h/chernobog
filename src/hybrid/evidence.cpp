@@ -370,7 +370,8 @@ std::vector<RuntimeStringCandidate> hybrid_consensus_runtime_strings(const Targe
 
 std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(const TargetEvidence &evidence,
                                                                     size_t minimum_length,
-                                                                    size_t maximum_length)
+                                                                    size_t maximum_length,
+                                                                    bool admit_call_prefix)
 {
     std::vector<RuntimeUseStringCandidate> result;
     if (minimum_length == 0 || maximum_length < minimum_length)
@@ -378,18 +379,19 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(const Target
     using RunKey = std::pair<uint32_t, uint64_t>;
     using ObjectKey = std::tuple<uint32_t, uint64_t, uint64_t>;
     using UseKey = decltype(UseSnapshot{}.semantic_key());
-    std::set<RunKey> eligible;
+    std::set<RunKey> eligible, prefix;
     std::set<RunKey> modeled_runs;
     for (const auto &run : evidence.runs)
     {
         // Never shrink the corpus to its successful/observable subset.
-        if (!run.ran || run.outcome.native_region || !run.outcome.temporal_observation_available ||
-            !run.outcome.temporal_capture_complete || run.outcome.temporal_capture_truncated)
+        if (!hybrid_temporal_run_eligible(run, admit_call_prefix))
             return result;
         if (!eligible.emplace(run.provenance.run_id, run.provenance.seed).second)
             return result;
         if (run.outcome.external_model_used)
             modeled_runs.emplace(run.provenance.run_id, run.provenance.seed);
+        if (!run.outcome.temporal_capture_complete)
+            prefix.emplace(run.provenance.run_id, run.provenance.seed);
     }
     if (eligible.empty())
         return result;
@@ -455,6 +457,30 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(const Target
         const auto &edge = **std::prev(at);
         return edge.kind == ExecEdge::Kind::Call && edge.from == use.site && edge.to == use.callee;
     };
+    const auto valid_boundary = [&](const UseSnapshot &use, const RunKey &run)
+    {
+        if (!admit_call_prefix || !prefix.count(run) || !use.context ||
+            use.context != evidence.scope.function_start || !use.callee || !use.occurrence ||
+            !use.sequence || use.argument < 0 || use.argument >= 8 || use.model_kind != 0 ||
+            use.bytes.size() > 1024 || ambiguous_transfers.count(run))
+            return false;
+        const auto stopped =
+            std::find_if(evidence.runs.begin(), evidence.runs.end(), [&](const auto &item)
+                         { return RunKey{item.provenance.run_id, item.provenance.seed} == run; });
+        if (stopped == evidence.runs.end() || stopped->outcome.prefix_call_source != use.site ||
+            stopped->outcome.prefix_call_target != use.callee)
+            return false;
+        const auto found = transfers.find(run);
+        if (found == transfers.end())
+            return false;
+        const auto at = std::lower_bound(found->second.begin(), found->second.end(), use.sequence,
+                                         [](const ExecEdge *edge, uint64_t sequence)
+                                         { return edge->sequence < sequence; });
+        if (at == found->second.begin())
+            return false;
+        const auto &edge = **std::prev(at);
+        return edge.kind == ExecEdge::Kind::Call && edge.from == use.site && edge.to == use.callee;
+    };
     std::map<ObjectKey, const AllocationLifetime *> objects;
     std::set<ObjectKey> conflicting_objects;
     for (const auto &allocation : evidence.events.allocations)
@@ -470,15 +496,18 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(const Target
     {
         // Executed reads require the matching memory event and complete data
         // observation checked by the native read projector below. This path
-        // admits modeled argument snapshots only.
-        if (use.producer != UseProducer::MODELED_ARGUMENT)
+        // admits modeled arguments and explicitly requested call-boundary observations.
+        if (use.producer != UseProducer::MODELED_ARGUMENT &&
+            use.producer != UseProducer::BOUNDARY_ARGUMENT)
             continue;
         const RunKey run{use.run_id, use.seed};
         if (eligible.count(run) == 0)
             continue;
         const auto key = use.semantic_key();
         bool valid = use.status == UseCaptureStatus::EXACT &&
-                     use.bytes.size() == use.observed_size && valid_model(use, run);
+                     use.bytes.size() == use.observed_size &&
+                     (use.producer == UseProducer::MODELED_ARGUMENT ? valid_model(use, run)
+                                                                    : valid_boundary(use, run));
         if (use.scope == DataScope::HEAP)
         {
             const ObjectKey object{use.run_id, use.seed, use.allocation_id};
@@ -525,6 +554,7 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(const Target
                               candidate.use.bytes, minimum_length, maximum_length)
                               ->utf8;
         candidate.eligible_runs = eligible.size();
+        candidate.prefix_runs = prefix.size();
         bool same = true;
         for (const auto &run : entry.second)
         {
@@ -541,7 +571,8 @@ std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(const Target
         if (same)
             result.push_back(std::move(candidate));
     }
-    auto native = hybrid_consensus_native_read_strings(evidence, minimum_length, maximum_length);
+    auto native = hybrid_consensus_native_read_strings(evidence, minimum_length, maximum_length,
+                                                       admit_call_prefix);
     result.insert(result.end(), std::make_move_iterator(native.begin()),
                   std::make_move_iterator(native.end()));
     return result;
@@ -688,6 +719,8 @@ TargetEvidence hybrid_build_target_evidence(const ProgramImage &image, const Fun
             ++result.summary.temporal_capture_complete_runs;
         if (run.ran && run.outcome.temporal_capture_truncated)
             ++result.summary.temporal_capture_truncated_runs;
+        if (run.ran && run.outcome.temporal_prefix_complete)
+            ++result.summary.temporal_prefix_complete_runs;
     }
 
     // Preserve exact context actually consumed by the concrete traces. Code-hook

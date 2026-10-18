@@ -69,7 +69,7 @@ rax_status analyze_rax(int, uint32_t, uint64_t, const void *, size_t, rax_analys
 
 StaticAnalysisResult analyze(const std::vector<FuncChunk> &chunks, size_t cap,
                              HybridArch architecture = HybridArch::X86_64, bool want_static = true,
-                             bool want_smir = true)
+                             bool want_smir = true, const std::function<bool()> &cancelled = {})
 {
     ProgramImage image;
     image.arch = architecture;
@@ -102,7 +102,7 @@ StaticAnalysisResult analyze(const std::vector<FuncChunk> &chunks, size_t cap,
     RaxApi api;
     api.decode = decode_rax;
     api.analyze = analyze_rax;
-    return hybrid_analyze_current_function(&api, image, function, config);
+    return hybrid_analyze_current_function(&api, image, function, config, cancelled);
 }
 
 void test_large_tail_budget()
@@ -189,6 +189,19 @@ void test_macro_components()
 
 void test_cancellation()
 {
+    fixture = {};
+    fixture.heads = {{0x1000, {}}};
+    size_t callback_polls = 0;
+    const auto callback_result = analyze({{0x1000, 0x1001}}, 100, HybridArch::X86_64, true, true,
+                                         [&]
+                                         {
+                                             ++callback_polls;
+                                             return true;
+                                         });
+    check(callback_result.stats.truncated && callback_result.instructions.empty() &&
+              callback_polls == 1 && fixture.flags_calls == 0 && fixture.decode_calls == 0,
+          "request cancellation callback stops before database traversal");
+
     fixture = {};
     fixture.heads = {{0x1000, {}}};
     fixture.cancel_at_poll = 1;

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstddef>
+#include <functional>
 #include <vector>
 
 #include "emu_driver.hpp"
@@ -13,7 +14,8 @@ namespace chernobog::hybrid
 // Classify only named direct call targets referenced by the selected function.
 // This is a bounded context read, not a database-wide name/function scan; the
 // returned entries are POD and safe to hand to workers.
-std::vector<EmuCallSummary> hybrid_collect_call_summaries(const FuncRange &function,
-                                                          size_t maximum_instruction_heads);
+std::vector<EmuCallSummary>
+hybrid_collect_call_summaries(const FuncRange &function, size_t maximum_instruction_heads,
+                              const std::function<bool()> &cancelled = {});
 
 } // namespace chernobog::hybrid

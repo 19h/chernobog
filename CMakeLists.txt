@@ -728,6 +728,23 @@ if(BUILD_TESTING)
                                                               -Wshadow)
     endif()
     add_test(NAME chernobog.rax_hybrid COMMAND chernobog_hybrid_tests)
+    add_executable(chernobog_analysis_prefix_tests tests/analysis_prefix_tests.cpp
+        src/hybrid/rax_loader.cpp src/hybrid/hybrid_config.cpp src/hybrid/program_model_core.cpp
+        src/hybrid/abi_policy.cpp src/hybrid/call_summary_policy.cpp src/hybrid/decoder_core.cpp
+        src/hybrid/emu_driver.cpp src/hybrid/evidence.cpp src/hybrid/native_read_strings.cpp
+        src/vm/native_region.cpp)
+    target_include_directories(chernobog_analysis_prefix_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${_chernobog_rax_capi}/include")
+    target_link_libraries(chernobog_analysis_prefix_tests PRIVATE chernobog::rax ${_chernobog_thread_libraries})
+    target_compile_features(chernobog_analysis_prefix_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.analysis_prefix COMMAND chernobog_analysis_prefix_tests)
+    set_tests_properties(chernobog.analysis_prefix PROPERTIES TIMEOUT 60)
+    add_executable(chernobog_analysis_sync_fixture tests/analysis_sync_fixture.c)
+    if(MSVC)
+        target_compile_options(chernobog_analysis_sync_fixture PRIVATE /Od)
+    else()
+        target_compile_options(chernobog_analysis_sync_fixture PRIVATE -O0)
+    endif()
 
     add_executable(chernobog_core_tests tests/core_tests.cpp src/ida_analysis/native_classifier.cpp)
     target_include_directories(chernobog_core_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")

@@ -608,23 +608,27 @@ derive_streams(uint64_t context, const std::vector<Run> &identities,
 
 std::vector<RuntimeUseStringCandidate>
 hybrid_consensus_native_read_strings(const TargetEvidence &evidence, size_t minimum_length,
-                                     size_t maximum_length)
+                                     size_t maximum_length, bool admit_call_prefix)
 {
     std::vector<Run> runs;
+    size_t prefix = 0;
     for (const auto &run : evidence.runs)
     {
         const auto &out = run.outcome;
-        if (!run.ran || out.native_region || !out.temporal_observation_available ||
-            !out.temporal_capture_complete || out.temporal_capture_truncated ||
+        if (!hybrid_temporal_run_eligible(run, admit_call_prefix) ||
             !out.memory_observation_available || out.data_trace_filtered ||
             out.data_trace_truncated)
             return {};
         runs.emplace_back(run.provenance.run_id, run.provenance.seed);
+        prefix += !out.temporal_capture_complete;
     }
     // Completed environment models may supply malloc/free semantics. This
     // admits temporal observations, never the model-free proof contract.
-    return derive_streams(evidence.scope.function_start, runs, {&evidence.events}, minimum_length,
-                          maximum_length);
+    auto result = derive_streams(evidence.scope.function_start, runs, {&evidence.events},
+                                 minimum_length, maximum_length);
+    for (auto &candidate : result)
+        candidate.prefix_runs = prefix;
+    return result;
 }
 
 namespace

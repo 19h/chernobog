@@ -26,7 +26,9 @@ enum class UseProducer : uint8_t
 {
     EXECUTED_READ = 0,
     MODELED_ARGUMENT,
-    EXECUTED_READ_STREAM
+    EXECUTED_READ_STREAM,
+    // Text reachable from an argument before an unmodeled callee executes.
+    BOUNDARY_ARGUMENT
 };
 
 inline const char *use_producer_name(UseProducer producer)
@@ -39,6 +41,8 @@ inline const char *use_producer_name(UseProducer producer)
         return "modeled-argument";
     case UseProducer::EXECUTED_READ_STREAM:
         return "executed-read-stream";
+    case UseProducer::BOUNDARY_ARGUMENT:
+        return "call-boundary-argument";
     }
     return "unknown";
 }

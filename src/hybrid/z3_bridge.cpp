@@ -755,6 +755,16 @@ std::vector<RuntimeUseStringCandidate> hybrid_current_use_strings(uint64_t funct
 }
 
 std::vector<RuntimeUseStringCandidate>
+hybrid_current_inspection_use_strings(uint64_t function_start)
+{
+    const auto evidence = registry_evidence(int64_t(get_dbctx_id()));
+    if (!evidence || evidence->scope.function_start != function_start ||
+        !current_identity_matches(*evidence))
+        return {};
+    return hybrid_consensus_use_strings(*evidence, 4, 4096, true);
+}
+
+std::vector<RuntimeUseStringCandidate>
 hybrid_current_use_strings_for_decompilation(uint64_t function_start)
 {
     std::shared_ptr<const TargetEvidence> evidence;

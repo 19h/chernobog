@@ -173,6 +173,9 @@ struct EvidenceSummary
     size_t temporal_observation_available_runs = 0;
     size_t temporal_capture_complete_runs = 0;
     size_t temporal_capture_truncated_runs = 0;
+    size_t temporal_prefix_complete_runs = 0;
+    size_t entry_sites_visited = 0;
+    bool entry_inputs_truncated = false;
 };
 
 enum class IdentityMismatchKind : uint8_t
@@ -279,15 +282,34 @@ struct RuntimeUseStringCandidate
     // it is never inserted into the raw event ledger as a single memory read.
     std::vector<std::vector<UseSnapshot>> read_fragments;
     size_t eligible_runs = 0;
+    size_t prefix_runs = 0;
 };
+
+// One run's admission to a temporal publication corpus.
+inline bool hybrid_temporal_run_eligible(const RunObservation &run, bool admit_call_prefix)
+{
+    const EmuOutcome &out = run.outcome;
+    if (out.native_region || !run.ran || !out.temporal_observation_available ||
+        out.temporal_capture_truncated)
+        return false;
+    if (out.temporal_capture_complete)
+        return true;
+    return admit_call_prefix && out.temporal_prefix_complete && !out.returned && out.stop_valid &&
+           out.stop_reason == RAX_STOP_STOPPED && out.prefix_call_source != 0 &&
+           out.prefix_call_target != 0 && out.stop_pc == out.prefix_call_target &&
+           out.function_boundary != out.unmodeled_external && !out.permission_violation &&
+           !out.cancelled && !out.escaped_image && !out.environment_model_failure &&
+           !out.synthetic_entry_context;
+}
 
 std::vector<RuntimeUseStringCandidate> hybrid_consensus_use_strings(const TargetEvidence &evidence,
                                                                     size_t minimum_length = 4,
-                                                                    size_t maximum_length = 4096);
+                                                                    size_t maximum_length = 4096,
+                                                                    bool admit_call_prefix = false);
 
 std::vector<RuntimeUseStringCandidate>
 hybrid_consensus_native_read_strings(const TargetEvidence &evidence, size_t minimum_length = 4,
-                                     size_t maximum_length = 4096);
+                                     size_t maximum_length = 4096, bool admit_call_prefix = false);
 
 // Separate capture family: never convert a native region to TargetEvidence or
 // set ordinary temporal/proof completeness to admit its observations.

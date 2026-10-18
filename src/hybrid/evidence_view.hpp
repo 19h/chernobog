@@ -16,7 +16,7 @@ struct EvidenceView
     static constexpr size_t lifetime_limit = 128, run_limit = 128, claim_limit = 128;
     static constexpr size_t read_stream_limit = 128, model_binding_limit = 64;
     std::vector<EvidenceViewRow> edges, events, lifetimes, runs, claims;
-    std::vector<EvidenceViewRow> read_streams, model_bindings;
+    std::vector<EvidenceViewRow> read_streams, model_bindings, use_strings;
     std::map<std::string, size_t> omitted;
 };
 
@@ -156,7 +156,24 @@ inline EvidenceView project_evidence_view(const TargetEvidence &source)
                {"captured_size", view_hex(item.bytes.size())},
                {"bytes_hex", view_bytes(item.bytes)},
                {"display_truncated", item.bytes.size() > 64 ? "true" : "false"}});
-    for (const auto &candidate : hybrid_consensus_native_read_strings(source))
+    for (const auto &candidate : hybrid_consensus_use_strings(source, 4, 4096, true))
+        for (const auto &use : candidate.witnesses)
+            bounded(view.use_strings, EvidenceView::read_stream_limit, "use_strings",
+                    {{"kind", "use-string"},
+                     {"truth", "observation"},
+                     {"producer", use_producer_name(use.producer)},
+                     {"value", candidate.value},
+                     {"run", view_hex(use.run_id)},
+                     {"seed", view_hex(use.seed)},
+                     {"sequence", view_hex(use.sequence)},
+                     {"site", view_hex(use.site)},
+                     {"callee", view_hex(use.callee)},
+                     {"argument", std::to_string(use.argument)},
+                     {"prefix_runs", std::to_string(candidate.prefix_runs)},
+                     {"eligible_runs", std::to_string(candidate.eligible_runs)},
+                     {"callee_executed",
+                      use.producer == UseProducer::BOUNDARY_ARGUMENT ? "false" : "unknown"}});
+    for (const auto &candidate : hybrid_consensus_native_read_strings(source, 4, 4096, true))
         for (size_t run = 0; run < candidate.read_fragments.size(); ++run)
         {
             const auto &parts = candidate.read_fragments[run];
@@ -248,6 +265,11 @@ inline EvidenceView project_evidence_view(const TargetEvidence &source)
                  {"memory_observation_available",
                   outcome.memory_observation_available ? "true" : "false"},
                  {"context_complete", outcome.consumed_context_complete ? "true" : "false"},
+                 {"temporal_ledger", outcome.temporal_capture_complete  ? "complete"
+                                     : outcome.temporal_prefix_complete ? "call_prefix"
+                                                                        : "incomplete"},
+                 {"stopped_before_call", view_hex(outcome.prefix_call_target)},
+                 {"call_site", view_hex(outcome.prefix_call_source)},
                  {"temporal_complete", outcome.temporal_capture_complete ? "true" : "false"},
                  {"temporal_truncated", outcome.temporal_capture_truncated ? "true" : "false"}});
     }
@@ -310,8 +332,11 @@ inline std::string evidence_view_json(const TargetEvidence &source, const Eviden
         << ",\"generation\":" << quote(view_hex(source.scope.generation))
         << ",\"function_hash\":" << quote(view_hex(source.scope.function_hash))
         << ",\"image_hash\":" << quote(view_hex(source.scope.image_hash))
-        << ",\"ticket\":" << quote(view_hex(source.scope.ticket)) << ",\"static_truncated\":"
-        << (source.summary.static_analysis_truncated ? "true" : "false");
+        << ",\"ticket\":" << quote(view_hex(source.scope.ticket))
+        << ",\"static_truncated\":" << (source.summary.static_analysis_truncated ? "true" : "false")
+        << ",\"entry_sites_visited\":" << source.summary.entry_sites_visited
+        << ",\"entry_inputs_truncated\":"
+        << (source.summary.entry_inputs_truncated ? "true" : "false");
     const auto rows = [&](const char *name, const std::vector<EvidenceViewRow> &items)
     { inspection_json_rows(out, name, items); };
     rows("edges", view.edges);
@@ -320,6 +345,7 @@ inline std::string evidence_view_json(const TargetEvidence &source, const Eviden
     rows("runs", view.runs);
     rows("claims", view.claims);
     rows("read_streams", view.read_streams);
+    rows("use_strings", view.use_strings);
     rows("model_bindings", view.model_bindings);
     out << ",\"omitted\":{";
     bool first = true;

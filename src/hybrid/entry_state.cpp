@@ -16,6 +16,7 @@
 #include <xref.hpp>
 #include <typeinf.hpp>
 #include <regfinder.hpp>
+#include <kernwin.hpp>
 
 namespace chernobog::hybrid
 {
@@ -203,7 +204,7 @@ HybridAbi hybrid_detect_abi(HybridArch arch)
 }
 
 EntryInputPlan hybrid_build_entry_inputs(HybridArch arch, uint64_t function_start,
-                                         size_t max_inputs)
+                                         size_t max_inputs, const std::function<bool()> &cancelled)
 {
     EntryInputPlan plan;
     plan.abi = hybrid_detect_abi(arch);
@@ -221,6 +222,12 @@ EntryInputPlan hybrid_build_entry_inputs(HybridArch arch, uint64_t function_star
     {
         if (plan.inputs.size() >= max_inputs)
             break;
+        if (plan.sites_visited >= 256 || (cancelled && cancelled()) || user_cancelled())
+        {
+            plan.truncated = true;
+            break;
+        }
+        ++plan.sites_visited;
         if (!xb.iscode || !is_real_call(xb.from))
             continue;
 
