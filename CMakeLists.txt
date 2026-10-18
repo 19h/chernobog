@@ -422,6 +422,8 @@ ida_add_plugin(
     src/ida_analysis/early_hexrays.cpp
     src/ida_analysis/evidence_apply.cpp
     src/vm/warbird/model.cpp
+    src/vm/warbird/imports.cpp
+    src/vm/warbird/pool_model.cpp
     src/vm/warbird/byte_memory.cpp
     src/vm/warbird/key_domain.cpp
     src/vm/warbird/explorer.cpp
@@ -579,8 +581,13 @@ include(CTest)
 if(BUILD_TESTING)
     add_executable(
         chernobog_warbird_tests
-        tests/warbird_tests.cpp src/vm/warbird/model.cpp src/vm/warbird/explorer.cpp
-        src/vm/warbird/key_domain.cpp src/vm/warbird/byte_memory.cpp
+        tests/warbird_tests.cpp
+        src/vm/warbird/model.cpp
+        src/vm/warbird/explorer.cpp
+        src/vm/warbird/key_domain.cpp
+        src/vm/warbird/byte_memory.cpp
+        src/vm/warbird/imports.cpp
+        src/vm/warbird/pool_model.cpp
         src/hybrid/program_model_core.cpp)
     target_include_directories(chernobog_warbird_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_include_directories(chernobog_warbird_tests SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
@@ -589,8 +596,13 @@ if(BUILD_TESTING)
     add_test(NAME chernobog.warbird COMMAND chernobog_warbird_tests)
     add_executable(
         chernobog_warbird_corpus
-        tests/warbird_corpus.cpp src/vm/warbird/model.cpp src/vm/warbird/explorer.cpp
-        src/vm/warbird/key_domain.cpp src/vm/warbird/byte_memory.cpp
+        tests/warbird_corpus.cpp
+        src/vm/warbird/model.cpp
+        src/vm/warbird/explorer.cpp
+        src/vm/warbird/key_domain.cpp
+        src/vm/warbird/byte_memory.cpp
+        src/vm/warbird/imports.cpp
+        src/vm/warbird/pool_model.cpp
         src/hybrid/program_model_core.cpp)
     target_include_directories(chernobog_warbird_corpus PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_include_directories(chernobog_warbird_corpus SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})

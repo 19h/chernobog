@@ -24,6 +24,9 @@ class ByteMemory
     explicit ByteMemory(z3::context &, size_t max_cells = 65536);
     z3::expr read(const z3::expr &address, unsigned bits) const;
     void write(const z3::expr &address, const z3::expr &value, unsigned bits);
+    // Replace exactly a modular byte interval with fresh unconstrained bytes.
+    // Required on allocation/reuse and free; existing contents are not zeros.
+    void havoc(const z3::expr &address, const z3::expr &bytes, const z3::expr &fresh_array);
     z3::expr materialize() const;
     size_t concrete_bytes() const { return cells_->size(); }
     // Collision-free structural identity for conservative state comparison.

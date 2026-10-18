@@ -1,5 +1,6 @@
 #pragma once
 #include "../../hybrid/program_model.hpp"
+#include "imports.hpp"
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -9,7 +10,7 @@
 
 namespace chernobog::warbird
 {
-constexpr uint32_t model_version = 3;
+constexpr uint32_t model_version = 4;
 constexpr size_t context_bytes = 448;
 struct Profile
 {
@@ -49,11 +50,13 @@ struct Admission
     uint64_t image_base = 0;
     std::vector<uint64_t> handlers;
     std::vector<Dependency> dependencies;
+    std::vector<ImportBinding> imports;
     std::string rejection;
     bool valid() const { return profile != nullptr && rejection.empty(); }
 };
 // RVA/byte/permission evidence, never a filename-only or hash-only admission.
 Admission admit(const hybrid::ProgramImage &, uint64_t image_base, const Profile &);
+void bind_imports(const hybrid::ProgramImage &, Admission &, std::vector<ImportBinding>);
 bool dependencies_match(const hybrid::ProgramImage &, const std::vector<Dependency> &);
 
 struct Lease
@@ -94,10 +97,12 @@ struct Report
     size_t key_splits = 0;
     size_t key_queries = 0;
     size_t return_splits = 0;
+    size_t external_calls = 0;
     std::vector<uint64_t> keys;
     std::vector<Edge> edges;
     std::vector<Frontier> frontiers;
     std::vector<Dependency> dependencies;
+    std::vector<ImportBinding> imports;
     bool cancelled = false;
     // Structural exploration is not semantic equivalence or display admission.
     bool exploration_complete() const { return !cancelled && frontiers.empty(); }

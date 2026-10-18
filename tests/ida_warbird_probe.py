@@ -53,6 +53,14 @@ while True:
     time.sleep(0.01)
 assert result.get("pseudocode_eligible") is False, result
 assert result.get("semantic_equivalence_checked") is False, result
+assert result.get("model_version", 0) >= 4, result
+allocation_import = [
+    entry
+    for entry in result["imports"]
+    if entry["module"] == "ntoskrnl.exe" and entry["symbol"] == "ExAllocatePoolWithTag"
+]
+assert len(allocation_import) == 1, allocation_import
+assert allocation_import[0]["loaded_mask"] == 0, allocation_import
 assert result["frontiers"], result
 assert identity() == before, "diagnostic job modified IDB bytes or functions"
 # An IDB notification invalidates the lease even when executable bytes and

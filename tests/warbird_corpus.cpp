@@ -10,7 +10,8 @@
 using namespace chernobog;
 namespace
 {
-hybrid::ProgramImage read_pe(const char *path, uint64_t &base)
+hybrid::ProgramImage read_pe(const char *path, uint64_t &base,
+                             std::vector<warbird::ImportBinding> &imports)
 {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file)
@@ -79,6 +80,14 @@ hybrid::ProgramImage read_pe(const char *path, uint64_t &base)
     for (size_t i = 1; i < image.segs.size(); ++i)
         if (image.segs[i - 1].end > image.segs[i].start)
             throw std::runtime_error("overlapping sections");
+    const auto directories = word(optional + 108, 4);
+    if (directories > 1)
+    {
+        if (optional_size < 128)
+            throw std::runtime_error("truncated import directory entry");
+        imports =
+            warbird::read_pe_imports(image, base, word(optional + 120, 4), word(optional + 124, 4));
+    }
     return image;
 }
 }
@@ -133,10 +142,12 @@ int main(int argc, char **argv)
             if (filter && n != selected)
                 continue;
             uint64_t base = 0;
-            auto image = read_pe(argv[n + 1], base);
+            std::vector<warbird::ImportBinding> imports;
+            auto image = read_pe(argv[n + 1], base, imports);
             auto admission = warbird::admit(image, base, warbird::profiles()[n]);
             if (!admission.valid())
                 throw std::runtime_error(admission.rejection);
+            warbird::bind_imports(image, admission, std::move(imports));
             const auto keys =
                 filter ? std::vector<uint64_t>{selected_key} : warbird::profiles()[n].entry_keys;
             for (auto key : keys)

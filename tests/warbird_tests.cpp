@@ -1,6 +1,7 @@
 #include "vm/warbird/model.hpp"
 #include "vm/warbird/key_domain.hpp"
 #include "vm/warbird/byte_memory.hpp"
+#include "vm/warbird/pool_model.hpp"
 #include <rax.h>
 #include <algorithm>
 #include <cstdlib>
@@ -34,12 +35,13 @@ hybrid::ProgramImage fixture(std::initializer_list<uint8_t> code)
     return image;
 }
 warbird::Report run(const hybrid::ProgramImage &image, uint64_t key = 1,
-                    warbird::Limits limits = {})
+                    warbird::Limits limits = {}, std::vector<warbird::ImportBinding> imports = {})
 {
     static warbird::Profile profile{"fixture", "", 0, 0, 0, 2, {0, 1, 2, 3}, {4, 5}, 4, false, {1}};
     warbird::Admission a;
     a.profile = &profile;
     a.handlers = {0x1000, 0x1000};
+    warbird::bind_imports(image, a, std::move(imports));
     warbird::Lease lease;
     lease.database = 1;
     lease.key = key;
@@ -49,11 +51,172 @@ warbird::Report run(const hybrid::ProgramImage &image, uint64_t key = 1,
 }
 int main()
 {
+    // Import directory parsing uses bounded loaded metadata, never IAT values
+    // as an execution address. Named exports retain case; modules do not.
+    auto imported = fixture({0xff, 0x15, 0xfa, 0x03, 0, 0, 0x31, 0xc0, 0xc3});
+    auto &import_bytes = imported.segs[0].bytes;
+    std::fill(import_bytes.begin() + 0x200, import_bytes.begin() + 0x600, 0);
+    auto field = [&](size_t offset, uint64_t value, unsigned size)
+    {
+        for (unsigned n = 0; n < size; ++n)
+            import_bytes[offset + n] = uint8_t(value >> (n * 8));
+    };
+    auto string = [&](size_t offset, const std::string &value)
+    { std::copy(value.begin(), value.end(), import_bytes.begin() + offset); };
+    field(0x200, 0x300, 4);
+    field(0x20c, 0x500, 4);
+    field(0x210, 0x400, 4);
+    field(0x300, 0x580, 8);
+    field(0x400, 0x580, 8);
+    string(0x500, "NTOSKRNL.EXE");
+    string(0x582, "ExAllocatePoolWithTag");
+    auto imports = warbird::read_pe_imports(imported, 0x1000, 0x200, 40);
+    require(imports.size() == 1 && imports[0].slot == 0x1400 &&
+                imports[0].module == "ntoskrnl.exe" && imports[0].symbol == "ExAllocatePoolWithTag",
+            "PE import identity parsing failed");
+    auto unknown_imports = imports;
+    unknown_imports[0].symbol = "UnmodeledHelper";
+    auto external = run(imported, 1, {}, unknown_imports);
+    require(external.frontiers.size() == 1 &&
+                external.frontiers[0].reason == "external import: ntoskrnl.exe!UnmodeledHelper",
+            "file import-name RVA was treated as executable code");
+    field(0x308, 0x8000000000000011ULL, 8);
+    field(0x408, 0x8000000000000011ULL, 8);
+    imports = warbird::read_pe_imports(imported, 0x1000, 0x200, 40);
+    require(imports.size() == 2 && imports[1].symbol.empty() && imports[1].ordinal == 17,
+            "ordinal import identity lost");
+    field(0x200, 0, 4);
+    require(warbird::read_pe_imports(imported, 0x1000, 0x200, 40) == imports,
+            "missing original lookup table was not handled");
+    auto rejects_imports = [&](auto action, const char *why)
+    {
+        bool rejected = false;
+        try
+        {
+            action();
+        }
+        catch (const std::exception &)
+        {
+            rejected = true;
+        }
+        require(rejected, why);
+    };
+    rejects_imports([&] { warbird::read_pe_imports(imported, 0x1000, 0x200, 20); },
+                    "unterminated import descriptors accepted");
+    rejects_imports([&] { warbird::read_pe_imports(imported, UINT64_MAX, 0x200, 40); },
+                    "overflowing import base accepted");
+    rejects_imports(
+        [&]
+        {
+            auto duplicate = imports;
+            duplicate.push_back(imports[0]);
+            warbird::validate_imports(imported, duplicate);
+        },
+        "duplicate import slot accepted");
+    rejects_imports(
+        [&]
+        {
+            auto overlap = imports;
+            overlap[1].slot = overlap[0].slot + 4;
+            warbird::validate_imports(imported, overlap);
+        },
+        "overlapping import slot accepted");
+    field(0x400, 0x1100, 8);
+    import_bytes[0x100] = 0xc3;
+    auto loaded_helper = run(imported, 1, {}, {imports[0]});
+    require(loaded_helper.exploration_complete() && loaded_helper.edges.size() == 1 &&
+                loaded_helper.edges[0].next == 0,
+            "mapped native helper was replaced by an import model");
+    auto unresolved = imported;
+    unresolved.segs[0].mask[0x400 / 8] = 0;
+    auto unresolved_imports = std::vector<warbird::ImportBinding>{imports[0]};
+    warbird::validate_imports(unresolved, unresolved_imports);
+    require(unresolved_imports[0].loaded_mask == 0 && unresolved_imports[0].snapshot_value == 0,
+            "unloaded IDA import bytes acquired a fabricated pointer");
+    require(unresolved_imports != std::vector<warbird::ImportBinding>{imports[0]},
+            "import byte-availability change did not invalidate identity");
+    const std::vector<uint8_t> pool_call = {
+        0x48, 0x83, 0xec, 0x28, 0xb9, 1,    0, 0, 0, 0xba, 32,   0,    0,    0,    0x41, 0xb8, 0x45,
+        0x50, 0,    0,    0xff, 0x15, 0xe6, 3, 0, 0, 0x48, 0x83, 0xc4, 0x28, 0x31, 0xc0, 0xc3};
+    std::copy(pool_call.begin(), pool_call.end(), unresolved.segs[0].bytes.begin());
+    auto pool_report = run(unresolved, 1, {}, unresolved_imports);
+    require(pool_report.external_calls == 1 && pool_report.edges.size() == 2 &&
+                !pool_report.exploration_complete(),
+            "pool normal outcomes, unresolved binding frontier or native return lost");
+    auto tail_helper = unresolved;
+    const std::vector<uint8_t> native_call = {0xe8, 0xe7, 0, 0, 0, 0x90};
+    std::copy(native_call.begin(), native_call.end(), tail_helper.segs[0].bytes.begin() + 20);
+    const std::vector<uint8_t> native_tail = {0xff, 0x25, 0xfa, 2, 0, 0};
+    std::copy(native_tail.begin(), native_tail.end(), tail_helper.segs[0].bytes.begin() + 0x100);
+    const auto tail_report = run(tail_helper, 1, {}, unresolved_imports);
+    require(tail_report.external_calls == 1 && tail_report.edges.size() == 2,
+            "external tail call lost its native caller return");
+    auto alloc_free = unresolved;
+    const std::vector<uint8_t> pool_lifetime = {
+        0x48, 0x83, 0xec, 0x28, 0xb9, 1,    0,    0,    0,    0xba, 32,   0,    0,
+        0,    0x41, 0xb8, 0x45, 0x50, 0,    0,    0xff, 0x15, 0xe6, 3,    0,    0,
+        0x48, 0x85, 0xc0, 0x74, 0x0e, 0x48, 0x89, 0xc1, 0xba, 0x45, 0x50, 0,    0,
+        0xff, 0x15, 0xdb, 3,    0,    0,    0x48, 0x83, 0xc4, 0x28, 0x31, 0xc0, 0xc3};
+    std::copy(pool_lifetime.begin(), pool_lifetime.end(), alloc_free.segs[0].bytes.begin());
+    alloc_free.segs[0].mask[0x408 / 8] = 0;
+    const auto lifetime_report = run(alloc_free, 1, {},
+                                     {{0x1400, "ntoskrnl.exe", "ExAllocatePoolWithTag", 0},
+                                      {0x1408, "ntoskrnl.exe", "ExFreePoolWithTag", 0}});
+    require(lifetime_report.external_calls == 2 && lifetime_report.edges.size() == 2 &&
+                std::none_of(lifetime_report.frontiers.begin(), lifetime_report.frontiers.end(),
+                             [](const auto &f)
+                             { return f.reason.find("no matching live") != std::string::npos; }),
+            "native allocate/free paths lost lifetime, tag or void-return semantics");
+    field(0x400, UINT64_MAX - 10, 8);
+    rejects_imports([&] { warbird::read_pe_imports(imported, 0x1000, 0x200, 40); },
+                    "bound IAT was parsed as a lookup table");
     // Finite covers are exhaustive, including a proof beyond the last model.
     z3::context context;
     auto x = context.bv_const("key_input", 64);
     auto choice = context.bool_const("choice");
     auto numeral = [&](uint64_t n) { return context.bv_val(n, 64); };
+    auto satisfiable = [&](const z3::expr &expression)
+    {
+        z3::solver solver(context);
+        solver.add(expression);
+        return solver.check() == z3::sat;
+    };
+    const auto allocation =
+        warbird::pool_allocate({}, numeral(1), numeral(24), numeral(0x5045), numeral(0x10000));
+    require(allocation.size() == 3 && satisfiable(allocation[1].condition) &&
+                satisfiable(allocation[2].condition) && !satisfiable(allocation[0].condition),
+            "pool allocation lost failure or success outcome");
+    const auto &live_pool = allocation[2].state;
+    auto overlapping = warbird::pool_allocate(live_pool, numeral(1), numeral(24), numeral(0x5045),
+                                              numeral(0x10010));
+    require(!satisfiable(overlapping[2].condition), "overlapping live pool allocation accepted");
+    auto freed = warbird::pool_free(live_pool, numeral(0x10000), numeral(0x5045), x);
+    require(freed.size() == 2 && satisfiable(freed[0].condition) &&
+                !freed[0].state.blocks[0].live && !satisfiable(freed[1].condition),
+            "pool free lost base/tag/lifetime relation");
+    auto double_free = warbird::pool_free(freed[0].state, numeral(0x10000), numeral(0x5045), x);
+    require(double_free.size() == 1 && !double_free[0].frontier.empty() &&
+                satisfiable(double_free[0].condition),
+            "double free was accepted");
+    auto wrong_tag = warbird::pool_free(live_pool, numeral(0x10000), numeral(0x5046), x);
+    require(!satisfiable(wrong_tag[0].condition) && satisfiable(wrong_tag[1].condition),
+            "wrong pool tag was accepted");
+    auto reuse = warbird::pool_allocate(freed[0].state, numeral(1), numeral(24), numeral(0x5045),
+                                        numeral(0x10000));
+    require(satisfiable(reuse[2].condition), "freed pool address could not be reused");
+    for (auto type : {0u, 1u, 512u, 17u})
+        for (auto size : {0u, 1u, 16u, 32u, 4095u, 4096u, 4097u})
+            for (auto pointer : {0u, 0x10000u, 0x10010u, 0x10ff0u})
+            {
+                auto candidate = warbird::pool_allocate({}, numeral(type), numeral(size),
+                                                        numeral(1), numeral(pointer));
+                bool expected =
+                    (type == 0 || type == 1 || type == 512) && size != 0 && pointer != 0 &&
+                    (pointer & 15) == 0 &&
+                    (size >= 4096 ? (pointer & 4095) == 0 : (pointer & 4095) + size <= 4096);
+                require(satisfiable(candidate[2].condition) == expected,
+                        "pool alignment/type/size boundary mismatch");
+            }
     auto finite = warbird::resolve_key_domain(z3::ite(choice, numeral(7), numeral(11)),
                                               context.bool_val(true));
     require(finite.complete() && finite.values == std::vector<uint64_t>({7, 11}) &&
@@ -134,6 +297,25 @@ int main()
     wrapped.write(numeral(UINT64_MAX), context.bv_val(0x1234, 16), 16);
     require(wrapped.read(numeral(0), 8).is_numeral_u64(retained) && retained == 0x12,
             "byte address wrap changed little-endian order");
+    warbird::ByteMemory reused(context);
+    reused.write(numeral(0x4000), numeral(0x1122334455667788), 64);
+    const auto before_havoc = reused;
+    auto fresh_bytes = context.constant(
+        "fresh_pool_bytes", context.array_sort(context.bv_sort(64), context.bv_sort(8)));
+    reused.havoc(numeral(0x4002), numeral(2), fresh_bytes);
+    auto expected_fresh = z3::concat(z3::select(fresh_bytes, numeral(0x4003)),
+                                     z3::select(fresh_bytes, numeral(0x4002)));
+    require(!satisfiable(reused.read(numeral(0x4002), 16) != expected_fresh) &&
+                !satisfiable(reused.read(numeral(0x4004), 32) != context.bv_val(0x11223344, 32)) &&
+                satisfiable(reused.read(numeral(0x4002), 16) != context.bv_val(0, 16)),
+            "pool reuse lost fresh bytes or changed bytes outside allocation");
+    require(before_havoc.read(numeral(0x4000), 64).is_numeral_u64(retained) &&
+                retained == 0x1122334455667788ULL,
+            "range havoc changed another memory fork");
+    auto symbolic_havoc = before_havoc;
+    symbolic_havoc.havoc(x, numeral(1), fresh_bytes);
+    require(!satisfiable(symbolic_havoc.read(x, 8) != z3::select(fresh_bytes, x)),
+            "symbolic range havoc did not freshen addressed byte");
     auto conditional =
         fixture({0x83, 0xfa, 1, 0x75, 0x13, 0x48, 0x83, 0x39, 0,    0xb8, 0,    0,    0,   0,
                  0xba, 2,    0, 0,    0,    0x48, 0x0f, 0x45, 0xc2, 0xc3, 0x31, 0xc0, 0xc3});
@@ -151,6 +333,11 @@ int main()
     auto r = run(zero);
     require(r.exploration_complete() && r.edges.size() == 1 && r.edges[0].next == 0,
             "zero-key return must terminate");
+    const auto aligned_entry =
+        run(fixture({0x48, 0x89, 0xe0, 0x83, 0xe0, 15, 0x83, 0xf0, 8, 0xc3}));
+    require(aligned_entry.exploration_complete() && aligned_entry.edges.size() == 1 &&
+                aligned_entry.edges[0].next == 0,
+            "Win64 handler entry stack alignment violated");
     r = run(zero, 0);
     require(r.exploration_complete() && r.instructions == 0,
             "zero entry must not dispatch table slot zero");

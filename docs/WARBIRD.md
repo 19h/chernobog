@@ -53,7 +53,9 @@ No ordinary return is assumed from an unknown return address.
 
 The symbolic scalar interpreter now covers ADC/SBB, rotate through carry, and
 complete AX results from byte MUL/IMUL. Unselected flag updates are preserved.
-The semantic model version is 2, independent of the scalar SMIR ABI version.
+The scalar interpreter also covers BT/BTS/BTR/BTC, including memory operands
+exported by RAX as ordered loads, updates and flag operations. The semantic
+model version is 4, independent of the scalar SMIR ABI version.
 
 The optional scalar SMIR ABI is versioned and pointer-free. Unsupported operations
 and insufficient capacity publish no executable prefix. It retains instruction
@@ -76,8 +78,8 @@ chernobog_warbird_cancel()
 
 Only one job can run per IDA process. Workers own immutable snapshots and no
 IDA objects. Any IDB notification cancels the session and invalidates retained
-results. Polling rechecks image identity, image base, revision, and exact bytes
-and permissions. Closing a database cancels and joins its worker. There are no
+results. Polling rechecks image identity, image base, revision, exact bytes and
+permissions, and canonical import identities and byte-availability masks. Closing a database cancels and joins its worker. There are no
 patches, new segments, function merges, comments, or persisted local types.
 
 Snapshots are limited to 64 MiB before allocation. The exploration limits are 4096 states, 65536 instructions, 1000000 SMIR operations, a
@@ -157,3 +159,92 @@ across entries; it does not establish complete recovery for any entry. The
 initial evidence remains unchanged. Native `BTC` instructions at CI RVAs
 `0x79de6` and `0xa80bd` are verified candidates for the next scalar-bridge
 extension. Native import/helper models and loop summaries remain required.
+
+## Model 3 validation scope
+
+The scalar bridge exports BT/BTS/BTR/BTC without changing the SMIR record
+layout. Locked memory forms remain unsupported and publish no prefix. Nineteen
+controlled native programs are each compared against direct RAX interpretation
+for 1024 deterministic inputs and seven boundary inputs (19589 comparisons).
+The new controls cover 16/32/64-bit register behavior, memory updates, negative
+memory bit indices, and carry flags.
+
+The full 26-test CTest suite, 65 RAX C API tests, C/C++ API examples, and enabled
+and disabled IDA probes pass. The IDA probes confirm byte/function preservation
+and invalidation after a comment-only change. The 5 s per-entry corpus sweep
+has no scalar-lift-unavailable frontier; all eleven entries remain incomplete.
+Timed key counts are workload-sensitive and are not a performance comparison.
+Exact source hashes and reports are recorded in
+`docs/evidence/warbird-model3.json` and `docs/evidence/warbird-model3.jsonl`.
+
+The next verified boundary is import resolution. PEAuth's file IAT contains
+import-name RVAs, including `0x41556` for `ExAllocatePoolWithTag`. Executing these
+as native addresses would be incorrect. Import metadata and external effects
+must be modeled explicitly before recovery can pass that boundary.
+
+## Model 4: import identity and bounded pool effects
+
+Import records contain the IAT slot, canonical module, case-sensitive export or
+ordinal, and an eight-bit availability mask with the available pointer bytes.
+The IDA main thread captures and rechecks these records. IDA deliberately leaves
+these corpus IAT slots unloaded; their names remain available. Missing pointer
+bytes are never fabricated. The PE development reader instead parses bounded
+import descriptors and lookup tables, with ordinal, overflow, missing-terminator,
+name-length, and overlapping-slot checks. IDA's `ntoskrnl` module spelling is
+normalized to `ntoskrnl.exe`. Other unknown imports remain explicit frontiers.
+A possible IAT write invalidates import use on that path. Loaded immutable local
+helper code remains eligible for native exploration.
+
+The initial pool relation covers the following normal returns. Every modeled
+call also retains a frontier for unresolved runtime binding, IRQL, and external
+kernel effects. These relations are diagnostic assumptions, not checked helper
+summaries or authority to replace calls in recovered pseudocode.
+
+| Import | Normal-return relation | Retained boundaries |
+| --- | --- | --- |
+| ExAllocatePoolWithTag | Failure returns zero; success returns a fresh symbolic, aligned, non-wrapping region disjoint from live allocations and the image/private regions | Only base pool types 0, 1, 512; unsupported flags, zero size/tag, and environment effects remain frontiers |
+| ExFreePoolWithTag | Match a live allocation's exact base and 32-bit tag; retire its lifetime; leave the void return register unconstrained | Unknown pointers, wrong tags, repeated free, and environment effects remain frontiers |
+
+Allocation and free replace the affected byte interval with fresh symbolic
+contents. Address reuse is possible after free. No allocator zero-fill is
+assumed. The model preserves nonvolatile integer registers, invalidates volatile
+integer registers and flags, invalidates the 32-byte Win64 home area, and checks
+saved return addresses through the existing native-return path. IAT memory calls and
+native helpers ending in an IAT memory tail jump share that return path. Handler
+entry RSP is eight modulo sixteen. Floating-point/vector state, pool flags,
+exception paths, full lifetime-aware memory fault checks, and kernel-global
+effects remain unsupported; `memory_faults_checked` stays false.
+
+The pool state retains at most 64 allocation generations per path. Allocation
+cost is O(L), and free outcome construction is O(L^2) because each candidate
+copies up to L lifetime records, where L <= 64. Import canonicalization and
+sorting cost O(B + N log N), with N <= 4096 and at most 512 bytes per name.
+Range replacement builds a symbolic array expression after O(M) materialization
+of the current concrete-byte overlay; it does not allocate the guest region.
+
+Additional assumptions and falsification probes:
+
+| ID | Assumption or boundary | Probe and disposition |
+| --- | --- | --- |
+| A9 | Import bytes are loaded whenever import names exist | Falsified by the IDA corpus; preserve availability masks and revalidate names and bytes |
+| A10 | A declaration identifies the actual runtime helper | Unproven; retain a binding/environment frontier on every modeled call |
+| A11 | Allocation returns initialized zeros or a permanent unique address | Rejected; fresh-array controls permit nonzero bytes and reuse after free |
+| A12 | Pool ownership and ordinary returns suffice for memory-fault equivalence | Rejected; unknown frees, unsupported flags and unverified fault behavior remain boundaries |
+| A13 | Handler entry stack is sixteen-byte aligned | Falsified by the Win64 call convention; regression requires entry RSP modulo 16 = 8 |
+
+The new controls exercise 112 pool type/size/alignment combinations, live-region
+overlap, free tag/lifetime checks, address reuse, exact and symbolic byte-range
+replacement, unresolved IAT bytes, and native call/tail-call/allocate-free
+sequences. They supplement the 19589 direct native-handler comparisons; they
+are not whole-corpus or kernel-execution equivalence evidence.
+
+Primary API/ABI references:
+
+- [ExAllocatePoolWithTag](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-exallocatepoolwithtag)
+- [ExFreePoolWithTag](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-exfreepoolwithtag)
+- [POOL_TYPE](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ne-wdm-_pool_type)
+- [Microsoft x64 calling convention](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention)
+
+Exact model-4 sources, test results, and the bounded eleven-entry corpus sweep
+are recorded separately in `docs/evidence/warbird-model4.json` and
+`docs/evidence/warbird-model4.jsonl`. Historical evidence remains unchanged.

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 
 namespace chernobog::warbird
 {
@@ -152,6 +153,24 @@ bool dependencies_match(const hybrid::ProgramImage &image, const std::vector<Dep
     }
     return true;
 }
+void bind_imports(const hybrid::ProgramImage &image, Admission &admission,
+                  std::vector<ImportBinding> imports)
+{
+    if (!admission.valid())
+        throw std::runtime_error("imports require valid profile admission");
+    validate_imports(image, imports);
+    auto dependencies = admission.dependencies;
+    for (const auto &i : imports)
+    {
+        for (unsigned n = 0; n < 8; ++n)
+            if (i.loaded_mask & (1u << n))
+                dependencies.push_back({i.slot + n,
+                                        image.segment_at(i.slot)->perm,
+                                        {uint8_t(i.snapshot_value >> (n * 8))}});
+    }
+    admission.dependencies = std::move(dependencies);
+    admission.imports = std::move(imports);
+}
 bool Lease::matches(const Lease &o) const
 {
     return database >= 0 && database == o.database && generation == o.generation &&
@@ -181,12 +200,25 @@ std::string Report::json() const
       << (cancelled ? "true" : "false") << ",\"states\":" << states
       << ",\"instructions\":" << instructions << ",\"operations\":" << operations
       << ",\"key_splits\":" << key_splits << ",\"key_queries\":" << key_queries
-      << ",\"return_splits\":" << return_splits << ",\"keys\":[";
+      << ",\"return_splits\":" << return_splits << ",\"external_calls\":" << external_calls
+      << ",\"keys\":[";
     for (size_t i = 0; i < keys.size(); ++i)
     {
         if (i)
             s << ',';
         s << inspection_json_quote(hex(keys[i]));
+    }
+    s << "],\"imports\":[";
+    for (size_t i = 0; i < imports.size(); ++i)
+    {
+        if (i)
+            s << ',';
+        const auto &binding = imports[i];
+        s << "{\"slot\":" << inspection_json_quote(hex(binding.slot))
+          << ",\"module\":" << inspection_json_quote(binding.module)
+          << ",\"symbol\":" << inspection_json_quote(binding.symbol)
+          << ",\"ordinal\":" << binding.ordinal
+          << ",\"loaded_mask\":" << unsigned(binding.loaded_mask) << '}';
     }
     s << "],\"edges\":[";
     for (size_t i = 0; i < edges.size(); ++i)

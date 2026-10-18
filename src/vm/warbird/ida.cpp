@@ -9,12 +9,14 @@
 #include <idp.hpp>
 #include <kernwin.hpp>
 #include <loader.hpp>
+#include <nalt.hpp>
 #include "../../common/warn_on.h"
 #include <charconv>
 #include <future>
 #include <map>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 
 namespace chernobog::warbird
 {
@@ -59,6 +61,53 @@ bool active()
             s->future.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
             return true;
     return false;
+}
+struct ImportCapture
+{
+    std::vector<ImportBinding> bindings;
+    std::string module;
+    bool failed = false;
+};
+int idaapi capture_import(ea_t ea, const char *name, uval_t ordinal, void *opaque)
+{
+    auto &capture = *static_cast<ImportCapture *>(opaque);
+    try
+    {
+        if (capture.bindings.size() >= 4096)
+            throw std::runtime_error("import count quota");
+        size_t length = 0;
+        if (name)
+            while (length <= 512 && name[length])
+                ++length;
+        capture.bindings.push_back(
+            {ea, capture.module, name ? std::string(name, length) : "", ordinal});
+        return 1;
+    }
+    catch (...)
+    {
+        capture.failed = true;
+        return 0;
+    }
+}
+std::vector<ImportBinding> capture_imports(const hybrid::ProgramImage &image)
+{
+    if (!is_main_thread())
+        throw std::runtime_error("import capture requires main thread");
+    const auto count = get_import_module_qty();
+    if (count > 256)
+        throw std::runtime_error("import module quota");
+    ImportCapture capture;
+    for (unsigned n = 0; n < count; ++n)
+    {
+        qstring module;
+        if (!get_import_module_name(&module, int(n)) || module.empty() || module.length() > 512)
+            throw std::runtime_error("invalid import module name");
+        capture.module = module.c_str();
+        if (enum_import_names(int(n), capture_import, &capture) != 1 || capture.failed)
+            throw std::runtime_error("import enumeration incomplete");
+    }
+    validate_imports(image, capture.bindings);
+    return std::move(capture.bindings);
 }
 }
 void install(int64_t database)
@@ -115,6 +164,7 @@ try
     auto admission = admit(*image, get_imagebase(), profiles()[profile]);
     if (!admission.valid())
         return error(admission.rejection);
+    bind_imports(*image, admission, capture_imports(*image));
     Lease lease;
     lease.database = s->database;
     lease.generation = image->generation;
@@ -156,7 +206,7 @@ try
         return s->result = error("freshness snapshot incomplete");
     if (report.lease.database != s->database || report.lease.revision != s->revision ||
         report.lease.base != get_imagebase() || report.lease.image_hash != now.content_hash ||
-        !dependencies_match(now, report.dependencies))
+        !dependencies_match(now, report.dependencies) || report.imports != capture_imports(now))
         return s->result = error("stale result discarded");
     return s->result = report.json();
 }

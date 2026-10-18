@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "status": "partial; goal remains active",
+  "semantic_model_version": 4,
+  "baseline_revision": "4228825f2543",
+  "rax_revision": "9bdd0964c8d5886661e6dfc6d8b14975a3a95334",
+  "source_sha256": {
+    "CMakeLists.txt": "89dc0075b9c6e4e3923f483e6be0d32ea3c4e787afb0fe3e154bd19d936d3822",
+    "src/vm/warbird/model.cpp": "ce0782e1c8bde788a4499cebeec5cf86217b237b76cfd8c0fc8d75d57a5301b6",
+    "src/vm/warbird/model.hpp": "288afaf132ed0f030bd6d9a12782556c75276eef462a21a15cba9ef54b88481e",
+    "src/vm/warbird/explorer.cpp": "2e82955444d3f4ce185afc292bad1cfc856d617e18197f0ae42fe37782caf32c",
+    "src/vm/warbird/ida.cpp": "658a88990f236548de9cf3aac1cf4d60b5feb199444cc497487c22dce700937b",
+    "src/vm/warbird/imports.cpp": "37c39e63ddb1e0630970c99fc87f268cd9d8e6e3116fb8429ce6fd986b347a0f",
+    "src/vm/warbird/imports.hpp": "b49cf51ecf2014abf2359bd5d55bd700f2cb4468e3ac92b9b848cb96cc21f840",
+    "src/vm/warbird/pool_model.cpp": "7f6eb1eaf88a7fed90a2d5017f71e1ab1e441ccf251948393cb5c4cc4b0e1b66",
+    "src/vm/warbird/pool_model.hpp": "7103341cd9a0eea334a1b332b586ead1464543bf3294f9e68545fe83f922f9e1",
+    "src/vm/warbird/byte_memory.cpp": "7e5bce18aecd8f287fc0b26118f1b6b70ab524321d9d032af38cff77cf37c88f",
+    "src/vm/warbird/byte_memory.hpp": "7d56a3a1fbf88736f786b546849c63f378824e66facde7fc1d0d34e8cd60d765",
+    "src/vm/warbird/key_domain.cpp": "8f78a6a11a0613ffd24f5b99f66f8f61d899e65bcc8f6ca9c6059f6d97386dcd",
+    "src/vm/warbird/key_domain.hpp": "179c231008f631c81a63d92fc6b33d6faf7a71326cd7af33aef47b3fa9eeb327",
+    "tests/warbird_tests.cpp": "961bc1c5f66ea854576ad575b921589e611af79e5d647dea02515e33544187cc",
+    "tests/warbird_corpus.cpp": "22ee1b639d54adc84652baa58ab32b32ff654bfc51e2bb84a30976b2af74cacf",
+    "tests/ida_warbird_probe.py": "f66c9bf26474cf3a5351f08bdf58809f86bb375b8caa9a9149df78850815c61a"
+  },
+  "reports": {
+    "path": "docs/evidence/warbird-model4.jsonl",
+    "sha256": "bed62f5429ad959e6b05a529bf06fa280b427166db9e7eb25c746695213480ab"
+  },
+  "tested_plugin_sha256": "8abffe934504962c733e35291767d2bbb71ca89561bf5c6147b0290fe721d6df",
+  "checks": {
+    "ctest_passed": 26,
+    "direct_native_handler_comparisons": 19589,
+    "native_programs": 19,
+    "deterministic_inputs_per_program": 1024,
+    "boundary_inputs_per_program": 7,
+    "pool_type_size_alignment_cases": 112,
+    "pool_controls": [
+      "failure and success",
+      "live allocation overlap",
+      "base/tag free",
+      "double free",
+      "address reuse",
+      "native IAT call",
+      "native helper tail jump",
+      "allocate/free sequence",
+      "fresh-byte range and fork preservation",
+      "symbolic range replacement",
+      "Win64 handler entry stack alignment"
+    ],
+    "import_controls": [
+      "named and ordinal",
+      "lookup fallback",
+      "unterminated and overflowing descriptors",
+      "overlapping slots",
+      "unloaded pointer availability",
+      "loaded native helper precedence"
+    ],
+    "kernel_api_execution_checked": false,
+    "ida": {
+      "enabled": {
+        "input_sha256": "0f0b00d3287c4f6003f7a9898c62b318e265e8744b55ca3cda0149a2502a2d01",
+        "plugin_sha256": "8abffe934504962c733e35291767d2bbb71ca89561bf5c6147b0290fe721d6df",
+        "script_sha256": "f66c9bf26474cf3a5351f08bdf58809f86bb375b8caa9a9149df78850815c61a",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": true
+      },
+      "disabled": {
+        "input_sha256": "0f0b00d3287c4f6003f7a9898c62b318e265e8744b55ca3cda0149a2502a2d01",
+        "plugin_sha256": "8abffe934504962c733e35291767d2bbb71ca89561bf5c6147b0290fe721d6df",
+        "script_sha256": "f66c9bf26474cf3a5351f08bdf58809f86bb375b8caa9a9149df78850815c61a",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": false
+      }
+    }
+  },
+  "corpus_summary": {
+    "entry_count": 11,
+    "complete_entries": 0,
+    "entrywise_key_count_sum": 288,
+    "external_calls_observed": 3,
+    "frontier_reasons": {
+      "possible nonlocal native return": 51,
+      "next key domain solver did not prove completeness": 11,
+      "unexplored queued state": 115,
+      "max. steps exceeded": 5,
+      "mutable dispatch table may have been overwritten": 1,
+      "pool runtime binding, IRQL and kernel effects unverified": 3,
+      "pool free has no matching live base and tag": 1,
+      "resource quota": 1,
+      "RAX full scalar lift unavailable": 1,
+      "unsupported pool type, flags or zero-sized/tagged allocation": 1
+    }
+  },
+  "limitations": [
+    "normal pool relation only; runtime binding, IRQL and kernel effects remain frontiers",
+    "no checked pseudocode or memory-fault equivalence",
+    "timed key counts are not a performance comparison"
+  ]
+}

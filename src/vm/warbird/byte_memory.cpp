@@ -96,6 +96,21 @@ z3::expr ByteMemory::materialize() const
         result = z3::store(result, ctx.bv_val(address, 64), value);
     return result;
 }
+void ByteMemory::havoc(const z3::expr &address, const z3::expr &bytes, const z3::expr &fresh_array)
+{
+    validate(address, 8);
+    validate(bytes, 8);
+    auto &ctx = base_.ctx();
+    if (&address.ctx() != &ctx || &bytes.ctx() != &ctx || &fresh_array.ctx() != &ctx ||
+        !Z3_is_eq_sort(ctx, fresh_array.get_sort(), base_.get_sort()))
+        throw std::invalid_argument("invalid byte memory havoc");
+    auto index = ctx.bv_const("havoc_index", 64);
+    auto next =
+        z3::lambda(index, z3::ite(z3::ult(index - address, bytes), z3::select(fresh_array, index),
+                                  z3::select(materialize(), index)));
+    base_ = std::move(next);
+    cells_ = std::make_shared<Cells>();
+}
 void ByteMemory::append_identity(std::vector<unsigned> &out) const
 {
     out.push_back(base_.id());

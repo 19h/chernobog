@@ -1,6 +1,7 @@
 #include "model.hpp"
 #include "key_domain.hpp"
 #include "byte_memory.hpp"
+#include "pool_model.hpp"
 #include <rax.h>
 #include <z3++.h>
 #include <algorithm>
@@ -14,7 +15,9 @@ namespace chernobog::warbird
 namespace
 {
 constexpr uint64_t context_base = 0x10000000000ULL;
-constexpr uint64_t native_stack = 0x20000010000ULL;
+// Win64 function entry follows a pushed 8-byte return address. Call-site
+// alignment is 16 bytes; the callee entry RSP is therefore 8 modulo 16.
+constexpr uint64_t native_stack = 0x20000010008ULL;
 constexpr uint64_t virtual_stack = 0x30000010000ULL;
 constexpr uint64_t return_sentinel = 0xfffffffffffff00dULL;
 std::atomic_flag running = ATOMIC_FLAG_INIT;
@@ -36,10 +39,12 @@ struct State
 {
     uint64_t key = 0, pc = 0;
     bool table_unchanged = true;
+    bool imports_unchanged = true;
     std::vector<z3::expr> registers;
     std::vector<z3::expr> temporary;
     std::vector<z3::expr> flags;
     ByteMemory memory;
+    PoolState pool;
     z3::expr domain;
     std::vector<uint64_t> calls;
     explicit State(z3::context &c) : memory(c), domain(c.bool_val(true))
@@ -139,6 +144,8 @@ class Explorer
         const bool concrete = number(at, n);
         const uint64_t table_start = admission.image_base + admission.profile->table_rva;
         const uint64_t table_end = table_start + admission.profile->table_count * 8;
+        if (!concrete && !admission.imports.empty())
+            s.imports_unchanged = false;
         if (!concrete && image.writable(table_start))
             s.table_unchanged = false;
         if (concrete)
@@ -149,6 +156,9 @@ class Explorer
                     throw std::runtime_error("write to immutable image");
                 if (image.writable(table_start) && address >= table_start && address < table_end)
                     s.table_unchanged = false;
+                for (const auto &binding : admission.imports)
+                    if (address >= binding.slot && address - binding.slot < 8)
+                        s.imports_unchanged = false;
             }
         value = resize(value, width);
         s.memory.write(at, value, width);
@@ -539,6 +549,133 @@ class Explorer
             .first->second;
     }
 
+    bool return_from_native(State &s, const z3::expr &native_return, std::deque<State> &work)
+    {
+        uint64_t returned = 0;
+        const auto expected = s.calls.empty() ? return_sentinel : s.calls.back();
+        if (!number(native_return, returned) || returned != expected)
+        {
+            // A symbolic write may overlap the saved return address.
+            // Retain that nonlocal-return frontier, but do not discard
+            // the separately guarded ordinary-return continuation.
+            const auto normal = native_return == bv(expected);
+            if (feasible((s.domain && !normal).simplify(simplify_params)))
+                frontier(s, "possible nonlocal native return");
+            s.domain = (s.domain && normal).simplify(simplify_params);
+            if (!feasible(s.domain))
+                return false;
+            ++report.return_splits;
+        }
+        if (!s.calls.empty())
+        {
+            s.pc = s.calls.back();
+            s.calls.pop_back();
+            return true;
+        }
+        const auto key_expression = s.registers[0].simplify(simplify_params);
+        const auto choices = resolve_key_domain(key_expression, s.domain);
+        report.key_queries += choices.queries;
+        if (choices.status == KeyDomainStatus::UNSATISFIABLE)
+            return false;
+        if (!choices.complete())
+            throw std::runtime_error(choices.status == KeyDomainStatus::VALUE_LIMIT
+                                         ? "next key set exceeds exhaustive value limit"
+                                         : "next key domain solver did not prove completeness");
+        if (choices.values.size() > 1)
+            ++report.key_splits;
+        for (const auto next : choices.values)
+        {
+            State successor = s;
+            successor.domain = (s.domain && key_expression == bv(next)).simplify(simplify_params);
+            if (!feasible(successor.domain))
+                continue;
+            report.edges.push_back(
+                {s.key, next, s.pc,
+                 successor.domain.is_true() ? "true" : "symbolic path condition (not serialized)"});
+            if (next != 0)
+            {
+                enter(successor, next);
+                work.push_back(std::move(successor));
+            }
+        }
+        return false;
+    }
+
+    void external(State &s, const ImportBinding &binding, const rax_smir_instruction &instruction,
+                  std::deque<State> &work)
+    {
+        if (binding.module != "ntoskrnl.exe" ||
+            (binding.symbol != "ExAllocatePoolWithTag" && binding.symbol != "ExFreePoolWithTag"))
+            throw std::runtime_error("external import: " + binding.module + "!" + binding.symbol);
+        ++report.external_calls;
+        // A declared import does not prove the runtime target, execution IRQL,
+        // or kernel-global effects. Retain that boundary even while exploring
+        // the separately modeled normal return relation.
+        frontier(s, "pool runtime binding, IRQL and kernel effects unverified");
+        const bool allocate = binding.symbol == "ExAllocatePoolWithTag";
+        auto outcomes =
+            allocate ? pool_allocate(s.pool, resize(resize(s.registers[1], 32), 64), s.registers[2],
+                                     resize(resize(s.registers[8], 32), 64), fresh())
+                     : pool_free(s.pool, s.registers[1], resize(resize(s.registers[2], 32), 64),
+                                 fresh());
+        const bool call = instruction.flow == 8;
+        auto callee_sp = (s.registers[4] - bv(call ? 8 : 0)).simplify(simplify_params);
+        if (call)
+        {
+            if (s.calls.size() >= limits.call_depth)
+                throw std::runtime_error("native call depth quota");
+            store(s, callee_sp, bv(instruction.fallthrough), 64);
+            s.calls.push_back(instruction.fallthrough);
+        }
+        for (auto &outcome : outcomes)
+        {
+            State next = s;
+            next.domain = (s.domain && outcome.condition).simplify(simplify_params);
+            if (!outcome.frontier.empty())
+            {
+                if (feasible(next.domain))
+                    frontier(next, outcome.frontier);
+                continue;
+            }
+            if (outcome.changed_region && allocate)
+            {
+                const auto &block = outcome.state.blocks[*outcome.changed_region];
+                const auto end = block.address + block.bytes;
+                for (const auto &segment : image.segs)
+                    next.domain = next.domain && (z3::ule(end, bv(segment.start)) ||
+                                                  z3::uge(block.address, bv(segment.end)));
+                for (uint64_t reserved : {context_base, native_stack, virtual_stack})
+                    next.domain = next.domain && (z3::ule(end, bv(reserved - 0x10000)) ||
+                                                  z3::uge(block.address, bv(reserved + 0x10000)));
+            }
+            next.domain = next.domain.simplify(simplify_params);
+            if (!feasible(next.domain))
+                continue;
+            if (outcome.changed_region)
+            {
+                const auto &block = outcome.state.blocks[*outcome.changed_region];
+                const auto name = "pool_bytes_" + std::to_string(symbolic_serial++);
+                const auto bytes =
+                    ctx.constant(name.c_str(), ctx.array_sort(ctx.bv_sort(64), ctx.bv_sort(8)));
+                next.memory.havoc(block.address, block.bytes, bytes);
+            }
+            next.pool = std::move(outcome.state);
+            // The Win64 home area belongs to the callee. Preserve no values
+            // there or in volatile integer registers/flags across this call.
+            for (unsigned offset = 8; offset <= 32; offset += 8)
+                store(next, callee_sp + bv(offset), fresh(), 64);
+            for (unsigned reg : {0u, 1u, 2u, 8u, 9u, 10u, 11u})
+                next.registers[reg] = fresh();
+            for (auto &flag : next.flags)
+                flag = fresh(1) == bv(1, 1);
+            next.registers[0] = outcome.result;
+            const auto saved_return = load(next, callee_sp, 64);
+            next.registers[4] = (callee_sp + bv(8)).simplify(simplify_params);
+            if (return_from_native(next, saved_return, work))
+                work.push_back(std::move(next));
+        }
+    }
+
   public:
     Explorer(const hybrid::ProgramImage &i, const Admission &a, const Lease &l, const Limits &lim,
              const std::atomic_bool &c)
@@ -549,6 +686,7 @@ class Explorer
         report.limits = lim;
         report.profile = a.valid() ? a.profile->name : "";
         report.dependencies = a.dependencies;
+        report.imports = a.imports;
     }
     Report run()
     {
@@ -598,15 +736,27 @@ class Explorer
                     }
                     // A repeated full symbolic state is a real loop. Do not
                     // identify states by table index, native address or key.
-                    std::vector<unsigned> identity = {unsigned(s.key), unsigned(s.key >> 32),
-                                                      unsigned(s.pc),  unsigned(s.pc >> 32),
+                    std::vector<unsigned> identity = {unsigned(s.key),
+                                                      unsigned(s.key >> 32),
+                                                      unsigned(s.pc),
+                                                      unsigned(s.pc >> 32),
 
-                                                      s.domain.id(),   unsigned(s.table_unchanged)};
+                                                      s.domain.id(),
+                                                      unsigned(s.table_unchanged),
+                                                      unsigned(s.imports_unchanged)};
                     s.memory.append_identity(identity);
                     for (const auto &r : s.registers)
                         identity.push_back(r.id());
                     for (const auto &f : s.flags)
                         identity.push_back(f.id());
+                    identity.push_back(unsigned(s.pool.blocks.size()));
+                    for (const auto &block : s.pool.blocks)
+                    {
+                        identity.push_back(block.address.id());
+                        identity.push_back(block.bytes.id());
+                        identity.push_back(block.tag.id());
+                        identity.push_back(unsigned(block.live));
+                    }
                     for (auto c : s.calls)
                     {
                         identity.push_back(unsigned(c));
@@ -663,6 +813,24 @@ class Explorer
                     if (d.flow >= 4 && d.flow <= 8)
                     {
                         uint64_t target = 0;
+                        if (d.flow == 5 || d.flow == 8)
+                        {
+                            uint64_t slot = 0;
+                            if (number(address(s, d.address), slot))
+                                if (const auto *binding = find_import(admission.imports, slot))
+                                {
+                                    if (!s.imports_unchanged)
+                                        throw std::runtime_error(
+                                            "import table may have been overwritten");
+                                    const auto native = binding->snapshot_value;
+                                    if (binding->loaded_mask != 255 || !image.executable(native) ||
+                                        image.writable(native))
+                                    {
+                                        external(s, *binding, d, work);
+                                        break;
+                                    }
+                                }
+                        }
                         auto value = (d.flow == 4 || d.flow == 7) ? get(s, d.predicate)
                                      : (d.flow == 5 || d.flow == 8)
                                          ? load(s, address(s, d.address), 64)
@@ -682,57 +850,8 @@ class Explorer
                     }
                     if (d.flow == 9)
                     {
-                        uint64_t returned = 0;
-                        const auto expected = s.calls.empty() ? return_sentinel : s.calls.back();
-                        if (!number(native_return, returned) || returned != expected)
-                        {
-                            // A symbolic write may overlap the saved return address.
-                            // Retain that nonlocal-return frontier, but do not discard
-                            // the separately guarded ordinary-return continuation.
-                            const auto normal = native_return == bv(expected);
-                            if (feasible((s.domain && !normal).simplify(simplify_params)))
-                                frontier(s, "possible nonlocal native return");
-                            s.domain = (s.domain && normal).simplify(simplify_params);
-                            if (!feasible(s.domain))
-                                break;
-                            ++report.return_splits;
-                        }
-                        if (!s.calls.empty())
-                        {
-                            s.pc = s.calls.back();
-                            s.calls.pop_back();
+                        if (return_from_native(s, native_return, work))
                             continue;
-                        }
-                        const auto key_expression = s.registers[0].simplify(simplify_params);
-                        const auto choices = resolve_key_domain(key_expression, s.domain);
-                        report.key_queries += choices.queries;
-                        if (choices.status == KeyDomainStatus::UNSATISFIABLE)
-                            break;
-                        if (!choices.complete())
-                            throw std::runtime_error(
-                                choices.status == KeyDomainStatus::VALUE_LIMIT
-                                    ? "next key set exceeds exhaustive value limit"
-                                    : "next key domain solver did not prove completeness");
-                        if (choices.values.size() > 1)
-                            ++report.key_splits;
-                        for (const auto next : choices.values)
-                        {
-                            State successor = s;
-                            successor.domain =
-                                (s.domain && key_expression == bv(next)).simplify(simplify_params);
-                            if (!feasible(successor.domain))
-                                continue;
-                            report.edges.push_back(
-                                {s.key, next, s.pc,
-                                 successor.domain.is_true()
-                                     ? "true"
-                                     : "symbolic path condition (not serialized)"});
-                            if (next != 0)
-                            {
-                                enter(successor, next);
-                                work.push_back(std::move(successor));
-                            }
-                        }
                         break;
                     }
                     throw std::runtime_error(d.flow == 10 ? "native trap"
@@ -774,6 +893,18 @@ Report explore(const hybrid::ProgramImage &i, const Admission &a, const Lease &l
         !dependencies_match(i, a.dependencies))
     {
         rejected.frontiers.push_back({l.key, 0, "stale admission or incompatible semantic ABI"});
+        return rejected;
+    }
+    try
+    {
+        auto bindings = a.imports;
+        validate_imports(i, bindings);
+        if (bindings != a.imports)
+            throw std::runtime_error("stale import snapshot");
+    }
+    catch (const std::exception &e)
+    {
+        rejected.frontiers.push_back({l.key, 0, e.what()});
         return rejected;
     }
     if (!lim.states || !lim.instructions || !lim.operations || lim.bytes < 1024 ||
