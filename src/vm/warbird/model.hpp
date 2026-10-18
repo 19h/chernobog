@@ -9,7 +9,7 @@
 
 namespace chernobog::warbird
 {
-constexpr uint32_t model_version = 2;
+constexpr uint32_t model_version = 3;
 constexpr size_t context_bytes = 448;
 struct Profile
 {

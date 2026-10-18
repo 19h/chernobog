@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "status": "partial; goal remains active",
+  "semantic_model_version": 3,
+  "baseline_revision": "1e4c6422cf0ead32ac6f7195329bf6e345b2006e",
+  "rax_revision": "9bdd0964c8d5886661e6dfc6d8b14975a3a95334",
+  "source_sha256": {
+    "CMakeLists.txt": "fec978cb7f8daff31d6a9aea3619e42b95680ff1682c19ff18803e65feb01ac3",
+    "src/vm/warbird/model.cpp": "77abb351259a4cd69fc06b2791a5b82756cd2835adbc88f1a9d923437ae90d8f",
+    "src/vm/warbird/model.hpp": "7dc2835bb06da5060fbd17851e857d86bde7d389fa9efd74a19306da65143d7e",
+    "src/vm/warbird/explorer.cpp": "8b427f419438693aafd4e16d1b5ac8eb48788c74e56a7633b3bfc640bc23a92c",
+    "src/vm/warbird/byte_memory.cpp": "7e5a2c294027528e5ec237121c82adb1b22443b98f0697ac554022b70bc1ce94",
+    "src/vm/warbird/byte_memory.hpp": "b0cdaeb53f178c8fb38be2eb2c5ef47ad353a8817680779e16d5908a420db1d2",
+    "src/vm/warbird/key_domain.cpp": "8f78a6a11a0613ffd24f5b99f66f8f61d899e65bcc8f6ca9c6059f6d97386dcd",
+    "src/vm/warbird/key_domain.hpp": "179c231008f631c81a63d92fc6b33d6faf7a71326cd7af33aef47b3fa9eeb327",
+    "tests/warbird_tests.cpp": "265e32a9f7f9bd73dea6d8204d1c822c3991f1e4b290979d26d1fa83d9ca7026",
+    "tests/warbird_corpus.cpp": "890c5f01152a57cad6fa31f35549403e92c019aec6243ee10fc2868629e206ff"
+  },
+  "reports": {
+    "path": "docs/evidence/warbird-model3.jsonl",
+    "sha256": "7f597d36a2e7c8a6ec7651a5d501cded5a1bf493a016fad1468aa5f14c6e5590"
+  },
+  "tested_plugin_sha256": "1f8cf6759bf56b67d076604c43ff31387403af4215eaf83c83b69b1817e500b4",
+  "checks": {
+    "ctest_passed": 26,
+    "rax_capi_tests_passed": 65,
+    "c_and_cpp_capi_examples": "passed",
+    "direct_native_handler_comparisons": 19589,
+    "native_programs": 19,
+    "deterministic_inputs_per_program": 1024,
+    "boundary_inputs_per_program": 7,
+    "ida_nonmutation_and_stale_result_probe": "passed",
+    "ida_rax_disabled_probe": "passed"
+  },
+  "corpus_summary": {
+    "entry_count": 11,
+    "complete_entries": 0,
+    "entrywise_key_count_sum": 276,
+    "frontier_reasons": {
+      "possible nonlocal native return": 45,
+      "next key domain solver did not prove completeness": 8,
+      "unexplored queued state": 112,
+      "max. steps exceeded": 5,
+      "resource quota": 3,
+      "mutable dispatch table may have been overwritten": 1,
+      "native target not immutable executable code": 3
+    }
+  }
+}

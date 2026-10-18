@@ -295,6 +295,23 @@ class Explorer
             r = a - bv(1, w);
             arithmetic(s, o, a, bv(1, w), r, true, false, true);
             break;
+        case RAX_SMIR_BT:
+        case RAX_SMIR_BTS:
+        case RAX_SMIR_BTR:
+        case RAX_SMIR_BTC:
+        {
+            const auto bit = z3::shl(bv(1, w), b & bv(w - 1, w));
+            s.flags[0] = (a & bit) != bv(0, w);
+            if (o.opcode == RAX_SMIR_BT)
+                write = false;
+            else if (o.opcode == RAX_SMIR_BTS)
+                r = a | bit;
+            else if (o.opcode == RAX_SMIR_BTR)
+                r = a & ~bit;
+            else
+                r = a ^ bit;
+            break;
+        }
         case RAX_SMIR_MUL_U:
         case RAX_SMIR_MUL_S:
         {
