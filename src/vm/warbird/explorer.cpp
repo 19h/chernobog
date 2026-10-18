@@ -1,4 +1,6 @@
 #include "model.hpp"
+#include "key_domain.hpp"
+#include "byte_memory.hpp"
 #include <rax.h>
 #include <z3++.h>
 #include <algorithm>
@@ -37,11 +39,10 @@ struct State
     std::vector<z3::expr> registers;
     std::vector<z3::expr> temporary;
     std::vector<z3::expr> flags;
-    z3::expr memory, domain;
+    ByteMemory memory;
+    z3::expr domain;
     std::vector<uint64_t> calls;
-    explicit State(z3::context &c)
-        : memory(c.constant("memory", c.array_sort(c.bv_sort(64), c.bv_sort(8)))),
-          domain(c.bool_val(true))
+    explicit State(z3::context &c) : memory(c), domain(c.bool_val(true))
     {
         for (unsigned i = 0; i < 36; ++i)
             registers.push_back(c.bv_const(("r" + std::to_string(i)).c_str(), 64));
@@ -63,6 +64,7 @@ class Explorer
     std::set<std::vector<unsigned>> seen;
     std::set<uint64_t> keys;
     size_t symbolic_serial = 0;
+    size_t identity_bytes = 0;
     z3::expr bv(uint64_t v, unsigned w = 64) { return ctx.bv_val(v, w); }
     z3::expr fresh(unsigned bits = 64)
     {
@@ -129,24 +131,27 @@ class Explorer
                 v |= uint64_t(view.data[i]) << (i * 8);
             return bv(v, width);
         }
-        auto v = z3::select(s.memory, at);
-        for (unsigned i = 1; i < width / 8; ++i)
-            v = z3::concat(z3::select(s.memory, at + bv(i)), v);
-        return v.simplify(simplify_params);
+        return s.memory.read(at, width);
     }
     void store(State &s, z3::expr at, z3::expr value, unsigned width)
     {
         uint64_t n = 0;
-        if (number(at, n) && image.contains(n) && !image.writable(n))
-            throw std::runtime_error("write to immutable image");
+        const bool concrete = number(at, n);
         const uint64_t table_start = admission.image_base + admission.profile->table_rva;
         const uint64_t table_end = table_start + admission.profile->table_count * 8;
-        if (image.writable(table_start) &&
-            (!number(at, n) || (n < table_end && n + width / 8 > table_start)))
+        if (!concrete && image.writable(table_start))
             s.table_unchanged = false;
+        if (concrete)
+            for (unsigned byte = 0; byte < width / 8; ++byte)
+            {
+                const uint64_t address = n + byte;
+                if (image.contains(address) && !image.writable(address))
+                    throw std::runtime_error("write to immutable image");
+                if (image.writable(table_start) && address >= table_start && address < table_end)
+                    s.table_unchanged = false;
+            }
         value = resize(value, width);
-        for (unsigned i = 0; i < width / 8; ++i)
-            s.memory = z3::store(s.memory, at + bv(i), value.extract(i * 8 + 7, i * 8));
+        s.memory.write(at, value, width);
         // Bound expression work independently from instruction count.
         if (report.operations > limits.bytes / 1024)
             throw std::runtime_error("symbolic workspace quota");
@@ -223,6 +228,7 @@ class Explorer
         unsigned w = o.width_bits;
         auto a = resize(get(s, o.a), w), b = resize(get(s, o.b), w), r = bv(0, w);
         bool write = true;
+        const auto old_flags = s.flags;
         switch (o.opcode)
         {
         case RAX_SMIR_MOV:
@@ -236,6 +242,22 @@ class Explorer
             r = a - b;
             arithmetic(s, o, a, b, r, true, false);
             break;
+        case RAX_SMIR_ADC:
+        case RAX_SMIR_SBB:
+        {
+            const auto carry = z3::ite(old_flags[0], bv(1, w), bv(0, w));
+            const bool subtract = o.opcode == RAX_SMIR_SBB;
+            r = subtract ? a - b - carry : a + b + carry;
+            arithmetic(s, o, a, b, r, subtract, false);
+            if (o.flags_mask)
+            {
+                const auto wide_a = resize(a, w + 1);
+                const auto wide_b = resize(b, w + 1) + resize(carry, w + 1);
+                s.flags[0] = subtract ? z3::ult(wide_a, wide_b)
+                                      : (wide_a + wide_b).extract(w, w) == bv(1, 1);
+            }
+            break;
+        }
         case RAX_SMIR_CMP:
             write = false;
             r = a - b;
@@ -279,7 +301,13 @@ class Explorer
             auto p = resize(a, w * 2, o.opcode == RAX_SMIR_MUL_S) *
                      resize(b, w * 2, o.opcode == RAX_SMIR_MUL_S);
             r = p.extract(w - 1, 0);
-            if (o.dst2.kind)
+            if (w == 8)
+            {
+                // x86 byte MUL/IMUL writes the complete product to AX.
+                put(s, o.dst, p, 16);
+                write = false;
+            }
+            else if (o.dst2.kind)
                 put(s, o.dst2, p.extract(w * 2 - 1, w), w);
             if (o.flags_mask)
             {
@@ -377,6 +405,30 @@ class Explorer
             }
             break;
         }
+        case RAX_SMIR_RCL:
+        case RAX_SMIR_RCR:
+        {
+            const auto input = z3::concat(a, z3::ite(old_flags[0], bv(1, 1), bv(0, 1)));
+            const auto count =
+                z3::urem(resize(get(s, o.b) & bv(w == 64 ? 63 : 31), w + 1), bv(w + 1, w + 1));
+            const auto distance = bv(w + 1, w + 1) - count;
+            const auto rotated = o.opcode == RAX_SMIR_RCL
+                                     ? z3::shl(input, count) | z3::lshr(input, distance)
+                                     : z3::lshr(input, count) | z3::shl(input, distance);
+            r = rotated.extract(w, 1);
+            if (o.flags_mask)
+            {
+                const auto carry = rotated.extract(0, 0) == bv(1, 1);
+                const auto overflow = o.opcode == RAX_SMIR_RCL
+                                          ? (r.extract(w - 1, w - 1) == bv(1, 1)) != carry
+                                          : r.extract(w - 1, w - 1) != r.extract(w - 2, w - 2);
+                s.flags[0] = z3::ite(count == bv(0, w + 1), old_flags[0], carry);
+                s.flags[3] =
+                    z3::ite(count == bv(0, w + 1), old_flags[3],
+                            z3::ite(count == bv(1, w + 1), overflow, fresh(1) == bv(1, 1)));
+            }
+            break;
+        }
         case RAX_SMIR_BSWAP:
             r = a.extract(7, 0);
             for (unsigned i = 1; i < w / 8; ++i)
@@ -402,6 +454,10 @@ class Explorer
             throw std::runtime_error("symbolic semantics not implemented for SMIR opcode " +
                                      std::to_string(o.opcode));
         }
+        if (o.flags_mask)
+            for (unsigned bit = 0; bit < 6; ++bit)
+                if ((o.flags_mask & (1u << bit)) == 0)
+                    s.flags[bit] = old_flags[bit];
         if (write)
             put(s, o.dst, r, w);
     }
@@ -473,6 +529,7 @@ class Explorer
     {
         simplify_params.set("max_steps", 10000u);
         report.lease = l;
+        report.limits = lim;
         report.profile = a.valid() ? a.profile->name : "";
         report.dependencies = a.dependencies;
     }
@@ -524,13 +581,11 @@ class Explorer
                     }
                     // A repeated full symbolic state is a real loop. Do not
                     // identify states by table index, native address or key.
-                    std::vector<unsigned> identity = {unsigned(s.key),
-                                                      unsigned(s.key >> 32),
-                                                      unsigned(s.pc),
-                                                      unsigned(s.pc >> 32),
-                                                      s.memory.id(),
-                                                      s.domain.id(),
-                                                      unsigned(s.table_unchanged)};
+                    std::vector<unsigned> identity = {unsigned(s.key), unsigned(s.key >> 32),
+                                                      unsigned(s.pc),  unsigned(s.pc >> 32),
+
+                                                      s.domain.id(),   unsigned(s.table_unchanged)};
+                    s.memory.append_identity(identity);
                     for (const auto &r : s.registers)
                         identity.push_back(r.id());
                     for (const auto &f : s.flags)
@@ -540,6 +595,10 @@ class Explorer
                         identity.push_back(unsigned(c));
                         identity.push_back(unsigned(c >> 32));
                     }
+                    const auto bytes = identity.size() * sizeof(unsigned);
+                    if (bytes > limits.bytes / 2 || identity_bytes > limits.bytes / 2 - bytes)
+                        throw std::runtime_error("symbolic state identity quota");
+                    identity_bytes += bytes;
                     if (!seen.insert(std::move(identity)).second)
                     {
                         frontier(s, "exact native cycle requires CFG lowering");
@@ -607,27 +666,57 @@ class Explorer
                     if (d.flow == 9)
                     {
                         uint64_t returned = 0;
-                        if (!number(native_return, returned) ||
-                            returned != (s.calls.empty() ? return_sentinel : s.calls.back()))
-                            throw std::runtime_error("unverified native return target");
+                        const auto expected = s.calls.empty() ? return_sentinel : s.calls.back();
+                        if (!number(native_return, returned) || returned != expected)
+                        {
+                            // A symbolic write may overlap the saved return address.
+                            // Retain that nonlocal-return frontier, but do not discard
+                            // the separately guarded ordinary-return continuation.
+                            const auto normal = native_return == bv(expected);
+                            if (feasible((s.domain && !normal).simplify(simplify_params)))
+                                frontier(s, "possible nonlocal native return");
+                            s.domain = (s.domain && normal).simplify(simplify_params);
+                            if (!feasible(s.domain))
+                                break;
+                            ++report.return_splits;
+                        }
                         if (!s.calls.empty())
                         {
                             s.pc = s.calls.back();
                             s.calls.pop_back();
                             continue;
                         }
-                        uint64_t next = 0;
-                        if (!number(s.registers[0], next))
-                            throw std::runtime_error(
-                                "symbolic next key requires memory specialization");
-                        report.edges.push_back({s.key, next, s.pc,
-                                                s.domain.simplify(simplify_params).is_true()
-                                                    ? "true"
-                                                    : "symbolic path condition (not serialized)"});
-                        if (next == 0)
+                        const auto key_expression = s.registers[0].simplify(simplify_params);
+                        const auto choices = resolve_key_domain(key_expression, s.domain);
+                        report.key_queries += choices.queries;
+                        if (choices.status == KeyDomainStatus::UNSATISFIABLE)
                             break;
-                        enter(s, next);
-                        continue;
+                        if (!choices.complete())
+                            throw std::runtime_error(
+                                choices.status == KeyDomainStatus::VALUE_LIMIT
+                                    ? "next key set exceeds exhaustive value limit"
+                                    : "next key domain solver did not prove completeness");
+                        if (choices.values.size() > 1)
+                            ++report.key_splits;
+                        for (const auto next : choices.values)
+                        {
+                            State successor = s;
+                            successor.domain =
+                                (s.domain && key_expression == bv(next)).simplify(simplify_params);
+                            if (!feasible(successor.domain))
+                                continue;
+                            report.edges.push_back(
+                                {s.key, next, s.pc,
+                                 successor.domain.is_true()
+                                     ? "true"
+                                     : "symbolic path condition (not serialized)"});
+                            if (next != 0)
+                            {
+                                enter(successor, next);
+                                work.push_back(std::move(successor));
+                            }
+                        }
+                        break;
                     }
                     throw std::runtime_error(d.flow == 10 ? "native trap"
                                                           : "unsupported native flow");

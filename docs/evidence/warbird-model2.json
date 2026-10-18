@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "status": "partial; goal remains active",
+  "semantic_model_version": 2,
+  "baseline_revision": "01659b27287bf993455541e58fae5d3a9ff92e3b",
+  "rax_revision": "140072345599c233699ee1d0d5b9ed306aa5fada",
+  "source_sha256": {
+    "CMakeLists.txt": "3fa323c70dc364fcea6df26db84cf7231b0958e1f6fe836ba5d32d733fa3b8ce",
+    "src/vm/warbird/model.cpp": "77abb351259a4cd69fc06b2791a5b82756cd2835adbc88f1a9d923437ae90d8f",
+    "src/vm/warbird/model.hpp": "263705ce19ef93e57878a52476348c14509ab9068ec113d2aa5be31d5e816028",
+    "src/vm/warbird/explorer.cpp": "e62ce7ac9c739f3a554e1fec370732195f31c7468c3716ac758c631fc06c5c36",
+    "src/vm/warbird/byte_memory.cpp": "7e5a2c294027528e5ec237121c82adb1b22443b98f0697ac554022b70bc1ce94",
+    "src/vm/warbird/byte_memory.hpp": "b0cdaeb53f178c8fb38be2eb2c5ef47ad353a8817680779e16d5908a420db1d2",
+    "src/vm/warbird/key_domain.cpp": "8f78a6a11a0613ffd24f5b99f66f8f61d899e65bcc8f6ca9c6059f6d97386dcd",
+    "src/vm/warbird/key_domain.hpp": "179c231008f631c81a63d92fc6b33d6faf7a71326cd7af33aef47b3fa9eeb327",
+    "tests/warbird_tests.cpp": "645d4dc482c25ec5566799f52520b83482d21bd548f21f55dc955ab69e2687d6",
+    "tests/warbird_corpus.cpp": "890c5f01152a57cad6fa31f35549403e92c019aec6243ee10fc2868629e206ff"
+  },
+  "reports": {
+    "path": "docs/evidence/warbird-model2.jsonl",
+    "sha256": "72caba8a9abb19d976a8a289e1939ecdaa5c977b664b16503beac539685b9706"
+  },
+  "checks": {
+    "ctest_passed": 26,
+    "direct_native_handler_comparisons": 11341,
+    "native_programs": 11,
+    "deterministic_inputs_per_program": 1024,
+    "boundary_inputs_per_program": 7,
+    "byte_memory_array_equivalence": "UNSAT on symbolic-write, overlap, and fork controls",
+    "ida_nonmutation_and_stale_result_probe": "passed",
+    "ida_rax_disabled_probe": "passed"
+  },
+  "corpus_summary": {
+    "entry_count": 11,
+    "complete_entries": 0,
+    "entrywise_key_count_sum": 294,
+    "frontier_reasons": {
+      "possible nonlocal native return": 45,
+      "next key domain solver did not prove completeness": 6,
+      "unexplored queued state": 116,
+      "RAX full scalar lift unavailable": 4,
+      "max. steps exceeded": 3,
+      "resource quota": 2,
+      "mutable dispatch table may have been overwritten": 1,
+      "native target not immutable executable code": 3
+    }
+  },
+  "next_verified_expansion": [
+    {
+      "profile": "ci",
+      "instruction_rva": "0x79de6",
+      "bytes": "480fbaf819",
+      "instruction": "btc rax, 0x19"
+    },
+    {
+      "profile": "ci",
+      "instruction_rva": "0xa80bd",
+      "bytes": "480fbafb1e",
+      "instruction": "btc rbx, 0x1e"
+    }
+  ]
+}

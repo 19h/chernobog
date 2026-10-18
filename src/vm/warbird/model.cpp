@@ -170,10 +170,18 @@ std::string Report::json() const
     std::ostringstream s;
     s << "{\"schema\":1,\"profile\":" << inspection_json_quote(profile)
       << ",\"entry_key\":" << inspection_json_quote(hex(lease.key))
+      << ",\"model_version\":" << lease.model << ",\"smir_abi\":" << lease.smir_abi
+      << ",\"limits\":{\"states\":" << limits.states << ",\"instructions\":" << limits.instructions
+      << ",\"operations\":" << limits.operations << ",\"estimated_bytes\":" << limits.bytes
+      << ",\"milliseconds\":" << limits.time.count() << ",\"call_depth\":" << limits.call_depth
+      << "}"
+
       << ",\"exploration_complete\":" << (exploration_complete() ? "true" : "false")
       << ",\"semantic_equivalence_checked\":false,\"memory_faults_checked\":false,\"pseudocode_eligible\":false,\"cancelled\":"
       << (cancelled ? "true" : "false") << ",\"states\":" << states
-      << ",\"instructions\":" << instructions << ",\"operations\":" << operations << ",\"keys\":[";
+      << ",\"instructions\":" << instructions << ",\"operations\":" << operations
+      << ",\"key_splits\":" << key_splits << ",\"key_queries\":" << key_queries
+      << ",\"return_splits\":" << return_splits << ",\"keys\":[";
     for (size_t i = 0; i < keys.size(); ++i)
     {
         if (i)

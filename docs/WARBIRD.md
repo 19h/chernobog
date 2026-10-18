@@ -35,10 +35,25 @@ handler boundary; no values are carried through an unmodeled dispatch thunk.
 The explorer distinguishes full 64-bit keys, follows bounded native calls with
 per-path return stacks, retains unknown branch alternatives, and only closes a
 loop on an identical complete symbolic state. It does not merge states merely
-because they share a key or native address. Byte-array memory retains overlapping
-stores. Immutable loaded bytes may be folded; writable sections are not
+because they share a key or native address. A finite key may now be split into
+several guarded successors. Algebraic covers propagate constant alternatives
+through bit-vector operations; general model enumeration is accepted only after
+a final UNSAT check proves that no other key exists. Every edge retains its
+key-equality condition internally. A model prefix is never treated as complete.
+
+Byte memory uses a copy-on-write concrete-byte overlay. Symbolic reads and writes
+materialize that overlay, preserving aliases and write order. Coalescing the
+memory state does not authorize eliminating faulting or volatile instructions
+from a future recovered program; those checks remain outstanding. Immutable loaded bytes may be folded; writable sections are not
 concretized by section name. Potential writes to a writable dispatch table stop
 subsequent dispatch. A zero key terminates without reading table slot zero.
+A potentially corrupted native return retains an explicit nonlocal-transfer
+frontier while the ordinary continuation is explored under an equality guard.
+No ordinary return is assumed from an unknown return address.
+
+The symbolic scalar interpreter now covers ADC/SBB, rotate through carry, and
+complete AX results from byte MUL/IMUL. Unselected flag updates are preserved.
+The semantic model version is 2, independent of the scalar SMIR ABI version.
 
 The optional scalar SMIR ABI is versioned and pointer-free. Unsupported operations
 and insufficient capacity publish no executable prefix. It retains instruction
@@ -66,7 +81,7 @@ and permissions. Closing a database cancels and joins its worker. There are no
 patches, new segments, function merges, comments, or persisted local types.
 
 Snapshots are limited to 64 MiB before allocation. The exploration limits are 4096 states, 65536 instructions, 1000000 SMIR operations, a
-256 MiB *estimated* symbolic-work budget, and 60 s per job. Individual Z3
+256 MiB *estimated* symbolic-work budget, and a 60 s job deadline checked at instruction boundaries. Individual Z3
 simplification and solver work is bounded. The memory budget is not a hard
 allocator sandbox, and an in-process plugin cannot guarantee process-level
 crash isolation. Quotas and unsupported semantics produce explicit frontiers.
@@ -90,8 +105,10 @@ crash isolation. Quotas and unsupported semantics produce explicit frontiers.
 | A2 | Snapshot is still current when results are consumed | IDB revision, rebase and exact dependency recheck | Passed IDA byte/function non-mutation and comment-change invalidation probes |
 | A3 | Uninitialized context can be zero-filled | Compare native initialization stores | Falsified; no zero-fill |
 | A4 | Writable table entries remain unchanged during a path | Track possible writes before every dispatch | Conditional; uncertain writes stop exploration |
-| A5 | RAX scalar semantics suffice for all handlers | Run every key and retain unsupported frontiers | Falsified for complete recovery |
+| A5 | The current scalar pipeline covers all handlers | Run every key and retain unsupported frontiers | Falsified for complete recovery |
 | A6 | A bounded diagnostic walk proves equivalence | Compare original and recovered behavior with independent execution | Rejected; no checked presentation |
+| A7 | An enumerated key prefix covers every successor | Require algebraic coverage or a final UNSAT check; test unbounded keys | Rejected unless the completeness check succeeds |
+| A8 | Concrete byte overlays preserve aliases after symbolic stores | Compare materialized arrays, overlapping writes, forked states and symbolic reads | Verified on representative SMT and byte-level controls |
 
 ## Bounded findings
 
@@ -116,3 +133,27 @@ fixture passes 1024 direct-interpreter comparisons. These 1024 cases are **not**
 corpus equivalence cases. The isolated IDA probe confirms that diagnostics do
 not change bytes or function ownership and that a comment edit invalidates an
 otherwise byte-identical result.
+
+## Model 2 validation scope
+
+The new finite-domain and byte-memory controls are exercised in the complete
+WARBIRD test binary. Eleven scalar programs are each compared against direct
+RAX interpretation for 1024 deterministic inputs and seven boundary inputs
+(11341 comparisons). These are controlled native-handler comparisons, not
+whole-corpus equivalence checks. Additional controls reject incomplete key
+sets, retain both conditional successors, preserve aliased byte stores and
+forked memory states, and retain a nonlocal-return frontier.
+
+The concrete-byte overlay uses O(w log n) lookup/update for an access of w bytes
+in n cached bytes. A fork shares state until mutation; its first write may copy
+O(n) entries. Symbolic access materializes O(n) byte stores. Finite key covers
+are capped at 4096 DAG nodes and 10000 constant evaluations; fallback enumeration
+uses at most 17 solver checks for the default 16-value limit.
+
+The model-2 report set is `docs/evidence/warbird-model2.jsonl`, with source
+hashes and validation metadata in `docs/evidence/warbird-model2.json`. This
+sweep uses an explicit 5 s per-entry deadline and discovers 294 keys summed
+across entries; it does not establish complete recovery for any entry. The
+initial evidence remains unchanged. Native `BTC` instructions at CI RVAs
+`0x79de6` and `0xa80bd` are verified candidates for the next scalar-bridge
+extension. Native import/helper models and loop summaries remain required.
