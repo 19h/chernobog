@@ -751,6 +751,71 @@ class Explorer
             .first->second;
     }
 
+    bool initialize(State &s)
+    {
+        const auto &profile = *admission.profile;
+        const uint64_t prefix_bytes = profile.copies_fifth_argument ? 50 : 21;
+        if (profile.setup_rva < prefix_bytes || profile.dispatch_rva < 74 ||
+            profile.setup_rva >= profile.dispatch_rva - 74 ||
+            profile.dispatch_rva - 74 - (profile.setup_rva - prefix_bytes) > 256)
+            throw std::runtime_error("invalid native initialization range");
+        const auto begin = admission.image_base + profile.setup_rva - prefix_bytes;
+        const auto end = admission.image_base + profile.dispatch_rva - 74;
+        // Start after the wrapper's key/argument shuffle and external setup.
+        // Caller stack arguments remain reads of the same initial byte memory,
+        // so aliases and repeated reads are not replaced by independent values.
+        const auto first_argument = s.registers[2];
+        s.registers[2] = bv(report.lease.key);
+        s.registers[4] = bv(context_base - 48);
+        s.registers[5] = bv(context_base - 16);
+        if (profile.copies_fifth_argument)
+        {
+            s.registers[11] = first_argument;
+            s.registers[10] = load(s, bv(context_base + 0x208), 64);
+        }
+        else
+            s.registers[10] = first_argument;
+        s.pc = begin;
+        while (s.pc != end)
+        {
+            if (exhausted() || report.initialization_instructions >= 64)
+            {
+                frontier(s, cancel.load() ? "cancelled" : "native initialization quota");
+                return false;
+            }
+            const auto &decoded = decode(s.pc);
+            const auto &d = decoded.first;
+            if (d.flow != 0 || d.fallthrough <= s.pc || d.fallthrough > end)
+                throw std::runtime_error("unexpected native initialization control flow");
+            if (d.temporary_count > 4096 ||
+                decoded.second.size() > limits.operations - report.operations)
+                throw std::runtime_error("SMIR operation quota");
+            ++report.instructions;
+            ++report.initialization_instructions;
+            s.temporary.clear();
+            s.vector_temporary.clear();
+            for (unsigned n = 0; n < d.temporary_count; ++n)
+                s.temporary.push_back(fresh());
+            report.operations += decoded.second.size();
+            for (const auto &op : decoded.second)
+            {
+                operation(s, op);
+                if (s.pc < admission.image_base + profile.setup_rva &&
+                    (op.opcode == RAX_SMIR_STORE || op.opcode == RAX_SMIR_VSTORE))
+                    report.initialization_copy_bytes += op.width_bits / 8;
+            }
+            s.pc = d.fallthrough;
+        }
+        const auto normal = s.registers[2] == bv(report.lease.key) &&
+                            s.registers[3] == bv(initial_floor) &&
+                            s.registers[4] == bv(initial_native_top + 8) &&
+                            s.registers[5] == bv(context_base - 16) &&
+                            load(s, bv(context_base + profile.zero_slot * 8), 64) == bv(0);
+        if (!normal.simplify(simplify_params).is_true())
+            throw std::runtime_error("native initialization frame invariant unproved");
+        return true;
+    }
+
     bool return_from_native(State &s, const z3::expr &native_return, std::deque<State> &work)
     {
         uint64_t returned = 0;
@@ -960,12 +1025,32 @@ class Explorer
                     return report;
                 }
         State first(ctx, initial_floor, initial_native_top);
-        // Context slots are intentionally uninitialized, as in the native
-        // dispatcher. The explorer starts at a handler ABI boundary, so no
-        // undocumented zero-fill or argument-layout assumption is required.
+        // Unwritten context bytes remain initial memory. Native profiles run
+        // their admitted setup; small abstract fixtures retain explicit seeds.
         if (report.lease.key == 0)
             return report;
-        if (!admission.profile->setup_bytes.empty())
+        if (admission.stack_maintenance)
+        {
+            first.key = report.lease.key;
+            try
+            {
+                if (!initialize(first))
+                {
+                    report.cancelled = cancel.load();
+                    return report;
+                }
+            }
+            catch (const StopPath &)
+            {
+                return report;
+            }
+            catch (const std::exception &e)
+            {
+                frontier(first, e.what());
+                return report;
+            }
+        }
+        else if (!admission.profile->setup_bytes.empty())
         {
             for (auto slot : admission.zero_slots)
                 store(first, bv(context_base + slot * 8), bv(0), 64);

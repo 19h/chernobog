@@ -1,0 +1,139 @@
+{
+  "schema": 1,
+  "status": "partial; goal remains active",
+  "semantic_model_version": 8,
+  "baseline_revision": "d145c7710f524412123b48d6e093019b1d48ff23",
+  "rax_revision": "4978d31075b384553f8bef96ad4434848da6bdeb",
+  "z3_revision": "ddb49568d3520e99799e364fb22f35fc67d887b1",
+  "source_sha256": {
+    "CMakeLists.txt": "a7ebcad81ddea097f7475cc947d5d96c0cc17b54cf08ef3023a55d19b5a9b037",
+    "src/vm/warbird/alias.hpp": "b06558dbcdf76e56009ed28e59b4c0825e857c35597bd277e3623a27675b22cf",
+    "src/vm/warbird/alias.cpp": "18b06421ff45d9428519256b2c110eea42c44473f2e3c473c957ff8587611ee8",
+    "src/vm/warbird/byte_memory.hpp": "30fbd2d0e03efed691ea4ed8c134119a63dd881d2acd9a8b076abdac7ce26071",
+    "src/vm/warbird/byte_memory.cpp": "968fc43d98853aca5e0ded06626159a5d43bf462de1cca0127bcf219001a9e1a",
+    "src/vm/warbird/explorer.cpp": "e8ed59ab45fbce757ca133b096362112438e97e619a5b5263413c4b2ed1bdbbc",
+    "src/vm/warbird/model.hpp": "0a090b967cddf1cbae77cc30d99a1a26622340777def8d81c1701e4216e9ddd3",
+    "src/vm/warbird/model.cpp": "50996503c4e1a470f5a6cb6ee3a48e171c88705ff20f6b7dd87eedd84de72061",
+    "src/vm/warbird/key_domain.hpp": "179c231008f631c81a63d92fc6b33d6faf7a71326cd7af33aef47b3fa9eeb327",
+    "src/vm/warbird/key_domain.cpp": "8f78a6a11a0613ffd24f5b99f66f8f61d899e65bcc8f6ca9c6059f6d97386dcd",
+    "src/vm/warbird/ida.cpp": "658a88990f236548de9cf3aac1cf4d60b5feb199444cc497487c22dce700937b",
+    "tests/warbird_tests.cpp": "8033a0bf7b90fe0b5bf961a9c3c1ac270b8af2eb85b3f84330b819a4db5018a7",
+    "tests/ida_warbird_probe.py": "d2642209030674fffbb6da0afc57c60dcce36bed20e3814c803d2cc9f8784e37",
+    "src/vm/warbird/stack_model.hpp": "39f14e9e36ae72875f2217501d3e73fefb048dacdd2c93467cea0e478c461f55",
+    "src/vm/warbird/stack_model.cpp": "4fd68e94528c257fc4d739e2de0798460e0f48c15264fd44a46ecc3a92f70ec0"
+  },
+  "reports": {
+    "path": "docs/evidence/warbird-model8.jsonl",
+    "sha256": "fcb0f6cbbd029ca51e59d2ab0e19b6e2d72bb1623a6b3d00c84be0477377e3d0"
+  },
+  "tested_plugin_sha256": "1c67995f04b29d12d49ba5085daa54427ce236941806b8df753c2e02f12a896d",
+  "checks": {
+    "ctest_passed": 26,
+    "initial_ctest": {
+      "failed_tests": [
+        "chernobog.vm_transitions"
+      ],
+      "reason": "100 ms solver timeout during concurrent corpus/IDA run",
+      "solver_elapsed_us": 114827
+    },
+    "serial_ctest": {
+      "passed": 26,
+      "failed": 0,
+      "solver_limits_unchanged": true
+    },
+    "direct_native_handler_comparisons": 39178,
+    "native_programs": 38,
+    "inputs_per_program": 1031,
+    "complete_native_initialization_windows": 3,
+    "copy_programs": 2,
+    "copy_cases": "forward overlap and disjoint destination",
+    "native_stack_bookkeeping_comparisons": 1031,
+    "modular_overlap_smt_equivalence_cases": 48,
+    "caller_stack_argument_correlation": "context and original caller-stack reads XOR to zero",
+    "unexpected_initialization_control_flow": "rejected before handler entry",
+    "initialization_quota": "one-instruction limit prevents handler entry",
+    "inconsistent_copy_metadata": "rejected by admission",
+    "ida": {
+      "clipsp": {
+        "input_sha256": "01274c7f3d4a339083aecc53683d2ccf7931ccbfb86bbe2e3efcbebd27956061",
+        "plugin_sha256": "1c67995f04b29d12d49ba5085daa54427ce236941806b8df753c2e02f12a896d",
+        "script_sha256": "d2642209030674fffbb6da0afc57c60dcce36bed20e3814c803d2cc9f8784e37",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": true,
+        "native_initialization_count_and_copy_bytes_asserted": true,
+        "guard_splits_and_multiple_keys_asserted": true
+      },
+      "peauth": {
+        "input_sha256": "a9831743d885a29b287e341dd62894e14f84c5bd1f19f6033361dc0ca07bdada",
+        "plugin_sha256": "1c67995f04b29d12d49ba5085daa54427ce236941806b8df753c2e02f12a896d",
+        "script_sha256": "d2642209030674fffbb6da0afc57c60dcce36bed20e3814c803d2cc9f8784e37",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": true,
+        "native_initialization_count_and_copy_bytes_asserted": true,
+        "positive_handler_vector_operations_asserted": true
+      },
+      "ci-enabled": {
+        "input_sha256": "0f0b00d3287c4f6003f7a9898c62b318e265e8744b55ca3cda0149a2502a2d01",
+        "plugin_sha256": "1c67995f04b29d12d49ba5085daa54427ce236941806b8df753c2e02f12a896d",
+        "script_sha256": "d2642209030674fffbb6da0afc57c60dcce36bed20e3814c803d2cc9f8784e37",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": true,
+        "native_initialization_count_and_copy_bytes_asserted": true
+      },
+      "ci-disabled": {
+        "input_sha256": "0f0b00d3287c4f6003f7a9898c62b318e265e8744b55ca3cda0149a2502a2d01",
+        "plugin_sha256": "1c67995f04b29d12d49ba5085daa54427ce236941806b8df753c2e02f12a896d",
+        "script_sha256": "d2642209030674fffbb6da0afc57c60dcce36bed20e3814c803d2cc9f8784e37",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": false
+      }
+    }
+  },
+  "native_initialization": {
+    "ci": {
+      "instructions": 18,
+      "copy_bytes": 0
+    },
+    "clipsp": {
+      "instructions": 22,
+      "copy_bytes": 24
+    },
+    "peauth": {
+      "instructions": 18,
+      "copy_bytes": 0
+    },
+    "max_window_bytes": 256,
+    "max_window_instructions": 64
+  },
+  "corpus_summary": {
+    "entry_count": 11,
+    "complete_entries": 0,
+    "entrywise_key_count_sum": 165,
+    "stack_growth_paths": 28,
+    "frontier_reasons": {
+      "dispatcher stack probe semantics unverified": 28,
+      "possible write to immutable image": 100,
+      "possible nonlocal native return": 13,
+      "handler violates admitted nonvolatile stack ABI": 12,
+      "next key domain solver did not prove completeness": 5,
+      "dispatcher stack growth quota": 15,
+      "unexplored queued state": 37,
+      "possible mutable dispatch table write": 12,
+      "resource quota": 2,
+      "pool runtime binding, IRQL and kernel effects unverified": 3,
+      "pool free has no matching live base and tag": 1,
+      "unsupported pool type, flags or zero-sized/tagged allocation": 1,
+      "next key set exceeds exhaustive value limit": 1
+    }
+  },
+  "limitations": [
+    "earlier wrapper external effects and arbitrary-pointer memory faults remain unverified",
+    "controlled native initialization comparisons are not full-entry or kernel-execution equivalence",
+    "no complete memory-fault or whole-entry equivalence; checked pseudocode remains disabled",
+    "5 s per-entry sweep with uncontrolled CPU load; not a performance comparison"
+  ]
+}

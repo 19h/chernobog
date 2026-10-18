@@ -26,10 +26,11 @@ The three profiles contain all eleven documented keys. Admission checks native
 dispatch instructions, the table mask and entries, executable permissions, and
 exact context-initialization instructions. Names and source-file hashes alone
 cannot admit a profile. The native initialization does **not** zero all 56
-context slots. Uninitialized bytes remain symbolic. Only the four native
-argument slots, two virtual-stack slots, native minimum-stack slot 55, and initial
-zero stack word are seeded.
-ClipSp's initial 24-byte stack copy remains symbolic in this diagnostic model.
+context slots. Uninitialized bytes remain symbolic. Native setup instructions
+now execute through the RAX SMIR interpreter before
+handler entry. Their stores initialize the argument slots, virtual-stack slots,
+minimum-stack slot 55 and initial zero stack word. ClipSp's initial 24-byte stack
+copy retains its source-memory relationship and native read/write order.
 
 Caller-saved registers and incoming flags are fresh symbolic values at each
 handler boundary; no values are carried through an unmodeled dispatch thunk.
@@ -56,7 +57,7 @@ The symbolic scalar interpreter now covers ADC/SBB, rotate through carry, and
 complete AX results from byte MUL/IMUL. Unselected flag updates are preserved.
 The scalar interpreter also covers BT/BTS/BTR/BTC, including memory operands
 exported by RAX as ordered loads, updates and flag operations. The semantic
-model version is 7, independent of the SMIR record ABI version.
+model version is 8, independent of the SMIR record ABI version.
 
 The optional scalar SMIR ABI is versioned and pointer-free. Unsupported operations
 and insufficient capacity publish no executable prefix. It retains instruction
@@ -448,3 +449,63 @@ are recorded in `docs/evidence/warbird-model7.json` and
 `docs/evidence/warbird-model7.jsonl`. Every corpus entry remains partial. The
 higher-priority next boundaries remain native helper/fault semantics, bounded
 loop summaries, and the all-entry equivalence and ordinary-pseudocode gates.
+
+
+## Model 8: execute the admitted native setup
+
+The explorer now runs the straight-line initialization window through the same
+RAX SMIR interpreter used for handlers. It no longer assigns independent
+symbolic values to native-profile argument slots. The first register argument,
+the remaining incoming registers and the original caller-stack memory supply
+the setup's actual loads and stores. A later read of a stack-passed argument
+therefore sees the same bytes as its context-slot copy.
+
+For ClipSp, the window includes the native 16-byte load/store followed by the
+8-byte load/store for its fifth argument. The second load happens after the
+first store. This order matters when the source and destination overlap; it
+cannot be replaced by a snapshot of all 24 source bytes. The copy remains an
+in-process symbolic memory operation and never dereferences a host pointer.
+Uninitialized source bytes remain symbolic, with their aliases retained.
+
+The window starts after the wrapper's external setup and argument shuffle and
+ends before dispatcher maintenance. Admission already retains exact frame and
+setup bytes. The new execution path admits at most 256 bytes and 64 straight-line
+instructions, shares the existing instruction/operation/time budgets, and
+requires the final key, RBP, RBX, RSP and minimum-slot invariants before entering
+a handler. Branches, calls, incomplete lifts and failed invariants leave an
+explicit frontier with no handler execution. Copy metadata must agree with the
+admitted native frame. The small abstract fixtures retain their explicit-input
+contract; actual corpus profiles use native setup execution.
+
+This removes a specific initialization approximation. It does not verify the
+wrapper's earlier external effects, arbitrary pointer fault behavior, native
+stack probes, helper bindings or final whole-entry equivalence. The three
+checked-presentation flags remain false.
+
+| ID | Assumption or boundary | Probe and disposition |
+| --- | --- | --- |
+| A28 | A 24-byte copy can snapshot all source bytes before writing | Rejected; direct native comparisons include forward overlap that changes the second load |
+| A29 | A context argument and its caller-stack source can be independent symbols | Rejected; a handler XORs both reads and must return zero |
+| A30 | Matching setup bytes permit unrestricted execution | Rejected; an injected branch stops initialization, and an instruction-quota control reaches no handler |
+| A31 | Native setup execution verifies earlier wrapper effects or pointer faults | Rejected; the execution window excludes those effects and checked presentation remains disabled |
+
+The native comparison matrix now contains 38 programs, each exercised with
+1024 deterministic inputs and seven boundary inputs (39178 comparisons). It
+includes the full admitted initialization window for each of the three corpus
+profiles, plus overlapping and disjoint 16-byte/8-byte copies. The existing
+1031 stack-bookkeeping and 48 overlap-formula comparisons remain. These checks
+cover the controlled initialization and instruction semantics, not complete
+corpus entries or kernel execution.
+
+Instruction-dispatch overhead is O(I + M), where I <= 64 is the number of
+native instructions and M is the number of exported SMIR operations, subject
+to the existing global operation budget. Symbolic-expression and byte-memory
+work retains the existing bounds and costs; this is not a constant-time solver
+guarantee. Copies use the same copy-on-write storage and alias rules as handler
+execution. Native reads and stores are performed in instruction order.
+
+Source hashes, four isolated IDA probes and the partial eleven-entry sweep are
+recorded in `docs/evidence/warbird-model8.json` and
+`docs/evidence/warbird-model8.jsonl`. The IDA probes require native setup
+execution on all three profiles and exactly 24 copied bytes on ClipSp. No
+whole-entry recovery or normal-view lowering is claimed.

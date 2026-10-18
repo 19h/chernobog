@@ -256,6 +256,8 @@ Admission admit(const hybrid::ProgramImage &image, uint64_t base, const Profile 
             out.context_stack_gap = 112;
         else
             return fail("dispatcher frame layout mismatch");
+        if (profile.copies_fifth_argument != (out.context_stack_gap == 112))
+            return fail("dispatcher argument-copy metadata mismatch");
         out.stack_maintenance = true;
     }
     out.profile = &profile;
@@ -318,11 +320,13 @@ std::string Report::json() const
       << ",\"exploration_complete\":" << (exploration_complete() ? "true" : "false")
       << ",\"semantic_equivalence_checked\":false,\"memory_faults_checked\":false,\"pseudocode_eligible\":false,\"cancelled\":"
       << (cancelled ? "true" : "false") << ",\"states\":" << states
-      << ",\"instructions\":" << instructions << ",\"operations\":" << operations
-      << ",\"key_splits\":" << key_splits << ",\"key_queries\":" << key_queries
-      << ",\"return_splits\":" << return_splits << ",\"external_calls\":" << external_calls
-      << ",\"vector_operations\":" << vector_operations << ",\"alias_queries\":" << alias_queries
-      << ",\"write_guard_splits\":" << write_guard_splits
+      << ",\"instructions\":" << instructions
+      << ",\"initialization_instructions\":" << initialization_instructions
+      << ",\"initialization_copy_bytes\":" << initialization_copy_bytes
+      << ",\"operations\":" << operations << ",\"key_splits\":" << key_splits
+      << ",\"key_queries\":" << key_queries << ",\"return_splits\":" << return_splits
+      << ",\"external_calls\":" << external_calls << ",\"vector_operations\":" << vector_operations
+      << ",\"alias_queries\":" << alias_queries << ",\"write_guard_splits\":" << write_guard_splits
       << ",\"private_writes_isolated\":" << private_writes_isolated
       << ",\"stack_growth_paths\":" << stack_growth_paths
       << ",\"stack_maintenance\":" << (stack_maintenance ? "true" : "false")

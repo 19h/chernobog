@@ -10,7 +10,7 @@
 
 namespace chernobog::warbird
 {
-constexpr uint32_t model_version = 7;
+constexpr uint32_t model_version = 8;
 constexpr size_t context_bytes = 448;
 struct Profile
 {
@@ -101,6 +101,8 @@ struct Report
     Limits limits;
     std::string profile;
     size_t instructions = 0;
+    size_t initialization_instructions = 0;
+    size_t initialization_copy_bytes = 0;
     size_t operations = 0;
     size_t states = 0;
     size_t key_splits = 0;

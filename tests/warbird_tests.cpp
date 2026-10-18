@@ -618,6 +618,13 @@ int main()
         0x0f, 0x48, 0x3b, 0xc8, 0x77, 0x0a, 0x48, 0xb9, 0xf0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
         0x0f, 0x48, 0x83, 0xe1, 0xf0, 0x48, 0x8b, 0xc1, 0xe8, 0xb0, 0x6c, 0xf7, 0xff, 0x48, 0x2b,
         0xe1, 0x48, 0x83, 0xa5, 0xc8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x8d, 0x5c, 0x24, 0x20};
+    const std::vector<uint8_t> native_seed = {0x33, 0xc0, 0x48, 0x89, 0x5d, 0x30, 0x48, 0x89, 0x5d,
+                                              0x38, 0x48, 0x89, 0x03, 0x48, 0x8b, 0x85, 0x10, 0x02,
+                                              0,    0,    0x48, 0x89, 0x45, 0x28, 0x4c, 0x89, 0x55,
+                                              0x10, 0x4c, 0x89, 0x45, 0x18, 0x4c, 0x89, 0x4d, 0x20};
+    stack_profile.setup_bytes.insert(stack_profile.setup_bytes.end(), native_seed.begin(),
+                                     native_seed.end());
+    const auto maintenance_offset = stack_profile.setup_bytes.size();
     stack_profile.setup_bytes.insert(stack_profile.setup_bytes.end(), native_maintenance.begin(),
                                      native_maintenance.end());
     stack_profile.dispatch_rva = stack_profile.setup_rva + stack_profile.setup_bytes.size();
@@ -653,8 +660,8 @@ int main()
             "stack maintenance witness rejected");
     auto wrong_maintenance = stack_native;
     auto wrong_maintenance_profile = stack_profile;
-    wrong_maintenance.segs[0].bytes[0x80] ^= 1;
-    wrong_maintenance_profile.setup_bytes[16] ^= 1;
+    wrong_maintenance.segs[0].bytes[stack_profile.setup_rva + maintenance_offset] ^= 1;
+    wrong_maintenance_profile.setup_bytes[maintenance_offset] ^= 1;
     require(!warbird::admit(wrong_maintenance, 0x1000, wrong_maintenance_profile).valid(),
             "nonmatching maintenance semantics were accepted from profile metadata");
     auto wrong_frame = stack_native;
@@ -663,8 +670,67 @@ int main()
             "modified stack frame witness was accepted");
     auto grown = warbird::explore(stack_native, stack_admission, zero_lease, {}, zero_cancel);
     require(!grown.exploration_complete() && grown.keys == std::vector<uint64_t>({1, 2}) &&
-                grown.stack_growth_paths == 1 && grown.edges.back().next == 0,
+                grown.stack_growth_paths == 1 && grown.edges.back().next == 0 &&
+                grown.initialization_instructions > 0 && grown.initialization_copy_bytes == 0,
             "dispatcher failed to grow and clear its requested minimum before the next handler");
+    auto correlated_argument = stack_native;
+    const std::vector<uint8_t> compare_stack_argument = {0x48, 0x8b, 0x41, 0x18, 0x48, 0x33,
+                                                         0x81, 0x00, 0x02, 0x00, 0x00, 0xc3};
+    std::copy(compare_stack_argument.begin(), compare_stack_argument.end(),
+              correlated_argument.segs[0].bytes.begin() + 0x400);
+    auto correlated =
+        warbird::explore(correlated_argument, stack_admission, zero_lease, {}, zero_cancel);
+    require(correlated.exploration_complete() && correlated.edges.size() == 1 &&
+                correlated.edges[0].next == 0 && correlated.initialization_instructions > 0,
+            "native initialization lost the caller-stack argument alias");
+    auto copied_setup = stack_native;
+    auto copied_profile = stack_profile;
+    copied_profile.copies_fifth_argument = true;
+    const std::vector<uint8_t> copy_reserve = {
+        0x48, 0x83, 0xec, 0x10, 0x8b, 0x04, 0x24, 0x8b, 0x04, 0x24, 0x48, 0x83, 0xec,
+        0x50, 0x48, 0x8d, 0x4c, 0x24, 0x20, 0x8b, 0x01, 0x41, 0x0f, 0x10, 0x02, 0x33,
+        0xc0, 0x48, 0x8d, 0x59, 0x0f, 0x48, 0x83, 0xe3, 0xf0, 0x0f, 0x11, 0x43, 0x28,
+        0xf2, 0x41, 0x0f, 0x10, 0x4a, 0x10, 0xf2, 0x0f, 0x11, 0x4b, 0x38};
+    std::copy(copy_reserve.begin(), copy_reserve.end(),
+              copied_profile.frame_bytes.end() - copy_reserve.size());
+    std::copy(copied_profile.frame_bytes.begin(), copied_profile.frame_bytes.end(),
+              copied_setup.segs[0].bytes.begin() + copied_profile.dispatcher_rva);
+    const std::vector<uint8_t> return_zero = {0x31, 0xc0, 0xc3};
+    std::copy(return_zero.begin(), return_zero.end(), copied_setup.segs[0].bytes.begin() + 0x400);
+    copied_profile.setup_bytes[16 + 26] = 0x5d; // Store R11 as ClipSp's first argument.
+    std::copy(copied_profile.setup_bytes.begin(), copied_profile.setup_bytes.end(),
+              copied_setup.segs[0].bytes.begin() + copied_profile.setup_rva);
+    auto copied_admission = warbird::admit(copied_setup, 0x1000, copied_profile);
+    auto copied = warbird::explore(copied_setup, copied_admission, zero_lease, {}, zero_cancel);
+    require(copied_admission.valid() && copied.exploration_complete() &&
+                copied.initialization_copy_bytes == 24 && copied.edges.size() == 1 &&
+                copied.edges[0].next == 0,
+            "native initialization did not execute the complete argument copy");
+    auto wrong_copy_metadata = stack_profile;
+    wrong_copy_metadata.copies_fifth_argument = true;
+    require(!warbird::admit(stack_native, 0x1000, wrong_copy_metadata).valid(),
+            "argument-copy metadata contradicted native setup");
+    auto unexpected_flow = stack_native;
+    auto unexpected_profile = stack_profile;
+    unexpected_profile.setup_bytes[16] = 0xeb;
+    unexpected_profile.setup_bytes[17] = 0xfe;
+    std::copy(unexpected_profile.setup_bytes.begin(), unexpected_profile.setup_bytes.end(),
+              unexpected_flow.segs[0].bytes.begin() + unexpected_profile.setup_rva);
+    auto unexpected_admission = warbird::admit(unexpected_flow, 0x1000, unexpected_profile);
+    require(unexpected_admission.valid(), "initialization-flow fixture not admitted");
+    auto stopped_setup =
+        warbird::explore(unexpected_flow, unexpected_admission, zero_lease, {}, zero_cancel);
+    require(stopped_setup.keys.empty() && !stopped_setup.exploration_complete() &&
+                stopped_setup.frontiers.back().reason ==
+                    "unexpected native initialization control flow",
+            "initialization accepted a branch or entered a handler after failure");
+    warbird::Limits initialization_quota;
+    initialization_quota.instructions = 1;
+    auto limited_setup = warbird::explore(stack_native, stack_admission, zero_lease,
+                                          initialization_quota, zero_cancel);
+    require(limited_setup.keys.empty() && limited_setup.initialization_instructions == 1 &&
+                !limited_setup.exploration_complete(),
+            "initialization exceeded its instruction quota");
     warbird::Limits stack_quota;
     stack_quota.stack_bytes = 16;
     auto too_deep =
@@ -788,6 +854,97 @@ int main()
     programs.push_back(
         fixture({0x48, 0x8d, 0x69, 0xf0, 0x48, 0x89, 0x95, 0xc8, 1,    0, 0, 0x48, 0x83, 0xa5,
                  0xc8, 1,    0,    0,    0,    0x48, 0x8b, 0x85, 0xc8, 1, 0, 0,    0xc3}));
+    // Match the native setup's ordered 16-byte then 8-byte copy. The forward
+    // overlap overwrites the later source word before that word is loaded.
+    for (uint8_t destination : {uint8_t(8), uint8_t(64)})
+        programs.push_back(fixture({0x48,
+                                    0x89,
+                                    0x11,
+                                    0x48,
+                                    0xf7,
+                                    0xd2,
+                                    0x48,
+                                    0x89,
+                                    0x51,
+                                    8,
+                                    0x48,
+                                    0xc1,
+                                    0xca,
+                                    7,
+                                    0x48,
+                                    0x89,
+                                    0x51,
+                                    16,
+                                    0x0f,
+                                    0x10,
+                                    0x01,
+                                    0x0f,
+                                    0x11,
+                                    0x41,
+                                    destination,
+                                    0xf2,
+                                    0x0f,
+                                    0x10,
+                                    0x49,
+                                    16,
+                                    0xf2,
+                                    0x0f,
+                                    0x11,
+                                    0x49,
+                                    uint8_t(destination + 16),
+                                    0x48,
+                                    0x8b,
+                                    0x41,
+                                    destination,
+                                    0x48,
+                                    0x33,
+                                    0x41,
+                                    uint8_t(destination + 8),
+                                    0x48,
+                                    0x33,
+                                    0x41,
+                                    uint8_t(destination + 16),
+                                    0xc3}));
+    // Execute each complete real setup window with controlled register and
+    // memory inputs through both native RAX and the symbolic SMIR interpreter.
+    for (const auto &native_profile : warbird::profiles())
+    {
+        std::vector<uint8_t> code = {
+            0x49, 0x89, 0xe7,                   // Save the real handler RSP in R15.
+            0x48, 0x8d, 0x69, 0xf0,             // RBP = context - 16.
+            0x48, 0x8d, 0x61, 0xd0,             // RSP before reservation = context - 48.
+            0x49, 0x89, 0xd2, 0x49, 0x89, 0xd3, // First argument in R10/R11.
+            0x4c, 0x8d, 0x42, 1,    0x4c, 0x8d, 0x4a, 2,    0x48, 0x89, 0x91, 0,    2,
+            0,    0,                               // Fourth argument in the caller frame.
+            0x48, 0x8d, 0x81, 0,    3,    0,    0, // Fifth argument points to context+768.
+            0x48, 0x89, 0x81, 8,    2,    0,    0,    0x48, 0x89, 0x10, 0x48, 0xf7, 0xd2,
+            0x48, 0x89, 0x50, 8,    0x48, 0xc1, 0xca, 7,    0x48, 0x89, 0x50, 16};
+        if (native_profile.copies_fifth_argument)
+            code.insert(code.end(), {0x49, 0x89, 0xc2});
+        const size_t prefix_size = native_profile.copies_fifth_argument ? 50 : 21;
+        code.insert(code.end(), native_profile.frame_bytes.end() - prefix_size,
+                    native_profile.frame_bytes.end());
+        code.insert(code.end(), native_profile.setup_bytes.begin(),
+                    native_profile.setup_bytes.end() - 74);
+        code.insert(code.end(), {0x48, 0x8d, 0x4d, 0x10}); // Restore context in RCX.
+        for (unsigned slot = 0; slot < 4; ++slot)
+        {
+            code.insert(code.end(), {0x48, uint8_t(slot == 0 ? 0x8b : 0x33), 0x81});
+            const uint32_t offset = native_profile.argument_slots[slot] * 8;
+            for (unsigned byte = 0; byte < 4; ++byte)
+                code.push_back(uint8_t(offset >> (8 * byte)));
+        }
+        if (native_profile.copies_fifth_argument)
+        {
+            code.insert(code.end(), {0x48, 0x33, 0x41, 0xb8, 0x48, 0x33, 0x41, 0xc8});
+        }
+        code.insert(code.end(), {0x4c, 0x89, 0xfc, 0xc3}); // Restore RSP before RET.
+        auto native_setup_program = fixture({});
+        require(code.size() < native_setup_program.segs[0].bytes.size(),
+                "native initialization program exceeds fixture");
+        std::copy(code.begin(), code.end(), native_setup_program.segs[0].bytes.begin());
+        programs.push_back(std::move(native_setup_program));
+    }
     std::vector<uint64_t> inputs = {1,
                                     2,
                                     UINT64_MAX,
@@ -814,7 +971,7 @@ int main()
                         rax_reg_write_u64(engine, RAX_X86_REG_RSP, 0x8000) == RAX_OK &&
                         rax_reg_write_u64(engine, RAX_X86_REG_RCX, 0x9000) == RAX_OK,
                     "direct register write failed");
-            require(rax_emu_start(engine, 0x1000, return_pc, 0, 32) == RAX_OK,
+            require(rax_emu_start(engine, 0x1000, return_pc, 0, 128) == RAX_OK,
                     "direct execution failed");
             rax_exit exit{};
             require(rax_emu_last_exit(engine, &exit) == RAX_OK && exit.reason == RAX_STOP_UNTIL &&
@@ -836,7 +993,7 @@ int main()
             ++comparisons;
         }
     }
-    require(comparisons == 34023, "incomplete direct comparison matrix");
+    require(comparisons == 39178, "incomplete direct comparison matrix");
     // Independent native integer sequence for the dispatcher's stack ledger.
     // R8/R9 represent its virtual floor/native top; no host stack is allocated.
     const std::vector<uint8_t> stack_reference = {
@@ -867,7 +1024,7 @@ int main()
                     rax_reg_write_u64(engine, RAX_X86_REG_RCX, 0x9000) == RAX_OK &&
                     rax_reg_write_u64(engine, RAX_X86_REG_RSP, 0x8000) == RAX_OK,
                 "native stack reference input failed");
-        require(rax_emu_start(engine, 0x1000, return_pc, 0, 32) == RAX_OK,
+        require(rax_emu_start(engine, 0x1000, return_pc, 0, 128) == RAX_OK,
                 "native stack reference did not run");
         rax_exit exit{};
         require(rax_emu_last_exit(engine, &exit) == RAX_OK && exit.reason == RAX_STOP_UNTIL,

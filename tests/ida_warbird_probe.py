@@ -61,6 +61,9 @@ if result.get("model_version", 0) >= 7:
     assert result["context_zero_slots"] == [55], result
     assert result["stack_maintenance"] is True, result
     assert result["context_stack_gap"] == (112 if profile == 1 else 96), result
+if result.get("model_version", 0) >= 8:
+    assert result["initialization_instructions"] > 0, result
+    assert result["initialization_copy_bytes"] == (24 if profile == 1 else 0), result
 allocation_import = [
     entry
     for entry in result["imports"]
