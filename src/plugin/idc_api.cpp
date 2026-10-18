@@ -41,6 +41,7 @@
 #include "../hybrid/z3_bridge.hpp"
 #include "../hybrid/solver_inspection.hpp"
 #include "../vm/ida_regions.hpp"
+#include "../vm/warbird/ida.hpp"
 #include "../vm/ida_native_trace.hpp"
 #include "../ida_analysis/early_hexrays.hpp"
 #include "../ida_analysis/native_engine.hpp"
@@ -1976,6 +1977,29 @@ error_t idaapi idc_rule_reset_stats(idc_value_t *, idc_value_t *r)
 //--------------------------------------------------------------------------
 // chernobog_help() -> string
 //--------------------------------------------------------------------------
+error_t idaapi idc_warbird_start(idc_value_t *args, idc_value_t *result)
+{
+    result->set_string(chernobog::warbird::start(uint64_t(arg_ea(args[0])), unsigned(args[1].num),
+                                                 arg_string(args[2]).c_str())
+                           .c_str());
+    return eOk;
+}
+error_t idaapi idc_warbird_poll(idc_value_t *, idc_value_t *result)
+{
+    result->set_string(chernobog::warbird::poll().c_str());
+    return eOk;
+}
+error_t idaapi idc_warbird_cancel(idc_value_t *, idc_value_t *result)
+{
+    result->set_string(chernobog::warbird::cancel().c_str());
+    return eOk;
+}
+error_t idaapi idc_warbird_profiles(idc_value_t *, idc_value_t *result)
+{
+    result->set_string(chernobog::warbird::profile_json().c_str());
+    return eOk;
+}
+
 error_t idaapi idc_help(idc_value_t *, idc_value_t *r);
 
 //--------------------------------------------------------------------------
@@ -2043,6 +2067,16 @@ const idc_entry_t idc_entries[] = {
      "chernobog_deobfuscate_range(start, end)", "Deobfuscate every function entry in [start, end)"},
     {"chernobog_deobfuscate_all", idc_deobfuscate_all, args_none, "chernobog_deobfuscate_all()",
      "Deobfuscate every function in the database"},
+
+    {"chernobog_warbird_start", idc_warbird_start, args_ea_long_str,
+     "chernobog_warbird_start(ea, profile_index, hexadecimal_key)",
+     "Start bounded in-process WARBIRD diagnostics on an immutable snapshot"},
+    {"chernobog_warbird_poll", idc_warbird_poll, args_none, "chernobog_warbird_poll()",
+     "Poll diagnostics; stale results are discarded, no pseudocode substitution"},
+    {"chernobog_warbird_cancel", idc_warbird_cancel, args_none, "chernobog_warbird_cancel()",
+     "Cancel the active WARBIRD diagnostic job"},
+    {"chernobog_warbird_profiles", idc_warbird_profiles, args_none, "chernobog_warbird_profiles()",
+     "List the three native profiles and all eleven documented entry keys"},
 
     // Admission and tracking
     {"chernobog_request", idc_request, args_ea, "chernobog_request(ea)",
@@ -2270,6 +2304,7 @@ bool install(Host *host)
         hybrid::solver_inspection_remove(host->database_context());
     hosts()[host->database_context()] = host;
     hybrid::solver_inspection_install(host->database_context());
+    warbird::install(host->database_context());
     return true;
 }
 
@@ -2283,6 +2318,7 @@ void uninstall(Host *host)
     if (found != hosts().end() && found->second == host)
     {
         hybrid::solver_inspection_remove(host->database_context());
+        warbird::uninstall(host->database_context());
         hosts().erase(found);
     }
     if (hosts().empty())

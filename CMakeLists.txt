@@ -110,7 +110,7 @@ endif()
 # The gitlink and this configure-time check jointly pin the embedded source. A missing or
 # differently checked-out submodule fails configuration instead of fetching or borrowing a checkout
 # from another repository.
-set(CHERNOBOG_RAX_GIT_REVISION "a9757b274a3fde7ffb8f6654bb51c059e03d09f0")
+set(CHERNOBOG_RAX_GIT_REVISION "140072345599c233699ee1d0d5b9ed306aa5fada")
 set(_chernobog_rax_root "${CMAKE_CURRENT_SOURCE_DIR}/vendor/rax")
 if(NOT EXISTS "${_chernobog_rax_root}/capi/include/rax.h"
    OR NOT EXISTS "${_chernobog_rax_root}/capi/Cargo.toml")
@@ -421,6 +421,9 @@ ida_add_plugin(
     src/ida_analysis/native_engine.cpp
     src/ida_analysis/early_hexrays.cpp
     src/ida_analysis/evidence_apply.cpp
+    src/vm/warbird/model.cpp
+    src/vm/warbird/explorer.cpp
+    src/vm/warbird/ida.cpp
     src/vm/region.cpp
     src/vm/boundary.cpp
     src/vm/native_region.cpp
@@ -572,6 +575,22 @@ endif()
 # and the alignment-sensitive hashing utilities used by the AST matcher.
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(
+        chernobog_warbird_tests tests/warbird_tests.cpp src/vm/warbird/model.cpp
+                                src/vm/warbird/explorer.cpp src/hybrid/program_model_core.cpp)
+    target_include_directories(chernobog_warbird_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_include_directories(chernobog_warbird_tests SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
+    target_link_libraries(chernobog_warbird_tests PRIVATE libz3 chernobog::rax)
+    target_compile_features(chernobog_warbird_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.warbird COMMAND chernobog_warbird_tests)
+    add_executable(
+        chernobog_warbird_corpus tests/warbird_corpus.cpp src/vm/warbird/model.cpp
+                                 src/vm/warbird/explorer.cpp src/hybrid/program_model_core.cpp)
+    target_include_directories(chernobog_warbird_corpus PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_include_directories(chernobog_warbird_corpus SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
+    target_link_libraries(chernobog_warbird_corpus PRIVATE libz3 chernobog::rax)
+    target_compile_features(chernobog_warbird_corpus PRIVATE cxx_std_17)
+
     add_executable(chernobog_vm_boundary_tests tests/vm_boundary_tests.cpp src/vm/boundary.cpp)
     target_include_directories(chernobog_vm_boundary_tests
                                PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -728,14 +747,24 @@ if(BUILD_TESTING)
                                                               -Wshadow)
     endif()
     add_test(NAME chernobog.rax_hybrid COMMAND chernobog_hybrid_tests)
-    add_executable(chernobog_analysis_prefix_tests tests/analysis_prefix_tests.cpp
-        src/hybrid/rax_loader.cpp src/hybrid/hybrid_config.cpp src/hybrid/program_model_core.cpp
-        src/hybrid/abi_policy.cpp src/hybrid/call_summary_policy.cpp src/hybrid/decoder_core.cpp
-        src/hybrid/emu_driver.cpp src/hybrid/evidence.cpp src/hybrid/native_read_strings.cpp
+    add_executable(
+        chernobog_analysis_prefix_tests
+        tests/analysis_prefix_tests.cpp
+        src/hybrid/rax_loader.cpp
+        src/hybrid/hybrid_config.cpp
+        src/hybrid/program_model_core.cpp
+        src/hybrid/abi_policy.cpp
+        src/hybrid/call_summary_policy.cpp
+        src/hybrid/decoder_core.cpp
+        src/hybrid/emu_driver.cpp
+        src/hybrid/evidence.cpp
+        src/hybrid/native_read_strings.cpp
         src/vm/native_region.cpp)
-    target_include_directories(chernobog_analysis_prefix_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src"
-        "${_chernobog_rax_capi}/include")
-    target_link_libraries(chernobog_analysis_prefix_tests PRIVATE chernobog::rax ${_chernobog_thread_libraries})
+    target_include_directories(
+        chernobog_analysis_prefix_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src"
+                                                "${_chernobog_rax_capi}/include")
+    target_link_libraries(chernobog_analysis_prefix_tests PRIVATE chernobog::rax
+                                                                  ${_chernobog_thread_libraries})
     target_compile_features(chernobog_analysis_prefix_tests PRIVATE cxx_std_17)
     add_test(NAME chernobog.analysis_prefix COMMAND chernobog_analysis_prefix_tests)
     set_tests_properties(chernobog.analysis_prefix PROPERTIES TIMEOUT 60)

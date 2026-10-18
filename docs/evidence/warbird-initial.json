@@ -1,0 +1,500 @@
+{
+  "schema": 1,
+  "status": "partial diagnostics; full recovery acceptance gate not met",
+  "baseline_revision": "0890620a2a9b8c85d170979c45eeedf9553abcc9",
+  "rax_revision": "140072345599c233699ee1d0d5b9ed306aa5fada",
+  "source_sha256": {
+    "src/vm/warbird/model.cpp": "d180db81a582394941b5ffc4dcfbe60306d43cc89457cfcbbee03f5662e1f75b",
+    "src/vm/warbird/model.hpp": "92319d8a51e4cbd3c2a3f7332d44630389320f001d7293677f885b9fc20286fc",
+    "src/vm/warbird/explorer.cpp": "8f49de2d2e4c5d3b06bc431ed3b9dac0d25a7263a87941891d24fdaa56111d61",
+    "src/vm/warbird/ida.cpp": "b63cf18f8410792e53a29999b0da8f24b8196f887abb3baf25f00a48a98ad355",
+    "src/vm/warbird/ida.hpp": "cabe6b8791f974086a239f6a34823f56ce43583517816aa3fd9d506f1cea1f5f",
+    "tests/warbird_tests.cpp": "57305b4b9d401fe3f5d83c468b1a033be94d3178575192429fc2fa54ce2bdf5b",
+    "tests/warbird_corpus.cpp": "13c23d11a884d38e8f7df4e668e35ada8c4036ea9f0c5e562bd887344c8202ce",
+    "tests/ida_warbird_probe.py": "248096d7a217751ad57425bfca46e2394e070dec62b08dcf8cfc1010a1fec4fc"
+  },
+  "checks": {
+    "ctest_passed": 26,
+    "rax_capi_tests_passed": 63,
+    "direct_interpreter_fixture_cases": 1024,
+    "corpus_equivalence_cases": 0,
+    "ida_sdk": 940,
+    "ida_nonmutation_and_stale_result_probe": "passed",
+    "ida_plugin_sha256": "a92de6f28ffad37674fb048896f1a015dae581e196960b300a77710754e012e2",
+    "ida_rax_disabled_probe": "passed"
+  },
+  "corpus": [
+    {
+      "schema": 1,
+      "profile": "ci",
+      "entry_key": "0xfaf1d7c599a70add",
+      "exploration_complete": false,
+      "semantic_equivalence_checked": false,
+      "memory_faults_checked": false,
+      "pseudocode_eligible": false,
+      "cancelled": false,
+      "states": 4,
+      "instructions": 157,
+      "operations": 172,
+      "keys": [
+        "0x2742534ff86b50b4",
+        "0xc1a8af482c9f2cec",
+        "0xfaf1d7c599a70add"
+      ],
+      "edges": [
+        {
+          "key": "0xfaf1d7c599a70add",
+          "next": "0xc1a8af482c9f2cec",
+          "return": "0x1c008a99f",
+          "condition": "true"
+        },
+        {
+          "key": "0xc1a8af482c9f2cec",
+          "next": "0x2742534ff86b50b4",
+          "return": "0x1c00832b9",
+          "condition": "true"
+        }
+      ],
+      "frontiers": [
+        {
+          "key": "0x2742534ff86b50b4",
+          "native": "0x1c007b4d1",
+          "reason": "symbolic next key requires memory specialization"
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "profile": "ci",
+      "entry_key": "0x5ae67008bcf20e68",
+      "exploration_complete": false,
+      "semantic_equivalence_checked": false,
+      "memory_faults_checked": false,
+      "pseudocode_eligible": false,
+      "cancelled": false,
+      "states": 5,
+      "instructions": 213,
+      "operations": 222,
+      "keys": [
+        "0x3e82ab94a95af021",
+        "0x5ae67008bcf20e68",
+        "0xe342143c53b0aaac"
+      ],
+      "edges": [
+        {
+          "key": "0x5ae67008bcf20e68",
+          "next": "0xe342143c53b0aaac",
+          "return": "0x1c0087c20",
+          "condition": "true"
+        },
+        {
+          "key": "0xe342143c53b0aaac",
+          "next": "0x3e82ab94a95af021",
+          "return": "0x1c009de2d",
+          "condition": "true"
+        }
+      ],
+      "frontiers": [
+        {
+          "key": "0x3e82ab94a95af021",
+          "native": "0x1c0080cbe",
+          "reason": "symbolic next key requires memory specialization"
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "profile": "ci",
+      "entry_key": "0x2bcb62dccd8476a8",
+      "exploration_complete": false,
+      "semantic_equivalence_checked": false,
+      "memory_faults_checked": false,
+      "pseudocode_eligible": false,
+      "cancelled": false,
+      "states": 4,
+      "instructions": 166,
+      "operations": 184,
+      "keys": [
+        "0x2bcb62dccd8476a8",
+        "0x510124fff7dd3087",
+        "0x538242291176915a"
+      ],
+      "edges": [
+        {
+          "key": "0x2bcb62dccd8476a8",
+          "next": "0x510124fff7dd3087",
+          "return": "0x1c008db29",
+          "condition": "true"
+        },
+        {
+          "key": "0x510124fff7dd3087",
+          "next": "0x538242291176915a",
+          "return": "0x1c00acab6",
+          "condition": "true"
+        }
+      ],
+      "frontiers": [
+        {
+          "key": "0x538242291176915a",
+          "native": "0x1c00a27e1",
+          "reason": "symbolic next key requires memory specialization"
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "profile": "ci",
+      "entry_key": "0xc11b999c187b4d0e",
+      "exploration_complete": false,
+      "semantic_equivalence_checked": false,
+      "memory_faults_checked": false,
+      "pseudocode_eligible": false,
+      "cancelled": false,
+      "states": 75,
+      "instructions": 2069,
+      "operations": 2038,
+      "keys": [
+        "0xc11b999c187b4d0e",
+        "0xdd4ecd771a0c1f8e",
+        "0xf73893bafb7a3ab5",
+        "0xfd4edff61a3b0b5a",
+        "0xfd616b6c51ed1759"
+      ],
+      "edges": [
+        {
+          "key": "0xc11b999c187b4d0e",
+          "next": "0xdd4ecd771a0c1f8e",
+          "return": "0x1c00adfe9",
+          "condition": "true"
+        },
+        {
+          "key": "0xdd4ecd771a0c1f8e",
+          "next": "0xfd4edff61a3b0b5a",
+          "return": "0x1c00b058c",
+          "condition": "true"
+        },
+        {
+          "key": "0xfd4edff61a3b0b5a",
+          "next": "0xf73893bafb7a3ab5",
+          "return": "0x1c0077f2b",
+          "condition": "symbolic path condition (not serialized)"
+        },
+        {
+          "key": "0xfd4edff61a3b0b5a",
+          "next": "0xfd616b6c51ed1759",
+          "return": "0x1c0077f2b",
+          "condition": "symbolic path condition (not serialized)"
+        },
+        {
+          "key": "0xfd4edff61a3b0b5a",
+          "next": "0xfd616b6c51ed1759",
+          "return": "0x1c0077f2b",
+          "condition": "symbolic path condition (not serialized)"
+        }
+      ],
+      "frontiers": [
+        {
+          "key": "0xf73893bafb7a3ab5",
+          "native": "0x1c007bf3e",
+          "reason": "max. steps exceeded"
+        },
+        {
+          "key": "0xfd616b6c51ed1759",
+          "native": "0x1c00a7a99",
+          "reason": "symbolic next key requires memory specialization"
+        },
+        {
+          "key": "0xfd616b6c51ed1759",
+          "native": "0x1c00a7a99",
+          "reason": "symbolic next key requires memory specialization"
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "profile": "ci",
+      "entry_key": "0x5d168cb62bbfb4a9",
+      "exploration_complete": false,
+      "semantic_equivalence_checked": false,
+      "memory_faults_checked": false,
+      "pseudocode_eligible": false,
+      "cancelled": false,
+      "states": 5,
+      "instructions": 255,
+      "operations": 266,
+      "keys": [
+        "0x5d168cb62bbfb4a9",
+        "0x6e09ee51b7ca6c4c",
+        "0xeced9910f6f2e022"
+      ],
+      "edges": [
+        {
+          "key": "0x5d168cb62bbfb4a9",
+          "next": "0xeced9910f6f2e022",
+          "return": "0x1c00782f1",
+          "condition": "true"
+        },
+        {
+          "key": "0xeced9910f6f2e022",
+          "next": "0x6e09ee51b7ca6c4c",
+          "return": "0x1c00b2506",
+          "condition": "true"
+        }
+      ],
+      "frontiers": [
+        {
+          "key": "0x6e09ee51b7ca6c4c",
+          "native": "0x1c007d091",
+          "reason": "symbolic next key requires memory specialization"
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "profile": "ci",
+      "entry_key": "0x83a892154132ef92",
+      "exploration_complete": false,
+      "semantic_equivalence_checked": false,
+      "memory_faults_checked": false,
+      "pseudocode_eligible": false,
+      "cancelled": false,
+      "states": 4,
+      "instructions": 165,
+      "operations": 180,
+      "keys": [
+        "0x83a892154132ef92",
+        "0x88316ede36fb7642",
+        "0xf180b0d9b0440e58"
+      ],
+      "edges": [
+        {
+          "key": "0x83a892154132ef92",
+          "next": "0xf180b0d9b0440e58",
+          "return": "0x1c0083d72",
+          "condition": "true"
+        },
+        {
+          "key": "0xf180b0d9b0440e58",
+          "next": "0x88316ede36fb7642",
+          "return": "0x1c007fe3d",
+          "condition": "true"
+        }
+      ],
+      "frontiers": [
+        {
+          "key": "0x88316ede36fb7642",
+          "native": "0x1c00a04de",
+          "reason": "symbolic next key requires memory specialization"
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "profile": "clipsp",
+      "entry_key": "0xdd2db593fd3f965b",
+      "exploration_complete": false,
+      "semantic_equivalence_checked": false,
+      "memory_faults_checked": false,
+      "pseudocode_eligible": false,
+      "cancelled": false,
+      "states": 3,
+      "instructions": 94,
+      "operations": 93,
+      "keys": [
+        "0xdd2db593fd3f965b"
+      ],
+      "edges": [],
+      "frontiers": [
+        {
+          "key": "0xdd2db593fd3f965b",
+          "native": "0x1c00c7600",
+          "reason": "unverified native return target"
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "profile": "peauth",
+      "entry_key": "0x36c23ced3ae0067f",
+      "exploration_complete": false,
+      "semantic_equivalence_checked": false,
+      "memory_faults_checked": false,
+      "pseudocode_eligible": false,
+      "cancelled": false,
+      "states": 4,
+      "instructions": 490,
+      "operations": 556,
+      "keys": [
+        "0x36c23ced3ae0067f",
+        "0x9b654cb3aa318d77",
+        "0xa43d28e78bc207d5"
+      ],
+      "edges": [
+        {
+          "key": "0x36c23ced3ae0067f",
+          "next": "0xa43d28e78bc207d5",
+          "return": "0x1c006e339",
+          "condition": "true"
+        },
+        {
+          "key": "0xa43d28e78bc207d5",
+          "next": "0x9b654cb3aa318d77",
+          "return": "0x1c005d1bb",
+          "condition": "true"
+        }
+      ],
+      "frontiers": [
+        {
+          "key": "0x9b654cb3aa318d77",
+          "native": "0x1c005f0a1",
+          "reason": "symbolic next key requires memory specialization"
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "profile": "peauth",
+      "entry_key": "0x54fbdbc57d84c904",
+      "exploration_complete": false,
+      "semantic_equivalence_checked": false,
+      "memory_faults_checked": false,
+      "pseudocode_eligible": false,
+      "cancelled": false,
+      "states": 4,
+      "instructions": 446,
+      "operations": 510,
+      "keys": [
+        "0x54fbdbc57d84c904",
+        "0x574ed0558d344a40",
+        "0xd4b57f327d8c6f71"
+      ],
+      "edges": [
+        {
+          "key": "0x54fbdbc57d84c904",
+          "next": "0x574ed0558d344a40",
+          "return": "0x1c0097e1e",
+          "condition": "true"
+        },
+        {
+          "key": "0x574ed0558d344a40",
+          "next": "0xd4b57f327d8c6f71",
+          "return": "0x1c0093597",
+          "condition": "true"
+        }
+      ],
+      "frontiers": [
+        {
+          "key": "0xd4b57f327d8c6f71",
+          "native": "0x1c005b1f3",
+          "reason": "symbolic next key requires memory specialization"
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "profile": "peauth",
+      "entry_key": "0x71230978383912f6",
+      "exploration_complete": false,
+      "semantic_equivalence_checked": false,
+      "memory_faults_checked": false,
+      "pseudocode_eligible": false,
+      "cancelled": false,
+      "states": 6,
+      "instructions": 240,
+      "operations": 251,
+      "keys": [
+        "0x2353411e807c980a",
+        "0x311d69b217475c73",
+        "0x71230978383912f6",
+        "0xd81a09ceee69c6c8",
+        "0xdc6f03f06c6fad36"
+      ],
+      "edges": [
+        {
+          "key": "0x71230978383912f6",
+          "next": "0x2353411e807c980a",
+          "return": "0x1c007637f",
+          "condition": "true"
+        },
+        {
+          "key": "0x2353411e807c980a",
+          "next": "0xd81a09ceee69c6c8",
+          "return": "0x1c006325d",
+          "condition": "true"
+        },
+        {
+          "key": "0xd81a09ceee69c6c8",
+          "next": "0x311d69b217475c73",
+          "return": "0x1c009311f",
+          "condition": "true"
+        },
+        {
+          "key": "0x311d69b217475c73",
+          "next": "0xdc6f03f06c6fad36",
+          "return": "0x1c007acd9",
+          "condition": "true"
+        }
+      ],
+      "frontiers": [
+        {
+          "key": "0xdc6f03f06c6fad36",
+          "native": "0x41556",
+          "reason": "native target not immutable executable code"
+        }
+      ]
+    },
+    {
+      "schema": 1,
+      "profile": "peauth",
+      "entry_key": "0xcdd752b6329244d2",
+      "exploration_complete": false,
+      "semantic_equivalence_checked": false,
+      "memory_faults_checked": false,
+      "pseudocode_eligible": false,
+      "cancelled": false,
+      "states": 6,
+      "instructions": 259,
+      "operations": 264,
+      "keys": [
+        "0x4a3bf3d9f5a2a438",
+        "0x67377b62a43aec9a",
+        "0xcdd752b6329244d2",
+        "0xced3780681aa2078",
+        "0xdeff7bf66c6fad36"
+      ],
+      "edges": [
+        {
+          "key": "0xcdd752b6329244d2",
+          "next": "0x4a3bf3d9f5a2a438",
+          "return": "0x1c00801f7",
+          "condition": "true"
+        },
+        {
+          "key": "0x4a3bf3d9f5a2a438",
+          "next": "0x67377b62a43aec9a",
+          "return": "0x1c009ad7f",
+          "condition": "true"
+        },
+        {
+          "key": "0x67377b62a43aec9a",
+          "next": "0xced3780681aa2078",
+          "return": "0x1c0055c95",
+          "condition": "true"
+        },
+        {
+          "key": "0xced3780681aa2078",
+          "next": "0xdeff7bf66c6fad36",
+          "return": "0x1c00a8c02",
+          "condition": "true"
+        }
+      ],
+      "frontiers": [
+        {
+          "key": "0xdeff7bf66c6fad36",
+          "native": "0x41556",
+          "reason": "native target not immutable executable code"
+        }
+      ]
+    }
+  ]
+}

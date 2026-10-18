@@ -1,0 +1,106 @@
+#pragma once
+#include "../../hybrid/program_model.hpp"
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace chernobog::warbird
+{
+constexpr uint32_t model_version = 1;
+constexpr size_t context_bytes = 448;
+struct Profile
+{
+    const char *name;
+    const char *sha256;
+    uint64_t table_rva;
+    uint64_t dispatcher_rva;
+    uint64_t dispatch_rva;
+    uint32_t table_count;
+    std::array<unsigned, 4> argument_slots;
+    std::array<unsigned, 2> stack_slots;
+    unsigned return_slot;
+    bool copies_fifth_argument;
+    std::vector<uint64_t> entry_keys;
+    uint64_t setup_rva = 0;
+    std::vector<uint8_t> setup_bytes;
+};
+const std::vector<Profile> &profiles();
+struct Limits
+{
+    size_t states = 4096;
+    size_t instructions = 65536;
+    size_t operations = 1000000;
+    size_t bytes = 256 * 1024 * 1024;
+    std::chrono::milliseconds time{60000};
+    unsigned call_depth = 32;
+};
+struct Dependency
+{
+    uint64_t address = 0;
+    uint32_t permissions = 0;
+    std::vector<uint8_t> bytes;
+};
+struct Admission
+{
+    const Profile *profile = nullptr;
+    uint64_t image_base = 0;
+    std::vector<uint64_t> handlers;
+    std::vector<Dependency> dependencies;
+    std::string rejection;
+    bool valid() const { return profile != nullptr && rejection.empty(); }
+};
+// RVA/byte/permission evidence, never a filename-only or hash-only admission.
+Admission admit(const hybrid::ProgramImage &, uint64_t image_base, const Profile &);
+bool dependencies_match(const hybrid::ProgramImage &, const std::vector<Dependency> &);
+
+struct Lease
+{
+    int64_t database = -1;
+    uint64_t generation = 0;
+    uint64_t image_hash = 0;
+    uint64_t base = 0;
+    uint64_t key = 0;
+    uint32_t model = model_version;
+    uint32_t smir_abi = 1;
+    // A caller increments revision for types, function ownership and undo,
+    // independently of byte changes; close invalidates the database identity.
+    uint64_t revision = 0;
+    bool matches(const Lease &) const;
+};
+struct Frontier
+{
+    uint64_t key = 0;
+    uint64_t native = 0;
+    std::string reason;
+};
+struct Edge
+{
+    uint64_t key = 0;
+    uint64_t next = 0;
+    uint64_t native_return = 0;
+    std::string condition;
+};
+struct Report
+{
+    Lease lease;
+    std::string profile;
+    size_t instructions = 0;
+    size_t operations = 0;
+    size_t states = 0;
+    std::vector<uint64_t> keys;
+    std::vector<Edge> edges;
+    std::vector<Frontier> frontiers;
+    std::vector<Dependency> dependencies;
+    bool cancelled = false;
+    // Structural exploration is not semantic equivalence or display admission.
+    bool exploration_complete() const { return !cancelled && frontiers.empty(); }
+    std::string json() const;
+};
+// One worker per process. The worker accepts immutable snapshots only; it
+// cannot access the IDB. No process-global Z3 context or guest host pointers.
+Report explore(const hybrid::ProgramImage &, const Admission &, const Lease &, const Limits &,
+               const std::atomic_bool &cancel);
+} // namespace chernobog::warbird
