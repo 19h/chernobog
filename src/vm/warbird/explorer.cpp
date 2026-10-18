@@ -3,6 +3,7 @@
 #include "byte_memory.hpp"
 #include "pool_model.hpp"
 #include "alias.hpp"
+#include "stack_model.hpp"
 #include <rax.h>
 #include <z3++.h>
 #include <algorithm>
@@ -51,9 +52,12 @@ struct State
     std::vector<z3::expr> flags;
     ByteMemory memory;
     PoolState pool;
+    StackState stack;
     z3::expr domain;
     std::vector<uint64_t> calls;
-    explicit State(z3::context &c) : memory(c), domain(c.bool_val(true))
+    explicit State(z3::context &c, uint64_t floor, uint64_t top)
+        : memory(c), stack{c.bv_val(floor, 64), c.bv_val(top, 64), c.bv_val(0, 64)},
+          domain(c.bool_val(true))
     {
         for (unsigned i = 0; i < 36; ++i)
             registers.push_back(c.bv_const(("r" + std::to_string(i)).c_str(), 64));
@@ -79,6 +83,7 @@ class Explorer
     std::set<std::vector<unsigned>> seen;
     std::map<unsigned, z3::expr> identity_roots;
     std::set<uint64_t> keys;
+    uint64_t initial_floor = virtual_stack, initial_native_top = native_stack;
     size_t symbolic_serial = 0;
     size_t identity_bytes = 0;
     z3::expr bv(uint64_t v, unsigned w = 64) { return ctx.bv_val(v, w); }
@@ -673,12 +678,35 @@ class Explorer
         // Unknown is retained, never treated as proof of infeasibility.
         return solver.check() != z3::unsat;
     }
-    void enter(State &s, uint64_t key)
+    bool enter(State &s, uint64_t key)
     {
         if (!s.table_unchanged)
             throw std::runtime_error("mutable dispatch table may have been overwritten");
-        ++report.states;
         s.key = key;
+        if (admission.stack_maintenance)
+        {
+            const auto slot = admission.zero_slots.front();
+            const auto minimum = load(s, bv(context_base + slot * 8), 64);
+            auto update = update_stack(s.stack, minimum, limits.stack_bytes);
+            if (feasible(s.domain && !update.allowed))
+                frontier(s, "dispatcher stack growth quota");
+            s.domain = (s.domain && update.allowed).simplify(simplify_params);
+            if (!feasible(s.domain))
+                return false;
+            if (feasible(s.domain && update.grows))
+            {
+                ++report.stack_growth_paths;
+                frontier(s, "dispatcher stack probe semantics unverified");
+            }
+            s.stack = std::move(update.state);
+            s.stack.floor = s.stack.floor.simplify(simplify_params);
+            s.stack.native_top = s.stack.native_top.simplify(simplify_params);
+            s.stack.reserved = s.stack.reserved.simplify(simplify_params);
+            store(s, bv(context_base + slot * 8), update.minimum, 64);
+            s.registers[3] = s.stack.floor;
+            s.registers[5] = bv(context_base - 16);
+        }
+        ++report.states;
         s.pc = admission.handlers.at(key & (admission.handlers.size() - 1));
         // Caller-saved registers and incoming flags are not handler inputs
         // promised by the validated RCX/RDX contract. Never carry values from
@@ -692,10 +720,11 @@ class Explorer
         s.registers[0] = bv(s.pc);
         s.registers[1] = bv(context_base);
         s.registers[2] = bv(key);
-        s.registers[4] = bv(native_stack);
+        s.registers[4] = s.stack.native_top;
         s.calls.clear();
-        store(s, bv(native_stack), bv(return_sentinel), 64);
+        store(s, s.stack.native_top, bv(return_sentinel), 64);
         keys.insert(key);
+        return true;
     }
     const std::pair<rax_smir_instruction, std::vector<rax_smir_op>> &decode(uint64_t pc)
     {
@@ -745,6 +774,18 @@ class Explorer
             s.calls.pop_back();
             return true;
         }
+        if (admission.stack_maintenance)
+        {
+            const auto normal =
+                (s.registers[3] == s.stack.floor && s.registers[5] == bv(context_base - 16) &&
+                 s.registers[4] == s.stack.native_top + bv(8))
+                    .simplify(simplify_params);
+            if (feasible(s.domain && !normal))
+                frontier(s, "handler violates admitted nonvolatile stack ABI");
+            s.domain = (s.domain && normal).simplify(simplify_params);
+            if (!feasible(s.domain))
+                return false;
+        }
         const auto key_expression = s.registers[0].simplify(simplify_params);
         const auto choices = resolve_key_domain(key_expression, s.domain);
         report.key_queries += choices.queries;
@@ -767,8 +808,8 @@ class Explorer
                  successor.domain.is_true() ? "true" : "symbolic path condition (not serialized)"});
             if (next != 0)
             {
-                enter(successor, next);
-                work.push_back(std::move(successor));
+                if (enter(successor, next))
+                    work.push_back(std::move(successor));
             }
         }
         return false;
@@ -803,7 +844,7 @@ class Explorer
         std::vector<std::pair<uint64_t, uint64_t>> excluded;
         for (const auto &segment : image.segs)
             excluded.emplace_back(segment.start, segment.end);
-        for (uint64_t reserved : {context_base, native_stack, virtual_stack})
+        for (uint64_t reserved : {context_base, initial_native_top, initial_floor})
             excluded.emplace_back(reserved - 0x10000, reserved + 0x10000);
         for (auto &outcome : outcomes)
         {
@@ -864,6 +905,14 @@ class Explorer
         report.profile = a.valid() ? a.profile->name : "";
         report.dependencies = a.dependencies;
         report.imports = a.imports;
+        report.context_zero_slots = a.zero_slots;
+        report.stack_maintenance = a.stack_maintenance;
+        report.context_stack_gap = a.context_stack_gap;
+        if (a.stack_maintenance && (a.context_stack_gap == 96 || a.context_stack_gap == 112))
+        {
+            initial_floor = context_base - a.context_stack_gap;
+            initial_native_top = initial_floor - 40;
+        }
         for (const auto &segment : image.segs)
             if (!image.writable(segment.start))
                 readonly_ranges.emplace_back(segment.start, segment.end);
@@ -876,8 +925,9 @@ class Explorer
         for (const auto &binding : a.imports)
             if (image.writable(binding.slot))
                 import_ranges.emplace_back(binding.slot, binding.slot + 8);
-        for (uint64_t reserved : {context_base, native_stack, virtual_stack})
+        for (uint64_t reserved : {context_base, initial_native_top, initial_floor})
             private_ranges.emplace_back(reserved - 0x10000, reserved + 0x10000);
+        private_ranges = merge_ranges(std::move(private_ranges));
         readonly_ranges = merge_ranges(std::move(readonly_ranges));
         import_ranges = merge_ranges(std::move(import_ranges));
     }
@@ -888,15 +938,28 @@ class Explorer
             report.frontiers.push_back({report.lease.key, 0, admission.rejection});
             return report;
         }
+        const auto zero_slot = admission.profile->zero_slot;
+        if (zero_slot > context_bytes / 8 ||
+            admission.stack_maintenance != admission.profile->stack_maintenance ||
+            (admission.stack_maintenance && admission.context_stack_gap != 96 &&
+             admission.context_stack_gap != 112) ||
+            (zero_slot == context_bytes / 8
+                 ? !admission.zero_slots.empty()
+                 : admission.zero_slots != std::vector<unsigned>{zero_slot}))
+        {
+            report.frontiers.push_back(
+                {report.lease.key, 0, "context initialization proof mismatch"});
+            return report;
+        }
         for (const auto &segment : image.segs)
-            for (uint64_t reserved : {context_base, native_stack, virtual_stack})
+            for (uint64_t reserved : {context_base, initial_native_top, initial_floor})
                 if (segment.start < reserved + 0x10000 && segment.end > reserved - 0x10000)
                 {
                     report.frontiers.push_back(
                         {report.lease.key, 0, "image overlaps symbolic private memory"});
                     return report;
                 }
-        State first(ctx);
+        State first(ctx, initial_floor, initial_native_top);
         // Context slots are intentionally uninitialized, as in the native
         // dispatcher. The explorer starts at a handler ABI boundary, so no
         // undocumented zero-fill or argument-layout assumption is required.
@@ -904,13 +967,16 @@ class Explorer
             return report;
         if (!admission.profile->setup_bytes.empty())
         {
+            for (auto slot : admission.zero_slots)
+                store(first, bv(context_base + slot * 8), bv(0), 64);
             for (auto slot : admission.profile->argument_slots)
                 store(first, bv(context_base + slot * 8), fresh(), 64);
             for (auto slot : admission.profile->stack_slots)
-                store(first, bv(context_base + slot * 8), bv(virtual_stack), 64);
-            store(first, bv(virtual_stack), bv(0), 64);
+                store(first, bv(context_base + slot * 8), bv(initial_floor), 64);
+            store(first, bv(initial_floor), bv(0), 64);
         }
-        enter(first, report.lease.key);
+        if (!enter(first, report.lease.key))
+            return report;
         std::deque<State> work;
         work.push_back(std::move(first));
         while (!work.empty())
@@ -937,6 +1003,9 @@ class Explorer
                                                       s.domain.id(),
                                                       unsigned(s.table_unchanged),
                                                       unsigned(s.imports_unchanged)};
+                    identity.push_back(s.stack.floor.id());
+                    identity.push_back(s.stack.native_top.id());
+                    identity.push_back(s.stack.reserved.id());
                     s.memory.append_identity(identity);
                     for (const auto &r : s.registers)
                         identity.push_back(r.id());
@@ -966,6 +1035,9 @@ class Explorer
                     // remain alive. Retain each root once, including memory
                     // cells and allocation metadata, within the identity quota.
                     std::vector<z3::expr> roots{s.domain};
+                    roots.push_back(s.stack.floor);
+                    roots.push_back(s.stack.native_top);
+                    roots.push_back(s.stack.reserved);
                     s.memory.append_identity_roots(roots);
                     roots.insert(roots.end(), s.registers.begin(), s.registers.end());
                     roots.insert(roots.end(), s.flags.begin(), s.flags.end());
@@ -1133,7 +1205,8 @@ Report explore(const hybrid::ProgramImage &i, const Admission &a, const Lease &l
     if (!lim.states || !lim.instructions || !lim.operations || lim.bytes < 1024 ||
         lim.time.count() <= 0 || lim.states > 4096 || lim.instructions > 65536 ||
         lim.operations > 1000000 || lim.bytes > 256 * 1024 * 1024 ||
-        lim.time > std::chrono::milliseconds(60000))
+        lim.time > std::chrono::milliseconds(60000) || !lim.stack_bytes ||
+        lim.stack_bytes > 0x10000)
     {
         rejected.frontiers.push_back({l.key, 0, "invalid resource limits"});
         return rejected;

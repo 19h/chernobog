@@ -424,6 +424,7 @@ ida_add_plugin(
     src/vm/warbird/model.cpp
     src/vm/warbird/imports.cpp
     src/vm/warbird/alias.cpp
+    src/vm/warbird/stack_model.cpp
     src/vm/warbird/pool_model.cpp
     src/vm/warbird/byte_memory.cpp
     src/vm/warbird/key_domain.cpp
@@ -589,6 +590,7 @@ if(BUILD_TESTING)
         src/vm/warbird/byte_memory.cpp
         src/vm/warbird/imports.cpp
         src/vm/warbird/alias.cpp
+        src/vm/warbird/stack_model.cpp
         src/vm/warbird/pool_model.cpp
         src/hybrid/program_model_core.cpp)
     target_include_directories(chernobog_warbird_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -605,6 +607,7 @@ if(BUILD_TESTING)
         src/vm/warbird/byte_memory.cpp
         src/vm/warbird/imports.cpp
         src/vm/warbird/alias.cpp
+        src/vm/warbird/stack_model.cpp
         src/vm/warbird/pool_model.cpp
         src/hybrid/program_model_core.cpp)
     target_include_directories(chernobog_warbird_corpus PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")

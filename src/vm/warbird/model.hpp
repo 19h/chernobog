@@ -10,7 +10,7 @@
 
 namespace chernobog::warbird
 {
-constexpr uint32_t model_version = 6;
+constexpr uint32_t model_version = 7;
 constexpr size_t context_bytes = 448;
 struct Profile
 {
@@ -27,6 +27,11 @@ struct Profile
     std::vector<uint64_t> entry_keys;
     uint64_t setup_rva = 0;
     std::vector<uint8_t> setup_bytes;
+    // 56 means absent. A lower value requires a matching first AND [RBP+d],0
+    // instruction in the validated native setup, with context base RBP+16.
+    unsigned zero_slot = context_bytes / 8;
+    bool stack_maintenance = false;
+    std::vector<uint8_t> frame_bytes; // exact dispatcher entry through setup_rva
 };
 const std::vector<Profile> &profiles();
 struct Limits
@@ -37,6 +42,7 @@ struct Limits
     size_t bytes = 256 * 1024 * 1024;
     std::chrono::milliseconds time{60000};
     unsigned call_depth = 32;
+    uint64_t stack_bytes = 0x10000;
 };
 struct Dependency
 {
@@ -51,6 +57,9 @@ struct Admission
     std::vector<uint64_t> handlers;
     std::vector<Dependency> dependencies;
     std::vector<ImportBinding> imports;
+    std::vector<unsigned> zero_slots;
+    bool stack_maintenance = false;
+    unsigned context_stack_gap = 0;
     std::string rejection;
     bool valid() const { return profile != nullptr && rejection.empty(); }
 };
@@ -102,6 +111,10 @@ struct Report
     size_t alias_queries = 0;
     size_t write_guard_splits = 0;
     size_t private_writes_isolated = 0;
+    std::vector<unsigned> context_zero_slots;
+    size_t stack_growth_paths = 0;
+    bool stack_maintenance = false;
+    unsigned context_stack_gap = 0;
     std::vector<uint64_t> keys;
     std::vector<Edge> edges;
     std::vector<Frontier> frontiers;

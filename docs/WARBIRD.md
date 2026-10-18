@@ -27,7 +27,8 @@ dispatch instructions, the table mask and entries, executable permissions, and
 exact context-initialization instructions. Names and source-file hashes alone
 cannot admit a profile. The native initialization does **not** zero all 56
 context slots. Uninitialized bytes remain symbolic. Only the four native
-argument slots, two virtual-stack slots, and initial zero stack word are seeded.
+argument slots, two virtual-stack slots, native minimum-stack slot 55, and initial
+zero stack word are seeded.
 ClipSp's initial 24-byte stack copy remains symbolic in this diagnostic model.
 
 Caller-saved registers and incoming flags are fresh symbolic values at each
@@ -55,7 +56,7 @@ The symbolic scalar interpreter now covers ADC/SBB, rotate through carry, and
 complete AX results from byte MUL/IMUL. Unselected flag updates are preserved.
 The scalar interpreter also covers BT/BTS/BTR/BTC, including memory operands
 exported by RAX as ordered loads, updates and flag operations. The semantic
-model version is 6, independent of the SMIR record ABI version.
+model version is 7, independent of the SMIR record ABI version.
 
 The optional scalar SMIR ABI is versioned and pointer-free. Unsupported operations
 and insufficient capacity publish no executable prefix. It retains instruction
@@ -86,7 +87,8 @@ Snapshots are limited to 64 MiB before allocation. The exploration limits are 40
 256 MiB *estimated* symbolic-work budget, and a 60 s job deadline checked at instruction boundaries. Individual Z3
 simplification and solver work is bounded. The memory budget is not a hard
 allocator sandbox, and an in-process plugin cannot guarantee process-level
-crash isolation. Quotas and unsupported semantics produce explicit frontiers.
+crash isolation. Dispatcher growth has a separate 65536-byte reservation limit. Quotas and
+unsupported semantics produce explicit frontiers.
 
 ## Acceptance gates still outstanding
 
@@ -379,3 +381,70 @@ CI with RAX enabled and disabled. Each checks preservation of bytes/functions
 and the applicable stale-result behavior. Source hashes and the partial
 11-entry sweep are recorded in `docs/evidence/warbird-model6.json` and
 `docs/evidence/warbird-model6.jsonl`. No corpus entry is claimed complete.
+
+
+## Model 7: native initialization and shared stack storage
+
+The three supplied AMD64 dispatchers clear `[RBP+0x1c8]` before their first
+handler call. Their context starts at `RBP+0x10`, so this is context offset
+440 bytes, slot 55. Admission derives that destination from the actual
+`AND qword [RBP+disp32],0` instruction and rejects a changed displacement,
+nonzero immediate, overlapping argument/stack slot, or altered byte witness.
+No other context slot acquires an implicit zero value.
+
+The native and virtual stacks share storage. The model now preserves that
+relationship, including the frame's position relative to the context. Admission
+retains the complete entry-to-setup byte sequence as a dependency and checks the
+prologue, reservation sequence, alignment and maintenance instructions. The
+following offsets apply on the first handler entry:
+
+| Profile | Context minus virtual floor (bytes) | Virtual floor minus handler RSP (bytes) |
+| --- | ---: | ---: |
+| ci | 96 | 40 |
+| ClipSp | 112 | 40 |
+| PEAuth | 96 | 40 |
+
+```text
+lower addresses                                       higher addresses
+handler RSP -- 8-byte return -- 32-byte home area -- virtual floor -- context
+```
+
+The 40-byte relation is preserved when the dispatcher reserves more stack.
+For a nonzero requested minimum below the current floor, it truncates the
+floor/minimum difference to 32 bits, adds 15, rounds down to a multiple of
+16 bytes, and subtracts that size from the native stack. The new virtual floor
+is the resulting handler-entry RSP plus 40 bytes. The minimum slot is then
+cleared. A zero or higher minimum leaves these values unchanged. The model
+preserves the native arithmetic while refusing diagnostic growth whose full
+64-bit distance or rounded reservation exceeds the remaining quota. Thus a
+large distance cannot pass the quota by truncating to a small 32-bit value.
+Each update builds O(1) symbolic expressions and allocates no guest stack.
+
+Handler return checks retain a frontier if RBP, RBX or RSP could violate the
+admitted frame relation. Every growing path also retains a frontier for the
+unverified native stack-probe helper. The continuation models normal-return
+bookkeeping only; guard pages, exception behavior, runtime binding and the
+initial setup's external effects remain unverified. `memory_faults_checked`,
+`semantic_equivalence_checked` and `pseudocode_eligible` remain false.
+
+| ID | Assumption or boundary | Probe and disposition |
+| --- | --- | --- |
+| A24 | All initial context bytes may be zeroed | Rejected; derive only the native zero slot and retain an unknown neighboring slot in a controlled fixture |
+| A25 | Native stack, virtual stack and context can use independent address spaces | Rejected; check their native frame offsets and test cross-alias reads after a 32-byte growth |
+| A26 | Low 32-bit truncation suffices for resource accounting | Rejected; check the full distance and test requests beyond 2^32 bytes |
+| A27 | Normal integer bookkeeping proves stack-probe fault behavior | Rejected; every growing path retains an unverified-probe frontier |
+
+The controlled validation includes 33 native-handler programs with 1031 inputs
+each (34023 comparisons), plus 1031 direct-RAX executions of a separate native
+integer sequence for the stack bookkeeping. The latter cover zero/higher/lower
+minima, 16-byte rounding, 32-bit truncation, and quota rejection. These are
+fixture comparisons, not whole-corpus equivalence results. A two-handler fixture
+checks shared stack/context aliases, minimum clearing, and rejection of an
+insufficient quota. Mutated frame/maintenance witnesses and inconsistent stack
+relations are rejected.
+
+Model-7 source hashes, IDA lifecycle probes and the bounded eleven-entry sweep
+are recorded in `docs/evidence/warbird-model7.json` and
+`docs/evidence/warbird-model7.jsonl`. Every corpus entry remains partial. The
+higher-priority next boundaries remain native helper/fault semantics, bounded
+loop summaries, and the all-entry equivalence and ordinary-pseudocode gates.

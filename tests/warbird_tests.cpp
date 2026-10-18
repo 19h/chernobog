@@ -3,6 +3,7 @@
 #include "vm/warbird/byte_memory.hpp"
 #include "vm/warbird/pool_model.hpp"
 #include "vm/warbird/alias.hpp"
+#include "vm/warbird/stack_model.hpp"
 #include <rax.h>
 #include <algorithm>
 #include <cstdlib>
@@ -554,6 +555,124 @@ int main()
                              {4, 5}, 4,  false,  {1}, 0x60, {0x31, 0xc0}};
     auto accepted = warbird::admit(native, 0x1000, profile);
     require(accepted.valid(), "valid dispatcher rejected");
+    auto zero_profile = profile;
+    zero_profile.setup_rva = 0x70;
+    zero_profile.setup_bytes = {0x48, 0x83, 0xa5, 0xc8, 1, 0, 0, 0};
+    zero_profile.zero_slot = 55;
+    auto zero_native = native;
+    std::copy(zero_profile.setup_bytes.begin(), zero_profile.setup_bytes.end(),
+              zero_native.segs[0].bytes.begin() + 0x70);
+    const std::vector<uint8_t> read_zero_slot = {0x48, 0x8b, 0x81, 0xb8, 1, 0, 0, 0xc3};
+    std::copy(read_zero_slot.begin(), read_zero_slot.end(),
+              zero_native.segs[0].bytes.begin() + 0x80);
+    auto zero_admission = warbird::admit(zero_native, 0x1000, zero_profile);
+    require(zero_admission.valid() && zero_admission.zero_slots == std::vector<unsigned>({55}),
+            "verified native zero slot was not admitted");
+    warbird::Lease zero_lease;
+    zero_lease.database = 1;
+    zero_lease.key = 1;
+    zero_lease.base = 0x1000;
+    std::atomic_bool zero_cancel{false};
+    auto initialized = warbird::explore(zero_native, zero_admission, zero_lease, {}, zero_cancel);
+    require(initialized.exploration_complete() && initialized.edges.size() == 1 &&
+                initialized.edges[0].next == 0 &&
+                initialized.context_zero_slots == std::vector<unsigned>({55}),
+            "native zero slot did not seed the initial context");
+    auto neighbor_native = zero_native;
+    neighbor_native.segs[0].bytes[0x83] = 0xb0; // adjacent, uninitialized slot 54
+    auto neighbor_admission = warbird::admit(neighbor_native, 0x1000, zero_profile);
+    auto neighbor =
+        warbird::explore(neighbor_native, neighbor_admission, zero_lease, {}, zero_cancel);
+    require(!neighbor.exploration_complete() && neighbor.edges.empty(),
+            "native zero slot contaminated an adjacent unknown slot");
+    auto wrong_slot = zero_profile;
+    wrong_slot.zero_slot = 54;
+    require(!warbird::admit(zero_native, 0x1000, wrong_slot).valid(),
+            "zero-slot metadata contradicted native instruction displacement");
+    auto wrong_zero = zero_native;
+    wrong_zero.segs[0].bytes[0x77] = 1;
+    auto wrong_zero_profile = zero_profile;
+    wrong_zero_profile.setup_bytes[7] = 1;
+    require(!warbird::admit(wrong_zero, 0x1000, wrong_zero_profile).valid(),
+            "nonzero AND immediate admitted as zero initialization");
+    auto stack_native = zero_native;
+    auto stack_profile = zero_profile;
+    const std::vector<uint8_t> align_floor = {0x48, 0x8d, 0x59, 0x0f, 0x48, 0x83, 0xe3, 0xf0};
+    stack_profile.setup_bytes.insert(stack_profile.setup_bytes.end(), align_floor.begin(),
+                                     align_floor.end());
+    stack_profile.dispatcher_rva = 0x10;
+    stack_profile.frame_bytes.resize(0x60, 0x90);
+    const std::vector<uint8_t> frame_prologue = {0x40, 0x55, 0x48, 0x81, 0xec, 0,    2,
+                                                 0,    0,    0x48, 0x8d, 0x6c, 0x24, 0x20};
+    const std::vector<uint8_t> frame_reserve = {0x48, 0x83, 0xec, 0x10, 0x8b, 0x04, 0x24,
+                                                0x8b, 0x04, 0x24, 0x48, 0x83, 0xec, 0x40,
+                                                0x48, 0x8d, 0x4c, 0x24, 0x20, 0x8b, 0x01};
+    std::copy(frame_prologue.begin(), frame_prologue.end(), stack_profile.frame_bytes.begin());
+    std::copy(frame_reserve.begin(), frame_reserve.end(),
+              stack_profile.frame_bytes.end() - frame_reserve.size());
+    std::copy(stack_profile.frame_bytes.begin(), stack_profile.frame_bytes.end(),
+              stack_native.segs[0].bytes.begin() + stack_profile.dispatcher_rva);
+    const std::vector<uint8_t> native_maintenance = {
+        0x48, 0x85, 0xd2, 0x74, 0x6a, 0x48, 0x8b, 0x85, 0xc8, 0x01, 0x00, 0x00, 0x48, 0x85, 0xc0,
+        0x74, 0x39, 0x48, 0x3b, 0xc3, 0x73, 0x34, 0x48, 0x2b, 0xd8, 0x8b, 0xc3, 0x48, 0x8d, 0x48,
+        0x0f, 0x48, 0x3b, 0xc8, 0x77, 0x0a, 0x48, 0xb9, 0xf0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0x0f, 0x48, 0x83, 0xe1, 0xf0, 0x48, 0x8b, 0xc1, 0xe8, 0xb0, 0x6c, 0xf7, 0xff, 0x48, 0x2b,
+        0xe1, 0x48, 0x83, 0xa5, 0xc8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x8d, 0x5c, 0x24, 0x20};
+    stack_profile.setup_bytes.insert(stack_profile.setup_bytes.end(), native_maintenance.begin(),
+                                     native_maintenance.end());
+    stack_profile.dispatch_rva = stack_profile.setup_rva + stack_profile.setup_bytes.size();
+    stack_profile.stack_maintenance = true;
+    std::copy(stack_profile.setup_bytes.begin(), stack_profile.setup_bytes.end(),
+              stack_native.segs[0].bytes.begin() + 0x70);
+    std::copy_n(native.segs[0].bytes.begin(), 43,
+                stack_native.segs[0].bytes.begin() + stack_profile.dispatch_rva);
+    const uint32_t displacement = uint32_t(0x2000 - stack_profile.dispatch_rva - 10);
+    for (unsigned i = 0; i < 4; ++i)
+        stack_native.segs[0].bytes[stack_profile.dispatch_rva + 6 + i] =
+            uint8_t(displacement >> (8 * i));
+    stack_native.segs[1].bytes[0] = 0;
+    stack_native.segs[1].bytes[1] = 0x15;
+    stack_native.segs[1].bytes[8] = 0;
+    stack_native.segs[1].bytes[9] = 0x14;
+    const std::vector<uint8_t> stack_request = {0x48, 0x8b, 0x41, 0x20, 0x48, 0x83, 0xe8,
+                                                17,   0x48, 0x89, 0x81, 0xb8, 1,    0,
+                                                0,    0xb8, 2,    0,    0,    0,    0xc3};
+    std::copy(stack_request.begin(), stack_request.end(),
+              stack_native.segs[0].bytes.begin() + 0x400);
+    // The initial virtual stack, RSP home area and context share native storage.
+    // After a 32-byte growth, the old zero word is both [RBX+32] and [RCX-96].
+    const std::vector<uint8_t> stack_aliases = {0x48, 0x8d, 0x44, 0x24, 0x28, 0x48, 0x39, 0xd8,
+                                                0x75, 0x10, 0x48, 0x8b, 0x41, 0xa0, 0x48, 0x0b,
+                                                0x43, 0x20, 0x48, 0x0b, 0x81, 0xb8, 1,    0,
+                                                0,    0xc3, 0xb8, 3,    0,    0,    0,    0xc3};
+    std::copy(stack_aliases.begin(), stack_aliases.end(),
+              stack_native.segs[0].bytes.begin() + 0x500);
+    auto stack_admission = warbird::admit(stack_native, 0x1000, stack_profile);
+    require(stack_admission.valid() && stack_admission.stack_maintenance &&
+                stack_admission.context_stack_gap == 96,
+            "stack maintenance witness rejected");
+    auto wrong_maintenance = stack_native;
+    auto wrong_maintenance_profile = stack_profile;
+    wrong_maintenance.segs[0].bytes[0x80] ^= 1;
+    wrong_maintenance_profile.setup_bytes[16] ^= 1;
+    require(!warbird::admit(wrong_maintenance, 0x1000, wrong_maintenance_profile).valid(),
+            "nonmatching maintenance semantics were accepted from profile metadata");
+    auto wrong_frame = stack_native;
+    wrong_frame.segs[0].bytes[0x10] ^= 1;
+    require(!warbird::admit(wrong_frame, 0x1000, stack_profile).valid(),
+            "modified stack frame witness was accepted");
+    auto grown = warbird::explore(stack_native, stack_admission, zero_lease, {}, zero_cancel);
+    require(!grown.exploration_complete() && grown.keys == std::vector<uint64_t>({1, 2}) &&
+                grown.stack_growth_paths == 1 && grown.edges.back().next == 0,
+            "dispatcher failed to grow and clear its requested minimum before the next handler");
+    warbird::Limits stack_quota;
+    stack_quota.stack_bytes = 16;
+    auto too_deep =
+        warbird::explore(stack_native, stack_admission, zero_lease, stack_quota, zero_cancel);
+    require(!too_deep.exploration_complete() && too_deep.keys == std::vector<uint64_t>({1}) &&
+                std::any_of(too_deep.frontiers.begin(), too_deep.frontiers.end(), [](const auto &f)
+                            { return f.reason == "dispatcher stack growth quota"; }),
+            "dispatcher stack quota did not retain a frontier");
     auto tampered = native;
     tampered.segs[0].bytes[11] = 3;
     require(!warbird::admit(tampered, 0x1000, profile).valid(), "changed dispatch mask accepted");
@@ -666,6 +785,9 @@ int main()
                                 0x14, 0xc0, 7, 0xc3}));
     programs.push_back(fixture({0x66, 0x48, 0x0f, 0x6e, 0xc2, 0x0f, 0x28, 0xc8, 0x66, 0x48, 0x0f,
                                 0x7e, 0xc8, 0x48, 0xc1, 0xe8, 32, 0xc3}));
+    programs.push_back(
+        fixture({0x48, 0x8d, 0x69, 0xf0, 0x48, 0x89, 0x95, 0xc8, 1,    0, 0, 0x48, 0x83, 0xa5,
+                 0xc8, 1,    0,    0,    0,    0x48, 0x8b, 0x85, 0xc8, 1, 0, 0,    0xc3}));
     std::vector<uint64_t> inputs = {1,
                                     2,
                                     UINT64_MAX,
@@ -714,7 +836,82 @@ int main()
             ++comparisons;
         }
     }
-    require(comparisons == 32992, "incomplete direct comparison matrix");
+    require(comparisons == 34023, "incomplete direct comparison matrix");
+    // Independent native integer sequence for the dispatcher's stack ledger.
+    // R8/R9 represent its virtual floor/native top; no host stack is allocated.
+    const std::vector<uint8_t> stack_reference = {
+        0x48, 0x89, 0xd0, 0x48, 0x85, 0xc0, 0x74, 0x1f, 0x4c, 0x39, 0xc0, 0x73, 0x1a,
+        0x4d, 0x89, 0xc2, 0x49, 0x29, 0xc2, 0x44, 0x89, 0xd0, 0x4c, 0x8d, 0x58, 0x0f,
+        0x49, 0x83, 0xe3, 0xf0, 0x4d, 0x29, 0xd9, 0x4d, 0x8d, 0x41, 0x28, 0x31, 0xd2,
+        0x4c, 0x89, 0x01, 0x4c, 0x89, 0x49, 8,    0x48, 0x89, 0x51, 16,   0xc3};
+    require(rax_mem_write(engine, 0x1000, stack_reference.data(), stack_reference.size()) == RAX_OK,
+            "native stack reference write failed");
+    size_t stack_comparisons = 0;
+    for (auto input : inputs)
+    {
+        const uint64_t floor = 0x30000010000ULL, top = floor - 40;
+        const uint64_t used = (input >> 32) & 0xffff;
+        const uint64_t distance = input & 0x1ffff;
+        const unsigned mode = unsigned((input >> 8) & 7);
+        const uint64_t minimum = mode == 0   ? 0
+                                 : mode == 1 ? floor + distance
+                                 : mode == 2 ? floor - distance
+                                 : mode == 3 ? UINT64_MAX
+                                 : mode == 4 ? floor - (uint64_t(1) << 32) - distance
+                                 : mode == 5 ? floor - 0xffffffffULL
+                                 : mode == 6 ? floor - 1
+                                             : floor;
+        require(rax_reg_write_u64(engine, RAX_X86_REG_RDX, minimum) == RAX_OK &&
+                    rax_reg_write_u64(engine, RAX_X86_REG_R8, floor) == RAX_OK &&
+                    rax_reg_write_u64(engine, RAX_X86_REG_R9, top) == RAX_OK &&
+                    rax_reg_write_u64(engine, RAX_X86_REG_RCX, 0x9000) == RAX_OK &&
+                    rax_reg_write_u64(engine, RAX_X86_REG_RSP, 0x8000) == RAX_OK,
+                "native stack reference input failed");
+        require(rax_emu_start(engine, 0x1000, return_pc, 0, 32) == RAX_OK,
+                "native stack reference did not run");
+        rax_exit exit{};
+        require(rax_emu_last_exit(engine, &exit) == RAX_OK && exit.reason == RAX_STOP_UNTIL,
+                "native stack reference did not return");
+        std::array<uint8_t, 24> memory{};
+        require(rax_mem_read(engine, 0x9000, memory.data(), memory.size()) == RAX_OK,
+                "native stack reference result unavailable");
+        std::array<uint64_t, 3> values{};
+        for (unsigned word = 0; word < 3; ++word)
+            for (unsigned byte = 0; byte < 8; ++byte)
+                values[word] |= uint64_t(memory[word * 8 + byte]) << (byte * 8);
+        auto update = warbird::update_stack({numeral(floor), numeral(top), numeral(used)},
+                                            numeral(minimum), 0x10000);
+        std::array<z3::expr, 3> actual{update.state.floor, update.state.native_top, update.minimum};
+        for (unsigned word = 0; word < 3; ++word)
+        {
+            uint64_t value = 0;
+            require(actual[word].simplify().is_numeral_u64(value) && value == values[word],
+                    "dispatcher stack model differs from native integer sequence");
+        }
+        const bool grows = minimum != 0 && minimum < floor;
+        const uint64_t rounded = floor - values[0];
+        const bool allowed =
+            !grows || ((floor - minimum) <= 0x10000 - used && rounded <= 0x10000 - used);
+        require(update.allowed.simplify().is_true() == allowed,
+                "dispatcher stack quota accepted an out-of-budget reservation");
+        ++stack_comparisons;
+    }
+    require(
+        warbird::update_stack({numeral(0x1000), numeral(0x1000), numeral(0)}, numeral(0), 0x10000)
+            .allowed.simplify()
+            .is_false(),
+        "unrelated native and virtual stacks were accepted");
+    require(warbird::update_stack({numeral(0x1028), numeral(0x1000), numeral(0x10001)}, numeral(0),
+                                  0x10000)
+                .allowed.simplify()
+                .is_false(),
+            "invalid prior stack accounting was accepted");
+    require(warbird::update_stack({numeral(0x18), numeral(UINT64_MAX - 15), numeral(0)}, numeral(0),
+                                  0x10000)
+                .allowed.simplify()
+                .is_false(),
+            "wrapping stack address relation was accepted");
+    require(stack_comparisons == 1031, "incomplete native stack comparison matrix");
     rax_engine_close(engine);
     std::cout << "warbird tests passed\n";
 }
