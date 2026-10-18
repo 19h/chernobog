@@ -58,7 +58,8 @@ z3::expr ByteMemory::read(const z3::expr &address, unsigned bits) const
         result = z3::concat(byte(offset), result);
     return simplify(result);
 }
-void ByteMemory::write(const z3::expr &address, const z3::expr &value, unsigned bits)
+void ByteMemory::write(const z3::expr &address, const z3::expr &value, unsigned bits,
+                       const AddressRanges &unchanged)
 {
     validate(address, bits);
     auto &ctx = base_.ctx();
@@ -66,9 +67,18 @@ void ByteMemory::write(const z3::expr &address, const z3::expr &value, unsigned 
         value.get_sort().bv_size() != bits)
         throw std::invalid_argument("byte memory value/context mismatch");
     const auto at = simplify(address);
+    if (unchanged.size() > 256)
+        throw std::invalid_argument("unchanged memory range quota");
+    for (const auto &[begin, end] : unchanged)
+        if (begin >= end)
+            throw std::invalid_argument("invalid unchanged memory range");
     uint64_t absolute = 0;
     if (at.is_numeral_u64(absolute))
     {
+        for (unsigned offset = 0; offset < bits / 8; ++offset)
+            for (const auto &[begin, end] : unchanged)
+                if (absolute + offset >= begin && absolute + offset < end)
+                    throw std::invalid_argument("concrete write violates no-overlap proof");
         size_t new_cells = 0;
         for (unsigned offset = 0; offset < bits / 8; ++offset)
             new_cells += cells_->count(absolute + offset) == 0;
@@ -82,12 +92,23 @@ void ByteMemory::write(const z3::expr &address, const z3::expr &value, unsigned 
     }
     // Commit all preceding concrete writes before an alias-unknown write.
     // Distinct byte addresses commute, so map order is semantically neutral.
-    auto next = materialize();
+    auto retained = std::make_shared<Cells>();
+    auto next = base_;
+    for (const auto &[cell_address, cell] : *cells_)
+    {
+        const bool keep = std::any_of(
+            unchanged.begin(), unchanged.end(), [position = cell_address](const auto &range)
+            { return position >= range.first && position < range.second; });
+        if (keep)
+            retained->emplace(cell_address, cell);
+        else
+            next = z3::store(next, ctx.bv_val(cell_address, 64), cell);
+    }
     for (unsigned offset = 0; offset < bits / 8; ++offset)
         next =
             z3::store(next, at + ctx.bv_val(offset, 64), value.extract(offset * 8 + 7, offset * 8));
     base_ = next;
-    cells_ = std::make_shared<Cells>();
+    cells_ = std::move(retained);
 }
 z3::expr ByteMemory::materialize() const
 {
@@ -121,8 +142,9 @@ void ByteMemory::havoc(const z3::expr &address, const z3::expr &bytes, const z3:
     auto previous = base_;
     for (const auto &[at, value] : *cells_)
     {
-        const bool keep = std::any_of(excluded.begin(), excluded.end(), [&](const auto &range)
-                                      { return at >= range.first && at < range.second; });
+        const bool keep =
+            std::any_of(excluded.begin(), excluded.end(), [position = at](const auto &range)
+                        { return position >= range.first && position < range.second; });
         if (keep)
             retained->emplace(at, value);
         else
@@ -143,5 +165,11 @@ void ByteMemory::append_identity(std::vector<unsigned> &out) const
         out.push_back(unsigned(address >> 32));
         out.push_back(value.id());
     }
+}
+void ByteMemory::append_identity_roots(std::vector<z3::expr> &out) const
+{
+    out.push_back(base_);
+    for (const auto &cell : *cells_)
+        out.push_back(cell.second);
 }
 }

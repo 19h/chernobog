@@ -201,7 +201,9 @@ std::string Report::json() const
       << ",\"instructions\":" << instructions << ",\"operations\":" << operations
       << ",\"key_splits\":" << key_splits << ",\"key_queries\":" << key_queries
       << ",\"return_splits\":" << return_splits << ",\"external_calls\":" << external_calls
-      << ",\"vector_operations\":" << vector_operations << ",\"keys\":[";
+      << ",\"vector_operations\":" << vector_operations << ",\"alias_queries\":" << alias_queries
+      << ",\"write_guard_splits\":" << write_guard_splits
+      << ",\"private_writes_isolated\":" << private_writes_isolated << ",\"keys\":[";
     for (size_t i = 0; i < keys.size(); ++i)
     {
         if (i)

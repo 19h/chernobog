@@ -1,4 +1,5 @@
 #pragma once
+#include "alias.hpp"
 #include <z3++.h>
 #include <cstddef>
 #include <cstdint>
@@ -9,8 +10,8 @@
 namespace chernobog::warbird
 {
 // Persistent byte-addressed memory. Concrete stores stay in a copy-on-write
-// overlay. A symbolic store materializes that overlay before entering the base
-// array, preserving ordering and every possible alias. No section-name rules,
+// overlay. A symbolic store materializes every possibly aliased cell; only
+// proven-disjoint cells can remain cached. No section-name rules,
 // whole-word alias assumptions, or implicit zero initialization are used.
 class ByteMemory
 {
@@ -23,7 +24,10 @@ class ByteMemory
   public:
     explicit ByteMemory(z3::context &, size_t max_cells = 65536);
     z3::expr read(const z3::expr &address, unsigned bits) const;
-    void write(const z3::expr &address, const z3::expr &value, unsigned bits);
+    // `unchanged` requires a no-overlap proof under the caller's path domain.
+    // Empty ranges retain the fully alias-aware default behavior.
+    void write(const z3::expr &address, const z3::expr &value, unsigned bits,
+               const AddressRanges &unchanged = {});
     // Replace exactly a modular byte interval with fresh unconstrained bytes.
     // Required on allocation/reuse and free; existing contents are not zeros.
     // Half-open exclusions explicitly retain their contents. An allocation
@@ -34,5 +38,8 @@ class ByteMemory
     size_t concrete_bytes() const { return cells_->size(); }
     // Collision-free structural identity for conservative state comparison.
     void append_identity(std::vector<unsigned> &) const;
+    // Hold these roots while comparing their numeric IDs: Z3 may recycle an
+    // ID after its last AST reference is released.
+    void append_identity_roots(std::vector<z3::expr> &) const;
 };
 }

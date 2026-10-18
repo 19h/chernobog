@@ -72,6 +72,9 @@ if os.environ.get("CHERNOBOG_TEST_VECTOR") == "1":
         and "SMIR lift unavailable" in entry["reason"]
         for entry in result["frontiers"]
     ), result
+if os.environ.get("CHERNOBOG_TEST_GUARDED_TABLE") == "1":
+    assert result.get("write_guard_splits", 0) > 0, result
+    assert len(result["keys"]) > 1, result
 assert identity() == before, "diagnostic job modified IDB bytes or functions"
 # An IDB notification invalidates the lease even when executable bytes and
 # function ownership do not change. Restore the comment in this disposable IDB.

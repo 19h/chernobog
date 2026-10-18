@@ -41,8 +41,8 @@ through bit-vector operations; general model enumeration is accepted only after
 a final UNSAT check proves that no other key exists. Every edge retains its
 key-equality condition internally. A model prefix is never treated as complete.
 
-Byte memory uses a copy-on-write concrete-byte overlay. Symbolic reads and writes
-materialize that overlay, preserving aliases and write order. Coalescing the
+Byte memory uses a copy-on-write concrete-byte overlay. Symbolic reads see that overlay; symbolic writes commit possibly aliased cells
+and retain only proven-disjoint cells, preserving aliases and write order. Coalescing the
 memory state does not authorize eliminating faulting or volatile instructions
 from a future recovered program; those checks remain outstanding. Immutable loaded bytes may be folded; writable sections are not
 concretized by section name. Potential writes to a writable dispatch table stop
@@ -55,7 +55,7 @@ The symbolic scalar interpreter now covers ADC/SBB, rotate through carry, and
 complete AX results from byte MUL/IMUL. Unselected flag updates are preserved.
 The scalar interpreter also covers BT/BTS/BTR/BTC, including memory operands
 exported by RAX as ordered loads, updates and flag operations. The semantic
-model version is 5, independent of the SMIR record ABI version.
+model version is 6, independent of the SMIR record ABI version.
 
 The optional scalar SMIR ABI is versioned and pointer-free. Unsupported operations
 and insufficient capacity publish no executable prefix. It retains instruction
@@ -323,3 +323,59 @@ private overlay made this actual in-IDA vector path reachable. That observation
 is distinct from claiming complete entry recovery. All eleven entries remain
 incomplete. The exact record is `docs/evidence/warbird-model5.json`, with the
 bounded corpus reports in `docs/evidence/warbird-model5.jsonl`.
+
+## Model 6: guarded writes and alias proofs
+
+The explorer separates possible writes to immutable image bytes, a writable
+handler table, and writable import slots from a continuation constrained not to
+write those regions. Each possible mutation/fault remains an explicit frontier.
+This extends the existing guarded-native-return strategy; it does not treat an
+unproved mutation as impossible. Concrete writes retain their previous behavior,
+including invalidating an actually modified dispatch/import table.
+
+A bounded alias oracle can additionally prove that a symbolic write does not
+intersect the private context or stack regions. Only UNSAT authorizes retaining
+those concrete byte cells. SAT and unknown leave the ordinary fully alias-aware
+memory update in place. The no-overlap proof includes the entire write, rather
+than only its first address. A modular interval expression is checked against
+an independent byte-by-byte definition for every width from one through sixteen
+bytes, including ranges near address-space wraparound.
+
+The oracle is local to one Z3 context and one job. Its proof cache holds the
+address and domain AST references, and includes the access width and complete
+range set in its key. The explorer also retains the AST roots used in visited
+state identities. Z3's `ast_manager::delete_node` can recycle expression IDs when
+`RECYCLE_FREE_AST_INDICES` is enabled; an unowned numeric ID cannot authenticate
+a persistent proof or state identity. Retained roots are deduplicated, and their
+estimated storage is included in the existing identity quota.
+
+The alias oracle performs at most 256 solver checks per job. Each check requests
+a 10 ms timeout and 20000 resource units. An unknown result never becomes a
+no-overlap proof. Range matching costs O(R) for R merged ranges, with R <= 256;
+the separately tested byte-by-byte definition costs O(RW) for W access bytes.
+The solver limits are bounded work controls, not a process memory sandbox.
+
+| ID | Assumption or boundary | Probe and disposition |
+| --- | --- | --- |
+| A19 | A possible table write invalidates all successors | Retain the mutation frontier and test a second keyed handler under the complementary guard |
+| A20 | Checking a write's starting address proves no overlap | Rejected; compare modular intervals against all written byte addresses, including wraparound |
+| A21 | Z3 AST IDs remain unique after referenced ASTs are destroyed | Rejected; hold AST roots in the proof cache and visited-state set; reject foreign contexts |
+| A22 | A solver timeout authorizes no-alias treatment | Rejected; a zero-query-budget control returns unknown and authorizes no private-cell retention |
+| A23 | Retaining concrete cells is correct without the guard | Counterexample deliberately aliases a retained cell; equivalence holds only with the no-overlap constraint |
+
+These guards preserve the diagnostic status: potential dynamic table changes,
+unknown imports, external effects and unproved memory faults still prevent
+checked pseudocode admission. The all-entry recovery and lowering requirements
+remain open.
+
+Model-6 validation retains all 32992 native comparisons and adds 48 symbolic
+comparisons of the compact overlap formula with its byte-wise definition,
+proof-cache context/lifetime controls, and a counterexample showing why the
+symbolic-write guard is necessary. A controlled mutable-table fixture both
+continues under a no-write guard and rejects a definite table mutation.
+
+Live IDA probes cover guarded ClipSp continuation, PEAuth SIMD execution, and
+CI with RAX enabled and disabled. Each checks preservation of bytes/functions
+and the applicable stale-result behavior. Source hashes and the partial
+11-entry sweep are recorded in `docs/evidence/warbird-model6.json` and
+`docs/evidence/warbird-model6.jsonl`. No corpus entry is claimed complete.

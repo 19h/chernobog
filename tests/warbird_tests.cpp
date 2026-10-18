@@ -2,6 +2,7 @@
 #include "vm/warbird/key_domain.hpp"
 #include "vm/warbird/byte_memory.hpp"
 #include "vm/warbird/pool_model.hpp"
+#include "vm/warbird/alias.hpp"
 #include <rax.h>
 #include <algorithm>
 #include <cstdlib>
@@ -191,12 +192,54 @@ int main()
     auto x = context.bv_const("key_input", 64);
     auto choice = context.bool_const("choice");
     auto numeral = [&](uint64_t n) { return context.bv_val(n, 64); };
+    const auto merged =
+        warbird::merge_ranges({{0x1008, 0x1010}, {0x1000, 0x1008}, {0x2000, 0x2008}});
+    require(merged == warbird::AddressRanges({{0x1000, 0x1010}, {0x2000, 0x2008}}),
+            "alias ranges did not merge overlapping/adjacent intervals");
+    warbird::AliasOracle alias_oracle(context);
+    const warbird::AddressRanges region{{0x4000, 0x5000}};
+    auto outside_region = z3::ult(x, numeral(0x4000)) || z3::uge(x, numeral(0x5000));
+    require(alias_oracle.classify(x, 1, outside_region, region) == warbird::AliasResult::DISJOINT,
+            "alias oracle failed a disjoint byte proof");
+    const auto query_count = alias_oracle.queries();
+    require(alias_oracle.classify(x, 1, outside_region, region) == warbird::AliasResult::DISJOINT &&
+                alias_oracle.queries() == query_count,
+            "alias proof cache did not reuse the same retained AST identity");
+    require(alias_oracle.classify(x, 2, outside_region, region) == warbird::AliasResult::MAY_ALIAS,
+            "multi-byte overlap was lost at a range boundary");
+    require(alias_oracle.classify(numeral(UINT64_MAX), 2, context.bool_val(true), {{0, 1}}) ==
+                warbird::AliasResult::MAY_ALIAS,
+            "alias proof ignored a write wrapping through address zero");
+    warbird::AliasOracle no_queries(context, 0);
+    require(no_queries.classify(x, 1, outside_region, region) == warbird::AliasResult::UNKNOWN,
+            "unproved alias query was treated as disjoint");
     auto satisfiable = [&](const z3::expr &expression)
     {
         z3::solver solver(context);
         solver.add(expression);
         return solver.check() == z3::sat;
     };
+    for (unsigned bytes = 1; bytes <= 16; ++bytes)
+        for (const auto &range :
+             warbird::AddressRanges{{0, 1}, {0x4000, 0x5000}, {UINT64_MAX - 16, UINT64_MAX}})
+        {
+            auto bytewise = context.bool_val(false);
+            for (unsigned byte = 0; byte < bytes; ++byte)
+            {
+                const auto at = x + numeral(byte);
+                bytewise = bytewise || (z3::uge(at, numeral(range.first)) &&
+                                        z3::ult(at, numeral(range.second)));
+            }
+            require(!satisfiable(bytewise != warbird::overlaps(x, bytes, {range})),
+                    "compact modular overlap check differs from byte-wise definition");
+        }
+    {
+        z3::context other;
+        rejects_imports(
+            [&]
+            { alias_oracle.classify(other.bv_const("x", 64), 1, other.bool_val(true), region); },
+            "alias proof cache accepted a foreign Z3 context");
+    }
     const auto allocation =
         warbird::pool_allocate({}, numeral(1), numeral(24), numeral(0x5045), numeral(0x10000));
     require(allocation.size() == 3 && satisfiable(allocation[1].condition) &&
@@ -332,6 +375,19 @@ int main()
     symbolic_havoc.havoc(x, numeral(1), fresh_bytes);
     require(!satisfiable(symbolic_havoc.read(x, 8) != z3::select(fresh_bytes, x)),
             "symbolic range havoc did not freshen addressed byte");
+    auto ordinary_write = before_havoc, isolated_write = before_havoc;
+    ordinary_write.write(x, context.bv_val(0xee, 8), 8);
+    isolated_write.write(x, context.bv_val(0xee, 8), 8, region);
+    auto write_probe = context.bv_const("write_probe", 64);
+    require(!satisfiable(outside_region && ordinary_write.read(write_probe, 8) !=
+                                               isolated_write.read(write_probe, 8)),
+            "isolated symbolic write violated its no-overlap proof");
+    require(isolated_write.read(numeral(0x4000), 64).is_numeral_u64(retained) &&
+                retained == 0x1122334455667788ULL,
+            "isolated symbolic write obscured a disjoint concrete cell");
+    require(satisfiable(x == numeral(0x4000) && ordinary_write.read(numeral(0x4000), 8) !=
+                                                    isolated_write.read(numeral(0x4000), 8)),
+            "alias regression does not test the necessity of the no-overlap guard");
     auto naive_pool_havoc = before_havoc;
     auto disjoint_pool_havoc = before_havoc;
     naive_pool_havoc.havoc(x, numeral(16), fresh_bytes);
@@ -383,6 +439,43 @@ int main()
     auto r = run(zero);
     require(r.exploration_complete() && r.edges.size() == 1 && r.edges[0].next == 0,
             "zero-key return must terminate");
+    auto changing_table = fixture({0x48, 0x8b, 0x01, 0xc6, 0x00, 7, 0xb8, 2, 0, 0, 0, 0xc3});
+    changing_table.segs[0].bytes[0x100] = 0x31;
+    changing_table.segs[0].bytes[0x101] = 0xc0;
+    changing_table.segs[0].bytes[0x102] = 0xc3;
+    auto writable = changing_table.segs[0];
+    writable.start = 0x3000;
+    writable.end = 0x4000;
+    writable.perm = 6;
+    changing_table.segs.push_back(std::move(writable));
+    changing_table.hi = 0x4000;
+    warbird::Profile table_profile{"guarded table", "",     0x3000, 0,     0,  2,
+                                   {0, 1, 2, 3},    {4, 5}, 4,      false, {1}};
+    warbird::Admission table_admission;
+    table_admission.profile = &table_profile;
+    table_admission.handlers = {0x1100, 0x1000};
+    warbird::Lease table_lease;
+    table_lease.database = 1;
+    table_lease.key = 1;
+    std::atomic_bool keep_going{false};
+    const auto guarded_table =
+        warbird::explore(changing_table, table_admission, table_lease, {}, keep_going);
+    require(guarded_table.keys == std::vector<uint64_t>({1, 2}) &&
+                guarded_table.edges.size() == 2 && guarded_table.write_guard_splits >= 2 &&
+                !guarded_table.frontiers.empty(),
+            "possible table write lost its guarded unchanged-table continuation");
+    const std::vector<uint8_t> definite_table_write = {0x48, 0xb8, 0, 0x30, 0, 0, 0, 0, 0,   0,
+                                                       0xc6, 0,    7, 0xb8, 2, 0, 0, 0, 0xc3};
+    std::copy(definite_table_write.begin(), definite_table_write.end(),
+              changing_table.segs[0].bytes.begin());
+    const auto changed_table =
+        warbird::explore(changing_table, table_admission, table_lease, {}, keep_going);
+    require(
+        changed_table.keys == std::vector<uint64_t>({1}) &&
+            std::any_of(changed_table.frontiers.begin(), changed_table.frontiers.end(),
+                        [](const auto &f)
+                        { return f.reason == "mutable dispatch table may have been overwritten"; }),
+        "definite dispatch-table mutation incorrectly reused the admitted table");
     const auto aligned_entry =
         run(fixture({0x48, 0x89, 0xe0, 0x83, 0xe0, 15, 0x83, 0xf0, 8, 0xc3}));
     require(aligned_entry.exploration_complete() && aligned_entry.edges.size() == 1 &&

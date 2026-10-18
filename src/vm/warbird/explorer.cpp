@@ -2,6 +2,7 @@
 #include "key_domain.hpp"
 #include "byte_memory.hpp"
 #include "pool_model.hpp"
+#include "alias.hpp"
 #include <rax.h>
 #include <z3++.h>
 #include <algorithm>
@@ -21,6 +22,9 @@ constexpr uint64_t native_stack = 0x20000010008ULL;
 constexpr uint64_t virtual_stack = 0x30000010000ULL;
 constexpr uint64_t return_sentinel = 0xfffffffffffff00dULL;
 std::atomic_flag running = ATOMIC_FLAG_INIT;
+struct StopPath
+{
+};
 z3::expr resize(const z3::expr &v, unsigned bits, bool sign = false)
 {
     unsigned n = v.get_sort().bv_size();
@@ -69,8 +73,11 @@ class Explorer
     z3::context ctx;
     Report report;
     z3::params simplify_params{ctx};
+    AliasOracle aliases{ctx};
+    AddressRanges readonly_ranges, table_ranges, import_ranges, private_ranges;
     std::map<uint64_t, std::pair<rax_smir_instruction, std::vector<rax_smir_op>>> cache;
     std::set<std::vector<unsigned>> seen;
+    std::map<unsigned, z3::expr> identity_roots;
     std::set<uint64_t> keys;
     size_t symbolic_serial = 0;
     size_t identity_bytes = 0;
@@ -142,16 +149,46 @@ class Explorer
         }
         return s.memory.read(at, width);
     }
+    void guard_write(State &s, const z3::expr &at, unsigned bytes, const AddressRanges &ranges,
+                     const char *reason)
+    {
+        if (aliases.classify(at, bytes, s.domain, ranges) == AliasResult::DISJOINT)
+            return;
+        frontier(s, reason);
+        ++report.write_guard_splits;
+        s.domain = (s.domain && !overlaps(at, bytes, ranges)).simplify(simplify_params);
+        if (!feasible(s.domain))
+            throw StopPath{};
+    }
     void store(State &s, z3::expr at, z3::expr value, unsigned width)
     {
         uint64_t n = 0;
         const bool concrete = number(at, n);
         const uint64_t table_start = admission.image_base + admission.profile->table_rva;
         const uint64_t table_end = table_start + admission.profile->table_count * 8;
-        if (!concrete && !admission.imports.empty())
-            s.imports_unchanged = false;
-        if (!concrete && image.writable(table_start))
-            s.table_unchanged = false;
+        AddressRanges unchanged;
+        if (!concrete)
+        {
+            guard_write(s, at, width / 8, readonly_ranges, "possible write to immutable image");
+            unchanged = readonly_ranges;
+            if (s.table_unchanged)
+            {
+                guard_write(s, at, width / 8, table_ranges,
+                            "possible mutable dispatch table write");
+                unchanged.insert(unchanged.end(), table_ranges.begin(), table_ranges.end());
+            }
+            if (s.imports_unchanged)
+            {
+                guard_write(s, at, width / 8, import_ranges, "possible import table write");
+                unchanged.insert(unchanged.end(), import_ranges.begin(), import_ranges.end());
+            }
+            if (aliases.classify(at, width / 8, s.domain, private_ranges) == AliasResult::DISJOINT)
+            {
+                unchanged.insert(unchanged.end(), private_ranges.begin(), private_ranges.end());
+                ++report.private_writes_isolated;
+            }
+            unchanged = merge_ranges(std::move(unchanged));
+        }
         if (concrete)
             for (unsigned byte = 0; byte < width / 8; ++byte)
             {
@@ -165,7 +202,7 @@ class Explorer
                         s.imports_unchanged = false;
             }
         value = resize(value, width);
-        s.memory.write(at, value, width);
+        s.memory.write(at, value, width, unchanged);
         // Bound expression work independently from instruction count.
         if (report.operations > limits.bytes / 1024)
             throw std::runtime_error("symbolic workspace quota");
@@ -827,6 +864,22 @@ class Explorer
         report.profile = a.valid() ? a.profile->name : "";
         report.dependencies = a.dependencies;
         report.imports = a.imports;
+        for (const auto &segment : image.segs)
+            if (!image.writable(segment.start))
+                readonly_ranges.emplace_back(segment.start, segment.end);
+        if (a.valid())
+        {
+            const auto table = a.image_base + a.profile->table_rva;
+            if (image.writable(table))
+                table_ranges.emplace_back(table, table + a.profile->table_count * 8);
+        }
+        for (const auto &binding : a.imports)
+            if (image.writable(binding.slot))
+                import_ranges.emplace_back(binding.slot, binding.slot + 8);
+        for (uint64_t reserved : {context_base, native_stack, virtual_stack})
+            private_ranges.emplace_back(reserved - 0x10000, reserved + 0x10000);
+        readonly_ranges = merge_ranges(std::move(readonly_ranges));
+        import_ranges = merge_ranges(std::move(import_ranges));
     }
     Report run()
     {
@@ -904,15 +957,36 @@ class Explorer
                         identity.push_back(unsigned(c));
                         identity.push_back(unsigned(c >> 32));
                     }
-                    const auto bytes = identity.size() * sizeof(unsigned);
-                    if (bytes > limits.bytes / 2 || identity_bytes > limits.bytes / 2 - bytes)
-                        throw std::runtime_error("symbolic state identity quota");
-                    identity_bytes += bytes;
-                    if (!seen.insert(std::move(identity)).second)
+                    if (seen.count(identity))
                     {
                         frontier(s, "exact native cycle requires CFG lowering");
                         break;
                     }
+                    // Numeric AST IDs are comparable only while their ASTs
+                    // remain alive. Retain each root once, including memory
+                    // cells and allocation metadata, within the identity quota.
+                    std::vector<z3::expr> roots{s.domain};
+                    s.memory.append_identity_roots(roots);
+                    roots.insert(roots.end(), s.registers.begin(), s.registers.end());
+                    roots.insert(roots.end(), s.flags.begin(), s.flags.end());
+                    roots.insert(roots.end(), s.vectors.begin(), s.vectors.end());
+                    for (const auto &block : s.pool.blocks)
+                    {
+                        roots.push_back(block.address);
+                        roots.push_back(block.bytes);
+                        roots.push_back(block.tag);
+                    }
+                    std::map<unsigned, z3::expr> new_roots;
+                    for (const auto &root : roots)
+                        if (!identity_roots.count(root.id()))
+                            new_roots.emplace(root.id(), root);
+                    const auto bytes = identity.size() * sizeof(unsigned) +
+                                       new_roots.size() * (sizeof(z3::expr) + 64);
+                    if (bytes > limits.bytes / 2 || identity_bytes > limits.bytes / 2 - bytes)
+                        throw std::runtime_error("symbolic state identity quota");
+                    identity_bytes += bytes;
+                    identity_roots.insert(new_roots.begin(), new_roots.end());
+                    seen.insert(std::move(identity));
                     const auto &decoded = decode(s.pc);
                     const auto &d = decoded.first;
                     ++report.instructions;
@@ -1001,6 +1075,11 @@ class Explorer
                                                           : "unsupported native flow");
                 }
             }
+            catch (const StopPath &)
+            {
+                // The non-overlapping continuation was proved infeasible;
+                // its overlapping alternative already has a frontier.
+            }
             catch (const std::exception &e)
             {
                 frontier(s, e.what());
@@ -1013,6 +1092,7 @@ class Explorer
             }
         }
         report.cancelled = cancel.load();
+        report.alias_queries = aliases.queries();
         report.keys.assign(keys.begin(), keys.end());
         return report;
     }

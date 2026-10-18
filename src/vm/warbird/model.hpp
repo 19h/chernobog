@@ -10,7 +10,7 @@
 
 namespace chernobog::warbird
 {
-constexpr uint32_t model_version = 5;
+constexpr uint32_t model_version = 6;
 constexpr size_t context_bytes = 448;
 struct Profile
 {
@@ -99,6 +99,9 @@ struct Report
     size_t return_splits = 0;
     size_t external_calls = 0;
     size_t vector_operations = 0;
+    size_t alias_queries = 0;
+    size_t write_guard_splits = 0;
+    size_t private_writes_isolated = 0;
     std::vector<uint64_t> keys;
     std::vector<Edge> edges;
     std::vector<Frontier> frontiers;
