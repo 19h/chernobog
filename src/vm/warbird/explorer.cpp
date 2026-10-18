@@ -4,6 +4,7 @@
 #include "pool_model.hpp"
 #include "alias.hpp"
 #include "stack_model.hpp"
+#include "recovery.hpp"
 #include <rax.h>
 #include <z3++.h>
 #include <algorithm>
@@ -43,6 +44,8 @@ bool number(const z3::expr &v, uint64_t &n)
 struct State
 {
     uint64_t key = 0, pc = 0;
+    uint32_t entry_snapshot = no_record, effect_tail = no_record;
+    EffectOrigin effect_origin = EffectOrigin::Setup;
     bool table_unchanged = true;
     bool imports_unchanged = true;
     std::vector<z3::expr> registers;
@@ -74,7 +77,9 @@ class Explorer
     const Limits &limits;
     const std::atomic_bool &cancel;
     const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-    z3::context ctx;
+    std::shared_ptr<z3::context> arena = std::make_shared<z3::context>();
+    z3::context &ctx = *arena;
+    RecoveryRecorder recovery;
     Report report;
     z3::params simplify_params{ctx};
     AliasOracle aliases{ctx};
@@ -90,6 +95,22 @@ class Explorer
     z3::expr fresh(unsigned bits = 64)
     {
         return ctx.bv_const(("u" + std::to_string(symbolic_serial++)).c_str(), bits);
+    }
+    uint32_t snapshot(const State &s)
+    {
+        return recovery.state(s.key, s.pc, s.effect_tail, s.table_unchanged, s.imports_unchanged,
+                              s.registers, s.vectors, s.flags, s.memory, s.stack, s.pool, s.domain);
+    }
+    Report finish_report()
+    {
+        report.recovery = recovery.finish(report.exploration_complete());
+        return std::move(report);
+    }
+    void effect(State &s, EffectKind kind, const z3::expr &address, const z3::expr &value,
+                unsigned bits, const z3::expr &bytes)
+    {
+        s.effect_tail = recovery.effect(s.effect_tail, s.effect_origin, kind, s.pc, bits, address,
+                                        value, bytes);
     }
     void frontier(const State &s, const std::string &why)
     {
@@ -150,9 +171,12 @@ class Explorer
             auto value = bv(view.data[width / 8 - 1], 8);
             for (unsigned i = width / 8 - 1; i > 0; --i)
                 value = z3::concat(value, bv(view.data[i - 1], 8));
+            effect(s, EffectKind::Read, at, value, width, bv(width / 8));
             return value;
         }
-        return s.memory.read(at, width);
+        auto value = s.memory.read(at, width);
+        effect(s, EffectKind::Read, at, value, width, bv(width / 8));
+        return value;
     }
     void guard_write(State &s, const z3::expr &at, unsigned bytes, const AddressRanges &ranges,
                      const char *reason)
@@ -208,6 +232,7 @@ class Explorer
             }
         value = resize(value, width);
         s.memory.write(at, value, width, unchanged);
+        effect(s, EffectKind::Write, at, value, width, bv(width / 8));
         // Bound expression work independently from instruction count.
         if (report.operations > limits.bytes / 1024)
             throw std::runtime_error("symbolic workspace quota");
@@ -321,6 +346,7 @@ class Explorer
                     frontier(s, "possible misaligned vector memory address");
                 s.domain = (s.domain && aligned).simplify(simplify_params);
             }
+            effect(s, EffectKind::Alignment, address(s, o.address), aligned, 0, bv(o.auxiliary));
             ++report.vector_operations;
             return true;
         }
@@ -680,6 +706,7 @@ class Explorer
     }
     bool enter(State &s, uint64_t key)
     {
+        s.effect_origin = EffectOrigin::Dispatcher;
         if (!s.table_unchanged)
             throw std::runtime_error("mutable dispatch table may have been overwritten");
         s.key = key;
@@ -724,6 +751,7 @@ class Explorer
         s.calls.clear();
         store(s, s.stack.native_top, bv(return_sentinel), 64);
         keys.insert(key);
+        s.entry_snapshot = snapshot(s);
         return true;
     }
     const std::pair<rax_smir_instruction, std::vector<rax_smir_op>> &decode(uint64_t pc)
@@ -746,6 +774,8 @@ class Explorer
             throw std::runtime_error("RAX complete SMIR lift unavailable");
         report.dependencies.push_back(
             {pc, image.segment_at(pc)->perm, {view.data, view.data + info.bytes_consumed}});
+        recovery.instruction(pc, info, std::vector<rax_smir_op>(ops, ops + info.op_count),
+                             view.data);
         return cache
             .emplace(pc, std::make_pair(info, std::vector<rax_smir_op>(ops, ops + info.op_count)))
             .first->second;
@@ -852,6 +882,7 @@ class Explorer
                 return false;
         }
         const auto key_expression = s.registers[0].simplify(simplify_params);
+        recovery.relation(s.entry_snapshot, snapshot(s), key_expression, s.domain);
         const auto choices = resolve_key_domain(key_expression, s.domain);
         report.key_queries += choices.queries;
         if (choices.status == KeyDomainStatus::UNSATISFIABLE)
@@ -906,6 +937,7 @@ class Explorer
             store(s, callee_sp, bv(instruction.fallthrough), 64);
             s.calls.push_back(instruction.fallthrough);
         }
+        recovery.flow(s.key, s.pc, binding.slot, FlowKind::ExternalCall, s.domain);
         std::vector<std::pair<uint64_t, uint64_t>> excluded;
         for (const auto &segment : image.segs)
             excluded.emplace_back(segment.start, segment.end);
@@ -938,8 +970,11 @@ class Explorer
                 const auto name = "pool_bytes_" + std::to_string(symbolic_serial++);
                 const auto bytes =
                     ctx.constant(name.c_str(), ctx.array_sort(ctx.bv_sort(64), ctx.bv_sort(8)));
+                next.effect_origin = EffectOrigin::External;
                 next.memory.havoc(block.address, block.bytes, bytes, excluded);
+                effect(next, EffectKind::Havoc, block.address, bytes, 0, block.bytes);
             }
+            next.effect_origin = EffectOrigin::External;
             next.pool = std::move(outcome.state);
             // The Win64 home area belongs to the callee. Preserve no values
             // there or in volatile integer registers/flags across this call.
@@ -962,7 +997,8 @@ class Explorer
   public:
     Explorer(const hybrid::ProgramImage &i, const Admission &a, const Lease &l, const Limits &lim,
              const std::atomic_bool &c)
-        : image(i), admission(a), limits(lim), cancel(c)
+        : image(i), admission(a), limits(lim), cancel(c),
+          recovery(arena, l, std::min(lim.recovery_bytes, lim.bytes / 4))
     {
         simplify_params.set("max_steps", 10000u);
         report.lease = l;
@@ -1001,7 +1037,7 @@ class Explorer
         if (!admission.valid())
         {
             report.frontiers.push_back({report.lease.key, 0, admission.rejection});
-            return report;
+            return finish_report();
         }
         const auto zero_slot = admission.profile->zero_slot;
         if (zero_slot > context_bytes / 8 ||
@@ -1014,7 +1050,7 @@ class Explorer
         {
             report.frontiers.push_back(
                 {report.lease.key, 0, "context initialization proof mismatch"});
-            return report;
+            return finish_report();
         }
         for (const auto &segment : image.segs)
             for (uint64_t reserved : {context_base, initial_native_top, initial_floor})
@@ -1022,13 +1058,13 @@ class Explorer
                 {
                     report.frontiers.push_back(
                         {report.lease.key, 0, "image overlaps symbolic private memory"});
-                    return report;
+                    return finish_report();
                 }
         State first(ctx, initial_floor, initial_native_top);
         // Unwritten context bytes remain initial memory. Native profiles run
         // their admitted setup; small abstract fixtures retain explicit seeds.
         if (report.lease.key == 0)
-            return report;
+            return finish_report();
         if (admission.stack_maintenance)
         {
             first.key = report.lease.key;
@@ -1037,17 +1073,17 @@ class Explorer
                 if (!initialize(first))
                 {
                     report.cancelled = cancel.load();
-                    return report;
+                    return finish_report();
                 }
             }
             catch (const StopPath &)
             {
-                return report;
+                return finish_report();
             }
             catch (const std::exception &e)
             {
                 frontier(first, e.what());
-                return report;
+                return finish_report();
             }
         }
         else if (!admission.profile->setup_bytes.empty())
@@ -1061,7 +1097,7 @@ class Explorer
             store(first, bv(initial_floor), bv(0), 64);
         }
         if (!enter(first, report.lease.key))
-            return report;
+            return finish_report();
         std::deque<State> work;
         work.push_back(std::move(first));
         while (!work.empty())
@@ -1144,6 +1180,7 @@ class Explorer
                     identity_bytes += bytes;
                     identity_roots.insert(new_roots.begin(), new_roots.end());
                     seen.insert(std::move(identity));
+                    s.effect_origin = EffectOrigin::Native;
                     const auto &decoded = decode(s.pc);
                     const auto &d = decoded.first;
                     ++report.instructions;
@@ -1160,11 +1197,13 @@ class Explorer
                         operation(s, o);
                     if (d.flow == 0)
                     {
+                        recovery.flow(s.key, s.pc, d.fallthrough, FlowKind::Next, s.domain);
                         s.pc = d.fallthrough;
                         continue;
                     }
                     if (d.flow == 1)
                     {
+                        recovery.flow(s.key, s.pc, d.target, FlowKind::Branch, s.domain);
                         s.pc = d.target;
                         continue;
                     }
@@ -1173,15 +1212,23 @@ class Explorer
                         auto predicate = (d.flow == 2 ? condition(s, d.condition)
                                                       : (get(s, d.predicate) != bv(0)))
                                              .simplify(simplify_params);
+                        const auto source = s.pc;
                         State taken = s;
                         taken.pc = d.target;
                         taken.domain = (s.domain && predicate).simplify(simplify_params);
                         s.pc = d.fallthrough;
                         s.domain = (s.domain && !predicate).simplify(simplify_params);
                         if (feasible(taken.domain))
+                        {
+                            recovery.flow(taken.key, source, taken.pc, FlowKind::Branch,
+                                          taken.domain);
                             work.push_back(std::move(taken));
+                        }
                         if (feasible(s.domain))
+                        {
+                            recovery.flow(s.key, source, s.pc, FlowKind::Next, s.domain);
                             continue;
+                        }
                         break;
                     }
                     if (d.flow >= 4 && d.flow <= 8)
@@ -1219,11 +1266,17 @@ class Explorer
                             s.registers[4] = (s.registers[4] - bv(8)).simplify(simplify_params);
                             store(s, s.registers[4], bv(d.fallthrough), 64);
                         }
+                        recovery.flow(s.key, s.pc, target,
+                                      d.flow >= 6 ? FlowKind::Call : FlowKind::Branch, s.domain);
                         s.pc = target;
                         continue;
                     }
                     if (d.flow == 9)
                     {
+                        const auto target = s.calls.empty() ? return_sentinel : s.calls.back();
+                        recovery.flow(
+                            s.key, s.pc, target, FlowKind::Return,
+                            (s.domain && native_return == bv(target)).simplify(simplify_params));
                         if (return_from_native(s, native_return, work))
                             continue;
                         break;
@@ -1251,7 +1304,7 @@ class Explorer
         report.cancelled = cancel.load();
         report.alias_queries = aliases.queries();
         report.keys.assign(keys.begin(), keys.end());
-        return report;
+        return finish_report();
     }
 };
 }
@@ -1291,7 +1344,7 @@ Report explore(const hybrid::ProgramImage &i, const Admission &a, const Lease &l
         lim.time.count() <= 0 || lim.states > 4096 || lim.instructions > 65536 ||
         lim.operations > 1000000 || lim.bytes > 256 * 1024 * 1024 ||
         lim.time > std::chrono::milliseconds(60000) || !lim.stack_bytes ||
-        lim.stack_bytes > 0x10000)
+        lim.stack_bytes > 0x10000 || lim.recovery_bytes > 32 * 1024 * 1024)
     {
         rejected.frontiers.push_back({l.key, 0, "invalid resource limits"});
         return rejected;

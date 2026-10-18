@@ -6,11 +6,13 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <memory>
 #include <vector>
 
 namespace chernobog::warbird
 {
-constexpr uint32_t model_version = 8;
+struct Recovery;
+constexpr uint32_t model_version = 9;
 constexpr size_t context_bytes = 448;
 struct Profile
 {
@@ -43,6 +45,7 @@ struct Limits
     std::chrono::milliseconds time{60000};
     unsigned call_depth = 32;
     uint64_t stack_bytes = 0x10000;
+    size_t recovery_bytes = 32 * 1024 * 1024;
 };
 struct Dependency
 {
@@ -123,6 +126,7 @@ struct Report
     std::vector<Dependency> dependencies;
     std::vector<ImportBinding> imports;
     bool cancelled = false;
+    std::shared_ptr<const Recovery> recovery;
     // Structural exploration is not semantic equivalence or display admission.
     bool exploration_complete() const { return !cancelled && frontiers.empty(); }
     std::string json() const;

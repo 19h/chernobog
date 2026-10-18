@@ -422,6 +422,7 @@ ida_add_plugin(
     src/ida_analysis/early_hexrays.cpp
     src/ida_analysis/evidence_apply.cpp
     src/vm/warbird/model.cpp
+    src/vm/warbird/recovery.cpp
     src/vm/warbird/imports.cpp
     src/vm/warbird/alias.cpp
     src/vm/warbird/stack_model.cpp
@@ -585,6 +586,7 @@ if(BUILD_TESTING)
         chernobog_warbird_tests
         tests/warbird_tests.cpp
         src/vm/warbird/model.cpp
+        src/vm/warbird/recovery.cpp
         src/vm/warbird/explorer.cpp
         src/vm/warbird/key_domain.cpp
         src/vm/warbird/byte_memory.cpp
@@ -602,6 +604,7 @@ if(BUILD_TESTING)
         chernobog_warbird_corpus
         tests/warbird_corpus.cpp
         src/vm/warbird/model.cpp
+        src/vm/warbird/recovery.cpp
         src/vm/warbird/explorer.cpp
         src/vm/warbird/key_domain.cpp
         src/vm/warbird/byte_memory.cpp

@@ -1,5 +1,6 @@
 // Development-only corpus probe. The plugin never launches this executable.
 #include "vm/warbird/model.hpp"
+#include "vm/warbird/recovery.hpp"
 #include <algorithm>
 #include <charconv>
 #include <limits>
@@ -158,6 +159,10 @@ int main(int argc, char **argv)
                 lease.base = base;
                 std::atomic_bool cancel{false};
                 auto report = warbird::explore(image, admission, lease, limits, cancel);
+                if (!report.recovery || !report.recovery->valid() ||
+                    !report.recovery->lease.matches(report.lease) ||
+                    report.recovery->exploration_complete != report.exploration_complete())
+                    throw std::runtime_error("invalid retained recovery artifact");
                 std::cout << report.json() << std::endl;
             }
         }

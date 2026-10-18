@@ -4,6 +4,7 @@
 #include "vm/warbird/pool_model.hpp"
 #include "vm/warbird/alias.hpp"
 #include "vm/warbird/stack_model.hpp"
+#include "vm/warbird/recovery.hpp"
 #include <rax.h>
 #include <algorithm>
 #include <cstdlib>
@@ -440,6 +441,97 @@ int main()
     auto r = run(zero);
     require(r.exploration_complete() && r.edges.size() == 1 && r.edges[0].next == 0,
             "zero-key return must terminate");
+    // Recovery objects remain valid after the explorer and its local context
+    // owners are destroyed; COW snapshots preserve the pre-write memory.
+    auto artifact =
+        run(fixture({0xc6, 0x01, 0x11, 0xc6, 0x01, 0x22, 0x0f, 0xb6, 0x01, 0x83, 0xf0, 0x22, 0xc3}))
+            .recovery;
+    require(artifact && artifact->valid() && artifact->capture_complete &&
+                artifact->exploration_complete && artifact->relations.size() == 1 &&
+                artifact->instructions.size() == 5,
+            "complete recovery relation or its owning context was lost");
+    const auto &relation = artifact->relations.front();
+    const auto &entry_state = artifact->states[relation.input];
+    const auto &exit_state = artifact->states[relation.output];
+    auto &retained_context = *artifact->arena;
+    const auto context_address = retained_context.bv_val(0x10000000000ULL, 64);
+    uint64_t retained_value = 0;
+    require(exit_state.memory.read(context_address, 8).is_numeral_u64(retained_value) &&
+                retained_value == 0x22 && !entry_state.memory.read(context_address, 8).is_numeral(),
+            "recovery output mutated its artifact input memory");
+    std::vector<uint64_t> written;
+    for (auto id : artifact->ordered_effects(relation))
+    {
+        const auto &effect = artifact->effects[id];
+        require(effect.origin == warbird::EffectOrigin::Native,
+                "dispatcher effects leaked into a native handler relation");
+        if (effect.kind == warbird::EffectKind::Write)
+        {
+            require(effect.value.simplify().is_numeral_u64(retained_value),
+                    "artifact write value unavailable");
+            written.push_back(retained_value);
+        }
+    }
+    require(written == std::vector<uint64_t>({0x11, 0x22}),
+            "recovery discarded or reordered overwritten memory effects");
+    auto guarded = run(fixture({0x80, 0x39, 0, 0x74, 7, 0xc6, 0x41, 1, 7, 0x31, 0xc0, 0xc3, 0xc6,
+                                0x41, 1, 9, 0x31, 0xc0, 0xc3}))
+                       .recovery;
+    require(guarded && guarded->valid() && guarded->relations.size() == 2 &&
+                guarded->relations[0].input == guarded->relations[1].input,
+            "branch relations lost their shared input state");
+    z3::solver guard_solver(*guarded->arena);
+    guard_solver.add(guarded->relations[0].domain && guarded->relations[1].domain);
+    require(guard_solver.check() == z3::unsat, "artifact branch guards overlap");
+    guard_solver.reset();
+    guard_solver.add(!(guarded->relations[0].domain || guarded->relations[1].domain));
+    require(guard_solver.check() == z3::unsat, "artifact branch guards lost an alternative");
+    const auto effect_path0 = guarded->ordered_effects(guarded->relations[0]);
+    const auto effect_path1 = guarded->ordered_effects(guarded->relations[1]);
+    require(!effect_path0.empty() && !effect_path1.empty() && effect_path0[0] == effect_path1[0],
+            "forked effect histories lost their common prefix");
+    warbird::Recovery damaged = *artifact;
+    damaged.effects.back().previous = uint32_t(damaged.effects.size() - 1);
+    require(!damaged.valid(), "cyclic recovery effects accepted");
+    damaged = *artifact;
+    damaged.instructions.begin()->second.operations.front().opcode = 0;
+    require(!damaged.valid(), "corrupt retained SMIR operation accepted");
+    damaged = *artifact;
+    damaged.states.front().registers.pop_back();
+    require(!damaged.valid(), "malformed recovery register bank accepted");
+    warbird::Limits no_capture;
+    no_capture.recovery_bytes = 0;
+    const auto omitted = run(zero, 1, no_capture);
+    require(omitted.exploration_complete() && omitted.recovery &&
+                !omitted.recovery->capture_complete && !omitted.recovery->omission.empty() &&
+                omitted.recovery->relations.empty(),
+            "recovery exhaustion was silent or changed the native exploration result");
+    warbird::RecoveryRecorder recording(artifact->arena, artifact->lease, 8 * 1024 * 1024);
+    rejects_imports(
+        [&]
+        {
+            recording.effect(warbird::no_record, warbird::EffectOrigin::Native,
+                             warbird::EffectKind::Read, 0, 8, numeral(0),
+                             retained_context.bv_val(0, 8), retained_context.bv_val(1, 64));
+        },
+        "recovery accepted a foreign expression context");
+    const auto deep_input =
+        recording.state(1, 0x1000, warbird::no_record, true, true, entry_state.registers,
+                        entry_state.vectors, entry_state.flags, entry_state.memory,
+                        entry_state.stack, entry_state.pool, entry_state.domain);
+    uint32_t tail = warbird::no_record;
+    for (unsigned n = 0; n < 16384; ++n)
+        tail = recording.effect(tail, warbird::EffectOrigin::Native, warbird::EffectKind::Read,
+                                0x1000, 8, context_address, retained_context.bv_val(0, 8),
+                                retained_context.bv_val(1, 64));
+    const auto deep_output = recording.state(
+        1, 0x1000, tail, true, true, exit_state.registers, exit_state.vectors, exit_state.flags,
+        exit_state.memory, exit_state.stack, exit_state.pool, exit_state.domain);
+    recording.relation(deep_input, deep_output, retained_context.bv_val(0, 64), entry_state.domain);
+    auto deep = recording.finish(true);
+    require(deep->valid() && deep->capture_complete &&
+                deep->ordered_effects(deep->relations.front()).size() == 16384,
+            "deep effect history was truncated or traversed incorrectly");
     auto changing_table = fixture({0x48, 0x8b, 0x01, 0xc6, 0x00, 7, 0xb8, 2, 0, 0, 0, 0xc3});
     changing_table.segs[0].bytes[0x100] = 0x31;
     changing_table.segs[0].bytes[0x101] = 0xc0;
@@ -491,6 +583,26 @@ int main()
                 alias_report.edges.size() == 1 && alias_report.edges[0].next == 0 &&
                 !alias_report.frontiers.empty(),
             "ordinary return continuation or nonlocal frontier was lost");
+    require(alias_report.recovery && alias_report.recovery->valid(),
+            "guarded-return recovery artifact is invalid");
+    for (const auto &edge : alias_report.recovery->flow)
+        if (edge.kind == warbird::FlowKind::Return)
+        {
+            bool checked = false;
+            for (const auto &access : alias_report.recovery->effects)
+                if (access.site == edge.source && access.kind == warbird::EffectKind::Read &&
+                    access.bits == 64 && access.origin == warbird::EffectOrigin::Native)
+                {
+                    z3::solver guarded_return_solver(*alias_report.recovery->arena);
+                    guarded_return_solver.add(
+                        edge.domain &&
+                        access.value != alias_report.recovery->arena->bv_val(edge.target, 64));
+                    require(guarded_return_solver.check() == z3::unsat,
+                            "retained return edge forgot its target equality guard");
+                    checked = true;
+                }
+            require(checked, "retained return edge has no saved-address read");
+        }
     auto unknown = fixture({0x48, 0x8b, 0x01, 0xc3});
     r = run(unknown);
     require(!r.exploration_complete() && r.edges.empty(),
@@ -990,6 +1102,26 @@ int main()
                           << candidate.json() << "\n";
                 std::exit(1);
             }
+            require(candidate.recovery && !candidate.recovery->relations.empty(),
+                    "native comparison lost its retained semantic relation");
+            const auto &saved_relation = candidate.recovery->relations.front();
+            uint64_t saved_value = 0;
+            if (saved_relation.next_key.simplify().is_numeral_u64(saved_value))
+                require(saved_value == observed,
+                        "retained semantic relation differs from direct native execution");
+            else
+            {
+                z3::solver retained_solver(*candidate.recovery->arena);
+                retained_solver.set("timeout", 1000u);
+                retained_solver.add(saved_relation.domain &&
+                                    saved_relation.next_key !=
+                                        candidate.recovery->arena->bv_val(observed, 64));
+                require(retained_solver.check() == z3::unsat,
+                        "retained guarded relation differs from direct native execution");
+            }
+            if (input == inputs.front())
+                require(candidate.recovery->valid(),
+                        "retained native instruction graph is malformed");
             ++comparisons;
         }
     }

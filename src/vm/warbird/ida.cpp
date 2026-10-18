@@ -31,6 +31,7 @@ struct Session
     std::shared_ptr<std::atomic_bool> stop;
     std::future<Report> future;
     std::string result;
+    std::shared_ptr<const Report> retained;
 };
 std::map<int64_t, std::unique_ptr<Session>> sessions;
 ssize_t idaapi changed(void *data, int, va_list)
@@ -42,6 +43,7 @@ ssize_t idaapi changed(void *data, int, va_list)
         if (s.stop)
             s.stop->store(true);
         s.result.clear();
+        s.retained.reset();
     }
     return 0;
 }
@@ -172,9 +174,19 @@ try
     lease.base = get_imagebase();
     lease.key = key;
     lease.revision = s->revision;
+    // active() already established that every older future is ready. Keep
+    // at most one artifact across database sessions; completed but unpolled
+    // futures also own arenas and must not accumulate them indefinitely.
+    for (auto &[id, peer] : sessions)
+    {
+        peer->retained.reset();
+        if (peer->future.valid())
+            peer->future = std::future<Report>{};
+    }
     s->function = fn->start_ea;
     s->stop = std::make_shared<std::atomic_bool>(false);
     s->result.clear();
+    s->retained.reset();
     ++s->ticket;
     s->future = std::async(std::launch::async, [image, admission, lease, stop = s->stop]
                            { return explore(*image, admission, lease, Limits{}, *stop); });
@@ -208,7 +220,8 @@ try
         report.lease.base != get_imagebase() || report.lease.image_hash != now.content_hash ||
         !dependencies_match(now, report.dependencies) || report.imports != capture_imports(now))
         return s->result = error("stale result discarded");
-    return s->result = report.json();
+    s->retained = std::make_shared<Report>(std::move(report));
+    return s->result = s->retained->json();
 }
 catch (const std::exception &e)
 {
@@ -226,6 +239,7 @@ std::string cancel()
         s->stop->store(true);
     ++s->revision;
     s->result.clear();
+    s->retained.reset();
     return "{\"ok\":true,\"state\":\"cancellation requested\"}";
 }
 std::string profile_json()

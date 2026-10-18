@@ -64,6 +64,11 @@ if result.get("model_version", 0) >= 7:
 if result.get("model_version", 0) >= 8:
     assert result["initialization_instructions"] > 0, result
     assert result["initialization_copy_bytes"] == (24 if profile == 1 else 0), result
+if result.get("model_version", 0) >= 9:
+    assert result["recovery"]["instructions"] > 0, result
+    assert result["recovery"]["states"] > 0, result
+    assert result["recovery"]["relations"] > 0, result
+    assert result["recovery"]["estimated_bytes"] <= result["limits"]["recovery_bytes"], result
 allocation_import = [
     entry
     for entry in result["imports"]
@@ -86,6 +91,11 @@ assert identity() == before, "diagnostic job modified IDB bytes or functions"
 # An IDB notification invalidates the lease even when executable bytes and
 # function ownership do not change. Restore the comment in this disposable IDB.
 old_comment = ida_bytes.get_cmt(function.start_ea, False)
+if result.get("model_version", 0) >= 9:
+    assert ida_bytes.set_cmt(function.start_ea, "completed recovery invalidation probe", False)
+    evicted = invoke("chernobog_warbird_poll()")
+    assert evicted.get("ok") is False and evicted.get("reason") == "no result", evicted
+    assert ida_bytes.set_cmt(function.start_ea, old_comment or "", False)
 start = invoke(f'chernobog_warbird_start({function.start_ea}, {profile}, "{key}")')
 assert start.get("ok"), start
 assert ida_bytes.set_cmt(function.start_ea, "warbird lease invalidation probe", False)

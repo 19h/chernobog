@@ -4,7 +4,8 @@ The current extension provides **diagnostic exploration only**. It does not
 replace Hex-Rays pseudocode, certify equivalence, or claim complete recovery of
 any corpus entry. `pseudocode_eligible` and `semantic_equivalence_checked` are
 always false. The normal-view lowering and equivalence gates in the approved
-plan remain unimplemented.
+plan remain unimplemented. Recovered state/effect relations are now retained for
+those later stages; retention itself does not satisfy the gates.
 
 ## Implemented path
 
@@ -57,7 +58,7 @@ The symbolic scalar interpreter now covers ADC/SBB, rotate through carry, and
 complete AX results from byte MUL/IMUL. Unselected flag updates are preserved.
 The scalar interpreter also covers BT/BTS/BTR/BTC, including memory operands
 exported by RAX as ordered loads, updates and flag operations. The semantic
-model version is 8, independent of the SMIR record ABI version.
+model version is 9, independent of the SMIR record ABI version.
 
 The optional scalar SMIR ABI is versioned and pointer-free. Unsupported operations
 and insufficient capacity publish no executable prefix. It retains instruction
@@ -509,3 +510,86 @@ recorded in `docs/evidence/warbird-model8.json` and
 `docs/evidence/warbird-model8.jsonl`. The IDA probes require native setup
 execution on all three profiles and exactly 24 copied bytes on ClipSp. No
 whole-entry recovery or normal-view lowering is claimed.
+
+
+## Model 9: retain native semantics and guarded relations
+
+Exploration now returns an immutable recovery artifact alongside the diagnostic
+report. Previously, the worker discarded its expressions after producing key
+edges and counters. The artifact retains the material needed for subsequent
+summary comparison, control-flow joins and detached lowering:
+
+```text
+Recovery: owning Z3 arena + lease
+  +-- native bytes and complete SMIR records, indexed by address
+  +-- ordered effect nodes: previous index + origin + address/value/width
+  +-- snapshots: SMIR register bank, vectors, flags, byte memory, stack and pool state
+  +-- relations: input snapshot -> output snapshot, guard, next-key expression
+  +-- native control-flow edges and their path guards
+```
+
+A relation describes one normal handler-return path before the next dispatcher
+entry. It retains a symbolic next key even when bounded key enumeration cannot
+finish. Memory snapshots use the existing copy-on-write byte model. An output
+write cannot modify a retained input snapshot. Immutable-image reads and
+intermediate writes remain explicit effects even if their values simplify;
+this layer does not authorize dropping a potentially faulting access.
+
+Effect origins distinguish native instructions, admitted setup, dispatcher
+bookkeeping and external models. Calls, branches and returns retain path guards.
+A return edge specifically requires the saved return address to equal its target;
+a possible nonlocal transfer remains a frontier. External edges identify an
+import slot, not an invented runtime address. Native, modeled and unverified
+behavior therefore remain distinguishable when constructing a later lowering.
+
+Each artifact owns its Z3 context, declared before its expression-bearing
+members so it outlives them. Publication occurs after the worker finishes;
+consumers must serialize access to that context. The IDA session retains the
+complete report after freshness checks and releases it on invalidation,
+cancellation or replacement. Starting another job releases completed artifacts
+across sessions, including ready but unpolled futures. Closing a database still
+joins its worker before releasing its snapshot.
+
+The default retention budget is 32 MiB of estimated storage, also capped at one
+quarter of the job's workspace budget. A zero retention budget is supported.
+Exhaustion stops capture, sets `capture_complete=false`, and records an omission;
+it does not silently truncate a purported complete artifact or change the
+native diagnostic walk. The estimate includes records and conservatively
+charges snapshot overlays; it is not a hard bound on Z3's allocator or shared
+expression DAG storage. Existing job deadlines and expression limits still apply.
+
+Effect append and path fork cost O(1) amortized. Branches share a previous-effect
+index rather than copying histories. Recovering one ordered path costs O(Ep),
+where Ep is that path's effect count. A flat vector avoids recursive destruction
+of long histories. Native instruction insertion costs O(log N). Structural
+validation checks expression contexts/sorts, register-bank sizes and acyclic
+effect ancestry; it re-lifts native bytes and compares the stored SMIR records. It does not prove instruction
+semantics, memory-fault equivalence or eligibility for pseudocode replacement.
+
+| ID | Assumption or boundary | Probe and disposition |
+| --- | --- | --- |
+| A32 | Expressions remain valid after the explorer is destroyed | Retain the owning arena; read output expressions and memory after worker-local owners have gone |
+| A33 | Forked paths may concatenate their effect lists | Rejected; verify a common prefix, distinct successors, mutually exclusive guards and complete branch coverage |
+| A34 | Every native return edge is unconditional | Rejected; require UNSAT for a retained return edge whose saved target differs |
+| A35 | A full retention budget may silently drop records | Rejected; zero-budget capture is explicitly incomplete while diagnostic execution still runs |
+| A36 | A well-formed retained artifact proves equivalence | Rejected; semantic, fault, coverage, ownership and lowering gates remain separate |
+| A37 | A normalized native return address is interchangeable with the original callsite for address-sensitive handlers | Unproved; compare native return-address reads against the dispatcher callsite before lowering |
+
+Validation retains the 39178 native comparisons and checks every compared next
+key against its retained relation. Additional fixtures check input/output memory
+independence, overwritten-write order, foreign-context rejection, malformed state
+banks, cyclic ancestry, a 16384-effect chain, and guarded native returns. IDA
+probes verify retained graph counts and eviction of a completed result after a
+comment-only edit, in addition to the existing in-flight stale-result checks.
+
+The development corpus reader structurally validates each retained artifact,
+re-lifts its recorded instruction bytes, and checks its lease and exploration
+status against the report before publishing a record. A retained relation is
+not proof that a selected caller function invokes that entry key; caller binding
+and checked presentation remain separate gates.
+
+The exact source record and the partial eleven-entry sweep are
+`docs/evidence/warbird-model9.json` and `docs/evidence/warbird-model9.jsonl`.
+Loop/PHI construction, complete helper/fault semantics, independent whole-entry
+equivalence and normal-view lowering remain required. No retained artifact is
+authority to replace ordinary pseudocode.

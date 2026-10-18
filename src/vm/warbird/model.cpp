@@ -1,4 +1,5 @@
 #include "model.hpp"
+#include "recovery.hpp"
 #include "../../common/inspection_json.hpp"
 #include <algorithm>
 #include <limits>
@@ -315,7 +316,8 @@ std::string Report::json() const
       << ",\"limits\":{\"states\":" << limits.states << ",\"instructions\":" << limits.instructions
       << ",\"operations\":" << limits.operations << ",\"estimated_bytes\":" << limits.bytes
       << ",\"milliseconds\":" << limits.time.count() << ",\"call_depth\":" << limits.call_depth
-      << ",\"stack_bytes\":" << limits.stack_bytes << "}"
+      << ",\"stack_bytes\":" << limits.stack_bytes
+      << ",\"recovery_bytes\":" << limits.recovery_bytes << "}"
 
       << ",\"exploration_complete\":" << (exploration_complete() ? "true" : "false")
       << ",\"semantic_equivalence_checked\":false,\"memory_faults_checked\":false,\"pseudocode_eligible\":false,\"cancelled\":"
@@ -344,7 +346,19 @@ std::string Report::json() const
             s << ',';
         s << context_zero_slots[i];
     }
-    s << "],\"imports\":[";
+    s << "],\"recovery\":";
+    if (recovery)
+        s << "{\"capture_complete\":" << (recovery->capture_complete ? "true" : "false")
+          << ",\"estimated_bytes\":" << recovery->estimated_bytes
+          << ",\"instructions\":" << recovery->instructions.size()
+          << ",\"effects\":" << recovery->effects.size()
+          << ",\"flow_edges\":" << recovery->flow.size()
+          << ",\"states\":" << recovery->states.size()
+          << ",\"relations\":" << recovery->relations.size()
+          << ",\"omission\":" << inspection_json_quote(recovery->omission) << '}';
+    else
+        s << "null";
+    s << ",\"imports\":[";
     for (size_t i = 0; i < imports.size(); ++i)
     {
         if (i)
