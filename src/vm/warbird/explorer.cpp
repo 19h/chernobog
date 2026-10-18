@@ -42,6 +42,8 @@ struct State
     bool imports_unchanged = true;
     std::vector<z3::expr> registers;
     std::vector<z3::expr> temporary;
+    std::vector<z3::expr> vectors;
+    std::map<unsigned, z3::expr> vector_temporary;
     std::vector<z3::expr> flags;
     ByteMemory memory;
     PoolState pool;
@@ -53,6 +55,8 @@ struct State
             registers.push_back(c.bv_const(("r" + std::to_string(i)).c_str(), 64));
         for (unsigned i = 0; i < 7; ++i)
             flags.push_back(c.bool_const(("f" + std::to_string(i)).c_str()));
+        for (unsigned i = 0; i < 16; ++i)
+            vectors.push_back(c.bv_const(("xmm" + std::to_string(i)).c_str(), 128));
     }
 };
 class Explorer
@@ -131,10 +135,10 @@ class Explorer
                 throw std::runtime_error("unloaded immutable read");
             const auto *seg = image.segment_at(n);
             report.dependencies.push_back({n, seg->perm, {view.data, view.data + view.size}});
-            uint64_t v = 0;
-            for (unsigned i = 0; i < width / 8; ++i)
-                v |= uint64_t(view.data[i]) << (i * 8);
-            return bv(v, width);
+            auto value = bv(view.data[width / 8 - 1], 8);
+            for (unsigned i = width / 8 - 1; i > 0; --i)
+                value = z3::concat(value, bv(view.data[i - 1], 8));
+            return value;
         }
         return s.memory.read(at, width);
     }
@@ -230,10 +234,140 @@ class Explorer
         for (auto &f : s.flags)
             f = f.simplify(simplify_params);
     }
+    z3::expr get_vector(const State &s, const rax_smir_operand &operand)
+    {
+        if (operand.kind == RAX_SMIR_OPERAND_XMM && operand.id < s.vectors.size())
+            return s.vectors[operand.id];
+        if (operand.kind == 1)
+        {
+            const auto found = s.vector_temporary.find(operand.id);
+            if (found != s.vector_temporary.end())
+                return found->second;
+        }
+        throw std::runtime_error("invalid or undefined vector SMIR operand");
+    }
+    void put_vector(State &s, const rax_smir_operand &operand, z3::expr value)
+    {
+        if (value.get_sort().bv_size() != 128)
+            throw std::runtime_error("invalid vector SMIR width");
+        value = value.simplify(simplify_params);
+        if (operand.kind == RAX_SMIR_OPERAND_XMM && operand.id < s.vectors.size())
+            s.vectors[operand.id] = value;
+        else if (operand.kind == 1 && operand.id < s.temporary.size())
+            s.vector_temporary.insert_or_assign(operand.id, value);
+        else
+            throw std::runtime_error("invalid vector SMIR destination");
+    }
+    bool vector_operation(State &s, const rax_smir_op &o)
+    {
+        if (o.opcode < RAX_SMIR_VMOV || o.opcode > RAX_SMIR_VBROADCAST)
+            return false;
+        if (o.flags_mask != 0)
+            throw std::runtime_error("invalid vector flag update");
+        if (o.opcode == RAX_SMIR_CHECK_ALIGNMENT)
+        {
+            if (o.width_bits != 64 || o.source_width_bits || o.condition || !o.auxiliary ||
+                o.auxiliary > 128 || (o.auxiliary & (o.auxiliary - 1)))
+                throw std::runtime_error("invalid alignment check");
+            auto aligned =
+                ((address(s, o.address) & bv(o.auxiliary - 1)) == bv(0)).simplify(simplify_params);
+            if (!aligned.is_true())
+            {
+                if (aligned.is_false() || !feasible(s.domain && aligned))
+                    throw std::runtime_error("misaligned vector memory address");
+                if (feasible(s.domain && !aligned))
+                    frontier(s, "possible misaligned vector memory address");
+                s.domain = (s.domain && aligned).simplify(simplify_params);
+            }
+            ++report.vector_operations;
+            return true;
+        }
+        if (o.opcode == RAX_SMIR_X86_MOVDQ)
+        {
+            if ((o.width_bits != 32 && o.width_bits != 64) || o.auxiliary || o.source_width_bits ||
+                o.condition)
+                throw std::runtime_error("invalid MOVD/MOVQ width");
+            if (o.dst.kind == RAX_SMIR_OPERAND_XMM && o.a.kind != RAX_SMIR_OPERAND_XMM)
+                put_vector(s, o.dst, resize(resize(get(s, o.a), o.width_bits), 128));
+            else if (o.dst.kind != RAX_SMIR_OPERAND_XMM && o.a.kind == RAX_SMIR_OPERAND_XMM)
+                put(s, o.dst, resize(get_vector(s, o.a), o.width_bits), o.width_bits);
+            else
+                throw std::runtime_error("invalid MOVD/MOVQ operands");
+            ++report.vector_operations;
+            return true;
+        }
+        if (o.opcode == RAX_SMIR_VEXTRACT)
+        {
+            const auto bits = o.source_width_bits;
+            if ((bits != 8 && bits != 16 && bits != 32 && bits != 64) ||
+                o.auxiliary >= 128 / bits || o.width_bits != 64 || o.condition > 1)
+                throw std::runtime_error("invalid vector extract");
+            auto value =
+                get_vector(s, o.a).extract((o.auxiliary + 1) * bits - 1, o.auxiliary * bits);
+            put(s, o.dst, resize(value, 64, o.condition == 1));
+            ++report.vector_operations;
+            return true;
+        }
+        if (o.width_bits != 128)
+            throw std::runtime_error("invalid vector SMIR width");
+        if ((o.opcode == RAX_SMIR_VINSERT || o.opcode == RAX_SMIR_VBROADCAST) && o.condition)
+            throw std::runtime_error("invalid vector SMIR condition");
+        if (o.opcode != RAX_SMIR_VINSERT && o.opcode != RAX_SMIR_VBROADCAST &&
+            (o.auxiliary || o.source_width_bits || o.condition))
+            throw std::runtime_error("invalid vector SMIR attributes");
+        switch (o.opcode)
+        {
+        case RAX_SMIR_VMOV:
+            put_vector(s, o.dst, get_vector(s, o.a));
+            break;
+        case RAX_SMIR_VLOAD:
+            put_vector(s, o.dst, load(s, address(s, o.address), 128));
+            break;
+        case RAX_SMIR_VSTORE:
+            store(s, address(s, o.address), get_vector(s, o.a), 128);
+            break;
+        case RAX_SMIR_VXOR:
+            put_vector(s, o.dst, get_vector(s, o.a) ^ get_vector(s, o.b));
+            break;
+        case RAX_SMIR_VINSERT:
+        {
+            const auto bits = o.source_width_bits, low = o.auxiliary * bits;
+            if ((bits != 8 && bits != 16 && bits != 32 && bits != 64) || o.auxiliary >= 128 / bits)
+                throw std::runtime_error("invalid vector insert");
+            const auto previous = get_vector(s, o.a);
+            auto value = resize(get(s, o.b), bits);
+            if (low)
+                value = z3::concat(value, previous.extract(low - 1, 0));
+            if (low + bits < 128)
+                value = z3::concat(previous.extract(127, low + bits), value);
+            put_vector(s, o.dst, value);
+            break;
+        }
+        case RAX_SMIR_VBROADCAST:
+        {
+            const auto bits = o.source_width_bits;
+            if ((bits != 8 && bits != 16 && bits != 32 && bits != 64) || o.auxiliary > 128 / bits)
+                throw std::runtime_error("invalid vector broadcast");
+            const auto scalar = resize(resize(get(s, o.a), bits), 128);
+            auto value = bv(0, 128);
+            for (unsigned lane = 0; lane < o.auxiliary; ++lane)
+                value = value | z3::shl(scalar, bv(lane * bits, 128));
+            put_vector(s, o.dst, value);
+            break;
+        }
+        default:
+            throw std::runtime_error("unsupported vector SMIR operation");
+        }
+        ++report.vector_operations;
+        return true;
+    }
     void operation(State &s, const rax_smir_op &o)
     {
-        if (o.struct_size != sizeof(o) || o.abi_version != RAX_SMIR_ABI_VERSION ||
-            (o.width_bits != 8 && o.width_bits != 16 && o.width_bits != 32 && o.width_bits != 64))
+        if (o.struct_size != sizeof(o) || o.abi_version != RAX_SMIR_ABI_VERSION)
+            throw std::runtime_error("invalid SMIR record");
+        if (vector_operation(s, o))
+            return;
+        if ((o.width_bits != 8 && o.width_bits != 16 && o.width_bits != 32 && o.width_bits != 64))
             throw std::runtime_error("invalid SMIR record");
         unsigned w = o.width_bits;
         auto a = resize(get(s, o.a), w), b = resize(get(s, o.b), w), r = bv(0, w);
@@ -516,6 +650,8 @@ class Explorer
             s.registers[r] = fresh();
         for (auto &flag : s.flags)
             flag = fresh(1) == bv(1, 1);
+        for (unsigned reg = 0; reg < 6; ++reg)
+            s.vectors[reg] = fresh(128);
         s.registers[0] = bv(s.pc);
         s.registers[1] = bv(context_base);
         s.registers[2] = bv(key);
@@ -541,7 +677,7 @@ class Explorer
             info.struct_size != sizeof(info) || info.abi_version != RAX_SMIR_ABI_VERSION ||
             !info.bytes_consumed || info.bytes_consumed > view.size || info.op_count > 256 ||
             info.op_count != info.required_op_count)
-            throw std::runtime_error("RAX full scalar lift unavailable");
+            throw std::runtime_error("RAX complete SMIR lift unavailable");
         report.dependencies.push_back(
             {pc, image.segment_at(pc)->perm, {view.data, view.data + info.bytes_consumed}});
         return cache
@@ -627,6 +763,11 @@ class Explorer
             store(s, callee_sp, bv(instruction.fallthrough), 64);
             s.calls.push_back(instruction.fallthrough);
         }
+        std::vector<std::pair<uint64_t, uint64_t>> excluded;
+        for (const auto &segment : image.segs)
+            excluded.emplace_back(segment.start, segment.end);
+        for (uint64_t reserved : {context_base, native_stack, virtual_stack})
+            excluded.emplace_back(reserved - 0x10000, reserved + 0x10000);
         for (auto &outcome : outcomes)
         {
             State next = s;
@@ -641,12 +782,9 @@ class Explorer
             {
                 const auto &block = outcome.state.blocks[*outcome.changed_region];
                 const auto end = block.address + block.bytes;
-                for (const auto &segment : image.segs)
-                    next.domain = next.domain && (z3::ule(end, bv(segment.start)) ||
-                                                  z3::uge(block.address, bv(segment.end)));
-                for (uint64_t reserved : {context_base, native_stack, virtual_stack})
-                    next.domain = next.domain && (z3::ule(end, bv(reserved - 0x10000)) ||
-                                                  z3::uge(block.address, bv(reserved + 0x10000)));
+                for (const auto &[begin, limit] : excluded)
+                    next.domain = next.domain &&
+                                  (z3::ule(end, bv(begin)) || z3::uge(block.address, bv(limit)));
             }
             next.domain = next.domain.simplify(simplify_params);
             if (!feasible(next.domain))
@@ -657,7 +795,7 @@ class Explorer
                 const auto name = "pool_bytes_" + std::to_string(symbolic_serial++);
                 const auto bytes =
                     ctx.constant(name.c_str(), ctx.array_sort(ctx.bv_sort(64), ctx.bv_sort(8)));
-                next.memory.havoc(block.address, block.bytes, bytes);
+                next.memory.havoc(block.address, block.bytes, bytes, excluded);
             }
             next.pool = std::move(outcome.state);
             // The Win64 home area belongs to the callee. Preserve no values
@@ -668,6 +806,8 @@ class Explorer
                 next.registers[reg] = fresh();
             for (auto &flag : next.flags)
                 flag = fresh(1) == bv(1, 1);
+            for (unsigned reg = 0; reg < 6; ++reg)
+                next.vectors[reg] = fresh(128);
             next.registers[0] = outcome.result;
             const auto saved_return = load(next, callee_sp, 64);
             next.registers[4] = (callee_sp + bv(8)).simplify(simplify_params);
@@ -749,6 +889,8 @@ class Explorer
                         identity.push_back(r.id());
                     for (const auto &f : s.flags)
                         identity.push_back(f.id());
+                    for (const auto &v : s.vectors)
+                        identity.push_back(v.id());
                     identity.push_back(unsigned(s.pool.blocks.size()));
                     for (const auto &block : s.pool.blocks)
                     {
@@ -779,6 +921,7 @@ class Explorer
                         throw std::runtime_error("SMIR operation quota");
                     auto native_return = d.flow == 9 ? load(s, s.registers[4], 64) : bv(0);
                     s.temporary.clear();
+                    s.vector_temporary.clear();
                     for (unsigned n = 0; n < d.temporary_count; ++n)
                         s.temporary.push_back(fresh());
                     report.operations += decoded.second.size();

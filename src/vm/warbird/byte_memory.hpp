@@ -26,7 +26,10 @@ class ByteMemory
     void write(const z3::expr &address, const z3::expr &value, unsigned bits);
     // Replace exactly a modular byte interval with fresh unconstrained bytes.
     // Required on allocation/reuse and free; existing contents are not zeros.
-    void havoc(const z3::expr &address, const z3::expr &bytes, const z3::expr &fresh_array);
+    // Half-open exclusions explicitly retain their contents. An allocation
+    // model must constrain its returned region to be disjoint from them.
+    void havoc(const z3::expr &address, const z3::expr &bytes, const z3::expr &fresh_array,
+               const std::vector<std::pair<uint64_t, uint64_t>> &excluded = {});
     z3::expr materialize() const;
     size_t concrete_bytes() const { return cells_->size(); }
     // Collision-free structural identity for conservative state comparison.

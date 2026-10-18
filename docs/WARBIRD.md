@@ -55,7 +55,7 @@ The symbolic scalar interpreter now covers ADC/SBB, rotate through carry, and
 complete AX results from byte MUL/IMUL. Unselected flag updates are preserved.
 The scalar interpreter also covers BT/BTS/BTR/BTC, including memory operands
 exported by RAX as ordered loads, updates and flag operations. The semantic
-model version is 4, independent of the scalar SMIR ABI version.
+model version is 5, independent of the SMIR record ABI version.
 
 The optional scalar SMIR ABI is versioned and pointer-free. Unsupported operations
 and insufficient capacity publish no executable prefix. It retains instruction
@@ -248,3 +248,78 @@ Primary API/ABI references:
 Exact model-4 sources, test results, and the bounded eleven-entry corpus sweep
 are recorded separately in `docs/evidence/warbird-model4.json` and
 `docs/evidence/warbird-model4.jsonl`. Historical evidence remains unchanged.
+
+## Model 5: legacy XMM memory paths
+
+The RAX bridge now has a distinct XMM operand bank and explicit operations for
+legacy 128-bit moves, loads/stores, bitwise XOR, scalar lane insertion/extraction,
+MOVD/MOVQ, and temporary broadcast. It retains ordered alignment checks before
+aligned accesses. VEX/EVEX vector encodings, MMX, floating-point arithmetic, masked operations and
+unrecognized widths remain unsupported as complete instructions; no executable
+prefix is published. Existing SMIR record layouts and ABI version are unchanged.
+The public RAX C API version is 1.6.
+
+The explorer carries sixteen 128-bit values independently from integer
+registers. Instruction-local vector temporaries are defined before use. Partial
+lane writes preserve other bits, and legacy register writes preserve backing
+state above bit 127 by contract; no instruction reading that upper state is
+admitted. The byte memory now supports a full 16-byte access, including overlap
+with scalar stores. Immutable 128-bit reads are assembled byte by byte rather
+than through a 64-bit host accumulator. External modeled calls and handler
+boundaries invalidate XMM0-XMM5; XMM6-XMM15 remain nonvolatile.
+
+Misalignment produces an explicit frontier; when alignment is symbolic, the
+ordinary continuation carries an alignment guard and the possible fault remains
+visible. These checks do not establish complete memory-fault equivalence or
+hardware feature-state coverage. The native PEAuth memory-fill path at RVA
+`0x29e30` is no longer rejected merely because it starts with a MOVQ into XMM0.
+It still requires bounded control-flow and semantic-equivalence analysis.
+
+| ID | Assumption or boundary | Probe and disposition |
+| --- | --- | --- |
+| A14 | XMM values can share the scalar register bank | Rejected; a distinct operand kind and sixteen 128-bit state values prevent aliasing |
+| A15 | An aligned vector move can be split into unchecked scalar stores | Rejected; preserve the alignment check and full-width memory access |
+| A16 | Legacy SSE and VEX/EVEX have identical upper-register effects | Rejected; VEX/EVEX remain unsupported, with atomic export rejection |
+| A17 | A raw FFI byte array has the intended byte representation | Explicit u8 fixture types; capacity/unsupported tests exercise the actual encodings |
+
+The architectural references are the local x86 specification entries
+`movd_movq.txt`, `movlhps.txt`, `movaps.txt`, `movups.txt` and `movq.txt`, together
+with the RAX legacy SSE lifter and interpreter. Comparisons against the direct
+RAX decoder/interpreter test the separate exporter/symbolic-execution path;
+they are not a substitute for whole-corpus equivalence.
+
+The allocator range operation also preserves concrete overlays in explicitly
+excluded image and private-stack/context intervals. The normal allocation
+relation already constrains returned regions to be disjoint from those exact
+intervals; free retains those constraints from its matching allocation. This
+avoids burying known context bytes inside array conditionals. The general range
+operation still models aliases outside the excluded intervals. An independent
+SMT comparison checks that the excluded form equals the original operation at
+an arbitrary symbolic byte address under the same non-overlap constraint.
+
+| ID | Assumption or boundary | Probe and disposition |
+| --- | --- | --- |
+| A18 | Preserving excluded concrete bytes changes an allocator range effect | Compare both arrays at an arbitrary address under explicit disjointness; require UNSAT for a difference |
+
+Primary architectural provenance is the bundled Intel SDM
+`vendor/rax/docs/specifications/x86_64/325462-sdm-vol-1-2abcd-3abcd-4-1.pdf`,
+Volume 2B: MOVAPS pp. 4-48 through 4-51; MOVD/MOVQ pp. 4-62 through 4-65;
+MOVLHPS pp. 4-86 through 4-87; MOVUPS pp. 4-134 through 4-137. The text entries
+listed above are convenience extracts, not independent oracles.
+
+Model-5 validation compares 32 controlled native programs against direct RAX
+execution on 1024 deterministic inputs and seven boundary inputs each (32992
+comparisons). It includes 8/16/32/64-bit lane behavior, register aliasing, aligned
+and unaligned 128-bit transfers, MOVSS/MOVQ zeroing and preservation, immutable
+wide reads, and flag preservation. Additional controls exercise both ordinary
+and potentially faulting alignment paths, overlapping 128-bit/scalar writes,
+XMM volatility across modeled pool calls, and excluded-range equivalence.
+
+A live PEAuth IDA probe requires a positive vector-operation count, rejects a
+lift frontier at RVA `0x29e30`, verifies unchanged bytes/function ownership, and
+invalidates the result after a comment-only edit. The first attempt exposed a
+next-key solver frontier after allocation; preserving the proven-disjoint
+private overlay made this actual in-IDA vector path reachable. That observation
+is distinct from claiming complete entry recovery. All eleven entries remain
+incomplete. The exact record is `docs/evidence/warbird-model5.json`, with the
+bounded corpus reports in `docs/evidence/warbird-model5.jsonl`.

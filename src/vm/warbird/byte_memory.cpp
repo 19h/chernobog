@@ -1,4 +1,5 @@
 #include "byte_memory.hpp"
+#include <algorithm>
 #include <stdexcept>
 
 namespace chernobog::warbird
@@ -14,7 +15,7 @@ z3::expr simplify(const z3::expr &e)
 void validate(const z3::expr &address, unsigned bits)
 {
     if (!address.is_bv() || address.get_sort().bv_size() != 64 ||
-        (bits != 8 && bits != 16 && bits != 32 && bits != 64))
+        (bits != 8 && bits != 16 && bits != 32 && bits != 64 && bits != 128))
         throw std::invalid_argument("invalid byte memory address or width");
 }
 }
@@ -96,7 +97,8 @@ z3::expr ByteMemory::materialize() const
         result = z3::store(result, ctx.bv_val(address, 64), value);
     return result;
 }
-void ByteMemory::havoc(const z3::expr &address, const z3::expr &bytes, const z3::expr &fresh_array)
+void ByteMemory::havoc(const z3::expr &address, const z3::expr &bytes, const z3::expr &fresh_array,
+                       const std::vector<std::pair<uint64_t, uint64_t>> &excluded)
 {
     validate(address, 8);
     validate(bytes, 8);
@@ -104,12 +106,32 @@ void ByteMemory::havoc(const z3::expr &address, const z3::expr &bytes, const z3:
     if (&address.ctx() != &ctx || &bytes.ctx() != &ctx || &fresh_array.ctx() != &ctx ||
         !Z3_is_eq_sort(ctx, fresh_array.get_sort(), base_.get_sort()))
         throw std::invalid_argument("invalid byte memory havoc");
+    if (excluded.size() > 256)
+        throw std::invalid_argument("excluded memory range quota");
     auto index = ctx.bv_const("havoc_index", 64);
-    auto next =
-        z3::lambda(index, z3::ite(z3::ult(index - address, bytes), z3::select(fresh_array, index),
-                                  z3::select(materialize(), index)));
+    auto affected = z3::ult(index - address, bytes);
+    for (const auto &[begin, end] : excluded)
+    {
+        if (begin >= end)
+            throw std::invalid_argument("invalid excluded memory range");
+        affected = affected &&
+                   !(z3::uge(index, ctx.bv_val(begin, 64)) && z3::ult(index, ctx.bv_val(end, 64)));
+    }
+    auto retained = std::make_shared<Cells>();
+    auto previous = base_;
+    for (const auto &[at, value] : *cells_)
+    {
+        const bool keep = std::any_of(excluded.begin(), excluded.end(), [&](const auto &range)
+                                      { return at >= range.first && at < range.second; });
+        if (keep)
+            retained->emplace(at, value);
+        else
+            previous = z3::store(previous, ctx.bv_val(at, 64), value);
+    }
+    auto next = z3::lambda(
+        index, z3::ite(affected, z3::select(fresh_array, index), z3::select(previous, index)));
     base_ = std::move(next);
-    cells_ = std::make_shared<Cells>();
+    cells_ = std::move(retained);
 }
 void ByteMemory::append_identity(std::vector<unsigned> &out) const
 {

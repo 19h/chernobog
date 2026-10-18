@@ -110,7 +110,7 @@ endif()
 # The gitlink and this configure-time check jointly pin the embedded source. A missing or
 # differently checked-out submodule fails configuration instead of fetching or borrowing a checkout
 # from another repository.
-set(CHERNOBOG_RAX_GIT_REVISION "9bdd0964c8d5886661e6dfc6d8b14975a3a95334")
+set(CHERNOBOG_RAX_GIT_REVISION "4978d31075b384553f8bef96ad4434848da6bdeb")
 set(_chernobog_rax_root "${CMAKE_CURRENT_SOURCE_DIR}/vendor/rax")
 if(NOT EXISTS "${_chernobog_rax_root}/capi/include/rax.h"
    OR NOT EXISTS "${_chernobog_rax_root}/capi/Cargo.toml")

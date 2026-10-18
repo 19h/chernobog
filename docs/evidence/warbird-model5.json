@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "status": "partial; goal remains active",
+  "semantic_model_version": 5,
+  "baseline_revision": "e50db4235df7d5d2693ab57385e13e16541e5b63",
+  "rax_revision": "4978d31075b384553f8bef96ad4434848da6bdeb",
+  "rax_capi_version": "1.6.0",
+  "source_sha256": {
+    "CMakeLists.txt": "ea21856f601bf150cf4829e9dd833955df46cdd559f8ce5810cb517721f7f2b4",
+    "src/vm/warbird/model.hpp": "67d60e51c9ef7892512b3fda687496f61f68dbc3435bf295aea1d76be7958d7b",
+    "src/vm/warbird/model.cpp": "013dc727d1b0dfeb0ace9214eb4d669968cb4be940842f9f5a321e2c78226b7b",
+    "src/vm/warbird/explorer.cpp": "a6a4b0160d9a9c930cc4db78be15b8021d4ff8cb87fe47b470c99aeae1797b05",
+    "src/vm/warbird/byte_memory.hpp": "f57f3df376a924bfe6ba1cbc435b9b341251886948d5cb9c8edd13da0e023463",
+    "src/vm/warbird/byte_memory.cpp": "87f0e20a2e62f41a84ec3f394b4deb8260ed3eff932388dccdda91294da3d97c",
+    "src/vm/warbird/imports.hpp": "b49cf51ecf2014abf2359bd5d55bd700f2cb4468e3ac92b9b848cb96cc21f840",
+    "src/vm/warbird/imports.cpp": "37c39e63ddb1e0630970c99fc87f268cd9d8e6e3116fb8429ce6fd986b347a0f",
+    "src/vm/warbird/pool_model.hpp": "7103341cd9a0eea334a1b332b586ead1464543bf3294f9e68545fe83f922f9e1",
+    "src/vm/warbird/pool_model.cpp": "7f6eb1eaf88a7fed90a2d5017f71e1ab1e441ccf251948393cb5c4cc4b0e1b66",
+    "src/vm/warbird/key_domain.hpp": "179c231008f631c81a63d92fc6b33d6faf7a71326cd7af33aef47b3fa9eeb327",
+    "src/vm/warbird/key_domain.cpp": "8f78a6a11a0613ffd24f5b99f66f8f61d899e65bcc8f6ca9c6059f6d97386dcd",
+    "src/vm/warbird/ida.cpp": "658a88990f236548de9cf3aac1cf4d60b5feb199444cc497487c22dce700937b",
+    "tests/warbird_tests.cpp": "232c7d9916077fe9decae0eebca8f0decef01f940470a8a1601c0be3c49843fe",
+    "tests/ida_warbird_probe.py": "ff354dec516387a2f32a5b1fa922af64fb403234631f49c24770b4f2b59cae22"
+  },
+  "reports": {
+    "path": "docs/evidence/warbird-model5.jsonl",
+    "sha256": "3ecd2b4380fdd786e9ad19b0af0c71d7377265fe9b3f987cae5f91dca921656d"
+  },
+  "tested_plugin_sha256": "ba6aec1fd31a6f24fb8d82d5a4c36b5f55da818af2b1f9d139a0d8c61791f65f",
+  "checks": {
+    "ctest_passed": 26,
+    "rax_capi_tests_passed": 70,
+    "c_and_cpp_capi_examples": "passed",
+    "direct_native_handler_comparisons": 32992,
+    "native_programs": 32,
+    "deterministic_inputs_per_program": 1024,
+    "boundary_inputs_per_program": 7,
+    "excluded_range_equivalence": "UNSAT for differing arbitrary-byte reads under allocation disjointness",
+    "ida": {
+      "peauth_vector": {
+        "input_sha256": "a9831743d885a29b287e341dd62894e14f84c5bd1f19f6033361dc0ca07bdada",
+        "plugin_sha256": "ba6aec1fd31a6f24fb8d82d5a4c36b5f55da818af2b1f9d139a0d8c61791f65f",
+        "script_sha256": "ff354dec516387a2f32a5b1fa922af64fb403234631f49c24770b4f2b59cae22",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": true,
+        "positive_vector_count_asserted": true
+      },
+      "ci_enabled": {
+        "input_sha256": "0f0b00d3287c4f6003f7a9898c62b318e265e8744b55ca3cda0149a2502a2d01",
+        "plugin_sha256": "ba6aec1fd31a6f24fb8d82d5a4c36b5f55da818af2b1f9d139a0d8c61791f65f",
+        "script_sha256": "ff354dec516387a2f32a5b1fa922af64fb403234631f49c24770b4f2b59cae22",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": true
+      },
+      "ci_disabled": {
+        "input_sha256": "0f0b00d3287c4f6003f7a9898c62b318e265e8744b55ca3cda0149a2502a2d01",
+        "plugin_sha256": "ba6aec1fd31a6f24fb8d82d5a4c36b5f55da818af2b1f9d139a0d8c61791f65f",
+        "script_sha256": "ff354dec516387a2f32a5b1fa922af64fb403234631f49c24770b4f2b59cae22",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": false
+      }
+    }
+  },
+  "ida_regression": {
+    "before_exclusions_plugin_sha256": "5ded838648a0539ee90b714d9e861c20334309be3f195b19cb2defcfe04cf977",
+    "before_runner_return_code": 1,
+    "before_vector_operations": 0,
+    "before_frontier": "next key domain solver did not prove completeness",
+    "after_positive_vector_count_and_nonmutation_assertions": "passed"
+  },
+  "corpus_summary": {
+    "entry_count": 11,
+    "complete_entries": 0,
+    "entrywise_key_count_sum": 222,
+    "vector_operations": 11,
+    "frontier_reasons": {
+      "possible nonlocal native return": 15,
+      "next key domain solver did not prove completeness": 7,
+      "unexplored queued state": 72,
+      "resource quota": 1,
+      "mutable dispatch table may have been overwritten": 1,
+      "pool runtime binding, IRQL and kernel effects unverified": 3,
+      "pool free has no matching live base and tag": 1,
+      "unsupported pool type, flags or zero-sized/tagged allocation": 1
+    }
+  },
+  "limitations": [
+    "no whole-corpus equivalence or checked pseudocode",
+    "kernel API execution and complete memory-fault equivalence remain unchecked",
+    "5 s per-entry sweep; CPU load not controlled; key counts are not a performance comparison"
+  ]
+}

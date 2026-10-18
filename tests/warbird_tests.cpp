@@ -143,6 +143,22 @@ int main()
     require(pool_report.external_calls == 1 && pool_report.edges.size() == 2 &&
                 !pool_report.exploration_complete(),
             "pool normal outcomes, unresolved binding frontier or native return lost");
+    auto vector_call = unresolved;
+    const std::vector<uint8_t> xmm_preservation = {
+        0x48, 0x83, 0xec, 0x28, 0x66, 0x48, 0x0f, 0x6e, 0xf2, 0xb9, 1,    0,    0,    0,   0xba,
+        32,   0,    0,    0,    0x41, 0xb8, 0x45, 0x50, 0,    0,    0xff, 0x15, 0xe1, 3,   0,
+        0,    0x66, 0x48, 0x0f, 0x7e, 0xf0, 0x83, 0xf0, 1,    0x48, 0x83, 0xc4, 0x28, 0xc3};
+    std::copy(xmm_preservation.begin(), xmm_preservation.end(), vector_call.segs[0].bytes.begin());
+    const auto nonvolatile_xmm = run(vector_call, 1, {}, unresolved_imports);
+    require(nonvolatile_xmm.edges.size() == 2 && nonvolatile_xmm.vector_operations >= 3 &&
+                std::all_of(nonvolatile_xmm.edges.begin(), nonvolatile_xmm.edges.end(),
+                            [](const auto &edge) { return edge.next == 0; }),
+            "external pool model clobbered nonvolatile XMM6");
+    vector_call.segs[0].bytes[8] = 0xc2;  // MOVQ XMM0,RDX
+    vector_call.segs[0].bytes[35] = 0xc0; // MOVQ RAX,XMM0
+    const auto volatile_xmm = run(vector_call, 1, {}, unresolved_imports);
+    require(volatile_xmm.edges.empty() && volatile_xmm.vector_operations >= 3,
+            "external pool model retained volatile XMM0");
     auto tail_helper = unresolved;
     const std::vector<uint8_t> native_call = {0xe8, 0xe7, 0, 0, 0, 0x90};
     std::copy(native_call.begin(), native_call.end(), tail_helper.segs[0].bytes.begin() + 20);
@@ -316,6 +332,33 @@ int main()
     symbolic_havoc.havoc(x, numeral(1), fresh_bytes);
     require(!satisfiable(symbolic_havoc.read(x, 8) != z3::select(fresh_bytes, x)),
             "symbolic range havoc did not freshen addressed byte");
+    auto naive_pool_havoc = before_havoc;
+    auto disjoint_pool_havoc = before_havoc;
+    naive_pool_havoc.havoc(x, numeral(16), fresh_bytes);
+    disjoint_pool_havoc.havoc(x, numeral(16), fresh_bytes, {{0x4000, 0x5000}});
+    const auto disjoint =
+        z3::ugt(x + numeral(16), x) &&
+        (z3::ule(x + numeral(16), numeral(0x4000)) || z3::uge(x, numeral(0x5000)));
+    auto probe = context.bv_const("havoc_probe", 64);
+    require(!satisfiable(disjoint &&
+                         naive_pool_havoc.read(probe, 8) != disjoint_pool_havoc.read(probe, 8)),
+            "excluded pool ranges changed memory despite disjointness proof");
+    require(disjoint_pool_havoc.read(numeral(0x4000), 64).is_numeral_u64(retained) &&
+                retained == 0x1122334455667788ULL,
+            "disjoint pool havoc obscured concrete private memory");
+    warbird::ByteMemory wide_memory(context);
+    auto wide_value = z3::concat(numeral(0x1020304050607080), numeral(0x90a0b0c0d0e0f001));
+    wide_memory.write(numeral(0x5000), wide_value, 128);
+    wide_memory.write(numeral(0x5007), context.bv_val(0x1234, 16), 16);
+    auto wide_expected =
+        z3::concat(z3::concat(wide_value.extract(127, 72), context.bv_val(0x1234, 16)),
+                   wide_value.extract(55, 0));
+    require(!satisfiable(wide_memory.read(numeral(0x5000), 128) != wide_expected),
+            "128-bit memory lost overlapping scalar bytes");
+    warbird::ByteMemory wide_quota(context, 8);
+    rejects_imports([&] { wide_quota.write(numeral(0), wide_value, 128); },
+                    "128-bit store exceeded concrete-byte quota");
+    require(wide_quota.concrete_bytes() == 0, "128-bit rejected store partially committed");
     auto conditional =
         fixture({0x83, 0xfa, 1, 0x75, 0x13, 0x48, 0x83, 0x39, 0,    0xb8, 0,    0,    0,   0,
                  0xba, 2,    0, 0,    0,    0x48, 0x0f, 0x45, 0xc2, 0xc3, 0x31, 0xc0, 0xc3});
@@ -329,6 +372,13 @@ int main()
                 std::count_if(split.edges.begin(), split.edges.end(),
                               [](const auto &e) { return e.key == 2 && e.next == 0; }) == 1,
             "conditional key edges lost a successor");
+    auto misaligned = run(fixture({0x0f, 0x28, 0x41, 1, 0x31, 0xc0, 0xc3}));
+    require(misaligned.edges.empty() && misaligned.frontiers.size() == 1 &&
+                misaligned.frontiers[0].reason == "misaligned vector memory address",
+            "aligned vector access did not reject a misaligned address");
+    auto maybe_aligned = run(fixture({0x48, 0x8b, 0x01, 0x0f, 0x28, 0x00, 0x31, 0xc0, 0xc3}));
+    require(maybe_aligned.edges.size() == 1 && !maybe_aligned.frontiers.empty(),
+            "symbolic vector alignment lost either the fault or normal continuation");
     auto zero = fixture({0x31, 0xc0, 0xc3});
     auto r = run(zero);
     require(r.exploration_complete() && r.edges.size() == 1 && r.edges[0].next == 0,
@@ -492,6 +542,37 @@ int main()
         fixture({0x48, 0x89, 0x11, 0x48, 0x0f, 0xba, 0x39, 40, 0x48, 0x8b, 0x01, 0xc3}));
     programs.push_back(fixture({0x48, 0x89, 0x11, 0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff, 0x48,
                                 0x0f, 0xa3, 0x41, 8,    0x0f, 0x92, 0xc0, 0x0f, 0xb6, 0xc0, 0xc3}));
+    // Legacy SSE data moves are compared through the independent native decoder/interpreter.
+    programs.push_back(fixture(
+        {0x66, 0x48, 0x0f, 0x6e, 0xc2, 0x66, 0x48, 0x0f, 0x7e, 0xc0, 0x48, 0xc1, 0xe8, 32, 0xc3}));
+    programs.push_back(fixture(
+        {0x66, 0x0f, 0x6e, 0xc2, 0x66, 0x48, 0x0f, 0x7e, 0xc0, 0x48, 0xc1, 0xe8, 32, 0xc3}));
+    programs.push_back(fixture({0x66, 0x48, 0x0f, 0x6e, 0xc2, 0x0f, 0x16, 0xc0, 0x0f, 0x11,
+                                0x01, 0x48, 0x8b, 0x41, 8,    0x48, 0xc1, 0xe8, 32,   0xc3}));
+    programs.push_back(fixture({0x66, 0x4c, 0x0f, 0x6e, 0xc2, 0x45, 0x0f, 0x16, 0xc0, 0x44, 0x0f,
+                                0x11, 0x01, 0x48, 0x8b, 0x41, 8,    0x48, 0xc1, 0xe8, 32,   0xc3}));
+    programs.push_back(fixture({0x48, 0x89, 0xd0, 0xf9, 0x0f, 0x57, 0xc0, 0x48, 0x83, 0xd0, 0, 0x48,
+                                0xc1, 0xe8, 32, 0xc3}));
+    programs.push_back(
+        fixture({0x48, 0xff, 0xc1, 0x48, 0x89, 0x11, 0x48, 0x89, 0x51, 8,    0xf3, 0x0f, 0x6f, 0x01,
+                 0x0f, 0x12, 0xc0, 0x66, 0x48, 0x0f, 0x7e, 0xc0, 0x48, 0xc1, 0xe8, 32,   0xc3}));
+    programs.push_back(
+        fixture({0x66, 0x48, 0x0f, 0x6e, 0xc2, 0x0f, 0x16, 0xc0, 0x0f, 0x57, 0xc9, 0xf3, 0x0f, 0x10,
+                 0xc1, 0x0f, 0x29, 0x01, 0x48, 0x8b, 0x41, 8,    0x48, 0xc1, 0xe8, 32,   0xc3}));
+    programs.push_back(fixture({0x0f, 0x10, 0x05, 0xf9, 0,    0,    0,    0x0f, 0x12, 0xc0,
+                                0x66, 0x48, 0x0f, 0x7e, 0xc0, 0x48, 0xc1, 0xe8, 32,   0xc3}));
+    programs.push_back(
+        fixture({0x66, 0x48, 0x0f, 0x6e, 0xc2, 0x0f, 0x16, 0xc0, 0x0f, 0x11, 0x01, 0xf3,
+                 0x0f, 0x7e, 0x01, 0x0f, 0x12, 0xc0, 0x66, 0x48, 0x0f, 0x7e, 0xc0, 0xc3}));
+    programs.push_back(
+        fixture({0x66, 0x48, 0x0f, 0x6e, 0xc2, 0x0f, 0x16, 0xc0, 0x0f, 0x11, 0x01, 0xf3, 0x0f,
+                 0x10, 0x01, 0x66, 0x48, 0x0f, 0x7e, 0xc0, 0x48, 0xc1, 0xe8, 32,   0xc3}));
+    programs.push_back(
+        fixture({0x0f, 0x57, 0xc0, 0x66, 0x0f, 0xc4, 0xc2, 3, 0x66, 0x0f, 0xc5, 0xc0, 3, 0xc3}));
+    programs.push_back(fixture({0x0f, 0x57, 0xc0, 0x66, 0x0f, 0x3a, 0x20, 0xc2, 7, 0x66, 0x0f, 0x3a,
+                                0x14, 0xc0, 7, 0xc3}));
+    programs.push_back(fixture({0x66, 0x48, 0x0f, 0x6e, 0xc2, 0x0f, 0x28, 0xc8, 0x66, 0x48, 0x0f,
+                                0x7e, 0xc8, 0x48, 0xc1, 0xe8, 32, 0xc3}));
     std::vector<uint64_t> inputs = {1,
                                     2,
                                     UINT64_MAX,
@@ -540,7 +621,7 @@ int main()
             ++comparisons;
         }
     }
-    require(comparisons == 19589, "incomplete direct comparison matrix");
+    require(comparisons == 32992, "incomplete direct comparison matrix");
     rax_engine_close(engine);
     std::cout << "warbird tests passed\n";
 }

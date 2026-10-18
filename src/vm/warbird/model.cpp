@@ -201,7 +201,7 @@ std::string Report::json() const
       << ",\"instructions\":" << instructions << ",\"operations\":" << operations
       << ",\"key_splits\":" << key_splits << ",\"key_queries\":" << key_queries
       << ",\"return_splits\":" << return_splits << ",\"external_calls\":" << external_calls
-      << ",\"keys\":[";
+      << ",\"vector_operations\":" << vector_operations << ",\"keys\":[";
     for (size_t i = 0; i < keys.size(); ++i)
     {
         if (i)
