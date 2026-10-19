@@ -461,6 +461,7 @@ ida_add_plugin(
     src/deobf/analysis/mba_smt_invariants.cpp
     src/deobf/analysis/mba_smt_synthesis.cpp
     src/deobf/analysis/mba_smt_algebra.cpp
+    src/deobf/analysis/mba_smt_masks.cpp
     src/deobf/analysis/mba_smt_context.cpp
     src/deobf/handlers/mba_smt.cpp
     src/deobf/handlers/mba_smt_calls.cpp
@@ -843,9 +844,13 @@ if(BUILD_TESTING)
 
     add_executable(
         chernobog_mba_smt_tests
-        tests/mba_smt_tests.cpp src/deobf/analysis/mba_smt.cpp
-        src/deobf/analysis/mba_smt_semantics.cpp src/deobf/analysis/mba_smt_invariants.cpp
-        src/deobf/analysis/mba_smt_synthesis.cpp src/deobf/analysis/mba_smt_algebra.cpp)
+        tests/mba_smt_tests.cpp
+        src/deobf/analysis/mba_smt.cpp
+        src/deobf/analysis/mba_smt_semantics.cpp
+        src/deobf/analysis/mba_smt_invariants.cpp
+        src/deobf/analysis/mba_smt_synthesis.cpp
+        src/deobf/analysis/mba_smt_algebra.cpp
+        src/deobf/analysis/mba_smt_masks.cpp)
     target_include_directories(chernobog_mba_smt_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_include_directories(chernobog_mba_smt_tests SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
     target_link_libraries(chernobog_mba_smt_tests PRIVATE libz3)
@@ -860,7 +865,8 @@ if(BUILD_TESTING)
         src/deobf/analysis/mba_smt_semantics.cpp
         src/deobf/analysis/mba_smt_invariants.cpp
         src/deobf/analysis/mba_smt_synthesis.cpp
-        src/deobf/analysis/mba_smt_algebra.cpp)
+        src/deobf/analysis/mba_smt_algebra.cpp
+        src/deobf/analysis/mba_smt_masks.cpp)
     target_include_directories(chernobog_mba_smt_context_tests
                                PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_include_directories(chernobog_mba_smt_context_tests SYSTEM

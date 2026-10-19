@@ -1,4 +1,5 @@
 #include "deobf/analysis/mba_smt.hpp"
+#include "deobf/analysis/mba_smt_internal.hpp"
 #include <cstdio>
 #include <stdexcept>
 
@@ -328,6 +329,107 @@ void test_nested_linear_reconstruction()
     nonlinear_word.run();
     check(nonlinear_word.verify(0, 0, constant(0, 32)) == Verdict::Disproved,
           "proof-only Boolean expansion does not treat a nonlinear word as an independent input");
+}
+
+void test_masked_flag_updates()
+{
+    for (unsigned bits = 8; bits <= 64; bits += 8)
+    {
+        const Term flags = variable(0, bits);
+        const Term input = variable(1, bits);
+        const Term low_flag = expression(Op::And, input, constant(1, bits));
+        Term high_flag = expression(Op::Equal, expression(Op::And, input, constant(0x11, bits)),
+                                    constant(0x11, bits));
+        if (bits > 8)
+        {
+            high_flag = expression(Op::ZeroExtend, high_flag, {}, bits);
+        }
+        const uint64_t mask = bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1;
+        const Term inserted = multiply(constant(8, bits), low_flag);
+        const Term cleared = expression(Op::And, flags, constant(mask ^ 8, bits));
+        const Term high_bit = expression(Op::Shl, high_flag, constant(6, 8));
+        const Term original = expression(Op::Or, high_bit,
+                                         expression(Op::And, expression(Op::Xor, cleared, inserted),
+                                                    constant(mask ^ 0x40, bits)));
+        const Term expected =
+            expression(Op::Or, expression(Op::And, flags, constant(mask ^ 0x48, bits)),
+                       expression(Op::Or, inserted, high_bit));
+        Program program = make_program(bits);
+        program.blocks[0].statements = {Statement::assign(3, original)};
+        Options options;
+        options.max_invariants = 0;
+        Analysis analysis(program, options);
+        const auto proposals = analysis.run();
+        check(!proposals.empty(), "masked flag update produces a compact replacement");
+        if (!proposals.empty())
+        {
+            check(cost(proposals.front().replacement) <= cost(expected),
+                  "disjoint flag insertion merges the clearing masks");
+            check(analysis.verify(0, 0, expected) == Verdict::Verified,
+                  "flag update preserves all untouched bits at every scalar byte width");
+        }
+
+        // Bit 4 of this insertion overlaps a retained bit of flags. Changing
+        // the XOR to OR would silently lose the toggle when both bits are set.
+        const Term overlapping =
+            multiply(constant(8, bits), expression(Op::And, input, constant(3, bits)));
+        program.blocks[0].statements = {
+            Statement::assign(3, expression(Op::Xor, cleared, overlapping))};
+        Analysis overlap(program, Options::deep());
+        check(overlap.verify(0, 0, expression(Op::Or, cleared, overlapping)) == Verdict::Disproved,
+              "overlapping insertion bits prevent XOR-to-OR conversion");
+    }
+}
+
+void verify_known_bit_certificate(const Term &value)
+{
+    const unsigned bits = value->bits;
+    const auto known = chernobog::mba_smt::detail::known_bits(value);
+    check((known.zero & known.one) == 0, "known zero and one masks are disjoint");
+    Program program = make_program(bits);
+    program.blocks[0].statements = {
+        Statement::assign(1, expression(Op::And, value, constant(known.zero, bits))),
+        Statement::assign(2, expression(Op::And, value, constant(known.one, bits)))};
+    Options options;
+    options.max_invariants = 0;
+    Analysis certificate(program, options);
+    check(certificate.verify(0, 0, constant(0, bits)) == Verdict::Verified,
+          "SMT proves every inferred zero bit");
+    check(certificate.verify(0, 1, constant(known.one, bits)) == Verdict::Verified,
+          "SMT proves every inferred one bit");
+}
+
+void test_known_bit_certificates()
+{
+    for (unsigned bits : {8u, 16u, 32u, 64u})
+    {
+        const uint64_t sign = uint64_t{1} << (bits - 1);
+        const Term low_bits = expression(Op::And, variable(0, bits), constant(0x71, bits));
+        for (uint64_t forced : {uint64_t{0x80}, uint64_t{0x80} | sign})
+        {
+            const Term input = expression(Op::Or, low_bits, constant(forced, bits));
+            for (unsigned amount : {0u, 1u, bits - 1, bits, bits + 1, 255u})
+            {
+                for (Op operation : {Op::Shl, Op::Shr, Op::Sar})
+                {
+                    const Term shifted = expression(operation, input, constant(amount, 8));
+                    const auto known = chernobog::mba_smt::detail::known_bits(shifted);
+                    check((known.zero | known.one) != 0,
+                          "fixed shifts retain useful bits at boundaries and beyond word width");
+                    verify_known_bit_certificate(shifted);
+                }
+            }
+            for (uint64_t factor : {uint64_t{0}, uint64_t{1}, uint64_t{8}, sign})
+            {
+                verify_known_bit_certificate(multiply(constant(factor, bits), input));
+            }
+        }
+        const Term unknown_sign = expression(Op::Sar, variable(0, bits), constant(255, 8));
+        const auto unknown = chernobog::mba_smt::detail::known_bits(unknown_sign);
+        check(unknown.zero == 0 && unknown.one == 0,
+              "an unknown sign cannot become a known fill bit on oversized arithmetic shifts");
+        verify_known_bit_certificate(unknown_sign);
+    }
 }
 
 void test_guards_and_aliasing()
@@ -673,6 +775,8 @@ int main()
     test_intervening_register_write();
     test_linear_reconstruction_and_false_fit();
     test_nested_linear_reconstruction();
+    test_masked_flag_updates();
+    test_known_bit_certificates();
     test_guards_and_aliasing();
     test_partial_registers_and_endianness();
     test_failures_and_profiles();

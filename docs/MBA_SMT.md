@@ -96,6 +96,38 @@ or inequality on just the relevant unknown bits. Constant masks and extensions
 are removed only from bits the resulting test does not observe. The replacement
 still requires an unconditional SMT proof and the emitted-code verification.
 
+Mask normalization also tracks known zero and one bits through constant shifts,
+extensions, extraction and multiplication by powers of two. XOR becomes OR
+when the operands' possible set bits are disjoint. An observation mask can
+distribute through OR or XOR when that removes redundant masks; nested constant
+masks combine. These structural candidates require the same full-width proof
+as synthesized candidates and must lower the complete replacement cost.
+
+For example, with `low = input & 1` and
+`high = (input & 0x11) == 0x11`, the expression
+`(high << 6) | (((flags & 0xFFFFFFF7u) ^ (8u * (input & 1))) & 0xFFFFFFBFu)`
+becomes `(flags & 0xFFFFFFB7u) | (low << 3) | (high << 6)`.
+Only bits 3 and 6 change. If an insertion can overlap a retained bit, its XOR
+semantics remain necessary. The native mask fixtures test both cases, preserve
+conditional stores and observer calls, and check destinations aliased by an
+observer as well as volatile destinations. Captured normal and deep pseudocode
+is compiled by `tests/verify_mba_masks.py` and checked against a separate oracle.
+`tests/ida_mba_flag_store_probe.py` also captures the extracted
+`GreProtectSpriteContent` function's baseline, normal and deep field store.
+Run it through the isolated smoke runner with `--allow-database`; the runner
+copies the supplied IDB and verifies the original input hash, while the probe
+checks that the function's native instruction bytes remain unchanged.
+
+Private scalar bindings remain available while simplifying a plain store's
+RHS. Address-side writes isolate that analysis from incoming scalar facts;
+unresolved writes still discard context afterward. The store address and memory
+operations are preserved. Existing eligible locals can represent expressions
+such as `input & 1`, avoiding a second computation of an already available flag.
+The microcode semantic pass declines functions whose parameter types expose
+volatile scalar, pointed or array data. Its ordinary-memory equalities cannot
+justify coalescing volatile accesses. The final ctree pass can still simplify
+eligible pure scalars while retaining the volatile operations.
+
 Cross-block limits are 64 blocks, 256 statements and 64 scalar storage regions.
 Local tree analysis remains available when a complete CFG exceeds these limits;
 it visits at most 256 expression nodes. Synthesis uses at most eight candidate
@@ -118,6 +150,10 @@ by the local rewrite walk. Repeated subtree sampling can take O(N^2 * 2^V)
 tree work for N nodes, excluding solver work; the shared budget still applies.
 A threshold reduction visits its operand tree and scans at most 64 bit positions;
 its equality proof remains subject to the shared solver budget.
+Known-bit inference takes O(N) tree work for N nodes. A mask-normalization call
+may revisit subtrees in O(N^2) work, and the complete recursive algebraic walk
+has an O(N^3) structural upper bound with O(N) recursion and intermediate storage.
+The existing node and depth limits apply; SMT work is additional.
 
 ## Validation and assumptions
 
@@ -285,6 +321,7 @@ The view probe navigates forward and backward through its function list.
 | A5 | Admitted callee ctrees completely represent their scalar effects and ABI. Caller specialization depends on this. | Reject unsupported statements and width mismatches; test volatile writes, pointer reads, escaped locals, loops and narrow results. |
 | A6 | A caller fact refers to the correct immutable value version and every incoming path. Contextual rewrites depend on this. | Test overwrites, equal and unequal joins, false edges, contradictory guards, labels, and loop barriers; retranslate every emitted expression against the same snapshot. |
 | A7 | The supplied nested examples use 32-bit wrapping arithmetic and zero-extend their final result to 64 bits. The example reductions depend on this interpretation. | Compile unsigned fixtures, inspect captured return conversions, and compare complete 64-bit results at overflow boundaries; a different width or sign extension in the original binary would invalidate this interpretation. |
+| A8 | The flag-store example uses a 32-bit field and the shown definitions of its two Boolean flags. Its compact displayed form depends on A1, A3, A6 and this interpretation. | Prove the masked identity at every scalar byte width; test all byte inputs, retained-bit overlap, boundary words, observer aliases and volatile destinations; compile captured ARM64 and x86-64 pseudocode. |
 
 Bounded findings: **high**, incomplete effects or predecessors can manufacture
 proofs and must invalidate facts; **medium**, nonlinear/array queries may exhaust

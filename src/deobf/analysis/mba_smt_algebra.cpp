@@ -14,63 +14,11 @@ constexpr size_t max_boolean_candidates = 65536;
 
 uint64_t width_mask(unsigned bits) { return bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1; }
 
-struct KnownBits
-{
-    uint64_t zero = 0;
-    uint64_t one = 0;
-};
-
 struct UnsignedRange
 {
     uint64_t minimum;
     uint64_t maximum;
 };
-
-KnownBits known_bits(const Term &term)
-{
-    const uint64_t mask = width_mask(term->bits);
-    if (term->op == Op::Constant)
-    {
-        return {~term->value & mask, term->value & mask};
-    }
-    if (term->op == Op::Variable || term->op == Op::Load)
-    {
-        return {};
-    }
-
-    const KnownBits left = known_bits(term->left);
-    const KnownBits right = term->right ? known_bits(term->right) : KnownBits{};
-    switch (term->op)
-    {
-    case Op::Not:
-        return {left.one, left.zero};
-    case Op::And:
-        return {(left.zero | right.zero) & mask, left.one & right.one};
-    case Op::Or:
-        return {left.zero & right.zero, (left.one | right.one) & mask};
-    case Op::Xor:
-        return {(left.zero & right.zero) | (left.one & right.one),
-                (left.zero & right.one) | (left.one & right.zero)};
-    case Op::Low:
-        return {left.zero & mask, left.one & mask};
-    case Op::ZeroExtend:
-        return {left.zero | (mask ^ width_mask(term->left->bits)), left.one};
-    case Op::SignExtend:
-    {
-        const uint64_t sign = uint64_t{1} << (term->left->bits - 1);
-        const uint64_t high = mask ^ width_mask(term->left->bits);
-        return {left.zero | ((left.zero & sign) != 0 ? high : 0),
-                left.one | ((left.one & sign) != 0 ? high : 0)};
-    }
-    case Op::Equal:
-    case Op::NotEqual:
-    case Op::UnsignedLess:
-    case Op::SignedLess:
-        return {mask ^ 1, 0};
-    default:
-        return {};
-    }
-}
 
 UnsignedRange unsigned_range(const Term &term)
 {
@@ -324,6 +272,7 @@ class AlgebraicSimplifier
 
         Term term = expression(original->op, rewrite(original->left), rewrite(original->right),
                                original->bits);
+        term = normalize_masks(term);
         term = normalize_complement(term);
         term = factor_constant_offset(term);
 

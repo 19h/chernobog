@@ -15,6 +15,40 @@ struct Register
     uint64_t value_number;
 };
 
+bool has_volatile_inputs(ea_t entry)
+{
+    tinfo_t function_type;
+    func_type_data_t details;
+    if (!get_tinfo(&function_type, entry) || !function_type.get_func_details(&details))
+    {
+        return false;
+    }
+    for (const auto &argument : details)
+    {
+        tinfo_t type = argument.type;
+        for (unsigned depth = 0; depth < limits::expression_depth; ++depth)
+        {
+            if (type.is_volatile())
+            {
+                return true;
+            }
+            if (type.is_ptr())
+            {
+                type = type.get_pointed_object();
+            }
+            else if (type.is_array())
+            {
+                type = type.get_array_element();
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+    return false;
+}
+
 class MicrocodeAdapter
 {
   public:
@@ -717,10 +751,7 @@ class BudgetCharge
     {
     }
 
-    ~BudgetCharge()
-    {
-        budget_.spent_ns += elapsed_ns();
-    }
+    ~BudgetCharge() { budget_.spent_ns += elapsed_ns(); }
 
     uint64_t elapsed_ns() const
     {
@@ -936,6 +967,14 @@ int simplify(mbl_array_t *mba, FunctionBudget &budget)
     qstring enabled;
     if (mba == nullptr || (qgetenv("CHERNOBOG_MBA_SMT", &enabled) && enabled == "0"))
     {
+        return 0;
+    }
+    if (has_volatile_inputs(mba->entry_ea))
+    {
+        // The CFG memory model represents ordinary sequential memory. A
+        // declared volatile pointee cannot participate in those equalities;
+        // independent pure scalars remain eligible in the final ctree pass.
+        ++budget.totals.unsupported;
         return 0;
     }
 

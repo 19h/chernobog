@@ -96,7 +96,8 @@ bool has_mixed_arithmetic(const Term &root)
         const Term term = pending.back();
         pending.pop_back();
         arithmetic |= term->op == Op::Add || term->op == Op::Sub || term->op == Op::Mul ||
-                      term->op == Op::Neg;
+                      term->op == Op::Neg || term->op == Op::Shl || term->op == Op::Shr ||
+                      term->op == Op::Sar;
         bitwise |=
             term->op == Op::And || term->op == Op::Or || term->op == Op::Xor || term->op == Op::Not;
         if (arithmetic && bitwise)
@@ -816,6 +817,25 @@ class CallerSimplifier
     {
         if (!node || !budget_.available())
         {
+            return;
+        }
+        if (node->op == cot_asg && node->x && node->y)
+        {
+            // The outer store does not invalidate private scalar bindings
+            // before its RHS is evaluated. Only address-side writes make the
+            // relative ordering of those bindings uncertain here.
+            ControlHazards address;
+            address.apply_to(node->x, nullptr);
+            if (address.writes)
+            {
+                ScalarContext isolated(context);
+                isolated.reset();
+                expression_tree(node->y, isolated);
+            }
+            else
+            {
+                expression_tree(node->y, context);
+            }
             return;
         }
         ControlHazards hazards;
