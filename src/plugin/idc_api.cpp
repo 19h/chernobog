@@ -365,13 +365,15 @@ std::unique_ptr<mba_t> generate_microcode(ea_t function_ea, mba_maturity_t matur
     return mba;
 }
 
-bool decompile_text(ea_t function_ea, bool no_cache, qstring *out)
+bool decompile_text(ea_t function_ea, qstring *out)
 {
     func_t *function = get_func(function_ea);
     if (function == nullptr)
         return false;
     hexrays_failure_t failure;
-    cfuncptr_t cfunc = decompile(function, &failure, no_cache ? DECOMP_NO_CACHE : 0);
+    // Caller specialization edits the tree. A cached cfunc may be displayed in
+    // another widget, so text queries must own a separate decompilation too.
+    cfuncptr_t cfunc = decompile(function, &failure, DECOMP_NO_CACHE);
     if (cfunc == nullptr)
     {
         msg("[chernobog][idc] Decompilation of %a failed: %s\n", function_ea,
@@ -695,7 +697,7 @@ error_t idaapi idc_deobfuscate_text(idc_value_t *argv, idc_value_t *r)
     chernobog_clear_function_tracking(function_ea);
 
     qstring text;
-    if (!decompile_text(function_ea, true, &text))
+    if (!decompile_text(function_ea, &text))
     {
         r->set_string("");
         return eOk;
@@ -734,8 +736,7 @@ error_t idaapi idc_decompile(idc_value_t *argv, idc_value_t *r)
 {
     const ea_t function_ea = resolve_function(argv[0]);
     qstring text;
-    if (ready_host() == nullptr || function_ea == BADADDR ||
-        !decompile_text(function_ea, false, &text))
+    if (ready_host() == nullptr || function_ea == BADADDR || !decompile_text(function_ea, &text))
     {
         r->set_string("");
         return eOk;

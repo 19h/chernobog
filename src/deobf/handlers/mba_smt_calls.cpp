@@ -1,8 +1,10 @@
 #include "mba_smt_calls.h"
+#include "mba_smt_ctree.h"
 
 #include <algorithm>
 #include <chrono>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 
@@ -10,13 +12,16 @@ namespace chernobog::mba_smt
 {
 namespace
 {
-using Bindings = std::map<int, Term>;
+using Bindings = ScalarContext::Bindings;
 using Clock = std::chrono::steady_clock;
 
 constexpr size_t max_callees = 16;
 constexpr size_t max_call_depth = 3;
 constexpr size_t max_callee_bytes = 4096;
 constexpr size_t max_expression_attempts = 128;
+constexpr size_t max_propagation_rounds = 3;
+constexpr unsigned normal_expression_budget_ms = 250;
+constexpr unsigned deep_expression_budget_ms = 1000;
 
 // Decompiling a callee can deliver another maturity callback. That callback
 // must not start a second interprocedural pass or recursively visit its caller.
@@ -78,14 +83,9 @@ Term convert_integer(Term value, const tinfo_t &source, const tinfo_t &destinati
 class CallBudget
 {
   public:
-    explicit CallBudget(FunctionBudget &budget) : budget_(budget), started_(Clock::now())
-    {
-    }
+    explicit CallBudget(FunctionBudget &budget) : budget_(budget), started_(Clock::now()) {}
 
-    ~CallBudget()
-    {
-        budget_.spent_ns += elapsed_ns();
-    }
+    ~CallBudget() { budget_.spent_ns += elapsed_ns(); }
 
     unsigned remaining_ms() const
     {
@@ -93,15 +93,9 @@ class CallBudget
         return spent < budget_.limit_ms ? unsigned(budget_.limit_ms - spent) : 0;
     }
 
-    bool available() const
-    {
-        return remaining_ms() != 0 && !user_cancelled();
-    }
+    bool available() const { return remaining_ms() != 0 && !user_cancelled(); }
 
-    FunctionBudget &owner()
-    {
-        return budget_;
-    }
+    FunctionBudget &owner() { return budget_; }
 
     void exclude_decompiler_time(Clock::duration elapsed)
     {
@@ -133,14 +127,14 @@ struct Summary
 
 class PureFunctions;
 
-// Translate only effect-free scalar expressions. Caller symbols have a single
-// candidate lifetime; bindings supplied by the statement walk are closed values.
+// Translate only effect-free scalar expressions. Caller bindings refer to
+// immutable value versions; callee bindings refer to formal parameters.
 class CtreeTerms
 {
   public:
     CtreeTerms(PureFunctions &functions, const Bindings &bindings,
-               std::vector<unsigned> *widths = nullptr, const std::vector<bool> *safe = nullptr)
-        : functions_(functions), bindings_(bindings), widths_(widths), safe_(safe)
+               const ScalarContext *context = nullptr)
+        : functions_(functions), bindings_(bindings), context_(context)
     {
     }
 
@@ -150,9 +144,7 @@ class CtreeTerms
   private:
     PureFunctions &functions_;
     const Bindings &bindings_;
-    std::vector<unsigned> *widths_;
-    const std::vector<bool> *safe_;
-    std::map<int, size_t> symbols_;
+    const ScalarContext *context_;
     size_t visits_ = 0;
 };
 
@@ -182,20 +174,11 @@ Term substitute_parameters(const Term &term, const std::vector<Term> &arguments,
 class PureFunctions
 {
   public:
-    PureFunctions(ea_t caller, CallBudget &budget) : budget_(budget)
-    {
-        active_.insert(caller);
-    }
+    PureFunctions(ea_t caller, CallBudget &budget) : budget_(budget) { active_.insert(caller); }
 
-    bool available() const
-    {
-        return budget_.available();
-    }
+    bool available() const { return budget_.available(); }
 
-    bool needs_refresh() const
-    {
-        return needs_refresh_;
-    }
+    bool needs_refresh() const { return needs_refresh_; }
 
     Term instantiate(const cexpr_t *call, CtreeTerms &terms)
     {
@@ -391,20 +374,10 @@ Term CtreeTerms::translate(const cexpr_t *node, unsigned depth)
         const auto bound = bindings_.find(node->v.idx);
         if (bound != bindings_.end())
         {
-            used_context = true;
+            used_context |= !context_ || context_->derived(node->v.idx);
             return bound->second->bits == bits ? bound->second : Term{};
         }
-        if (!widths_ || !safe_ || node->v.idx < 0 || size_t(node->v.idx) >= safe_->size() ||
-            !(*safe_)[node->v.idx])
-        {
-            return {};
-        }
-        const auto inserted = symbols_.emplace(node->v.idx, widths_->size());
-        if (inserted.second)
-        {
-            widths_->push_back(bits);
-        }
-        return variable(inserted.first->second, bits);
+        return {};
     }
     if (node->op == cot_call)
     {
@@ -416,6 +389,19 @@ Term CtreeTerms::translate(const cexpr_t *node, unsigned depth)
     {
         return node->x ? convert_integer(translate(node->x, depth + 1), node->x->type, node->type)
                        : Term{};
+    }
+    if (node->op == cot_land || node->op == cot_lor)
+    {
+        Term left = translate(node->x, depth + 1);
+        Term right = translate(node->y, depth + 1);
+        if (!left || !right)
+        {
+            return {};
+        }
+        left = expression(Op::NotEqual, left, constant(0, left->bits), 8);
+        right = expression(Op::NotEqual, right, constant(0, right->bits), 8);
+        return resize_integer(expression(node->op == cot_land ? Op::And : Op::Or, left, right),
+                              bits, false);
     }
 
     if (!is_binary(node->op) && node->op != cot_lnot && node->op != cot_bnot && node->op != cot_neg)
@@ -570,10 +556,12 @@ struct LocalSafety final : ctree_visitor_t
     {
         for (const lvar_t &local : *function.get_lvars())
         {
+            // A mapping destination is a canonical ctree local: the SDK has
+            // replaced its mapped references, and assignments here version that
+            // canonical index. Shared chains and overlapping storage still fail.
             safe.push_back(integer_bits(local.tif) && !local.is_used_byref() &&
                            !local.is_overlapped_var() && !local.is_shared() &&
-                           !local.is_fake_var() && !local.is_mapdst_var() && !local.is_noprop() &&
-                           !local.in_asm());
+                           !local.is_fake_var() && !local.is_noprop() && !local.in_asm());
         }
         apply_to(&function.body, nullptr);
     }
@@ -612,9 +600,7 @@ struct LocalSafety final : ctree_visitor_t
 
 struct ControlHazards final : ctree_visitor_t
 {
-    ControlHazards() : ctree_visitor_t(CV_FAST)
-    {
-    }
+    ControlHazards() : ctree_visitor_t(CV_FAST) {}
 
     int idaapi visit_insn(cinsn_t *node) override
     {
@@ -644,8 +630,8 @@ struct ControlHazards final : ctree_visitor_t
     size_t visited = 0;
 };
 
-// Specialize calls virtually for proof, then materialize only a proven literal.
-// This avoids duplicating callee expressions or moving their evaluation order.
+// Contexts are snapshots of scalar value versions, not substitutions into live
+// lvalues. Every emitted replacement is retranslated in the same snapshot.
 class CallerSimplifier
 {
   public:
@@ -653,53 +639,123 @@ class CallerSimplifier
         : function_(function), budget_(budget), functions_(function.entry_ea, budget),
           safety_(function)
     {
+        const lvars_t &locals = *function_.get_lvars();
+        for (size_t index = 0; index < locals.size(); ++index)
+        {
+            widths_.push_back(safety_.safe[index] ? integer_bits(locals[index].tif) : 0);
+        }
     }
 
     CallSimplification run()
     {
-        Bindings bindings;
-        statement(function_.body, bindings);
+        for (size_t round = 0; round < max_propagation_rounds && budget_.available(); ++round)
+        {
+            const int previous_changes = changes_;
+            ScalarContext context(widths_);
+            statement(function_.body, context);
+            if (changes_ == previous_changes)
+            {
+                break;
+            }
+        }
         return {changes_, functions_.needs_refresh()};
     }
 
   private:
-    bool fold(cexpr_t &node, const Bindings &bindings)
+    Term translate(const cexpr_t &node, const ScalarContext &context)
     {
-        if (!budget_.available() || attempts_ >= max_expression_attempts)
+        CtreeTerms terms(functions_, context.bindings(), &context);
+        return terms.translate(&node);
+    }
+
+    std::unique_ptr<cexpr_t> prepare_replacement(const cexpr_t &node, const ScalarContext &context,
+                                                 const ContextQuery &query, Analysis &analysis,
+                                                 const Term &candidate)
+    {
+        const Term value = query.restore(candidate);
+        if (!value)
+        {
+            return {};
+        }
+
+        auto emitted = std::make_unique<cexpr_t>();
+        if (!emit_scalar_expression(function_, context, value, node.type, *emitted))
+        {
+            return {};
+        }
+        const bool constant_result = emitted->op == cot_num && node.op != cot_num;
+        if (!constant_result && scalar_expression_cost(*emitted) >= scalar_expression_cost(node))
+        {
+            return {};
+        }
+
+        const Term translated = query.lower(translate(*emitted, context));
+        if (!translated || analysis.verify(query.block(), 0, translated) != Verdict::Verified)
+        {
+            return {};
+        }
+        emitted->ea = node.ea;
+        return emitted;
+    }
+
+    bool fold(cexpr_t &node, const ScalarContext &context)
+    {
+        if (node.op == cot_num || !budget_.available() || attempts_ >= max_expression_attempts)
         {
             return false;
         }
-        std::vector<unsigned> widths;
-        CtreeTerms terms(functions_, bindings, &widths, &safety_.safe);
+        CtreeTerms terms(functions_, context.bindings(), &context);
         const Term value = terms.translate(&node);
-        if (!value || !terms.used_context)
+        if (!value || (!terms.used_context && context.conditions().empty()))
+        {
+            return false;
+        }
+        ContextQuery query(context, value);
+        if (!query.valid())
         {
             return false;
         }
         ++attempts_;
 
-        Program program;
-        program.widths = std::move(widths);
-        const size_t result_index = program.widths.size();
-        program.widths.push_back(value->bits);
-        program.blocks.resize(1);
-        program.blocks[0].statements = {Statement::assign(result_index, value)};
         Options options;
-        options.budget_ms = budget_.remaining_ms();
+        const bool deep = budget_.owner().limit_ms > limits::normal_budget_ms;
+        options.budget_ms = std::min(budget_.remaining_ms(), deep ? deep_expression_budget_ms
+                                                                  : normal_expression_budget_ms);
+        // Bindings already contain their complete scalar expressions. Only the
+        // entry edge's guard and its negation are needed at this query block.
+        options.max_invariants = 2;
         options.cancelled = [] { return user_cancelled(); };
-        Analysis analysis(std::move(program), options);
-        const Term replacement = analysis.constant_value(0, 0);
-        const tinfo_t original_type = node.type;
-        bool verified = false;
-        if (replacement)
+        Analysis analysis(query.program(), options);
+        std::unique_ptr<cexpr_t> replacement;
+        if (const Term candidate = analysis.constant_value(query.block(), 0))
         {
-            cexpr_t emitted;
-            emitted.put_number(&function_, replacement->value, value->bits / 8, no_sign);
-            emitted.type = original_type;
-            CtreeTerms emitted_terms(functions_, bindings);
-            const Term translated = emitted_terms.translate(&emitted);
-            verified = translated && analysis.verify(0, 0, translated) == Verdict::Verified;
+            replacement = prepare_replacement(node, context, query, analysis, candidate);
         }
+        // A path condition can make an ordinary expression constant. General
+        // synthesis is reserved for expanded calls and derived local values,
+        // so an unrelated guard cannot spend the function's budget enumerating
+        // replacements for an already simple assignment.
+        if (!replacement && node.op != cot_var && terms.used_context && budget_.available())
+        {
+            // Verify a cheaper expansion before spending the search budget.
+            // This proof remains valid if a later search runs out of time:
+            // neither the context nor the original expression has changed.
+            replacement = prepare_replacement(node, context, query, analysis, query.lower(value));
+            if (!replacement || scalar_expression_cost(*replacement) != 0)
+            {
+                for (const Proposal &proposal : analysis.run())
+                {
+                    auto improved =
+                        prepare_replacement(node, context, query, analysis, proposal.replacement);
+                    if (improved && (!replacement || scalar_expression_cost(*improved) <=
+                                                         scalar_expression_cost(*replacement)))
+                    {
+                        replacement = std::move(improved);
+                    }
+                }
+            }
+        }
+
         const auto &statistics = analysis.statistics();
         auto &totals = budget_.owner().totals;
         totals.candidates += statistics.candidates;
@@ -707,20 +763,17 @@ class CallerSimplifier
         totals.disproved += statistics.disproved;
         totals.unknown += statistics.unknown;
         totals.exhausted += statistics.exhausted;
-
-        if (!verified)
+        if (!replacement || user_cancelled())
         {
             return false;
         }
-
-        node.put_number(&function_, replacement->value, value->bits / 8, no_sign);
-        node.type = original_type;
+        node.swap(*replacement);
         ++changes_;
         ++totals.applied;
         return true;
     }
 
-    void expression_tree(cexpr_t *node, const Bindings &bindings)
+    void expression_tree(cexpr_t *node, const ScalarContext &context)
     {
         if (!node || !budget_.available())
         {
@@ -728,9 +781,16 @@ class CallerSimplifier
         }
         ControlHazards hazards;
         hazards.apply_to(node, nullptr);
-        const Bindings empty;
-        const Bindings &context = hazards.writes ? empty : bindings;
-        if (fold(*node, context))
+        std::optional<ScalarContext> isolated;
+        if (hazards.writes)
+        {
+            // The relative order of sibling writes and reads is not established
+            // here. Only identities independent of the incoming state may fold.
+            isolated.emplace(context);
+            isolated->reset();
+        }
+        const ScalarContext &facts = isolated ? *isolated : context;
+        if (fold(*node, facts))
         {
             return;
         }
@@ -738,143 +798,253 @@ class CallerSimplifier
         {
             for (carg_t &argument : *node->a)
             {
-                expression_tree(&argument, context);
+                expression_tree(&argument, facts);
             }
         }
         else if (node->op == cot_asg)
         {
-            expression_tree(node->y, context);
+            expression_tree(node->y, facts);
         }
         else if (node->op == cot_cast || node->op == cot_neg || node->op == cot_bnot ||
                  node->op == cot_lnot)
         {
-            expression_tree(node->x, context);
+            expression_tree(node->x, facts);
         }
         else if (node->op >= cot_tern && node->op <= cot_fdiv)
         {
-            expression_tree(node->x, context);
-            expression_tree(node->y, context);
+            expression_tree(node->x, facts);
+            expression_tree(node->y, facts);
             if (node->op == cot_tern)
             {
-                expression_tree(node->z, context);
+                expression_tree(node->z, facts);
             }
         }
     }
 
-    void statement(cinsn_t &node, Bindings &bindings)
+    void assignment(cexpr_t &node, ScalarContext &context)
+    {
+        ControlHazards rhs;
+        rhs.apply_to(node.y, nullptr);
+        expression_tree(node.y, context);
+        if (rhs.writes)
+        {
+            context.reset();
+            return;
+        }
+
+        Term value;
+        if (node.op == cot_asg)
+        {
+            value = translate(*node.y, context);
+        }
+        else
+        {
+            cexpr_t calculation(node);
+            switch (node.op)
+            {
+            case cot_asgadd:
+                calculation.op = cot_add;
+                break;
+            case cot_asgsub:
+                calculation.op = cot_sub;
+                break;
+            case cot_asgmul:
+                calculation.op = cot_mul;
+                break;
+            case cot_asgband:
+                calculation.op = cot_band;
+                break;
+            case cot_asgbor:
+                calculation.op = cot_bor;
+                break;
+            case cot_asgxor:
+                calculation.op = cot_xor;
+                break;
+            default:
+                context.forget(node.x->v.idx);
+                return;
+            }
+            value = translate(calculation, context);
+        }
+        const tinfo_t &source_type = node.op == cot_asg ? node.y->type : node.type;
+        context.assign(node.x->v.idx, convert_integer(value, source_type, node.x->type));
+    }
+
+    bool conditional(cinsn_t &node, ScalarContext &context)
+    {
+        expression_tree(&node.cif->expr, context);
+        ControlHazards condition;
+        condition.apply_to(&node.cif->expr, nullptr);
+        if (condition.writes)
+        {
+            context.reset();
+        }
+        ControlHazards hazards;
+        hazards.apply_to(&node, nullptr);
+        if (node.cif->expr.op == cot_num && !hazards.labeled)
+        {
+            const cinsn_t *selected = node.cif->expr.numval() ? node.cif->ithen : node.cif->ielse;
+            auto replacement = selected ? new cinsn_t(*selected) : new cinsn_t;
+            if (!selected)
+            {
+                replacement->op = cit_block;
+                replacement->cblock = new cblock_t;
+            }
+            node.cleanup();
+            node.replace_by(replacement);
+            ++changes_;
+            return statement(node, context);
+        }
+
+        // A jump into a labeled branch does not pass through this condition.
+        const Term predicate =
+            !condition.writes && !hazards.labeled ? translate(node.cif->expr, context) : Term{};
+        ScalarContext then_context = context;
+        ScalarContext else_context = context;
+        if (predicate)
+        {
+            then_context.assume(predicate, true);
+            else_context.assume(predicate, false);
+        }
+        const bool then_continues = statement(*node.cif->ithen, then_context);
+        const bool else_continues = !node.cif->ielse || statement(*node.cif->ielse, else_context);
+        if (hazards.labeled)
+        {
+            context.reset();
+            return true;
+        }
+        if (then_continues && else_continues)
+        {
+            then_context.merge_from(else_context);
+            context = std::move(then_context);
+        }
+        else if (then_continues || else_continues)
+        {
+            context = then_continues ? std::move(then_context) : std::move(else_context);
+        }
+        else
+        {
+            context.reset();
+        }
+        return then_continues || else_continues;
+    }
+
+    bool statement(cinsn_t &node, ScalarContext &context)
     {
         if (!budget_.available())
         {
-            return;
+            context.reset();
+            return true;
         }
         if (node.label_num >= 0)
         {
-            bindings.clear();
+            context.reset();
         }
         switch (node.op)
         {
         case cit_block:
-            for (cinsn_t &child : *node.cblock)
+        {
+            bool continues = true;
+            for (auto iterator = node.cblock->begin(); iterator != node.cblock->end();)
             {
-                statement(child, bindings);
+                cinsn_t &child = *iterator;
+                if (!continues)
+                {
+                    context.reset();
+                    ControlHazards hazards;
+                    hazards.apply_to(&child, nullptr);
+                    continues = hazards.labeled;
+                }
+                const bool child_continues = statement(child, context);
+                continues = continues && child_continues;
+                const bool empty =
+                    child.op == cit_empty || (child.op == cit_block && child.cblock->empty());
+                if (empty && child.label_num < 0)
+                {
+                    iterator = node.cblock->erase(iterator);
+                }
+                else
+                {
+                    ++iterator;
+                }
             }
-            break;
+            return continues;
+        }
         case cit_expr:
         {
-            cexpr_t *value = node.cexpr;
-            ControlHazards hazards;
-            hazards.apply_to(value, nullptr);
-            expression_tree(value->op == cot_asg ? value->y : value, bindings);
-            if (value->op == cot_asg && value->x && value->x->op == cot_var && value->y)
+            cexpr_t &value = *node.cexpr;
+            if (value.op >= cot_asg && value.op <= cot_asgumod && value.x &&
+                value.x->op == cot_var && value.y)
             {
-                const int local = value->x->v.idx;
-                ControlHazards rhs;
-                rhs.apply_to(value->y, nullptr);
-                if (rhs.writes)
+                assignment(value, context);
+            }
+            else if ((value.op == cot_preinc || value.op == cot_postinc || value.op == cot_predec ||
+                      value.op == cot_postdec) &&
+                     value.x && value.x->op == cot_var)
+            {
+                const Term previous = context.value(value.x->v.idx);
+                if (previous)
                 {
-                    bindings.clear();
+                    const bool increment = value.op == cot_preinc || value.op == cot_postinc;
+                    context.assign(value.x->v.idx,
+                                   expression(increment ? Op::Add : Op::Sub, previous,
+                                              constant(1, previous->bits)));
                 }
-                bindings.erase(local);
-                if (local >= 0 && size_t(local) < safety_.safe.size() && safety_.safe[local] &&
-                    value->y->op == cot_num && integer_bits(value->y->type) != 0)
-                {
-                    bindings[local] =
-                        convert_integer(constant(value->y->numval(), integer_bits(value->y->type)),
-                                        value->y->type, value->x->type);
-                    if (!bindings[local])
-                    {
-                        bindings.erase(local);
-                    }
-                }
-            }
-            else if (hazards.writes)
-            {
-                bindings.clear();
-            }
-            break;
-        }
-        case cit_if:
-        {
-            expression_tree(&node.cif->expr, bindings);
-            ControlHazards condition;
-            condition.apply_to(&node.cif->expr, nullptr);
-            if (condition.writes)
-            {
-                bindings.clear();
-            }
-            ControlHazards hazards;
-            hazards.apply_to(&node, nullptr);
-            if (node.cif->expr.op == cot_num && !hazards.labeled)
-            {
-                cinsn_t *selected = node.cif->expr.numval() ? node.cif->ithen : node.cif->ielse;
-                cinsn_t *replacement = selected ? new cinsn_t(*selected) : new cinsn_t;
-                node.cleanup();
-                node.replace_by(replacement);
-                ++changes_;
-                statement(node, bindings);
-                break;
-            }
-            Bindings branch = bindings;
-            statement(*node.cif->ithen, branch);
-            if (node.cif->ielse)
-            {
-                branch = bindings;
-                statement(*node.cif->ielse, branch);
-            }
-            bindings.clear();
-            break;
-        }
-        case cit_return:
-            expression_tree(&node.creturn->expr, bindings);
-            bindings.clear();
-            break;
-        case cit_while:
-        case cit_do:
-        case cit_for:
-            // A binding at loop entry need not hold at the next iteration.
-            bindings.clear();
-            if (node.op == cit_while)
-            {
-                expression_tree(&node.cwhile->expr, bindings);
-                statement(*node.cwhile->body, bindings);
-            }
-            else if (node.op == cit_do)
-            {
-                expression_tree(&node.cdo->expr, bindings);
-                statement(*node.cdo->body, bindings);
             }
             else
             {
-                expression_tree(&node.cfor->init, bindings);
-                expression_tree(&node.cfor->expr, bindings);
-                expression_tree(&node.cfor->step, bindings);
-                statement(*node.cfor->body, bindings);
+                ControlHazards hazards;
+                hazards.apply_to(&value, nullptr);
+                expression_tree(&value, context);
+                if (hazards.writes)
+                {
+                    context.reset();
+                }
             }
-            bindings.clear();
-            break;
+            return true;
+        }
+        case cit_if:
+            return conditional(node, context);
+        case cit_return:
+            expression_tree(&node.creturn->expr, context);
+            return false;
+        case cit_while:
+        case cit_do:
+        case cit_for:
+            // Iteration-specific values and assumptions never cross a backedge.
+            context.reset();
+            if (node.op == cit_while)
+            {
+                expression_tree(&node.cwhile->expr, context);
+                statement(*node.cwhile->body, context);
+            }
+            else if (node.op == cit_do)
+            {
+                statement(*node.cdo->body, context);
+                context.reset();
+                expression_tree(&node.cdo->expr, context);
+            }
+            else
+            {
+                expression_tree(&node.cfor->init, context);
+                context.reset();
+                expression_tree(&node.cfor->expr, context);
+                statement(*node.cfor->body, context);
+                context.reset();
+                expression_tree(&node.cfor->step, context);
+            }
+            context.reset();
+            return true;
+        case cit_empty:
+            return true;
+        case cit_goto:
+        case cit_break:
+        case cit_continue:
+            context.reset();
+            return false;
         default:
-            bindings.clear();
-            break;
+            context.reset();
+            return true;
         }
     }
 
@@ -882,6 +1052,7 @@ class CallerSimplifier
     CallBudget &budget_;
     PureFunctions functions_;
     LocalSafety safety_;
+    std::vector<unsigned> widths_;
     size_t attempts_ = 0;
     int changes_ = 0;
 };
@@ -900,15 +1071,9 @@ CallSimplification simplify_calls(cfunc_t *function, FunctionBudget &budget)
 
     struct SummaryGuard
     {
-        SummaryGuard()
-        {
-            building_call_summaries = true;
-        }
+        SummaryGuard() { building_call_summaries = true; }
 
-        ~SummaryGuard()
-        {
-            building_call_summaries = false;
-        }
+        ~SummaryGuard() { building_call_summaries = false; }
     } guard;
 
     CallBudget allowance(budget);
@@ -919,7 +1084,7 @@ CallSimplification simplify_calls(cfunc_t *function, FunctionBudget &budget)
     if (result.changes)
     {
         function->recalc_item_addresses();
-        function->verify(ALLOW_UNUSED_LABELS, false);
+        function->verify(ALLOW_UNUSED_LABELS, true);
         deobf::log("[mba_smt] Applied %d caller-context simplifications at %a\n", result.changes,
                    function->entry_ea);
     }

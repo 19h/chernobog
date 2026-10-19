@@ -28,6 +28,8 @@
 #include "../hybrid/z3_bridge.hpp"
 #include "../hybrid/solver_inspection.hpp"
 
+#include <optional>
+
 // Forward declaration
 static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx, bool replay_only = false);
 
@@ -207,8 +209,10 @@ static int run_semantic_mba(mbl_array_t *mba)
         for (const minsn_t *instruction = mba->get_mblock(index)->head; instruction;
              instruction = instruction->next)
         {
-            if (instruction->opcode == m_call || instruction->opcode == m_icall)
+            if (instruction->contains_call())
             {
+                // Calls can be nested inside return-value expressions after
+                // optimization. They still need a caller-context budget.
                 has_calls = true;
                 break;
             }
@@ -313,6 +317,54 @@ struct deep_profile_t
         }
     }
 };
+}
+
+int chernobog_simplify_mba_calls(vdui_t *view)
+{
+    if (!view || !view->cfunc)
+    {
+        return 0;
+    }
+    const ea_t entry = view->cfunc->entry_ea;
+    qstring title;
+    if (!get_widget_title(&title, view->ct))
+    {
+        return 0;
+    }
+    func_t *native = get_func(entry);
+    if (!native)
+    {
+        return 0;
+    }
+
+    std::optional<deep_profile_t> profile;
+    if (auto *state = get_deobf_state())
+    {
+        const auto budget = state->mba_smt_budgets.find(entry);
+        if (budget != state->mba_smt_budgets.end() &&
+            budget->second.limit_ms > chernobog::mba_smt::limits::normal_budget_ms)
+        {
+            profile.emplace(entry);
+        }
+    }
+
+    // A cfuncptr_t copy still aliases the displayed tree. Editing it can leave
+    // the viewer's item pointers and text anchors dangling during solver work.
+    // Build a private tree, then let switch_to replace both the tree and text.
+    hexrays_failure_t failure;
+    cfuncptr_t updated = decompile(native, &failure, DECOMP_NO_CACHE);
+    if (!updated)
+    {
+        return 0;
+    }
+    const int changes = chernobog_simplify_mba_calls(updated);
+    TWidget *widget = find_widget(title.c_str());
+    vdui_t *current = widget ? get_widget_vdui(widget) : nullptr;
+    if (changes && current && current->cfunc && current->cfunc->entry_ea == entry)
+    {
+        current->switch_to(updated, false);
+    }
+    return changes;
 }
 
 bool chernobog_deep_deobfuscate(ea_t ea, qstring *text)
@@ -1266,12 +1318,7 @@ static int do_deobfuscate(vdui_t *vu)
         vu->refresh_view(true);
     else
         vu->refresh_ctext();
-    cfuncptr_t updated = vu->cfunc;
-    if (chernobog_simplify_mba_calls(updated))
-    {
-        vu->switch_to(updated, false);
-        updated->refresh_func_ctext();
-    }
+    chernobog_simplify_mba_calls(vu);
     return 1;
 }
 
@@ -1294,12 +1341,7 @@ static int do_deep_deobfuscate(vdui_t *vu)
     chernobog_clear_function_tracking(ea);
     mark_cfunc_dirty(ea, false);
     vu->refresh_view(true);
-    cfuncptr_t updated = vu->cfunc;
-    if (chernobog_simplify_mba_calls(updated))
-    {
-        vu->switch_to(updated, false);
-        updated->refresh_func_ctext();
-    }
+    chernobog_simplify_mba_calls(vu);
     return 1;
 }
 

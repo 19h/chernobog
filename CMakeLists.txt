@@ -461,8 +461,10 @@ ida_add_plugin(
     src/deobf/analysis/mba_smt_invariants.cpp
     src/deobf/analysis/mba_smt_synthesis.cpp
     src/deobf/analysis/mba_smt_algebra.cpp
+    src/deobf/analysis/mba_smt_context.cpp
     src/deobf/handlers/mba_smt.cpp
     src/deobf/handlers/mba_smt_calls.cpp
+    src/deobf/handlers/mba_smt_ctree.cpp
     # NEW: MBA rule system
     src/deobf/rules/pattern_rule.cpp
     src/deobf/rules/rule_verifier.cpp
@@ -849,6 +851,23 @@ if(BUILD_TESTING)
     target_link_libraries(chernobog_mba_smt_tests PRIVATE libz3)
     target_compile_features(chernobog_mba_smt_tests PRIVATE cxx_std_17)
     add_test(NAME chernobog.mba_smt COMMAND chernobog_mba_smt_tests)
+
+    add_executable(
+        chernobog_mba_smt_context_tests
+        tests/mba_smt_context_tests.cpp
+        src/deobf/analysis/mba_smt_context.cpp
+        src/deobf/analysis/mba_smt.cpp
+        src/deobf/analysis/mba_smt_semantics.cpp
+        src/deobf/analysis/mba_smt_invariants.cpp
+        src/deobf/analysis/mba_smt_synthesis.cpp
+        src/deobf/analysis/mba_smt_algebra.cpp)
+    target_include_directories(chernobog_mba_smt_context_tests
+                               PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_include_directories(chernobog_mba_smt_context_tests SYSTEM
+                               PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
+    target_link_libraries(chernobog_mba_smt_context_tests PRIVATE libz3)
+    target_compile_features(chernobog_mba_smt_context_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.mba_smt_context COMMAND chernobog_mba_smt_context_tests)
 
     add_executable(chernobog_symbolic_executor_tests tests/symbolic_executor_tests.cpp
                                                      src/deobf/analysis/z3_solver.cpp)

@@ -431,14 +431,7 @@ void chernobog_plugmod_t::process_call_refresh()
         {
             continue;
         }
-        cfuncptr_t updated = view->cfunc;
-        if (chernobog_simplify_mba_calls(updated))
-        {
-            // switch_to updates both the cfunc and its underlying MBA. Assigning
-            // view->cfunc directly leaves the viewer referencing the old MBA.
-            view->switch_to(updated, false);
-            updated->refresh_func_ctext();
-        }
+        chernobog_simplify_mba_calls(view);
     }
     refreshing_calls = false;
 }

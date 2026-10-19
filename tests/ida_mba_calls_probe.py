@@ -35,15 +35,19 @@ def address(name):
 
 
 def check_constant(text, expected):
-    match = re.search(r"\breturn\s+(true|false|0x[0-9a-f]+|\d+)[uUlL]*\s*;", text, re.IGNORECASE)
-    if not match:
+    returns = re.findall(r"\breturn\s+([^;]+);", text)
+    if not returns:
         raise RuntimeError("Expected constant return " + str(expected))
-    literal = match[1].lower()
-    value = {"true": 1, "false": 0}.get(literal)
-    if value is None:
-        value = int(literal, 0)
-    if value != expected:
-        raise RuntimeError("Expected constant return " + str(expected))
+    for expression in returns:
+        match = re.fullmatch(r"(true|false|0x[0-9a-f]+|\d+)[uUlL]*", expression, re.IGNORECASE)
+        if not match:
+            raise RuntimeError("Expected constant return " + str(expected))
+        literal = match[1].lower()
+        value = {"true": 1, "false": 0}.get(literal)
+        if value is None:
+            value = int(literal, 0)
+        if value != expected:
+            raise RuntimeError("Expected constant return " + str(expected))
 
 
 def validate_capture(name, text, constants, retained):
@@ -61,6 +65,52 @@ def validate_capture(name, text, constants, retained):
         raise RuntimeError("A constant helper call remains in " + name)
     if name == "block_decrypt_strings" and re.search(r"0x9E432F2E|2655203118", text, re.IGNORECASE):
         raise RuntimeError("The impossible helper comparison remains")
+    symbolic = {
+        "mba_context_symbolic_identity",
+        "mba_context_symbolic_xor",
+        "mba_context_symbolic_selector",
+        "mba_context_nested_calls",
+        "mba_context_symbolic_add",
+        "mba_context_symbolic_shift",
+        "mba_context_symbolic_signed",
+        "mba_context_symbolic_byte_math",
+    }
+    if name in symbolic and re.search(
+        r"\b(?:mba_transform_[12]|mba_smt_semantic32|mba_call_narrow_helper|mba_context_signed_helper|mba_context_byte_math_helper)\s*\(",
+        text,
+    ):
+        raise RuntimeError("A reducible symbolic call remains in " + name)
+    if name in symbolic and not re.search(r"\breturn\s+[^;]*[a-zA-Z_][^;]*;", text):
+        raise RuntimeError("The symbolic result disappeared in " + name)
+    if (
+        name == "mba_context_symbolic_signed"
+        and len(re.findall(r"\((?:unsigned\s+)?(?:__int\d+|int|char)\)", text)) > 2
+    ):
+        raise RuntimeError("Redundant integer cast chains remain in " + name)
+    if name in (
+        "mba_context_symbolic_xor",
+        "mba_context_symbolic_selector",
+        "mba_context_nested_calls",
+    ):
+        if "^" not in text:
+            raise RuntimeError("The symbolic XOR was not emitted in " + name)
+    if name in ("mba_context_join_different", "mba_context_overwrite", "mba_context_old_value"):
+        returns = re.findall(r"\breturn\s+([^;]+);", text)
+        if not returns or all(re.fullmatch(r"(?:0|false)[uUlL]*", value) for value in returns):
+            raise RuntimeError("A changing symbolic value collapsed in " + name)
+    if (
+        name.startswith("mba_context_")
+        and name
+        in {
+            "mba_context_return_range",
+            "mba_context_known_bits",
+            "mba_context_join_equal",
+            "mba_context_join_different",
+            "mba_context_old_value",
+        }
+        and not re.search(r"\bmba_context_observe\s*\(", text)
+    ):
+        raise RuntimeError("The observer side effect disappeared in " + name)
 
 
 def finish(report, deferred=False):
@@ -100,6 +150,7 @@ def start_view_probe(report, names, constants, retained):
                 view = ida_hexrays.open_pseudocode(address(name), 0)
                 if view is None:
                     raise RuntimeError("Pseudocode view did not open")
+                view.cfunc.verify(ida_hexrays.ALLOW_UNUSED_LABELS, True)
                 state["widget"] = view.ct
                 state["deadline"] = time.monotonic() + 30
                 print("[chernobog][mba-calls] Opened " + name, flush=True)
@@ -156,6 +207,12 @@ def main():
             "mba_call_invariant_nonzero": 1,
             "mba_call_shared_arguments": 0,
             "mba_call_narrow_result": 0x45,
+            "mba_context_return_range": 42,
+            "mba_context_known_bits": 0,
+            "mba_context_branch_equal": 0,
+            "mba_context_false_edge": 0,
+            "mba_context_join_equal": 0,
+            "mba_context_guard_overflow": 0,
         }
         retained = {
             "mba_call_varying": "opaque_predicate_1",
@@ -166,8 +223,30 @@ def main():
         names = (
             ("main", "block_decrypt_strings")
             if os.environ.get("CHERNOBOG_MBA_CALL_PROBE") == "foo"
-            else tuple(constants) + tuple(retained) + ("mba_call_loop",)
+            else tuple(constants)
+            + tuple(retained)
+            + (
+                "mba_call_loop",
+                "mba_context_effectful_argument",
+                "mba_context_symbolic_identity",
+                "mba_context_symbolic_xor",
+                "mba_context_symbolic_selector",
+                "mba_context_nested_calls",
+                "mba_context_symbolic_add",
+                "mba_context_symbolic_shift",
+                "mba_context_symbolic_signed",
+                "mba_context_symbolic_byte_math",
+                "mba_context_join_different",
+                "mba_context_overwrite",
+                "mba_context_old_value",
+            )
         )
+        selected = os.environ.get("CHERNOBOG_MBA_CALL_FUNCTIONS")
+        if selected:
+            requested = tuple(name.strip() for name in selected.split(",") if name.strip())
+            if set(requested) - set(names):
+                raise RuntimeError("Unknown caller fixture requested")
+            names = requested
         if use_views:
             start_view_probe(report, names, constants, retained)
             return
@@ -179,6 +258,7 @@ def main():
                 ("normal", "chernobog_deobfuscate_text"),
                 ("deep", "chernobog_deep_deobfuscate_text"),
             ):
+                print(f"[chernobog][mba-calls] {name}/{profile}", flush=True)
                 text = evaluate(f"{api}({entry})")
                 captures[profile] = text
                 try:

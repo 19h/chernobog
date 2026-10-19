@@ -87,7 +87,9 @@ void chernobog_mark_function_deobfuscated(ea_t func_ea);
 // Fresh decompilation under a scoped 30 s semantic-analysis profile.
 bool chernobog_deep_deobfuscate(ea_t func_ea, qstring *text = nullptr);
 qstring chernobog_mba_smt_statistics(ea_t func_ea);
+// The cfunc overload mutates a private tree; views require an uncached copy.
 int chernobog_simplify_mba_calls(cfuncptr_t &function);
+int chernobog_simplify_mba_calls(vdui_t *view);
 
 // Clear ALL tracking caches (called on database load if CHERNOBOG_RESET=1)
 void chernobog_clear_all_tracking();
