@@ -118,6 +118,18 @@ z3::expr ByteMemory::materialize() const
         result = z3::store(result, ctx.bv_val(address, 64), value);
     return result;
 }
+ByteMemory ByteMemory::choose(const z3::expr &condition, const ByteMemory &left,
+                              const ByteMemory &right)
+{
+    auto &ctx = condition.ctx();
+    if (!condition.is_bool() || !left.uses_context(ctx) || !right.uses_context(ctx))
+        throw std::invalid_argument("conditional memory context or sort mismatch");
+    if (left.cells_ == right.cells_ && z3::eq(left.base_, right.base_))
+        return left;
+    ByteMemory joined(ctx, std::min(left.max_cells_, right.max_cells_));
+    joined.base_ = z3::ite(condition, left.materialize(), right.materialize());
+    return joined;
+}
 void ByteMemory::repeat(const z3::expr &address, const z3::expr &bytes, const z3::expr &pattern,
                         const AddressRanges &unchanged)
 {

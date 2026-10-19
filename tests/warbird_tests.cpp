@@ -531,6 +531,139 @@ int main()
     }
     // Recovery objects remain valid after the explorer and its local context
     // owners are destroyed; COW snapshots preserve the pre-write memory.
+    // Common forward successors join the complete correlated state. The two
+    // branch histories remain guarded effect predecessors, not a flat list.
+    auto diamond_bytes = [](uint8_t predicate_offset, uint8_t destination, bool terminate)
+    {
+        std::vector<uint8_t> code = {0x80, 0x79, predicate_offset, 0, 0x74, 0};
+        auto arm = [&](uint8_t value, uint8_t carry)
+        {
+            code.insert(code.end(), {0xc7, 0x41, destination, value, 0, 0, 0, 0x41, 0xb8, value, 0,
+                                     0, 0, 0x66, 0x49, 0x0f, 0x6e, 0xc0, carry});
+        };
+        arm(0x11, 0xf9);
+        const auto jump = code.size();
+        code.insert(code.end(), {0xeb, 0});
+        const auto alternative = code.size();
+        arm(0x22, 0xf8);
+        const auto join = code.size();
+        code[5] = uint8_t(alternative - 6);
+        code[jump + 1] = uint8_t(join - jump - 2);
+        if (terminate)
+            code.insert(code.end(), {0xb8, 0, 0, 0, 0, 0xc3});
+        return code;
+    };
+    auto diamond = fixture({});
+    const auto diamond_code = diamond_bytes(16, 0, true);
+    std::copy(diamond_code.begin(), diamond_code.end(), diamond.segs[0].bytes.begin());
+    const auto joined_diamond = run(diamond);
+    warbird::Limits no_join;
+    no_join.join_states = false;
+    const auto separate = run(diamond, 1, no_join);
+    require(joined_diamond.exploration_complete() && separate.exploration_complete() &&
+                joined_diamond.state_joins == 1 && joined_diamond.recovery->valid() &&
+                joined_diamond.recovery->joins.size() == 1 &&
+                joined_diamond.recovery->relations.size() == 1 && separate.state_joins == 0 &&
+                separate.recovery->relations.size() == 2,
+            "forward diamond failed to join or changed unjoined execution");
+    auto &join_context = *joined_diamond.recovery->arena;
+    const auto join_base = join_context.bv_val(0x10000000000ULL, 64);
+    const auto &join_relation = joined_diamond.recovery->relations.front();
+    const auto &join_input = joined_diamond.recovery->states[join_relation.input];
+    const auto &join_output = joined_diamond.recovery->states[join_relation.output];
+    const auto selector = join_input.memory.read(join_base + join_context.bv_val(16, 64), 8);
+    const auto expected = z3::ite(selector == join_context.bv_val(0, 8),
+                                  join_context.bv_val(0x22, 64), join_context.bv_val(0x11, 64));
+    z3::solver join_proof(join_context);
+    join_proof.add(join_relation.domain &&
+                   (join_output.registers[8] != expected ||
+                    join_output.memory.read(join_base, 32) != expected.extract(31, 0) ||
+                    join_output.vectors[0].extract(63, 0) != expected ||
+                    join_output.flags[0] != (selector != join_context.bv_val(0, 8))));
+    require(join_proof.check() == z3::unsat,
+            "joined memory, scalar, vector and flag values lost their common selector");
+    join_proof.reset();
+    join_proof.add(!join_relation.domain);
+    require(join_proof.check() == z3::unsat, "state join lost part of its input domain");
+    const auto join_effects = joined_diamond.recovery->ordered_effects(join_relation);
+    const auto phi = std::find_if(
+        join_effects.begin(), join_effects.end(), [&](uint32_t id)
+        { return joined_diamond.recovery->effects[id].kind == warbird::EffectKind::Phi; });
+    require(phi != join_effects.end() &&
+                std::count_if(join_effects.begin(), join_effects.end(),
+                              [&](uint32_t id)
+                              {
+                                  return joined_diamond.recovery->effects[id].kind ==
+                                         warbird::EffectKind::Write;
+                              }) == 2,
+            "joined effects lost one guarded write history");
+    warbird::Recovery cyclic_phi = *joined_diamond.recovery;
+    cyclic_phi.effects[*phi].alternative = *phi;
+    require(!cyclic_phi.valid(), "cyclic effect phi was accepted");
+    warbird::Recovery wrong_context = *joined_diamond.recovery;
+    wrong_context.states[wrong_context.joins.front().right].calls.push_back(0x1234);
+    require(!wrong_context.valid(), "state join accepted different native call contexts");
+    warbird::Recovery wrong_pool = *joined_diamond.recovery;
+    wrong_pool.states[wrong_pool.joins.front().right].pool.blocks.push_back(
+        {join_context.bv_val(0x4000, 64), join_context.bv_val(16, 64), join_context.bv_val(1, 64),
+         true});
+    require(!wrong_pool.valid(), "state join accepted different allocation histories");
+    auto nested = fixture({});
+    auto nested_code = diamond_bytes(16, 0, false);
+    const auto second_diamond = diamond_bytes(24, 4, true);
+    nested_code.insert(nested_code.end(), second_diamond.begin(), second_diamond.end());
+    std::copy(nested_code.begin(), nested_code.end(), nested.segs[0].bytes.begin());
+    const auto two_joins = run(nested);
+    require(two_joins.exploration_complete() && two_joins.state_joins == 2 &&
+                two_joins.recovery->valid() && two_joins.recovery->relations.size() == 1,
+            "nested state joins lost a branch or effect ancestor");
+    auto no_join_capture = no_join;
+    no_join_capture.join_states = true;
+    no_join_capture.recovery_bytes = 0;
+    const auto join_without_capture = run(diamond, 1, no_join_capture);
+    require(join_without_capture.exploration_complete() && join_without_capture.state_joins == 0 &&
+                !join_without_capture.recovery->capture_complete,
+            "state joining published an incomplete effect graph");
+    {
+        z3::context c;
+        const auto choose = c.bool_const("choose_left");
+        const auto at = c.bv_const("join_address", 64);
+        const auto query = c.bv_const("join_query", 64);
+        warbird::ByteMemory left(c), right(c);
+        left.write(at, c.bv_val(0x11223344u, 32), 32);
+        right.write(at + c.bv_val(2, 64), c.bv_val(0xaabbccddu, 32), 32);
+        auto memory_join = warbird::ByteMemory::choose(choose, left, right);
+        z3::solver solver(c);
+        solver.set("timeout", 5000u);
+        solver.add(memory_join.read(query, 8) !=
+                   z3::ite(choose, left.read(query, 8), right.read(query, 8)));
+        require(solver.check() == z3::unsat, "conditional byte-memory join changed aliases");
+        const auto old_left = left.materialize(), old_right = right.materialize();
+        memory_join.write(c.bv_val(7, 64), c.bv_val(9, 8), 8);
+        require(z3::eq(old_left, left.materialize()) && z3::eq(old_right, right.materialize()),
+                "joined memory mutated a source snapshot");
+    }
+    auto separate_entries =
+        fixture({0x80, 0x79, 16, 0, 0x74, 6, 0xb8, 2, 0, 0, 0, 0xc3, 0xb8, 2, 0, 0, 0, 0xc3});
+    const uint8_t final_handler[] = {0x31, 0xc0, 0xc3};
+    std::copy(std::begin(final_handler), std::end(final_handler),
+              separate_entries.segs[0].bytes.begin() + 0x800);
+    warbird::Profile entry_profile{"entry_control", "",     0, 0,     0, 2,
+                                   {0, 1, 2, 3},    {4, 5}, 4, false, {}};
+    warbird::Admission entry_admission;
+    entry_admission.profile = &entry_profile;
+    entry_admission.abstract_handler_abi = true;
+    entry_admission.handlers = {0x1800, 0x1000};
+    warbird::Lease entry_lease;
+    entry_lease.database = 1;
+    entry_lease.key = 1;
+    std::atomic_bool entry_cancel{false};
+    const auto separate_invocations =
+        warbird::explore(separate_entries, entry_admission, entry_lease, {}, entry_cancel);
+    require(separate_invocations.exploration_complete() && separate_invocations.state_joins == 0 &&
+                separate_invocations.recovery->valid() &&
+                separate_invocations.recovery->relations.size() == 4,
+            "equal-key native entries from different invocations were joined");
     auto artifact =
         run(fixture({0xc6, 0x01, 0x11, 0xc6, 0x01, 0x22, 0x0f, 0xb6, 0x01, 0x83, 0xf0, 0x22, 0xc3}))
             .recovery;
@@ -1446,6 +1579,13 @@ int main()
             "loop summary evaded the native instruction quota");
     const auto loop_program_index = programs.size();
     programs.push_back(std::move(loop_program));
+    auto native_diamond = fixture({});
+    std::vector<uint8_t> native_diamond_code = {0x48, 0x89, 0x51, 16};
+    native_diamond_code.insert(native_diamond_code.end(), diamond_code.begin(), diamond_code.end());
+    std::copy(native_diamond_code.begin(), native_diamond_code.end(),
+              native_diamond.segs[0].bytes.begin());
+    const auto diamond_program_index = programs.size();
+    programs.push_back(std::move(native_diamond));
     std::vector<uint64_t> inputs = {1,
                                     2,
                                     UINT64_MAX,
@@ -1486,8 +1626,16 @@ int main()
                         "native dispatcher result violates its independent closed form");
             if (&program == &programs[loop_program_index])
                 require(observed == input, "native store-loop result violates its closed form");
+            if (&program == &programs[diamond_program_index])
+            {
+                uint32_t stored = 0;
+                require(observed == 0 &&
+                            rax_mem_read(engine, 0x9000, &stored, sizeof(stored)) == RAX_OK &&
+                            stored == ((input & 0xff) ? 0x11u : 0x22u),
+                        "native diamond violates its independent memory result");
+            }
             warbird::Limits first_transition;
-            first_transition.states = 3;
+            first_transition.states = &program == &programs[diamond_program_index] ? 4 : 3;
             auto candidate = run(program, input, first_transition);
             if (candidate.edges.empty() || candidate.edges.front().next != observed)
             {
@@ -1519,7 +1667,7 @@ int main()
             ++comparisons;
         }
     }
-    require(comparisons == 42271, "incomplete direct comparison matrix");
+    require(comparisons == 43302, "incomplete direct comparison matrix");
     // Independent native integer sequence for the dispatcher's stack ledger.
     // R8/R9 represent its virtual floor/native top; no host stack is allocated.
     const std::vector<uint8_t> stack_reference = {

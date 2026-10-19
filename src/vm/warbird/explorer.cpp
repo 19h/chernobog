@@ -13,6 +13,7 @@
 #include <map>
 #include <set>
 #include <stdexcept>
+#include <tuple>
 
 namespace chernobog::warbird
 {
@@ -45,6 +46,8 @@ bool number(const z3::expr &v, uint64_t &n)
 struct State
 {
     uint64_t key = 0, pc = 0;
+    uint64_t epoch = 0;
+    size_t pending_charge = 1;
     uint32_t entry_snapshot = no_record, effect_tail = no_record;
     EffectOrigin effect_origin = EffectOrigin::Setup;
     bool table_unchanged = true;
@@ -103,7 +106,7 @@ class Explorer
     {
         return recovery.state(s.key, s.pc, s.effect_tail, s.table_unchanged, s.imports_unchanged,
                               s.dispatch_unchanged, s.registers, s.vectors, s.flags, s.memory,
-                              s.stack, s.pool, s.domain);
+                              s.stack, s.pool, s.domain, s.calls, s.epoch);
     }
     Report finish_report()
     {
@@ -723,6 +726,104 @@ class Explorer
         // Unknown is retained, never treated as proof of infeasibility.
         return solver.check() != z3::unsat;
     }
+    bool join_state(State &left, const State &right)
+    {
+        if (!limits.join_states || !recovery.capturing() || report.state_joins >= 128 ||
+            report.join_queries >= 256 || exhausted() || left.entry_snapshot == no_record ||
+            left.entry_snapshot != right.entry_snapshot || left.key != right.key ||
+            left.pc != right.pc || left.epoch != right.epoch || left.calls != right.calls ||
+            left.table_unchanged != right.table_unchanged ||
+            left.imports_unchanged != right.imports_unchanged ||
+            left.dispatch_unchanged != right.dispatch_unchanged ||
+            left.pool.blocks.size() != right.pool.blocks.size())
+            return false;
+        for (size_t i = 0; i < left.pool.blocks.size(); ++i)
+        {
+            const auto &a = left.pool.blocks[i], &b = right.pool.blocks[i];
+            if (a.live != b.live || !z3::eq(a.address, b.address) || !z3::eq(a.bytes, b.bytes) ||
+                !z3::eq(a.tag, b.tag))
+                return false;
+        }
+        const size_t cost =
+            8192 + 96 * (left.memory.concrete_bytes() + right.memory.concrete_bytes());
+        if (cost > limits.bytes / 8 || report.join_estimated_bytes > limits.bytes / 8 - cost)
+            return false;
+        ++report.join_queries;
+        try
+        {
+            // UNKNOWN means the domains may overlap: retain both original states.
+            if (feasible(left.domain && right.domain))
+                return false;
+            State joined = left;
+            const auto condition = left.domain;
+            auto choose = [&](const z3::expr &a, const z3::expr &b)
+            { return z3::eq(a, b) ? a : z3::ite(condition, a, b).simplify(simplify_params); };
+            for (size_t i = 0; i < joined.registers.size(); ++i)
+                joined.registers[i] = choose(left.registers[i], right.registers[i]);
+            for (size_t i = 0; i < joined.vectors.size(); ++i)
+                joined.vectors[i] = choose(left.vectors[i], right.vectors[i]);
+            for (size_t i = 0; i < joined.flags.size(); ++i)
+                joined.flags[i] = choose(left.flags[i], right.flags[i]);
+            joined.stack = {choose(left.stack.floor, right.stack.floor),
+                            choose(left.stack.native_top, right.stack.native_top),
+                            choose(left.stack.reserved, right.stack.reserved)};
+            joined.memory = ByteMemory::choose(condition, left.memory, right.memory);
+            joined.domain = (left.domain || right.domain).simplify(simplify_params);
+            joined.pending_charge = left.pending_charge + right.pending_charge;
+            joined.temporary.clear();
+            joined.vector_temporary.clear();
+            const auto left_id = snapshot(left), right_id = snapshot(right);
+            if (!recovery.capturing())
+                return false;
+            joined.effect_tail =
+                recovery.phi(left.effect_tail, right.effect_tail, left.pc, condition);
+            if (!recovery.capturing())
+                return false;
+            const auto output = snapshot(joined);
+            recovery.join(left_id, right_id, output, left.entry_snapshot, condition, joined.domain);
+            if (!recovery.capturing())
+                return false;
+            left = std::move(joined);
+            ++report.state_joins;
+            report.join_estimated_bytes += cost;
+            return true;
+        }
+        catch (const std::exception &)
+        {
+            // An optional join failure does not discard either path.
+            return false;
+        }
+    }
+    static bool before(const State &a, const State &b)
+    {
+        return std::tie(a.epoch, a.entry_snapshot, a.pc, a.key) <
+               std::tie(b.epoch, b.entry_snapshot, b.pc, b.key);
+    }
+    void enqueue(std::deque<State> &work, State next)
+    {
+        auto position = std::lower_bound(work.begin(), work.end(), next, before);
+        while (position != work.end() && !before(next, *position))
+        {
+            if (join_state(*position, next))
+                return;
+            ++position;
+        }
+        work.insert(position, std::move(next));
+    }
+    bool join_pending(std::deque<State> &work, State &current)
+    {
+        if (!limits.join_states)
+            return false;
+        auto position = std::lower_bound(work.begin(), work.end(), current, before);
+        for (; position != work.end() && !before(current, *position); ++position)
+            if (join_state(current, *position))
+            {
+                work.erase(position);
+                enqueue(work, std::move(current));
+                return true;
+            }
+        return false;
+    }
     void repeat_store(State &s, const z3::expr &at, const z3::expr &bytes, const z3::expr &pattern)
     {
         uint64_t absolute = 0, length = 0;
@@ -905,6 +1006,7 @@ class Explorer
             store(s, s.stack.native_top, bv(handler_return), 64);
         }
         s.calls.clear();
+        s.pending_charge = 1;
         keys.insert(key);
         s.entry_snapshot = snapshot(s);
         return true;
@@ -1153,7 +1255,7 @@ class Explorer
             if (next != 0)
             {
                 if (enter(successor, next))
-                    work.push_back(std::move(successor));
+                    enqueue(work, std::move(successor));
             }
         }
         return false;
@@ -1223,6 +1325,7 @@ class Explorer
                 effect(next, EffectKind::Havoc, block.address, bytes, 0, block.bytes);
             }
             next.effect_origin = EffectOrigin::External;
+            next.pending_charge = 1;
             next.pool = std::move(outcome.state);
             // The Win64 home area belongs to the callee. Preserve no values
             // there or in volatile integer registers/flags across this call.
@@ -1238,7 +1341,7 @@ class Explorer
             const auto saved_return = load(next, callee_sp, 64);
             next.registers[4] = (callee_sp + bv(8)).simplify(simplify_params);
             if (return_from_native(next, saved_return, work))
-                work.push_back(std::move(next));
+                enqueue(work, std::move(next));
         }
     }
 
@@ -1362,12 +1465,13 @@ class Explorer
         if (!enter(first, report.lease.key))
             return finish_report();
         std::deque<State> work;
-        work.push_back(std::move(first));
+        enqueue(work, std::move(first));
         while (!work.empty())
         {
             State s = std::move(work.front());
             work.pop_front();
-            ++report.states;
+            report.states += s.pending_charge;
+            s.pending_charge = 0;
             try
             {
                 for (;;)
@@ -1377,6 +1481,8 @@ class Explorer
                         frontier(s, cancel.load() ? "cancelled" : "resource quota");
                         break;
                     }
+                    if (join_pending(work, s))
+                        break;
                     // A repeated full symbolic state is a real loop. Do not
                     // identify states by table index, native address or key.
                     std::vector<unsigned> identity = {unsigned(s.key),
@@ -1470,8 +1576,11 @@ class Explorer
                     if (d.flow == 1)
                     {
                         recovery.flow(s.key, s.pc, d.target, FlowKind::Branch, s.domain);
+                        if (d.target <= s.pc)
+                            ++s.epoch;
                         s.pc = d.target;
-                        continue;
+                        enqueue(work, std::move(s));
+                        break;
                     }
                     if (d.flow == 2 || d.flow == 3)
                     {
@@ -1480,7 +1589,10 @@ class Explorer
                                              .simplify(simplify_params);
                         const auto source = s.pc;
                         State taken = s;
+                        taken.pending_charge = 1;
                         taken.pc = d.target;
+                        if (taken.pc <= source)
+                            ++taken.epoch;
                         taken.domain = (s.domain && predicate).simplify(simplify_params);
                         s.pc = d.fallthrough;
                         s.domain = (s.domain && !predicate).simplify(simplify_params);
@@ -1488,12 +1600,12 @@ class Explorer
                         {
                             recovery.flow(taken.key, source, taken.pc, FlowKind::Branch,
                                           taken.domain);
-                            work.push_back(std::move(taken));
+                            enqueue(work, std::move(taken));
                         }
                         if (feasible(s.domain))
                         {
                             recovery.flow(s.key, source, s.pc, FlowKind::Next, s.domain);
-                            continue;
+                            enqueue(work, std::move(s));
                         }
                         break;
                     }
@@ -1534,8 +1646,11 @@ class Explorer
                         }
                         recovery.flow(s.key, s.pc, target,
                                       d.flow >= 6 ? FlowKind::Call : FlowKind::Branch, s.domain);
+                        if (d.flow < 6 && target <= s.pc)
+                            ++s.epoch;
                         s.pc = target;
-                        continue;
+                        enqueue(work, std::move(s));
+                        break;
                     }
                     if (d.flow == 9)
                     {
@@ -1544,7 +1659,7 @@ class Explorer
                             s.key, s.pc, target, FlowKind::Return,
                             (s.domain && native_return == bv(target)).simplify(simplify_params));
                         if (return_from_native(s, native_return, work))
-                            continue;
+                            enqueue(work, std::move(s));
                         break;
                     }
                     throw std::runtime_error(d.flow == 10 ? "native trap"

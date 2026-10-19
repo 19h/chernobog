@@ -76,6 +76,11 @@ if result.get("model_version", 0) >= 10:
     assert ida_bytes.get_bytes(int(result["dispatch_target"], 16), 2) == b"\xff\xe0", result
 if result.get("model_version", 0) >= 11:
     assert result["dispatch_instructions"] >= 7, result
+if result.get("model_version", 0) >= 13:
+    assert result["state_joins"] == result["recovery"]["joins"], result
+    assert result["join_estimated_bytes"] <= result["limits"]["estimated_bytes"] // 8, result
+    if os.environ.get("CHERNOBOG_TEST_JOINS") == "1":
+        assert result["state_joins"] > 0, result
 allocation_import = [
     entry
     for entry in result["imports"]

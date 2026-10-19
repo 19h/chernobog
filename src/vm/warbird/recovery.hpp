@@ -25,7 +25,8 @@ enum class EffectKind
     Write,
     Havoc,
     Alignment,
-    Repeat
+    Repeat,
+    Phi
 };
 enum class FlowKind
 {
@@ -43,6 +44,7 @@ struct MemoryEffect
     uint64_t site;
     unsigned bits;
     z3::expr address, value, bytes;
+    uint32_t alternative = no_record;
 };
 struct NativeInstruction
 {
@@ -67,6 +69,8 @@ struct RecoveryState
     StackState stack;
     PoolState pool;
     z3::expr domain;
+    std::vector<uint64_t> calls;
+    uint64_t epoch = 0;
 };
 struct HandlerRelation
 {
@@ -78,6 +82,11 @@ struct StoreLoopRelation
     uint32_t input, output, effect;
     uint64_t entry, exit, iteration_bound;
     z3::expr iterations, domain;
+};
+struct StateJoin
+{
+    uint32_t left, right, output, entry;
+    z3::expr condition, domain;
 };
 // Published only after the worker finishes. The arena is declared first so it
 // outlives every retained expression, including COW memory and pool records.
@@ -101,8 +110,11 @@ struct Recovery
     std::vector<RecoveryState> states;
     std::vector<HandlerRelation> relations;
     std::vector<StoreLoopRelation> loops;
+    std::vector<StateJoin> joins;
     // Structural validation only; never semantic or pseudocode admission.
     bool valid() const;
+    // Dependency order, retaining Phi nodes and both guarded ancestors.
+    // Consumers must not execute both Phi predecessors unconditionally.
     std::vector<uint32_t> ordered_effects(const HandlerRelation &) const;
 };
 class RecoveryRecorder
@@ -118,7 +130,8 @@ class RecoveryRecorder
                    bool imports_unchanged, bool dispatch_unchanged,
                    const std::vector<z3::expr> &registers, const std::vector<z3::expr> &vectors,
                    const std::vector<z3::expr> &flags, const ByteMemory &, const StackState &,
-                   const PoolState &, const z3::expr &domain);
+                   const PoolState &, const z3::expr &domain,
+                   const std::vector<uint64_t> &calls = {}, uint64_t epoch = 0);
     uint32_t effect(uint32_t previous, EffectOrigin, EffectKind, uint64_t site, unsigned bits,
                     const z3::expr &address, const z3::expr &value, const z3::expr &bytes);
     void instruction(uint64_t, const rax_smir_instruction &, const std::vector<rax_smir_op> &,
@@ -127,6 +140,10 @@ class RecoveryRecorder
     void relation(uint32_t input, uint32_t output, const z3::expr &key, const z3::expr &domain);
     void loop(uint32_t input, uint32_t output, uint32_t effect, uint64_t entry, uint64_t exit,
               uint64_t bound, const z3::expr &iterations, const z3::expr &domain);
+    uint32_t phi(uint32_t left, uint32_t right, uint64_t site, const z3::expr &condition);
+    void join(uint32_t left, uint32_t right, uint32_t output, uint32_t entry,
+              const z3::expr &condition, const z3::expr &domain);
+    bool capturing() const { return data_ && data_->capture_complete; }
     std::shared_ptr<const Recovery> finish(bool exploration_complete);
 };
 }

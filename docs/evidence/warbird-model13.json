@@ -1,0 +1,155 @@
+{
+  "schema": 1,
+  "status": "partial; further recovery work remains",
+  "semantic_model_version": 13,
+  "baseline_revision": "75870b8b7b16d46df66e5942c94f3bf3521ecf9d",
+  "rax_revision": "4978d31075b384553f8bef96ad4434848da6bdeb",
+  "z3_revision": "ddb49568d3520e99799e364fb22f35fc67d887b1",
+  "source_sha256": {
+    "CMakeLists.txt": "1a9a841f96b42ce114a93a14f9ff271e6285202310bb7658c7d5343116b3c6d3",
+    "tests/warbird_tests.cpp": "b09121c859a460051dae1adc8c65a31552d3c84c077bbafc3e43f2c38c830bc9",
+    "tests/warbird_corpus.cpp": "c6a106e1eb4901daf870beebf280343aca710236d19d06f99ad1f0f4335b2f45",
+    "tests/ida_warbird_probe.py": "9569e3633c1bce6dfc6eb327a21c73a857c2904a433c9daa70a169dcb7c22226",
+    "src/vm/warbird/alias.cpp": "7acbdee39b5d0c266d319ef0d56acfa5da73c9664319821f03bceddb11edc673",
+    "src/vm/warbird/alias.hpp": "c9581aa005e224cdf008fa0e320d1dc8e7bb20fa99273e5df524258d650cda8f",
+    "src/vm/warbird/byte_memory.cpp": "21d4c115589a5fc40653c5155af442a809715c44332931b78272913478aae230",
+    "src/vm/warbird/byte_memory.hpp": "76ca2479f2bfc2f6d8e2d21b364f6fa5dacde7565862d4075ee330fcfc4942c6",
+    "src/vm/warbird/explorer.cpp": "7c055b75f1e264248812ac6eae4219e809c162748e190fb1e66fe70e4a694cf0",
+    "src/vm/warbird/ida.cpp": "0fff62e140d0d0770f9fd639d83a044db6c16b2b32a1e15875e679ae62534a59",
+    "src/vm/warbird/ida.hpp": "cabe6b8791f974086a239f6a34823f56ce43583517816aa3fd9d506f1cea1f5f",
+    "src/vm/warbird/imports.cpp": "37c39e63ddb1e0630970c99fc87f268cd9d8e6e3116fb8429ce6fd986b347a0f",
+    "src/vm/warbird/imports.hpp": "b49cf51ecf2014abf2359bd5d55bd700f2cb4468e3ac92b9b848cb96cc21f840",
+    "src/vm/warbird/key_domain.cpp": "8f78a6a11a0613ffd24f5b99f66f8f61d899e65bcc8f6ca9c6059f6d97386dcd",
+    "src/vm/warbird/key_domain.hpp": "179c231008f631c81a63d92fc6b33d6faf7a71326cd7af33aef47b3fa9eeb327",
+    "src/vm/warbird/model.cpp": "68fb8f19b3463ebf778ac65c1a6cf39eaaa00c6ff856e6c0b575a89e8ffae62c",
+    "src/vm/warbird/model.hpp": "e21e823892308e0b590c7f70f94ae078dfaf43a429524e3a7978f560795c71b5",
+    "src/vm/warbird/pool_model.cpp": "7f6eb1eaf88a7fed90a2d5017f71e1ab1e441ccf251948393cb5c4cc4b0e1b66",
+    "src/vm/warbird/pool_model.hpp": "7103341cd9a0eea334a1b332b586ead1464543bf3294f9e68545fe83f922f9e1",
+    "src/vm/warbird/recovery.cpp": "a5614b6017d2d4189c25edb2a1fc4f19cfab433742ba761399232c527c26da7f",
+    "src/vm/warbird/recovery.hpp": "2113a3b2eb6feedb9130e417d605ca2eeda9401ebf39519f24a2a7b037a512dd",
+    "src/vm/warbird/stack_model.cpp": "4fd68e94528c257fc4d739e2de0798460e0f48c15264fd44a46ecc3a92f70ec0",
+    "src/vm/warbird/stack_model.hpp": "39f14e9e36ae72875f2217501d3e73fefb048dacdd2c93467cea0e478c461f55",
+    "src/vm/warbird/loop_model.hpp": "6d6d27793d1c60a6f2b73b416298fa5592798876fbac05990871f22666a3163e"
+  },
+  "reports": {
+    "path": "docs/evidence/warbird-model13.jsonl",
+    "sha256": "4c49b4e1e2f407a2b20052e1a9ce7215c8e51cc4640c8d13acc3c1d1a5ad23d2"
+  },
+  "tested_plugin_sha256": "4121c3feb4523278a9f1f8a7ece46f5545fbfbd76aaea1fa825a251b86ce53fc",
+  "validation_binary_sha256": {
+    "corpus": "20bfb110b7bfa89c505e0f4b217bf1367b11db2033d6f6e56ff60df7565806a9",
+    "warbird_tests": "b1cd1a6de84a4f9be8c7adddb1c986e865c474727462ff9c77a184af92b1db62"
+  },
+  "checks": {
+    "ctest_full_passed": 26,
+    "direct_native_and_retained_relation_comparisons": 43302,
+    "native_programs": 42,
+    "inputs_per_program": 1031,
+    "native_stack_bookkeeping_comparisons": 1031,
+    "modular_overlap_smt_equivalence_cases": 48,
+    "state_join_controls": [
+      "joined and unjoined diamond execution complete",
+      "SMT proves scalar, vector, flag and memory selector correlation",
+      "SMT proves complete input-domain coverage",
+      "both guarded native write histories retained",
+      "nested diamonds retain two joins and one complete relation",
+      "cyclic effect phi rejected",
+      "different call contexts and pool histories rejected",
+      "same-key handler invocations retain separate entry snapshots",
+      "disabled capture falls back to ordinary execution",
+      "conditional byte-memory aliases and source snapshots preserved"
+    ],
+    "corpus_artifact_validation": "all eleven returned artifacts structurally validated with matching lease/status",
+    "ida": {
+      "clipsp": {
+        "input_sha256": "01274c7f3d4a339083aecc53683d2ccf7931ccbfb86bbe2e3efcbebd27956061",
+        "plugin_sha256": "4121c3feb4523278a9f1f8a7ece46f5545fbfbd76aaea1fa825a251b86ce53fc",
+        "script_sha256": "9569e3633c1bce6dfc6eb327a21c73a857c2904a433c9daa70a169dcb7c22226",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": true,
+        "native_dispatch_and_retained_artifact_asserted": true,
+        "completed_and_in_flight_invalidation_asserted": true,
+        "join_count_and_estimated_budget_asserted": true,
+        "guard_splits_and_multiple_keys_asserted": true
+      },
+      "peauth": {
+        "input_sha256": "a9831743d885a29b287e341dd62894e14f84c5bd1f19f6033361dc0ca07bdada",
+        "plugin_sha256": "4121c3feb4523278a9f1f8a7ece46f5545fbfbd76aaea1fa825a251b86ce53fc",
+        "script_sha256": "9569e3633c1bce6dfc6eb327a21c73a857c2904a433c9daa70a169dcb7c22226",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": true,
+        "native_dispatch_and_retained_artifact_asserted": true,
+        "completed_and_in_flight_invalidation_asserted": true,
+        "join_count_and_estimated_budget_asserted": true,
+        "positive_counted_loop_summary_asserted": true
+      },
+      "ci-enabled": {
+        "input_sha256": "0f0b00d3287c4f6003f7a9898c62b318e265e8744b55ca3cda0149a2502a2d01",
+        "plugin_sha256": "4121c3feb4523278a9f1f8a7ece46f5545fbfbd76aaea1fa825a251b86ce53fc",
+        "script_sha256": "9569e3633c1bce6dfc6eb327a21c73a857c2904a433c9daa70a169dcb7c22226",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": true,
+        "native_dispatch_and_retained_artifact_asserted": true,
+        "completed_and_in_flight_invalidation_asserted": true,
+        "join_count_and_estimated_budget_asserted": true,
+        "positive_state_join_asserted": true,
+        "key": "0xc11b999c187b4d0e",
+        "function_rva": "0x9e6ac"
+      },
+      "ci-disabled": {
+        "input_sha256": "0f0b00d3287c4f6003f7a9898c62b318e265e8744b55ca3cda0149a2502a2d01",
+        "plugin_sha256": "4121c3feb4523278a9f1f8a7ece46f5545fbfbd76aaea1fa825a251b86ce53fc",
+        "script_sha256": "9569e3633c1bce6dfc6eb327a21c73a857c2904a433c9daa70a169dcb7c22226",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": false
+      }
+    }
+  },
+  "join_contract": {
+    "successful_join_limit": 128,
+    "proof_attempt_limit": 256,
+    "estimated_join_budget_fraction": "1/8",
+    "domain_overlap_requires": "UNSAT",
+    "unknown_or_failed_proof": "retain both original paths",
+    "protected_binding_status": "must match",
+    "allocation_history": "must match",
+    "memory_effects": "guarded DAG with explicit phi predecessors"
+  },
+  "corpus_summary": {
+    "entry_count": 11,
+    "complete_entries": 0,
+    "entrywise_key_count_sum": 171,
+    "retained_relations": 186,
+    "state_joins": 2,
+    "retained_state_joins": 2,
+    "join_proof_attempts": 2,
+    "capture_complete_entries": 11,
+    "frontier_reasons": {
+      "dispatcher stack probe semantics unverified": 30,
+      "possible write to immutable image": 87,
+      "possible nonlocal native return": 15,
+      "handler violates admitted nonvolatile stack ABI": 14,
+      "next key domain solver did not prove completeness": 4,
+      "dispatcher stack growth quota": 17,
+      "native dispatch quota": 7,
+      "unexplored queued state": 36,
+      "possible mutable dispatch table write": 14,
+      "resource quota": 1,
+      "pool runtime binding, IRQL and kernel effects unverified": 3,
+      "pool free has no matching live base and tag": 1,
+      "possible repeated store to immutable image": 1,
+      "unsupported pool type, flags or zero-sized/tagged allocation": 1,
+      "next key set exceeds exhaustive value limit": 2
+    }
+  },
+  "limitations": [
+    "finite state joining does not construct general loop invariants or fixed points",
+    "retained join records have structural validation; full corpus equivalence remains unproved",
+    "caller binding, helper/fault semantics and checked pseudocode lowering remain incomplete",
+    "5 s per-entry sweep under uncontrolled CPU load; not a performance comparison"
+  ]
+}

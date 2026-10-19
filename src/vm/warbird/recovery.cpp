@@ -59,7 +59,8 @@ uint32_t RecoveryRecorder::state(uint64_t key, uint64_t site, uint32_t effects,
                                  const std::vector<z3::expr> &vectors,
                                  const std::vector<z3::expr> &flags, const ByteMemory &memory,
                                  const StackState &stack, const PoolState &pool,
-                                 const z3::expr &domain)
+                                 const z3::expr &domain, const std::vector<uint64_t> &calls,
+                                 uint64_t epoch)
 {
     if (!memory.uses_context(*data_->arena) || registers.size() != 36 || vectors.size() != 16 ||
         flags.size() != 7 || (effects != no_record && effects >= data_->effects.size()))
@@ -84,13 +85,13 @@ uint32_t RecoveryRecorder::state(uint64_t key, uint64_t site, uint32_t effects,
     // overlay conservatively; this remains an estimate, not allocator isolation.
     const size_t cost = sizeof(RecoveryState) +
                         (registers.size() + vectors.size() + flags.size()) * 64 +
-                        memory.concrete_bytes() * 96 + pool.blocks.size() * 192;
+                        memory.concrete_bytes() * 96 + pool.blocks.size() * 192 + calls.size() * 8;
     if (!reserve(cost))
         return no_record;
     const auto id = uint32_t(data_->states.size());
     data_->states.push_back({key, site, effects, table_unchanged, imports_unchanged,
                              dispatch_unchanged, registers, vectors, flags, memory, stack, pool,
-                             domain});
+                             domain, calls, epoch});
     return id;
 }
 uint32_t RecoveryRecorder::effect(uint32_t previous, EffectOrigin origin, EffectKind kind,
@@ -178,6 +179,37 @@ void RecoveryRecorder::loop(uint32_t input, uint32_t output, uint32_t effect, ui
         return;
     data_->loops.push_back({input, output, effect, entry, exit, bound, iterations, domain});
 }
+uint32_t RecoveryRecorder::phi(uint32_t left, uint32_t right, uint64_t site,
+                               const z3::expr &condition)
+{
+    expression(condition, 0, true);
+    if ((left != no_record && left >= data_->effects.size()) ||
+        (right != no_record && right >= data_->effects.size()))
+        throw std::invalid_argument("invalid effect phi predecessor");
+    if (left == right)
+        return left;
+    if (!reserve(sizeof(MemoryEffect) + 192))
+        return no_record;
+    const auto zero = data_->arena->bv_val(0, 64);
+    const auto id = uint32_t(data_->effects.size());
+    data_->effects.push_back(
+        {left, EffectOrigin::Native, EffectKind::Phi, site, 0, zero, condition, zero, right});
+    return id;
+}
+void RecoveryRecorder::join(uint32_t left, uint32_t right, uint32_t output, uint32_t entry,
+                            const z3::expr &condition, const z3::expr &domain)
+{
+    expression(condition, 0, true);
+    expression(domain, 0, true);
+    if (!data_->capture_complete)
+        return;
+    for (auto id : {left, right, output, entry})
+        if (id >= data_->states.size())
+            throw std::invalid_argument("invalid state join record");
+    if (!reserve(sizeof(StateJoin) + 128))
+        return;
+    data_->joins.push_back({left, right, output, entry, condition, domain});
+}
 std::shared_ptr<const Recovery> RecoveryRecorder::finish(bool complete)
 {
     data_->exploration_complete = complete;
@@ -188,19 +220,34 @@ std::vector<uint32_t> Recovery::ordered_effects(const HandlerRelation &relation)
     if (relation.input >= states.size() || relation.output >= states.size())
         throw std::invalid_argument("invalid recovery relation");
     const auto stop = states[relation.input].effects;
-    auto cursor = states[relation.output].effects;
+    std::vector<uint32_t> pending{states[relation.output].effects};
+    std::vector<bool> visited(effects.size(), false);
     std::vector<uint32_t> result;
-    while (cursor != stop)
+    while (!pending.empty())
     {
-        if (cursor == no_record || cursor >= effects.size() || result.size() >= effects.size())
+        const auto cursor = pending.back();
+        pending.pop_back();
+        if (cursor == stop)
+            continue;
+        if (cursor == no_record || cursor >= effects.size())
             throw std::invalid_argument("broken recovery effect ancestry");
+        if (visited[cursor])
+            continue;
+        visited[cursor] = true;
         result.push_back(cursor);
-        const auto previous = effects[cursor].previous;
+        const auto &effect = effects[cursor];
+        const auto previous = effect.previous;
         if (previous != no_record && previous >= cursor)
             throw std::invalid_argument("cyclic recovery effect ancestry");
-        cursor = previous;
+        pending.push_back(previous);
+        if (effect.kind == EffectKind::Phi)
+        {
+            if (effect.alternative != no_record && effect.alternative >= cursor)
+                throw std::invalid_argument("cyclic recovery effect phi");
+            pending.push_back(effect.alternative);
+        }
     }
-    std::reverse(result.begin(), result.end());
+    std::sort(result.begin(), result.end());
     return result;
 }
 bool Recovery::valid() const
@@ -258,15 +305,20 @@ bool Recovery::valid() const
         {
             const auto &e = effects[i];
             if (unsigned(e.origin) > unsigned(EffectOrigin::External) ||
-                unsigned(e.kind) > unsigned(EffectKind::Repeat) ||
+                unsigned(e.kind) > unsigned(EffectKind::Phi) ||
+                (e.kind == EffectKind::Phi &&
+                 (e.bits != 0 || (e.alternative != no_record && e.alternative >= i))) ||
+                (e.kind != EffectKind::Phi && e.alternative != no_record) ||
                 (e.kind == EffectKind::Repeat && e.bits != 128) ||
-                (e.kind != EffectKind::Havoc && e.kind != EffectKind::Alignment && e.bits != 8 &&
-                 e.bits != 16 && e.bits != 32 && e.bits != 64 && e.bits != 128) ||
+                (e.kind != EffectKind::Havoc && e.kind != EffectKind::Alignment &&
+                 e.kind != EffectKind::Phi && e.bits != 8 && e.bits != 16 && e.bits != 32 &&
+                 e.bits != 64 && e.bits != 128) ||
                 (e.previous != no_record && e.previous >= i) || !typed(e.address, *arena, 64) ||
                 !typed(e.bytes, *arena, 64) ||
                 (e.kind == EffectKind::Havoc
                      ? !memory_array(e.value, *arena)
-                     : !typed(e.value, *arena, e.bits, e.kind == EffectKind::Alignment)))
+                     : !typed(e.value, *arena, e.bits,
+                              e.kind == EffectKind::Alignment || e.kind == EffectKind::Phi)))
                 return false;
         }
         for (const auto &r : relations)
@@ -302,6 +354,53 @@ bool Recovery::valid() const
                                                                 store_loop_bytes.begin() + end))
                     return false;
             }
+        }
+        for (const auto &join : joins)
+        {
+            if (join.left >= states.size() || join.right >= states.size() ||
+                join.output >= states.size() || join.entry >= states.size() ||
+                !typed(join.condition, *arena, 0, true) || !typed(join.domain, *arena, 0, true))
+                return false;
+            const auto &left = states[join.left], &right = states[join.right];
+            const auto &output = states[join.output];
+            if (left.site != right.site || output.site != left.site || left.key != right.key ||
+                output.key != left.key || states[join.entry].key != left.key ||
+                left.epoch != right.epoch || output.epoch != left.epoch ||
+                left.calls != right.calls || output.calls != left.calls ||
+                left.table_unchanged != right.table_unchanged ||
+                left.imports_unchanged != right.imports_unchanged ||
+                left.dispatch_unchanged != right.dispatch_unchanged ||
+                output.table_unchanged != left.table_unchanged ||
+                output.imports_unchanged != left.imports_unchanged ||
+                output.dispatch_unchanged != left.dispatch_unchanged ||
+                left.pool.blocks.size() != right.pool.blocks.size() ||
+                output.pool.blocks.size() != left.pool.blocks.size() ||
+                !z3::eq(join.condition, left.domain) || !z3::eq(join.domain, output.domain))
+                return false;
+            for (size_t i = 0; i < left.pool.blocks.size(); ++i)
+            {
+                const auto &a = left.pool.blocks[i], &b = right.pool.blocks[i];
+                const auto &c = output.pool.blocks[i];
+                if (a.live != b.live || a.live != c.live || !z3::eq(a.address, b.address) ||
+                    !z3::eq(a.address, c.address) || !z3::eq(a.bytes, b.bytes) ||
+                    !z3::eq(a.bytes, c.bytes) || !z3::eq(a.tag, b.tag) || !z3::eq(a.tag, c.tag))
+                    return false;
+            }
+            if (left.effects == right.effects)
+            {
+                if (output.effects != left.effects)
+                    return false;
+            }
+            else
+            {
+                if (output.effects >= effects.size())
+                    return false;
+                const auto &phi = effects[output.effects];
+                if (phi.kind != EffectKind::Phi || phi.previous != left.effects ||
+                    phi.alternative != right.effects || !z3::eq(phi.value, join.condition))
+                    return false;
+            }
+            (void)ordered_effects({join.entry, join.output, arena->bv_val(0, 64), join.domain});
         }
     }
     catch (const std::exception &)

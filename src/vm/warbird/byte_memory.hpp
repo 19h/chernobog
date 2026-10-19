@@ -39,6 +39,10 @@ class ByteMemory
     void havoc(const z3::expr &address, const z3::expr &bytes, const z3::expr &fresh_array,
                const std::vector<std::pair<uint64_t, uint64_t>> &excluded = {});
     z3::expr materialize() const;
+    // The same selector must be used for registers, flags and stack state.
+    // Neither source snapshot is modified by this conditional memory join.
+    static ByteMemory choose(const z3::expr &condition, const ByteMemory &left,
+                             const ByteMemory &right);
     bool uses_context(const z3::context &context) const { return &base_.ctx() == &context; }
     size_t concrete_bytes() const { return cells_->size(); }
     // Collision-free structural identity for conservative state comparison.

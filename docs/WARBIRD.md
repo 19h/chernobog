@@ -60,7 +60,7 @@ The symbolic scalar interpreter now covers ADC/SBB, rotate through carry, and
 complete AX results from byte MUL/IMUL. Unselected flag updates are preserved.
 The scalar interpreter also covers BT/BTS/BTR/BTC, including memory operands
 exported by RAX as ordered loads, updates and flag operations. The semantic
-model version is 12, independent of the SMIR record ABI version.
+model version is 13, independent of the SMIR record ABI version.
 
 The optional scalar SMIR ABI is versioned and pointer-free. Unsupported operations
 and insufficient capacity publish no executable prefix. It retains instruction
@@ -787,3 +787,72 @@ and is also checked with summarization disabled. Retained loop records reject
 malformed effect references. These controls do not prove recovery of an entire
 corpus entry. Exact source and corpus evidence are recorded in
 `docs/evidence/warbird-model12.json` and `docs/evidence/warbird-model12.jsonl`.
+
+## Model 13: guarded state joins and effect phis
+
+Forward control-flow paths can now join at a shared native address within one
+handler invocation. Joining requires a proved-empty intersection of their path
+domains. Matching keys and addresses alone are insufficient: the entry snapshot,
+native call stack, scheduling epoch, protected-binding status and complete pool
+allocation history must also agree. Unknown proof results retain both paths.
+
+```text
+                branch
+                /    \
+             state L  state R
+                \    /
+          prove domains disjoint
+                    |
+            one correlated state
+                    |
+          guarded effect predecessors
+```
+
+For left domain D, every scalar register, vector register, flag, stack-ledger
+field and byte-memory array uses the same conditional selector. The output
+domain is the union of the two input domains. The original snapshots remain
+unchanged. The entry and output states, selector and domain are retained as a
+`StateJoin` record for later graph construction; this record is not a semantic
+equivalence certificate.
+
+Memory effects now form a DAG. An effect phi retains both predecessors and the
+condition selecting the left predecessor. `ordered_effects()` returns dependency
+order including these phi nodes. Its consumers must retain their conditional
+meaning. Traversing both predecessors as unconditional writes would alter the
+program. Validation rejects forward/cyclic predecessor references, incompatible
+call contexts and allocation histories, and broken handler-entry ancestry.
+
+Native control transfers yield to an ordered worklist. Forward paths can reach
+a common successor before it executes. Backward branches advance a scheduling
+epoch; different epochs cannot join. This scheduling does not construct general
+loop invariants or fixed points. Fork-state charges remain accounted even when
+their queued states join. Native instruction and operation quotas are unchanged.
+
+Joining is optional (`Limits::join_states = false` selects the unjoined control).
+It is limited to 128 successful joins, 256 proof attempts and one eighth of the
+job's estimated byte budget. Failed proof, simplification or retention attempts
+preserve both original paths. No joins are made without complete effect capture.
+For S queued states, a join-location lookup costs O(log S + K) comparisons for
+K states at that location; queue insertion costs O(S). A join constructs
+O(cL + cR + 62) expression nodes for
+cL/cR cached bytes and the fixed register/flag/stack state, excluding shared DAG
+storage. Effect ancestry traversal is iterative and visits each ancestor once,
+then sorts its record IDs in O(E log E) time for E ancestors.
+
+| ID | Assumption or boundary | Falsification probe |
+| --- | --- | --- |
+| A52 | Equal native addresses identify interchangeable states | Retain distinct entry snapshots for two invocations with the same key and target |
+| A53 | Joining registers alone preserves behavior | Prove scalar, vector, flag and byte-memory outputs share the same branch selector |
+| A54 | A joined memory history can be flattened into one write list | Require both branch histories and their effect phi; reject a cyclic phi |
+| A55 | Calls or allocations can be combined without preserving ownership | Reject changed call contexts and pool histories in retained join records |
+| A56 | An incomplete recorder can publish a complete joined relation | Disable capture and require ordinary execution with zero joins |
+| A57 | Independent forward diamonds preserve all branch alternatives | Require two joins and one complete output relation for nested diamonds |
+| A58 | Byte-memory joins may mutate their input snapshots | Check conditional alias semantics and copy-on-write snapshot preservation |
+
+The native matrix contains 42 programs with 1031 inputs each (43302 comparisons).
+The additional native diamond has an independent memory-result check. Symbolic
+diamond tests separately prove domain coverage and correlated outputs, and
+compare joined and unjoined execution. These are controlled checks; all corpus
+equivalence and pseudocode-admission gates remain separate. Exact source and
+snapshot reports are recorded in `docs/evidence/warbird-model13.json` and
+`docs/evidence/warbird-model13.jsonl`.
