@@ -312,7 +312,9 @@ void test_nested_linear_reconstruction()
     const Term x = variable(0, 32);
     const Term y = variable(1, 32);
     nonlinear.blocks[0].statements = {Statement::assign(3, add(multiply(x, x), add(y, y)))};
-    Analysis analysis(nonlinear);
+    // Synthesis and verification share one budget. Nonlinear search can consume
+    // the normal profile before these counterexample checks on slower runners.
+    Analysis analysis(nonlinear, Options::deep());
     analysis.run();
     check(analysis.verify(0, 0, add(expression(Op::Neg, x), multiply(constant(2, 32), y))) ==
               Verdict::Disproved,
@@ -322,7 +324,7 @@ void test_nested_linear_reconstruction()
     nonlinear.blocks[0].statements = {
         Statement::assign(3, add(expression(Op::Xor, x, square),
                                  multiply(constant(2, 32), expression(Op::And, x, square))))};
-    Analysis nonlinear_word(nonlinear);
+    Analysis nonlinear_word(nonlinear, Options::deep());
     nonlinear_word.run();
     check(nonlinear_word.verify(0, 0, constant(0, 32)) == Verdict::Disproved,
           "proof-only Boolean expansion does not treat a nonlinear word as an independent input");

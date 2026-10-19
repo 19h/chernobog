@@ -567,7 +567,7 @@ int main()
                 separate.recovery->relations.size() == 2,
             "forward diamond failed to join or changed unjoined execution");
     auto &join_context = *joined_diamond.recovery->arena;
-    const auto join_base = join_context.bv_val(0x10000000000ULL, 64);
+    const auto join_base = join_context.bv_val(uint64_t{0x10000000000}, 64);
     const auto &join_relation = joined_diamond.recovery->relations.front();
     const auto &join_input = joined_diamond.recovery->states[join_relation.input];
     const auto &join_output = joined_diamond.recovery->states[join_relation.output];
@@ -675,7 +675,7 @@ int main()
     const auto &entry_state = artifact->states[relation.input];
     const auto &exit_state = artifact->states[relation.output];
     auto &retained_context = *artifact->arena;
-    const auto context_address = retained_context.bv_val(0x10000000000ULL, 64);
+    const auto context_address = retained_context.bv_val(uint64_t{0x10000000000}, 64);
     uint64_t retained_value = 0;
     require(exit_state.memory.read(context_address, 8).is_numeral_u64(retained_value) &&
                 retained_value == 0x22 && !entry_state.memory.read(context_address, 8).is_numeral(),
