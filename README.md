@@ -15,20 +15,29 @@ The obfuscation dissolves. The algorithm emerges.
 </h5>
 
 > [!NOTE]
-> **Chernobog 6.3** — new since 6.2.0:
+> **Chernobog 6.4** — new since 6.2.0:
 >
+> - **Semantic MBA synthesis** — bounded Z3-backed simplification across basic blocks, byte-addressed memory, and proven loop invariants; nested linear reconstruction, Boolean synthesis, modular affine fitting, and known-bit comparison/division reductions extend the rule catalog, with equivalence checks on both candidates and emitted code
+> - **Caller-context MBA simplification** — specializes pure scalar helpers with actual arguments, propagates immutable local values and branch facts, and simplifies constants, symbolic expressions, and impossible branches; emitted ctree casts and integer promotions are checked before replacement
+> - **Deep deobfuscation** — a dedicated action raises the shared per-function semantic-analysis budget from 1 s to 30 s, with IDC equivalents and JSON statistics; these budgets do not bound total decompiler runtime
 > - **Per-flag x86 abstract interpretation** — models the six arithmetic status flags, partial-register slices, and all sixteen condition codes; bounded dataflow joins register, flag, and stack facts across direct branches and loop fixed points to resolve Jcc outcomes, fold SETcc/CMOV values in microcode, and recover exact PUSH/RET targets from immediate, register, and immutable-memory operands
 > - **Get-PC and call-as-jump recovery** — classifies 32-bit PUSH-continuation and x64 PUSH/LEA/XCHG address materialization with exact stack effects; call-context returns now lower to a natural-width pop and goto, preserving stack-pointer semantics across continuations
+> - **32-bit saved-register stack stubs** — recognizes bounded PE32-style RET 4 and XCHG/RET dispatch, including supported PUSH substitutions; records handler and continuation evidence, and lowers the final return when the complete stub and handler share function ownership while preserving stack accesses and restored registers
 > - **Direct-jump decoding into data-classified code** — decodes exact near-jump targets in executable segments that IDA classified as data, recovering entry code emitted by sectionless Mach-O protectors
 > - **Persistent native proof ownership** — generated edges and comments carry database receipts with their instruction and memory dependencies, and are revoked on byte patches, rebasing, undo/redo, external fallthrough, and function-topology changes while preserving analyst annotations and overrides
 > - **Use-time string evidence** — rax captures string bytes at each use across heap allocation lifetimes and address reuse, reaches cross-run consensus by semantic origin rather than heap address, and annotates direct calls transiently
+> - **Call-boundary string inspection** — exposes text observed before unmodeled calls in IDC, JSON, and an **Observed strings** evidence view; prefix observations remain separate from completed-run rewrite evidence, and entry-input collection gains cancellation and an explicit 256-reference visit bound
 > - **Rotating string decryption** — proves bounded rotate/add/XOR decryption loops for every admitted index and input, validates UTF-8 or UTF-16LE plaintext, and annotates pseudocode without modifying the database
 > - **Typed MBA instance proofs** — catalog, chain, and affine rewrites are proven in Z3 on the concrete typed microcode operands before mutation; a bounded bottom-up pass catches identities exposed under zero-extension and other conversions
 > - **Native VM-region analysis** — a separate VM model recognizes read/decode/dispatch handlers across register renaming, cloning, table/relative and push/ret dispatch, and guarded immediate-push handlers; symbolic summaries are reused only after Z3 equivalence and checked against captured transitions. This is recognition and validation, not devirtualization
+> - **WARBIRD diagnostics** — bounded symbolic exploration for admitted ci, ClipSp, and PEAuth profiles, including native setup/dispatcher execution, scalar and legacy XMM operations, aliased byte memory, selected pool effects, counted-store loops, and guarded forward-state joins; retains state/effect relations and reports incomplete paths. Diagnostic only: all corpus entries remain partial, no pseudocode replacement or whole-entry equivalence claim
 > - **Native-region tracing and strings** — bounded execution of regions outside function ownership under explicit ABI call models; four-run consensus reconstructs strings from interleaved read streams, scalar reads, modeled call arguments, and prefixes stopped at unsupported instructions, guarded by opaque freshness leases
 > - **Evidence workspace** — 20 new IDC inspection APIs and IDAPython companion views link execution events, allocation lifetimes, native conclusions, ownerless-region facts, and SMT transcripts with independently replayable SAT counterexamples
 > - **Platform fixes** — ARM64 register-tracker INTERR 2947 on SIMD arguments, LP64 Z3 overload ambiguity on Linux, and an MSVC link failure from mismatched SDK class keys
+> - **Pseudocode stability** — deferred caller-context refresh keeps views and microcode synchronized across navigation, preserves required empty-block placeholders, and rejects zero-width integer terms
 > - **Expanded regression infrastructure** — paired x64 Mach-O and i386 ELF protected corpora with native behavior oracles, a Windows build container, and repository-wide clang-format and Black formatting
+>
+> Release notes for **6.4.0** specifically: [`v6.3.1...v6.4.0`](changelog/6.4.0.md).
 >
 > **Chernobog 6** is a major release. New since 5.3.0:
 >
@@ -188,11 +197,12 @@ Applied after microcode optimization for additional cleanup:
 - **String Decryption** - Decrypts strings visible only at Ctree maturity
 
 ### Scripting
-- **IDC Orchestration** - 43 `chernobog_*` functions registered in IDA's IDC
+- **IDC Orchestration** - 85 `chernobog_*` functions registered in IDA's IDC
   interpreter cover the whole plugin: introspection, runtime options,
   analysis-only detection, per-function and database-wide deobfuscation,
   pseudocode extraction, the native pre-lifting passes, bounded rax
-  exploration with its evidence accessors, and the MBA rule registry. See
+  exploration with its evidence accessors, WARBIRD diagnostics, semantic MBA
+  analysis, and the MBA rule registry. See
   [IDC Orchestration](#idc-orchestration).
 
 ## Requirements
@@ -438,6 +448,7 @@ without applying any deobfuscation.
 | `CHERNOBOG_HIKARI_CFG=1` | Recover exact two-target ARM64 Hikari dispatch edges across IDA function boundaries and add IDB xrefs/comments |
 | `CHERNOBOG_HIKARI_CFG=2` | Additionally rewrite side-effect-free dispatch tails to reversible direct conditional branches |
 | `CHERNOBOG_MBA_AFFINE=1` | Enable exact-Z3 affine MBA reconstruction (opt-in) |
+| `CHERNOBOG_MBA_SMT=0` | Disable bounded semantic MBA synthesis and caller-context simplification (default-on; IDC alias `mba_smt`) |
 | `CHERNOBOG_MBA_DEBUG=1` | Log affine decisions to `/tmp/chernobog_mba_debug.log` |
 | `CHERNOBOG_VM=1` | Enable VM-family detection and rewriting (opt-in) |
 | `CHERNOBOG_VM_Z3=1` | Enable additional exact-Z3 VM residual simplification |
@@ -592,9 +603,16 @@ each call, and the interpreter behaviours that are easy to get wrong.
 | `chernobog_detect_flatten(ea)` | Control-flow flattening detector evidence |
 | `chernobog_deobfuscate(ea)` | Run the `Ctrl+Shift+D` action on one function |
 | `chernobog_deobfuscate_text(ea)` | Admit, re-decompile uncached, return the pseudocode |
+| `chernobog_deep_deobfuscate(ea)` | Fresh deobfuscation with a scoped 30 s semantic MBA budget; `1` on success |
+| `chernobog_deep_deobfuscate_text(ea)` | Fresh deep deobfuscation returning pseudocode |
+| `chernobog_mba_smt_stats(ea)` | JSON statistics for the latest function semantic-analysis generation |
 | `chernobog_decompile(ea)` | Pseudocode without forcing a new pass |
 | `chernobog_deobfuscate_range(start, end)` | Deobfuscate every function entry in `[start, end)` |
 | `chernobog_deobfuscate_all()` | Deobfuscate every function in the database |
+| `chernobog_warbird_profiles()` | JSON admission profiles and documented entry keys; indices `0` = ci, `1` = ClipSp, `2` = PEAuth |
+| `chernobog_warbird_start(ea, profile_index, hexadecimal_key)` | Start bounded WARBIRD diagnostics on an immutable snapshot; key is a hexadecimal string, result is JSON |
+| `chernobog_warbird_poll()` | JSON job status or diagnostics; stale results are discarded, no pseudocode substitution |
+| `chernobog_warbird_cancel()` | Cancel the active WARBIRD diagnostic job; JSON result |
 | `chernobog_request(ea)` | Admit a function for the next decompilation |
 | `chernobog_enabled_for(ea)` | `1` when auto mode or an explicit request admits this function |
 | `chernobog_pending(ea)` | `1` when the LOCOPT pipeline has not completed for this function |
