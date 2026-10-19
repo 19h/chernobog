@@ -281,6 +281,7 @@ int chernobog_simplify_mba_calls(cfuncptr_t &function)
         if (result.changes)
         {
             ctree_const_fold_handler_t::run(function);
+            function->recalc_item_addresses();
         }
         return result.changes + int(regenerated);
     }
@@ -1265,8 +1266,12 @@ static int do_deobfuscate(vdui_t *vu)
         vu->refresh_view(true);
     else
         vu->refresh_ctext();
-    if (chernobog_simplify_mba_calls(vu->cfunc))
-        vu->refresh_ctext();
+    cfuncptr_t updated = vu->cfunc;
+    if (chernobog_simplify_mba_calls(updated))
+    {
+        vu->switch_to(updated, false);
+        updated->refresh_func_ctext();
+    }
     return 1;
 }
 
@@ -1289,8 +1294,12 @@ static int do_deep_deobfuscate(vdui_t *vu)
     chernobog_clear_function_tracking(ea);
     mark_cfunc_dirty(ea, false);
     vu->refresh_view(true);
-    if (chernobog_simplify_mba_calls(vu->cfunc))
-        vu->refresh_ctext();
+    cfuncptr_t updated = vu->cfunc;
+    if (chernobog_simplify_mba_calls(updated))
+    {
+        vu->switch_to(updated, false);
+        updated->refresh_func_ctext();
+    }
     return 1;
 }
 

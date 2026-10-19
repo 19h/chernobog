@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 import ida_auto
@@ -10,8 +11,11 @@ import ida_expr
 import ida_hexrays
 import ida_idaapi
 import ida_loader
+import ida_kernwin
 import ida_name
 import ida_pro
+
+ACTIVE_TIMERS = []
 
 
 def evaluate(expression):
@@ -59,6 +63,75 @@ def validate_capture(name, text, constants, retained):
         raise RuntimeError("The impossible helper comparison remains")
 
 
+def finish(report, deferred=False):
+    output = Path(os.environ["IDAUSR"]).parent / "mba_calls.json"
+    output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    if report["errors"]:
+        print("[chernobog][mba-calls] FAIL " + "; ".join(report["errors"]), flush=True)
+    else:
+        print(f"[chernobog][mba-calls] PASS functions={len(report['functions'])}", flush=True)
+    code = int(bool(report["errors"]))
+    if deferred:
+        # IDAPython teardown unregisters timers. Leave the timer callback first
+        # so it does not try to take the timer lock that this callback holds.
+        def exit_request():
+            ida_pro.qexit(code)
+            return False
+
+        ida_kernwin.execute_ui_requests((exit_request,))
+    else:
+        ida_pro.qexit(code)
+
+
+def start_view_probe(report, names, constants, retained):
+    # Let the GUI finish each navigation before checking the deferred update.
+    # Revisit the functions backwards to catch stale viewer/MBA ownership.
+    visits = tuple(names) + tuple(reversed(names))
+    state = {"index": 0, "widget": None, "deadline": 0}
+
+    def tick():
+        try:
+            if state["index"] == len(visits):
+                finish(report, deferred=True)
+                return -1
+            name = visits[state["index"]]
+            if state["widget"] is None:
+                print("[chernobog][mba-calls] Opening " + name, flush=True)
+                view = ida_hexrays.open_pseudocode(address(name), 0)
+                if view is None:
+                    raise RuntimeError("Pseudocode view did not open")
+                state["widget"] = view.ct
+                state["deadline"] = time.monotonic() + 30
+                print("[chernobog][mba-calls] Opened " + name, flush=True)
+                return 50
+
+            view = ida_hexrays.get_widget_vdui(state["widget"])
+            if view is None or view.cfunc is None:
+                raise RuntimeError("Pseudocode view disappeared")
+            if view.cfunc.entry_ea != address(name):
+                raise RuntimeError("Pseudocode view displays the wrong function")
+            text = str(view.cfunc)
+            try:
+                validate_capture(name, text, constants, retained)
+            except RuntimeError:
+                if time.monotonic() < state["deadline"]:
+                    return 50
+                raise
+            report["functions"].append({"name": name, "captures": {"view": text}})
+            state["index"] += 1
+            state["widget"] = None
+            return 50
+        except Exception as error:
+            report["errors"].append(f"{type(error).__name__}: {error}")
+            finish(report, deferred=True)
+            return -1
+
+    timer = ida_kernwin.register_timer(50, tick)
+    if timer is None:
+        raise RuntimeError("Could not register the GUI probe timer")
+    ACTIVE_TIMERS.append(timer)
+
+
 def main():
     report = {"functions": [], "errors": []}
     try:
@@ -95,26 +168,18 @@ def main():
             if os.environ.get("CHERNOBOG_MBA_CALL_PROBE") == "foo"
             else tuple(constants) + tuple(retained) + ("mba_call_loop",)
         )
+        if use_views:
+            start_view_probe(report, names, constants, retained)
+            return
         for name in names:
             entry = address(name)
             captures = {}
             report["functions"].append({"name": name, "captures": captures})
-            profiles = (
-                (("view", None),)
-                if use_views
-                else (
-                    ("normal", "chernobog_deobfuscate_text"),
-                    ("deep", "chernobog_deep_deobfuscate_text"),
-                )
-            )
-            for profile, api in profiles:
-                if use_views:
-                    view = ida_hexrays.open_pseudocode(entry, 0)
-                    if view is None:
-                        raise RuntimeError("Pseudocode view did not open")
-                    text = str(view.cfunc)
-                else:
-                    text = evaluate(f"{api}({entry})")
+            for profile, api in (
+                ("normal", "chernobog_deobfuscate_text"),
+                ("deep", "chernobog_deep_deobfuscate_text"),
+            ):
+                text = evaluate(f"{api}({entry})")
                 captures[profile] = text
                 try:
                     validate_capture(name, text, constants, retained)
@@ -132,13 +197,7 @@ def main():
     except Exception as error:
         report["errors"].append(f"{type(error).__name__}: {error}")
 
-    output = Path(os.environ["IDAUSR"]).parent / "mba_calls.json"
-    output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    if report["errors"]:
-        print("[chernobog][mba-calls] FAIL " + "; ".join(report["errors"]), flush=True)
-        ida_pro.qexit(1)
-    print(f"[chernobog][mba-calls] PASS functions={len(report['functions'])}", flush=True)
-    ida_pro.qexit(0)
+    finish(report)
 
 
 if __name__ == "__main__":

@@ -152,7 +152,10 @@ branches containing labels are preserved. Calls with effects remain present.
 
 This pass runs after decompilation returns, through Chernobog's text APIs,
 manual actions and pseudocode views. Hex-Rays does not permit nested callee
-decompilation inside a maturity callback. Summaries live for one invocation;
+decompilation inside a maturity callback. View updates are deferred until
+navigation completes and use the SDK's view-switch operation to keep the
+displayed function and its microcode together. Pending updates are discarded
+when the view changes function or the plugin shuts down. Summaries live for one invocation;
 there is no persistent result cache. Limits are 16 callees, three nested callee
 levels, 4096 native bytes per callee, 512 expanded expression nodes, and 128
 constant queries, in addition to the time and scalar-program limits. Constant
@@ -177,6 +180,7 @@ equal arguments, conversion order, and retained varying/impure/memory calls.
 Its `CHERNOBOG_MBA_CALL_PROBE=foo` mode checks `main` and
 `block_decrypt_strings` in the supplied binary. `CHERNOBOG_MBA_CALL_VIEWS=1`
 exercises actual pseudocode views instead of the text APIs.
+The view probe navigates forward and backward through its function list.
 
 | ID | Assumption / dependent results | Falsification probe |
 |---|---|---|

@@ -918,6 +918,7 @@ CallSimplification simplify_calls(cfunc_t *function, FunctionBudget &budget)
     const auto result = simplifier.run();
     if (result.changes)
     {
+        function->recalc_item_addresses();
         function->verify(ALLOW_UNUSED_LABELS, false);
         deobf::log("[mba_smt] Applied %d caller-context simplifications at %a\n", result.changes,
                    function->entry_ea);

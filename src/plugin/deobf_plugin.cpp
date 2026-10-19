@@ -107,6 +107,9 @@ struct chernobog_plugmod_t final : public plugmod_t, public chernobog::idc::Host
     ea_t rax_pipeline_target = BADADDR;
     std::set<ea_t> rax_completed_functions;
     qtimer_t activation_timer = nullptr;
+    int call_refresh_request = -1;
+    std::map<qstring, ea_t> pending_call_views;
+    bool refreshing_calls = false;
     int activation_attempts = 0;
     std::unique_ptr<chernobog::ida_analysis::NativeAnalysisEngine> ida_analysis;
     std::unique_ptr<chernobog::ida_analysis::EarlyHexRaysAnalysis> early_hexrays;
@@ -128,6 +131,9 @@ struct chernobog_plugmod_t final : public plugmod_t, public chernobog::idc::Host
     void schedule_activation_retry();
     void cancel_activation_retry();
     static int idaapi activation_retry_callback(void *ud);
+    void schedule_call_refresh(vdui_t *view);
+    void cancel_call_refresh();
+    void process_call_refresh();
     void deactivate();
     void clear_processing_state();
     bool recover_hikari_cfg_if_ready(bool force = false);
@@ -367,23 +373,74 @@ static void check_verbose_mode()
 // Caller specialization may need to decompile a helper. Hex-Rays rejects that
 // while a maturity callback is active, so interactive views run it only after
 // the caller's decompilation has returned.
-static void simplify_visible_calls(vdui_t *view)
+void chernobog_plugmod_t::schedule_call_refresh(vdui_t *view)
 {
-    static thread_local bool refreshing = false;
-    if (!view || !view->cfunc || refreshing || is_disabled_mode_enabled())
+    if (!view || !view->cfunc || refreshing_calls || is_disabled_mode_enabled() ||
+        !chernobog_function_deobfuscation_enabled(view->cfunc->entry_ea))
     {
         return;
     }
-    struct RefreshGuard
+    qstring title;
+    if (!get_widget_title(&title, view->ct))
     {
-        bool &active;
-        explicit RefreshGuard(bool &value) : active(value) { active = true; }
-        ~RefreshGuard() { active = false; }
-    } guard(refreshing);
-    if (chernobog_simplify_mba_calls(view->cfunc))
-    {
-        view->refresh_ctext();
+        return;
     }
+    pending_call_views[title] = view->cfunc->entry_ea;
+    if (call_refresh_request == -1)
+    {
+        struct RefreshRequest final : ui_request_t
+        {
+            explicit RefreshRequest(chernobog_plugmod_t *owner) : owner(owner) {}
+            bool idaapi run() override
+            {
+                owner->process_call_refresh();
+                return false;
+            }
+            chernobog_plugmod_t *owner;
+        };
+        call_refresh_request = execute_ui_requests(new RefreshRequest(this), nullptr);
+    }
+}
+
+void chernobog_plugmod_t::cancel_call_refresh()
+{
+    if (call_refresh_request != -1)
+    {
+        cancel_exec_request(call_refresh_request);
+        call_refresh_request = -1;
+    }
+    pending_call_views.clear();
+}
+
+void chernobog_plugmod_t::process_call_refresh()
+{
+    call_refresh_request = -1;
+    if (get_dbctx_id() != database_id || get_hexdsp() == nullptr)
+    {
+        pending_call_views.clear();
+        return;
+    }
+    auto pending = std::move(pending_call_views);
+    pending_call_views.clear();
+    refreshing_calls = true;
+    for (const auto &[title, entry] : pending)
+    {
+        TWidget *widget = find_widget(title.c_str());
+        vdui_t *view = widget ? get_widget_vdui(widget) : nullptr;
+        if (!view || !view->cfunc || view->cfunc->entry_ea != entry)
+        {
+            continue;
+        }
+        cfuncptr_t updated = view->cfunc;
+        if (chernobog_simplify_mba_calls(updated))
+        {
+            // switch_to updates both the cfunc and its underlying MBA. Assigning
+            // view->cfunc directly leaves the viewer referencing the old MBA.
+            view->switch_to(updated, false);
+            updated->refresh_func_ctext();
+        }
+    }
+    refreshing_calls = false;
 }
 
 //--------------------------------------------------------------------------
@@ -536,7 +593,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             ensure_cached_rax_fallback(self, vu->cfunc->entry_ea,
                                        event == hxe_open_pseudocode ? "pseudocode open"
                                                                     : "pseudocode switch");
-            simplify_visible_calls(vu);
+            self->schedule_call_refresh(vu);
         }
     }
     else if (event == hxe_populating_popup)
@@ -566,7 +623,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             self->ctree_switch_folded.erase(func_ea);
             self->ctree_indirect_call_processed.erase(func_ea);
             self->ctree_string_decrypt_processed.erase(func_ea);
-            simplify_visible_calls(vu);
+            self->schedule_call_refresh(vu);
         }
     }
     // This event is reserved for generated-microcode repair. The installed
@@ -1036,6 +1093,7 @@ int idaapi chernobog_plugmod_t::activation_retry_callback(void *ud)
 
 void chernobog_plugmod_t::deactivate()
 {
+    cancel_call_refresh();
     if (!hexrays_initialized && !components_initialized && early_hexrays == nullptr)
         return;
 
@@ -1177,6 +1235,7 @@ chernobog_plugmod_t::chernobog_plugmod_t()
 
 chernobog_plugmod_t::~chernobog_plugmod_t()
 {
+    cancel_call_refresh();
     cancel_activation_retry();
     if (idc_installed)
     {
