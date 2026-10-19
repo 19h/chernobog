@@ -1,0 +1,155 @@
+{
+  "schema": 1,
+  "status": "partial; goal remains active",
+  "semantic_model_version": 12,
+  "baseline_revision": "c6928185e3b0a2cade8204a3c0b67c7f8339cccf",
+  "rax_revision": "4978d31075b384553f8bef96ad4434848da6bdeb",
+  "z3_revision": "ddb49568d3520e99799e364fb22f35fc67d887b1",
+  "source_sha256": {
+    "CMakeLists.txt": "1a9a841f96b42ce114a93a14f9ff271e6285202310bb7658c7d5343116b3c6d3",
+    "tests/warbird_tests.cpp": "75a6861851f3596f77777228b0988a40c159d28a224793f204b2654354f6ebd5",
+    "tests/warbird_corpus.cpp": "c6a106e1eb4901daf870beebf280343aca710236d19d06f99ad1f0f4335b2f45",
+    "tests/ida_warbird_probe.py": "195bc6baa84acaa2beb9b755156bef4ecd860fba914e71586759d4552d005ca2",
+    "src/vm/warbird/alias.cpp": "7acbdee39b5d0c266d319ef0d56acfa5da73c9664319821f03bceddb11edc673",
+    "src/vm/warbird/alias.hpp": "c9581aa005e224cdf008fa0e320d1dc8e7bb20fa99273e5df524258d650cda8f",
+    "src/vm/warbird/byte_memory.cpp": "07f031e3d0a1c5b9e4b33f1ef4ab6b066800dfe8604f9324ac190bd268a10366",
+    "src/vm/warbird/byte_memory.hpp": "9064884fca83c87ae7dbd00728101ffcb4057291f2e368fea028bd7945ffc7a3",
+    "src/vm/warbird/explorer.cpp": "c941407b35def3235f983387ad8d7cc8125ba3f57c0c2cc31bae8c7e2e0f6ac8",
+    "src/vm/warbird/ida.cpp": "0fff62e140d0d0770f9fd639d83a044db6c16b2b32a1e15875e679ae62534a59",
+    "src/vm/warbird/ida.hpp": "cabe6b8791f974086a239f6a34823f56ce43583517816aa3fd9d506f1cea1f5f",
+    "src/vm/warbird/imports.cpp": "37c39e63ddb1e0630970c99fc87f268cd9d8e6e3116fb8429ce6fd986b347a0f",
+    "src/vm/warbird/imports.hpp": "b49cf51ecf2014abf2359bd5d55bd700f2cb4468e3ac92b9b848cb96cc21f840",
+    "src/vm/warbird/key_domain.cpp": "8f78a6a11a0613ffd24f5b99f66f8f61d899e65bcc8f6ca9c6059f6d97386dcd",
+    "src/vm/warbird/key_domain.hpp": "179c231008f631c81a63d92fc6b33d6faf7a71326cd7af33aef47b3fa9eeb327",
+    "src/vm/warbird/model.cpp": "95237bf685c47d7ac5ecfa12089b78a425e6506f450d6535f8d1d28ba0ee601f",
+    "src/vm/warbird/model.hpp": "0add8a4ec7a3e7fe8a7118cc128bd663f5170771b4b35ccea0fb773d0aae322f",
+    "src/vm/warbird/pool_model.cpp": "7f6eb1eaf88a7fed90a2d5017f71e1ab1e441ccf251948393cb5c4cc4b0e1b66",
+    "src/vm/warbird/pool_model.hpp": "7103341cd9a0eea334a1b332b586ead1464543bf3294f9e68545fe83f922f9e1",
+    "src/vm/warbird/recovery.cpp": "1ae8b59944c2b3a03acd431bf02381cf0da08414972a4a083ea662fd0dce8609",
+    "src/vm/warbird/recovery.hpp": "89061cdf1eaa2fb6e068f28fc1fabaf17876eb4232aadb520b311c0c46b5d6cf",
+    "src/vm/warbird/stack_model.cpp": "4fd68e94528c257fc4d739e2de0798460e0f48c15264fd44a46ecc3a92f70ec0",
+    "src/vm/warbird/stack_model.hpp": "39f14e9e36ae72875f2217501d3e73fefb048dacdd2c93467cea0e478c461f55",
+    "src/vm/warbird/loop_model.hpp": "6d6d27793d1c60a6f2b73b416298fa5592798876fbac05990871f22666a3163e"
+  },
+  "reports": {
+    "path": "docs/evidence/warbird-model12.jsonl",
+    "sha256": "f756b911656f084483dd67cfcf72733be5b0930af66aa0f81725aa03212b5d57"
+  },
+  "tested_plugin_sha256": "42d96b9efbec96683ccca4a3c7c04b7fb0e8621638a60caa32dbe891d928f16c",
+  "validation_binary_sha256": {
+    "corpus": "8cd35dda117381c67ca8038716d589191fdb2f88241fd291adf2ab4a9ad16c66",
+    "warbird_tests": "14db0dca73c5ecbee4b3632dc5deb9a00f13da5c012e93f3099f9bbe5b1996ec"
+  },
+  "checks": {
+    "ctest_full_passed": 26,
+    "direct_native_and_retained_relation_comparisons": 42271,
+    "native_programs": 41,
+    "inputs_per_program": 1031,
+    "native_stack_bookkeeping_comparisons": 1031,
+    "modular_overlap_smt_equivalence_cases": 48,
+    "repeated_store_smt_counts": [
+      0,
+      1,
+      2,
+      4
+    ],
+    "repeated_store_smt_scope": "every interior byte and symbolic exterior, with per-store frame proofs",
+    "unrolled_loop_comparisons": 8,
+    "loop_controls": [
+      "changed stride rejects summary",
+      "zero-count do-while retains frontier",
+      "symbolic count stays bounded",
+      "instruction quota cannot be bypassed",
+      "untouched registers, vectors and DF preserved",
+      "malformed retained effect rejected",
+      "immutable destination stops before store",
+      "symbolic protected span retains no-overlap guard"
+    ],
+    "lambda_capture_controls": [
+      "caller repeat_index remains free",
+      "caller havoc_index remains free and exterior bytes are preserved"
+    ],
+    "corpus_artifact_validation": "all eleven returned artifacts structurally validated with matching lease/status",
+    "ida": {
+      "clipsp": {
+        "input_sha256": "01274c7f3d4a339083aecc53683d2ccf7931ccbfb86bbe2e3efcbebd27956061",
+        "plugin_sha256": "42d96b9efbec96683ccca4a3c7c04b7fb0e8621638a60caa32dbe891d928f16c",
+        "script_sha256": "195bc6baa84acaa2beb9b755156bef4ecd860fba914e71586759d4552d005ca2",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": true,
+        "native_dispatch_and_retained_artifact_asserted": true,
+        "completed_and_in_flight_invalidation_asserted": true,
+        "guard_splits_and_multiple_keys_asserted": true
+      },
+      "peauth": {
+        "input_sha256": "a9831743d885a29b287e341dd62894e14f84c5bd1f19f6033361dc0ca07bdada",
+        "plugin_sha256": "42d96b9efbec96683ccca4a3c7c04b7fb0e8621638a60caa32dbe891d928f16c",
+        "script_sha256": "195bc6baa84acaa2beb9b755156bef4ecd860fba914e71586759d4552d005ca2",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": true,
+        "native_dispatch_and_retained_artifact_asserted": true,
+        "completed_and_in_flight_invalidation_asserted": true,
+        "positive_counted_loop_summary_asserted": true
+      },
+      "ci-enabled": {
+        "input_sha256": "0f0b00d3287c4f6003f7a9898c62b318e265e8744b55ca3cda0149a2502a2d01",
+        "plugin_sha256": "42d96b9efbec96683ccca4a3c7c04b7fb0e8621638a60caa32dbe891d928f16c",
+        "script_sha256": "195bc6baa84acaa2beb9b755156bef4ecd860fba914e71586759d4552d005ca2",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": true,
+        "native_dispatch_and_retained_artifact_asserted": true,
+        "completed_and_in_flight_invalidation_asserted": true
+      },
+      "ci-disabled": {
+        "input_sha256": "0f0b00d3287c4f6003f7a9898c62b318e265e8744b55ca3cda0149a2502a2d01",
+        "plugin_sha256": "42d96b9efbec96683ccca4a3c7c04b7fb0e8621638a60caa32dbe891d928f16c",
+        "script_sha256": "195bc6baa84acaa2beb9b755156bef4ecd860fba914e71586759d4552d005ca2",
+        "runner_return_code": 0,
+        "artifacts_unchanged": true,
+        "enable_rax": false
+      }
+    }
+  },
+  "loop_contract": {
+    "native_bytes": "0f11014883c11049ffc975f4",
+    "memory_pattern_bits": 128,
+    "maximum_iterations": 4096,
+    "maximum_logical_bytes": 65536,
+    "fault_equivalence_checked": false
+  },
+  "corpus_summary": {
+    "entry_count": 11,
+    "complete_entries": 0,
+    "entrywise_key_count_sum": 172,
+    "retained_relations": 197,
+    "loop_summaries": 1,
+    "retained_loops": 1,
+    "capture_complete_entries": 11,
+    "frontier_reasons": {
+      "dispatcher stack probe semantics unverified": 30,
+      "possible write to immutable image": 87,
+      "possible nonlocal native return": 15,
+      "handler violates admitted nonvolatile stack ABI": 14,
+      "next key domain solver did not prove completeness": 4,
+      "dispatcher stack growth quota": 17,
+      "native dispatch quota": 8,
+      "unexplored queued state": 37,
+      "possible mutable dispatch table write": 14,
+      "resource quota": 1,
+      "pool runtime binding, IRQL and kernel effects unverified": 3,
+      "pool free has no matching live base and tag": 1,
+      "possible repeated store to immutable image": 1,
+      "unsupported pool type, flags or zero-sized/tagged allocation": 1,
+      "next key set exceeds exhaustive value limit": 2
+    }
+  },
+  "limitations": [
+    "only the exact admitted counted-store loop is summarized",
+    "normal memory effects do not establish fault or volatile-memory equivalence",
+    "general loop joins, caller binding and checked pseudocode lowering remain incomplete",
+    "5 s per-entry sweep under uncontrolled CPU load; not a performance comparison"
+  ]
+}

@@ -86,6 +86,8 @@ assert allocation_import[0]["loaded_mask"] == 0, allocation_import
 assert result["frontiers"], result
 if os.environ.get("CHERNOBOG_TEST_VECTOR") == "1":
     assert result.get("vector_operations", 0) > 0, result
+    if result.get("model_version", 0) >= 12:
+        assert result["loop_summaries"] > 0 and result["recovery"]["loops"] > 0, result
     assert not any(
         entry["native"] == hex(ida_nalt.get_imagebase() + 0x29E30)
         and "SMIR lift unavailable" in entry["reason"]

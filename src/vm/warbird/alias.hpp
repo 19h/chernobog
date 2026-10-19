@@ -13,6 +13,8 @@ using AddressRanges = std::vector<std::pair<uint64_t, uint64_t>>;
 AddressRanges merge_ranges(AddressRanges);
 // Test the entire modular byte span, including wrap through address zero.
 z3::expr overlaps(const z3::expr &address, unsigned bytes, const AddressRanges &);
+// A zero-length symbolic span is empty. All arithmetic is modulo 2^64.
+z3::expr overlaps(const z3::expr &address, const z3::expr &bytes, const AddressRanges &);
 enum class AliasResult
 {
     DISJOINT,

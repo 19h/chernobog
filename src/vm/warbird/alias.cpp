@@ -22,12 +22,18 @@ AddressRanges merge_ranges(AddressRanges ranges)
 }
 z3::expr overlaps(const z3::expr &address, unsigned bytes, const AddressRanges &ranges)
 {
-    if (!address.is_bv() || address.get_sort().bv_size() != 64 || !bytes || bytes > 16 ||
-        ranges.size() > 256)
+    if (!bytes || bytes > 16)
         throw std::invalid_argument("invalid alias query");
+    return overlaps(address, address.ctx().bv_val(bytes, 64), ranges);
+}
+z3::expr overlaps(const z3::expr &address, const z3::expr &bytes, const AddressRanges &ranges)
+{
+    if (!address.is_bv() || address.get_sort().bv_size() != 64 || &address.ctx() != &bytes.ctx() ||
+        !bytes.is_bv() || bytes.get_sort().bv_size() != 64 || ranges.size() > 256)
+        throw std::invalid_argument("invalid alias span");
     auto &ctx = address.ctx();
     auto result = ctx.bool_val(false);
-    const auto last = address + ctx.bv_val(bytes - 1, 64);
+    const auto last = address + bytes - ctx.bv_val(1, 64);
     const auto wraps = z3::ult(last, address);
     for (const auto &[begin, end] : ranges)
     {
@@ -42,11 +48,11 @@ z3::expr overlaps(const z3::expr &address, unsigned bytes, const AddressRanges &
     params.set("max_steps", 10000u);
     try
     {
-        return result.simplify(params);
+        return (bytes != ctx.bv_val(0, 64) && result).simplify(params);
     }
     catch (const z3::exception &)
     {
-        return result;
+        return bytes != ctx.bv_val(0, 64) && result;
     }
 }
 AliasResult AliasOracle::classify(const z3::expr &address, unsigned bytes, const z3::expr &domain,

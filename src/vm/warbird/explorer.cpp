@@ -5,6 +5,7 @@
 #include "alias.hpp"
 #include "stack_model.hpp"
 #include "recovery.hpp"
+#include "loop_model.hpp"
 #include <rax.h>
 #include <z3++.h>
 #include <algorithm>
@@ -123,10 +124,15 @@ class Explorer
     bool exhausted() const
     {
         return cancel.load() || report.states >= limits.states ||
-               report.instructions >= limits.instructions ||
-               report.operations >= limits.operations ||
+               instructions_used() >= limits.instructions ||
+               operations_used() >= limits.operations ||
                std::chrono::steady_clock::now() - start >= limits.time;
     }
+    size_t instructions_used() const
+    {
+        return report.instructions + report.loop_reserved_instructions;
+    }
+    size_t operations_used() const { return report.operations + report.loop_reserved_operations; }
     z3::expr get(const State &s, const rax_smir_operand &o)
     {
         if (o.kind == 3)
@@ -247,7 +253,7 @@ class Explorer
         s.memory.write(at, value, width, unchanged);
         effect(s, EffectKind::Write, at, value, width, bv(width / 8));
         // Bound expression work independently from instruction count.
-        if (report.operations > limits.bytes / 1024)
+        if (operations_used() > limits.bytes / 1024)
             throw std::runtime_error("symbolic workspace quota");
     }
     z3::expr condition(const State &s, unsigned c)
@@ -717,6 +723,122 @@ class Explorer
         // Unknown is retained, never treated as proof of infeasibility.
         return solver.check() != z3::unsat;
     }
+    void repeat_store(State &s, const z3::expr &at, const z3::expr &bytes, const z3::expr &pattern)
+    {
+        uint64_t absolute = 0, length = 0;
+        const bool concrete = number(at, absolute) && number(bytes, length);
+        AddressRanges unchanged = readonly_ranges;
+        auto guard = [&](const AddressRanges &ranges, const char *reason)
+        {
+            const auto overlap = overlaps(at, bytes, ranges);
+            if (feasible(s.domain && overlap))
+            {
+                frontier(s, reason);
+                ++report.write_guard_splits;
+            }
+            s.domain = (s.domain && !overlap).simplify(simplify_params);
+            if (!feasible(s.domain))
+                throw StopPath{};
+        };
+        guard(readonly_ranges, "possible repeated store to immutable image");
+        auto protect = [&](const AddressRanges &ranges, bool &intact, const char *reason)
+        {
+            if (!intact)
+                return;
+            if (concrete)
+            {
+                if (!overlaps(at, bytes, ranges).is_false())
+                {
+                    intact = false;
+                    return;
+                }
+            }
+            else
+                guard(ranges, reason);
+            unchanged.insert(unchanged.end(), ranges.begin(), ranges.end());
+        };
+        protect(table_ranges, s.table_unchanged, "possible repeated store to dispatch table");
+        protect(import_ranges, s.imports_unchanged, "possible repeated store to import table");
+        protect(dispatch_ranges, s.dispatch_unchanged,
+                "possible repeated store to dispatcher transfer pointer");
+        if (!feasible(s.domain && overlaps(at, bytes, private_ranges)))
+        {
+            unchanged.insert(unchanged.end(), private_ranges.begin(), private_ranges.end());
+            ++report.private_writes_isolated;
+        }
+        s.memory.repeat(at, bytes, pattern, merge_ranges(std::move(unchanged)));
+        effect(s, EffectKind::Repeat, at, pattern, 128, bytes);
+    }
+    bool summarize_store_loop(State &s)
+    {
+        if (!limits.summarize_loops || !image.executable(s.pc) || image.writable(s.pc) ||
+            s.pc > UINT64_MAX - store_loop_bytes.size())
+            return false;
+        const auto view = image.loaded_view(s.pc, store_loop_bytes.size());
+        if (view.size != store_loop_bytes.size() ||
+            !std::equal(store_loop_bytes.begin(), store_loop_bytes.end(), view.data))
+            return false;
+        size_t per_iteration = 0;
+        for (auto offset : store_loop_offsets)
+            per_iteration += decode(s.pc + offset).second.size();
+        if (!per_iteration || exhausted())
+            throw std::runtime_error("counted store loop quota");
+        const uint64_t cap = std::min<uint64_t>(
+            store_loop_limit, std::min((limits.instructions - instructions_used()) / 4,
+                                       (limits.operations - operations_used()) / per_iteration));
+        const auto count = s.registers[9];
+        const auto allowed = z3::ugt(count, bv(0)) && z3::ule(count, bv(cap));
+        if (feasible(s.domain && !allowed))
+            frontier(s, "counted store loop iteration quota");
+        s.domain = (s.domain && allowed).simplify(simplify_params);
+        if (!feasible(s.domain))
+            throw StopPath{};
+        uint64_t bound = cap, concrete_count = 0;
+        if (number(count, concrete_count))
+            bound = concrete_count;
+        else
+        {
+            uint64_t low = 1;
+            while (low < bound)
+            {
+                if (exhausted())
+                    throw std::runtime_error("counted store loop proof quota");
+                const auto middle = low + (bound - low) / 2;
+                if (!feasible(s.domain && z3::ugt(count, bv(middle))))
+                    bound = middle;
+                else
+                    low = middle + 1;
+            }
+        }
+        const auto entry = s.pc;
+        const auto input = snapshot(s);
+        const auto bytes = (count * bv(16)).simplify(simplify_params);
+        const auto after = (s.registers[1] + bytes).simplify(simplify_params);
+        repeat_store(s, s.registers[1], bytes, s.vectors[0]);
+        s.registers[1] = after;
+        s.registers[9] = bv(0);
+        // The last ADD supplies CF; DEC 1 -> 0 preserves CF and defines all
+        // remaining arithmetic flags. DF and all other registers are untouched.
+        s.flags[0] = z3::ult(after, after - bv(16)).simplify(simplify_params);
+        s.flags[1] = ctx.bool_val(true);
+        s.flags[2] = ctx.bool_val(false);
+        s.flags[3] = ctx.bool_val(false);
+        s.flags[4] = ctx.bool_val(true);
+        s.flags[5] = ctx.bool_val(false);
+        report.instructions += 4;
+        report.operations += per_iteration;
+        report.loop_reserved_instructions += (bound - 1) * 4;
+        report.loop_reserved_operations += (bound - 1) * per_iteration;
+        ++report.loop_summaries;
+        for (size_t i = 0; i + 1 < store_loop_offsets.size(); ++i)
+            recovery.flow(s.key, entry + store_loop_offsets[i], entry + store_loop_offsets[i + 1],
+                          FlowKind::Next, s.domain);
+        recovery.flow(s.key, entry + 10, entry, FlowKind::Branch, s.domain && count != bv(1));
+        s.pc = entry + store_loop_bytes.size();
+        recovery.flow(s.key, entry + 10, s.pc, FlowKind::Next, s.domain);
+        recovery.loop(input, snapshot(s), s.effect_tail, entry, s.pc, bound, count, s.domain);
+        return true;
+    }
     bool enter(State &s, uint64_t key)
     try
     {
@@ -849,7 +971,7 @@ class Explorer
                 throw std::runtime_error(cancel.load() ? "cancelled" : "native dispatch quota");
             const auto &d = decoded.first;
             if (d.temporary_count > 4096 ||
-                decoded.second.size() > limits.operations - report.operations)
+                decoded.second.size() > limits.operations - operations_used())
                 throw std::runtime_error("SMIR operation quota");
             ++report.instructions;
             ++report.dispatch_instructions;
@@ -943,7 +1065,7 @@ class Explorer
             if (d.flow != 0 || d.fallthrough <= s.pc || d.fallthrough > end)
                 throw std::runtime_error("unexpected native initialization control flow");
             if (d.temporary_count > 4096 ||
-                decoded.second.size() > limits.operations - report.operations)
+                decoded.second.size() > limits.operations - operations_used())
                 throw std::runtime_error("SMIR operation quota");
             ++report.instructions;
             ++report.initialization_instructions;
@@ -1323,11 +1445,13 @@ class Explorer
                     identity_roots.insert(new_roots.begin(), new_roots.end());
                     seen.insert(std::move(identity));
                     s.effect_origin = EffectOrigin::Native;
+                    if (summarize_store_loop(s))
+                        continue;
                     const auto &decoded = decode(s.pc);
                     const auto &d = decoded.first;
                     ++report.instructions;
                     if (d.temporary_count > 4096 ||
-                        decoded.second.size() > limits.operations - report.operations)
+                        decoded.second.size() > limits.operations - operations_used())
                         throw std::runtime_error("SMIR operation quota");
                     auto native_return = d.flow == 9 ? load(s, s.registers[4], 64) : bv(0);
                     s.temporary.clear();

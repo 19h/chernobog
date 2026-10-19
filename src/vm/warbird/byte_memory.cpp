@@ -118,6 +118,43 @@ z3::expr ByteMemory::materialize() const
         result = z3::store(result, ctx.bv_val(address, 64), value);
     return result;
 }
+void ByteMemory::repeat(const z3::expr &address, const z3::expr &bytes, const z3::expr &pattern,
+                        const AddressRanges &unchanged)
+{
+    validate(address, 128);
+    auto &ctx = base_.ctx();
+    if (&address.ctx() != &ctx || &bytes.ctx() != &ctx || &pattern.ctx() != &ctx ||
+        !bytes.is_bv() || bytes.get_sort().bv_size() != 64 || !pattern.is_bv() ||
+        pattern.get_sort().bv_size() != 128 || unchanged.size() > 256)
+        throw std::invalid_argument("invalid repeated byte store");
+    for (const auto &[begin, end] : unchanged)
+        if (begin >= end)
+            throw std::invalid_argument("invalid unchanged memory range");
+    auto retained = std::make_shared<Cells>();
+    auto previous = base_;
+    for (const auto &[at, value] : *cells_)
+    {
+        const bool keep =
+            std::any_of(unchanged.begin(), unchanged.end(), [position = at](const auto &range)
+                        { return position >= range.first && position < range.second; });
+        if (keep)
+            retained->emplace(at, value);
+        else
+            previous = z3::store(previous, ctx.bv_val(at, 64), value);
+    }
+    z3::expr index(ctx, Z3_mk_fresh_const(ctx, "repeat_index", ctx.bv_sort(64)));
+    const auto offset = index - address;
+    const auto shift = z3::zext((offset & ctx.bv_val(15, 64)) * ctx.bv_val(8, 64), 64);
+    auto byte = z3::lshr(pattern, shift).extract(7, 0);
+    const auto first = simplify(pattern.extract(7, 0));
+    bool uniform = true;
+    for (unsigned i = 1; i < 16; ++i)
+        uniform = uniform && z3::eq(first, simplify(pattern.extract(i * 8 + 7, i * 8)));
+    if (uniform)
+        byte = first;
+    base_ = z3::lambda(index, z3::ite(z3::ult(offset, bytes), byte, z3::select(previous, index)));
+    cells_ = std::move(retained);
+}
 void ByteMemory::havoc(const z3::expr &address, const z3::expr &bytes, const z3::expr &fresh_array,
                        const std::vector<std::pair<uint64_t, uint64_t>> &excluded)
 {
@@ -129,7 +166,7 @@ void ByteMemory::havoc(const z3::expr &address, const z3::expr &bytes, const z3:
         throw std::invalid_argument("invalid byte memory havoc");
     if (excluded.size() > 256)
         throw std::invalid_argument("excluded memory range quota");
-    auto index = ctx.bv_const("havoc_index", 64);
+    z3::expr index(ctx, Z3_mk_fresh_const(ctx, "havoc_index", ctx.bv_sort(64)));
     auto affected = z3::ult(index - address, bytes);
     for (const auto &[begin, end] : excluded)
     {

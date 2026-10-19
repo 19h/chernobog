@@ -60,7 +60,7 @@ The symbolic scalar interpreter now covers ADC/SBB, rotate through carry, and
 complete AX results from byte MUL/IMUL. Unselected flag updates are preserved.
 The scalar interpreter also covers BT/BTS/BTR/BTC, including memory operands
 exported by RAX as ordered loads, updates and flag operations. The semantic
-model version is 11, independent of the SMIR record ABI version.
+model version is 12, independent of the SMIR record ABI version.
 
 The optional scalar SMIR ABI is versioned and pointer-free. Unsupported operations
 and insufficient capacity publish no executable prefix. It retains instruction
@@ -721,3 +721,69 @@ The exact source, IDA probes and partial corpus sweep are recorded in
 `docs/evidence/warbird-model11.json` and `docs/evidence/warbird-model11.jsonl`.
 Runtime helper semantics, loop/PHI construction, caller binding and checked
 normal-view lowering remain required. Pseudocode replacement remains disabled.
+
+## Model 12: bounded counted-store loop relations
+
+The explorer recognizes the exact immutable byte sequence for
+`MOVUPS [RCX],XMM0; ADD RCX,16; DEC R9; JNZ back`. This sequence occurs at
+PEAuth RVA `0x29e90`. Recognition is independent of that address and requires
+all twelve bytes; a changed stride, register, branch or instruction prevents
+summary admission. Other loops retain ordinary instruction execution.
+
+The normal loop relation carries the original 128-bit pattern, the symbolic
+iteration count, input/output snapshots and the native instruction witnesses.
+It replaces the ordered contiguous stores with a periodic byte-array update,
+sets RCX to its final modular address and R9 to zero, and preserves untouched
+registers, vectors and DF. The final ADD determines CF; the final DEC from one
+to zero determines the other arithmetic flags. Memory-fault equivalence is not
+established by this normal-return relation, and no pseudocode gate is enabled.
+
+```text
+exact native loop + count domain
+              |
+              +--> zero / excessive count --> explicit frontier
+              |
+              v
+guarded byte span --> repeated-store effect --> exit register/flag state
+```
+
+Counts must be positive and at most 4096. They must also fit the remaining
+native instruction and operation budgets. A bounded solver search can tighten
+the upper bound; an unknown result never reduces it. The first iteration is
+counted as four instructions, and the remaining upper-bound iterations are
+charged separately in `loop_reserved_instructions` and
+`loop_reserved_operations`. Both reservations participate in every later quota
+check. `Limits::summarize_loops = false` selects ordinary execution for controls.
+
+For c cached bytes, the periodic array update requires O(c + 16) expression
+construction, independent of the iteration count. Protected-span formulas take
+O(r) work for r protected ranges. Tightening a 4096-iteration bound requires at
+most twelve solver queries, each with the existing 50 ms timeout and 200000
+resource-unit limit; these limits do not guarantee process-level isolation.
+
+The whole modular store span is checked against immutable bytes, dispatch
+tables, imports and the dispatcher transfer pointer. Possible protected writes
+retain a frontier and a separately guarded continuation. Concrete changes to
+mutable bindings invalidate the respective binding. An aliased stack-return
+slot remains visible to the existing guarded-return machinery.
+
+Byte-array lambda indices now use fresh Z3 symbols for both repeated stores and
+allocation havoc. A fixed internal symbol name could otherwise capture a
+caller-supplied address variable with that same name. Tests explicitly use the
+former internal names as caller variables.
+
+| ID | Assumption or boundary | Falsification probe |
+| --- | --- | --- |
+| A46 | Any vector store loop can use this summary | Mutate the stride byte; recognition must fail |
+| A47 | A zero initial counter means no work | The native loop is a do-while loop; zero retains an iteration-quota frontier |
+| A48 | Summarization can bypass the execution budget | Limit the native instruction budget below the required iterations; no completed loop is published |
+| A49 | Repeated stores preserve arbitrary aliases and modular wrap | Compare every symbolic queried byte against ordered stores for several counts, including zero |
+| A50 | Internal lambda variable names cannot affect caller expressions | Supply caller addresses named `repeat_index` and `havoc_index`; require the original address relationship |
+| A51 | A summarized store may silently cross protected native bytes | Use an immutable destination and a symbolic destination; reject the former and prove the latter's retained guard excludes the full protected span |
+
+The native comparison matrix contains 41 programs with 1031 inputs each
+(42271 comparisons). The added loop fixture has an independent output formula
+and is also checked with summarization disabled. Retained loop records reject
+malformed effect references. These controls do not prove recovery of an entire
+corpus entry. Exact source and corpus evidence are recorded in
+`docs/evidence/warbird-model12.json` and `docs/evidence/warbird-model12.jsonl`.

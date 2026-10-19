@@ -334,7 +334,8 @@ std::string Report::json() const
       << ",\"operations\":" << limits.operations << ",\"estimated_bytes\":" << limits.bytes
       << ",\"milliseconds\":" << limits.time.count() << ",\"call_depth\":" << limits.call_depth
       << ",\"stack_bytes\":" << limits.stack_bytes
-      << ",\"recovery_bytes\":" << limits.recovery_bytes << "}"
+      << ",\"recovery_bytes\":" << limits.recovery_bytes
+      << ",\"summarize_loops\":" << (limits.summarize_loops ? "true" : "false") << "}"
 
       << ",\"exploration_complete\":" << (exploration_complete() ? "true" : "false")
       << ",\"semantic_equivalence_checked\":false,\"memory_faults_checked\":false,\"pseudocode_eligible\":false,\"cancelled\":"
@@ -342,11 +343,14 @@ std::string Report::json() const
       << ",\"instructions\":" << instructions
       << ",\"initialization_instructions\":" << initialization_instructions
       << ",\"initialization_copy_bytes\":" << initialization_copy_bytes
-      << ",\"dispatch_instructions\":" << dispatch_instructions << ",\"operations\":" << operations
-      << ",\"key_splits\":" << key_splits << ",\"key_queries\":" << key_queries
-      << ",\"return_splits\":" << return_splits << ",\"external_calls\":" << external_calls
-      << ",\"vector_operations\":" << vector_operations << ",\"alias_queries\":" << alias_queries
-      << ",\"write_guard_splits\":" << write_guard_splits
+      << ",\"dispatch_instructions\":" << dispatch_instructions
+      << ",\"loop_summaries\":" << loop_summaries
+      << ",\"loop_reserved_instructions\":" << loop_reserved_instructions
+      << ",\"loop_reserved_operations\":" << loop_reserved_operations
+      << ",\"operations\":" << operations << ",\"key_splits\":" << key_splits
+      << ",\"key_queries\":" << key_queries << ",\"return_splits\":" << return_splits
+      << ",\"external_calls\":" << external_calls << ",\"vector_operations\":" << vector_operations
+      << ",\"alias_queries\":" << alias_queries << ",\"write_guard_splits\":" << write_guard_splits
       << ",\"private_writes_isolated\":" << private_writes_isolated
       << ",\"stack_growth_paths\":" << stack_growth_paths
       << ",\"stack_maintenance\":" << (stack_maintenance ? "true" : "false")
@@ -377,6 +381,7 @@ std::string Report::json() const
           << ",\"flow_edges\":" << recovery->flow.size()
           << ",\"states\":" << recovery->states.size()
           << ",\"relations\":" << recovery->relations.size()
+          << ",\"loops\":" << recovery->loops.size()
           << ",\"omission\":" << inspection_json_quote(recovery->omission) << '}';
     else
         s << "null";

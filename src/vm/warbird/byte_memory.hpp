@@ -28,6 +28,10 @@ class ByteMemory
     // Empty ranges retain the fully alias-aware default behavior.
     void write(const z3::expr &address, const z3::expr &value, unsigned bits,
                const AddressRanges &unchanged = {});
+    // Repeat one 16-byte value over a modular byte interval. The caller proves
+    // bytes is a multiple of 16 and that unchanged ranges are disjoint.
+    void repeat(const z3::expr &address, const z3::expr &bytes, const z3::expr &pattern,
+                const AddressRanges &unchanged = {});
     // Replace exactly a modular byte interval with fresh unconstrained bytes.
     // Required on allocation/reuse and free; existing contents are not zeros.
     // Half-open exclusions explicitly retain their contents. An allocation

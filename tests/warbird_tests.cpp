@@ -5,6 +5,7 @@
 #include "vm/warbird/alias.hpp"
 #include "vm/warbird/stack_model.hpp"
 #include "vm/warbird/recovery.hpp"
+#include "vm/warbird/loop_model.hpp"
 #include <rax.h>
 #include <algorithm>
 #include <cstdlib>
@@ -463,6 +464,71 @@ int main()
     auto r = run(zero);
     require(r.exploration_complete() && r.edges.size() == 1 && r.edges[0].next == 0,
             "zero-key return must terminate");
+    // A repeated-store relation agrees with ordered individual stores at every
+    // queried byte, including a symbolic base that may wrap through zero.
+    {
+        z3::context c;
+        const auto at = c.bv_const("repeat_index", 64);
+        // Translation by an arbitrary base is a bijection on 64-bit addresses;
+        // the relative query keeps the same universal coverage and exposes
+        // cancellation before the solver bit-blasts address arithmetic.
+        const auto query = at + c.bv_const("byte_offset", 64);
+        const auto pattern = c.bv_const("pattern", 128);
+        for (unsigned count : {0u, 1u, 2u, 4u})
+        {
+            warbird::ByteMemory repeated(c), ordered(c);
+            repeated.write(c.bv_val(7, 64), c.bv_val(0x42, 8), 8);
+            ordered.write(c.bv_val(7, 64), c.bv_val(0x42, 8), 8);
+            const auto initial = ordered;
+            repeated.repeat(at, c.bv_val(count * 16, 64), pattern);
+            for (unsigned i = 0; i < count; ++i)
+                ordered.write(at + c.bv_val(i * 16, 64), pattern, 128);
+            auto prove_equal =
+                [&](const z3::expr &left, const z3::expr &right, const z3::expr &domain)
+            {
+                z3::solver solver(c);
+                solver.set("timeout", 5000u);
+                solver.add(domain && left != right);
+                const auto proof = solver.check();
+                if (proof != z3::unsat)
+                    std::cerr << "repeat proof count=" << count << " result=" << proof
+                              << " reason=" << solver.reason_unknown() << '\n';
+                require(proof == z3::unsat,
+                        "repeated store differs from its ordered modular byte effects");
+            };
+            // These disjoint cases cover every modular byte address: each
+            // written offset and the entire symbolic complement. Splitting
+            // keeps the proof within the solver limit without dropping cases.
+            for (unsigned offset = 0; offset < count * 16; ++offset)
+            {
+                const auto where = at + c.bv_val(offset, 64);
+                prove_equal(repeated.read(where, 8), ordered.read(where, 8), c.bool_val(true));
+            }
+            const auto outside = z3::uge(query - at, c.bv_val(count * 16, 64));
+            prove_equal(repeated.read(query, 8), initial.read(query, 8), outside);
+            // Each native store preserves every outside byte for an arbitrary
+            // input array. These frame properties compose across all stores.
+            for (unsigned iteration = 0; iteration < count; ++iteration)
+            {
+                warbird::ByteMemory before(c), step(c);
+                step.write(at + c.bv_val(iteration * 16, 64), pattern, 128);
+                prove_equal(step.read(query, 8), before.read(query, 8), outside);
+            }
+        }
+        // The binder name must never capture an address supplied by a caller.
+        warbird::ByteMemory havoc(c);
+        const auto havoc_at = c.bv_const("havoc_index", 64);
+        const auto fresh = c.constant("new_bytes", c.array_sort(c.bv_sort(64), c.bv_sort(8)));
+        havoc.havoc(havoc_at, c.bv_val(16, 64), fresh);
+        z3::solver solver(c);
+        solver.add(havoc.read(havoc_at, 8) != z3::select(fresh, havoc_at));
+        require(solver.check() == z3::unsat, "havoc captured its caller's address variable");
+        warbird::ByteMemory original(c);
+        solver.reset();
+        const auto outside_havoc = havoc_at + c.bv_val(16, 64);
+        solver.add(havoc.read(outside_havoc, 8) != original.read(outside_havoc, 8));
+        require(solver.check() == z3::unsat, "havoc binder changed bytes outside its interval");
+    }
     // Recovery objects remain valid after the explorer and its local context
     // owners are destroyed; COW snapshots preserve the pre-write memory.
     auto artifact =
@@ -1256,7 +1322,130 @@ int main()
     for (size_t offset : {0xa00u, 0xa40u})
         std::copy(selected_handler.begin(), selected_handler.end(),
                   dispatch_program.segs[0].bytes.begin() + offset);
+    const auto dispatch_program_index = programs.size();
     programs.push_back(std::move(dispatch_program));
+    auto loop_program = fixture({});
+    std::vector<uint8_t> loop_code = {0x49, 0x89, 0xd1, 0x49, 0x83, 0xe1, 7,    0x49, 0xff,
+                                      0xc1, 0x66, 0x48, 0x0f, 0x6e, 0xc2, 0x0f, 0x16, 0xc0,
+                                      0x48, 0x8d, 0x89, 0,    1,    0,    0};
+    const auto loop_offset = loop_code.size();
+    loop_code.insert(loop_code.end(), warbird::store_loop_bytes.begin(),
+                     warbird::store_loop_bytes.end());
+    loop_code.insert(loop_code.end(), {0x0f, 0x92, 0xc0, 0x0f, 0xb6, 0xc0, 0x48, 0x33, 0x41, 0xf0,
+                                       0x4c, 0x31, 0xc8, 0xc3});
+    std::copy(loop_code.begin(), loop_code.end(), loop_program.segs[0].bytes.begin());
+    auto control_loop = loop_program;
+    const auto return_offset = loop_code.size() - 1;
+    control_loop.segs[0].bytes[return_offset] = 0x31;
+    control_loop.segs[0].bytes[return_offset + 1] = 0xc0;
+    control_loop.segs[0].bytes[return_offset + 2] = 0xc3;
+    warbird::Limits loop_limits;
+    loop_limits.states = 64;
+    for (unsigned count = 1; count <= 8; ++count)
+    {
+        auto accelerated = run(control_loop, count, loop_limits);
+        loop_limits.summarize_loops = false;
+        auto ordered = run(control_loop, count, loop_limits);
+        loop_limits.summarize_loops = true;
+        if (accelerated.loop_summaries != 1 || ordered.loop_summaries != 0 ||
+            accelerated.edges.empty() || ordered.edges.empty() || !accelerated.recovery->valid())
+            std::cerr << "loop comparison input=" << count
+                      << " summaries=" << accelerated.loop_summaries
+                      << " accelerated_edges=" << accelerated.edges.size()
+                      << " ordered_edges=" << ordered.edges.size()
+                      << " valid=" << accelerated.recovery->valid() << '\n';
+        require(accelerated.loop_summaries == 1 && ordered.loop_summaries == 0 &&
+                    !accelerated.edges.empty() && !ordered.edges.empty() &&
+                    accelerated.edges.front().next == ordered.edges.front().next &&
+                    accelerated.recovery->valid() && accelerated.recovery->loops.size() == 1,
+                "counted store loop differs from native instruction-by-instruction execution");
+        const auto &loop = accelerated.recovery->loops.front();
+        const auto &output = accelerated.recovery->states[loop.output];
+        uint64_t value = 0;
+        require(output.registers[9].is_numeral_u64(value) && value == 0 &&
+                    output.flags[1].is_true() && output.flags[4].is_true() &&
+                    output.flags[2].is_false() && output.flags[3].is_false() &&
+                    output.flags[5].is_false(),
+                "counted store loop lost its exit register or defined flags");
+        const auto &input_state = accelerated.recovery->states[loop.input];
+        require(z3::eq(input_state.flags[6], output.flags[6]),
+                "counted store loop modified the direction flag");
+        for (unsigned reg = 0; reg < input_state.registers.size(); ++reg)
+            if (reg != 1 && reg != 9)
+                require(z3::eq(input_state.registers[reg], output.registers[reg]),
+                        "counted store loop changed an untouched register");
+        for (unsigned reg = 0; reg < input_state.vectors.size(); ++reg)
+            require(z3::eq(input_state.vectors[reg], output.vectors[reg]),
+                    "counted store loop changed an untouched vector");
+        warbird::Recovery broken = *accelerated.recovery;
+        broken.loops.front().effect = warbird::no_record;
+        require(!broken.valid(), "malformed counted-store evidence was accepted");
+    }
+    auto changed_loop = control_loop;
+    changed_loop.segs[0].bytes[loop_offset + 6] = 8; // Non-contiguous stores are not admitted.
+    require(run(changed_loop, 1, loop_limits).loop_summaries == 0,
+            "changed native loop acquired a summary");
+    auto immutable_loop = control_loop;
+    const std::array<uint8_t, 7> immutable_pointer = {0xb9, 0, 0x11, 0, 0, 0x90, 0x90};
+    std::copy(immutable_pointer.begin(), immutable_pointer.end(),
+              immutable_loop.segs[0].bytes.begin() + loop_offset - immutable_pointer.size());
+    const auto rejected_store = run(immutable_loop, 1, loop_limits);
+    require(rejected_store.loop_summaries == 0 && rejected_store.edges.empty() &&
+                std::any_of(rejected_store.frontiers.begin(), rejected_store.frontiers.end(),
+                            [](const auto &f)
+                            { return f.reason == "possible repeated store to immutable image"; }),
+            "counted store loop wrote immutable native bytes");
+    auto symbolic_pointer_loop = control_loop;
+    const std::array<uint8_t, 7> symbolic_pointer = {0x48, 0x8b, 0x09, 0x90, 0x90, 0x90, 0x90};
+    std::copy(symbolic_pointer.begin(), symbolic_pointer.end(),
+              symbolic_pointer_loop.segs[0].bytes.begin() + loop_offset - symbolic_pointer.size());
+    const auto guarded_store = run(symbolic_pointer_loop, 1, loop_limits);
+    require(guarded_store.loop_summaries == 1 && !guarded_store.exploration_complete() &&
+                guarded_store.recovery->valid() && !guarded_store.recovery->loops.empty(),
+            "symbolic repeated store lost its protected-span frontier or guarded continuation");
+    const auto &guarded_loop = guarded_store.recovery->loops.front();
+    const auto &guarded_effect = guarded_store.recovery->effects[guarded_loop.effect];
+    z3::solver protected_span(*guarded_store.recovery->arena);
+    protected_span.add(
+        guarded_loop.domain &&
+        warbird::overlaps(guarded_effect.address, guarded_effect.bytes, {{0x1000, 0x2000}}));
+    require(protected_span.check() == z3::unsat,
+            "guarded repeated store still overlaps immutable bytes");
+    auto zero_count_loop = control_loop;
+    std::fill_n(zero_count_loop.segs[0].bytes.begin(), 10, uint8_t(0x90));
+    zero_count_loop.segs[0].bytes[0] = 0x45;
+    zero_count_loop.segs[0].bytes[1] = 0x31;
+    zero_count_loop.segs[0].bytes[2] = 0xc9;
+    const auto zero_count = run(zero_count_loop, 1, loop_limits);
+    require(zero_count.edges.empty() && !zero_count.exploration_complete() &&
+                std::any_of(zero_count.frontiers.begin(), zero_count.frontiers.end(),
+                            [](const auto &f)
+                            { return f.reason == "counted store loop iteration quota"; }),
+            "zero-count do-while store loop was treated as empty");
+    auto symbolic_loop = zero_count_loop;
+    symbolic_loop.segs[0].bytes[0] = 0x4c;
+    symbolic_loop.segs[0].bytes[1] = 0x8b;
+    symbolic_loop.segs[0].bytes[2] = 0x09;
+    const auto symbolic_count = run(symbolic_loop, 1, loop_limits);
+    require(symbolic_count.loop_summaries == 1 && !symbolic_count.exploration_complete() &&
+                symbolic_count.recovery->valid() && !symbolic_count.recovery->loops.empty(),
+            "symbolic count lost its bounded loop relation or unsupported-count frontier");
+    const auto &symbolic_relation = symbolic_count.recovery->loops.front();
+    z3::solver count_guard(*symbolic_count.recovery->arena);
+    count_guard.add(
+        symbolic_relation.domain &&
+        (symbolic_relation.iterations == symbolic_count.recovery->arena->bv_val(0, 64) ||
+         z3::ugt(symbolic_relation.iterations,
+                 symbolic_count.recovery->arena->bv_val(symbolic_relation.iteration_bound, 64))));
+    require(count_guard.check() == z3::unsat, "symbolic loop relation escaped its iteration bound");
+    auto loop_quota = loop_limits;
+    loop_quota.instructions = 20;
+    const auto quota_count = run(control_loop, 7, loop_quota);
+    require(quota_count.loop_summaries == 0 && quota_count.edges.empty() &&
+                !quota_count.exploration_complete(),
+            "loop summary evaded the native instruction quota");
+    const auto loop_program_index = programs.size();
+    programs.push_back(std::move(loop_program));
     std::vector<uint64_t> inputs = {1,
                                     2,
                                     UINT64_MAX,
@@ -1292,9 +1481,11 @@ int main()
             uint64_t observed = 0;
             require(rax_reg_read_u64(engine, RAX_X86_REG_RAX, &observed) == RAX_OK,
                     "direct result unavailable");
-            if (&program == &programs.back())
+            if (&program == &programs[dispatch_program_index])
                 require(observed == (input ^ ((input & 1) ? uint64_t(0) : uint64_t(1))),
                         "native dispatcher result violates its independent closed form");
+            if (&program == &programs[loop_program_index])
+                require(observed == input, "native store-loop result violates its closed form");
             warbird::Limits first_transition;
             first_transition.states = 3;
             auto candidate = run(program, input, first_transition);
@@ -1328,7 +1519,7 @@ int main()
             ++comparisons;
         }
     }
-    require(comparisons == 41240, "incomplete direct comparison matrix");
+    require(comparisons == 42271, "incomplete direct comparison matrix");
     // Independent native integer sequence for the dispatcher's stack ledger.
     // R8/R9 represent its virtual floor/native top; no host stack is allocated.
     const std::vector<uint8_t> stack_reference = {

@@ -12,7 +12,7 @@
 namespace chernobog::warbird
 {
 struct Recovery;
-constexpr uint32_t model_version = 11;
+constexpr uint32_t model_version = 12;
 constexpr size_t context_bytes = 448;
 struct Profile
 {
@@ -46,6 +46,7 @@ struct Limits
     unsigned call_depth = 32;
     uint64_t stack_bytes = 0x10000;
     size_t recovery_bytes = 32 * 1024 * 1024;
+    bool summarize_loops = true;
 };
 struct Dependency
 {
@@ -110,6 +111,9 @@ struct Report
     size_t initialization_instructions = 0;
     size_t initialization_copy_bytes = 0;
     size_t dispatch_instructions = 0;
+    size_t loop_summaries = 0;
+    size_t loop_reserved_instructions = 0;
+    size_t loop_reserved_operations = 0;
     size_t operations = 0;
     size_t states = 0;
     size_t key_splits = 0;

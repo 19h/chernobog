@@ -1,4 +1,5 @@
 #include "recovery.hpp"
+#include "loop_model.hpp"
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
@@ -106,7 +107,8 @@ uint32_t RecoveryRecorder::effect(uint32_t previous, EffectOrigin origin, Effect
     else
         expression(value, bits, kind == EffectKind::Alignment);
     if (unsigned(origin) > unsigned(EffectOrigin::External) ||
-        unsigned(kind) > unsigned(EffectKind::Alignment) ||
+        unsigned(kind) > unsigned(EffectKind::Repeat) ||
+        (kind == EffectKind::Repeat && bits != 128) ||
         (previous != no_record && previous >= data_->effects.size()) ||
         (kind != EffectKind::Havoc && kind != EffectKind::Alignment && bits != 8 && bits != 16 &&
          bits != 32 && bits != 64 && bits != 128))
@@ -160,6 +162,21 @@ void RecoveryRecorder::relation(uint32_t input, uint32_t output, const z3::expr 
     if (!reserve(sizeof(HandlerRelation) + 128))
         return;
     data_->relations.push_back({input, output, key, domain});
+}
+void RecoveryRecorder::loop(uint32_t input, uint32_t output, uint32_t effect, uint64_t entry,
+                            uint64_t exit, uint64_t bound, const z3::expr &iterations,
+                            const z3::expr &domain)
+{
+    expression(iterations, 64);
+    expression(domain, 0, true);
+    if (!data_->capture_complete || input == no_record || output == no_record)
+        return;
+    if (input >= data_->states.size() || output >= data_->states.size() ||
+        effect >= data_->effects.size() || !bound || bound > store_loop_limit)
+        throw std::invalid_argument("invalid retained store loop");
+    if (!reserve(sizeof(StoreLoopRelation) + 128))
+        return;
+    data_->loops.push_back({input, output, effect, entry, exit, bound, iterations, domain});
 }
 std::shared_ptr<const Recovery> RecoveryRecorder::finish(bool complete)
 {
@@ -241,7 +258,8 @@ bool Recovery::valid() const
         {
             const auto &e = effects[i];
             if (unsigned(e.origin) > unsigned(EffectOrigin::External) ||
-                unsigned(e.kind) > unsigned(EffectKind::Alignment) ||
+                unsigned(e.kind) > unsigned(EffectKind::Repeat) ||
+                (e.kind == EffectKind::Repeat && e.bits != 128) ||
                 (e.kind != EffectKind::Havoc && e.kind != EffectKind::Alignment && e.bits != 8 &&
                  e.bits != 16 && e.bits != 32 && e.bits != 64 && e.bits != 128) ||
                 (e.previous != no_record && e.previous >= i) || !typed(e.address, *arena, 64) ||
@@ -261,6 +279,30 @@ bool Recovery::valid() const
             if (unsigned(edge.kind) > unsigned(FlowKind::ExternalCall) ||
                 !typed(edge.domain, *arena, 0, true))
                 return false;
+        for (const auto &loop : loops)
+        {
+            if (loop.input >= states.size() || loop.output >= states.size() ||
+                loop.effect >= effects.size() || !loop.iteration_bound ||
+                loop.iteration_bound > store_loop_limit || !typed(loop.iterations, *arena, 64) ||
+                !typed(loop.domain, *arena, 0, true) || loop.entry != states[loop.input].site ||
+                loop.exit != states[loop.output].site ||
+                loop.exit - loop.entry != store_loop_bytes.size() ||
+                effects[loop.effect].kind != EffectKind::Repeat ||
+                states[loop.output].effects != loop.effect ||
+                effects[loop.effect].previous != states[loop.input].effects)
+                return false;
+            for (size_t i = 0; i < store_loop_offsets.size(); ++i)
+            {
+                const auto offset = store_loop_offsets[i];
+                const auto end = i + 1 == store_loop_offsets.size() ? store_loop_bytes.size()
+                                                                    : store_loop_offsets[i + 1];
+                const auto found = instructions.find(loop.entry + offset);
+                if (found == instructions.end() ||
+                    found->second.bytes != std::vector<uint8_t>(store_loop_bytes.begin() + offset,
+                                                                store_loop_bytes.begin() + end))
+                    return false;
+            }
+        }
     }
     catch (const std::exception &)
     {

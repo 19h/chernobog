@@ -24,7 +24,8 @@ enum class EffectKind
     Read,
     Write,
     Havoc,
-    Alignment
+    Alignment,
+    Repeat
 };
 enum class FlowKind
 {
@@ -72,6 +73,12 @@ struct HandlerRelation
     uint32_t input, output;
     z3::expr next_key, domain;
 };
+struct StoreLoopRelation
+{
+    uint32_t input, output, effect;
+    uint64_t entry, exit, iteration_bound;
+    z3::expr iterations, domain;
+};
 // Published only after the worker finishes. The arena is declared first so it
 // outlives every retained expression, including COW memory and pool records.
 // Consumers serialize all access to an artifact; Z3 contexts are not reentrant.
@@ -93,6 +100,7 @@ struct Recovery
     std::vector<FlowEdge> flow;
     std::vector<RecoveryState> states;
     std::vector<HandlerRelation> relations;
+    std::vector<StoreLoopRelation> loops;
     // Structural validation only; never semantic or pseudocode admission.
     bool valid() const;
     std::vector<uint32_t> ordered_effects(const HandlerRelation &) const;
@@ -117,6 +125,8 @@ class RecoveryRecorder
                      const uint8_t *bytes);
     void flow(uint64_t key, uint64_t source, uint64_t target, FlowKind, const z3::expr &domain);
     void relation(uint32_t input, uint32_t output, const z3::expr &key, const z3::expr &domain);
+    void loop(uint32_t input, uint32_t output, uint32_t effect, uint64_t entry, uint64_t exit,
+              uint64_t bound, const z3::expr &iterations, const z3::expr &domain);
     std::shared_ptr<const Recovery> finish(bool exploration_complete);
 };
 }
