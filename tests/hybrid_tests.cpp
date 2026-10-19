@@ -1592,9 +1592,9 @@ void test_arm64_external_boundaries(const RaxApi *api)
 
 void test_arm64_application_boundary(const RaxApi *api)
 {
-    // An architecturally undefined instruction enters the AArch64 exception
-    // vector in rax full-system semantics. Application-mode emulation must stop
-    // at that first boundary instead of running vector zero-fill to the budget.
+    // RAX may deliver an undefined instruction through the AArch64 exception
+    // vector or the invalid-instruction hook. Application-mode emulation must
+    // stop at that first boundary instead of consuming the instruction budget.
     const ProgramImage image = arm64_image({0x00, 0x00, 0x00, 0x00});
     EmuEvents events;
     EmuOutcome outcome;
@@ -1603,8 +1603,12 @@ void test_arm64_application_boundary(const RaxApi *api)
     check(outcome.stop_reason != RAX_STOP_COUNT &&
               outcome.instruction_count < short_run_config().max_insns,
           "ARM64 exception handling must stop before the instruction budget");
-    check(outcome.escaped_image || outcome.stop_reason == RAX_STOP_EXCEPTION,
-          "ARM64 first fault must be classified as image escape or backend exception");
+    const bool invalid_hook_stop =
+        outcome.stop_reason == RAX_STOP_STOPPED && outcome.stop_status == RAX_OK &&
+        outcome.environment_model_failure && outcome.external_target == image.lo &&
+        outcome.stop_pc == image.lo;
+    check(outcome.escaped_image || outcome.stop_reason == RAX_STOP_EXCEPTION || invalid_hook_stop,
+          "ARM64 first fault must stop at an image escape, exception, or invalid hook");
     check(!outcome.consumed_context_complete,
           "application exception/image escape must never be proof-complete");
     if (outcome.escaped_image)
