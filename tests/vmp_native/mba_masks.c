@@ -22,6 +22,11 @@ __attribute__((noinline)) uint32_t mba_mask_overlap(uint32_t flags, int8_t input
     return ((flags & UINT32_C(0xFFFFFFF7)) ^ (8U * (input & 3))) & UINT32_C(0xFFFFFFBF);
 }
 
+__attribute__((noinline)) uint32_t mba_mask_shift_signs(uint32_t value, int8_t input)
+{
+    return (value & ~UINT32_C(0x48)) | ((uint32_t)(int32_t)input * 8U) | ((value & 3U) << 30);
+}
+
 __attribute__((noinline)) void mba_mask_store(uint32_t *flags, int8_t input)
 {
     const int low = input & 1;
@@ -52,8 +57,9 @@ typedef uint32_t (*value_function)(uint32_t, int8_t);
 typedef void (*store_function)(uint32_t *, int8_t);
 typedef void (*volatile_store_function)(volatile uint32_t *, int8_t);
 
-static int check_values(value_function value, value_function overlap, store_function store,
-                        volatile_store_function volatile_store, uint32_t previous, int8_t input)
+static int check_values(value_function value, value_function overlap, value_function shifts,
+                        store_function store, volatile_store_function volatile_store,
+                        uint32_t previous, int8_t input)
 {
     const uint32_t low = (uint8_t)input & 1U;
     const uint32_t high = ((uint8_t)input & 0x11U) == 0x11U;
@@ -63,6 +69,12 @@ static int check_values(value_function value, value_function overlap, store_func
     if (value(previous, input) != expected || overlap(previous, input) != overlapping)
     {
         return 1;
+    }
+    const uint32_t expected_shifts =
+        (previous & ~UINT32_C(0x48)) | ((uint32_t)(int32_t)input << 3) | ((previous & 3U) << 30);
+    if (shifts(previous, input) != expected_shifts)
+    {
+        return 6;
     }
 
     const uint32_t effects = previous ^ UINT32_C(0xB79DE37F);
@@ -96,21 +108,21 @@ static int check_values(value_function value, value_function overlap, store_func
     return mba_mask_effects == expected ? 0 : 5;
 }
 
-static int verify_functions(value_function value, value_function overlap, store_function store,
-                            volatile_store_function volatile_store)
+static int verify_functions(value_function value, value_function overlap, value_function shifts,
+                            store_function store, volatile_store_function volatile_store)
 {
     unsigned long long comparisons = 0;
     for (uint32_t flags = 0; flags < 256; ++flags)
     {
         for (unsigned input = 0; input < 256; ++input)
         {
-            if (check_values(value, overlap, store, volatile_store, flags, (int8_t)input))
+            if (check_values(value, overlap, shifts, store, volatile_store, flags, (int8_t)input))
             {
                 fprintf(stderr, "Low-byte flag update mismatch: flags=%08x input=%02x\n", flags,
                         input);
                 return 1;
             }
-            comparisons += 6;
+            comparisons += 7;
         }
     }
 
@@ -121,12 +133,12 @@ static int verify_functions(value_function value, value_function overlap, store_
     {
         for (unsigned input = 0; input < 256; ++input)
         {
-            if (check_values(value, overlap, store, volatile_store, boundaries[index],
+            if (check_values(value, overlap, shifts, store, volatile_store, boundaries[index],
                              (int8_t)input))
             {
                 return 2;
             }
-            comparisons += 6;
+            comparisons += 7;
         }
     }
 
@@ -136,11 +148,12 @@ static int verify_functions(value_function value, value_function overlap, store_
         state = state * UINT32_C(1664525) + UINT32_C(1013904223);
         const uint32_t flags = state;
         state = state * UINT32_C(1664525) + UINT32_C(1013904223);
-        if (check_values(value, overlap, store, volatile_store, flags, (int8_t)(state >> 24)))
+        if (check_values(value, overlap, shifts, store, volatile_store, flags,
+                         (int8_t)(state >> 24)))
         {
             return 3;
         }
-        comparisons += 6;
+        comparisons += 7;
     }
     printf("Mask update comparisons: %llu\n", comparisons);
     return 0;
@@ -148,6 +161,6 @@ static int verify_functions(value_function value, value_function overlap, store_
 
 int main(void)
 {
-    return verify_functions(mba_mask_value, mba_mask_overlap, mba_mask_store,
+    return verify_functions(mba_mask_value, mba_mask_overlap, mba_mask_shift_signs, mba_mask_store,
                             mba_mask_volatile_store);
 }

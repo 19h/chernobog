@@ -169,8 +169,8 @@ class CtreeTerms
 {
   public:
     CtreeTerms(PureFunctions &functions, const Bindings &bindings,
-               const ScalarContext *context = nullptr)
-        : functions_(functions), bindings_(bindings), context_(context)
+               const ScalarContext *context = nullptr, bool expand_calls = true)
+        : functions_(functions), bindings_(bindings), context_(context), expand_calls_(expand_calls)
     {
     }
 
@@ -181,6 +181,7 @@ class CtreeTerms
     PureFunctions &functions_;
     const Bindings &bindings_;
     const ScalarContext *context_;
+    bool expand_calls_;
     size_t visits_ = 0;
 };
 
@@ -403,7 +404,8 @@ Term CtreeTerms::translate(const cexpr_t *node, unsigned depth)
     const unsigned bits = integer_bits(node->type);
     if (node->op == cot_num)
     {
-        return constant(node->numval(), bits);
+        const uint64_t mask = bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1;
+        return constant(node->numval() & mask, bits);
     }
     if (node->op == cot_var)
     {
@@ -417,6 +419,10 @@ Term CtreeTerms::translate(const cexpr_t *node, unsigned depth)
     }
     if (node->op == cot_call)
     {
+        if (!expand_calls_)
+        {
+            return {};
+        }
         Term value = functions_.instantiate(node, *this);
         used_context |= bool(value);
         return value;
@@ -684,6 +690,14 @@ class CallerSimplifier
 
     CallSimplification run()
     {
+        // Reuse available locals and normalize field syntax throughout the
+        // function before a difficult earlier predicate can consume the budget.
+        structural_only_ = true;
+        ScalarContext initial(widths_);
+        statement(function_.body, initial);
+        structural_only_ = false;
+        attempts_ = 0;
+
         for (size_t round = 0; round < max_propagation_rounds && budget_.available(); ++round)
         {
             const int previous_changes = changes_;
@@ -700,15 +714,13 @@ class CallerSimplifier
   private:
     Term translate(const cexpr_t &node, const ScalarContext &context)
     {
-        CtreeTerms terms(functions_, context.bindings(), &context);
+        CtreeTerms terms(functions_, context.bindings(), &context, !structural_only_);
         return terms.translate(&node);
     }
 
-    std::unique_ptr<cexpr_t> prepare_replacement(const cexpr_t &node, const ScalarContext &context,
-                                                 const ContextQuery &query, Analysis &analysis,
-                                                 const Term &candidate)
+    std::unique_ptr<cexpr_t> emit_replacement(const cexpr_t &node, const ScalarContext &context,
+                                              const Term &value)
     {
-        const Term value = query.restore(candidate);
         if (!value)
         {
             return {};
@@ -720,17 +732,34 @@ class CallerSimplifier
             return {};
         }
         const bool constant_result = emitted->op == cot_num && node.op != cot_num;
-        if (!constant_result && scalar_expression_cost(*emitted) >= scalar_expression_cost(node))
+        if (!constant_result && !scalar_expression_improves(*emitted, node))
         {
             return {};
         }
+        return emitted;
+    }
 
-        const Term translated = query.lower(translate(*emitted, context));
+    bool verify_emitted(const cexpr_t &node, const ScalarContext &context,
+                        const ContextQuery &query, Analysis &analysis, cexpr_t &emitted)
+    {
+        const Term translated = query.lower(translate(emitted, context));
         if (!translated || analysis.verify(query.block(), 0, translated) != Verdict::Verified)
         {
+            return false;
+        }
+        emitted.ea = node.ea;
+        return true;
+    }
+
+    std::unique_ptr<cexpr_t> prepare_replacement(const cexpr_t &node, const ScalarContext &context,
+                                                 const ContextQuery &query, Analysis &analysis,
+                                                 const Term &candidate)
+    {
+        auto emitted = emit_replacement(node, context, query.restore(candidate));
+        if (!emitted || !verify_emitted(node, context, query, analysis, *emitted))
+        {
             return {};
         }
-        emitted->ea = node.ea;
         return emitted;
     }
 
@@ -740,18 +769,31 @@ class CallerSimplifier
         {
             return false;
         }
-        CtreeTerms terms(functions_, context.bindings(), &context);
+        CtreeTerms terms(functions_, context.bindings(), &context, !structural_only_);
         const Term value = terms.translate(&node);
         if (!value)
         {
             return false;
         }
         const bool synthesize = terms.used_context || has_mixed_arithmetic(value);
-        if (!synthesize && context.conditions().empty())
+        if (!structural_only_ && !synthesize && context.conditions().empty())
         {
             return false;
         }
-        ContextQuery query(context, value);
+        std::unique_ptr<cexpr_t> replacement;
+        if (structural_only_)
+        {
+            // Most expressions already have their cheapest readable form.
+            // Reject those before constructing a CFG or a solver context.
+            replacement = emit_replacement(node, context, value);
+            if (!replacement)
+            {
+                return false;
+            }
+        }
+        // Structural emission uses bindings alone. Proving these identities
+        // unconditionally avoids spending time deriving unrelated path facts.
+        ContextQuery query(context, value, !structural_only_);
         if (!query.valid())
         {
             return false;
@@ -762,20 +804,31 @@ class CallerSimplifier
         const bool deep = budget_.owner().limit_ms > limits::normal_budget_ms;
         options.budget_ms = std::min(budget_.remaining_ms(), deep ? deep_expression_budget_ms
                                                                   : normal_expression_budget_ms);
+        if (structural_only_)
+        {
+            options.budget_ms = std::min(options.budget_ms, 25u);
+        }
         // Bindings already contain their complete scalar expressions. Only the
         // entry edge's guard and its negation are needed at this query block.
         options.max_invariants = 2;
         options.cancelled = [] { return user_cancelled(); };
         Analysis analysis(query.program(), options);
-        std::unique_ptr<cexpr_t> replacement;
-        if (const Term candidate = analysis.constant_value(query.block(), 0))
+        if (structural_only_)
+        {
+            if (!verify_emitted(node, context, query, analysis, *replacement))
+            {
+                replacement.reset();
+            }
+        }
+        else if (const Term candidate = analysis.constant_value(query.block(), 0))
         {
             replacement = prepare_replacement(node, context, query, analysis, candidate);
         }
         // Besides expanded calls and derived values, reconstruct substantial
         // arithmetic/bitwise mixtures already present in the caller. A guard
         // alone still cannot trigger synthesis of an ordinary assignment.
-        if (!replacement && node.op != cot_var && synthesize && budget_.available())
+        if (!structural_only_ && !replacement && node.op != cot_var && synthesize &&
+            budget_.available())
         {
             // Verify a cheaper expansion before spending the search budget.
             // This proof remains valid if a later search runs out of time:
@@ -787,8 +840,8 @@ class CallerSimplifier
                 {
                     auto improved =
                         prepare_replacement(node, context, query, analysis, proposal.replacement);
-                    if (improved && (!replacement || scalar_expression_cost(*improved) <=
-                                                         scalar_expression_cost(*replacement)))
+                    if (improved &&
+                        (!replacement || scalar_expression_improves(*improved, *replacement)))
                     {
                         replacement = std::move(improved);
                     }
@@ -1120,6 +1173,7 @@ class CallerSimplifier
     std::vector<unsigned> widths_;
     size_t attempts_ = 0;
     int changes_ = 0;
+    bool structural_only_ = false;
 };
 } // namespace
 

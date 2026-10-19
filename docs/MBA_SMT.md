@@ -265,6 +265,33 @@ For `L` locals and at most `N` expanded expression nodes, context copies take
 bounded path-condition intersection. Expression nodes remain shared. Synthesis
 and SMT solving have exponential worst cases and retain their explicit budgets.
 
+A bounded structural walk precedes these searches. It reuses current locals and
+normalizes flag-field expressions before earlier predicates can exhaust the
+function budget. This walk does not expand callees or use path conditions:
+emitted expressions must prove equal for every valuation of their expanded
+bindings. Each proof is capped at 25 ms within the same function budget.
+Context-dependent constant queries and synthesis retain their guarded proofs.
+
+The ctree emitter prints dense 32-/64-bit clearing masks as complements, power-of-two
+field insertions as shifts, and complete field updates with the retained bits
+first, followed by insertions in increasing bit position. Bitwise operations
+use C integer promotions without redundant same-width sign casts. A signed left
+shift requires a known nonnegative operand whose maximum possible value is at
+most `INT_MAX >> shift` at the promoted width; other left shifts retain unsigned
+operands. Arithmetic overflow, signed comparisons, right-shift semantics and
+conversion order still require explicit types. Every emitted expression is
+retranslated and proved before installation.
+
+Replacements first minimize operation cost. At equal cost, a strictly decreasing
+presentation score counts casts, twice the remaining power-of-two
+multiplications, uncomplemented dense clearing masks, and leading field
+insertions. This score prevents later searches from replacing a readable update
+with an equal-cost multiplication or redundant cast. It estimates presentation,
+not runtime performance. Constant complements add no operation cost. Emission
+can take `O(N^2 log N)` time and `O(N)` temporary space when nested OR trees
+require repeated field collection and sorting; the existing 512-node and
+64-level limits bound this work.
+
 Examples include `mba_transform_2(x, 0)` becoming `(uint8_t)x`, a constant-selector
 call becoming `(uint8_t)(x ^ 0x56)`, and eliminating an impossible comparison
 after assigning a varying helper return to a local. Branchy callee bodies and
@@ -281,7 +308,8 @@ view's item pointers or text anchors. Pending updates are discarded
 when the view changes function or the plugin shuts down. Summaries live for one invocation;
 there is no persistent result cache. Limits are 16 callees, three nested callee
 levels, 4096 native bytes per callee, 512 expanded expression nodes, and 128
-expression queries, in addition to the time and scalar-program limits. Constant
+expression queries per phase (structural emission and search), in addition to
+the time and scalar-program limits. Constant
 queries run before symbolic expression enumeration. Tree traversal and repeated
 subtree translation can take quadratic time in expression size; solver work
 and the bounded callee decompilations are additional.
@@ -322,11 +350,21 @@ The view probe navigates forward and backward through its function list.
 | A6 | A caller fact refers to the correct immutable value version and every incoming path. Contextual rewrites depend on this. | Test overwrites, equal and unequal joins, false edges, contradictory guards, labels, and loop barriers; retranslate every emitted expression against the same snapshot. |
 | A7 | The supplied nested examples use 32-bit wrapping arithmetic and zero-extend their final result to 64 bits. The example reductions depend on this interpretation. | Compile unsigned fixtures, inspect captured return conversions, and compare complete 64-bit results at overflow boundaries; a different width or sign extension in the original binary would invalidate this interpretation. |
 | A8 | The flag-store example uses a 32-bit field and the shown definitions of its two Boolean flags. Its compact displayed form depends on A1, A3, A6 and this interpretation. | Prove the masked identity at every scalar byte width; test all byte inputs, retained-bit overlap, boundary words, observer aliases and volatile destinations; compile captured ARM64 and x86-64 pseudocode. |
+| A9 | Removing a signed cast from a field shift requires a nonnegative operand and a result representable in the promoted signed type. Readable field emission depends on this bound. | Test all flag-byte inputs, negative signed bytes, full-width boundary patterns, and two-bit fields shifted into the sign bit; compile and execute captured normal/deep pseudocode with undefined-behavior sanitization. |
 
 Bounded findings: **high**, incomplete effects or predecessors can manufacture
 proofs and must invalidate facts; **medium**, nonlinear/array queries may exhaust
 the budget without a rewrite; **low**, sample collisions can reduce search
 coverage but cannot authorize an unproved replacement.
+For field presentation, **high**, dropping an unsigned conversion can introduce
+C signed-shift undefined behavior even when bitvector equality holds; the range
+check and compiled sanitizer probes cover that distinction. **Medium**, a proof
+timeout can leave an expression unchanged; structural emission shares the
+existing budget and never bypasses proof admission.
+**Medium**, rewriting arbitrary multiplication as shifts before synthesis can
+obscure algebraic MBA identities; presentation converts multiplication only
+inside recognized field updates, and the nested-MBA regression checks both
+profiles.
 
 Primary references: [SMT-LIB bitvectors](https://smt-lib.org/theories-FixedSizeBitVectors.shtml),
 [functional arrays](https://smt-lib.org/theories-ArraysEx.shtml), and

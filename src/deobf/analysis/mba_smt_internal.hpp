@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mba_smt.hpp"
+#include "mba_smt_known_bits.hpp"
 
 #include <chrono>
 #include <optional>
@@ -113,13 +114,6 @@ class InvariantInference
 // complete site domain can accept one; a sample collision is never a proof.
 Term simplify_algebraic(SymbolicProgram &program, const SymbolicState &state, const Term &original);
 
-struct KnownBits
-{
-    uint64_t zero = 0;
-    uint64_t one = 0;
-};
-
-KnownBits known_bits(const Term &term);
 // Return a structural hypothesis. The algebraic pass must prove it before use.
 Term normalize_masks(const Term &term);
 

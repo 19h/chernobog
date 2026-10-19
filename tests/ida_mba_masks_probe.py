@@ -19,6 +19,9 @@ import ida_typeinf
 PROTOTYPES = {
     "mba_mask_value": "unsigned int mba_mask_value(unsigned int flags, signed char input);",
     "mba_mask_overlap": "unsigned int mba_mask_overlap(unsigned int flags, signed char input);",
+    "mba_mask_shift_signs": (
+        "unsigned int mba_mask_shift_signs(unsigned int value, signed char input);"
+    ),
     "mba_mask_store": "void mba_mask_store(unsigned int *flags, signed char input);",
     "mba_mask_volatile_store": (
         "void mba_mask_volatile_store(volatile unsigned int *flags, signed char input);"
@@ -52,6 +55,17 @@ def validate(name, text):
             raise RuntimeError("The flag update still has split masks or overlapping XOR: " + name)
         if name == "mba_mask_store" and len(re.findall(r"\binput\s*&\s*1\b", body)) > 1:
             raise RuntimeError("The store did not reuse the available low flag")
+        if name == "mba_mask_store":
+            rhs = re.search(r"\*flags\s*=\s*([^;]+);", body)
+            if not rhs:
+                raise RuntimeError("The flag store is absent")
+            rhs = rhs.group(1)
+            if not re.search(r"~\s*0x48u\b", rhs, re.IGNORECASE):
+                raise RuntimeError("The store did not print its clear mask as ~0x48u")
+            if not all(re.search(rf"<<\s*{amount}\b", rhs) for amount in (3, 6)):
+                raise RuntimeError("The store did not print both flag insertions as shifts")
+            if "input" in rhs or "(unsigned int)" in rhs or "(int)" in rhs:
+                raise RuntimeError("The store did not reuse flags without redundant casts")
     if name == "mba_mask_overlap" and "^" not in body:
         raise RuntimeError("Overlapping flag bits lost their XOR")
     if name in ("mba_mask_store", "mba_mask_volatile_store"):

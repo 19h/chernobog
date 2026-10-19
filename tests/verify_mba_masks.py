@@ -10,7 +10,46 @@ import subprocess
 import sys
 from pathlib import Path
 
-FUNCTIONS = ("mba_mask_value", "mba_mask_overlap", "mba_mask_store", "mba_mask_volatile_store")
+FUNCTIONS = (
+    "mba_mask_value",
+    "mba_mask_overlap",
+    "mba_mask_shift_signs",
+    "mba_mask_store",
+    "mba_mask_volatile_store",
+)
+
+ADAPTERS = """
+static uint32_t captured_value(uint32_t flags, int8_t input)
+{
+    return mba_mask_value(flags, input);
+}
+
+static uint32_t captured_overlap(uint32_t flags, int8_t input)
+{
+    return mba_mask_overlap(flags, input);
+}
+
+static uint32_t captured_shifts(uint32_t value, int8_t input)
+{
+    return mba_mask_shift_signs(value, input);
+}
+
+static void captured_store(uint32_t *flags, int8_t input)
+{
+    mba_mask_store(flags, input);
+}
+
+static void captured_volatile_store(volatile uint32_t *flags, int8_t input)
+{
+    mba_mask_volatile_store(flags, input);
+}
+
+int main(void)
+{
+    return verify_functions(captured_value, captured_overlap, captured_shifts,
+                            captured_store, captured_volatile_store);
+}
+"""
 
 
 def sha256(path):
@@ -27,7 +66,7 @@ def main():
         raise RuntimeError("The IDA capture contains validation errors")
     functions = {entry["name"]: entry["captures"] for entry in capture["functions"]}
     if set(functions) != set(FUNCTIONS):
-        raise RuntimeError("The capture does not contain all four masked flag fixtures")
+        raise RuntimeError("The capture does not contain all masked flag fixtures")
 
     output = arguments.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -42,18 +81,27 @@ def main():
     prefix.extend(("#define main reference_main", f'#include "{os.path.relpath(fixture, output)}"'))
     prefix.extend(f"#undef {name}" for name in FUNCTIONS)
     prefix.append("#undef main")
-    harness = (
-        "\nint main(void)\n{\n" "    return verify_functions(" + ", ".join(FUNCTIONS) + ");\n}\n"
-    )
 
     results = []
     for profile in ("normal", "deep"):
         source = output / f"{profile}.c"
         binary = output / f"{profile}.bin"
         definitions = [functions[name][profile] for name in FUNCTIONS]
-        source.write_text("\n".join(prefix + definitions) + harness, encoding="utf-8")
+        # IDA may print signed char as plain char. The adapters keep C function
+        # pointer types exact; -fsigned-char preserves the captured byte values.
+        source.write_text("\n".join(prefix + definitions) + ADAPTERS, encoding="utf-8")
         build = subprocess.run(
-            compiler + ["-std=c11", "-fsigned-char", "-O1", source.name, "-o", binary.name],
+            compiler
+            + [
+                "-std=c11",
+                "-fsigned-char",
+                "-O1",
+                "-fsanitize=undefined",
+                "-fno-sanitize-recover=undefined",
+                source.name,
+                "-o",
+                binary.name,
+            ],
             cwd=output,
             capture_output=True,
             text=True,

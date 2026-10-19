@@ -117,6 +117,25 @@ void test_branch_merges()
     check(common.conditions().empty(), "loop and label barriers discard path assumptions");
 }
 
+void test_unconditional_emission_queries()
+{
+    ScalarContext context({32, 32});
+    const Term input = context.value(0);
+    const Term shifted = expression(Op::Shl, input, constant(3, 8));
+    const Term multiplied = expression(Op::Mul, input, constant(8, 32));
+    context.assign(1, shifted);
+    context.assume(equal(input, constant(0, 32)), true);
+
+    ContextQuery query(context, multiplied, false);
+    check(query.valid() && query.program().blocks.size() == 1,
+          "structural queries omit path conditions and their invariant work");
+    Analysis analysis(query.program(), Options::deep());
+    check(analysis.verify(query.block(), 0, query.lower(context.value(1))) == Verdict::Verified,
+          "available local bindings remain usable in an unconditional emission proof");
+    check(analysis.verify(query.block(), 0, constant(0, 32)) == Verdict::Disproved,
+          "an omitted path condition cannot authorize a contextual constant replacement");
+}
+
 void test_compaction_and_emitted_proofs()
 {
     ScalarContext context({32, 32});
@@ -162,6 +181,7 @@ int main()
     test_symbolic_assignments();
     test_path_conditions();
     test_branch_merges();
+    test_unconditional_emission_queries();
     test_compaction_and_emitted_proofs();
     std::printf("MBA contextual failures: %d\n", failures);
     return failures != 0;

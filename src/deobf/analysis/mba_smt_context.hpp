@@ -38,10 +38,11 @@ class ScalarContext
 // Lower one expression and its path facts into an ordinary, immutable CFG.
 // The entry edge supplies the assumptions; the existing inductive verifier must
 // establish them at the rewrite site. No solver assertion bypasses that proof.
+// Omitting conditions requires equality for every valuation of the bindings.
 class ContextQuery
 {
   public:
-    ContextQuery(const ScalarContext &context, Term value);
+    ContextQuery(const ScalarContext &context, Term value, bool include_conditions = true);
 
     bool valid() const;
     const Program &program() const;

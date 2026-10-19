@@ -162,7 +162,7 @@ const ScalarContext::Bindings &ScalarContext::bindings() const { return bindings
 
 const std::vector<Term> &ScalarContext::conditions() const { return conditions_; }
 
-ContextQuery::ContextQuery(const ScalarContext &context, Term value)
+ContextQuery::ContextQuery(const ScalarContext &context, Term value, bool include_conditions)
 {
     if (!bounded(value))
     {
@@ -193,14 +193,17 @@ ContextQuery::ContextQuery(const ScalarContext &context, Term value)
     }
 
     Term condition;
-    for (const Term &predicate : context.conditions())
+    if (include_conditions)
     {
-        const Term next = translate(predicate, lower_variable, translated);
-        if (!next)
+        for (const Term &predicate : context.conditions())
         {
-            return;
+            const Term next = translate(predicate, lower_variable, translated);
+            if (!next)
+            {
+                return;
+            }
+            condition = condition ? expression(Op::And, condition, next, 8) : next;
         }
-        condition = condition ? expression(Op::And, condition, next, 8) : next;
     }
 
     // Offer only values that use symbols already needed by the query. Adding

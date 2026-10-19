@@ -95,8 +95,15 @@ def main():
                 report["errors"].append(f"{profile}: expected exactly one 0x94 field store")
             elif profile != "baseline":
                 rhs = stores[0].split("=", 1)[1]
-                if "^" in rhs or not re.search(r"0xFFFFFFB7|4294967223|-73[uUlL]*", rhs):
-                    report["errors"].append(f"{profile}: the field store still has split masks")
+                if not re.fullmatch(
+                    r"\s*\(?v\d+\s*&\s*~0x48u\)?\s*\|\s*\(?v\d+\s*<<\s*3\)?"
+                    r"\s*\|\s*\(?v\d+\s*<<\s*6\)?\s*;",
+                    rhs,
+                    re.IGNORECASE,
+                ):
+                    report["errors"].append(
+                        f"{profile}: expected a clear mask followed by two local flag shifts"
+                    )
         report["instruction_bytes_unchanged"] = (
             instruction_hash(entry) == report["instruction_sha256"]
         )

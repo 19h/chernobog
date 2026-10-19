@@ -11,4 +11,6 @@ bool emit_scalar_expression(cfunc_t &function, const ScalarContext &context, con
                             const tinfo_t &type, cexpr_t &output);
 
 size_t scalar_expression_cost(const cexpr_t &expression);
+// Break equal-operation-cost ties in favor of local reuse and flag-field syntax.
+bool scalar_expression_improves(const cexpr_t &candidate, const cexpr_t &original);
 } // namespace chernobog::mba_smt
