@@ -460,6 +460,7 @@ ida_add_plugin(
     src/deobf/analysis/mba_smt_semantics.cpp
     src/deobf/analysis/mba_smt_invariants.cpp
     src/deobf/analysis/mba_smt_synthesis.cpp
+    src/deobf/analysis/mba_smt_algebra.cpp
     src/deobf/handlers/mba_smt.cpp
     # NEW: MBA rule system
     src/deobf/rules/pattern_rule.cpp
@@ -841,7 +842,7 @@ if(BUILD_TESTING)
         chernobog_mba_smt_tests
         tests/mba_smt_tests.cpp src/deobf/analysis/mba_smt.cpp
         src/deobf/analysis/mba_smt_semantics.cpp src/deobf/analysis/mba_smt_invariants.cpp
-        src/deobf/analysis/mba_smt_synthesis.cpp)
+        src/deobf/analysis/mba_smt_synthesis.cpp src/deobf/analysis/mba_smt_algebra.cpp)
     target_include_directories(chernobog_mba_smt_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_include_directories(chernobog_mba_smt_tests SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
     target_link_libraries(chernobog_mba_smt_tests PRIVATE libz3)

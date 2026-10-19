@@ -25,6 +25,7 @@ class MicrocodeAdapter
     std::map<std::pair<size_t, size_t>, minsn_t *> originals;
     std::map<int64_t, size_t> frames;
     std::map<std::pair<uintptr_t, int>, size_t> locals;
+    std::map<std::tuple<int, int, int64_t, uint64_t, int>, size_t> local_values;
     size_t visits = 0;
     mblock_t *local_block = nullptr;
     minsn_t *local_instruction = nullptr;
@@ -145,6 +146,32 @@ class MicrocodeAdapter
         throw std::invalid_argument("unresolved address");
     }
 
+    Term translate_local_value(const mop_t &operand)
+    {
+        const bool stack_value = operand.t == mop_S;
+        const int index = stack_value ? 0 : operand.l->idx;
+        const int64_t offset = stack_value ? operand.s->off : operand.l->off;
+        const auto identity =
+            std::make_tuple(int(operand.t), index, offset, uint64_t(operand.valnum), operand.size);
+        const auto found = local_values.find(identity);
+        if (found != local_values.end())
+        {
+            return variable(found->second, unsigned(operand.size * 8));
+        }
+        if (program.widths.size() >= limits::storage_regions)
+        {
+            throw std::invalid_argument("local value budget");
+        }
+
+        const size_t id = program.widths.size();
+        program.widths.push_back(unsigned(operand.size * 8));
+        local_values.emplace(identity, id);
+        const Term value = variable(id, unsigned(operand.size * 8));
+        available.emplace_back(value, operand);
+        program.available.push_back(value);
+        return value;
+    }
+
     Term translate_operand(const mop_t &op, unsigned depth = 0)
     {
         if (depth > 64 || !bitvector::valid_byte_width(op.size) || op.oprops ||
@@ -172,6 +199,14 @@ class MicrocodeAdapter
         {
             return translate_instruction(op.d, depth + 1);
         }
+        if (local_instruction && ((op.t == mop_S && op.s && op.s->mba == mba) ||
+                                  (op.t == mop_l && op.l && op.l->mba == mba)))
+        {
+            // A pure expression cannot write between these implicit reads.
+            // Different value numbers and overlapping views remain independent
+            // symbols; this loses possible equalities rather than inventing them.
+            return translate_local_value(op);
+        }
         if (op.t == mop_v || op.t == mop_S || op.t == mop_l)
         {
             if (op.valnum != 0)
@@ -198,6 +233,8 @@ class MicrocodeAdapter
             return Op::Sub;
         case m_mul:
             return Op::Mul;
+        case m_udiv:
+            return Op::UnsignedDivide;
         case m_and:
             return Op::And;
         case m_or:
@@ -554,14 +591,16 @@ class MicrocodeAdapter
                (term->op == Op::Load || contains_load(term->left) || contains_load(term->right));
     }
 
-    static size_t operation_count(const minsn_t *ins)
+    static size_t expression_cost(const minsn_t *ins)
     {
         if (!ins)
         {
             return 0;
         }
-        return size_t(ins->opcode != m_mov) + (ins->l.t == mop_d ? operation_count(ins->l.d) : 0) +
-               (ins->r.t == mop_d ? operation_count(ins->r.d) : 0);
+        const size_t weight =
+            ins->opcode == m_udiv ? limits::division_cost : size_t(ins->opcode != m_mov);
+        return weight + (ins->l.t == mop_d ? expression_cost(ins->l.d) : 0) +
+               (ins->r.t == mop_d ? expression_cost(ins->r.d) : 0);
     }
 
     mop_t emit_operand(const Term &term, ea_t ea)
@@ -591,6 +630,9 @@ class MicrocodeAdapter
             break;
         case Op::Mul:
             node.opcode = m_mul;
+            break;
+        case Op::UnsignedDivide:
+            node.opcode = m_udiv;
             break;
         case Op::And:
             node.opcode = m_and;
@@ -627,6 +669,18 @@ class MicrocodeAdapter
             break;
         case Op::Sar:
             node.opcode = m_sar;
+            break;
+        case Op::Equal:
+            node.opcode = m_setz;
+            break;
+        case Op::NotEqual:
+            node.opcode = m_setnz;
+            break;
+        case Op::UnsignedLess:
+            node.opcode = m_setb;
+            break;
+        case Op::SignedLess:
+            node.opcode = m_setl;
             break;
         default:
             throw std::invalid_argument("unavailable operand");
@@ -707,8 +761,8 @@ bool apply_verified_proposal(MicrocodeAdapter &adapter, Analysis &analysis,
         replacement.r.erase();
     }
 
-    if (MicrocodeAdapter::operation_count(&replacement) >=
-        MicrocodeAdapter::operation_count(original))
+    if (MicrocodeAdapter::expression_cost(&replacement) >=
+        MicrocodeAdapter::expression_cost(original))
     {
         return false;
     }
@@ -789,7 +843,7 @@ struct LocalCandidate
 {
     mblock_t *block;
     minsn_t *instruction;
-    size_t operations;
+    size_t cost;
 };
 
 bool collect_local_candidates(mblock_t *block, minsn_t *instruction, unsigned depth,
@@ -815,6 +869,7 @@ bool collect_local_candidates(mblock_t *block, minsn_t *instruction, unsigned de
     case m_add:
     case m_sub:
     case m_mul:
+    case m_udiv:
     case m_and:
     case m_or:
     case m_xor:
@@ -823,11 +878,15 @@ bool collect_local_candidates(mblock_t *block, minsn_t *instruction, unsigned de
     case m_shl:
     case m_shr:
     case m_sar:
+    case m_setz:
+    case m_setnz:
+    case m_setb:
+    case m_setl:
     {
-        const size_t operations = MicrocodeAdapter::operation_count(instruction);
-        if (operations >= 2)
+        const size_t cost = MicrocodeAdapter::expression_cost(instruction);
+        if (cost >= 2)
         {
-            candidates.push_back({block, instruction, operations});
+            candidates.push_back({block, instruction, cost});
         }
         break;
     }
@@ -855,7 +914,7 @@ int simplify_local_trees(mbl_array_t *mba, FunctionBudget &budget)
 
     std::stable_sort(candidates.begin(), candidates.end(),
                      [](const LocalCandidate &left, const LocalCandidate &right)
-                     { return left.operations > right.operations; });
+                     { return left.cost > right.cost; });
 
     for (const LocalCandidate &candidate : candidates)
     {

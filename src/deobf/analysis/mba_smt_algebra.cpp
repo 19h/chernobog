@@ -1,0 +1,521 @@
+#include "mba_smt_internal.hpp"
+
+#include <algorithm>
+#include <map>
+#include <optional>
+
+namespace chernobog::mba_smt::detail
+{
+namespace
+{
+constexpr size_t max_boolean_inputs = 4;
+constexpr size_t max_boolean_candidates = 65536;
+
+uint64_t width_mask(unsigned bits)
+{
+    return bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1;
+}
+
+struct KnownBits
+{
+    uint64_t zero = 0;
+    uint64_t one = 0;
+};
+
+struct UnsignedRange
+{
+    uint64_t minimum;
+    uint64_t maximum;
+};
+
+KnownBits known_bits(const Term &term)
+{
+    const uint64_t mask = width_mask(term->bits);
+    if (term->op == Op::Constant)
+    {
+        return {~term->value & mask, term->value & mask};
+    }
+    if (term->op == Op::Variable || term->op == Op::Load)
+    {
+        return {};
+    }
+
+    const KnownBits left = known_bits(term->left);
+    const KnownBits right = term->right ? known_bits(term->right) : KnownBits{};
+    switch (term->op)
+    {
+    case Op::Not:
+        return {left.one, left.zero};
+    case Op::And:
+        return {(left.zero | right.zero) & mask, left.one & right.one};
+    case Op::Or:
+        return {left.zero & right.zero, (left.one | right.one) & mask};
+    case Op::Xor:
+        return {(left.zero & right.zero) | (left.one & right.one),
+                (left.zero & right.one) | (left.one & right.zero)};
+    case Op::Low:
+        return {left.zero & mask, left.one & mask};
+    case Op::ZeroExtend:
+        return {left.zero | (mask ^ width_mask(term->left->bits)), left.one};
+    case Op::SignExtend:
+    {
+        const uint64_t sign = uint64_t{1} << (term->left->bits - 1);
+        const uint64_t high = mask ^ width_mask(term->left->bits);
+        return {left.zero | ((left.zero & sign) != 0 ? high : 0),
+                left.one | ((left.one & sign) != 0 ? high : 0)};
+    }
+    case Op::Equal:
+    case Op::NotEqual:
+    case Op::UnsignedLess:
+    case Op::SignedLess:
+        return {mask ^ 1, 0};
+    default:
+        return {};
+    }
+}
+
+UnsignedRange unsigned_range(const Term &term)
+{
+    const KnownBits bits = known_bits(term);
+    const uint64_t mask = width_mask(term->bits);
+    const UnsignedRange fallback{bits.one, mask & ~bits.zero};
+    if (term->op == Op::UnsignedDivide && term->right->op == Op::Constant &&
+        term->right->value != 0)
+    {
+        const auto numerator = unsigned_range(term->left);
+        return {numerator.minimum / term->right->value, numerator.maximum / term->right->value};
+    }
+    if (term->op == Op::Add)
+    {
+        const auto left = unsigned_range(term->left);
+        const auto right = unsigned_range(term->right);
+        if (left.maximum <= mask - right.maximum)
+        {
+            return {left.minimum + right.minimum, left.maximum + right.maximum};
+        }
+    }
+    return fallback;
+}
+
+bool nonuniform_constant(const Term &term)
+{
+    return term && term->op == Op::Constant && term->value != 0 &&
+           (term->value & width_mask(term->bits)) != width_mask(term->bits);
+}
+
+// Boolean words may themselves be expressions, for example x ^ 0x393F5533.
+// A cut treats such a word as one input. Its relationship to other words is
+// restored by the full-width proof, never assumed from truth-table samples.
+bool is_boolean_input(const Term &term)
+{
+    switch (term->op)
+    {
+    case Op::Variable:
+    case Op::Load:
+    case Op::Low:
+    case Op::High:
+    case Op::ZeroExtend:
+    case Op::SignExtend:
+        return true;
+    case Op::Xor:
+        return nonuniform_constant(term->left) || nonuniform_constant(term->right);
+    default:
+        return false;
+    }
+}
+
+class AlgebraicSimplifier
+{
+  public:
+    AlgebraicSimplifier(SymbolicProgram &program, const SymbolicState &state)
+        : program_(program), session_(program.session), state_(state)
+    {
+    }
+
+    Term rewrite(const Term &original)
+    {
+        if (!original || !original->left || !session_.has_budget())
+        {
+            return original;
+        }
+        const std::string identifier = key(original);
+        const auto cached = rewritten_.find(identifier);
+        if (cached != rewritten_.end())
+        {
+            return cached->second;
+        }
+        if (++visited_ > limits::expression_visits)
+        {
+            return original;
+        }
+
+        Term term = expression(original->op, rewrite(original->left), rewrite(original->right),
+                               original->bits);
+        term = normalize_complement(term);
+        term = factor_constant_offset(term);
+
+        const z3::expr value = program_.evaluate(term, state_).simplify();
+        uint64_t literal = 0;
+        if (value.is_numeral_u64(literal))
+        {
+            term = constant(literal, term->bits);
+        }
+        else if (term->op == Op::UnsignedDivide)
+        {
+            term = simplify_division(term);
+        }
+        else if (term->op == Op::Equal || term->op == Op::NotEqual || term->op == Op::UnsignedLess)
+        {
+            term = simplify_comparison(term);
+        }
+        else if (cost(term) >= 2)
+        {
+            if (Term candidate = simplify_boolean(term))
+            {
+                term = std::move(candidate);
+            }
+        }
+
+        if (key(term) != identifier && !prove(original, term))
+        {
+            term = original;
+        }
+        rewritten_.emplace(identifier, term);
+        return term;
+    }
+
+  private:
+    bool prove(const Term &before, const Term &after)
+    {
+        const z3::expr original = program_.evaluate(before, state_);
+        const z3::expr replacement = program_.evaluate(after, state_);
+        const auto normalized_original = program_.apply_verified_rewrites(original);
+        const auto normalized_replacement = program_.apply_verified_rewrites(replacement);
+        z3::params simplifier(session_.context);
+        simplifier.set("som", true);
+        simplifier.set("bv_sort_ac", true);
+        simplifier.set("max_steps", 10000u);
+        z3::solver solver(session_.context);
+        solver.add((normalized_original != normalized_replacement).simplify(simplifier));
+        ++session_.statistics.candidates;
+        const auto result = session_.check(solver, "MBA compositional equality proof");
+        if (result == z3::unsat)
+        {
+            // These equalities are unconditional in this immutable symbol
+            // context. Later proofs may substitute them without importing
+            // block-specific assumptions or accepting a sampled equality.
+            program_.retain_verified_rewrite(original, replacement);
+            return true;
+        }
+        if (result == z3::sat)
+        {
+            ++session_.statistics.disproved;
+        }
+        else
+        {
+            ++session_.statistics.unknown;
+        }
+        return false;
+    }
+
+    Term factor_constant_offset(const Term &term)
+    {
+        if (term->op != Op::Add)
+        {
+            return term;
+        }
+        const Term offset = term->right->op == Op::Constant ? term->right : term->left;
+        const Term product = term->right->op == Op::Constant ? term->left : term->right;
+        if (offset->op != Op::Constant || product->op != Op::Mul)
+        {
+            return term;
+        }
+        const Term factor = product->left->op == Op::Constant ? product->left : product->right;
+        const Term input = product->left->op == Op::Constant ? product->right : product->left;
+        if (factor->op != Op::Constant || factor->value == 0 || offset->value % factor->value != 0)
+        {
+            return term;
+        }
+
+        // Moving an integral offset through a constant factor can expose a
+        // Boolean-word identity across an arithmetic expression boundary.
+        const Term inner =
+            expression(Op::Add, input, constant(offset->value / factor->value, term->bits));
+        const Term factored = expression(Op::Mul, factor, inner);
+        if (!prove(term, factored))
+        {
+            return term;
+        }
+        return expression(Op::Mul, factor, rewrite(inner));
+    }
+
+    Term normalize_complement(const Term &term) const
+    {
+        if (term->op != Op::Xor)
+        {
+            return term;
+        }
+        const Term literal = term->right->op == Op::Constant ? term->right : term->left;
+        const Term input = term->right->op == Op::Constant ? term->left : term->right;
+        if (literal->op != Op::Constant)
+        {
+            return term;
+        }
+        const uint64_t value = literal->value & width_mask(term->bits);
+        const uint64_t complement = value ^ width_mask(term->bits);
+        if (complement >= value)
+        {
+            return term;
+        }
+        return expression(Op::Not, expression(Op::Xor, input, constant(complement, term->bits)));
+    }
+
+    Term simplify_division(const Term &term) const
+    {
+        if (term->right->op != Op::Constant || term->right->value == 0)
+        {
+            return term;
+        }
+        const uint64_t divisor = term->right->value;
+        const auto numerator = unsigned_range(term->left);
+        const uint64_t minimum = numerator.minimum / divisor;
+        const uint64_t maximum = numerator.maximum / divisor;
+        if (minimum == maximum)
+        {
+            return constant(minimum, term->bits);
+        }
+        if (maximum - minimum != 1)
+        {
+            return term;
+        }
+
+        // The upper quotient exists within the numerator's range, so its
+        // threshold cannot overflow the unsigned result width.
+        const uint64_t threshold = maximum * divisor;
+        Term upper =
+            expression(Op::UnsignedLess, constant(threshold - 1, term->bits), term->left, 8);
+        if (term->bits != 8)
+        {
+            upper = expression(Op::ZeroExtend, upper, {}, term->bits);
+        }
+        return minimum == 0 ? upper : expression(Op::Add, constant(minimum, term->bits), upper);
+    }
+
+    Term simplify_comparison(const Term &term) const
+    {
+        const auto left = unsigned_range(term->left);
+        const auto right = unsigned_range(term->right);
+        if (term->op == Op::UnsignedLess)
+        {
+            if (left.maximum < right.minimum)
+            {
+                return constant(1, term->bits);
+            }
+            if (left.minimum >= right.maximum)
+            {
+                return constant(0, term->bits);
+            }
+        }
+        else if (left.maximum < right.minimum || right.maximum < left.minimum)
+        {
+            return constant(term->op == Op::NotEqual, term->bits);
+        }
+        return term;
+    }
+
+    bool collect_inputs(const Term &term, unsigned bits, std::vector<Term> &inputs) const
+    {
+        if (term->bits != bits)
+        {
+            return false;
+        }
+        if (term->op == Op::Constant)
+        {
+            return true;
+        }
+        if (is_boolean_input(term))
+        {
+            const auto identifier = key(term);
+            const auto same_input = [&](const Term &input) { return key(input) == identifier; };
+            if (std::none_of(inputs.begin(), inputs.end(), same_input))
+            {
+                inputs.push_back(term);
+            }
+            return inputs.size() <= max_boolean_inputs;
+        }
+        switch (term->op)
+        {
+        case Op::Add:
+        case Op::Sub:
+        case Op::Mul:
+        case Op::And:
+        case Op::Or:
+        case Op::Xor:
+        case Op::Not:
+        case Op::Neg:
+            return collect_inputs(term->left, bits, inputs) &&
+                   (!term->right || collect_inputs(term->right, bits, inputs));
+        default:
+            return false;
+        }
+    }
+
+    std::optional<uint16_t> truth_table(const Term &term, const std::vector<Term> &inputs)
+    {
+        const uint64_t mask = width_mask(term->bits);
+        z3::expr_vector symbols(session_.context);
+        for (const Term &input : inputs)
+        {
+            symbols.push_back(program_.evaluate(input, state_));
+        }
+
+        const z3::expr original = program_.evaluate(term, state_);
+        uint16_t table = 0;
+        for (size_t assignment = 0; assignment < (size_t{1} << inputs.size()); ++assignment)
+        {
+            if (!session_.has_budget())
+            {
+                return {};
+            }
+            z3::expr_vector values(session_.context);
+            for (size_t input = 0; input < inputs.size(); ++input)
+            {
+                const bool set = (assignment & (size_t{1} << input)) != 0;
+                values.push_back(session_.context.bv_val(set ? mask : 0, term->bits));
+            }
+            z3::expr instantiated = original;
+            instantiated = instantiated.substitute(symbols, values).simplify();
+            uint64_t value = 0;
+            if (!instantiated.is_numeral_u64(value) || (value != 0 && value != mask))
+            {
+                return {};
+            }
+            if (value != 0)
+            {
+                table |= uint16_t(uint16_t{1} << assignment);
+            }
+        }
+        return table;
+    }
+
+    Term synthesize_table(uint16_t target, const std::vector<Term> &inputs, unsigned bits,
+                          size_t maximum_cost)
+    {
+        using Entry = std::pair<uint16_t, Term>;
+        const size_t assignments = size_t{1} << inputs.size();
+        const uint16_t table_mask = uint16_t((uint32_t{1} << assignments) - 1);
+        std::vector<std::vector<Entry>> layers(maximum_cost + 1);
+        std::map<uint16_t, Term> best;
+        auto offer = [&](uint16_t table, Term term, size_t term_cost)
+        {
+            const auto found = best.find(table);
+            if (term_cost <= maximum_cost &&
+                (found == best.end() || cost(found->second) > term_cost))
+            {
+                best[table] = term;
+                layers[term_cost].emplace_back(table, std::move(term));
+            }
+        };
+        offer(0, constant(0, bits), 0);
+        offer(table_mask, constant(width_mask(bits), bits), 0);
+        for (size_t input = 0; input < inputs.size(); ++input)
+        {
+            uint16_t table = 0;
+            for (size_t assignment = 0; assignment < assignments; ++assignment)
+            {
+                if ((assignment & (size_t{1} << input)) != 0)
+                {
+                    table |= uint16_t(uint16_t{1} << assignment);
+                }
+            }
+            offer(table, inputs[input], cost(inputs[input]));
+        }
+
+        size_t generated = 0;
+        for (size_t level = 0; level <= maximum_cost; ++level)
+        {
+            if (!session_.has_budget())
+            {
+                return {};
+            }
+            if (level != 0)
+            {
+                for (const auto &[table, term] : layers[level - 1])
+                {
+                    offer(uint16_t(table ^ table_mask), expression(Op::Not, term), level);
+                }
+                for (size_t left_cost = 0; left_cost < level; ++left_cost)
+                {
+                    const size_t right_cost = level - left_cost - 1;
+                    if (left_cost > right_cost)
+                    {
+                        continue;
+                    }
+                    for (const auto &[left_table, left] : layers[left_cost])
+                    {
+                        for (const auto &[right_table, right] : layers[right_cost])
+                        {
+                            if (generated > max_boolean_candidates - 3)
+                            {
+                                return {};
+                            }
+                            generated += 3;
+                            if (generated % 64 == 0 && !session_.has_budget())
+                            {
+                                return {};
+                            }
+                            offer(left_table & right_table, expression(Op::And, left, right),
+                                  level);
+                            offer(left_table | right_table, expression(Op::Or, left, right), level);
+                            offer(left_table ^ right_table, expression(Op::Xor, left, right),
+                                  level);
+                        }
+                    }
+                }
+            }
+            const auto found = best.find(target);
+            if (found != best.end() && cost(found->second) <= level)
+            {
+                return found->second;
+            }
+        }
+        return {};
+    }
+
+    Term simplify_boolean(const Term &term)
+    {
+        std::vector<Term> inputs;
+        if (!collect_inputs(term, term->bits, inputs) || inputs.empty())
+        {
+            return {};
+        }
+        const auto table = truth_table(term, inputs);
+        if (!table)
+        {
+            return {};
+        }
+        const size_t maximum = std::min(limits::replacement_operations, cost(term) - 1);
+        Term candidate = synthesize_table(*table, inputs, term->bits, maximum);
+        if (!candidate || cost(candidate) >= cost(term))
+        {
+            return {};
+        }
+
+        return prove(term, candidate) ? candidate : Term{};
+    }
+
+    SymbolicProgram &program_;
+    SolverSession &session_;
+    const SymbolicState &state_;
+    std::map<std::string, Term> rewritten_;
+    size_t visited_ = 0;
+};
+} // namespace
+
+Term simplify_algebraic(SymbolicProgram &program, const SymbolicState &state, const Term &original)
+{
+    AlgebraicSimplifier simplifier(program, state);
+    Term result = simplifier.rewrite(original);
+    return result && cost(result) < cost(original) ? result : Term{};
+}
+} // namespace chernobog::mba_smt::detail

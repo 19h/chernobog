@@ -19,6 +19,7 @@ inline constexpr size_t expression_visits = 512;
 inline constexpr unsigned expression_depth = 64;
 inline constexpr size_t synthesis_inputs = 8;
 inline constexpr size_t replacement_operations = 8;
+inline constexpr size_t division_cost = 8;
 inline constexpr unsigned invariant_degree = 2;
 inline constexpr size_t invariant_variables = 4;
 inline constexpr unsigned normal_budget_ms = 1000;
@@ -32,6 +33,7 @@ enum class Op
     Add,
     Sub,
     Mul,
+    UnsignedDivide,
     And,
     Or,
     Xor,
@@ -120,7 +122,7 @@ struct Options
 {
     unsigned budget_ms = limits::normal_budget_ms;
     unsigned query_ms = 250;
-    unsigned resource_limit = 1000000;
+    unsigned resource_limit = 10000000;
     size_t max_invariants = 256;
     size_t max_candidates = 4096;
     std::function<bool()> cancelled;

@@ -197,6 +197,8 @@ z3::expr SymbolicProgram::evaluate(const Term &term, const SymbolicState &state)
         return smt::arithmetic(smt::Arithmetic::Sub, left, right);
     case Op::Mul:
         return smt::arithmetic(smt::Arithmetic::Mul, left, right);
+    case Op::UnsignedDivide:
+        return z3::udiv(left, right);
     case Op::And:
         return smt::arithmetic(smt::Arithmetic::And, left, right);
     case Op::Or:
@@ -331,6 +333,23 @@ const SymbolicState &SymbolicProgram::before_statement(size_t block, size_t stat
     return statement_states_.at(block).at(statement);
 }
 
+void SymbolicProgram::retain_verified_rewrite(const z3::expr &before, const z3::expr &after)
+{
+    verified_rewrites_.emplace_back(before, after);
+}
+
+z3::expr SymbolicProgram::apply_verified_rewrites(z3::expr value) const
+{
+    for (const auto &[before, after] : verified_rewrites_)
+    {
+        z3::expr_vector source(session.context), replacement(session.context);
+        source.push_back(before);
+        replacement.push_back(after);
+        value = value.substitute(source, replacement);
+    }
+    return value;
+}
+
 Verdict verify_replacement(SymbolicProgram &symbolic_program, const BlockInvariants &invariants,
                            size_t block, size_t statement_index, const Term &replacement)
 {
@@ -366,8 +385,10 @@ Verdict verify_replacement(SymbolicProgram &symbolic_program, const BlockInvaria
     }
 
     const auto &state = symbolic_program.before_statement(block, statement_index);
-    solver.add(symbolic_program.evaluate(statement.value, state) !=
-               symbolic_program.evaluate(replacement, state));
+    solver.add(
+        symbolic_program.apply_verified_rewrites(
+            symbolic_program.evaluate(statement.value, state)) !=
+        symbolic_program.apply_verified_rewrites(symbolic_program.evaluate(replacement, state)));
 
     const auto result = session.check(solver, "MBA contextual emitted replacement mismatch");
     if (result == z3::unsat)

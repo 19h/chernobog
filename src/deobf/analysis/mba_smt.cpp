@@ -54,6 +54,11 @@ bool validate_term(const Term &term, const Program &program, size_t &visits, uns
     }
 
     const unsigned input_width = term->left->bits;
+    if (term->op == Op::UnsignedDivide &&
+        (!term->right || term->right->op != Op::Constant || term->right->value == 0))
+    {
+        return false;
+    }
     if (term->op == Op::Load)
     {
         return input_width == program.address_bits && !term->right;
@@ -76,6 +81,11 @@ bool validate_term(const Term &term, const Program &program, size_t &visits, uns
     }
 
     if (!validate_term(term->right, program, visits, depth + 1))
+    {
+        return false;
+    }
+    if (term->op == Op::UnsignedDivide && term->right->bits < 64 &&
+        (term->right->value >> term->right->bits) != 0)
     {
         return false;
     }
@@ -170,7 +180,8 @@ size_t cost(const Term &term)
     {
         return 0;
     }
-    return 1 + cost(term->left) + cost(term->right);
+    const size_t operation_cost = term->op == Op::UnsignedDivide ? limits::division_cost : 1;
+    return operation_cost + cost(term->left) + cost(term->right);
 }
 
 std::string key(const Term &term)

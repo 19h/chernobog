@@ -19,6 +19,10 @@ FIXTURE_FUNCTIONS = (
     "mba_smt_semantic32",
     "mba_smt_quadratic",
     "mba_smt_alias",
+    "mba_transform_2",
+    "mba_transform_1",
+    "opaque_predicate_2",
+    "opaque_predicate_1",
 )
 
 
@@ -71,6 +75,14 @@ def capture_function(name):
             raise RuntimeError("The memory-backed polynomial invariant was not used")
     if name == "mba_smt_alias" and returns_zero:
         raise RuntimeError("Unknown pointer aliases were treated as disjoint")
+    if name == "mba_transform_2" and ("^" not in deep or "*" in deep):
+        raise RuntimeError("The symbolic byte expression was not reduced to XOR")
+    if name == "mba_transform_1" and deep.count("~") > 1:
+        raise RuntimeError("The symbolic Boolean selector was not reduced")
+    if name == "opaque_predicate_2" and "+" in deep:
+        raise RuntimeError("Complemented symbolic words were not reduced")
+    if name == "opaque_predicate_1" and "/" in deep:
+        raise RuntimeError("The two-valued unsigned quotient was not reduced")
 
     return {
         "name": name,

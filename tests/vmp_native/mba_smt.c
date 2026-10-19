@@ -24,6 +24,31 @@ __attribute__((noinline)) uint8_t mba_smt_alias(uint8_t *p, uint8_t *q, uint8_t 
     return (uint8_t)(*p ^ x);
 }
 
+__attribute__((noinline)) uint8_t mba_transform_2(int8_t x, int8_t y)
+{
+    return (uint8_t)(x - 2 * (x & y) + y);
+}
+
+__attribute__((noinline)) uint8_t mba_transform_1(int8_t x, int8_t y, int8_t z)
+{
+    return (uint8_t)~((~x | z) & (x | y));
+}
+
+__attribute__((noinline)) uint32_t opaque_predicate_2(uint32_t x, uint32_t y)
+{
+    return (UINT32_C(0x5A75D737) * (((x ^ UINT32_C(0x393F5533)) | (y ^ UINT32_C(0x5E909F27))) +
+                                    (x ^ UINT32_C(0xC6C0AACC))) +
+            UINT32_C(0x5A75D737)) |
+           UINT32_C(0x55588C79);
+}
+
+__attribute__((noinline)) uint64_t opaque_predicate_1(uint32_t x, uint32_t y)
+{
+    return ((((y ^ UINT32_C(0x3FA3EB91)) | (x ^ UINT32_C(0x29D81B96))) - UINT32_C(0x1F206DED)) |
+            UINT32_C(0xAB597BD5)) /
+           UINT64_C(0x52AC7B5E);
+}
+
 int main(void)
 {
     unsigned comparisons = 0;
@@ -50,7 +75,44 @@ int main(void)
                 return 4;
             }
             comparisons += 4;
+            if (mba_transform_2((uint8_t)x, (uint8_t)y) != (uint8_t)(x ^ y))
+            {
+                return 5;
+            }
+            for (unsigned z = 0; z < 256; ++z)
+            {
+                const uint8_t selector = (uint8_t)~(y ^ (x & (y ^ z)));
+                if (mba_transform_1((uint8_t)x, (uint8_t)y, (uint8_t)z) != selector)
+                {
+                    return 6;
+                }
+                ++comparisons;
+            }
+            ++comparisons;
         }
+    }
+    uint32_t state = UINT32_C(0xBAD5EED);
+    for (unsigned index = 0; index < 100000; ++index)
+    {
+        state = state * UINT32_C(1664525) + UINT32_C(1013904223);
+        const uint32_t x = state;
+        state = state * UINT32_C(1664525) + UINT32_C(1013904223);
+        const uint32_t y = state;
+        const uint32_t reduced =
+            (UINT32_C(0x5A75D737) * ((x ^ UINT32_C(0xC6C0AACC)) & (y ^ UINT32_C(0x5E909F27)))) |
+            UINT32_C(0x55588C79);
+        const uint32_t dividend =
+            (((y ^ UINT32_C(0x3FA3EB91)) | (x ^ UINT32_C(0x29D81B96))) - UINT32_C(0x1F206DED)) |
+            UINT32_C(0xAB597BD5);
+        if (opaque_predicate_2(x, y) != reduced || opaque_predicate_2(x, y) == 0)
+        {
+            return 7;
+        }
+        if (opaque_predicate_1(x, y) != 2 + (dividend >= UINT32_C(0xF805721A)))
+        {
+            return 8;
+        }
+        comparisons += 2;
     }
     printf("MBA SMT native comparisons: %u\n", comparisons);
     return 0;

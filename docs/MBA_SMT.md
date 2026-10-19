@@ -26,7 +26,10 @@ register views and byte-addressed memory. Stores update exact bytes in target
 endianness, including symbolic aliases. Stack/local bases are unconstrained
 stable frame addresses in the same memory array, without disjointness assumptions.
 Unsupported instructions invalidate mutable registers and memory. Local value
-trees retain register value numbers as distinct input identities. Cross-block
+trees retain register value numbers as distinct input identities. Pure local
+trees also represent stack and local-variable operands as typed symbols, keyed
+by their owner, offset, width and value number. Distinct overlapping views are
+independent when their relationship is unavailable. Cross-block
 propagation rejects numbered snapshots whose reaching definitions are not
 established; it also rejects unsupported effects, segmentation and widths.
 
@@ -38,23 +41,39 @@ interrupted proof discards inferred facts. This handles cycles without assuming
 that bounded unrolling proves a loop invariant. It does not infer quantified
 heap invariants or enumerate every polynomial relation.
 
-Candidate search reconstructs a conjunction basis from up to 16 Boolean-word
+Candidate search first reduces Boolean words over up to four symbolic inputs,
+including subexpressions such as `x ^ constant`. A bounded truth-table search
+uses AND, OR, XOR and NOT; every candidate requires a full-width equality proof.
+Completed unconditional equalities are retained within that snapshot and
+composed in later checks. The final emitted-code check may substitute only
+those proved equalities, never sampled relationships or unproved assumptions.
+
+The remaining search reconstructs a conjunction basis from up to 16 Boolean-word
 evaluations, fits arbitrary modular affine coefficients using solver
 counterexamples, and enumerates a typed operator grammar. Samples filter search;
 only UNSAT of the full-context mismatch authorizes a replacement. The emitted
 SDK expression is independently translated and rechecked. SAT, UNKNOWN,
 unsupported cases and exhausted budgets preserve the original. New rewrites
-reduce the actual arithmetic operation count and preserve explicit memory
+reduce a structural cost estimate and preserve explicit memory
 instructions, calls, destinations and control flow. Ordinary owned frame-value
 operands can simplify under the normal-completion memory model; their implicit
 read multiplicity is not an observable in that model. Volatile or unresolved
 memory operands remain unsupported. After each rewrite, old snapshot receipts
 are discarded before further analysis.
 
+Unsigned division is admitted only with a nonzero constant divisor. Known bits
+and conservative unsigned ranges can replace a constant quotient or a quotient
+with two adjacent possible values by a comparison. Ordinary operations cost one;
+division costs eight, so this can increase the instruction count while removing
+division. These weights guide search and are not a target-specific latency model.
+
 Cross-block limits are 64 blocks, 256 statements and 64 scalar storage regions.
 Local tree analysis remains available when a complete CFG exceeds these limits;
 it visits at most 256 expression nodes. Synthesis uses at most eight candidate
-inputs and eight candidate operations. The existing catalog is unaffected.
+inputs and eight candidate operations. Boolean reduction explores at most
+65,536 candidates per table; structural reductions can retain a larger existing
+subexpression when the complete replacement still lowers cost. The existing
+catalog is unaffected.
 Array query capture remains bounded;
 `formula_complete=false` identifies omitted or truncated receipts.
 
@@ -66,6 +85,20 @@ assignments with V <= 4. General expression search remains exponential in its
 grammar bound; solver work is additional and is stopped by the shared budget.
 
 ## Validation and assumptions
+
+The symbolic-expression fixtures include these reductions. `x`, `y`, and `z`
+denote unconstrained input values; byte results are truncated to 8 bits.
+
+| Fixture | Equivalent result |
+|---|---|
+| `mba_transform_2` | `(uint8_t)(x ^ y)` |
+| `mba_transform_1` | `(uint8_t)~(y ^ (x & (y ^ z)))` |
+| `opaque_predicate_2` | `(0x5A75D737u * ((x ^ 0xC6C0AACCu) & (y ^ 0x5E909F27u))) \| 0x55588C79u` |
+| `opaque_predicate_1` | `2 + (numerator >= 0xF805721Au)` |
+
+For the last row, `numerator` is the original masked 32-bit numerator, extended
+unsigned to 64 bits. Both opaque examples are nonzero but value-dependent;
+replacing either complete result with a single constant would be incorrect.
 
 `chernobog.mba_smt` tests scalar byte widths, CFG joins and guards, quadratic
 induction and invalid bases/backedges, symbolic aliases, partial writes, byte

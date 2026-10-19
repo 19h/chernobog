@@ -569,6 +569,11 @@ Term CandidateSynthesis::search_grammar()
 
 Term CandidateSynthesis::run()
 {
+    if (Term candidate = simplify_algebraic(symbolic_, state_, original_))
+    {
+        return candidate;
+    }
+
     collect_inputs();
     if (!initialize_samples())
     {

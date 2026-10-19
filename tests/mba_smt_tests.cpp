@@ -357,6 +357,132 @@ void test_failures_and_profiles()
     program.blocks[0].statements[0].value = add(read_register(0), number(1, 16));
     check(!validate(program), "implicit width conversion rejects malformed input");
 }
+
+void check_symbolic_reduction(Program program, size_t destination, Term original, Term expected,
+                              const char *description)
+{
+    program.blocks[0].statements = {Statement::assign(destination, original)};
+    Analysis analysis(program);
+    const auto proposals = analysis.run();
+    check(!proposals.empty(), description);
+    if (proposals.empty())
+    {
+        const auto &statistics = analysis.statistics();
+        std::fprintf(
+            stderr,
+            "  width=%u cost=%zu candidates=%zu unknown=%zu exhausted=%zu elapsed_ns=%llu\n",
+            original->bits, cost(original), statistics.candidates, statistics.unknown,
+            statistics.exhausted, static_cast<unsigned long long>(statistics.elapsed_ns));
+    }
+    if (!proposals.empty())
+    {
+        check(cost(proposals.front().replacement) < cost(original),
+              "symbolic reduction lowers the expression cost");
+        check(analysis.verify(0, 0, expected) == Verdict::Verified,
+              "symbolic reduction preserves the expected value for every input");
+        check(analysis.verify(0, 0, constant(0, original->bits)) == Verdict::Disproved,
+              "composed equality proofs do not authorize an unrelated constant");
+    }
+}
+
+void test_boolean_words_and_variable_views()
+{
+    for (unsigned bits : {8u, 16u, 32u, 64u})
+    {
+        const auto x = variable(0, bits);
+        const auto y = variable(1, bits);
+        const auto z = variable(2, bits);
+        const auto carry = multiply(constant(2, bits), expression(Op::And, x, y));
+        const auto xor_mba = add(expression(Op::Sub, x, carry), y);
+        check_symbolic_reduction(make_program(bits), 3, xor_mba, expression(Op::Xor, x, y),
+                                 "arithmetic Boolean words reduce to XOR");
+
+        const auto inverted = expression(Op::Or, expression(Op::Not, x), z);
+        const auto direct = expression(Op::Or, x, y);
+        const auto selector = expression(Op::Not, expression(Op::And, inverted, direct));
+        const auto expected = expression(
+            Op::Not, expression(Op::Xor, y, expression(Op::And, x, expression(Op::Xor, y, z))));
+        check_symbolic_reduction(make_program(bits), 3, selector, expected,
+                                 "three symbolic Boolean words admit a smaller selector");
+    }
+
+    auto program = make_program(8);
+    const auto x = expression(Op::SignExtend, variable(0, 8), {}, 32);
+    const auto y = expression(Op::SignExtend, variable(1, 8), {}, 32);
+    const auto promoted =
+        add(expression(Op::Sub, x, multiply(constant(2, 32), expression(Op::And, x, y))), y);
+    check_symbolic_reduction(program, 3, expression(Op::Low, promoted, {}, 8),
+                             expression(Op::Xor, variable(0, 8), variable(1, 8)),
+                             "signed byte promotions retain their symbolic identities");
+}
+
+Term masked_opaque_value()
+{
+    const auto x = variable(0, 32);
+    const auto y = variable(1, 32);
+    const auto first = expression(Op::Xor, x, constant(0x393F5533, 32));
+    const auto second = expression(Op::Xor, y, constant(0x5E909F27, 32));
+    const auto complement = expression(Op::Xor, x, constant(0xC6C0AACC, 32));
+    const auto sum = add(expression(Op::Or, first, second), complement);
+    const auto product = add(multiply(constant(0x5A75D737, 32), sum), constant(0x5A75D737, 32));
+    return expression(Op::Or, product, constant(0x55588C79, 32));
+}
+
+void test_symbolic_opaque_expressions()
+{
+    const auto value = masked_opaque_value();
+    const auto complement = expression(Op::Xor, variable(0, 32), constant(0xC6C0AACC, 32));
+    const auto second = expression(Op::Xor, variable(1, 32), constant(0x5E909F27, 32));
+    const auto expected = expression(
+        Op::Or, multiply(constant(0x5A75D737, 32), expression(Op::And, complement, second)),
+        constant(0x55588C79, 32));
+    check_symbolic_reduction(make_program(32), 3, value, expected,
+                             "complemented symbolic words reduce inside masked arithmetic");
+
+    auto predicate = make_program(32);
+    predicate.widths[3] = 8;
+    check_symbolic_reduction(predicate, 3, expression(Op::NotEqual, value, constant(0, 32)),
+                             constant(1, 8), "masked opaque expression is provably nonzero");
+
+    auto program = make_program(32);
+    program.widths[3] = 64;
+    const auto x = expression(Op::Xor, variable(0, 32), constant(0x29D81B96, 32));
+    const auto y = expression(Op::Xor, variable(1, 32), constant(0x3FA3EB91, 32));
+    const auto difference = expression(Op::Sub, expression(Op::Or, x, y), constant(0x1F206DED, 32));
+    const auto masked = expression(Op::Or, difference, constant(0xAB597BD5, 32));
+    const auto numerator = expression(Op::ZeroExtend, masked, {}, 64);
+    const auto quotient = expression(Op::UnsignedDivide, numerator, constant(0x52AC7B5E, 64));
+    const auto upper = expression(Op::UnsignedLess, constant(0xF8057219, 64), numerator, 8);
+    const auto result = add(constant(2, 64), expression(Op::ZeroExtend, upper, {}, 64));
+    check_symbolic_reduction(program, 3, quotient, result,
+                             "two-valued unsigned division becomes a comparison");
+
+    program.blocks[0].statements = {Statement::assign(3, quotient)};
+    Analysis varying(program, Options::deep());
+    check(varying.verify(0, 0, constant(2, 64)) == Verdict::Disproved,
+          "the quotient is not incorrectly replaced by its minimum");
+    check(varying.verify(0, 0, constant(3, 64)) == Verdict::Disproved,
+          "the quotient is not incorrectly replaced by its maximum");
+
+    const auto signed_numerator = expression(Op::SignExtend, masked, {}, 64);
+    program.blocks[0].statements[0].value =
+        expression(Op::UnsignedDivide, signed_numerator, constant(0x52AC7B5E, 64));
+    Analysis signed_input(program, Options::deep());
+    check(signed_input.verify(0, 0, result) == Verdict::Disproved,
+          "signed extension cannot inherit unsigned numerator bounds");
+
+    program.blocks[0].statements[0].value =
+        expression(Op::UnsignedDivide, numerator, constant(0, 64));
+    check(!validate(program), "division by zero is not modeled as a total SMT operation");
+    program.blocks[0].statements[0].value =
+        expression(Op::UnsignedDivide, numerator, variable(3, 64));
+    check(!validate(program), "unconstrained divisors retain their native fault behavior");
+
+    auto narrow = make_program(8);
+    narrow.blocks[0].statements = {
+        Statement::assign(3, expression(Op::UnsignedDivide, variable(0, 8), constant(256, 8)))};
+    check(!validate(narrow), "a divisor that truncates to zero is rejected");
+}
 } // namespace
 
 int main()
@@ -371,6 +497,8 @@ int main()
     test_guards_and_aliasing();
     test_partial_registers_and_endianness();
     test_failures_and_profiles();
+    test_boolean_words_and_variable_views();
+    test_symbolic_opaque_expressions();
     std::printf("MBA SMT failures: %d\n", failures);
     return failures != 0;
 }
