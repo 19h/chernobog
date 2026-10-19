@@ -101,19 +101,29 @@ int main(void)
         const uint32_t reduced =
             (UINT32_C(0x5A75D737) * ((x ^ UINT32_C(0xC6C0AACC)) & (y ^ UINT32_C(0x5E909F27)))) |
             UINT32_C(0x55588C79);
-        const uint32_t dividend =
-            (((y ^ UINT32_C(0x3FA3EB91)) | (x ^ UINT32_C(0x29D81B96))) - UINT32_C(0x1F206DED)) |
-            UINT32_C(0xAB597BD5);
+        const uint32_t difference =
+            ((y ^ UINT32_C(0x3FA3EB91)) | (x ^ UINT32_C(0x29D81B96))) - UINT32_C(0x1F206DED);
         if (opaque_predicate_2(x, y) != reduced || opaque_predicate_2(x, y) == 0)
         {
             return 7;
         }
-        if (opaque_predicate_1(x, y) != 2 + (dividend >= UINT32_C(0xF805721A)))
+        if (opaque_predicate_1(x, y) !=
+            2 + ((difference & UINT32_C(0x50000000)) == UINT32_C(0x50000000)))
         {
             return 8;
         }
         comparisons += 2;
     }
+
+    if (opaque_predicate_1(UINT32_C(0xE3A1F254), UINT32_C(0x3FA3EB91)) != 2 ||
+        opaque_predicate_1(UINT32_C(0x36F8767A), UINT32_C(0x3FA3EB91)) != 3 ||
+        opaque_predicate_2(UINT32_C(0xC6C0AACC), UINT32_C(0x5E909F27)) != UINT32_C(0x55588C79) ||
+        opaque_predicate_2(UINT32_C(0xC5E2DBB5), UINT32_C(0x5DB2EE5E)) != UINT32_MAX)
+    {
+        return 9;
+    }
+    comparisons += 4;
+
     printf("MBA SMT native comparisons: %u\n", comparisons);
     return 0;
 }

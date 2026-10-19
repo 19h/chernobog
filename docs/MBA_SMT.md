@@ -66,6 +66,11 @@ and conservative unsigned ranges can replace a constant quotient or a quotient
 with two adjacent possible values by a comparison. Ordinary operations cost one;
 division costs eight, so this can increase the instruction count while removing
 division. These weights guide search and are not a target-specific latency model.
+Known-bit threshold reduction then walks a comparison from its most significant
+bit. A fixed bit can settle the suffix of that comparison, leaving an equality
+or inequality on just the relevant unknown bits. Constant masks and extensions
+are removed only from bits the resulting test does not observe. The replacement
+still requires an unconditional SMT proof and the emitted-code verification.
 
 Cross-block limits are 64 blocks, 256 statements and 64 scalar storage regions.
 Local tree analysis remains available when a complete CFG exceeds these limits;
@@ -83,6 +88,8 @@ elimination performs at most O(B K E) solver calls: each unsuccessful round
 removes at least one candidate. Boolean-word reconstruction evaluates O(2^V)
 assignments with V <= 4. General expression search remains exponential in its
 grammar bound; solver work is additional and is stopped by the shared budget.
+A threshold reduction visits its operand tree and scans at most 64 bit positions;
+its equality proof remains subject to the shared solver budget.
 
 ## Validation and assumptions
 
@@ -94,19 +101,34 @@ denote unconstrained input values; byte results are truncated to 8 bits.
 | `mba_transform_2` | `(uint8_t)(x ^ y)` |
 | `mba_transform_1` | `(uint8_t)~(y ^ (x & (y ^ z)))` |
 | `opaque_predicate_2` | `(0x5A75D737u * ((x ^ 0xC6C0AACCu) & (y ^ 0x5E909F27u))) \| 0x55588C79u` |
-| `opaque_predicate_1` | `2 + (numerator >= 0xF805721Au)` |
+| `opaque_predicate_1` | `2 + ((difference & 0x50000000u) == 0x50000000u)` |
 
-For the last row, `numerator` is the original masked 32-bit numerator, extended
-unsigned to 64 bits. Both opaque examples are nonzero but value-dependent;
-replacing either complete result with a single constant would be incorrect.
+For the last row, `difference` is the 32-bit value
+`((y ^ 0x3FA3EB91u) | (x ^ 0x29D81B96u)) - 0x1F206DEDu`.
+Only bits 30 and 28 affect its quotient. Both opaque examples are nonzero but
+value-dependent; replacing either complete result with a single constant would
+be incorrect. In particular, `opaque_predicate_1` returns 2 for
+`(0xE3A1F254, 0x3FA3EB91)` and 3 for `(0x36F8767A, 0x3FA3EB91)`.
+`opaque_predicate_2` returns `0x55588C79` for `(0xC6C0AACC, 0x5E909F27)`
+and `0xFFFFFFFF` for `(0xC5E2DBB5, 0x5DB2EE5E)`.
+
+These are intraprocedural expression reductions. Constant arguments at a call
+site do not constrain a separately decompiled helper's parameters. The current
+pass preserves calls and does not propagate return-value ranges across them;
+an opaque condition that calls such a helper can therefore remain in a caller.
 
 `chernobog.mba_smt` tests scalar byte widths, CFG joins and guards, quadratic
 induction and invalid bases/backedges, symbolic aliases, partial writes, byte
 order, cancellation, exhaustion and solver UNKNOWN. The native control in
 `tests/vmp_native/mba_smt.c` checks arithmetic, arbitrary loop counts and equal/
-distinct pointer cases. `tests/ida_mba_smt_probe.py` exercises the installed
-plugin, both profiles and restoration in a fresh fixture database. Native
+distinct pointer cases, including the two-bit quotient identity. Threshold tests
+cover both comparison directions, both fixed-bit outcomes, exact boundaries,
+and 8-, 16-, 32- and 64-bit operands. `tests/ida_mba_smt_probe.py` exercises the
+installed plugin, both profiles and restoration in a fresh fixture database. Native
 control execution alone does not prove that the plugin rewrote these functions.
+The probe's `CHERNOBOG_MBA_PROBE_FUNCTIONS` setting accepts a comma-separated
+subset of the listed fixture names so the same checks can exercise an existing
+binary with those functions, without modifying its original database.
 
 | ID | Assumption / dependent results | Falsification probe |
 |---|---|---|

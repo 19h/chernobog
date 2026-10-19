@@ -81,8 +81,16 @@ def capture_function(name):
         raise RuntimeError("The symbolic Boolean selector was not reduced")
     if name == "opaque_predicate_2" and "+" in deep:
         raise RuntimeError("Complemented symbolic words were not reduced")
-    if name == "opaque_predicate_1" and "/" in deep:
-        raise RuntimeError("The two-valued unsigned quotient was not reduced")
+    if name == "opaque_predicate_1":
+        for pseudocode in (normal, deep, restored):
+            if "/" in pseudocode:
+                raise RuntimeError("The two-valued unsigned quotient was not reduced")
+            if not re.search(r"0x50000000|1342177280", pseudocode):
+                raise RuntimeError(
+                    "The quotient comparison was not reduced to its two relevant bits"
+                )
+            if re.search(r"0xAB597BD5|0xF8057219", pseudocode, re.IGNORECASE):
+                raise RuntimeError("The quotient still contains its redundant mask or threshold")
 
     return {
         "name": name,
@@ -90,6 +98,8 @@ def capture_function(name):
         "deep": deep_stats,
         "restored": restored_stats,
         "pseudocode": deep,
+        "normal_pseudocode": normal,
+        "restored_pseudocode": restored,
     }
 
 
@@ -106,7 +116,13 @@ def main():
 
         evaluate('chernobog_set_option("rax", 0)')
         evaluate('chernobog_set_option("mba_smt", 1)')
-        for name in FIXTURE_FUNCTIONS:
+        selected = os.environ.get("CHERNOBOG_MBA_PROBE_FUNCTIONS")
+        functions = tuple(selected.split(",")) if selected else FIXTURE_FUNCTIONS
+        if len(set(functions)) != len(functions) or any(
+            name not in FIXTURE_FUNCTIONS for name in functions
+        ):
+            raise RuntimeError("Invalid MBA fixture function selection")
+        for name in functions:
             report["functions"].append(capture_function(name))
 
         applied = sum(

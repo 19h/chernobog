@@ -124,6 +124,117 @@ bool is_boolean_input(const Term &term)
     }
 }
 
+// A comparison may observe only some bits of a word. Remove conversions and
+// constant masks that do not affect those bits before constructing the test.
+Term observed_bits(Term term, uint64_t mask)
+{
+    for (;;)
+    {
+        if ((term->op == Op::ZeroExtend || term->op == Op::SignExtend || term->op == Op::Low) &&
+            (mask & ~width_mask(term->left->bits)) == 0)
+        {
+            term = term->left;
+            continue;
+        }
+
+        if (term->op == Op::And || term->op == Op::Or)
+        {
+            const Term literal = term->left->op == Op::Constant ? term->left : term->right;
+            const Term input = term->left->op == Op::Constant ? term->right : term->left;
+            if (literal->op == Op::Constant)
+            {
+                const uint64_t retained = literal->value & mask;
+                const bool transparent = term->op == Op::And ? retained == mask : retained == 0;
+                if (transparent)
+                {
+                    term = input;
+                    continue;
+                }
+            }
+        }
+        break;
+    }
+
+    if (mask == width_mask(term->bits))
+    {
+        return term;
+    }
+    return expression(Op::And, term, constant(mask, term->bits));
+}
+
+// Compare from the most significant bit. A fixed bit that differs from the
+// threshold determines the result whenever all earlier unknown bits match.
+// Some such decision chains reduce to one equality or inequality on a mask.
+Term simplify_threshold(const Term &term)
+{
+    if (term->op != Op::UnsignedLess)
+    {
+        return term;
+    }
+
+    const bool greater = term->left->op == Op::Constant;
+    const Term literal = greater ? term->left : term->right;
+    const Term input = greater ? term->right : term->left;
+    if (literal->op != Op::Constant)
+    {
+        return term;
+    }
+
+    const uint64_t threshold = literal->value & width_mask(input->bits);
+    const KnownBits known = known_bits(input);
+    uint64_t mask = 0;
+    bool suffix_result = false;
+    for (unsigned remaining = input->bits; remaining != 0; --remaining)
+    {
+        const uint64_t bit = uint64_t{1} << (remaining - 1);
+        if (((known.zero | known.one) & bit) == 0)
+        {
+            mask |= bit;
+            continue;
+        }
+
+        const bool input_set = (known.one & bit) != 0;
+        const bool threshold_set = (threshold & bit) != 0;
+        if (input_set != threshold_set)
+        {
+            suffix_result = greater ? input_set : threshold_set;
+            break;
+        }
+    }
+
+    // With a true suffix, > needs leading ones and < needs leading zeroes.
+    // With a false suffix, > needs a nonzero prefix and < a prefix not all ones.
+    // Opposite trailing bits can therefore be discarded before testing whether
+    // the remaining threshold bits have one uniform value.
+    const bool matching_value = suffix_result ? greater : !greater;
+    const bool removable_value = !matching_value;
+    while (mask != 0)
+    {
+        const uint64_t lowest = mask & (~mask + 1);
+        if (((threshold & lowest) != 0) != removable_value)
+        {
+            break;
+        }
+        mask &= ~lowest;
+    }
+    if (mask == 0)
+    {
+        return constant(suffix_result, term->bits);
+    }
+
+    const uint64_t expected = matching_value ? mask : 0;
+    if ((threshold & mask) != expected)
+    {
+        return term;
+    }
+
+    const Term observed = observed_bits(input, mask);
+    const Op comparison = suffix_result ? Op::Equal : Op::NotEqual;
+    const Term candidate =
+        expression(comparison, observed, constant(expected, observed->bits), term->bits);
+    return cost(candidate) < cost(term) ? candidate : term;
+}
+
 class AlgebraicSimplifier
 {
   public:
@@ -270,7 +381,7 @@ class AlgebraicSimplifier
         return expression(Op::Not, expression(Op::Xor, input, constant(complement, term->bits)));
     }
 
-    Term simplify_division(const Term &term) const
+    Term simplify_division(const Term &term)
     {
         if (term->right->op != Op::Constant || term->right->value == 0)
         {
@@ -294,6 +405,7 @@ class AlgebraicSimplifier
         const uint64_t threshold = maximum * divisor;
         Term upper =
             expression(Op::UnsignedLess, constant(threshold - 1, term->bits), term->left, 8);
+        upper = rewrite(upper);
         if (term->bits != 8)
         {
             upper = expression(Op::ZeroExtend, upper, {}, term->bits);
@@ -320,7 +432,7 @@ class AlgebraicSimplifier
         {
             return constant(term->op == Op::NotEqual, term->bits);
         }
-        return term;
+        return simplify_threshold(term);
     }
 
     bool collect_inputs(const Term &term, unsigned bits, std::vector<Term> &inputs) const

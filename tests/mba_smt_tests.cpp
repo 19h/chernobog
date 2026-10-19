@@ -452,10 +452,17 @@ void test_symbolic_opaque_expressions()
     const auto masked = expression(Op::Or, difference, constant(0xAB597BD5, 32));
     const auto numerator = expression(Op::ZeroExtend, masked, {}, 64);
     const auto quotient = expression(Op::UnsignedDivide, numerator, constant(0x52AC7B5E, 64));
-    const auto upper = expression(Op::UnsignedLess, constant(0xF8057219, 64), numerator, 8);
+    const auto selected = expression(Op::And, difference, constant(0x50000000, 32));
+    const auto upper = expression(Op::Equal, selected, constant(0x50000000, 32), 8);
     const auto result = add(constant(2, 64), expression(Op::ZeroExtend, upper, {}, 64));
     check_symbolic_reduction(program, 3, quotient, result,
-                             "two-valued unsigned division becomes a comparison");
+                             "two-valued unsigned division becomes a two-bit test");
+
+    program.blocks[0].statements = {Statement::assign(3, quotient)};
+    Analysis reduced(program);
+    const auto proposals = reduced.run();
+    check(!proposals.empty() && cost(proposals.front().replacement) <= cost(result),
+          "the emitted quotient drops the forced mask bits and wide comparison");
 
     program.blocks[0].statements = {Statement::assign(3, quotient)};
     Analysis varying(program, Options::deep());
@@ -483,6 +490,71 @@ void test_symbolic_opaque_expressions()
         Statement::assign(3, expression(Op::UnsignedDivide, variable(0, 8), constant(256, 8)))};
     check(!validate(narrow), "a divisor that truncates to zero is rejected");
 }
+
+void test_known_bit_thresholds()
+{
+    struct ThresholdCase
+    {
+        Op operation;
+        uint64_t mask;
+        uint64_t threshold;
+        bool greater;
+        Op comparison;
+        uint64_t selected;
+        uint64_t expected;
+    };
+
+    // Exercise both comparison directions and both outcomes at the first
+    // differing fixed bit, including an exact threshold and bit 63.
+    const ThresholdCase cases[] = {
+        {Op::Or, 0xAB, 0xF8, true, Op::Equal, 0x50, 0x50},
+        {Op::Or, 0xAB, 0xF8, false, Op::NotEqual, 0x50, 0x50},
+        {Op::And, 0xD4, 0x20, true, Op::NotEqual, 0xC0, 0},
+        {Op::And, 0xD4, 0x20, false, Op::Equal, 0xC0, 0},
+        {Op::Or, 0xAB, 0xAB, true, Op::NotEqual, 0x54, 0},
+        {Op::And, 0xD4, 0xD4, false, Op::NotEqual, 0xD4, 0xD4},
+    };
+    for (unsigned bits : {8u, 16u, 32u, 64u})
+    {
+        const unsigned shift = bits - 8;
+        for (const ThresholdCase &test : cases)
+        {
+            auto program = make_program(bits);
+            program.widths[3] = 8;
+            const auto input = variable(0, bits);
+            const auto masked =
+                expression(test.operation, input, constant(test.mask << shift, bits));
+            const auto threshold = constant(test.threshold << shift, bits);
+            const auto original = test.greater ? expression(Op::UnsignedLess, threshold, masked, 8)
+                                               : expression(Op::UnsignedLess, masked, threshold, 8);
+            uint64_t selected_mask = test.selected << shift;
+            if (test.operation == Op::Or && test.mask == test.threshold)
+            {
+                selected_mask |= (uint64_t{1} << shift) - 1;
+            }
+            const auto selected = expression(Op::And, input, constant(selected_mask, bits));
+            const auto expected =
+                expression(test.comparison, selected, constant(test.expected << shift, bits), 8);
+
+            program.blocks[0].statements = {Statement::assign(3, original)};
+            Analysis analysis(program);
+            check(analysis.verify(0, 0, expected) == Verdict::Verified,
+                  "known-bit threshold identity holds across scalar widths");
+
+            if (bits < 64)
+            {
+                const auto widened = expression(Op::ZeroExtend, masked, {}, 64);
+                const auto wide_threshold = constant(test.threshold << shift, 64);
+                const auto comparison =
+                    test.greater ? expression(Op::UnsignedLess, wide_threshold, widened, 8)
+                                 : expression(Op::UnsignedLess, widened, wide_threshold, 8);
+                check_symbolic_reduction(
+                    program, 3, comparison, expected,
+                    "threshold synthesis handles both directions and suffixes");
+            }
+        }
+    }
+}
 } // namespace
 
 int main()
@@ -499,6 +571,7 @@ int main()
     test_failures_and_profiles();
     test_boolean_words_and_variable_views();
     test_symbolic_opaque_expressions();
+    test_known_bit_thresholds();
     std::printf("MBA SMT failures: %d\n", failures);
     return failures != 0;
 }
