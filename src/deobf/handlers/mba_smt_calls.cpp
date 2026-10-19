@@ -34,7 +34,7 @@ unsigned integer_bits(const tinfo_t &type)
 
 Term resize_integer(Term value, unsigned bits, bool sign_extend)
 {
-    if (!value || bits == 0)
+    if (!value || value->bits == 0 || bits == 0)
     {
         return {};
     }
@@ -796,7 +796,7 @@ class CallerSimplifier
                 }
                 bindings.erase(local);
                 if (local >= 0 && size_t(local) < safety_.safe.size() && safety_.safe[local] &&
-                    value->y->op == cot_num)
+                    value->y->op == cot_num && integer_bits(value->y->type) != 0)
                 {
                     bindings[local] =
                         convert_integer(constant(value->y->numval(), integer_bits(value->y->type)),
