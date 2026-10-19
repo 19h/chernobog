@@ -54,6 +54,19 @@ Add an SDK-independent adapter at
 chernobog terms, adapter outcomes, and budget/cancellation inputs; CoBRA types
 remain private to the implementation.
 
+Use the existing `chernobog::mba_smt` namespace and `Term` type from
+`mba_smt.hpp`. `Term` is `std::shared_ptr<const Expression>`; no existing
+`TypedSnapshot` or `TypedTermRef` abstraction is assumed. Define any additional
+snapshot-view structure before storing it by value. A forward declaration is
+insufficient for a by-value data member.
+
+The public header excludes CoBRA, Abseil, Highway, and `<expected>` headers and
+must compile in a C++17 consumer independently of the C++23 implementation.
+Budget callbacks and adapter statuses use standard types. Allocation failures
+and recoverable upstream exceptions preserve the original expression. Declare
+the generator `noexcept` only if its implementation catches and translates all
+such exceptions into an adapter failure without allocating on the failure path.
+
 Refactor the algebraic candidate interface used by
 `mba_smt_synthesis.cpp` and `mba_smt_algebra.cpp` so backend selection covers
 both top-level synthesis and nested reconstruction. Updating only
@@ -134,6 +147,11 @@ changing the width of arithmetic inside `y`. Construct the mask without an
 undefined host shift. Other known-bit constraints can be added later through
 separately verified encodings.
 
+Validate the scalar width before calling a mask helper; mapping every width
+greater than or equal to 64 to an all-one mask does not admit invalid widths.
+Exercise semilinear partitioning, signature evaluation, and full-width checks
+at 24, 40, 48, and 56 bits as well as the other admitted widths.
+
 Count the tree occurrences that lowering will materialize, not just unique
 nodes in the shared chernobog term DAG. Stop before cloning a DAG into an
 oversized CoBRA tree.
@@ -153,15 +171,29 @@ and `spot_check` to true. Compute any supplied signature according to CoBRA's
 own Boolean-input convention, using its evaluator. Do not pass chernobog's
 all-one-word signature as though it were CoBRA's zero/one signature.
 
-Assign deterministic unique names to interned leaves. Reconstruct every output
-variable through `outcome.real_vars[expr.var_index]` and the original name-to-term
-table. Reject an invalid index, duplicate/unknown mapping, malformed expression,
-unsupported node, width mismatch, or oversized output.
+Assign deterministic unique names to interned leaves. At the pinned revision,
+`outcome.real_vars` is `std::vector<std::string>` and `Expr::var_index` is
+`uint32_t`. It is a compact-index-to-name map, not an integer permutation of
+the original leaf indices. Bounds-check `expr.var_index`, obtain the name from
+`outcome.real_vars[expr.var_index]`, and look that name up in the original
+name-to-term table. Reject an invalid index, duplicate/unknown mapping, malformed
+expression, unsupported node, width mismatch, or oversized output. Do not infer
+the original index from the compact index or assume an identity ordering on a
+fast path.
 
 Require a successful result, `kind == kSimplified`, a non-null expression, and
 `verified == true` for the configured spot-check path. This flag records a
 candidate filter, never formal acceptance. A constant output with no remaining
-variables is valid input to the proof gates.
+variables is valid input to the proof gates. No variable node is valid when
+`real_vars` is empty; a constant expression does not require a dummy variable.
+
+After restoring typed leaves, remove structurally redundant masks on pure
+zero-extension terms before measuring candidate cost. For
+`zext(y) & mask`, the AND is redundant when the width-masked `mask` contains
+every bit of the extension's `low_mask`. Otherwise retain it. This prevents the
+injected constraint wrapper from inflating the restored expression's cost.
+The normalized candidate still passes the candidate proof gate; this fold does
+not create a proof receipt by itself.
 
 Measure cost after restoring opaque typed terms. Neither a shorter rendered
 string nor a smaller CoBRA tree establishes a cheaper chernobog expression.
@@ -293,7 +325,7 @@ query/evidence capture policies continue to apply.
 
 | Validation group | Required evidence |
 |---|---|
-| Adapter semantics | Exhaustive small-width replay and independent word evaluator checks at every admitted width; boundary wraparound, sign extension, extraction, and oversized shifts |
+| Adapter semantics | Exhaustive small-width replay and independent word evaluator checks at every admitted width; boundary wraparound, sign extension, extraction, oversized shifts, and restored zero-extension masks before cost comparison |
 | Algebraic coverage | Linear, masked semilinear, polynomial, mixed-product, constant, and nested MBA fixtures with proved smaller outputs for a designated positive set |
 | Candidate rejection | `x*(x+1)` false zero fit; deliberately corrupted candidate; sparse-disagreement and nonlinear signature collisions |
 | Emission rejection | Correct candidate followed by an injected wrong cast, shift, width, destination, or load occurrence; no mutation |
@@ -303,6 +335,7 @@ query/evidence capture policies continue to apply.
 | Existing behavior | Catalog, nested MBA, masks, caller context, field presentation, symbolic executor, invariant, and memory regressions |
 | Shipped path | Installed-plugin normal/deep captures, independently compiled pseudocode/native oracle checks, preserved effects, and installation identity verification |
 | Platforms | Native build/load evidence for existing release targets; cross-compilation evidence reported separately |
+| Header and failure isolation | Standalone C++17 public-header consumer, private C++23 implementation, and injected allocation/upstream exceptions converted to unchanged results |
 
 Compare legacy and CoBRA on identical immutable fixtures, IDA versions, analysis
 profiles, and machine conditions. Report solved/applied counts, proof outcomes,
