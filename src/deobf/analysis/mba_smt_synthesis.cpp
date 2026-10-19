@@ -1,6 +1,7 @@
 #include "mba_smt_internal.hpp"
 
 #include <algorithm>
+#include <map>
 #include <utility>
 
 namespace chernobog::mba_smt::detail
@@ -30,6 +31,38 @@ bool collect_ast_ids(const z3::expr &root, std::unordered_set<unsigned> &identif
         for (unsigned argument = 0; argument < current.num_args(); ++argument)
         {
             pending.push_back(current.arg(argument));
+        }
+    }
+    return true;
+}
+
+bool matches_word_samples(const z3::expr &original, const z3::expr &candidate,
+                          const z3::expr_vector &inputs, unsigned bits, SolverSession &session)
+{
+    const uint64_t mask = bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1;
+    uint64_t random_state = UINT64_C(0xD1B54A32D192ED03);
+    z3::params simplifier(session.context);
+    simplifier.set("max_steps", 10000u);
+    for (unsigned sample = 0; sample < 8; ++sample)
+    {
+        if (!session.has_budget())
+        {
+            return false;
+        }
+
+        z3::expr_vector replacements(session.context);
+        for (unsigned input = 0; input < inputs.size(); ++input)
+        {
+            random_state = random_state * UINT64_C(6364136223846793005) + 1;
+            const uint64_t value = sample == 0 ? input + 1 : random_state;
+            replacements.push_back(session.context.bv_val(value & mask, bits));
+        }
+
+        z3::expr difference = original != candidate;
+        difference = difference.substitute(inputs, replacements).simplify(simplifier);
+        if (!difference.is_false())
+        {
+            return false;
         }
     }
     return true;
@@ -116,74 +149,75 @@ bool CandidateSynthesis::acceptable_cost(const Term &candidate) const
     return candidate_cost < original_cost || key(candidate) < original_key_;
 }
 
-Term CandidateSynthesis::search_linear_mba()
+Term reconstruct_linear_mba(SymbolicProgram &program, const SymbolicState &state,
+                            const Term &original, const std::vector<Term> &inputs)
 {
-    std::unordered_set<unsigned> original_nodes;
-    if (!collect_ast_ids(original_value_, original_nodes))
-    {
-        return {};
-    }
-
-    std::vector<Term> inputs;
-    z3::expr_vector source_terms(session_.context);
-    for (const Term &input : inputs_)
-    {
-        const z3::expr value = symbolic_.evaluate(input, state_);
-        if (original_nodes.count(Z3_get_ast_id(value.ctx(), value)) != 0)
-        {
-            inputs.push_back(input);
-            source_terms.push_back(value);
-        }
-    }
     if (inputs.empty() || inputs.size() > max_boolean_variables)
     {
         return {};
     }
 
+    SolverSession &session = program.session;
+    const unsigned bits = original->bits;
+    const z3::expr original_value = program.evaluate(original, state);
+    z3::expr_vector source_terms(session.context);
+    for (const Term &input : inputs)
+    {
+        if (input->bits != bits)
+        {
+            return {};
+        }
+        source_terms.push_back(program.evaluate(input, state));
+    }
+
     const size_t assignment_count = size_t{1} << inputs.size();
-    const uint64_t word_mask = bit_width_ == 64 ? UINT64_MAX : (uint64_t{1} << bit_width_) - 1;
-    std::vector<uint64_t> truth_values(assignment_count);
+    const uint64_t word_mask = bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1;
     std::vector<uint64_t> coefficients(assignment_count);
-    z3::params simplifier(session_.context);
+    z3::params simplifier(session.context);
     simplifier.set("max_steps", 10000u);
 
     for (size_t assignment = 0; assignment < assignment_count; ++assignment)
     {
-        if (!session_.has_budget())
+        if (!session.has_budget())
         {
             return {};
         }
 
-        z3::expr_vector replacements(session_.context);
+        z3::expr_vector replacements(session.context);
         for (size_t input = 0; input < inputs.size(); ++input)
         {
             const uint64_t value = (assignment & (size_t{1} << input)) != 0 ? word_mask : 0;
-            replacements.push_back(session_.context.bv_val(value, bit_width_));
+            replacements.push_back(session.context.bv_val(value, bits));
         }
 
-        z3::expr instantiated = original_value_;
+        z3::expr instantiated = original_value;
         instantiated = instantiated.substitute(source_terms, replacements).simplify(simplifier);
-        if (!instantiated.is_numeral_u64(truth_values[assignment]))
+        if (!instantiated.is_numeral_u64(coefficients[assignment]))
         {
             return {};
         }
     }
 
-    // For linear MBAs, all-zero/all-one evaluations determine coefficients
-    // of the conjunction basis. Nonlinear inputs can fit the same table; the
-    // final full-width proof is therefore required in every case.
-    coefficients[0] = truth_values[0];
-    Term candidate = coefficients[0] != 0 ? constant(coefficients[0], bit_width_) : Term{};
+    // The subset transform recovers the conjunction basis in O(n * 2^n).
+    // A set input is an all-one word (-1), so each nonconstant coefficient
+    // changes sign when converted back from the sampled Boolean cube.
+    for (size_t input = 0; input < inputs.size(); ++input)
+    {
+        for (size_t subset = 0; subset < assignment_count; ++subset)
+        {
+            if ((subset & (size_t{1} << input)) != 0)
+            {
+                coefficients[subset] =
+                    (coefficients[subset] - coefficients[subset ^ (size_t{1} << input)]) &
+                    word_mask;
+            }
+        }
+    }
+
+    std::map<uint64_t, Term> groups;
     for (size_t subset = 1; subset < assignment_count; ++subset)
     {
-        uint64_t coefficient = truth_values[0] - truth_values[subset];
-        for (size_t proper_subset = (subset - 1) & subset; proper_subset != 0;
-             proper_subset = (proper_subset - 1) & subset)
-        {
-            coefficient -= coefficients[proper_subset];
-        }
-        coefficient &= word_mask;
-        coefficients[subset] = coefficient;
+        const uint64_t coefficient = (uint64_t{0} - coefficients[subset]) & word_mask;
         if (coefficient == 0)
         {
             continue;
@@ -200,19 +234,72 @@ Term CandidateSynthesis::search_linear_mba()
                 conjunction ? expression(Op::And, conjunction, inputs[input]) : inputs[input];
         }
 
-        Term term = conjunction;
-        if (coefficient != 1)
-        {
-            term = expression(Op::Mul, constant(coefficient, bit_width_), term);
-        }
-        candidate = candidate ? expression(Op::Add, candidate, term) : term;
+        // Equal coefficients share a factor: 2*x + 2*y becomes 2*(x+y).
+        Term &group = groups[coefficient];
+        group = group ? expression(Op::Add, group, conjunction) : conjunction;
     }
 
+    Term candidate;
+    const uint64_t sign_bit = uint64_t{1} << (bits - 1);
+    for (const auto &[coefficient, group] : groups)
+    {
+        const bool negative = (coefficient & sign_bit) != 0;
+        const uint64_t magnitude = negative ? (uint64_t{0} - coefficient) & word_mask : coefficient;
+        const Term term =
+            magnitude == 1 ? group : expression(Op::Mul, constant(magnitude, bits), group);
+        if (!candidate)
+        {
+            candidate = negative ? expression(Op::Neg, term) : term;
+        }
+        else
+        {
+            candidate = expression(negative ? Op::Sub : Op::Add, candidate, term);
+        }
+    }
+
+    if (coefficients[0] != 0)
+    {
+        const Term offset = constant(coefficients[0], bits);
+        candidate = candidate ? expression(Op::Add, candidate, offset) : offset;
+    }
     if (!candidate)
     {
-        candidate = constant(0, bit_width_);
+        candidate = constant(0, bits);
     }
-    if (!acceptable_cost(candidate))
+    if (cost(candidate) >= cost(original))
+    {
+        return candidate;
+    }
+
+    // A prefix of a nested MBA often fits the Boolean cube but fails as soon
+    // as addition carries. Reject those hypotheses before spending a solver
+    // timeout on each prefix; a surviving candidate still needs a full proof.
+    return matches_word_samples(original_value, program.evaluate(candidate, state), source_terms,
+                                bits, session)
+               ? candidate
+               : Term{};
+}
+
+Term CandidateSynthesis::search_linear_mba()
+{
+    std::unordered_set<unsigned> original_nodes;
+    if (!collect_ast_ids(original_value_, original_nodes))
+    {
+        return {};
+    }
+
+    std::vector<Term> inputs;
+    for (const Term &input : inputs_)
+    {
+        const z3::expr value = symbolic_.evaluate(input, state_);
+        if (original_nodes.count(Z3_get_ast_id(value.ctx(), value)) != 0)
+        {
+            inputs.push_back(input);
+        }
+    }
+
+    Term candidate = reconstruct_linear_mba(symbolic_, state_, original_, inputs);
+    if (!candidate || !acceptable_cost(candidate))
     {
         return {};
     }

@@ -113,6 +113,11 @@ class InvariantInference
 // complete site domain can accept one; a sample collision is never a proof.
 Term simplify_algebraic(SymbolicProgram &program, const SymbolicState &state, const Term &original);
 
+// Construct a hypothesis from Boolean-word samples. Callers must prove equality
+// over the full word domain before using it, including at nested expression sites.
+Term reconstruct_linear_mba(SymbolicProgram &program, const SymbolicState &state,
+                            const Term &original, const std::vector<Term> &inputs);
+
 class CandidateSynthesis
 {
   public:

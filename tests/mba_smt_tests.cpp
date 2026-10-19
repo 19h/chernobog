@@ -17,25 +17,13 @@ void check(bool ok, const char *description)
     }
 }
 
-Term read_register(size_t index, unsigned bits = 8)
-{
-    return variable(index, bits);
-}
+Term read_register(size_t index, unsigned bits = 8) { return variable(index, bits); }
 
-Term number(uint64_t value, unsigned bits = 8)
-{
-    return constant(value, bits);
-}
+Term number(uint64_t value, unsigned bits = 8) { return constant(value, bits); }
 
-Term add(Term a, Term b)
-{
-    return expression(Op::Add, a, b);
-}
+Term add(Term a, Term b) { return expression(Op::Add, a, b); }
 
-Term multiply(Term a, Term b)
-{
-    return expression(Op::Mul, a, b);
-}
+Term multiply(Term a, Term b) { return expression(Op::Mul, a, b); }
 
 Program make_program(unsigned bits = 8)
 {
@@ -245,6 +233,99 @@ void test_linear_reconstruction_and_false_fit()
 
     check(nonlinear.verify(0, 0, expression(Op::Neg, x)) == Verdict::Disproved,
           "a nonlinear Boolean-table collision is not accepted as an identity");
+}
+
+void test_nested_linear_reconstruction()
+{
+    for (unsigned bits : {8u, 16u, 32u, 64u})
+    {
+        const Term x = variable(0, bits);
+        const Term y = variable(1, bits);
+        const Term z = variable(2, bits);
+        const Term one = constant(1, bits);
+        const Term two = constant(2, bits);
+        const Term inverted_x = expression(Op::Not, x);
+        const Term union_z = expression(Op::Or, z, inverted_x);
+        const Term intersection_z = expression(Op::And, z, inverted_x);
+        const Term sum = add(x, y);
+        const Term carry_sum =
+            add(expression(Op::Xor, x, sum), multiply(two, expression(Op::And, sum, x)));
+        const Term mask = add(add(union_z, x), one);
+        const Term disjoint_y =
+            expression(Op::And, expression(Op::Or, y, z), expression(Op::Not, z));
+        const Term nested_z = expression(Op::And, z, expression(Op::Not, mask));
+        const Term combined = expression(
+            Op::Sub, add(add(add(disjoint_y, carry_sum), add(add(mask, z), nested_z)), y),
+            expression(Op::Or, y, z));
+        Term chained = disjoint_y;
+        for (const Term &term : {expression(Op::Xor, x, sum), union_z, z, x, one, nested_z, y,
+                                 multiply(two, expression(Op::And, sum, x))})
+        {
+            chained = add(chained, term);
+        }
+        chained = expression(Op::Sub, chained, expression(Op::Or, y, z));
+
+        const std::vector<std::pair<Term, Term>> cases = {
+            {add(add(add(union_z, z), one), intersection_z),
+             expression(Op::Sub, multiply(two, z), x)},
+            {add(sum, x), add(multiply(two, x), y)},
+            {expression(Op::Sub, add(add(expression(Op::And, y, expression(Op::Not, z)), y), x),
+                        expression(Op::Or, y, z)),
+             expression(Op::Sub, sum, z)},
+            {combined, add(multiply(two, sum), z)},
+            {chained, add(multiply(two, sum), z)},
+            {multiply(two, combined), multiply(two, add(multiply(two, sum), z))},
+        };
+
+        for (const auto &[original, expected] : cases)
+        {
+            Program program = make_program(bits);
+            program.blocks[0].statements = {Statement::assign(3, original)};
+            Options options;
+            options.max_invariants = 0;
+            Analysis analysis(program, options);
+            const auto proposals = analysis.run();
+            check(!proposals.empty(), "nested arithmetic reconstruction produces a replacement");
+            if (!proposals.empty())
+            {
+                if (cost(proposals.front().replacement) > cost(expected))
+                {
+                    const auto &statistics = analysis.statistics();
+                    std::fprintf(stderr,
+                                 "Nested case: bits=%u original=%zu result=%zu expected=%zu "
+                                 "unknown=%zu exhausted=%zu elapsed_ns=%llu\n",
+                                 bits, cost(original), cost(proposals.front().replacement),
+                                 cost(expected), statistics.unknown, statistics.exhausted,
+                                 static_cast<unsigned long long>(statistics.elapsed_ns));
+                }
+                check(cost(proposals.front().replacement) <= cost(expected),
+                      "nested reconstruction reaches the compact arithmetic expression");
+                check(analysis.verify(0, 0, expected) == Verdict::Verified,
+                      "nested reconstruction proves the expected result at the full word width");
+            }
+        }
+    }
+
+    // The Boolean samples of x*x and -x agree, but their word semantics do not.
+    // Placing the false fit inside a larger expression exercises local admission.
+    Program nonlinear = make_program(32);
+    const Term x = variable(0, 32);
+    const Term y = variable(1, 32);
+    nonlinear.blocks[0].statements = {Statement::assign(3, add(multiply(x, x), add(y, y)))};
+    Analysis analysis(nonlinear);
+    analysis.run();
+    check(analysis.verify(0, 0, add(expression(Op::Neg, x), multiply(constant(2, 32), y))) ==
+              Verdict::Disproved,
+          "a nested nonlinear table collision cannot enter the verified rewrite cache");
+
+    const Term square = multiply(x, x);
+    nonlinear.blocks[0].statements = {
+        Statement::assign(3, add(expression(Op::Xor, x, square),
+                                 multiply(constant(2, 32), expression(Op::And, x, square))))};
+    Analysis nonlinear_word(nonlinear);
+    nonlinear_word.run();
+    check(nonlinear_word.verify(0, 0, constant(0, 32)) == Verdict::Disproved,
+          "proof-only Boolean expansion does not treat a nonlinear word as an independent input");
 }
 
 void test_guards_and_aliasing()
@@ -589,6 +670,7 @@ int main()
     test_memory_polynomial_loop();
     test_intervening_register_write();
     test_linear_reconstruction_and_false_fit();
+    test_nested_linear_reconstruction();
     test_guards_and_aliasing();
     test_partial_registers_and_endianness();
     test_failures_and_profiles();

@@ -203,26 +203,11 @@ static int run_semantic_mba(mbl_array_t *mba)
         }
     } restore{budget.limit_ms, total_limit};
 
-    bool has_calls = false;
-    for (int index = 0; index < mba->qty && !has_calls; ++index)
-    {
-        for (const minsn_t *instruction = mba->get_mblock(index)->head; instruction;
-             instruction = instruction->next)
-        {
-            if (instruction->contains_call())
-            {
-                // Calls can be nested inside return-value expressions after
-                // optimization. They still need a caller-context budget.
-                has_calls = true;
-                break;
-            }
-        }
-    }
-    if (has_calls)
-    {
-        const unsigned caller_reserve = total_limit > 1000 ? 3000 : 500;
-        budget.limit_ms = total_limit - std::min(total_limit / 2, caller_reserve);
-    }
+    // Ctree reconstruction can combine scalar expressions split across native
+    // instructions, including helpers the user has already inlined. Preserve
+    // its allowance even when no call instruction remains in the function.
+    const unsigned ctree_reserve = total_limit > 1000 ? 3000 : 500;
+    budget.limit_ms = total_limit - std::min(total_limit / 2, ctree_reserve);
     if (mba->maturity == MMAT_LOCOPT)
     {
         const unsigned early_allowance = total_limit > 1000 ? 10000 : 250;

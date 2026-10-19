@@ -80,6 +80,41 @@ Term convert_integer(Term value, const tinfo_t &source, const tinfo_t &destinati
     return resize_integer(value, bits, source.is_signed());
 }
 
+bool has_mixed_arithmetic(const Term &root)
+{
+    if (cost(root) < 4)
+    {
+        return false;
+    }
+
+    bool arithmetic = false;
+    bool bitwise = false;
+    size_t visited = 0;
+    std::vector<Term> pending{root};
+    while (!pending.empty() && visited++ < limits::expression_visits)
+    {
+        const Term term = pending.back();
+        pending.pop_back();
+        arithmetic |= term->op == Op::Add || term->op == Op::Sub || term->op == Op::Mul ||
+                      term->op == Op::Neg;
+        bitwise |=
+            term->op == Op::And || term->op == Op::Or || term->op == Op::Xor || term->op == Op::Not;
+        if (arithmetic && bitwise)
+        {
+            return true;
+        }
+        if (term->left)
+        {
+            pending.push_back(term->left);
+        }
+        if (term->right)
+        {
+            pending.push_back(term->right);
+        }
+    }
+    return false;
+}
+
 class CallBudget
 {
   public:
@@ -706,7 +741,12 @@ class CallerSimplifier
         }
         CtreeTerms terms(functions_, context.bindings(), &context);
         const Term value = terms.translate(&node);
-        if (!value || (!terms.used_context && context.conditions().empty()))
+        if (!value)
+        {
+            return false;
+        }
+        const bool synthesize = terms.used_context || has_mixed_arithmetic(value);
+        if (!synthesize && context.conditions().empty())
         {
             return false;
         }
@@ -731,11 +771,10 @@ class CallerSimplifier
         {
             replacement = prepare_replacement(node, context, query, analysis, candidate);
         }
-        // A path condition can make an ordinary expression constant. General
-        // synthesis is reserved for expanded calls and derived local values,
-        // so an unrelated guard cannot spend the function's budget enumerating
-        // replacements for an already simple assignment.
-        if (!replacement && node.op != cot_var && terms.used_context && budget_.available())
+        // Besides expanded calls and derived values, reconstruct substantial
+        // arithmetic/bitwise mixtures already present in the caller. A guard
+        // alone still cannot trigger synthesis of an ordinary assignment.
+        if (!replacement && node.op != cot_var && synthesize && budget_.available())
         {
             // Verify a cheaper expansion before spending the search budget.
             // This proof remains valid if a later search runs out of time:

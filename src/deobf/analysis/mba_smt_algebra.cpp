@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <map>
 #include <optional>
+#include <set>
 
 namespace chernobog::mba_smt::detail
 {
@@ -11,10 +12,7 @@ namespace
 constexpr size_t max_boolean_inputs = 4;
 constexpr size_t max_boolean_candidates = 65536;
 
-uint64_t width_mask(unsigned bits)
-{
-    return bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1;
-}
+uint64_t width_mask(unsigned bits) { return bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1; }
 
 struct KnownBits
 {
@@ -243,6 +241,70 @@ class AlgebraicSimplifier
     {
     }
 
+    Term run(const Term &original)
+    {
+        if (cost(original) >= 8)
+        {
+            prepare_bitwise_proofs(original);
+        }
+        return rewrite(original);
+    }
+
+  private:
+    bool collect_word_inputs(const Term &term, unsigned bits, std::vector<Term> &inputs) const
+    {
+        if (term->bits != bits)
+        {
+            return false;
+        }
+        if (term->op == Op::Constant)
+        {
+            return true;
+        }
+        const bool bitwise =
+            term->op == Op::And || term->op == Op::Or || term->op == Op::Xor || term->op == Op::Not;
+        if (!bitwise || is_boolean_input(term))
+        {
+            const auto identifier = key(term);
+            const auto same = [&](const Term &input) { return key(input) == identifier; };
+            if (std::none_of(inputs.begin(), inputs.end(), same))
+            {
+                inputs.push_back(term);
+            }
+            return inputs.size() <= max_boolean_inputs;
+        }
+        return collect_word_inputs(term->left, bits, inputs) &&
+               (!term->right || collect_word_inputs(term->right, bits, inputs));
+    }
+
+    void prepare_bitwise_proofs(const Term &term)
+    {
+        if (!term || !term->left || !session_.has_budget() ||
+            linearized_.size() >= limits::expression_visits ||
+            !linearized_.insert(key(term)).second)
+        {
+            return;
+        }
+        if (term->op == Op::And || term->op == Op::Or || term->op == Op::Xor || term->op == Op::Not)
+        {
+            std::vector<Term> inputs;
+            if (collect_word_inputs(term, term->bits, inputs))
+            {
+                const Term candidate = reconstruct_linear_mba(program_, state_, term, inputs);
+                if (candidate && key(candidate) != key(term))
+                {
+                    // A proof-only expansion can expose cancellation between
+                    // distant summands without enlarging the emitted code.
+                    // Arithmetic operands inside a Boolean word are atoms;
+                    // their real relationships remain in the SMT proof.
+                    prove(term, candidate);
+                }
+            }
+        }
+        prepare_bitwise_proofs(term->left);
+        prepare_bitwise_proofs(term->right);
+    }
+
     Term rewrite(const Term &original)
     {
         if (!original || !original->left || !session_.has_budget())
@@ -281,9 +343,16 @@ class AlgebraicSimplifier
         }
         else if (cost(term) >= 2)
         {
-            if (Term candidate = simplify_boolean(term))
+            if (Term candidate = simplify_linear(term))
             {
                 term = std::move(candidate);
+            }
+            if (cost(term) >= 2)
+            {
+                if (Term candidate = simplify_boolean(term))
+                {
+                    term = std::move(candidate);
+                }
             }
         }
 
@@ -295,7 +364,6 @@ class AlgebraicSimplifier
         return term;
     }
 
-  private:
     bool prove(const Term &before, const Term &after)
     {
         const z3::expr original = program_.evaluate(before, state_);
@@ -316,6 +384,10 @@ class AlgebraicSimplifier
             // context. Later proofs may substitute them without importing
             // block-specific assumptions or accepting a sampled equality.
             program_.retain_verified_rewrite(original, replacement);
+            if (!z3::eq(original, normalized_original))
+            {
+                program_.retain_verified_rewrite(normalized_original, normalized_replacement);
+            }
             return true;
         }
         if (result == z3::sat)
@@ -616,10 +688,30 @@ class AlgebraicSimplifier
         return prove(term, candidate) ? candidate : Term{};
     }
 
+    Term simplify_linear(const Term &term)
+    {
+        std::vector<Term> inputs;
+        if (!collect_inputs(term, term->bits, inputs))
+        {
+            return {};
+        }
+        Term candidate = reconstruct_linear_mba(program_, state_, term, inputs);
+        if (!candidate || cost(candidate) >= cost(term))
+        {
+            return {};
+        }
+
+        // Unlike the outer synthesis pass, this proof has no path assumptions.
+        // Its result can therefore be composed inside later arithmetic and
+        // bitwise expressions in the same immutable symbol context.
+        return prove(term, candidate) ? candidate : Term{};
+    }
+
     SymbolicProgram &program_;
     SolverSession &session_;
     const SymbolicState &state_;
     std::map<std::string, Term> rewritten_;
+    std::set<std::string> linearized_;
     size_t visited_ = 0;
 };
 } // namespace
@@ -627,7 +719,7 @@ class AlgebraicSimplifier
 Term simplify_algebraic(SymbolicProgram &program, const SymbolicState &state, const Term &original)
 {
     AlgebraicSimplifier simplifier(program, state);
-    Term result = simplifier.rewrite(original);
+    Term result = simplifier.run(original);
     return result && cost(result) < cost(original) ? result : Term{};
 }
 } // namespace chernobog::mba_smt::detail

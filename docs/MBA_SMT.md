@@ -17,8 +17,9 @@ the latest generation; proof counters count attempts, not unique recovered
 expressions. `applied` counts actual rewrites. Budgets include adapter work and
 are shared across maturities. Solver timeouts are capped by remaining work;
 allocation, SDK work and total decompiler runtime have no hard real-time bound.
-Functions containing calls, including nested call expressions, reserve part of
-that budget for caller-context analysis. Callee decompilation is separate SDK work and is excluded from the
+Every function reserves part of that budget for final scalar reconstruction,
+including caller-context analysis and expressions already inlined into ctree.
+Callee decompilation is separate SDK work and is excluded from the
 caller's analysis timer. If learning callee prototypes changes the argument
 layout, the caller is regenerated once, starting a fresh generation and budget.
 
@@ -51,6 +52,23 @@ uses AND, OR, XOR and NOT; every candidate requires a full-width equality proof.
 Completed unconditional equalities are retained within that snapshot and
 composed in later checks. The final emitted-code check may substitute only
 those proved equalities, never sampled relationships or unproved assumptions.
+
+Linear reconstruction also runs from the leaves upward. Each arithmetic
+subexpression is sampled over up to four word inputs, reconstructed in the
+conjunction basis, and accepted only after an unconditional full-width proof.
+This can expose identities across arithmetic and bitwise boundaries, such as
+`(z | ~x) + x + 1 == (x & z)`. Equal modular coefficients share a factor, so
+`2*x + 2*y` is emitted as `2*(x+y)`. A local reduction must strictly lower cost;
+its proof remains in the same immutable snapshot as the enclosing reduction.
+Eight additional word-valued samples reject false linear fits caused by carries
+before they consume a solver timeout. These samples can reject a candidate but
+cannot authorize one.
+For larger expressions, Boolean regions are also reconstructed as proof-only
+arithmetic expansions. A word such as `x+y` inside `x ^ (x+y)` is an atom during
+reconstruction, with its actual definition restored in the equality proof.
+These proved expansions expose cancellation between distant summands in an
+associative chain. They may increase proof-expression size but are never emitted
+as a larger replacement.
 
 The remaining search reconstructs a conjunction basis from up to 16 Boolean-word
 evaluations, fits arbitrary modular affine coefficients using solver
@@ -94,6 +112,10 @@ elimination performs at most O(B K E) solver calls: each unsuccessful round
 removes at least one candidate. Boolean-word reconstruction evaluates O(2^V)
 assignments with V <= 4. General expression search remains exponential in its
 grammar bound; solver work is additional and is stopped by the shared budget.
+The conjunction coefficients use a subset transform with O(V * 2^V) arithmetic
+work and O(2^V) coefficient storage. At most 512 expression nodes are visited
+by the local rewrite walk. Repeated subtree sampling can take O(N^2 * 2^V)
+tree work for N nodes, excluding solver work; the shared budget still applies.
 A threshold reduction visits its operand tree and scans at most 64 bit positions;
 its equality proof remains subject to the shared solver budget.
 
@@ -117,6 +139,29 @@ be incorrect. In particular, `opaque_predicate_1` returns 2 for
 `(0xE3A1F254, 0x3FA3EB91)` and 3 for `(0x36F8767A, 0x3FA3EB91)`.
 `opaque_predicate_2` returns `0x55588C79` for `(0xC6C0AACC, 0x5E909F27)`
 and `0xFFFFFFFF` for `(0xC5E2DBB5, 0x5DB2EE5E)`.
+
+The nested fixtures in `tests/vmp_native/mba_nested.c` model 32-bit wrapping
+arithmetic followed by a zero extension to the 64-bit return value:
+
+| Fixture | Equivalent 32-bit result before zero extension |
+|---|---|
+| `mba_nested_1` | `2*z - x` |
+| `mba_nested_2` | `2*x + y` |
+| `mba_nested_3` | `x + y - z` |
+| `mba_nested_combined` | `2*(x+y) + z` |
+| `mba_nested_solve` | `2*(2*(x+y) + z)` |
+| `mba_nested_caller` | `2*(2*(x+y) + z)` |
+
+These are bit-vector equalities, including overflow; they do not assume C signed
+overflow is defined. The standalone core regressions require compact results at
+8, 16, 32 and 64 bits and reject a nested nonlinear sampling collision. The IDA
+probe `tests/ida_mba_nested_probe.py` requires both normal and deep pseudocode
+to remove the bitwise encoding and the pure helper call. Running
+`tests/verify_mba_nested.py CAPTURE --output-dir OUTPUT` compiles both captured
+profiles and checks 607,986 full-return comparisons per profile against an
+unsigned arithmetic oracle, including all combinations of 11 boundary values
+and 100,000 deterministic input triples. This tests generated C promotions and
+return conversions separately from the solver's expression model.
 
 Constant arguments at a call site do not constrain a separately decompiled
 helper's parameters. A separate caller-context pass instantiates the helper's
@@ -176,7 +221,9 @@ nodes; the expression visit and depth limits also bound expanded expressions.
 At most 16 path conditions and three propagation rounds are used per invocation.
 Individual queries are capped at 250 ms in normal mode and 1000 ms in deep mode,
 within the shared function budget. A path condition alone enables constant
-queries; general synthesis requires an expanded call or a derived local value.
+queries. General synthesis requires an expanded call, a derived local value,
+or an arithmetic/bitwise mixture costing at least four operations. This last
+case admits an already inlined expression without requiring caller facts.
 For `L` locals and at most `N` expanded expression nodes, context copies take
 `O(L)` space and time; comparing bindings at a join takes `O(L * (N + log L))` plus the
 bounded path-condition intersection. Expression nodes remain shared. Synthesis
@@ -237,6 +284,7 @@ The view probe navigates forward and backward through its function list.
 | A4 | The bounded search finds useful reductions. Coverage remains corpus-specific. | Compare catalog-only and semantic modes, report unsupported and exhausted populations. |
 | A5 | Admitted callee ctrees completely represent their scalar effects and ABI. Caller specialization depends on this. | Reject unsupported statements and width mismatches; test volatile writes, pointer reads, escaped locals, loops and narrow results. |
 | A6 | A caller fact refers to the correct immutable value version and every incoming path. Contextual rewrites depend on this. | Test overwrites, equal and unequal joins, false edges, contradictory guards, labels, and loop barriers; retranslate every emitted expression against the same snapshot. |
+| A7 | The supplied nested examples use 32-bit wrapping arithmetic and zero-extend their final result to 64 bits. The example reductions depend on this interpretation. | Compile unsigned fixtures, inspect captured return conversions, and compare complete 64-bit results at overflow boundaries; a different width or sign extension in the original binary would invalidate this interpretation. |
 
 Bounded findings: **high**, incomplete effects or predecessors can manufacture
 proofs and must invalidate facts; **medium**, nonlinear/array queries may exhaust
