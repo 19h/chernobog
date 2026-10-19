@@ -17,6 +17,10 @@ the latest generation; proof counters count attempts, not unique recovered
 expressions. `applied` counts actual rewrites. Budgets include adapter work and
 are shared across maturities. Solver timeouts are capped by remaining work;
 allocation, SDK work and total decompiler runtime have no hard real-time bound.
+Functions containing calls reserve part of that budget for caller-context
+analysis. Callee decompilation is separate SDK work and is excluded from the
+caller's analysis timer. If learning callee prototypes changes the argument
+layout, the caller is regenerated once, starting a fresh generation and budget.
 
 ## Model and admission
 
@@ -55,7 +59,9 @@ only UNSAT of the full-context mismatch authorizes a replacement. The emitted
 SDK expression is independently translated and rechecked. SAT, UNKNOWN,
 unsupported cases and exhausted budgets preserve the original. New rewrites
 reduce a structural cost estimate and preserve explicit memory
-instructions, calls, destinations and control flow. Ordinary owned frame-value
+instructions and destinations. The expression pass preserves calls and control
+flow; the caller-context pass described below can remove proved pure calls and
+constant branches. Ordinary owned frame-value
 operands can simplify under the normal-completion memory model; their implicit
 read multiplicity is not an observable in that model. Volatile or unresolved
 memory operands remain unsupported. After each rewrite, old snapshot receipts
@@ -112,10 +118,47 @@ be incorrect. In particular, `opaque_predicate_1` returns 2 for
 `opaque_predicate_2` returns `0x55588C79` for `(0xC6C0AACC, 0x5E909F27)`
 and `0xFFFFFFFF` for `(0xC5E2DBB5, 0x5DB2EE5E)`.
 
-These are intraprocedural expression reductions. Constant arguments at a call
-site do not constrain a separately decompiled helper's parameters. The current
-pass preserves calls and does not propagate return-value ranges across them;
-an opaque condition that calls such a helper can therefore remain in a caller.
+Constant arguments at a call site do not constrain a separately decompiled
+helper's parameters. A separate caller-context pass instantiates the helper's
+expression with the actual arguments. It admits only complete scalar bodies
+consisting of assignments and a return. Every expression and nested call must
+be supported: pointer accesses, global accesses, volatile operands, assembly,
+loops, recursion, variadic functions and custom calling conventions are rejected.
+Argument and return widths must agree with the callee's prototype. No user
+declaration is overwritten; a caller can be refreshed once when decompiling a
+callee refines an earlier guessed prototype.
+
+One solver model proposes a constant value. An unsatisfiable full-context
+mismatch must then prove that value for every argument valuation. A second
+check validates the emitted literal. This folds calls with constant arguments,
+relations such as equal XOR arguments, and constant comparisons of otherwise
+variable return values. A varying call remains a call. The helper's standalone
+body retains its general behavior.
+
+| Caller expression | Proved result |
+|---|---|
+| `mba_transform_1(77, 169, 86)` | `27` |
+| `mba_transform_2(19, 19)` | `0` |
+| `opaque_predicate_1(0xDEADBEEF, 0xCAFEBABE)` | `3` |
+| `opaque_predicate_2(0x12345678, 0x9ABCDEF0)` | `0x75FAAFFD` |
+| `opaque_predicate_1(x, y) == 0x9E432F2E` | `false` |
+| `opaque_predicate_2(x, y) != 0` | `true` |
+
+Closed scalar constants also propagate through a caller's straight-line local
+assignments. Address-taken, shared, overlapped and volatile locals are excluded.
+Facts are cleared at labels, joins, writes with unresolved ordering, and loop
+boundaries. Only an effect-free constant condition can remove a branch, and
+branches containing labels are preserved. Calls with effects remain present.
+
+This pass runs after decompilation returns, through Chernobog's text APIs,
+manual actions and pseudocode views. Hex-Rays does not permit nested callee
+decompilation inside a maturity callback. Summaries live for one invocation;
+there is no persistent result cache. Limits are 16 callees, three nested callee
+levels, 4096 native bytes per callee, 512 expanded expression nodes, and 128
+constant queries, in addition to the time and scalar-program limits. Constant
+queries avoid general expression enumeration. Tree traversal and repeated
+subtree translation can take quadratic time in expression size; solver work
+and the bounded callee decompilations are additional.
 
 `chernobog.mba_smt` tests scalar byte widths, CFG joins and guards, quadratic
 induction and invalid bases/backedges, symbolic aliases, partial writes, byte
@@ -129,6 +172,11 @@ control execution alone does not prove that the plugin rewrote these functions.
 The probe's `CHERNOBOG_MBA_PROBE_FUNCTIONS` setting accepts a comma-separated
 subset of the listed fixture names so the same checks can exercise an existing
 binary with those functions, without modifying its original database.
+`tests/ida_mba_calls_probe.py` checks caller constants, symbolic predicates,
+equal arguments, conversion order, and retained varying/impure/memory calls.
+Its `CHERNOBOG_MBA_CALL_PROBE=foo` mode checks `main` and
+`block_decrypt_strings` in the supplied binary. `CHERNOBOG_MBA_CALL_VIEWS=1`
+exercises actual pseudocode views instead of the text APIs.
 
 | ID | Assumption / dependent results | Falsification probe |
 |---|---|---|
@@ -136,6 +184,7 @@ binary with those functions, without modifying its original database.
 | A2 | Memory is ordinary sequential, normal-completion memory. | Preserve accesses; invalidate barriers/calls and reject unresolved selectors and volatile properties. |
 | A3 | Completed Z3 results are correct; SMT admission depends on this. | Replay bounded queries, inspect SAT witnesses, force UNKNOWN and resource exhaustion. |
 | A4 | The bounded search finds useful reductions. Coverage remains corpus-specific. | Compare catalog-only and semantic modes, report unsupported and exhausted populations. |
+| A5 | Admitted callee ctrees completely represent their scalar effects and ABI. Caller specialization depends on this. | Reject unsupported statements and width mismatches; test volatile writes, pointer reads, escaped locals, loops and narrow results. |
 
 Bounded findings: **high**, incomplete effects or predecessors can manufacture
 proofs and must invalidate facts; **medium**, nonlinear/array queries may exhaust

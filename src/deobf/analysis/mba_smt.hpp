@@ -172,6 +172,9 @@ class Analysis
     Analysis(const Analysis &) = delete;
     Analysis &operator=(const Analysis &) = delete;
     std::vector<Proposal> run();
+    // A model proposes one value; a universal mismatch check must prove it.
+    // This avoids expression enumeration when a caller only needs a constant.
+    Term constant_value(size_t block, size_t statement);
     Verdict verify(size_t block, size_t statement, const Term &replacement);
     const Statistics &statistics() const;
 };

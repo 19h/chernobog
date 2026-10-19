@@ -555,6 +555,29 @@ void test_known_bit_thresholds()
         }
     }
 }
+
+void test_constant_queries()
+{
+    auto program = make_program(32);
+    const auto input = variable(0, 32);
+    program.blocks[0].statements = {Statement::assign(3, expression(Op::Xor, input, input))};
+    Analysis invariant(program);
+    const Term zero = invariant.constant_value(0, 0);
+    check(zero && zero->op == Op::Constant && zero->value == 0,
+          "constant-only query proves a value for arbitrary inputs");
+
+    program.blocks[0].statements[0].value = input;
+    Analysis varying(program);
+    check(!varying.constant_value(0, 0),
+          "a model's observed value cannot become a universal constant");
+    check(!varying.constant_value(1, 0), "constant queries reject invalid block indices");
+    check(!varying.constant_value(0, 1), "constant queries reject invalid statement indices");
+
+    Options exhausted;
+    exhausted.budget_ms = 0;
+    Analysis unavailable(program, exhausted);
+    check(!unavailable.constant_value(0, 0), "exhausted constant queries fail closed");
+}
 } // namespace
 
 int main()
@@ -572,6 +595,7 @@ int main()
     test_boolean_words_and_variable_views();
     test_symbolic_opaque_expressions();
     test_known_bit_thresholds();
+    test_constant_queries();
     std::printf("MBA SMT failures: %d\n", failures);
     return failures != 0;
 }

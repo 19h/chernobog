@@ -484,6 +484,49 @@ std::vector<Proposal> Analysis::run()
     return {};
 }
 
+Term Analysis::constant_value(size_t block, size_t statement)
+{
+    try
+    {
+        if (!impl_->prepare() || block >= impl_->program.blocks.size() ||
+            statement >= impl_->program.blocks[block].statements.size() ||
+            !impl_->is_rewrite_site(block, statement))
+        {
+            return {};
+        }
+
+        auto &symbolic = impl_->symbolic;
+        auto &session = impl_->session;
+        const auto &assignment = impl_->program.blocks[block].statements[statement];
+        const auto &state = symbolic.before_statement(block, statement);
+        const z3::expr value = symbolic.evaluate(assignment.value, state);
+        z3::solver solver(session.context);
+        solver.add(symbolic.conjunction(impl_->invariants->at(block), symbolic.block_entry(block)));
+        if (session.check(solver, "MBA constant proposal feasibility") != z3::sat)
+        {
+            return {};
+        }
+
+        uint64_t literal = 0;
+        if (!solver.get_model().eval(value, true).is_numeral_u64(literal))
+        {
+            return {};
+        }
+        const Term candidate = constant(literal, assignment.value->bits);
+        ++impl_->statistics.candidates;
+        if (detail::verify_replacement(symbolic, *impl_->invariants, block, statement, candidate) ==
+            Verdict::Verified)
+        {
+            return candidate;
+        }
+    }
+    catch (const std::exception &)
+    {
+        ++impl_->statistics.unsupported;
+    }
+    return {};
+}
+
 Verdict Analysis::verify(size_t block, size_t statement, const Term &replacement)
 {
     try

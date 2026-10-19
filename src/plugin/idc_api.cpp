@@ -378,6 +378,7 @@ bool decompile_text(ea_t function_ea, bool no_cache, qstring *out)
             failure.desc().c_str());
         return false;
     }
+    chernobog_simplify_mba_calls(cfunc);
     qstring_printer_t printer(cfunc, *out, false);
     cfunc->print_func(printer);
     return true;

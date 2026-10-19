@@ -364,6 +364,28 @@ static void check_verbose_mode()
     }
 }
 
+// Caller specialization may need to decompile a helper. Hex-Rays rejects that
+// while a maturity callback is active, so interactive views run it only after
+// the caller's decompilation has returned.
+static void simplify_visible_calls(vdui_t *view)
+{
+    static thread_local bool refreshing = false;
+    if (!view || !view->cfunc || refreshing || is_disabled_mode_enabled())
+    {
+        return;
+    }
+    struct RefreshGuard
+    {
+        bool &active;
+        explicit RefreshGuard(bool &value) : active(value) { active = true; }
+        ~RefreshGuard() { active = false; }
+    } guard(refreshing);
+    if (chernobog_simplify_mba_calls(view->cfunc))
+    {
+        view->refresh_ctext();
+    }
+}
+
 //--------------------------------------------------------------------------
 // Hexrays Callback - Add popup menu items and auto-deobfuscate
 //--------------------------------------------------------------------------
@@ -514,6 +536,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             ensure_cached_rax_fallback(self, vu->cfunc->entry_ea,
                                        event == hxe_open_pseudocode ? "pseudocode open"
                                                                     : "pseudocode switch");
+            simplify_visible_calls(vu);
         }
     }
     else if (event == hxe_populating_popup)
@@ -543,6 +566,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             self->ctree_switch_folded.erase(func_ea);
             self->ctree_indirect_call_processed.erase(func_ea);
             self->ctree_string_decrypt_processed.erase(func_ea);
+            simplify_visible_calls(vu);
         }
     }
     // This event is reserved for generated-microcode repair. The installed

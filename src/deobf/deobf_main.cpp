@@ -9,6 +9,7 @@
 #include "handlers/select_chain.h"
 #include "handlers/mba_simplify.h"
 #include "handlers/mba_smt.h"
+#include "handlers/mba_smt_calls.h"
 #include "handlers/vm_mba.h"
 #include "handlers/identity_call.h"
 #include "handlers/stack_string.h"
@@ -20,6 +21,7 @@
 #include "handlers/indirect_call.h"
 #include "handlers/resolver_call_args.h"
 #include "handlers/ctree_string_decrypt.h"
+#include "handlers/ctree_const_fold.h"
 #include "execution_policy.hpp"
 #include "rules/rule_registry.h"
 #include "../hybrid/session.hpp"
@@ -199,11 +201,29 @@ static int run_semantic_mba(mbl_array_t *mba)
         }
     } restore{budget.limit_ms, total_limit};
 
+    bool has_calls = false;
+    for (int index = 0; index < mba->qty && !has_calls; ++index)
+    {
+        for (const minsn_t *instruction = mba->get_mblock(index)->head; instruction;
+             instruction = instruction->next)
+        {
+            if (instruction->opcode == m_call || instruction->opcode == m_icall)
+            {
+                has_calls = true;
+                break;
+            }
+        }
+    }
+    if (has_calls)
+    {
+        const unsigned caller_reserve = total_limit > 1000 ? 3000 : 500;
+        budget.limit_ms = total_limit - std::min(total_limit / 2, caller_reserve);
+    }
     if (mba->maturity == MMAT_LOCOPT)
     {
         const unsigned early_allowance = total_limit > 1000 ? 10000 : 250;
         const auto spent_ms = static_cast<unsigned>(budget.spent_ns / 1000000);
-        budget.limit_ms = std::min(total_limit, spent_ms + early_allowance);
+        budget.limit_ms = std::min(budget.limit_ms, spent_ms + early_allowance);
     }
     return chernobog::mba_smt::simplify(mba, budget);
 }
@@ -228,6 +248,43 @@ qstring chernobog_mba_smt_statistics(ea_t ea)
                  statistics.disproved, statistics.unsupported, statistics.unknown,
                  statistics.invariants, statistics.invariants_rejected, statistics.exhausted);
     return result;
+}
+
+int chernobog_simplify_mba_calls(cfuncptr_t &function)
+{
+    auto *state = get_deobf_state();
+    if (!state || !function || !chernobog_function_deobfuscation_enabled(function->entry_ea))
+    {
+        return 0;
+    }
+    bool regenerated = false;
+    for (unsigned attempt = 0; attempt < 2; ++attempt)
+    {
+        const auto result = chernobog::mba_smt::simplify_calls(
+            function, state->mba_smt_budgets[function->entry_ea]);
+        if (result.refresh_caller && attempt == 0)
+        {
+            // Decompiling a helper can refine IDA's guessed prototype. Refresh
+            // the caller once so arguments discarded by its old guess become
+            // available. No user declaration is overwritten by this pass.
+            const ea_t entry = function->entry_ea;
+            mark_cfunc_dirty(entry, false);
+            hexrays_failure_t failure;
+            cfuncptr_t refreshed = decompile(get_func(entry), &failure, DECOMP_NO_CACHE);
+            if (refreshed)
+            {
+                function = refreshed;
+                regenerated = true;
+                continue;
+            }
+        }
+        if (result.changes)
+        {
+            ctree_const_fold_handler_t::run(function);
+        }
+        return result.changes + int(regenerated);
+    }
+    return int(regenerated);
 }
 
 namespace
@@ -270,6 +327,7 @@ bool chernobog_deep_deobfuscate(ea_t ea, qstring *text)
     auto cfunc = decompile(function, &failure, DECOMP_NO_CACHE);
     if (!cfunc)
         return false;
+    chernobog_simplify_mba_calls(cfunc);
     if (text)
     {
         qstring_printer_t printer(cfunc, *text, false);
@@ -1207,6 +1265,8 @@ static int do_deobfuscate(vdui_t *vu)
         vu->refresh_view(true);
     else
         vu->refresh_ctext();
+    if (chernobog_simplify_mba_calls(vu->cfunc))
+        vu->refresh_ctext();
     return 1;
 }
 
@@ -1229,6 +1289,8 @@ static int do_deep_deobfuscate(vdui_t *vu)
     chernobog_clear_function_tracking(ea);
     mark_cfunc_dirty(ea, false);
     vu->refresh_view(true);
+    if (chernobog_simplify_mba_calls(vu->cfunc))
+        vu->refresh_ctext();
     return 1;
 }
 

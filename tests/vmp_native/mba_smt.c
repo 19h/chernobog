@@ -49,6 +49,105 @@ __attribute__((noinline)) uint64_t opaque_predicate_1(uint32_t x, uint32_t y)
            UINT64_C(0x52AC7B5E);
 }
 
+__attribute__((noinline)) uint32_t mba_call_xor_constants(void)
+{
+    return mba_transform_2(19, 19);
+}
+
+__attribute__((noinline)) uint32_t mba_call_selector_constants(void)
+{
+    return mba_transform_1(77, (int8_t)169, 86);
+}
+
+__attribute__((noinline)) uint64_t mba_call_quotient_constants(void)
+{
+    return opaque_predicate_1(UINT32_C(0xDEADBEEF), UINT32_C(0xCAFEBABE));
+}
+
+__attribute__((noinline)) uint32_t mba_call_product_constants(void)
+{
+    return opaque_predicate_2(UINT32_C(0x12345678), UINT32_C(0x9ABCDEF0));
+}
+
+__attribute__((noinline)) uint32_t mba_call_invariant_quotient(uint32_t x, uint32_t y)
+{
+    if (opaque_predicate_1(x, y) == UINT32_C(0x9E432F2E))
+    {
+        return 11;
+    }
+    return 42;
+}
+
+__attribute__((noinline)) uint32_t mba_call_invariant_nonzero(uint32_t x, uint32_t y)
+{
+    return opaque_predicate_2(x, y) != 0;
+}
+
+__attribute__((noinline)) uint64_t mba_call_varying(uint32_t x, uint32_t y)
+{
+    return opaque_predicate_1(x, y);
+}
+
+__attribute__((noinline)) uint32_t mba_call_shared_arguments(uint32_t x)
+{
+    return mba_transform_2((int8_t)x, (int8_t)x);
+}
+
+__attribute__((noinline)) uint8_t mba_call_narrow_helper(uint32_t x)
+{
+    return (uint8_t)(x >> 12);
+}
+
+__attribute__((noinline)) uint32_t mba_call_narrow_result(void)
+{
+    return mba_call_narrow_helper(UINT32_C(0x12345678));
+}
+
+volatile uint32_t mba_call_effects;
+
+__attribute__((noinline)) uint32_t mba_call_impure_helper(void)
+{
+    ++mba_call_effects;
+    return 7;
+}
+
+__attribute__((noinline)) uint32_t mba_call_impure(void)
+{
+    return mba_call_impure_helper();
+}
+
+__attribute__((noinline)) uint32_t mba_call_load_helper(const uint32_t *value)
+{
+    return *value;
+}
+
+__attribute__((noinline)) uint32_t mba_call_memory(const uint32_t *value)
+{
+    return mba_call_load_helper(value);
+}
+
+__attribute__((noinline)) uint32_t mba_call_loop(uint32_t count)
+{
+    uint32_t value = 4;
+    for (uint32_t index = 0; index < count; ++index)
+    {
+        value += 3;
+    }
+    return mba_transform_2((int8_t)value, 4);
+}
+
+__attribute__((noinline)) void mba_call_mutate_helper(uint32_t *value)
+{
+    *value = 9;
+}
+
+__attribute__((noinline)) uint32_t mba_call_address_escaped(void)
+{
+    uint32_t value = 4;
+    mba_call_mutate_helper(&value);
+    return mba_transform_2((int8_t)value, 4);
+}
+
 int main(void)
 {
     unsigned comparisons = 0;
@@ -123,6 +222,33 @@ int main(void)
         return 9;
     }
     comparisons += 4;
+
+    if (mba_call_xor_constants() != 0 || mba_call_selector_constants() != 27 ||
+        mba_call_quotient_constants() != 3 ||
+        mba_call_product_constants() != UINT32_C(0x75FAAFFD) || mba_call_narrow_result() != 0x45 ||
+        mba_call_address_escaped() != 13)
+    {
+        return 10;
+    }
+    for (uint32_t index = 0; index < 256; ++index)
+    {
+        if (mba_call_invariant_quotient(index, ~index) != 42 ||
+            mba_call_invariant_nonzero(index, ~index) != 1 ||
+            mba_call_varying(index, ~index) != opaque_predicate_1(index, ~index) ||
+            mba_call_memory(&index) != index ||
+            mba_call_loop(index) != (uint8_t)((4 + 3 * index) ^ 4) ||
+            mba_call_shared_arguments(index) != 0)
+        {
+            return 11;
+        }
+        const uint32_t effects_before = mba_call_effects;
+        if (mba_call_impure() != 7 || mba_call_effects != effects_before + 1)
+        {
+            return 12;
+        }
+        comparisons += 7;
+    }
+    comparisons += 6;
 
     printf("MBA SMT native comparisons: %u\n", comparisons);
     return 0;

@@ -462,6 +462,7 @@ ida_add_plugin(
     src/deobf/analysis/mba_smt_synthesis.cpp
     src/deobf/analysis/mba_smt_algebra.cpp
     src/deobf/handlers/mba_smt.cpp
+    src/deobf/handlers/mba_smt_calls.cpp
     # NEW: MBA rule system
     src/deobf/rules/pattern_rule.cpp
     src/deobf/rules/rule_verifier.cpp
