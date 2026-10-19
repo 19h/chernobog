@@ -159,6 +159,22 @@ void test_query_evidence()
                   captured.rows.back().at("formula_complete") == "false" &&
                   !captured.rows.back().count("formula"),
               "oversized AST serialization is omitted, not executed again");
+
+        z3::solver memory_query(context);
+        const auto memory_sort = context.array_sort(context.bv_sort(64), context.bv_sort(8));
+        const auto memory = context.constant("query_memory", memory_sort);
+        const auto address = context.bv_val(uint64_t{4096}, 64);
+        memory_query.add(z3::select(memory, address) == context.bv_val(42, 8));
+        check(chernobog::solver_evidence::check(memory_query, "byte memory receipt") == z3::sat,
+              "array evidence capture preserves the solver result");
+
+        const auto &memory_receipt = captured.rows.back();
+        check(memory_receipt.at("formula_complete") == "true",
+              "bounded byte-array formulas are retained for replay");
+        z3::context replay_context;
+        z3::solver replay_solver(replay_context);
+        replay_solver.from_string(memory_receipt.at("formula").c_str());
+        check(replay_solver.check() == z3::sat, "recorded array formula replays independently");
     }
     check(origin == nullptr, "query origin restores after its owning scope");
     collector = nullptr;

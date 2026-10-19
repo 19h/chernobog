@@ -78,14 +78,20 @@ inline bool printable_name(const std::string &name)
 }
 
 // Count tree occurrences, not just shared AST nodes: an exponentially expanded
-// DAG must not evade the printing budget. Quantifiers, arrays and wide sorts
-// are recorded as omitted rather than serialized without a bound.
+// DAG must not evade the printing budget. Quantifiers and wide sorts remain
+// omitted. Byte arrays admit bounded select/store formulas for memory SSA.
 inline bool printable(const z3::expr &expression, size_t &visits, unsigned depth = 0)
 {
     if (++visits > 512 || depth > 64 || !expression.is_app())
         return false;
     if (!expression.is_bool() && (!expression.is_bv() || expression.get_sort().bv_size() > 64))
-        return false;
+    {
+        const auto sort = expression.get_sort();
+        if (!sort.is_array() || !sort.array_domain().is_bv() ||
+            sort.array_domain().bv_size() > 64 || !sort.array_range().is_bv() ||
+            sort.array_range().bv_size() != 8)
+            return false;
+    }
     const auto symbol = expression.decl().name();
     if (symbol.kind() == Z3_STRING_SYMBOL &&
         !printable_name(prefix(Z3_get_symbol_string(expression.ctx(), symbol), 129)))

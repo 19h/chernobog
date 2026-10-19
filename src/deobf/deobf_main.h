@@ -84,6 +84,9 @@ void chernobog_begin_mba_tracking(mbl_array_t *mba);
 // prerequisite before any optimizer mutation.
 bool chernobog_function_requires_deobfuscation(ea_t func_ea);
 void chernobog_mark_function_deobfuscated(ea_t func_ea);
+// Fresh decompilation under a scoped 30 s semantic-analysis profile.
+bool chernobog_deep_deobfuscate(ea_t func_ea, qstring *text = nullptr);
+qstring chernobog_mba_smt_statistics(ea_t func_ea);
 
 // Clear ALL tracking caches (called on database load if CHERNOBOG_RESET=1)
 void chernobog_clear_all_tracking();

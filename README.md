@@ -79,6 +79,12 @@ Chernobog automatically detects and reverses the following Hikari obfuscation te
 ### Code Transformation (108 MBA Rules)
 Mixed Boolean-Arithmetic (MBA) simplification using Z3-certified rules and lazy commutative matching:
 
+The catalog is followed by bounded SMT synthesis over typed expressions and
+cross-block state. Automatic analysis has a shared 1 s budget per function;
+**Deep deobfuscation (Chernobog)** uses 30 s. Candidate replacements require an
+equivalence proof before they reach the microcode. See [semantic MBA synthesis](docs/MBA_SMT.md)
+for the memory model, loop-invariant search, limits, and headless entry points.
+
 **Addition patterns:**
 - `x - (~y + 1)` → `x + y` (two's complement)
 - `(x | y) + (x & y)` → `x + y`

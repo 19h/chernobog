@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "scope": "Recorded pre-commit artifact and exact source contents; later binaries require their own installation check.",
+  "source_sha256": {
+    "CMakeLists.txt": "faca2b9a1a9cedba985c24974af6ee0c4554c0f3cded9b393853d9db7cff5a3f",
+    "README.md": "2f26eee3cebdf6922b939ac3a6023c4c160d0453f8e8ff6f42189618385199fc",
+    "docs/MBA_SMT.md": "821605f463c8190d8d6d0adad31c0fdf178b28c0d168105fc8b1340bf1826803",
+    "src/common/smt_bitvector.hpp": "c9df73e308cef5e6cb5df8b03124705c4de4150a9f219fc865768ba97e269882",
+    "src/common/solver_evidence.hpp": "1cb454da1aa0b3fb245847180a5e4d1da90242bd343900b4d43b16c38e8ad1a1",
+    "src/deobf/analysis/mba_smt.cpp": "3c084da626b4bed3c70ca43133d5a054e76e98c37057cf0501a23cb63f29834d",
+    "src/deobf/analysis/mba_smt.hpp": "91fbd26d4d190bffe5b8428505ec3c8abfbb8d4e1aaef2ba3255d868543f58ba",
+    "src/deobf/analysis/mba_smt_internal.hpp": "f1f8895bd12008f57efcea409e832a78f089cd66841e905a4ec8b0b66d109102",
+    "src/deobf/analysis/mba_smt_invariants.cpp": "6c9e6d40606099531e3e95ad08eebfb6d2f58cdcc5e4d9b2b3211c072062c3e7",
+    "src/deobf/analysis/mba_smt_semantics.cpp": "015bb05a22163a7c043424d11834afa474e2fae839048ffc3063750254e7b6d2",
+    "src/deobf/analysis/mba_smt_synthesis.cpp": "0b0a9f561a922c7209a4f20f036ba64e4b3745f4356e2a382c02b045368ada3d",
+    "src/deobf/deobf_main.cpp": "896a6bfdbe31f13b8065c10571721d3f6fc32d05df2232d77009e3fdc63f8ed8",
+    "src/deobf/deobf_main.h": "25b758c934923aa22d29f5fc45ee56a885aeb6c9c3309b398d50c3ba5486a6f2",
+    "src/deobf/handlers/mba_smt.cpp": "6bedc3297ac79a247c9074b5074f08b36234b33e8acb90ffccca1d591a197912",
+    "src/deobf/handlers/mba_smt.h": "c2f4ba0b4fc66c553517a9f55998df3ede9bafc77610fd7e8ab8e870801fb5a8",
+    "src/deobf/rules/rule_verifier.cpp": "63cefd400ec6414774ad4b509060f54c10a10839b0f02b6cf970732da4e07bae",
+    "src/plugin/idc_api.cpp": "fff7ff3cf459e5ca29729ee662be1f3d47a44ca3f6026af0d4d2396c07e16eb1",
+    "tests/ida_mba_smt_probe.py": "ccd199609e5143626b21362e0058187e0322ee49aa8ba95ab50f38bf565342ce",
+    "tests/mba_smt_tests.cpp": "2a2d2d9bc4921961f9edfa3f5773254a28c34c95e89c3e1c79a5dc2b2394683d",
+    "tests/vmp_native/mba_smt.c": "b8716ad66d1d28dcfadcfa200ce9742c7011880ab883a9bf58ea6b7e8b8430ae",
+    "tests/z3_tests.cpp": "7b93a309c57ca6eba58c2190b3beaaf98019b69f2b62c3d11a744c75e1f072c0"
+  },
+  "ctest": {
+    "passed": 27,
+    "failed": 0
+  },
+  "native_control": {
+    "comparisons": 262144,
+    "source": "tests/vmp_native/mba_smt.c"
+  },
+  "configured_dependencies": {
+    "z3": "4.16.0",
+    "ida_sdk": 940,
+    "rax": "4978d31075b384553f8bef96ad4434848da6bdeb"
+  },
+  "ida_run": {
+    "input_sha256": "f55f4d9da9869d96e6fead7ee68ecf9dfb1de4d2a6f4f9725c1c6fd6a1fbd5b6",
+    "plugin_sha256": "69594acf088ce2368d2d16da61a627ce54bd3fe2171f1dd5fd5aad56b5e90009",
+    "script_sha256": "ccd199609e5143626b21362e0058187e0322ee49aa8ba95ab50f38bf565342ce",
+    "ida_sha256": "387d681d6fb4f4c1c485a60025cae3f0affa6f5ea1efce3b1809639cb1aaeb28",
+    "artifacts_unchanged": true,
+    "process_elapsed_ns": 28661003625,
+    "process_return_code": 0,
+    "expected_log_found": true,
+    "internal_error_found": false,
+    "runner_return_code": 0
+  },
+  "captures": [
+    {
+      "name": "mba_smt_semantic32",
+      "normal": {
+        "budget_ms": 1000,
+        "elapsed_ns": 295651583,
+        "candidates": 2,
+        "verified": 2,
+        "applied": 1,
+        "disproved": 0,
+        "unsupported": 0,
+        "unknown": 1,
+        "invariants": 0,
+        "invariants_rejected": 0,
+        "exhausted": 0
+      },
+      "deep": {
+        "budget_ms": 30000,
+        "elapsed_ns": 10082796793,
+        "candidates": 8384,
+        "verified": 2,
+        "applied": 1,
+        "disproved": 32,
+        "unsupported": 0,
+        "unknown": 3,
+        "invariants": 0,
+        "invariants_rejected": 408,
+        "exhausted": 1
+      },
+      "restored": {
+        "budget_ms": 1000,
+        "elapsed_ns": 298460166,
+        "candidates": 2,
+        "verified": 2,
+        "applied": 1,
+        "disproved": 0,
+        "unsupported": 0,
+        "unknown": 1,
+        "invariants": 0,
+        "invariants_rejected": 0,
+        "exhausted": 0
+      },
+      "pseudocode": "__int64 __fastcall mba_smt_semantic32(int a1, int a2)\n{\n  return (unsigned int)(a1 + a2);\n}\n"
+    },
+    {
+      "name": "mba_smt_quadratic",
+      "normal": {
+        "budget_ms": 1000,
+        "elapsed_ns": 270959125,
+        "candidates": 0,
+        "verified": 0,
+        "applied": 0,
+        "disproved": 0,
+        "unsupported": 3,
+        "unknown": 0,
+        "invariants": 0,
+        "invariants_rejected": 233,
+        "exhausted": 1
+      },
+      "deep": {
+        "budget_ms": 30000,
+        "elapsed_ns": 10020952082,
+        "candidates": 956,
+        "verified": 2,
+        "applied": 1,
+        "disproved": 8,
+        "unsupported": 10,
+        "unknown": 0,
+        "invariants": 18,
+        "invariants_rejected": 859,
+        "exhausted": 1
+      },
+      "restored": {
+        "budget_ms": 1000,
+        "elapsed_ns": 262382250,
+        "candidates": 0,
+        "verified": 0,
+        "applied": 0,
+        "disproved": 0,
+        "unsupported": 3,
+        "unknown": 0,
+        "invariants": 0,
+        "invariants_rejected": 233,
+        "exhausted": 1
+      },
+      "pseudocode": "__int64 __fastcall mba_smt_quadratic(char a1, int a2)\n{\n  int v2; // w8\n  char i; // [xsp+7h] [xbp-9h]\n  char v6; // [xsp+Fh] [xbp-1h]\n\n  v6 = a1;\n  for ( i = a1 * a1; ; i += 2 * v6++ + 1 )\n  {\n    v2 = a2--;\n    if ( v2 == 0 )\n      break;\n  }\n  return 0;\n}\n"
+    },
+    {
+      "name": "mba_smt_alias",
+      "normal": {
+        "budget_ms": 1000,
+        "elapsed_ns": 268691583,
+        "candidates": 0,
+        "verified": 0,
+        "applied": 0,
+        "disproved": 0,
+        "unsupported": 1,
+        "unknown": 0,
+        "invariants": 0,
+        "invariants_rejected": 198,
+        "exhausted": 1
+      },
+      "deep": {
+        "budget_ms": 30000,
+        "elapsed_ns": 3787479834,
+        "candidates": 8299,
+        "verified": 0,
+        "applied": 0,
+        "disproved": 95,
+        "unsupported": 1,
+        "unknown": 0,
+        "invariants": 0,
+        "invariants_rejected": 297,
+        "exhausted": 0
+      },
+      "restored": {
+        "budget_ms": 1000,
+        "elapsed_ns": 274734000,
+        "candidates": 0,
+        "verified": 0,
+        "applied": 0,
+        "disproved": 0,
+        "unsupported": 1,
+        "unknown": 0,
+        "invariants": 0,
+        "invariants_rejected": 198,
+        "exhausted": 1
+      },
+      "pseudocode": "__int64 __fastcall mba_smt_alias(unsigned __int8 *a1, _BYTE *a2, unsigned __int8 a3)\n{\n  *a1 = a3;\n  *a2 = a3 + 1;\n  return *a1 ^ (unsigned int)a3;\n}\n"
+    }
+  ],
+  "limits": [
+    "Normal-completion sequential-memory model.",
+    "Explicit memory accesses and native bytes retained.",
+    "Implicit owned-frame reads may simplify.",
+    "Search is bounded and incomplete; unsupported inputs retain their original expression.",
+    "Timings describe this run; repeatability error bounds are unknown."
+  ]
+}

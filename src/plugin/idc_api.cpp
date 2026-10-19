@@ -271,6 +271,8 @@ const option_alias_t option_aliases[] = {
     {"dead_global_stores", "CHERNOBOG_DEAD_GLOBAL_STORES", false,
      "Remove dead stores to auto-named writable scalars"},
     {"mba_affine", "CHERNOBOG_MBA_AFFINE", false, "Exact-Z3 affine MBA reconstruction"},
+    {"mba_smt", "CHERNOBOG_MBA_SMT", false,
+     "Bounded cross-block semantic MBA synthesis (default enabled)"},
     {"vm", "CHERNOBOG_VM", false, "VM-family detection and rewriting"},
     {"vm_z3", "CHERNOBOG_VM_Z3", false, "Exact-Z3 VM residual simplification"},
     {"vm_carrier_pool", "CHERNOBOG_VM_CARRIER_POOL", false, "VM carrier constants"},
@@ -698,6 +700,29 @@ error_t idaapi idc_deobfuscate_text(idc_value_t *argv, idc_value_t *r)
         return eOk;
     }
     r->set_string(text);
+    return eOk;
+}
+
+error_t idaapi idc_deep_deobfuscate(idc_value_t *argv, idc_value_t *r)
+{
+    const auto ea = resolve_function(argv[0]);
+    r->set_long(ready_host() != nullptr && ea != BADADDR && chernobog_deep_deobfuscate(ea) ? 1 : 0);
+    return eOk;
+}
+
+error_t idaapi idc_deep_deobfuscate_text(idc_value_t *argv, idc_value_t *r)
+{
+    const auto ea = resolve_function(argv[0]);
+    qstring text;
+    if (ready_host() != nullptr && ea != BADADDR)
+        chernobog_deep_deobfuscate(ea, &text);
+    r->set_string(text);
+    return eOk;
+}
+
+error_t idaapi idc_mba_smt_stats(idc_value_t *argv, idc_value_t *r)
+{
+    r->set_string(chernobog_mba_smt_statistics(resolve_function(argv[0])));
     return eOk;
 }
 
@@ -2061,6 +2086,12 @@ const idc_entry_t idc_entries[] = {
      "Run the Ctrl+Shift+D action on one function"},
     {"chernobog_deobfuscate_text", idc_deobfuscate_text, args_ea, "chernobog_deobfuscate_text(ea)",
      "Admit, re-decompile uncached, and return the pseudocode"},
+    {"chernobog_deep_deobfuscate", idc_deep_deobfuscate, args_ea, "chernobog_deep_deobfuscate(ea)",
+     "Fresh deobfuscation with a scoped 30 s semantic MBA budget; 1 on success"},
+    {"chernobog_deep_deobfuscate_text", idc_deep_deobfuscate_text, args_ea,
+     "chernobog_deep_deobfuscate_text(ea)", "Fresh deep deobfuscation returning pseudocode"},
+    {"chernobog_mba_smt_stats", idc_mba_smt_stats, args_ea, "chernobog_mba_smt_stats(ea)",
+     "JSON statistics for the latest function semantic-analysis generation"},
     {"chernobog_decompile", idc_decompile, args_ea, "chernobog_decompile(ea)",
      "Pseudocode for a function without forcing a new pass"},
     {"chernobog_deobfuscate_range", idc_deobfuscate_range, args_ea_ea,

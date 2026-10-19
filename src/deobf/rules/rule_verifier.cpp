@@ -1,6 +1,7 @@
 #include "rule_verifier.h"
 #include "../../common/bitvector.h"
 #include "../../common/solver_evidence.hpp"
+#include "../../common/smt_bitvector.hpp"
 #include <array>
 #include <cstdint>
 #include <mutex>
@@ -289,17 +290,17 @@ struct InstanceTranslator
         switch (value->opcode)
         {
         case m_add:
-            return *left + *right;
+            return smt::arithmetic(smt::Arithmetic::Add, *left, *right);
         case m_sub:
-            return *left - *right;
+            return smt::arithmetic(smt::Arithmetic::Sub, *left, *right);
         case m_mul:
-            return *left * *right;
+            return smt::arithmetic(smt::Arithmetic::Mul, *left, *right);
         case m_and:
-            return *left & *right;
+            return smt::arithmetic(smt::Arithmetic::And, *left, *right);
         case m_or:
-            return *left | *right;
+            return smt::arithmetic(smt::Arithmetic::Or, *left, *right);
         case m_xor:
-            return *left ^ *right;
+            return smt::arithmetic(smt::Arithmetic::Xor, *left, *right);
         default:
             return reject("unsupported instruction opcode");
         }

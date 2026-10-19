@@ -8,6 +8,7 @@
 #include "handlers/block_merge.h"
 #include "handlers/select_chain.h"
 #include "handlers/mba_simplify.h"
+#include "handlers/mba_smt.h"
 #include "handlers/vm_mba.h"
 #include "handlers/identity_call.h"
 #include "handlers/stack_string.h"
@@ -52,6 +53,8 @@ struct deobf_module_state_t
     uint64_t next_mba_generation = 0;
     std::map<const mbl_array_t *, uint64_t> mba_generations;
     std::set<std::tuple<const mbl_array_t *, int, uint64_t>> mba_maturity_processed;
+    std::map<ea_t, chernobog::mba_smt::FunctionBudget> mba_smt_budgets;
+    std::set<ea_t> deep_functions;
 };
 
 // IDA stores one pointer for this data ID in each database context.
@@ -122,6 +125,9 @@ void chernobog_begin_mba_tracking(mbl_array_t *mba)
             ++it;
     }
     state->mba_generations[mba] = ++state->next_mba_generation;
+    auto &budget = state->mba_smt_budgets[mba->entry_ea];
+    budget = {};
+    budget.limit_ms = state->deep_functions.count(mba->entry_ea) ? 30000 : 1000;
     chernobog::hybrid::solver_inspection_begin(uint64_t(mba->entry_ea));
 }
 
@@ -150,6 +156,7 @@ void chernobog_clear_all_tracking()
         state->optblock_processed.clear();
         state->mba_maturity_processed.clear();
         state->mba_generations.clear();
+        state->mba_smt_budgets.clear();
     }
     deflatten_handler_t::clear_cache();
     identity_call_handler_t::clear_caches();
@@ -171,6 +178,104 @@ static void optblock_debug(const char *fmt, ...)
     va_start(args, fmt);
     deobf::debug_vlog("/tmp/optblock_debug.log", fmt, args);
     va_end(args);
+}
+
+static int run_semantic_mba(mbl_array_t *mba)
+{
+    auto *state = get_deobf_state();
+    if (!state || !mba)
+        return 0;
+
+    auto &budget = state->mba_smt_budgets[mba->entry_ea];
+    const unsigned total_limit = budget.limit_ms;
+    struct RestoreBudget
+    {
+        unsigned &limit;
+        unsigned original;
+        ~RestoreBudget()
+        {
+            // The public profile remains the whole-function limit.
+            limit = original;
+        }
+    } restore{budget.limit_ms, total_limit};
+
+    if (mba->maturity == MMAT_LOCOPT)
+    {
+        const unsigned early_allowance = total_limit > 1000 ? 10000 : 250;
+        const auto spent_ms = static_cast<unsigned>(budget.spent_ns / 1000000);
+        budget.limit_ms = std::min(total_limit, spent_ms + early_allowance);
+    }
+    return chernobog::mba_smt::simplify(mba, budget);
+}
+
+qstring chernobog_mba_smt_statistics(ea_t ea)
+{
+    qstring result;
+    auto *state = get_deobf_state();
+    if (!state)
+        return "{}";
+    auto found = state->mba_smt_budgets.find(ea);
+    if (found == state->mba_smt_budgets.end())
+        return "{}";
+    const auto &budget = found->second;
+    const auto &statistics = budget.totals;
+    result.sprnt("{\"budget_ms\":%u,\"elapsed_ns\":%llu,"
+                 "\"candidates\":%zu,\"verified\":%zu,\"applied\":%zu,\"disproved\":%zu,"
+                 "\"unsupported\":%zu,\"unknown\":%zu,"
+                 "\"invariants\":%zu,\"invariants_rejected\":%zu,\"exhausted\":%zu}",
+                 budget.limit_ms, static_cast<unsigned long long>(budget.spent_ns),
+                 statistics.candidates, statistics.verified, statistics.applied,
+                 statistics.disproved, statistics.unsupported, statistics.unknown,
+                 statistics.invariants, statistics.invariants_rejected, statistics.exhausted);
+    return result;
+}
+
+namespace
+{
+struct deep_profile_t
+{
+    deobf_module_state_t *state = get_deobf_state();
+    ea_t function_ea;
+    bool already_enabled = false;
+
+    explicit deep_profile_t(ea_t ea) : function_ea(ea)
+    {
+        if (state)
+        {
+            already_enabled = state->deep_functions.count(ea) != 0;
+            state->deep_functions.insert(ea);
+        }
+    }
+
+    ~deep_profile_t()
+    {
+        if (state && !already_enabled)
+        {
+            state->deep_functions.erase(function_ea);
+        }
+    }
+};
+}
+
+bool chernobog_deep_deobfuscate(ea_t ea, qstring *text)
+{
+    auto *function = get_func(ea);
+    if (!function || !get_deobf_state())
+        return false;
+    deep_profile_t profile(function->start_ea);
+    chernobog_request_function_deobfuscation(function->start_ea);
+    chernobog_clear_function_tracking(function->start_ea);
+    mark_cfunc_dirty(function->start_ea, false);
+    hexrays_failure_t failure;
+    auto cfunc = decompile(function, &failure, DECOMP_NO_CACHE);
+    if (!cfunc)
+        return false;
+    if (text)
+    {
+        qstring_printer_t printer(cfunc, *text, false);
+        cfunc->print_func(printer);
+    }
+    return true;
 }
 
 //--------------------------------------------------------------------------
@@ -267,7 +372,7 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
         // The complete pass already includes global-constant and deflattening
         // handlers. Report its mutations to Hex-Rays and do not run those
         // handlers a second time on the same microcode maturity.
-        return full_changes;
+        return full_changes + run_semantic_mba(mba);
     }
 
     // Two-phase deflattening approach:
@@ -325,14 +430,14 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
         }
         if (mba_simplify_handler_t::detect(mba))
             late_changes += mba_simplify_handler_t::run(mba, &late_ctx);
-        return late_changes;
+        return late_changes + run_semantic_mba(mba);
     }
 
     deobf_ctx_t ctx;
     ctx.mba = mba;
     ctx.func_ea = func_ea;
 
-    int total_changes = 0;
+    int total_changes = maturity == MMAT_GLBOPT1 ? run_semantic_mba(mba) : 0;
 
     // Try global constant inlining - works better at later maturity when addresses resolved
     if (maturity >= MMAT_LOCOPT && global_const_handler_t::detect(mba))
@@ -1114,14 +1219,30 @@ static int do_analyze(vdui_t *vu)
     return 1;
 }
 
+static int do_deep_deobfuscate(vdui_t *vu)
+{
+    if (!vu || !vu->cfunc)
+        return 0;
+    const auto ea = vu->cfunc->entry_ea;
+    deep_profile_t profile(ea);
+    chernobog_request_function_deobfuscation(ea);
+    chernobog_clear_function_tracking(ea);
+    mark_cfunc_dirty(ea, false);
+    vu->refresh_view(true);
+    return 1;
+}
+
 static deobf_action_handler_t ah_deobf(do_deobfuscate);
 static deobf_action_handler_t ah_analyze(do_analyze);
+static deobf_action_handler_t ah_deep(do_deep_deobfuscate);
 
 static const action_desc_t actions[] = {
     ACTION_DESC_LITERAL("chernobog:deobfuscate", "Deobfuscate (Chernobog)", &ah_deobf,
                         "Ctrl+Shift+D", nullptr, -1),
     ACTION_DESC_LITERAL("chernobog:analyze", "Analyze obfuscation (Chernobog)", &ah_analyze,
                         "Ctrl+Shift+A", nullptr, -1),
+    ACTION_DESC_LITERAL("chernobog:deep_deobfuscate", "Deep deobfuscation (Chernobog)", &ah_deep,
+                        nullptr, "Semantic MBA analysis with a 30 second budget", -1),
 };
 
 void deobf_attach_popup(TWidget *widget, TPopupMenu *popup, vdui_t *vu)
