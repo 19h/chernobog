@@ -207,6 +207,8 @@ struct empty_statement_visitor_t final : public ctree_visitor_t
             else
                 ++iterator;
         }
+        if (instruction->cblock->empty())
+            instruction->new_insn(instruction->ea);
         return 0;
     }
 };

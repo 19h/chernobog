@@ -23,6 +23,7 @@ UNARY = (
 BINARY = (
     "mba_context_return_range",
     "mba_context_known_bits",
+    "mba_context_empty_branch",
     "mba_context_branch_equal",
     "mba_context_false_edge",
     "mba_context_join_equal",

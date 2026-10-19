@@ -156,6 +156,18 @@ __attribute__((noinline)) uint32_t mba_context_known_bits(uint32_t x, uint32_t y
     return (value & UINT32_C(0x55588C79)) ^ UINT32_C(0x55588C79);
 }
 
+__attribute__((noinline)) uint32_t mba_context_empty_branch(uint32_t x, uint32_t y)
+{
+    for (uint32_t index = 0; index < (x & 3U); ++index)
+    {
+        if (opaque_predicate_2(x, y) == 0)
+        {
+            mba_context_observe(1);
+        }
+    }
+    return 0;
+}
+
 __attribute__((noinline)) uint32_t mba_context_branch_equal(uint32_t x, uint32_t y)
 {
     if (x == y)
@@ -399,6 +411,12 @@ int main(void)
         }
 
         uint32_t mutable_value = index;
+        const uint32_t previous_effects = mba_call_effects;
+        if (mba_context_empty_branch(index, ~index) != 0 || mba_call_effects != previous_effects)
+        {
+            return 16;
+        }
+        ++comparisons;
         if (mba_context_return_range(index, ~index) != 42 ||
             mba_context_known_bits(index, ~index) != 0 ||
             mba_context_old_value(index) != (uint8_t)(index ^ (index + 1)) ||

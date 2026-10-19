@@ -968,6 +968,12 @@ class CallerSimplifier
                     ++iterator;
                 }
             }
+            // SDK address recalculation expects a first item even in an empty
+            // branch body. Keep its canonical empty-statement placeholder.
+            if (node.cblock->empty())
+            {
+                node.new_insn(node.ea);
+            }
             return continues;
         }
         case cit_expr:

@@ -65,6 +65,10 @@ def validate_capture(name, text, constants, retained):
         raise RuntimeError("A constant helper call remains in " + name)
     if name == "block_decrypt_strings" and re.search(r"0x9E432F2E|2655203118", text, re.IGNORECASE):
         raise RuntimeError("The impossible helper comparison remains")
+    if name == "mba_context_empty_branch" and re.search(
+        r"\b(?:opaque_predicate_2|mba_context_observe)\s*\(", text
+    ):
+        raise RuntimeError("The impossible loop-body branch remains")
     symbolic = {
         "mba_context_symbolic_identity",
         "mba_context_symbolic_xor",
@@ -209,6 +213,7 @@ def main():
             "mba_call_narrow_result": 0x45,
             "mba_context_return_range": 42,
             "mba_context_known_bits": 0,
+            "mba_context_empty_branch": 0,
             "mba_context_branch_equal": 0,
             "mba_context_false_edge": 0,
             "mba_context_join_equal": 0,
