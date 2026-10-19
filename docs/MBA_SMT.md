@@ -5,6 +5,9 @@ also executes typed integer expressions symbolically, searches replacement
 expressions, and checks the emitted microcode against the same CFG snapshot.
 `CHERNOBOG_MBA_SMT=0` (IDC option `mba_smt`) disables the new pass.
 
+The proposed [CoBRA MBA backend](MBA_COBRA_SPEC.md) replaces algebraic candidate
+generation while retaining this pass's Z3 proof gates and contextual analysis.
+
 | Entry point | Additional semantic-analysis budget per decompilation |
 |---|---:|
 | Ordinary deobfuscation / automatic processing | 1 s |
