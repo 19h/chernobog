@@ -1017,37 +1017,42 @@ void test_cancellation_latch()
     check(!session.eligible_for_commit(true), "legacy expiry exemption cannot resume cancellation");
 }
 
-void test_cobra_word_proof_cancellation()
+void test_word_proof_cancellation()
 {
-    if (!cobra_backend::available())
-        return;
     auto program = make_program(32);
     const auto x = variable(0, 32), y = variable(1, 32);
-    program.blocks[0].statements = {Statement::assign(
-        2, add(expression(Op::Xor, x, y), multiply(constant(2, 32), expression(Op::And, x, y))))};
-    bool cancelled = false, observed_word_proof = false;
-    detail::SessionTestHooks hooks;
-    hooks.after_query = [&](const char *purpose, const z3::check_result &observed)
+    const auto carry =
+        add(expression(Op::Xor, x, y), multiply(constant(2, 32), expression(Op::And, x, y)));
+    program.blocks[0].statements = {Statement::assign(2, add(carry, carry))};
+    for (Backend backend : {Backend::Legacy, Backend::Cobra})
     {
-        if (std::string(purpose) == "MBA Boolean word identity" && observed == z3::unsat)
-            cancelled = observed_word_proof = true;
-    };
-    struct Restore
-    {
-        detail::SessionTestHooks *old;
-        ~Restore() { detail::session_test_hooks = old; }
-    } restore{detail::session_test_hooks};
-    detail::session_test_hooks = &hooks;
-    Options options;
-    options.backend = Backend::Cobra;
-    options.max_invariants = 0;
-    options.cancelled = [&] { return cancelled; };
-    Analysis analysis(program, options);
-    check(analysis.run().empty() && observed_word_proof && analysis.statistics().cobra.calls == 0,
-          "late word-theorem cancellation cannot authorize generation or a replacement");
-    check(analysis.statistics().last_solver_observed == 2 &&
-              !analysis.statistics().last_solver_usable,
-          "word-theorem observation and eligibility remain distinct");
+        if (backend == Backend::Cobra && !cobra_backend::available())
+            continue;
+        bool cancelled = false, observed_word_proof = false;
+        detail::SessionTestHooks hooks;
+        hooks.after_query = [&](const char *purpose, const z3::check_result &observed)
+        {
+            if (std::string(purpose) == "MBA Boolean word identity" && observed == z3::unsat)
+                cancelled = observed_word_proof = true;
+        };
+        struct Restore
+        {
+            detail::SessionTestHooks *old;
+            ~Restore() { detail::session_test_hooks = old; }
+        } restore{detail::session_test_hooks};
+        detail::session_test_hooks = &hooks;
+        Options options;
+        options.backend = backend;
+        options.max_invariants = 0;
+        options.cancelled = [&] { return cancelled; };
+        Analysis analysis(program, options);
+        check(analysis.run().empty() && observed_word_proof &&
+                  analysis.statistics().cobra.calls == 0,
+              "late word-theorem cancellation cannot authorize generation or a replacement");
+        check(analysis.statistics().last_solver_observed == 2 &&
+                  !analysis.statistics().last_solver_usable,
+              "word-theorem observation and eligibility remain distinct");
+    }
 }
 
 } // namespace
@@ -1075,7 +1080,7 @@ int main()
     test_unlowerable_proposal_continuation();
     test_post_proof_eligibility();
     test_cancellation_latch();
-    test_cobra_word_proof_cancellation();
+    test_word_proof_cancellation();
     std::printf("MBA SMT failures: %d\n", failures);
     return failures != 0;
 }

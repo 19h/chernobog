@@ -308,6 +308,7 @@ class AlgebraicSimplifier
     {
         if (session_.options.backend == Backend::Legacy && cost(original) >= 8)
         {
+            prepare_word_regions(original);
             prepare_bitwise_proofs(original);
         }
         return compact_complements(rewrite(original), [&](const Term &before, const Term &after)
@@ -430,7 +431,7 @@ class AlgebraicSimplifier
     void prepare_word_proofs(const Term &node, unsigned bits)
     {
         if (!node || !node->left || node->bits != bits || !session_.has_budget() ||
-            !linearized_.insert(key(node)).second)
+            !word_prepared_.insert(key(node)).second)
             return;
         prepare_word_proofs(node->left, bits);
         prepare_word_proofs(node->right, bits);
@@ -510,6 +511,21 @@ class AlgebraicSimplifier
         program_.retain_verified_rewrite(before, after);
         if (!z3::eq(original, before))
             program_.retain_verified_rewrite(original, after);
+    }
+
+    void prepare_word_regions(const Term &node)
+    {
+        if (!node || !node->left || !session_.has_budget() || has_word_masks(node))
+            return;
+        const bool arithmetic = node->op == Op::Add || node->op == Op::Sub || node->op == Op::Mul;
+        if (arithmetic && node->bits <= 32 && word_degree(node) <= 1 &&
+            session_.remaining_budget(session_.now()) >= std::chrono::milliseconds(10))
+        {
+            prepare_word_proofs(node, node->bits);
+            return;
+        }
+        prepare_word_regions(node->left);
+        prepare_word_regions(node->right);
     }
 
     Term prepare_boundaries(const Term &node)
@@ -1096,6 +1112,7 @@ class AlgebraicSimplifier
     const SymbolicState &state_;
     std::map<std::string, Term> rewritten_;
     std::set<std::string> linearized_;
+    std::set<std::string> word_prepared_;
     std::set<std::pair<unsigned, WordLaw>> word_laws_;
     size_t visited_ = 0;
     bool cobra_origin_ = false;
