@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "status": "awaiting_checksum_resolution",
+  "fixture_manifest_sha256": "b85a70cd5519666846822eee00dc3faa07ba660147784f1d3b471d2127bcd973",
+  "runtimes": [
+    {
+      "target": "macos-x86_64",
+      "runner": "macos-15-intel",
+      "ida_version": "9.4",
+      "installer_key": "release/ida-pro/9.4/ida-pro_94_x64mac.app.zip",
+      "installer_size": 547485022,
+      "installer_sha256": null
+    },
+    {
+      "target": "macos-arm64",
+      "runner": "macos-latest",
+      "ida_version": "9.4",
+      "installer_key": "release/ida-pro/9.4/ida-pro_94_armmac.app.zip",
+      "installer_size": 541078208,
+      "installer_sha256": null
+    },
+    {
+      "target": "linux-x86_64",
+      "runner": "ubuntu-latest",
+      "ida_version": "9.4",
+      "installer_key": "release/ida-pro/9.4/ida-pro_94_x64linux.run",
+      "installer_size": 583079031,
+      "installer_sha256": null
+    },
+    {
+      "target": "linux-arm64",
+      "runner": "ubuntu-24.04-arm",
+      "ida_version": "9.4",
+      "installer_key": "release/ida-pro/9.4/ida-pro_94_armlinux.run",
+      "installer_size": 544306999,
+      "installer_sha256": null
+    },
+    {
+      "target": "windows-x86_64",
+      "runner": "windows-latest",
+      "ida_version": "9.4",
+      "installer_key": "release/ida-pro/9.4/ida-pro_94_x64win.exe",
+      "installer_size": 635948872,
+      "installer_sha256": null
+    },
+    {
+      "target": "windows-arm64",
+      "runner": "windows-11-arm",
+      "ida_version": "9.4",
+      "installer_key": "release/ida-pro/9.4/ida-pro_94_armwin.exe",
+      "installer_size": 593251824,
+      "installer_sha256": null
+    }
+  ]
+}

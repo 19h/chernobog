@@ -1,0 +1,3 @@
+# These digests identify exact bytes on every release platform.
+patches/cobra/*.patch -text
+tests/fixtures/mba_cobra_positive_manifest.json -text

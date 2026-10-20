@@ -1,11 +1,16 @@
 name: CoBRA native runtime acceptance
 on:
   workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [inventory, resolve]
+        default: inventory
 permissions:
   contents: read
 jobs:
   inventory:
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master' && inputs.operation == 'inventory'
     environment: ida-runtime
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -29,4 +34,26 @@ jobs:
         with:
           name: cobra-runtime-inventory
           path: runtime-inventory/*.json
+          if-no-files-found: error
+
+  resolve:
+    if: github.ref == 'refs/heads/master' && inputs.operation == 'resolve'
+    environment: ida-runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Freeze exact installer fingerprints
+        env:
+          HCLI_API_KEY: ${{ secrets.HCLI_API_KEY }}
+        run: |
+          python -m pip install ida-hcli==0.26.3
+          python tests/cobra_runtime_assets.py --manifest tests/fixtures/ida_cobra_runtime_manifest.json --output runtime-fingerprints/manifest.json --directory "$RUNNER_TEMP/ida-installers"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: cobra-runtime-fingerprints
+          path: runtime-fingerprints/manifest.json
           if-no-files-found: error
