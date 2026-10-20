@@ -102,6 +102,9 @@ def header(fixtures, output):
         "#pragma once",
         '#include "deobf/analysis/mba_smt.hpp"',
         "namespace chernobog::mba_smt::fixtures {",
+        'inline constexpr char manifest_sha256[] = "'
+        + hashlib.sha256(MANIFEST.read_bytes()).hexdigest()
+        + '";',
         "struct Fixture { const char *id; Program program; Term reference; size_t max_nodes; bool half_cost; bool empty_support; unsigned inner_width; };",
         "inline std::vector<Fixture> make() { std::vector<Fixture> result;",
     ]

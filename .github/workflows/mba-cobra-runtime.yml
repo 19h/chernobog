@@ -4,10 +4,14 @@ on:
     inputs:
       operation:
         type: choice
-        options: [inventory, resolve]
+        options: [inventory, resolve, accept]
         default: inventory
+      build_run:
+        description: Successful native build run ID for this master revision
+        type: string
 permissions:
   contents: read
+  actions: read
 jobs:
   inventory:
     if: github.ref == 'refs/heads/master' && inputs.operation == 'inventory'
@@ -34,6 +38,111 @@ jobs:
         with:
           name: cobra-runtime-inventory
           path: runtime-inventory/*.json
+          if-no-files-found: error
+
+  acceptance-plan:
+    if: github.ref == 'refs/heads/master' && inputs.operation == 'accept'
+    runs-on: ubuntu-latest
+    outputs:
+      revision: ${{ steps.plan.outputs.revision }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate build provenance and frozen runtime matrix
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN: ${{ inputs.build_run }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          run_id = os.environ['BUILD_RUN']
+          if not run_id.isdecimal(): raise RuntimeError('Numeric build run ID required')
+          run=json.loads(subprocess.check_output(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{run_id}']))
+          revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          if run['name']!='Build Chernobog Plugin' or run['head_sha']!=revision or run['head_branch']!='master' or run['conclusion']!='success':
+              raise RuntimeError('Acceptance requires a successful native build of this exact master revision')
+          manifest=json.loads(Path('tests/fixtures/ida_cobra_runtime_manifest.json').read_text())
+          if manifest['status']!='checksums_frozen' or len(manifest['runtimes'])!=6:
+              raise RuntimeError('Six frozen native runtimes required')
+          matrix={'include':[{'target':r['target'],'os':r['runner'],'arch':'arm64' if r['target'].endswith('arm64') else 'amd64'} for r in manifest['runtimes']]}
+          with open(os.environ['GITHUB_OUTPUT'],'a') as stream:
+              stream.write('revision='+revision+'\nmatrix='+json.dumps(matrix)+'\n')
+          PY
+
+  native:
+    needs: acceptance-plan
+    environment: ida-runtime
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.acceptance-plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.acceptance-plan.outputs.revision }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: ${{ matrix.arch }}
+      - name: Install Linux runtime dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgl1 libegl1 libxkbcommon0 libxcb-xinerama0 libxcb-cursor0
+      - uses: actions/download-artifact@v8
+        with:
+          name: chernobog-${{ matrix.target }}
+          path: native-plugin
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.build_run }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: cobra-sdk-${{ matrix.target }}
+          path: native-sdk
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.build_run }}
+      - name: Provision exact native licensed runtime
+        shell: bash
+        env:
+          HCLI_API_KEY: ${{ secrets.HCLI_API_KEY }}
+          IDA_LICENSE_ID: ${{ secrets.IDA_LICENSE_ID }}
+        run: python tests/cobra_runtime_native.py provision --target "${{ matrix.target }}" --directory "$RUNNER_TEMP/cobra-runtime"
+      - name: Exercise actual SDK emission and installed plugin
+        shell: bash
+        run: python tests/cobra_runtime_native.py collect --target "${{ matrix.target }}" --directory "$RUNNER_TEMP/cobra-runtime" --bundle native-sdk --plugin native-plugin --output "native-evidence/${{ matrix.target }}"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: cobra-native-${{ matrix.target }}
+          path: native-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+  promotion-gate:
+    if: always() && needs.acceptance-plan.result == 'success'
+    needs: [acceptance-plan, native]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.acceptance-plan.outputs.revision }}
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: cobra-native-*
+          path: collected-evidence
+          merge-multiple: true
+      - name: Enforce complete promotion matrix
+        run: python tests/cobra_promotion_gate.py collected-evidence --output promotion.json
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: cobra-promotion-result
+          path: promotion.json
           if-no-files-found: error
 
   resolve:

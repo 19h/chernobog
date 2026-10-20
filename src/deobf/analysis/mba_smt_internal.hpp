@@ -23,7 +23,7 @@ void collect_literals(const Term &term, unsigned bit_width, std::set<uint64_t> &
 struct SessionTestHooks
 {
     std::function<std::chrono::steady_clock::time_point()> now;
-    std::function<void(const char *)> after_query;
+    std::function<void(const char *, const z3::check_result &)> after_query;
 };
 inline thread_local SessionTestHooks *session_test_hooks = nullptr;
 

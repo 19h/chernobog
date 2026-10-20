@@ -1,5 +1,6 @@
 #include "mba_smt_calls.h"
 #include "mba_smt_ctree.h"
+#include "mba_smt_emission.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -21,6 +22,7 @@ constexpr size_t max_callee_bytes = 4096;
 constexpr size_t max_expression_attempts = 128;
 constexpr size_t max_propagation_rounds = 3;
 constexpr unsigned normal_expression_budget_ms = 250;
+constexpr unsigned cobra_normal_expression_budget_ms = 500;
 constexpr unsigned deep_expression_budget_ms = 1000;
 
 // Decompiling a callee can deliver another maturity callback. That callback
@@ -682,6 +684,59 @@ struct ControlHazards final : ctree_visitor_t
 
 // Contexts are snapshots of scalar value versions, not substitutions into live
 // lvalues. Every emitted replacement is retranslated in the same snapshot.
+class CtreeDomainSnapshot
+{
+    struct Count final : ctree_visitor_t
+    {
+        size_t nodes = 0;
+        Count() : ctree_visitor_t(CV_FAST) {}
+        int idaapi visit_expr(cexpr_t *) override { return ++nodes > 131072; }
+        int idaapi visit_insn(cinsn_t *) override { return ++nodes > 131072; }
+    };
+    const mba_t *owner_ = nullptr;
+    std::unique_ptr<cinsn_t> body_;
+    lvars_t locals_;
+
+  public:
+    bool capture(cfunc_t &function)
+    {
+        Count count;
+        if (function.get_lvars()->size() > 131072 || count.apply_to(&function.body, nullptr) != 0)
+            return false;
+        try
+        {
+            auto body = std::make_unique<cinsn_t>(function.body);
+            lvars_t locals = *function.get_lvars();
+            owner_ = function.mba;
+            body_ = std::move(body);
+            locals_ = std::move(locals);
+            return true;
+        }
+        catch (...)
+        {
+            body_.reset();
+            return false;
+        }
+    }
+    bool matches(cfunc_t &function) const
+    {
+        if (!body_ || owner_ != function.mba || locals_.size() != function.get_lvars()->size() ||
+            body_->compare(function.body) != 0)
+            return false;
+        const auto &current = *function.get_lvars();
+        for (size_t i = 0; i < locals_.size(); ++i)
+            if (locals_[i].tif != current[i].tif || locals_[i].width != current[i].width ||
+                locals_[i].location != current[i].location ||
+                locals_[i].defea != current[i].defea ||
+                locals_[i].is_used_byref() != current[i].is_used_byref() ||
+                locals_[i].is_overlapped_var() != current[i].is_overlapped_var() ||
+                locals_[i].is_shared() != current[i].is_shared() ||
+                locals_[i].is_noprop() != current[i].is_noprop())
+                return false;
+        return true;
+    }
+};
+
 class CallerSimplifier
 {
   public:
@@ -698,6 +753,8 @@ class CallerSimplifier
 
     CallSimplification run()
     {
+        if (!domain_.capture(function_))
+            return {};
         // Reuse available locals and normalize field syntax throughout the
         // function before a difficult earlier predicate can consume the budget.
         structural_only_ = true;
@@ -763,6 +820,8 @@ class CallerSimplifier
             return false;
         }
         emitted.ea = node.ea;
+        emitted.label_num = node.label_num;
+        emitted.exflags = node.exflags;
         return true;
     }
 
@@ -775,8 +834,15 @@ class CallerSimplifier
         auto candidate_receipt =
             proved ? proved : analysis.prove_candidate(query.block(), 0, candidate);
         if (!candidate_receipt)
+        {
+            deobf::log_verbose("[mba_smt_calls] Candidate proof rejected at %a\n", node.ea);
             return {};
+        }
         auto emitted = emit_replacement(node, context, query.restore(candidate));
+        if (!emitted)
+            deobf::log_verbose(
+                "[mba_smt_calls] Emission not improving at %a: term_cost=%zu node_cost=%zu\n",
+                node.ea, cost(candidate), scalar_expression_cost(node));
         if (!emitted ||
             !verify_emitted(node, context, query, analysis, *emitted, *candidate_receipt, receipt))
         {
@@ -787,7 +853,8 @@ class CallerSimplifier
 
     bool fold(cexpr_t &node, const ScalarContext &context)
     {
-        if (node.op == cot_num || !budget_.available() || attempts_ >= max_expression_attempts)
+        if (!domain_valid_ || node.op == cot_num || !budget_.available() ||
+            attempts_ >= max_expression_attempts)
         {
             return false;
         }
@@ -825,6 +892,8 @@ class CallerSimplifier
         ContextQuery query(context, value, !structural_only_);
         if (!query.valid())
         {
+            deobf::log_verbose("[mba_smt_calls] Query rejected at %a: cost=%zu structural=%d\n",
+                               node.ea, cost(value), structural_only_);
             return false;
         }
         ++attempts_;
@@ -836,7 +905,9 @@ class CallerSimplifier
         options.snapshot = snapshot;
         const bool deep = options.profile == Profile::Deep;
         options.budget_ms = std::min(budget_.remaining_ms(), deep ? deep_expression_budget_ms
-                                                                  : normal_expression_budget_ms);
+                                                             : options.backend == Backend::Cobra
+                                                                 ? cobra_normal_expression_budget_ms
+                                                                 : normal_expression_budget_ms);
         if (structural_only_)
         {
             options.budget_ms = std::min(options.budget_ms, 25u);
@@ -845,6 +916,10 @@ class CallerSimplifier
         // entry edge's guard and its negation are needed at this query block.
         options.max_invariants = 2;
         options.cancelled = [] { return user_cancelled(); };
+        if (!validate(query.program()))
+            deobf::log_verbose(
+                "[mba_smt_calls] Invalid query at %a: widths=%zu blocks=%zu term_cost=%zu\n",
+                node.ea, query.program().widths.size(), query.program().blocks.size(), cost(value));
         Analysis analysis(query.program(), options);
         if (structural_only_)
         {
@@ -871,7 +946,10 @@ class CallerSimplifier
             replacement =
                 prepare_replacement(node, context, query, analysis, query.lower(value), receipt);
             legacy_fallback = replacement && options.backend == Backend::Legacy;
-            if (!replacement || scalar_expression_cost(*replacement) != 0)
+            // CoBRA commits an already proved expansion while it is eligible.
+            // Later propagation rounds reconstruct MBAs in a fresh snapshot.
+            const bool search_algebraic = options.backend == Backend::Legacy;
+            if (!replacement || (scalar_expression_cost(*replacement) != 0 && search_algebraic))
             {
                 for (const Proposal &proposal : analysis.run())
                 {
@@ -890,25 +968,25 @@ class CallerSimplifier
             }
         }
 
-        const auto unchanged = [&]
-        {
-            return budget_.owner().snapshot == snapshot && node.type == original.type &&
-                   node.ea == original.ea && node.compare(original) == 0 &&
-                   (!parent_target ||
-                    (parent_target == parent_target_ && parent_target->type == saved_target->type &&
-                     parent_target->compare(*saved_target) == 0));
-        };
-        const bool eligible = replacement && receipt &&
-                              analysis.eligible_for_commit(*receipt, legacy_fallback, unchanged);
+        const bool eligible =
+            replacement && receipt &&
+            commit_ctree_replacement(node, original, *replacement, analysis, *receipt, snapshot,
+                                     budget_.owner().snapshot, parent_target, saved_target.get(),
+                                     legacy_fallback, [&] { return domain_.matches(function_); });
         const auto &statistics = analysis.statistics();
         auto &totals = budget_.owner().totals;
         accumulate_statistics(totals, statistics);
         if (!eligible)
         {
+            if (replacement)
+                deobf::log_verbose(
+                    "[mba_smt_calls] Commit rejected at %a: stage=%u exhausted=%zu verified=%zu\n",
+                    node.ea, unsigned(statistics.cancel_stage), statistics.exhausted,
+                    statistics.verified);
             return false;
         }
-        node.swap(*replacement);
-        ++budget_.owner().snapshot.mutation_epoch;
+        if (!domain_.capture(function_))
+            domain_valid_ = false;
         ++changes_;
         ++totals.applied;
         if (receipt->from_cobra())
@@ -1066,6 +1144,8 @@ class CallerSimplifier
             node.cleanup();
             node.replace_by(replacement);
             ++budget_.owner().snapshot.mutation_epoch;
+            if (!domain_.capture(function_))
+                domain_valid_ = false;
             ++changes_;
             return statement(node, context);
         }
@@ -1228,6 +1308,8 @@ class CallerSimplifier
         }
     }
 
+    CtreeDomainSnapshot domain_;
+    bool domain_valid_ = true;
     const cexpr_t *parent_target_ = nullptr;
     cfunc_t &function_;
     CallBudget &budget_;

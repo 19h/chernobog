@@ -12,12 +12,20 @@
 #endif
 namespace chernobog::mba_smt
 {
+namespace
+{
+constexpr Backend release_default = Backend::Legacy;
+}
 Backend selected_backend() noexcept
 {
     const char *value = std::getenv("CHERNOBOG_MBA_BACKEND");
-    return value && std::strcmp(value, "cobra") == 0 && cobra_backend::available()
-               ? Backend::Cobra
-               : Backend::Legacy;
+    if (!cobra_backend::available())
+        return Backend::Legacy;
+    if (value && std::strcmp(value, "legacy") == 0)
+        return Backend::Legacy;
+    if (value && std::strcmp(value, "cobra") == 0)
+        return Backend::Cobra;
+    return release_default;
 }
 const char *backend_diagnostic() noexcept
 {

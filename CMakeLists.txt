@@ -481,7 +481,6 @@ ida_add_plugin(
     src/deobf/analysis/mba_diagnostics.cpp
     src/deobf/handlers/mba_smt.cpp
     src/deobf/handlers/mba_smt_calls.cpp
-    src/deobf/handlers/mba_smt_ctree.cpp
     # NEW: MBA rule system
     src/deobf/rules/pattern_rule.cpp
     src/deobf/rules/rule_verifier.cpp
@@ -559,8 +558,17 @@ endif()
 
 target_include_directories(chernobog SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS}
                                                     "${_chernobog_rax_capi}/include")
-target_link_libraries(chernobog PRIVATE libz3 chernobog::rax ${_chernobog_thread_libraries}
-                                        chernobog_mba_smt_core)
+add_library(chernobog_mba_sdk STATIC src/deobf/handlers/mba_smt_emission.cpp
+                                     src/deobf/handlers/mba_smt_ctree.cpp)
+target_include_directories(chernobog_mba_sdk PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(
+    chernobog_mba_sdk
+    PRIVATE idasdk::plugin
+    PUBLIC chernobog_mba_smt_core)
+target_compile_features(chernobog_mba_sdk PRIVATE cxx_std_17)
+
+target_link_libraries(chernobog PRIVATE chernobog_mba_sdk libz3 chernobog::rax
+                                        ${_chernobog_thread_libraries} chernobog_mba_smt_core)
 
 # IDA's Python companion provides the linked evidence inspection workspace.
 set_property(
@@ -922,6 +930,20 @@ if(BUILD_TESTING)
                                                                       cobra-core)
         target_compile_features(chernobog_mba_cobra_fault_tests PRIVATE cxx_std_23)
         add_test(NAME chernobog.mba_cobra_faults COMMAND chernobog_mba_cobra_fault_tests)
+        add_library(
+            chernobog_mba_cobra_sdk_bridge MODULE
+            tests/ida_mba_cobra_sdk_bridge.cpp src/deobf/analysis/ast.cpp
+            "${_cobra_fixture_header}")
+        target_include_directories(
+            chernobog_mba_cobra_sdk_bridge PRIVATE "${CMAKE_CURRENT_BINARY_DIR}"
+                                                   "${CMAKE_CURRENT_BINARY_DIR}/include")
+        target_include_directories(chernobog_mba_cobra_sdk_bridge SYSTEM
+                                   PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
+        target_link_libraries(chernobog_mba_cobra_sdk_bridge PRIVATE chernobog_mba_sdk
+                                                                     idasdk::plugin)
+        target_compile_features(chernobog_mba_cobra_sdk_bridge PRIVATE cxx_std_17)
+        set_target_properties(chernobog_mba_cobra_sdk_bridge PROPERTIES PREFIX "")
+        add_executable(chernobog_mba_cobra_runtime_fixture tests/mba_cobra_runtime_fixture.c)
 
     endif()
 

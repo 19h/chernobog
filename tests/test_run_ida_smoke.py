@@ -28,6 +28,17 @@ class RunReportTests(unittest.TestCase):
         self.executable = self.root / "fake-ida"
         self.run_number = 0
 
+    def test_explicit_template_retains_idapython_configuration(self):
+        (self.template / "cfg").mkdir()
+        (self.template / "cfg/idapython.cfg").write_text("PYTHON_VERSION = 3;\n")
+        (self.template / "idapythonrc.py").write_text("# selected interpreter startup\n")
+        result, report = self.run_fixture()
+        self.assertEqual(result.returncode, 0)
+        for name in ("cfg/idapython.cfg", "idapythonrc.py"):
+            self.assertEqual(
+                (self.output / "idauser" / name).read_bytes(), (self.template / name).read_bytes()
+            )
+
     def run_fixture(
         self,
         *,

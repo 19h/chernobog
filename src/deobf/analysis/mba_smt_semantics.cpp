@@ -98,13 +98,29 @@ bool SolverSession::eligible_for_commit(bool legacy_deadline_exempt,
                                         const std::function<bool()> &unchanged)
 {
     const bool cancelled = is_cancelled();
-    if (!cancelled && unchanged && !unchanged())
+    bool identity_valid = true;
+    try
+    {
+        identity_valid = cancelled || !unchanged || unchanged();
+    }
+    catch (...)
+    {
+        identity_valid = false;
+    }
+    const auto time = now();
+    statistics.elapsed_ns = static_cast<uint64_t>(std::max<int64_t>(
+        0, std::chrono::duration_cast<std::chrono::nanoseconds>(time - started_).count()));
+    if (time > deadline_)
+        statistics.deadline_overshoot_ns = std::max(
+            statistics.deadline_overshoot_ns,
+            static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(time - deadline_).count()));
+    if (!identity_valid)
     {
         ++statistics.rejected_mutations;
         statistics.cancel_stage = RejectReason::StaleSnapshot;
         return false;
     }
-    const auto time = now();
     if (cancelled || (!legacy_deadline_exempt && is_deadline_expired(time)))
     {
         record_expiry(RejectReason::PostProofDeadlineOrCancel);
@@ -139,13 +155,16 @@ z3::check_result SolverSession::check(z3::solver &solver, const char *purpose)
                                     ";rlimit=" + std::to_string(options.resource_limit);
     const auto result = solver_evidence::check(solver, purpose, description.c_str());
     if (session_test_hooks && session_test_hooks->after_query)
-        session_test_hooks->after_query(purpose);
+        session_test_hooks->after_query(purpose, result);
+    statistics.last_solver_observed = result == z3::sat ? 1u : result == z3::unsat ? 2u : 3u;
+    statistics.last_solver_usable = false;
     // Capture preserves the observed solver result. Acceptance is a separate gate.
     if (!has_budget())
     {
         record_expiry(RejectReason::PostProofExpiry);
         return z3::unknown;
     }
+    statistics.last_solver_usable = true;
     return result;
 }
 

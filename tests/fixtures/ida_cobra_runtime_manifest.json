@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "awaiting_checksum_resolution",
+  "status": "checksums_frozen",
   "fixture_manifest_sha256": "b85a70cd5519666846822eee00dc3faa07ba660147784f1d3b471d2127bcd973",
   "runtimes": [
     {
@@ -9,7 +9,7 @@
       "ida_version": "9.4",
       "installer_key": "release/ida-pro/9.4/ida-pro_94_x64mac.app.zip",
       "installer_size": 547485022,
-      "installer_sha256": null
+      "installer_sha256": "c11db98aa18a260e37388dbad452e224b239bc91b54189285810b2956bce3086"
     },
     {
       "target": "macos-arm64",
@@ -17,7 +17,7 @@
       "ida_version": "9.4",
       "installer_key": "release/ida-pro/9.4/ida-pro_94_armmac.app.zip",
       "installer_size": 541078208,
-      "installer_sha256": null
+      "installer_sha256": "208bac4d944207782bc7b77a95132014ca82de17feab1ec1b831f99ca69a6d3c"
     },
     {
       "target": "linux-x86_64",
@@ -25,7 +25,7 @@
       "ida_version": "9.4",
       "installer_key": "release/ida-pro/9.4/ida-pro_94_x64linux.run",
       "installer_size": 583079031,
-      "installer_sha256": null
+      "installer_sha256": "eabb64c3c849d3858759558359e9cebcf17e2a91bcc60523533df8b84462aa54"
     },
     {
       "target": "linux-arm64",
@@ -33,7 +33,7 @@
       "ida_version": "9.4",
       "installer_key": "release/ida-pro/9.4/ida-pro_94_armlinux.run",
       "installer_size": 544306999,
-      "installer_sha256": null
+      "installer_sha256": "edafadd057c92153fd25a3f46a0b4581b1e052d415d1762891e9b78831a04abe"
     },
     {
       "target": "windows-x86_64",
@@ -41,7 +41,7 @@
       "ida_version": "9.4",
       "installer_key": "release/ida-pro/9.4/ida-pro_94_x64win.exe",
       "installer_size": 635948872,
-      "installer_sha256": null
+      "installer_sha256": "ae7f7f15fac4cb422f4729db7fc0fb3eadff6a0ff33131720b9434e34756ed2f"
     },
     {
       "target": "windows-arm64",
@@ -49,7 +49,7 @@
       "ida_version": "9.4",
       "installer_key": "release/ida-pro/9.4/ida-pro_94_armwin.exe",
       "installer_size": 593251824,
-      "installer_sha256": null
+      "installer_sha256": "e2f271e4ab865c3edc9483b529497752cdf70750c65f83cca8c2ceb58e69147b"
     }
   ]
 }

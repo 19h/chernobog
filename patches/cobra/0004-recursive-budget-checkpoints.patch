@@ -1,0 +1,68 @@
+From 6bcdea77f3594cbf0d00306aead6c2d69678f29e Mon Sep 17 00:00:00 2001
+From: Kenan Sulayman <kenan@int.mov>
+Date: Tue, 20 Oct 2026 06:47:44 +0200
+Subject: [PATCH] feat(core): add budget checkpoints to recursive expression
+ helpers
+
+Insert `cobra::budget::Checkpoint()` calls into `RenderImpl`, `IsConstantSubtree`, `ContainsType`, `IsPurelyArithmetic`, and `HasNotOverArith` so recursive tree traversals respect execution and memory budgets.
+---
+ lib/core/Expr.cpp       | 1 +
+ lib/core/ExprUtils.cpp  | 2 ++
+ lib/core/Simplifier.cpp | 2 ++
+ 3 files changed, 5 insertions(+)
+
+diff --git a/lib/core/Expr.cpp b/lib/core/Expr.cpp
+index fbf1c88..81b6f10 100644
+--- a/lib/core/Expr.cpp
++++ b/lib/core/Expr.cpp
+@@ -77,6 +77,7 @@ namespace cobra {
+         void RenderImpl(std::ostringstream &out, const Expr &expr,
+                         const cobra::BudgetVector< std::string > &var_names, uint32_t bitwidth,
+                         int parent_prec) {
++            ::cobra::budget::Checkpoint();
+             switch (expr.kind) {
+                 case Expr::Kind::kConstant: {
+                     // SignBitMask(0) returns 0, which causes the
+diff --git a/lib/core/ExprUtils.cpp b/lib/core/ExprUtils.cpp
+index e6e9c74..3811dd9 100644
+--- a/lib/core/ExprUtils.cpp
++++ b/lib/core/ExprUtils.cpp
+@@ -76,6 +76,7 @@ namespace cobra {
+     }
+ 
+     bool IsConstantSubtree(const Expr &expr) {
++        ::cobra::budget::Checkpoint();
+         if (expr.kind == Expr::Kind::kConstant) { return true; }
+         if (expr.kind == Expr::Kind::kVariable) { return false; }
+         return std::ranges::all_of(expr.children,
+@@ -83,6 +84,7 @@ namespace cobra {
+     }
+ 
+     bool ContainsType(const Expr &expr, Expr::Kind kind) {
++        ::cobra::budget::Checkpoint();
+         if (expr.kind == kind) { return true; }
+         return std::ranges::any_of(
+             expr.children, [kind](const auto &child) { return ContainsType(*child, kind); });
+diff --git a/lib/core/Simplifier.cpp b/lib/core/Simplifier.cpp
+index 61250d1..eda7c9b 100644
+--- a/lib/core/Simplifier.cpp
++++ b/lib/core/Simplifier.cpp
+@@ -29,6 +29,7 @@ namespace cobra {
+         }
+ 
+         bool IsPurelyArithmetic(const Expr &e) {
++            ::cobra::budget::Checkpoint();
+             switch (e.kind) {
+                 case Expr::Kind::kConstant:
+                 case Expr::Kind::kVariable:
+@@ -44,6 +45,7 @@ namespace cobra {
+         }
+ 
+         bool HasNotOverArith(const Expr &e) {
++            ::cobra::budget::Checkpoint();
+             if (e.kind == Expr::Kind::kNot && !e.children.empty()
+                 && IsPurelyArithmetic(*e.children[0]))
+             {
+-- 
+2.56.0
+

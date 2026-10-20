@@ -243,7 +243,7 @@ qstring chernobog_mba_smt_statistics(ea_t ea)
                  statistics.disproved, statistics.unsupported, statistics.unknown,
                  statistics.invariants, statistics.invariants_rejected, statistics.exhausted);
     result.cat_sprnt(
-        ",\"algebraic\":{\"backend\":\"%s\",\"diagnostic\":\"%s\",\"vendor_tree\":\"%s\",\"calls\":%zu,\"candidates\":%zu,\"unchanged\":%zu,\"unsupported\":%zu,\"exhausted\":%zu,\"failures\":%zu,\"proved\":%zu,\"emitted_proved\":%zu,\"applied\":%zu,\"frame_rejections\":%zu,\"raw_leaves\":%zu,\"input_nodes\":%zu,\"output_nodes\":%zu,\"raw_support\":%zu,\"canonical_support\":%zu,\"scratch_peak_bytes\":%zu,\"generation_ns\":%llu,\"candidate_proof_ns\":%llu,\"emission_ns\":%llu,\"emitted_proof_ns\":%llu,\"overshoot_ns\":%llu,\"process_peak_rss_bytes\":%llu,\"rejected_mutations\":%zu,\"cancel_stage\":%u,\"deadline_overshoot_ns\":%llu}}",
+        ",\"algebraic\":{\"backend\":\"%s\",\"diagnostic\":\"%s\",\"vendor_tree\":\"%s\",\"calls\":%zu,\"candidates\":%zu,\"unchanged\":%zu,\"unsupported\":%zu,\"exhausted\":%zu,\"failures\":%zu,\"proved\":%zu,\"emitted_proved\":%zu,\"applied\":%zu,\"frame_rejections\":%zu,\"raw_leaves\":%zu,\"input_nodes\":%zu,\"output_nodes\":%zu,\"raw_support\":%zu,\"canonical_support\":%zu,\"scratch_peak_bytes\":%zu,\"generation_ns\":%llu,\"candidate_proof_ns\":%llu,\"emission_ns\":%llu,\"emitted_proof_ns\":%llu,\"overshoot_ns\":%llu,\"process_peak_rss_bytes\":%llu,\"rejected_mutations\":%zu,\"cancel_stage\":%u,\"deadline_overshoot_ns\":%llu,\"last_solver_observed\":%u,\"last_solver_usable\":%s,\"last_status\":%u,\"last_reason\":%u,\"spot_check\":%s,\"raw_vars\":[",
         budget.backend == chernobog::mba_smt::Backend::Cobra ? "cobra" : "legacy",
         budget.backend_notice, chernobog::build_provenance::cobra_tree, statistics.cobra.calls,
         statistics.cobra.candidates, statistics.cobra.unchanged, statistics.cobra.unsupported,
@@ -260,7 +260,18 @@ qstring chernobog_mba_smt_statistics(ea_t ea)
         static_cast<unsigned long long>(
             chernobog::mba_smt::cobra_backend::process_peak_rss_bytes()),
         statistics.rejected_mutations, unsigned(statistics.cancel_stage),
-        static_cast<unsigned long long>(statistics.deadline_overshoot_ns));
+        static_cast<unsigned long long>(statistics.deadline_overshoot_ns),
+        statistics.last_solver_observed, statistics.last_solver_usable ? "true" : "false",
+        statistics.cobra.last_status, statistics.cobra.last_reason,
+        statistics.cobra.spot_check ? "true" : "false");
+    for (size_t i = 0; i < statistics.cobra.raw_support && i < statistics.cobra.raw_indices.size();
+         ++i)
+    {
+        if (i)
+            result += ",";
+        result.cat_sprnt("\"v%u\"", statistics.cobra.raw_indices[i]);
+    }
+    result += "]}}";
     return result;
 }
 

@@ -194,6 +194,14 @@ def main() -> int:
         if not source.is_file():
             raise SystemExit("missing IDA acceptance configuration: %s" % source)
         shutil.copy2(source, ida_user / filename)
+    # Preserve the explicitly selected runtime's Python configuration. HCLI
+    # writes these files when provisioning a native interpreter environment.
+    for filename in ("cfg/idapython.cfg", "idapythonrc.py"):
+        source = arguments.ida_user_template.expanduser().resolve() / filename
+        if source.is_file():
+            destination = ida_user / filename
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
     installed_plugin = plugins / plugin.name
     shutil.copy2(plugin, installed_plugin)
     probe_directory = run_dir / "probe"

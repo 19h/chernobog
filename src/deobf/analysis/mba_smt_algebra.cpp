@@ -15,6 +15,67 @@ constexpr size_t max_boolean_candidates = 65536;
 
 uint64_t width_mask(unsigned bits) { return bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1; }
 
+// Cancel identical summands without enumerating Boolean functions or fitting
+// coefficients. The full-width proof below authorizes every resulting change.
+Term cancel_summands(const Term &original)
+{
+    if (original->op != Op::Add && original->op != Op::Sub)
+        return original;
+    std::map<std::string, std::pair<Term, uint64_t>> summands;
+    uint64_t literal = 0;
+    const uint64_t mask = width_mask(original->bits);
+    size_t remaining = limits::expression_visits;
+    std::function<bool(const Term &, uint64_t)> collect = [&](const Term &term, uint64_t scale)
+    {
+        if (remaining-- == 0)
+            return false;
+        if (term->bits == original->bits)
+        {
+            if (term->op == Op::Add || term->op == Op::Sub)
+                return collect(term->left, scale) &&
+                       collect(term->right, term->op == Op::Sub ? 0 - scale : scale);
+            if (term->op == Op::Constant)
+            {
+                literal += scale * term->value;
+                return true;
+            }
+            if (term->op == Op::Mul && term->left->op == Op::Constant)
+                return collect(term->right, scale * term->left->value);
+            if (term->op == Op::Mul && term->right->op == Op::Constant)
+                return collect(term->left, scale * term->right->value);
+        }
+        auto &entry = summands[key(term)];
+        entry.first = term;
+        entry.second += scale;
+        return true;
+    };
+    if (!collect(original, 1))
+        return original;
+    std::map<uint64_t, Term> groups;
+    for (const auto &[identifier, entry] : summands)
+    {
+        const uint64_t coefficient = entry.second & mask;
+        if (!coefficient)
+            continue;
+        auto &group = groups[coefficient];
+        group = group ? expression(Op::Add, group, entry.first) : entry.first;
+    }
+    Term result;
+    for (const auto &[coefficient, group] : groups)
+    {
+        const Term part = coefficient == 1 ? group
+                          : coefficient == mask
+                              ? expression(Op::Neg, group)
+                              : expression(Op::Mul, constant(coefficient, original->bits), group);
+        result = result ? expression(Op::Add, result, part) : part;
+    }
+    literal &= mask;
+    if (literal || !result)
+        result = result ? expression(Op::Add, result, constant(literal, original->bits))
+                        : constant(literal, original->bits);
+    return cost(result) < cost(original) ? result : original;
+}
+
 struct UnsignedRange
 {
     uint64_t minimum;
@@ -280,6 +341,16 @@ class AlgebraicSimplifier
             if (Term candidate = simplify_cobra(term))
                 term = std::move(candidate);
         }
+        // Normalize the returned hypothesis structurally as well: it can
+        // introduce a repeated constant factor below its root.
+        std::function<Term(const Term &)> normalize = [&](const Term &input) -> Term
+        {
+            if (!input || !input->left)
+                return input;
+            return cancel_summands(expression(input->op, normalize(input->left),
+                                              normalize(input->right), input->bits));
+        };
+        term = normalize(term);
 
         if (term->right && term->right->op == Op::Constant && term->right->value == 0 &&
             (term->op == Op::Add || term->op == Op::Sub || term->op == Op::Or ||
@@ -291,6 +362,20 @@ class AlgebraicSimplifier
         term = normalize_masks(term);
         term = normalize_complement(term);
         term = factor_constant_offset(term);
+        if ((term->op == Op::Add || term->op == Op::Sub) && term->left && term->right &&
+            term->left->op == Op::Mul && term->right->op == Op::Mul)
+        {
+            const auto factor = [](const Term &product)
+            { return product->left->op == Op::Constant ? product->left : product->right; };
+            const auto input = [](const Term &product)
+            { return product->left->op == Op::Constant ? product->right : product->left; };
+            const auto a = factor(term->left), b = factor(term->right);
+            if (a->op == Op::Constant && b->op == Op::Constant && a->value == b->value)
+                term = expression(
+                    Op::Mul, a,
+                    expression(term->op, input(term->left), input(term->right), term->bits),
+                    term->bits);
+        }
 
         const z3::expr value = program_.evaluate(term, state_).simplify();
         uint64_t literal = 0;
@@ -697,6 +782,7 @@ class AlgebraicSimplifier
         statistics.output_nodes = outcome.output_nodes;
         statistics.raw_support = outcome.raw_support;
         statistics.canonical_support = outcome.canonical_support;
+        statistics.raw_indices = outcome.raw_indices;
         statistics.spot_check = outcome.spot_check;
         statistics.last_status = unsigned(outcome.status);
         statistics.last_reason = unsigned(outcome.reason);

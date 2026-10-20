@@ -3,5 +3,6 @@ set(COBRA_PATCH_SERIES
     "patches/cobra/0001-cooperative-budget-and-core-build.patch|63e1bd427f624f8d8e754e2be49357a037d9130499551e8498e51e01fcebbbec"
     "patches/cobra/0002-format-core-cmake.patch|6e4dd69cc066323004255e3e53ddd6549a0305add8ac17276b9103dbb7fabead"
     "patches/cobra/0003-masked-leaf-lifting.patch|d0a56598331ed8bbea164a46b983ca2fdf8f4690aa4544cfeb72a56dc90ee86e"
+    "patches/cobra/0004-recursive-budget-checkpoints.patch|1bb383b1d5347f34464a5560f9ad74a49e09f754c5a154f3f05876d5912ddc04"
 )
-set(COBRA_EXPECTED_TREE_HASH "dbbc814bf1d3939950bf4acfc4a9abaf8130a195")
+set(COBRA_EXPECTED_TREE_HASH "b3692e6f746668eab4af27e97399b10ea434e18f")

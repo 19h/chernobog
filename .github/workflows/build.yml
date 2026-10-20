@@ -264,7 +264,7 @@ jobs:
       - name: Build (Windows MSVC)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cmake --build build --config Release --target chernobog chernobog_program_model_tests chernobog_evidence_tests chernobog_analysis_prefix_tests chernobog_mba_smt_tests chernobog_mba_smt_context_tests chernobog_mba_cobra_tests chernobog_mba_cobra_budget_tests chernobog_mba_cobra_fault_tests chernobog_mba_cobra_header_tests --parallel $env:NUMBER_OF_PROCESSORS
+        run: cmake --build build --config Release --target chernobog chernobog_program_model_tests chernobog_evidence_tests chernobog_analysis_prefix_tests chernobog_mba_smt_tests chernobog_mba_smt_context_tests chernobog_mba_cobra_tests chernobog_mba_cobra_budget_tests chernobog_mba_cobra_fault_tests chernobog_mba_cobra_header_tests chernobog_mba_cobra_sdk_bridge chernobog_mba_cobra_runtime_fixture --parallel $env:NUMBER_OF_PROCESSORS
 
       - name: Test analysis (Windows)
         if: runner.os == 'Windows'
@@ -450,6 +450,18 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           Copy-Item -LiteralPath "${{ steps.find_plugin_windows.outputs.plugin_file }}" -Destination "artifacts/chernobog${{ matrix.ida_suffix }}_${{ matrix.name }}.${{ steps.find_plugin_windows.outputs.extension }}"
+
+      - name: Prepare SDK acceptance bundle
+        shell: bash
+        run: python tests/cobra_build_bundle.py --target "${{ matrix.name }}" --output sdk-artifacts
+
+      - name: Upload SDK acceptance bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: cobra-sdk-${{ matrix.name }}
+          path: sdk-artifacts/
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -679,6 +691,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: artifacts
+          pattern: chernobog-*
 
       - name: Prepare release files
         run: |

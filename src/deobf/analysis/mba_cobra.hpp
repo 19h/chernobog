@@ -55,6 +55,7 @@ struct Outcome
     size_t input_nodes = 0;
     size_t output_nodes = 0;
     size_t raw_support = 0;
+    std::array<unsigned, 12> raw_indices{};
     size_t canonical_support = 0;
     size_t scratch_peak_bytes = 0;
     uint64_t elapsed_ns = 0;

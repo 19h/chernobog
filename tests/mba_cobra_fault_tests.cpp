@@ -132,6 +132,27 @@ int main(int argc, char **argv)
             check(!analysis.eligible_for_commit(*emitted, false, [] { return false; }),
                   "stale live source rejected after both proofs");
     }
+    detail::cobra_test_hooks = nullptr;
+    cb::Request admission;
+    admission.deadline = cb::Clock::now() + std::chrono::seconds(1);
+    Term too_many = variable(0, 8);
+    for (size_t i = 1; i < 9; ++i)
+        too_many = expression(Op::Add, too_many, variable(i, 8));
+    const auto over_limit = cb::generate(too_many, admission);
+    check(over_limit.status == cb::Status::Unsupported && over_limit.scratch_peak_bytes == 0,
+          "raw leaf admission precedes CoBRA tree and signature allocations");
+    Program collision;
+    collision.widths = {8, 8};
+    collision.blocks.resize(1);
+    collision.blocks[0].statements.push_back(
+        Statement::assign(1, expression(Op::Mul, variable(0, 8),
+                                        expression(Op::Sub, variable(0, 8), constant(1, 8)))));
+    Analysis false_boolean_fit(collision, options);
+    check(false_boolean_fit.verify(0, 0, constant(0, 8)) == Verdict::Disproved,
+          "zero/one signature collision is rejected over full words");
+    check(cb::generate(expression(Op::Add, load(constant(0, 64), 8), constant(0, 8)), admission)
+                  .status == cb::Status::Unsupported,
+          "explicit read occurrences are excluded from generic interning");
     std::printf("CoBRA fault failures: %d\n", failures);
     return failures != 0;
 }

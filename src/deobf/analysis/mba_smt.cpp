@@ -333,6 +333,57 @@ bool validate(const Program &program)
     return true;
 }
 
+bool same_program(const Program &left, const Program &right)
+{
+    const auto same_term = [](const Term &a, const Term &b)
+    {
+        size_t visits = 0;
+        const auto compare = [&](const auto &self, const Term &x, const Term &y,
+                                 unsigned depth) -> bool
+        {
+            if (!x || !y)
+                return !x && !y;
+            if (++visits > limits::expression_visits || depth > limits::expression_depth)
+                return false;
+            return x->op == y->op && x->bits == y->bits && x->value == y->value &&
+                   self(self, x->left, y->left, depth + 1) &&
+                   self(self, x->right, y->right, depth + 1);
+        };
+        return compare(compare, a, b, 0);
+    };
+    if (left.address_bits != right.address_bits || left.big_endian != right.big_endian ||
+        left.widths != right.widths || left.readonly != right.readonly ||
+        left.targets != right.targets || left.entry != right.entry ||
+        left.available.size() != right.available.size() ||
+        left.blocks.size() != right.blocks.size())
+        return false;
+    for (size_t i = 0; i < left.available.size(); ++i)
+        if (!same_term(left.available[i], right.available[i]))
+            return false;
+    for (size_t i = 0; i < left.blocks.size(); ++i)
+    {
+        const auto &a = left.blocks[i], &b = right.blocks[i];
+        if (a.statements.size() != b.statements.size() || a.edges.size() != b.edges.size())
+            return false;
+        for (size_t j = 0; j < a.statements.size(); ++j)
+        {
+            const auto &x = a.statements[j], &y = b.statements[j];
+            if (x.kind != y.kind || x.destination != y.destination || x.offset != y.offset ||
+                x.spoiled != y.spoiled || !same_term(x.value, y.value) ||
+                !same_term(x.address, y.address))
+                return false;
+        }
+        for (size_t j = 0; j < a.edges.size(); ++j)
+        {
+            const auto &x = a.edges[j], &y = b.edges[j];
+            if (x.target != y.target || x.inverted != y.inverted ||
+                !same_term(x.condition, y.condition))
+                return false;
+        }
+    }
+    return true;
+}
+
 namespace detail
 {
 bool validate_expression(const Term &term, const Program &program)
@@ -546,7 +597,7 @@ Verdict Analysis::verify_at(size_t block, size_t statement, const Term &replacem
         }
 
         const auto verdict = detail::verify_replacement(impl_->symbolic, *impl_->invariants, block,
-                                                        statement, replacement);
+                                                        statement, replacement, purpose);
         if (verdict == Verdict::Verified && !impl_->session.has_budget())
         {
             impl_->session.record_expiry(RejectReason::PostProofExpiry);
@@ -669,6 +720,11 @@ void accumulate_statistics(Statistics &total, const Statistics &attempt)
     total.invariants_rejected += attempt.invariants_rejected;
     total.exhausted += attempt.exhausted;
     total.rejected_mutations += attempt.rejected_mutations;
+    if (attempt.last_solver_observed)
+    {
+        total.last_solver_observed = attempt.last_solver_observed;
+        total.last_solver_usable = attempt.last_solver_usable;
+    }
     total.deadline_overshoot_ns =
         std::max(total.deadline_overshoot_ns, attempt.deadline_overshoot_ns);
     if (attempt.cancel_stage != RejectReason::None)
@@ -694,6 +750,7 @@ void accumulate_statistics(Statistics &total, const Statistics &attempt)
     if (attempt.cobra.calls)
     {
         total.cobra.raw_leaves = attempt.cobra.raw_leaves;
+        total.cobra.raw_indices = attempt.cobra.raw_indices;
         total.cobra.input_nodes = attempt.cobra.input_nodes;
         total.cobra.output_nodes = attempt.cobra.output_nodes;
         total.cobra.raw_support = attempt.cobra.raw_support;

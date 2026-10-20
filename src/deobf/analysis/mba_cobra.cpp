@@ -4,6 +4,7 @@
 #include <cobra/core/SignatureEval.h>
 #include <cobra/core/Simplifier.h>
 #include <algorithm>
+#include <array>
 #include <set>
 #include <stdexcept>
 
@@ -30,6 +31,8 @@ struct Region
     unsigned bits;
     size_t leaf_limit;
     size_t visits = 0;
+    std::array<Term, 12> admitted_atoms{};
+    size_t admitted_count = 0, lowered_nodes = 0;
     cobra::BudgetVector<Term> atoms;
     cobra::BudgetVector<std::string> names;
     void inspect(const Term &term, unsigned depth = 0)
@@ -38,22 +41,154 @@ struct Region
         if (!term || ++visits > 512 || depth > 64 || term->bits < 8 || term->bits > 64 ||
             term->bits % 8 || term->op == Op::Load)
             throw ShapeFailure{};
+        if (term->op == Op::Constant || term->op == Op::Variable)
+        {
+            if (term->left || term->right)
+                throw ShapeFailure{};
+            return;
+        }
+        if (!term->left)
+            throw ShapeFailure{};
+        const bool unary = term->op == Op::Not || term->op == Op::Neg ||
+                           term->op == Op::ZeroExtend || term->op == Op::SignExtend ||
+                           term->op == Op::Low || term->op == Op::High;
+        if (unary ? bool(term->right) : !term->right)
+            throw ShapeFailure{};
+        switch (term->op)
+        {
+        case Op::ZeroExtend:
+        case Op::SignExtend:
+            if (term->left->bits > term->bits)
+                throw ShapeFailure{};
+            break;
+        case Op::Low:
+        case Op::High:
+            if (term->left->bits < term->bits)
+                throw ShapeFailure{};
+            break;
+        case Op::Shl:
+        case Op::Shr:
+        case Op::Sar:
+            if (term->left->bits != term->bits || term->right->bits != 8)
+                throw ShapeFailure{};
+            break;
+        case Op::Equal:
+        case Op::NotEqual:
+        case Op::UnsignedLess:
+        case Op::SignedLess:
+            if (term->left->bits != term->right->bits || term->bits != 8)
+                throw ShapeFailure{};
+            break;
+        case Op::Add:
+        case Op::Sub:
+        case Op::Mul:
+        case Op::UnsignedDivide:
+        case Op::And:
+        case Op::Or:
+        case Op::Xor:
+        case Op::Not:
+        case Op::Neg:
+            if (term->left->bits != term->bits || (term->right && term->right->bits != term->bits))
+                throw ShapeFailure{};
+            break;
+        default:
+            throw ShapeFailure{};
+        }
         if (term->left)
             inspect(term->left, depth + 1);
         if (term->right)
             inspect(term->right, depth + 1);
+    }
+    void admit_atom(const Term &term)
+    {
+        for (size_t i = 0; i < admitted_count; ++i)
+            if (same(admitted_atoms[i], term))
+                return;
+        if (admitted_count >= leaf_limit)
+            throw ShapeFailure{};
+        admitted_atoms[admitted_count++] = term;
+    }
+    void admit(const Term &term)
+    {
+        cobra::budget::Checkpoint();
+        if (++lowered_nodes > 512 || term->bits != bits)
+            throw ShapeFailure{};
+        switch (term->op)
+        {
+        case Op::Constant:
+            return;
+        case Op::Add:
+        case Op::Mul:
+        case Op::And:
+        case Op::Or:
+        case Op::Xor:
+            admit(term->left);
+            admit(term->right);
+            return;
+        case Op::Sub:
+            if (++lowered_nodes > 512)
+                throw ShapeFailure{};
+            admit(term->left);
+            admit(term->right);
+            return;
+        case Op::Not:
+        case Op::Neg:
+            admit(term->left);
+            return;
+        case Op::ZeroExtend:
+            lowered_nodes += 2;
+            if (lowered_nodes > 512)
+                throw ShapeFailure{};
+            admit_atom(term);
+            return;
+        case Op::Shl:
+        case Op::Shr:
+            if (term->right && term->right->op == Op::Constant)
+            {
+                if ((term->right->value & UINT64_C(255)) >= bits)
+                    return;
+                if (term->op == Op::Shl && ++lowered_nodes > 512)
+                    throw ShapeFailure{};
+                admit(term->left);
+                return;
+            }
+            [[fallthrough]];
+        default:
+            admit_atom(term);
+            return;
+        }
+    }
+    void prepare_atoms(const Term &term)
+    {
+        admit(term);
+        atoms.reserve(admitted_count);
+        names.reserve(admitted_count);
+        for (size_t i = 0; i < admitted_count; ++i)
+        {
+            atoms.push_back(admitted_atoms[i]);
+            names.push_back("v" + std::to_string(i));
+        }
     }
     std::unique_ptr<cobra::Expr> atom(const Term &term)
     {
         for (size_t i = 0; i < atoms.size(); ++i)
             if (same(atoms[i], term))
                 return cobra::Expr::Variable(static_cast<uint32_t>(i));
-        if (atoms.size() >= leaf_limit)
-            throw ShapeFailure{};
-        const auto index = static_cast<uint32_t>(atoms.size());
-        atoms.push_back(term);
-        names.push_back("v" + std::to_string(index));
-        return cobra::Expr::Variable(index);
+        throw ShapeFailure{};
+    }
+    void used_atoms(const Term &term, cobra::BudgetSet<size_t> &support)
+    {
+        if (!term || term->op == Op::Constant)
+            return;
+        cobra::budget::Checkpoint();
+        for (size_t i = 0; i < atoms.size(); ++i)
+            if (same(term, atoms[i]))
+            {
+                support.insert(i);
+                return;
+            }
+        used_atoms(term->left, support);
+        used_atoms(term->right, support);
     }
     std::unique_ptr<cobra::Expr> lower(const Term &term)
     {
@@ -87,16 +222,17 @@ struct Region
             return E::BitwiseAnd(atom(term), E::Constant(mask(term->left->bits)));
         case Op::Shl:
             if (term->right && term->right->op == Op::Constant)
-                return term->right->value >= bits
+                return (term->right->value & UINT64_C(255)) >= bits
                            ? E::Constant(0)
-                           : E::Mul(lower(term->left),
-                                    E::Constant(uint64_t{1} << term->right->value));
+                           : E::Mul(
+                                 lower(term->left),
+                                 E::Constant(uint64_t{1} << (term->right->value & UINT64_C(255))));
             return atom(term);
         case Op::Shr:
             if (term->right && term->right->op == Op::Constant)
-                return term->right->value >= bits
+                return (term->right->value & UINT64_C(255)) >= bits
                            ? E::Constant(0)
-                           : E::LogicalShr(lower(term->left), term->right->value);
+                           : E::LogicalShr(lower(term->left), term->right->value & UINT64_C(255));
             return atom(term);
         default:
             return atom(term);
@@ -207,6 +343,7 @@ Outcome generate(const Term &original, const Request &request)
         Region region{original->bits, request.profile == Profile::Deep ? size_t(12) : size_t(8)};
         region.inspect(original);
         outcome.input_nodes = region.visits;
+        region.prepare_atoms(original);
         auto input = region.lower(original);
         outcome.raw_leaves = region.atoms.size();
         auto signature = cobra::EvaluateBooleanSignature(
@@ -226,6 +363,8 @@ Outcome generate(const Term &original, const Request &request)
         else if (result->kind == cobra::SimplifyOutcome::Kind::kSimplified && result->expr &&
                  result->verified)
         {
+            if (result->real_vars.size() > region.atoms.size())
+                throw MappingFailure{};
             cobra::BudgetVector<size_t> mapping;
             cobra::BudgetSet<std::string> seen;
             for (const auto &name : result->real_vars)
@@ -236,6 +375,8 @@ Outcome generate(const Term &original, const Request &request)
                 mapping.push_back(static_cast<size_t>(found - region.names.begin()));
             }
             outcome.raw_support = mapping.size();
+            for (size_t i = 0; i < mapping.size(); ++i)
+                outcome.raw_indices[i] = static_cast<unsigned>(mapping[i]);
             cobra::BudgetSet<size_t> support;
             size_t nodes = 0;
             Term candidate = region.restore(*result->expr, mapping, nodes, support);
@@ -243,6 +384,8 @@ Outcome generate(const Term &original, const Request &request)
             outcome.output_nodes = materialized_nodes(candidate, restored_visits);
             if (outcome.output_nodes > 512)
                 throw ShapeFailure{};
+            support.clear();
+            region.used_atoms(candidate, support);
             outcome.canonical_support = support.size();
             outcome.spot_check = result->verified;
             if (cost(candidate) < cost(original))

@@ -789,13 +789,14 @@ void test_post_proof_eligibility()
           "remaining budget clamps to zero");
     z3::solver solver(session.context);
     solver.add(session.context.bool_val(false));
-    hooks.after_query = [&](const char *) { cancelled = true; };
+    hooks.after_query = [&](const char *, const z3::check_result &) { cancelled = true; };
     check(session.check(solver, "post-poll cancellation") == z3::unknown,
           "late cancellation rejects observed UNSAT");
     check(statistics.cancel_stage == RejectReason::PostProofExpiry,
           "post-proof rejection records its stage");
     cancelled = false;
-    hooks.after_query = [&](const char *) { time += std::chrono::milliseconds(150); };
+    hooks.after_query = [&](const char *, const z3::check_result &)
+    { time += std::chrono::milliseconds(150); };
     check(session.check(solver, "post-poll scheduling pause") == z3::unknown,
           "150 ms pause exhausts 100 ms allowance");
     check(statistics.deadline_overshoot_ns == 50000000, "overshoot is recorded in nanoseconds");

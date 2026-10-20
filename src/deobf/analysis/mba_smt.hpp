@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -118,6 +119,7 @@ struct Program
 };
 
 bool validate(const Program &program);
+bool same_program(const Program &left, const Program &right);
 
 enum class Backend
 {
@@ -190,6 +192,7 @@ struct CobraStatistics
     uint64_t proved_widths = 0;
     unsigned last_status = 0, last_reason = 0;
     bool spot_check = false;
+    std::array<unsigned, 12> raw_indices{};
 };
 struct Statistics
 {
@@ -208,6 +211,8 @@ struct Statistics
     uint64_t deadline_overshoot_ns = 0;
     RejectReason cancel_stage = RejectReason::None;
     size_t rejected_mutations = 0;
+    unsigned last_solver_observed = 0; // 0 absent, 1 SAT, 2 UNSAT, 3 UNKNOWN
+    bool last_solver_usable = false;
 };
 
 class ProofReceipt
@@ -220,6 +225,7 @@ class ProofReceipt
     bool cobra_ = false;
 
   public:
+    unsigned source_bits() const noexcept { return source_ ? source_->bits : 0; }
     bool from_cobra() const noexcept { return cobra_; }
     bool has_emitted_proof() const noexcept { return bool(emitted_); }
 };

@@ -1,5 +1,6 @@
 #include <cobra/core/Budget.h>
 #include <cobra/core/Expr.h>
+#include <cobra/core/ExprUtils.h>
 #include <cstdio>
 #include <optional>
 #include <stdexcept>
@@ -75,6 +76,17 @@ int main()
                      {},
                      ledger});
         exhausted([] { Checkpoint(true); }, Reason::Callback);
+    }
+    auto recursive = Expr::Constant(1);
+    for (unsigned depth = 0; depth < 128; ++depth)
+        recursive = Expr::Negate(std::move(recursive));
+    {
+        Scope scope({Clock::time_point::max(), [] { return true; }, {}, ledger});
+        exhausted([&] { ContainsType(*recursive, Expr::Kind::kMul); }, Reason::Cancellation);
+    }
+    {
+        Scope scope({Clock::time_point::max(), [] { return true; }, {}, ledger});
+        exhausted([&] { IsConstantSubtree(*recursive); }, Reason::Cancellation);
     }
     exhausted([] { CheckedProduct(SIZE_MAX, 2); }, Reason::Allocation);
     check(current == nullptr && ledger->live == 0, "all exits restore scope and ledger");

@@ -1,3 +1,15 @@
 # These digests identify exact bytes on every release platform.
 patches/cobra/*.patch -text
 tests/fixtures/mba_cobra_positive_manifest.json -text
+# Keep source fingerprints invariant across native Git checkout defaults.
+src/**/*.c text eol=lf
+src/**/*.cc text eol=lf
+src/**/*.cpp text eol=lf
+src/**/*.h text eol=lf
+src/**/*.hh text eol=lf
+src/**/*.hpp text eol=lf
+cmake/** text eol=lf
+ida-cmake/** text eol=lf
+CMakeLists.txt text eol=lf
+.gitmodules text eol=lf
+vendor/cobra.provenance.cmake text eol=lf
