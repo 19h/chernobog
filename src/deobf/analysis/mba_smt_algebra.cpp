@@ -306,24 +306,33 @@ class AlgebraicSimplifier
 
     Term run(const Term &original)
     {
-        if (session_.options.backend == Backend::Legacy && cost(original) >= 8)
+        if (session_.options.backend == Backend::Legacy)
         {
             prepare_word_regions(original);
-            prepare_bitwise_proofs(original);
+            // Linear word regions get their complete reconstruction before
+            // potentially expensive equality proofs for individual prefixes.
+            Term region = original;
+            while (region->left && (region->op == Op::Low || region->op == Op::High ||
+                                    region->op == Op::ZeroExtend || region->op == Op::SignExtend))
+                region = region->left;
+            if (cost(original) >= 8 && !is_linear_word_region(region))
+                prepare_bitwise_proofs(original);
         }
         return compact_complements(rewrite(original), [&](const Term &before, const Term &after)
                                    { return prove(before, after); });
     }
 
-    void prepare_proofs(const Term &original)
-    {
-        if (cost(original) >= 8)
-            prepare_word_regions(original);
-    }
+    void prepare_proofs(const Term &original) { prepare_word_regions(original); }
 
     bool from_cobra() const noexcept { return cobra_origin_; }
 
   private:
+    bool is_linear_word_region(const Term &term) const
+    {
+        const bool arithmetic = term->op == Op::Add || term->op == Op::Sub || term->op == Op::Mul;
+        return arithmetic && term->bits <= 32 && word_degree(term) <= 1 && !has_word_masks(term);
+    }
+
     bool collect_word_inputs(const Term &term, unsigned bits, std::vector<Term> &inputs) const
     {
         if (term->bits != bits)
@@ -569,29 +578,33 @@ class AlgebraicSimplifier
         }
 
         Term term;
-        const bool arithmetic =
-            original->op == Op::Add || original->op == Op::Sub || original->op == Op::Mul;
-        if (session_.options.backend == Backend::Cobra && arithmetic && original->bits <= 32 &&
-            word_degree(original) <= 1 && !has_word_masks(original))
+        if (is_linear_word_region(original))
         {
             // Visit typed/opaque boundaries bottom-up, then give the complete
             // same-width region its allowance before spending it on prefixes.
             // A failed complete attempt may still expose useful child regions.
             const auto prepared = boundaries_prepared ? original : prepare_boundaries(original);
+            const bool cobra = session_.options.backend == Backend::Cobra;
+            const auto simplify_region = [&](const Term &region) -> Term
+            { return cobra ? simplify_cobra(region) : simplify_linear(region); };
             const auto proof_started = session_.now();
             if (session_.remaining_budget(proof_started) >= std::chrono::milliseconds(10))
                 prepare_word_proofs(prepared, prepared->bits);
-            session_.statistics.cobra.candidate_proof_ns += static_cast<uint64_t>(
-                std::chrono::duration_cast<std::chrono::nanoseconds>(session_.now() - proof_started)
-                    .count());
-            if (Term candidate = cost(prepared) >= 2 ? simplify_cobra(prepared) : Term{})
+            if (cobra)
+                session_.statistics.cobra.candidate_proof_ns +=
+                    static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                              session_.now() - proof_started)
+                                              .count());
+            if (Term candidate = cost(prepared) >= 2 ? simplify_region(prepared) : Term{})
                 term = std::move(candidate);
             else
             {
+                if (!cobra && cost(prepared) >= 8)
+                    prepare_bitwise_proofs(prepared);
                 term = expression(prepared->op, rewrite(prepared->left, true),
                                   rewrite(prepared->right, true), prepared->bits);
                 if (cost(term) >= 2 && key(term) != key(prepared))
-                    if (Term candidate = simplify_cobra(term))
+                    if (Term candidate = simplify_region(term))
                         term = std::move(candidate);
             }
         }

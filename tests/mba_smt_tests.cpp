@@ -1152,6 +1152,53 @@ void test_boolean_operand_complements()
     }
 }
 
+void test_small_linear_word_boundaries()
+{
+    for (unsigned bits : {8u, 16u, 24u, 32u})
+    {
+        const auto x = variable(0, bits), y = variable(1, bits), z = variable(2, bits);
+        const auto original =
+            expression(Op::Sub, add(add(x, y), expression(Op::And, expression(Op::Not, z), y)),
+                       expression(Op::Or, z, y));
+        const auto expected = expression(Op::Sub, add(x, y), z);
+        check(cost(original) < 8, "small word fixture stays below the old preparation floor");
+        for (Backend backend : {Backend::Legacy, Backend::Cobra})
+        {
+            if (backend == Backend::Cobra && !cobra_backend::available())
+                continue;
+            auto program = make_program(bits);
+            program.blocks[0].statements = {Statement::assign(3, original)};
+            Options options;
+            options.backend = backend;
+            unsigned word_proofs = 0;
+            detail::SessionTestHooks hooks;
+            hooks.after_query = [&](const char *purpose, const z3::check_result &)
+            {
+                if (std::string(purpose) == "MBA Boolean word identity")
+                    ++word_proofs;
+            };
+            struct Restore
+            {
+                detail::SessionTestHooks *previous;
+                ~Restore() { detail::session_test_hooks = previous; }
+            } restore{detail::session_test_hooks};
+            detail::session_test_hooks = &hooks;
+            Analysis analysis(program, options);
+            check(!analysis.constant_value(0, 0) && word_proofs != 0,
+                  "small nonconstant word prepares universal proofs before constant search");
+            const auto proposals = analysis.run();
+            check(!proposals.empty() && cost(proposals.front().replacement) < cost(original),
+                  "complete small linear word reduces inside its Normal allowance");
+            const auto candidate = analysis.prove_candidate(0, 0, expected);
+            check(candidate && analysis.prove_emission(*candidate, expected),
+                  "small linear word crosses both independent proof boundaries");
+            check(candidate &&
+                      !analysis.prove_emission(*candidate, add(expected, constant(1, bits))),
+                  "word preparation cannot authorize a corrupt emitted value");
+        }
+    }
+}
+
 void test_word_proof_cancellation()
 {
     auto program = make_program(32);
@@ -1218,6 +1265,7 @@ int main()
     test_post_proof_eligibility();
     test_cancellation_latch();
     test_boolean_operand_complements();
+    test_small_linear_word_boundaries();
     test_word_proof_cancellation();
     std::printf("MBA SMT failures: %d\n", failures);
     return failures != 0;
