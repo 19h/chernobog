@@ -66,11 +66,14 @@ def verify(directory):
     for path, native in zip(reports, observed):
         target = native["target"]
         require(
-            native["runtime"] == targets[target] and native["status"] == "passed",
+            native["runtime"] == targets[target]
+            and native["status"] == "passed"
+            and native["collection_mode"] == "full",
             f"Runtime mismatch: {target}",
         )
         require(
             native["revision"] == revision
+            and native["harness_revision"] == revision
             and native["bundle"]["revision"] == revision
             and native["bundle"]["target"] == target,
             "Evidence revision/bundle target differs from gate checkout",

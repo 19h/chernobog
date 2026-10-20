@@ -40,6 +40,9 @@ class RegistryTests(unittest.TestCase):
             REG_DWORD=4,
             OpenKey=Mock(return_value=contextlib.nullcontext("handle")),
             QueryValueEx=Mock(return_value=(value, kind)),
+            KEY_SET_VALUE=2,
+            CreateKeyEx=Mock(return_value=contextlib.nullcontext("handle")),
+            SetValueEx=Mock(),
         )
 
     def test_windows_uses_native_versioned_registry_value(self):
@@ -60,6 +63,19 @@ class RegistryTests(unittest.TestCase):
         registry.QueryValueEx.side_effect = OSError("missing")
         with patch.dict(sys.modules, {"winreg": registry}):
             self.assertFalse(RUNTIME.accepted_ida_configuration(self.source, "Windows", "9.4"))
+
+    def test_requested_windows_acceptance_writes_only_current_version(self):
+        registry = self.registry()
+        with patch.dict(sys.modules, {"winreg": registry}):
+            RUNTIME.accept_windows_eula("9.4")
+        registry.CreateKeyEx.assert_called_once_with(1, r"Software\Hex-Rays\IDA", 0, 0x102)
+        registry.SetValueEx.assert_called_once_with("handle", "EULA 94", 0, 4, 1)
+
+    def test_failed_windows_acceptance_rejects(self):
+        registry = self.registry()
+        registry.SetValueEx.side_effect = OSError("denied")
+        with patch.dict(sys.modules, {"winreg": registry}), self.assertRaises(RuntimeError):
+            RUNTIME.accept_windows_eula("9.4")
 
     def test_unix_requires_registry_file(self):
         for system in ("Darwin", "Linux"):

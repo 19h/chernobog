@@ -22,6 +22,10 @@ on:
             windows-x86_64,
             windows-arm64,
           ]
+      probe_sdk_only:
+        description: Diagnose SDK loading without qualifying the installed corpus
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -54,8 +58,6 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'],'a') as stream: stream.write('revision='+run['head_sha']+'\n')
           PY
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ steps.source.outputs.revision }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
@@ -87,7 +89,7 @@ jobs:
           python tests/cobra_runtime_native.py provision --target "${{ inputs.probe_target }}" --directory "$RUNNER_TEMP/cobra-probe"
       - name: Exercise artifact in installed runtime
         shell: bash
-        run: python tests/cobra_runtime_native.py collect --target "${{ inputs.probe_target }}" --directory "$RUNNER_TEMP/cobra-probe" --bundle native-sdk --plugin native-plugin --output probe-evidence
+        run: python tests/cobra_runtime_native.py collect --target "${{ inputs.probe_target }}" --directory "$RUNNER_TEMP/cobra-probe" --bundle native-sdk --plugin native-plugin --output probe-evidence --artifact-revision "${{ steps.source.outputs.revision }}" ${{ inputs.probe_sdk_only && '--sdk-only' || '' }}
       - uses: actions/upload-artifact@v6
         if: always()
         with:

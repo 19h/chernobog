@@ -31,7 +31,9 @@ Candidate-only CTest --> actual SDK emission (Normal + Deep)
 ```
 
 Windows acceptance is checked in the native HKCU registry: IDA does not use
-`ida.reg` on Windows. Unix runners still require that file. The smoke runner
+`ida.reg` on Windows. If HCLI leaves the requested EULA acceptance unset,
+provisioning writes only the current version's DWORD and verifies the readback.
+Unix runners still require that file. The smoke runner
 copies only platform-appropriate configuration and the selected Python startup
 files. This follows the [SDK registry contract](https://python.docs.hex-rays.com/ida_registry/index.html); license and decompiler checks remain mandatory.
 
@@ -39,9 +41,13 @@ The native workflow is `.github/workflows/mba-cobra-runtime.yml`. Its `inventory
 operation reports only installer identity fields; `provision` validates the
 selected `probe_target` without requiring a compiled test bundle; `resolve` computes installer
 SHA-256 digests. `probe` exercises a successful trusted native artifact independently
-of the other build jobs; its separate artifact cannot qualify promotion.
+of the other build jobs, using the current harness and recording both artifact
+and harness revisions. Its report is always `diagnostic` and cannot qualify
+promotion, including when both revisions match. `probe_sdk_only` isolates SDK
+loading and faults; it omits installed-corpus qualification and is also rejected
+by the aggregate.
 `accept` requires the ID of a successful native build of the
-same master revision. It downloads the separate `cobra-sdk-*` test bundles and
+same master revision, with the harness also at that revision. It downloads the separate `cobra-sdk-*` test bundles and
 the release plugin artifacts from that build. The protected `ida-runtime`
 environment provides `HCLI_API_KEY` and `IDA_LICENSE_ID` only during provisioning.
 Installer binaries, credentials, license files, databases, and provisioning

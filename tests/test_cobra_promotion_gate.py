@@ -84,6 +84,8 @@ class PromotionGateTests(unittest.TestCase):
                     runtime=entry,
                     status="passed",
                     revision=self.revision,
+                    harness_revision=self.revision,
+                    collection_mode="full",
                     legacy_manifest_sha256=hashlib.sha256(legacy_path.read_bytes()).hexdigest(),
                     fixture_sha256="fixture",
                     native_control={
@@ -248,6 +250,15 @@ class PromotionGateTests(unittest.TestCase):
 
     def test_wrong_revision(self):
         self.mutate("native.json", lambda d: d.update(revision="0" * 40))
+
+    def test_diagnostic_probe_cannot_qualify_promotion(self):
+        self.mutate("native.json", lambda d: d.update(status="diagnostic"))
+
+    def test_wrong_harness_revision(self):
+        self.mutate("native.json", lambda d: d.update(harness_revision="0" * 40))
+
+    def test_sdk_only_probe_cannot_qualify_promotion(self):
+        self.mutate("native.json", lambda d: d.update(collection_mode="sdk_only"))
 
 
 if __name__ == "__main__":

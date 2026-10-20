@@ -15,6 +15,7 @@ import sys
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+WINDOWS_IDA_REGISTRY = r"Software\Hex-Rays\IDA"
 
 
 def digest(path):
@@ -35,7 +36,7 @@ def accepted_ida_configuration(template, system, version):
     try:
         with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
-            r"Software\Hex-Rays\IDA",
+            WINDOWS_IDA_REGISTRY,
             0,
             winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
         ) as key:
@@ -43,6 +44,24 @@ def accepted_ida_configuration(template, system, version):
             return kind == winreg.REG_DWORD and value == 1
     except OSError:
         return False
+
+
+def accept_windows_eula(version):
+    # HCLI's requested --accept-eula can be skipped when its bundled Python
+    # cannot import idalib. Perform that same requested action through the
+    # documented native registry backend; license checks remain independent.
+    import winreg
+
+    try:
+        with winreg.CreateKeyEx(
+            winreg.HKEY_CURRENT_USER,
+            WINDOWS_IDA_REGISTRY,
+            0,
+            winreg.KEY_SET_VALUE | winreg.KEY_WOW64_64KEY,
+        ) as key:
+            winreg.SetValueEx(key, "EULA " + version.replace(".", ""), 0, winreg.REG_DWORD, 1)
+    except OSError:
+        raise RuntimeError("Unable to configure requested native Windows EULA acceptance") from None
 
 
 def execute(command, *, env=None, timeout=1800):
@@ -176,6 +195,10 @@ def provision(args, entry):
     for license_file in licenses:
         shutil.copy2(license_file, idat[0].parent / license_file.name)
     template = directory / "idauser"
+    if system == "windows" and not accepted_ida_configuration(
+        template, "Windows", entry["ida_version"]
+    ):
+        accept_windows_eula(entry["ida_version"])
     if not accepted_ida_configuration(template, platform.system(), entry["ida_version"]):
         raise RuntimeError("HCLI did not produce accepted IDA configuration")
     if not (template / "ida-config.json").is_file():
@@ -204,7 +227,12 @@ def collect(args, entry):
     os.environ["IDAPYTHON_VENV_EXECUTABLE"] = config["python"]
     bundle = args.bundle.resolve()
     identity = json.loads((bundle / "identity.json").read_text())
-    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    harness_revision = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+    ).strip()
+    revision = harness_revision if args.artifact_revision is None else args.artifact_revision
+    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise RuntimeError("Expected a complete artifact source revision")
     if identity["target"] != entry["target"] or identity["revision"] != revision:
         raise RuntimeError("Acceptance bundle source/target mismatch")
     for name, expected in identity["files"].items():
@@ -238,6 +266,8 @@ def collect(args, entry):
         ("semantic", "MBA SMT native"),
     ):
         match = re.search(marker + r" comparisons: (\d+)", native_control.stdout)
+        if not match and args.sdk_only:
+            continue
         if not match or int(match[1]) != legacy["oracle_comparisons"][group]:
             raise RuntimeError("Original native fixture oracle failed: " + group)
         counts[group] = int(match[1])
@@ -271,7 +301,9 @@ def collect(args, entry):
         ("legacy", "ida_mba_nested_probe.py", ["CHERNOBOG_MBA_BACKEND=legacy"]),
         ("cobra", "ida_mba_nested_probe.py", ["CHERNOBOG_MBA_BACKEND=cobra"]),
     ]
-    for backend in ("legacy", "cobra"):
+    if args.sdk_only:
+        cases = cases[:2]
+    for backend in (() if args.sdk_only else ("legacy", "cobra")):
         for group in ("semantic", "calls", "masks"):
             probe = "ida_mba_smt_probe.py" if group == "semantic" else f"ida_mba_{group}_probe.py"
             cases.append(
@@ -370,11 +402,15 @@ def collect(args, entry):
             raise RuntimeError("Paired SDK artifact/runtime mismatch")
     sdk_cobra["reports"] += sdk_legacy["reports"]
     sdk_cobra["errors"] += sdk_legacy["errors"]
+    if any(report["revision"] != revision for report in sdk_cobra["reports"]):
+        raise RuntimeError("Loaded SDK code differs from the artifact source revision")
     (output / "sdk.json").write_text(json.dumps(sdk_cobra, indent=2) + "\n")
     report = {
         "schema_version": 1,
         "target": entry["target"],
         "revision": revision,
+        "harness_revision": harness_revision,
+        "collection_mode": "sdk_only" if args.sdk_only else "full",
         "runtime": entry,
         "hcli_sha256": config["hcli_sha256"],
         "runs": runs,
@@ -382,14 +418,18 @@ def collect(args, entry):
         "legacy_manifest_sha256": legacy_hash,
         "fixture_sha256": digest(fixture),
         "native_control": counts,
-        "status": "passed",
+        "status": "diagnostic" if args.artifact_revision is not None else "passed",
     }
     if digest(legacy_path) != legacy_hash:
         raise RuntimeError("Frozen legacy manifest changed during acceptance")
     (output / "native.json").write_text(json.dumps(report, indent=2) + "\n")
-    print(
-        f"Native SDK, installed-plugin corpus, and paired unsigned oracles passed: {entry['target']}"
+    kind = "Diagnostic" if args.artifact_revision is not None else "Acceptance"
+    scope = (
+        "SDK execution"
+        if args.sdk_only
+        else "SDK, installed-plugin corpus, and paired unsigned oracles"
     )
+    print(f"{kind} {scope} passed: {entry['target']}")
 
 
 def main():
@@ -400,7 +440,19 @@ def main():
     parser.add_argument("--bundle", type=Path)
     parser.add_argument("--plugin", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--artifact-revision", help="Diagnostic collection only; cannot qualify promotion"
+    )
+    parser.add_argument(
+        "--sdk-only",
+        action="store_true",
+        help="Diagnostic SDK execution without corpus qualification",
+    )
     args = parser.parse_args()
+    if args.sdk_only and (args.operation != "collect" or args.artifact_revision is None):
+        raise RuntimeError(
+            "SDK-only collection requires an explicitly diagnostic artifact revision"
+        )
     manifest = json.loads((ROOT / "tests/fixtures/ida_cobra_runtime_manifest.json").read_text())
     if manifest["status"] != "checksums_frozen":
         raise RuntimeError("Runtime checksums are not frozen")
