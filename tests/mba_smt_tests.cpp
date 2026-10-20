@@ -1,4 +1,5 @@
 #include "deobf/analysis/mba_smt.hpp"
+#include "deobf/analysis/mba_cobra.hpp"
 #include "deobf/analysis/mba_smt_internal.hpp"
 #include <cstdio>
 #include <stdexcept>
@@ -59,6 +60,12 @@ void test_scalar_identity_synthesis()
 
 void test_cobra_boolean_selector()
 {
+    if (!cobra_backend::available())
+    {
+        check(selected_backend() == Backend::Legacy,
+              "an unavailable CoBRA build selects the legacy backend");
+        return;
+    }
     auto program = make_program();
     const Term x = read_register(0);
     const Term selector = expression(
