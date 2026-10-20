@@ -22,6 +22,7 @@ constexpr size_t max_callee_bytes = 4096;
 constexpr size_t max_expression_attempts = 128;
 constexpr size_t max_propagation_rounds = 3;
 constexpr unsigned normal_expression_budget_ms = 500;
+constexpr unsigned legacy_expression_budget_ms = 750;
 constexpr unsigned legacy_context_budget_ms = 250;
 constexpr unsigned deep_expression_budget_ms = 1000;
 
@@ -147,7 +148,7 @@ unsigned normal_site_budget_ms(const Term &value, Backend backend)
         if (term->right)
             pending.push_back(term->right);
     }
-    return pending.empty() ? normal_expression_budget_ms : legacy_context_budget_ms;
+    return pending.empty() ? legacy_expression_budget_ms : legacy_context_budget_ms;
 }
 
 class CallBudget

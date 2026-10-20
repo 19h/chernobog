@@ -213,14 +213,76 @@ static bool has_reachable_mba_loop(const mbl_array_t *mba)
     return visit(visit, 0);
 }
 
+static bool prefers_ctree_mba_budget(const mbl_array_t *mba)
+{
+    if (!mba || mba->qty <= 0 || mba->qty > int(chernobog::mba_smt::limits::blocks))
+        return false;
+    bool arithmetic = false, bitwise_or_call = false;
+    size_t visits = 0;
+    const auto inspect = [&](const auto &self, const minsn_t *instruction, unsigned depth) -> bool
+    {
+        if (!instruction || depth > chernobog::mba_smt::limits::expression_depth ||
+            ++visits > chernobog::mba_smt::limits::statements)
+            return false;
+        switch (instruction->opcode)
+        {
+        case m_add:
+        case m_sub:
+        case m_mul:
+        case m_udiv:
+            arithmetic = true;
+            break;
+        case m_shl:
+            // Compilers spell multiplication by two as a one-bit shift.
+            // Sign-extension shift pairs do not qualify a Boolean helper.
+            arithmetic |=
+                instruction->r.t == mop_n && instruction->r.nnn && instruction->r.nnn->value == 1;
+            break;
+        case m_and:
+        case m_or:
+        case m_xor:
+        case m_bnot:
+        case m_call:
+            bitwise_or_call = true;
+            break;
+        default:
+            break;
+        }
+        for (const mop_t *operand : {&instruction->l, &instruction->r})
+            if (operand->t == mop_d && !self(self, operand->d, depth + 1))
+                return false;
+        return true;
+    };
+
+    std::array<bool, chernobog::mba_smt::limits::blocks> visited{};
+    int index = 0;
+    size_t blocks = 0;
+    while (index >= 0 && index < mba->qty && !visited[index])
+    {
+        visited[index] = true;
+        ++blocks;
+        const auto *block = mba->get_mblock(index);
+        for (const minsn_t *instruction = block->head; instruction; instruction = instruction->next)
+            if (!inspect(inspect, instruction, 0))
+                return false;
+        if (block->nsucc() == 0)
+            return blocks == size_t(mba->qty) && arithmetic && bitwise_or_call;
+        if (block->nsucc() != 1 || (block->tail && is_mcode_jcond(block->tail->opcode)))
+            return false;
+        index = block->succ(0);
+    }
+    return false;
+}
+
 static int run_semantic_mba(mbl_array_t *mba)
 {
     auto *state = get_deobf_state();
     if (!state || !mba)
         return 0;
     // The extra calls-stage analysis recovers narrowed loop-carried constants.
-    // Straight-line sites retain their existing LOCOPT and ctree allowances.
-    if (mba->maturity == MMAT_CALLS && !has_reachable_mba_loop(mba))
+    // Straight-line functions reserve their work for LOCOPT and ctree.
+    const bool has_loop = has_reachable_mba_loop(mba);
+    if (mba->maturity == MMAT_CALLS && !has_loop)
         return 0;
 
     auto &budget = state->mba_smt_budgets[mba->entry_ea];
@@ -239,8 +301,19 @@ static int run_semantic_mba(mbl_array_t *mba)
     // Ctree reconstruction can combine scalar expressions split across native
     // instructions, including helpers the user has already inlined. Preserve
     // its allowance even when no call instruction remains in the function.
-    const unsigned ctree_reserve = total_limit > 1000 ? 3000 : 500;
-    budget.limit_ms = total_limit - std::min(total_limit / 2, ctree_reserve);
+    const bool legacy_ctree_normal = total_limit <= 1000 &&
+                                     budget.backend == chernobog::mba_smt::Backend::Legacy &&
+                                     prefers_ctree_mba_budget(mba);
+    // Local microcode trees can be irreducible prefixes of a compact ctree
+    // expression. Reserve three quarters of the Normal Legacy allowance for
+    // that whole expression. Branches, loops, pure Boolean helpers, and unknown
+    // CFGs retain their existing microcode allowance.
+    budget.limit_ms =
+        legacy_ctree_normal
+            ? total_limit / 4
+            : total_limit - std::min(total_limit / 2, total_limit > 1000 ? 3000u : 500u);
+    deobf::log_verbose("[MBA SMT] Phase allocation at %a: microcode=%u ms ctree_reserve=%u ms\n",
+                       mba->entry_ea, budget.limit_ms, total_limit - budget.limit_ms);
     if (mba->maturity == MMAT_LOCOPT)
     {
         const unsigned early_allowance = total_limit > 1000 ? 10000 : 250;

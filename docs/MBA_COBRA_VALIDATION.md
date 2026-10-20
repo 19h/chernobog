@@ -25,12 +25,29 @@ memory state; unresolved flag-dependent predicates still discard edge facts.
 Caller constant and callee-expansion queries prepare unconditional word proofs
 before algebraic search. Width-specific universal theorems are retained only
 within that solver session, including later candidate and emitted-value queries.
-Normal CoBRA and unmasked Legacy ctree sites have a 500 ms cap; masked
-Legacy sites retain their 250 ms cap. The outer term cost cannot bound proof
-cost when scalar bindings contain expanded expressions.
+Normal CoBRA ctree sites retain a 500 ms cap. Unmasked Legacy sites have a
+750 ms cap; masked Legacy sites retain their 250 ms cap. The outer term cost
+cannot bound proof cost when scalar bindings contain expanded expressions.
+Bounded Legacy functions forming one unconditional chain through every block
+reserve 750 ms for ctree when their body combines arithmetic with bitwise
+operations or a direct call. Their microcode ceiling is 250 ms. Branches,
+loops, pure Boolean helpers, and unclassified CFGs retain the 500 ms ceiling;
+CoBRA retains its existing partition.
 Every site shares the remaining charged 1,000 ms function allowance; individual
 solver queries remain capped at 250 ms.
 Deep sites retain their 1,000 ms cap inside the 30,000 ms function allowance.
+
+| Function/profile | Microcode ceiling (ms) | Ctree reservation (ms) |
+|---|---:|---:|
+| Normal Legacy, qualifying unconditional chain | 250 | 750 |
+| Normal Legacy, all other CFGs | 500 | 500 |
+| Normal CoBRA | 500 | 500 |
+| Deep, either backend | 27,000 | 3,000 |
+
+These are nominal phase allocations inside the charged function allowance.
+The existing early LOCOPT ceilings remain 250 ms in Normal and 10,000 ms in
+Deep. Ctree receives the remaining function allowance; site limits and final
+cooperative expiry checks still apply.
 Microcode fixtures exercise all eight admitted byte widths. Ctree emission
 admits the SDK's integral types at 8, 16, 32, and 64 bits. Neither a candidate-only
 test nor the SDK bridge establishes installed-plugin corpus behavior.
@@ -152,6 +169,7 @@ own exact-revision build and acceptance evidence.
 | A6: A single unconditional, acyclic path visiting every block has exact sequential semantics from one unconstrained initial state. | Propagate each block's exit registers and memory into the next block; no inferred invariant can add information. | Require replacement and counterexample proofs for a reordered chain, predecessor assignments, subsequent overwrites, register havoc, stores, and memory havoc. Guards, multiple successors, disconnected blocks, and cycles retain invariant inference. |
 | A7: Universal word identities do not depend on the source operand values or path facts. | One accepted width-specific theorem can support repeated queries in its own solver session. | Query the captured complemented-word expression before synthesis, repeat the query without repeating universal proofs, reject an unrelated constant, and require a new analysis to reprove its identities. |
 | A8: Target jobs have independent runtime configuration and process state. | Concurrent targets retain each target's sequential backend comparison. | Exercise all six native jobs with `native_parallelism=6`; require complete per-target provisioning, artifact identities, and paired oracles. A failed job rejects the aggregate and can be retried serially without changing fixtures or thresholds. |
+| A9: Failed searches on local microcode prefixes can consume time needed by a complete ctree expression. | Normal Legacy functions with a complete unconditional chain containing arithmetic and either bitwise operations or a direct call limit microcode to 250 ms and reserve 750 ms for ctree. Pure Boolean, branching, cyclic, disconnected, and unclassified CFGs retain the existing microcode budget. | Re-run the unchanged nested, loop, semantic, caller/context, and mask corpus on all six targets with the 1,000 ms function allowance. Require the original masked known-bit reductions and unchanged late-proof rejection. |
 
 | Bounded finding | Impact | Contract |
 |---|---|---|
@@ -164,9 +182,9 @@ own exact-revision build and acceptance evidence.
 | A host cancellation callback can reset its signal after an earlier observation. | Medium | Latch positive cancellation for the session and verify that final commit and legacy fallback still reject it. |
 | Complete-region generation can reduce repeated work but expose harder direct proofs. | High | Cache only instantiated fixed word identities proved UNSAT for arbitrary words in the same solver session; leave CoBRA inputs unchanged and retain both replacement proof boundaries. Wide, masked, and polynomial regions keep their established bottom-up schedule. |
 | Legacy's existing search can also spend its Normal allowance reproving unmasked word identities. | High | Reuse the same universally proved identities before its existing proof preparation, without changing candidate generation or its deadline; reject post-UNSAT cancellation for both engines. |
-| A small unmasked outer term can contain expensive scalar bindings. | High | Retain the 500 ms Normal Legacy cap for every unmasked query, including small outer terms; distinguish partial masks independently of outer cost and require the original nested corpus and known-bit caller fixtures together. |
+| A small unmasked outer term can contain expensive scalar bindings. | High | Retain the 750 ms Normal Legacy cap for every unmasked query, including small outer terms; distinguish partial masks independently of outer cost and require the original nested corpus and known-bit caller fixtures together. |
 | An earlier masked call expansion can consume the allowance needed by a later known-bit reduction. | High | Preserve the 250 ms Legacy contextual/masked site cap; retain the larger cap for all unmasked MBAs and require the unchanged `mba_context_known_bits` capture to return zero while retaining its observer call. |
-| Caller constant and callee-expansion proofs precede algebraic search and can miss its word lemmas. | High | Prepare unconditional word proofs before those queries and retain universal identities only in their solver session. Use a 500 ms Normal ctree cap for CoBRA and unmasked Legacy queries, preserving the shorter 250 ms Legacy contextual/masked cap, the 1,000 ms charged function budget, the 250 ms solver-query cap, and both replacement proof boundaries. |
+| Caller constant and callee-expansion proofs precede algebraic search and can miss its word lemmas. | High | Prepare unconditional word proofs before those queries and retain universal identities only in their solver session. Use a 500 ms Normal ctree cap for CoBRA and a 750 ms cap for unmasked Legacy queries, preserving the shorter 250 ms Legacy contextual/masked cap, the 1,000 ms charged function budget, the 250 ms solver-query cap, and both replacement proof boundaries. |
 | A narrow source argument annotation can make IDA 9.4 ARM64 overlap a helper argument with its wide return register. | Medium | Retain the inferred native argument carrier for the designated signed helper; require the original signed-byte result and compiled contextual oracle. |
 | Restored project objects can be newer than checked-out headers and preserve incompatible class layouts. | High | Discard top-level project compilation state after cache restore; retain dependency builds and content-checked compiler caches. |
 | A canceled preliminary build can leave an incomplete immutable exact-key dependency cache. | Medium | Identify the partial entry by its key and recorded byte count, remove only that entry, and retry the pending target at the same source revision. Verify the warm dependency cache and retain the other successful target artifacts. |
@@ -176,6 +194,7 @@ own exact-revision build and acceptance evidence.
 | Repeating calls-stage analysis on straight-line functions can consume the Normal allowance without supplying loop facts. | High | Run that extra constant pass only for reachable CFG cycles; retain the prior LOCOPT and ctree allowances for acyclic functions. Cycle detection uses O(V + E) time and O(V) space, with V bounded by 64 blocks. |
 | Unconditional chains with assignments in several blocks can consume invariant-search time before caller proofs. | High | Execute the entire validated chain from one initial state, forwarding registers and memory with ordinary assignment/store/havoc semantics. Skip inference only when that unconditional, acyclic path visits every block. Guards, cycles, multiple successors, and disconnected blocks retain inference. Chain detection uses O(V) time and O(V) space, with V bounded by 64; execution retains the existing statement/state bounds. |
 | A fresh macOS x86-64 worker can exhaust Legacy Normal caller proofs after a previous worker completed them. | High | Preserve [both failed attempts](https://github.com/19h/chernobog/actions/runs/39448113815) and their source identities. Remove the measured invariant-search work through exact chain execution; retain the 1,000 ms function allowance, unchanged site/query limits, both value proofs, frame checks, and final expiry rejection. Requalify the resulting source across all six native targets. |
+| Local microcode prefixes and ordinary conversion trees can exhaust Normal search before a cheap complete ctree proof. | High | Preserve [the failed source qualification](https://github.com/19h/chernobog/actions/runs/39458294026). Reserve 750 ms for ctree in qualifying unconditional Legacy Normal chains, admit unmasked Legacy sites up to that remaining allowance, and preserve masked sites at 250 ms. CoBRA, pure Boolean and guarded/loop analysis, Deep, total function budgets, proof gates, and fixture thresholds are unchanged. |
 | GCC loop-counter copies can carry `DONT_COMB` and split metadata without changing their copy semantics. | High | Model only direct propagatable ordinary copies, preserve the original instruction and flags, exclude protected copies from replacement, and continue rejecting `DONT_PROP`, assertions, persistence, floating-point instructions, and memory barriers. |
 | Native installer identity does not establish license or decompiler entitlement. | High | Require actual provisioning, plugin loading, SDK execution, and unsigned oracle completion. |
 
