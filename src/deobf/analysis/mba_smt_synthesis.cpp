@@ -656,10 +656,13 @@ Term CandidateSynthesis::search_grammar()
 
 Term CandidateSynthesis::run()
 {
-    if (Term candidate = simplify_algebraic(symbolic_, state_, original_))
+    if (Term candidate = simplify_algebraic(symbolic_, state_, original_, &cobra_origin_))
     {
         return candidate;
     }
+
+    if (session_.options.backend == Backend::Cobra)
+        return {};
 
     collect_inputs();
     if (!initialize_samples())

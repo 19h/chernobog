@@ -1,0 +1,26 @@
+name: CoBRA native runtime acceptance
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory:
+    if: github.ref == 'refs/heads/master'
+    environment: ida-runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Resolve exact installer identities
+        env:
+          HCLI_API_KEY: ${{ secrets.HCLI_API_KEY }}
+          IDA_LICENSE_ID: ${{ secrets.IDA_LICENSE_ID }}
+        run: python tests/cobra_runtime_inventory.py --output runtime-inventory/installers.json
+      - uses: actions/upload-artifact@v6
+        with:
+          name: cobra-runtime-inventory
+          path: runtime-inventory/installers.json
+          if-no-files-found: error

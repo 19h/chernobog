@@ -1,0 +1,36 @@
+{
+  "version": "0.26.3",
+  "release": "https://github.com/HexRaysSA/ida-hcli/releases/tag/v0.26.3",
+  "assets": [
+    {
+      "name": "hcli-linux-aarch64-0.26.3",
+      "browser_download_url": "https://github.com/HexRaysSA/ida-hcli/releases/download/v0.26.3/hcli-linux-aarch64-0.26.3",
+      "digest": "sha256:3f3c38dd1548bef2716f4a56b69ba52b5d5a2555b0f9b453f08969468e64bb63"
+    },
+    {
+      "name": "hcli-linux-x86_64-0.26.3",
+      "browser_download_url": "https://github.com/HexRaysSA/ida-hcli/releases/download/v0.26.3/hcli-linux-x86_64-0.26.3",
+      "digest": "sha256:a2065fed59c734dfdcd42a6a9c0e1299d9da6ff447da4d6c081f65e0d2dec48e"
+    },
+    {
+      "name": "hcli-mac-arm64-0.26.3",
+      "browser_download_url": "https://github.com/HexRaysSA/ida-hcli/releases/download/v0.26.3/hcli-mac-arm64-0.26.3",
+      "digest": "sha256:0b5d57b54cbcdd91d81ec74b0c2f6ea3a07e4522b4ceb464fb6de4721be065c4"
+    },
+    {
+      "name": "hcli-mac-x86_64-0.26.3",
+      "browser_download_url": "https://github.com/HexRaysSA/ida-hcli/releases/download/v0.26.3/hcli-mac-x86_64-0.26.3",
+      "digest": "sha256:110fdc01d59e7499644a04010be7d8cd85547495cc1722cb1da18805896bcbee"
+    },
+    {
+      "name": "hcli-windows-aarch64-0.26.3.exe",
+      "browser_download_url": "https://github.com/HexRaysSA/ida-hcli/releases/download/v0.26.3/hcli-windows-aarch64-0.26.3.exe",
+      "digest": "sha256:4c4aa55126843c1c222f95afd57c9f23d400730b52bbd27ac573a8e0735ad01c"
+    },
+    {
+      "name": "hcli-windows-x86_64-0.26.3.exe",
+      "browser_download_url": "https://github.com/HexRaysSA/ida-hcli/releases/download/v0.26.3/hcli-windows-x86_64-0.26.3.exe",
+      "digest": "sha256:14a96a944b39519e4bbc547449efd1b2d4eecc67cfa88192e8896bb935f85f65"
+    }
+  ]
+}

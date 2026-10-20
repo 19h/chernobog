@@ -1,4 +1,5 @@
 #include "mba_smt_internal.hpp"
+#include "mba_cobra.hpp"
 
 #include <algorithm>
 #include <map>
@@ -191,12 +192,14 @@ class AlgebraicSimplifier
 
     Term run(const Term &original)
     {
-        if (cost(original) >= 8)
+        if (session_.options.backend == Backend::Legacy && cost(original) >= 8)
         {
             prepare_bitwise_proofs(original);
         }
         return rewrite(original);
     }
+
+    bool from_cobra() const noexcept { return cobra_origin_; }
 
   private:
     bool collect_word_inputs(const Term &term, unsigned bits, std::vector<Term> &inputs) const
@@ -272,6 +275,19 @@ class AlgebraicSimplifier
 
         Term term = expression(original->op, rewrite(original->left), rewrite(original->right),
                                original->bits);
+        if (session_.options.backend == Backend::Cobra && cost(term) >= 2)
+        {
+            if (Term candidate = simplify_cobra(term))
+                term = std::move(candidate);
+        }
+
+        if (term->right && term->right->op == Op::Constant && term->right->value == 0 &&
+            (term->op == Op::Add || term->op == Op::Sub || term->op == Op::Or ||
+             term->op == Op::Xor))
+            term = term->left;
+        else if (term->left && term->left->op == Op::Constant && term->left->value == 0 &&
+                 term->right && (term->op == Op::Add || term->op == Op::Or || term->op == Op::Xor))
+            term = term->right;
         term = normalize_masks(term);
         term = normalize_complement(term);
         term = factor_constant_offset(term);
@@ -290,7 +306,7 @@ class AlgebraicSimplifier
         {
             term = simplify_comparison(term);
         }
-        else if (cost(term) >= 2)
+        else if (session_.options.backend == Backend::Legacy && cost(term) >= 2)
         {
             if (Term candidate = simplify_linear(term))
             {
@@ -637,6 +653,86 @@ class AlgebraicSimplifier
         return prove(term, candidate) ? candidate : Term{};
     }
 
+    Term simplify_cobra(const Term &term)
+    {
+        bool arithmetic = false, bitwise = false;
+        std::function<void(const Term &)> classify = [&](const Term &node)
+        {
+            if (!node || node->bits != term->bits)
+                return;
+            arithmetic |= node->op == Op::Add || node->op == Op::Sub || node->op == Op::Mul ||
+                          node->op == Op::Neg;
+            bitwise |= node->op == Op::And || node->op == Op::Or || node->op == Op::Xor ||
+                       node->op == Op::Not;
+            classify(node->left);
+            classify(node->right);
+        };
+        classify(term);
+        if (!arithmetic || !bitwise || !session_.has_budget())
+            return {};
+        auto &statistics = session_.statistics.cobra;
+        const auto time = session_.now();
+        const auto budget =
+            cobra_backend::reserve_site(time, session_.deadline(), session_.remaining_budget(time));
+        if (!budget.admitted)
+        {
+            ++statistics.exhausted;
+            session_.statistics.cancel_stage = RejectReason::BudgetExhaustedPreFlight;
+            return {};
+        }
+        cobra_backend::Request request;
+        request.deadline = budget.candidate_deadline;
+        request.profile = session_.options.profile;
+        request.snapshot = session_.options.snapshot;
+        request.cancelled = [&] { return session_.is_cancelled(); };
+        request.now = [&] { return session_.now(); };
+        const auto outcome = cobra_backend::generate(term, request);
+        ++statistics.calls;
+        statistics.generation_ns += outcome.elapsed_ns;
+        statistics.overshoot_ns = std::max(statistics.overshoot_ns, outcome.overshoot_ns);
+        statistics.scratch_peak_bytes =
+            std::max(statistics.scratch_peak_bytes, outcome.scratch_peak_bytes);
+        statistics.raw_leaves = outcome.raw_leaves;
+        statistics.input_nodes = outcome.input_nodes;
+        statistics.output_nodes = outcome.output_nodes;
+        statistics.raw_support = outcome.raw_support;
+        statistics.canonical_support = outcome.canonical_support;
+        statistics.spot_check = outcome.spot_check;
+        statistics.last_status = unsigned(outcome.status);
+        statistics.last_reason = unsigned(outcome.reason);
+        switch (outcome.status)
+        {
+        case cobra_backend::Status::Candidate:
+            ++statistics.candidates;
+            break;
+        case cobra_backend::Status::Unchanged:
+            ++statistics.unchanged;
+            break;
+        case cobra_backend::Status::Unsupported:
+            ++statistics.unsupported;
+            break;
+        case cobra_backend::Status::Exhausted:
+            ++statistics.exhausted;
+            break;
+        case cobra_backend::Status::Failure:
+            ++statistics.failures;
+            break;
+        }
+        if (outcome.status != cobra_backend::Status::Candidate || !session_.has_budget())
+            return {};
+        const auto proof_start = session_.now();
+        const bool accepted = prove(term, outcome.candidate);
+        statistics.candidate_proof_ns += static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(session_.now() - proof_start)
+                .count());
+        if (!accepted)
+            return {};
+        ++statistics.proved;
+        statistics.proved_widths |= UINT64_C(1) << (term->bits / 8);
+        cobra_origin_ = true;
+        return outcome.candidate;
+    }
+
     Term simplify_linear(const Term &term)
     {
         std::vector<Term> inputs;
@@ -662,13 +758,17 @@ class AlgebraicSimplifier
     std::map<std::string, Term> rewritten_;
     std::set<std::string> linearized_;
     size_t visited_ = 0;
+    bool cobra_origin_ = false;
 };
 } // namespace
 
-Term simplify_algebraic(SymbolicProgram &program, const SymbolicState &state, const Term &original)
+Term simplify_algebraic(SymbolicProgram &program, const SymbolicState &state, const Term &original,
+                        bool *cobra_origin)
 {
     AlgebraicSimplifier simplifier(program, state);
     Term result = simplifier.run(original);
+    if (cobra_origin)
+        *cobra_origin = simplifier.from_cobra();
     return result && cost(result) < cost(original) ? result : Term{};
 }
 } // namespace chernobog::mba_smt::detail

@@ -1,3 +1,12 @@
 [submodule "vendor/rax"]
 	path = vendor/rax
 	url = https://github.com/HexRaysSA/rax.git
+[submodule "vendor/cobra"]
+	path = vendor/cobra
+	url = https://github.com/19h/CoBRA.git
+[submodule "vendor/abseil-cpp"]
+	path = vendor/abseil-cpp
+	url = https://github.com/abseil/abseil-cpp.git
+[submodule "vendor/highway"]
+	path = vendor/highway
+	url = https://github.com/google/highway.git

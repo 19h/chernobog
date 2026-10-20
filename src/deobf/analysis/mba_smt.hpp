@@ -151,11 +151,16 @@ struct SnapshotToken
     bool operator!=(const SnapshotToken &other) const noexcept { return !(*this == other); }
 };
 
+Backend selected_backend() noexcept;
+const char *backend_diagnostic() noexcept;
+
 struct Options
 {
-    Backend backend = Backend::Legacy;
+    Backend backend = selected_backend();
     Profile profile = Profile::Normal;
     SnapshotToken snapshot;
+    std::chrono::steady_clock::time_point absolute_deadline =
+        std::chrono::steady_clock::time_point::max();
     unsigned budget_ms = limits::normal_budget_ms;
     unsigned query_ms = 250;
     unsigned resource_limit = 10000000;
@@ -173,8 +178,22 @@ enum class Verdict
     Exhausted
 };
 
+struct CobraStatistics
+{
+    size_t calls = 0, candidates = 0, unchanged = 0, unsupported = 0, exhausted = 0, failures = 0;
+    size_t proved = 0, emitted_proved = 0, applied = 0, frame_rejections = 0;
+    size_t raw_leaves = 0, input_nodes = 0, output_nodes = 0, raw_support = 0,
+           canonical_support = 0;
+    size_t scratch_peak_bytes = 0;
+    uint64_t generation_ns = 0, candidate_proof_ns = 0, emission_ns = 0, emitted_proof_ns = 0;
+    uint64_t overshoot_ns = 0;
+    uint64_t proved_widths = 0;
+    unsigned last_status = 0, last_reason = 0;
+    bool spot_check = false;
+};
 struct Statistics
 {
+    CobraStatistics cobra;
     size_t candidates = 0;
     size_t verified = 0;
     size_t applied = 0;
@@ -191,12 +210,27 @@ struct Statistics
     size_t rejected_mutations = 0;
 };
 
+class ProofReceipt
+{
+    friend class Analysis;
+    uint64_t analysis_ = 0;
+    SnapshotToken snapshot_;
+    size_t block_ = 0, statement_ = 0;
+    Term source_, candidate_, emitted_;
+    bool cobra_ = false;
+
+  public:
+    bool from_cobra() const noexcept { return cobra_; }
+    bool has_emitted_proof() const noexcept { return bool(emitted_); }
+};
+
 struct Proposal
 {
     size_t block;
     size_t statement;
     Term replacement;
     SnapshotToken snapshot;
+    std::shared_ptr<const ProofReceipt> proof;
 };
 
 // One immutable CFG snapshot. Every proposal, including re-emitted code, must
@@ -205,6 +239,7 @@ class Analysis
 {
     struct Impl;
     std::unique_ptr<Impl> impl_;
+    Verdict verify_at(size_t block, size_t statement, const Term &replacement, const char *purpose);
 
   public:
     Analysis(Program program, Options options = {});
@@ -216,12 +251,21 @@ class Analysis
     // This avoids expression enumeration when a caller only needs a constant.
     Term constant_value(size_t block, size_t statement);
     Verdict verify(size_t block, size_t statement, const Term &replacement);
+    std::shared_ptr<const ProofReceipt> prove_candidate(size_t block, size_t statement,
+                                                        const Term &candidate,
+                                                        bool cobra_origin = false);
+    std::shared_ptr<const ProofReceipt> prove_emission(const ProofReceipt &candidate,
+                                                       const Term &emitted);
+    bool eligible_for_commit(const ProofReceipt &receipt, bool legacy_deadline_exempt,
+                             const std::function<bool()> &unchanged);
     // The tagged legacy fallback may waive deadline expiry only after both
     // proofs completed in time. Cancellation is never exempt.
     bool eligible_for_commit(bool legacy_deadline_exempt = false,
                              const std::function<bool()> &unchanged = {});
     SnapshotToken snapshot() const noexcept;
     void reject_mutation(RejectReason reason);
+    void record_emission(uint64_t elapsed_ns);
     const Statistics &statistics() const;
 };
+void accumulate_statistics(Statistics &total, const Statistics &attempt);
 } // namespace chernobog::mba_smt

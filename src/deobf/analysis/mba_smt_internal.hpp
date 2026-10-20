@@ -129,7 +129,8 @@ class InvariantInference
 
 // Search samples may reject candidates cheaply. Only a solver query over the
 // complete site domain can accept one; a sample collision is never a proof.
-Term simplify_algebraic(SymbolicProgram &program, const SymbolicState &state, const Term &original);
+Term simplify_algebraic(SymbolicProgram &program, const SymbolicState &state, const Term &original,
+                        bool *cobra_origin = nullptr);
 
 // Return a structural hypothesis. The algebraic pass must prove it before use.
 Term normalize_masks(const Term &term);
@@ -145,6 +146,7 @@ class CandidateSynthesis
     CandidateSynthesis(SymbolicProgram &symbolic_program, const BlockInvariants &invariants,
                        size_t block, size_t statement);
     Term run();
+    bool from_cobra() const noexcept { return cobra_origin_; }
 
   private:
     enum class CandidateStatus
@@ -186,8 +188,10 @@ class CandidateSynthesis
     std::unordered_set<std::string> signatures_;
     size_t generated_ = 0;
     bool restart_requested_ = false;
+    bool cobra_origin_ = false;
 };
 
 Verdict verify_replacement(SymbolicProgram &symbolic_program, const BlockInvariants &invariants,
-                           size_t block, size_t statement, const Term &replacement);
+                           size_t block, size_t statement, const Term &replacement,
+                           const char *purpose = "MBA contextual candidate mismatch");
 } // namespace chernobog::mba_smt::detail

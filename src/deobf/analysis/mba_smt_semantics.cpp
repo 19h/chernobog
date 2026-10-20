@@ -24,8 +24,14 @@ z3::expr boolean_value(const z3::expr &condition)
 
 SolverSession::SolverSession(Options configured_options, Statistics &output_statistics)
     : options(std::move(configured_options)), statistics(output_statistics), started_(now()),
-      deadline_(started_ + std::chrono::milliseconds(options.budget_ms))
+      deadline_(started_)
 {
+    const auto allowance =
+        std::chrono::duration_cast<Clock::duration>(std::chrono::milliseconds(options.budget_ms));
+    deadline_ = started_.time_since_epoch() > Clock::duration::max() - allowance
+                    ? Clock::time_point::max()
+                    : started_ + allowance;
+    deadline_ = std::min(deadline_, options.absolute_deadline);
 }
 
 SolverSession::Clock::time_point SolverSession::now() const
@@ -419,7 +425,8 @@ z3::expr SymbolicProgram::apply_verified_rewrites(z3::expr value) const
 }
 
 Verdict verify_replacement(SymbolicProgram &symbolic_program, const BlockInvariants &invariants,
-                           size_t block, size_t statement_index, const Term &replacement)
+                           size_t block, size_t statement_index, const Term &replacement,
+                           const char *purpose)
 {
     auto &session = symbolic_program.session;
     const auto &program = symbolic_program.program;
@@ -460,7 +467,7 @@ Verdict verify_replacement(SymbolicProgram &symbolic_program, const BlockInvaria
             symbolic_program.evaluate(statement.value, state)) !=
         symbolic_program.apply_verified_rewrites(symbolic_program.evaluate(replacement, state)));
 
-    const auto result = session.check(solver, "MBA contextual emitted replacement mismatch");
+    const auto result = session.check(solver, purpose);
     if (result == z3::unsat)
     {
         if (!session.has_budget())

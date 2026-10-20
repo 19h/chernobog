@@ -1,5 +1,7 @@
 #include "deobf_main.h"
 #include "analysis/opaque_eval.h"
+#include "analysis/mba_cobra.hpp"
+#include "chernobog/build_provenance.hpp"
 #include "handlers/deflatten.h"
 #include "handlers/bogus_cf.h"
 #include "handlers/string_decrypt.h"
@@ -235,11 +237,30 @@ qstring chernobog_mba_smt_statistics(ea_t ea)
     result.sprnt("{\"budget_ms\":%u,\"elapsed_ns\":%llu,"
                  "\"candidates\":%zu,\"verified\":%zu,\"applied\":%zu,\"disproved\":%zu,"
                  "\"unsupported\":%zu,\"unknown\":%zu,"
-                 "\"invariants\":%zu,\"invariants_rejected\":%zu,\"exhausted\":%zu}",
+                 "\"invariants\":%zu,\"invariants_rejected\":%zu,\"exhausted\":%zu",
                  budget.limit_ms, static_cast<unsigned long long>(budget.spent_ns),
                  statistics.candidates, statistics.verified, statistics.applied,
                  statistics.disproved, statistics.unsupported, statistics.unknown,
                  statistics.invariants, statistics.invariants_rejected, statistics.exhausted);
+    result.cat_sprnt(
+        ",\"algebraic\":{\"backend\":\"%s\",\"diagnostic\":\"%s\",\"vendor_tree\":\"%s\",\"calls\":%zu,\"candidates\":%zu,\"unchanged\":%zu,\"unsupported\":%zu,\"exhausted\":%zu,\"failures\":%zu,\"proved\":%zu,\"emitted_proved\":%zu,\"applied\":%zu,\"frame_rejections\":%zu,\"raw_leaves\":%zu,\"input_nodes\":%zu,\"output_nodes\":%zu,\"raw_support\":%zu,\"canonical_support\":%zu,\"scratch_peak_bytes\":%zu,\"generation_ns\":%llu,\"candidate_proof_ns\":%llu,\"emission_ns\":%llu,\"emitted_proof_ns\":%llu,\"overshoot_ns\":%llu,\"process_peak_rss_bytes\":%llu,\"rejected_mutations\":%zu,\"cancel_stage\":%u,\"deadline_overshoot_ns\":%llu}}",
+        budget.backend == chernobog::mba_smt::Backend::Cobra ? "cobra" : "legacy",
+        budget.backend_notice, chernobog::build_provenance::cobra_tree, statistics.cobra.calls,
+        statistics.cobra.candidates, statistics.cobra.unchanged, statistics.cobra.unsupported,
+        statistics.cobra.exhausted, statistics.cobra.failures, statistics.cobra.proved,
+        statistics.cobra.emitted_proved, statistics.cobra.applied,
+        statistics.cobra.frame_rejections, statistics.cobra.raw_leaves,
+        statistics.cobra.input_nodes, statistics.cobra.output_nodes, statistics.cobra.raw_support,
+        statistics.cobra.canonical_support, statistics.cobra.scratch_peak_bytes,
+        static_cast<unsigned long long>(statistics.cobra.generation_ns),
+        static_cast<unsigned long long>(statistics.cobra.candidate_proof_ns),
+        static_cast<unsigned long long>(statistics.cobra.emission_ns),
+        static_cast<unsigned long long>(statistics.cobra.emitted_proof_ns),
+        static_cast<unsigned long long>(statistics.cobra.overshoot_ns),
+        static_cast<unsigned long long>(
+            chernobog::mba_smt::cobra_backend::process_peak_rss_bytes()),
+        statistics.rejected_mutations, unsigned(statistics.cancel_stage),
+        static_cast<unsigned long long>(statistics.deadline_overshoot_ns));
     return result;
 }
 

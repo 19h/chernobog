@@ -157,9 +157,9 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build
-          key: build-v3-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
+          key: build-v3-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.gitmodules', 'vendor/cobra.provenance.cmake', 'patches/cobra/**', 'tests/fixtures/mba_cobra_positive_manifest*', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
           restore-keys: |
-            build-v3-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-
+            build-v3-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.gitmodules', 'vendor/cobra.provenance.cmake', 'patches/cobra/**', 'tests/fixtures/mba_cobra_positive_manifest*', '.github/workflows/build.yml') }}-
 
       - name: Restore ccache
         id: ccache_cache
@@ -167,7 +167,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ~/.ccache
-          key: ccache-v1-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'ida-cmake/**', 'src/**', '.github/workflows/build.yml') }}
+          key: ccache-v1-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'ida-cmake/**', '.gitmodules', 'vendor/cobra.provenance.cmake', 'patches/cobra/**', 'tests/fixtures/mba_cobra_positive_manifest*', 'src/**', '.github/workflows/build.yml') }}
           restore-keys: |
             ccache-v1-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-
 
@@ -236,12 +236,12 @@ jobs:
       - name: Build (Windows MSVC)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cmake --build build --config Release --target chernobog chernobog_program_model_tests chernobog_evidence_tests chernobog_analysis_prefix_tests --parallel $env:NUMBER_OF_PROCESSORS
+        run: cmake --build build --config Release --target chernobog chernobog_program_model_tests chernobog_evidence_tests chernobog_analysis_prefix_tests chernobog_mba_smt_tests chernobog_mba_smt_context_tests chernobog_mba_cobra_tests chernobog_mba_cobra_budget_tests chernobog_mba_cobra_fault_tests chernobog_mba_cobra_header_tests --parallel $env:NUMBER_OF_PROCESSORS
 
       - name: Test analysis (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ctest --test-dir build --build-config Release --output-on-failure -R '^chernobog\.(program_model|evidence|analysis_prefix)$'
+        run: ctest --test-dir build --build-config Release --output-on-failure -R '^chernobog\.(program_model|evidence|analysis_prefix|mba_smt|mba_smt_context|mba_cobra_candidates|mba_cobra_manifest|mba_cobra_budget|mba_cobra_faults|mba_cobra_provenance)$'
 
       # Publish before testing so a failed or flaky test still leaves a warm
       # cache to retry against. always() also covers a failed build: the
@@ -547,16 +547,16 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: out/build/windows-clang-release
-          key: build-v3-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
+          key: build-v3-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.gitmodules', 'vendor/cobra.provenance.cmake', 'patches/cobra/**', 'tests/fixtures/mba_cobra_positive_manifest*', '.github/workflows/build.yml') }}-${{ hashFiles('src/**') }}
           restore-keys: |
-            build-v3-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.github/workflows/build.yml') }}-
+            build-v3-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.gitmodules', 'vendor/cobra.provenance.cmake', 'patches/cobra/**', 'tests/fixtures/mba_cobra_positive_manifest*', '.github/workflows/build.yml') }}-
 
       - name: Restore ccache
         id: ccache_cache
         uses: actions/cache/restore@v6
         with:
           path: ~/.ccache
-          key: ccache-v1-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', 'src/**', '.github/workflows/build.yml') }}
+          key: ccache-v1-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.gitmodules', 'vendor/cobra.provenance.cmake', 'patches/cobra/**', 'tests/fixtures/mba_cobra_positive_manifest*', 'src/**', '.github/workflows/build.yml') }}
           restore-keys: |
             ccache-v1-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-
 

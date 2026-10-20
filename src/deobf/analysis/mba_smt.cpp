@@ -1,6 +1,7 @@
 #include "mba_smt.hpp"
 #include "mba_smt_internal.hpp"
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <limits>
 #include <set>
@@ -419,6 +420,8 @@ struct Analysis::Impl
         return sites;
     }
 
+    inline static std::atomic<uint64_t> next_identity{1};
+    const uint64_t identity = next_identity.fetch_add(1, std::memory_order_relaxed);
     Program program;
     Statistics statistics;
     detail::SolverSession session;
@@ -460,14 +463,12 @@ std::vector<Proposal> Analysis::run()
                 continue;
             }
 
-            const Verdict result = detail::verify_replacement(impl_->symbolic, *impl_->invariants,
-                                                              block, statement, replacement);
-            if (result == Verdict::Verified)
+            const auto proof =
+                prove_candidate(block, statement, replacement, synthesis.from_cobra());
+            if (proof)
             {
-                // Applying this proposal invalidates the entire snapshot.
-                // Return one proposal so its owner must rebuild afterward.
-                return {
-                    {block, statement, std::move(replacement), impl_->session.options.snapshot}};
+                return {{block, statement, std::move(replacement), impl_->session.options.snapshot,
+                         proof}};
             }
         }
     }
@@ -525,6 +526,12 @@ Term Analysis::constant_value(size_t block, size_t statement)
 
 Verdict Analysis::verify(size_t block, size_t statement, const Term &replacement)
 {
+    return verify_at(block, statement, replacement, "MBA contextual candidate mismatch");
+}
+
+Verdict Analysis::verify_at(size_t block, size_t statement, const Term &replacement,
+                            const char *purpose)
+{
     try
     {
         if (!impl_->session.has_budget())
@@ -554,6 +561,79 @@ Verdict Analysis::verify(size_t block, size_t statement, const Term &replacement
     }
 }
 
+std::shared_ptr<const ProofReceipt>
+Analysis::prove_candidate(size_t block, size_t statement, const Term &candidate, bool cobra_origin)
+{
+    const auto started = impl_->session.now();
+    if (verify(block, statement, candidate) != Verdict::Verified)
+        return {};
+    auto receipt = std::shared_ptr<ProofReceipt>(new ProofReceipt);
+    receipt->analysis_ = impl_->identity;
+    receipt->snapshot_ = snapshot();
+    receipt->block_ = block;
+    receipt->statement_ = statement;
+    receipt->source_ = impl_->program.blocks[block].statements[statement].value;
+    receipt->candidate_ = candidate;
+    receipt->cobra_ = cobra_origin;
+    if (!impl_->session.has_budget())
+    {
+        impl_->session.record_expiry(RejectReason::PostProofExpiry);
+        return {};
+    }
+    if (cobra_origin)
+        impl_->statistics.cobra.candidate_proof_ns += static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(impl_->session.now() - started)
+                .count());
+    return receipt;
+}
+
+std::shared_ptr<const ProofReceipt> Analysis::prove_emission(const ProofReceipt &candidate,
+                                                             const Term &emitted)
+{
+    if (candidate.analysis_ != impl_->identity || candidate.snapshot_ != snapshot() ||
+        candidate.block_ >= impl_->program.blocks.size() ||
+        candidate.statement_ >= impl_->program.blocks[candidate.block_].statements.size() ||
+        candidate.source_ !=
+            impl_->program.blocks[candidate.block_].statements[candidate.statement_].value)
+    {
+        reject_mutation(RejectReason::StaleSnapshot);
+        return {};
+    }
+    const auto started = impl_->session.now();
+    if (verify_at(candidate.block_, candidate.statement_, emitted,
+                  "MBA emitted replacement mismatch") != Verdict::Verified)
+        return {};
+    auto receipt = std::shared_ptr<ProofReceipt>(new ProofReceipt(candidate));
+    receipt->emitted_ = emitted;
+    if (!impl_->session.has_budget())
+    {
+        impl_->session.record_expiry(RejectReason::PostProofExpiry);
+        return {};
+    }
+    if (candidate.cobra_)
+    {
+        ++impl_->statistics.cobra.emitted_proved;
+        impl_->statistics.cobra.emitted_proof_ns += static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(impl_->session.now() - started)
+                .count());
+    }
+    return receipt;
+}
+
+bool Analysis::eligible_for_commit(const ProofReceipt &receipt, bool legacy_deadline_exempt,
+                                   const std::function<bool()> &unchanged)
+{
+    if (!receipt.emitted_ || receipt.analysis_ != impl_->identity ||
+        receipt.snapshot_ != snapshot())
+    {
+        reject_mutation(RejectReason::StaleSnapshot);
+        return false;
+    }
+    const bool exempt = legacy_deadline_exempt &&
+                        impl_->session.options.backend == Backend::Legacy && !receipt.cobra_;
+    return eligible_for_commit(exempt, unchanged);
+}
+
 bool Analysis::eligible_for_commit(bool legacy_deadline_exempt,
                                    const std::function<bool()> &unchanged)
 {
@@ -565,8 +645,62 @@ SnapshotToken Analysis::snapshot() const noexcept { return impl_->session.option
 void Analysis::reject_mutation(RejectReason reason)
 {
     ++impl_->statistics.rejected_mutations;
+    if (reason == RejectReason::EmittedDestinationOrFrameMismatch)
+        ++impl_->statistics.cobra.frame_rejections;
     impl_->statistics.cancel_stage = reason;
 }
 
+void Analysis::record_emission(uint64_t elapsed_ns)
+{
+    impl_->statistics.cobra.emission_ns += elapsed_ns;
+}
+
 const Statistics &Analysis::statistics() const { return impl_->statistics; }
+void accumulate_statistics(Statistics &total, const Statistics &attempt)
+{
+    total.candidates += attempt.candidates;
+    total.verified += attempt.verified;
+    total.applied += attempt.applied;
+    total.disproved += attempt.disproved;
+    total.unsupported += attempt.unsupported;
+    total.unknown += attempt.unknown;
+    total.invariant_candidates += attempt.invariant_candidates;
+    total.invariants += attempt.invariants;
+    total.invariants_rejected += attempt.invariants_rejected;
+    total.exhausted += attempt.exhausted;
+    total.rejected_mutations += attempt.rejected_mutations;
+    total.deadline_overshoot_ns =
+        std::max(total.deadline_overshoot_ns, attempt.deadline_overshoot_ns);
+    if (attempt.cancel_stage != RejectReason::None)
+        total.cancel_stage = attempt.cancel_stage;
+    total.cobra.calls += attempt.cobra.calls;
+    total.cobra.candidates += attempt.cobra.candidates;
+    total.cobra.unchanged += attempt.cobra.unchanged;
+    total.cobra.unsupported += attempt.cobra.unsupported;
+    total.cobra.exhausted += attempt.cobra.exhausted;
+    total.cobra.failures += attempt.cobra.failures;
+    total.cobra.proved += attempt.cobra.proved;
+    total.cobra.emitted_proved += attempt.cobra.emitted_proved;
+    total.cobra.applied += attempt.cobra.applied;
+    total.cobra.frame_rejections += attempt.cobra.frame_rejections;
+    total.cobra.generation_ns += attempt.cobra.generation_ns;
+    total.cobra.candidate_proof_ns += attempt.cobra.candidate_proof_ns;
+    total.cobra.emission_ns += attempt.cobra.emission_ns;
+    total.cobra.emitted_proof_ns += attempt.cobra.emitted_proof_ns;
+    total.cobra.overshoot_ns = std::max(total.cobra.overshoot_ns, attempt.cobra.overshoot_ns);
+    total.cobra.scratch_peak_bytes =
+        std::max(total.cobra.scratch_peak_bytes, attempt.cobra.scratch_peak_bytes);
+    total.cobra.proved_widths |= attempt.cobra.proved_widths;
+    if (attempt.cobra.calls)
+    {
+        total.cobra.raw_leaves = attempt.cobra.raw_leaves;
+        total.cobra.input_nodes = attempt.cobra.input_nodes;
+        total.cobra.output_nodes = attempt.cobra.output_nodes;
+        total.cobra.raw_support = attempt.cobra.raw_support;
+        total.cobra.canonical_support = attempt.cobra.canonical_support;
+        total.cobra.last_status = attempt.cobra.last_status;
+        total.cobra.last_reason = attempt.cobra.last_reason;
+        total.cobra.spot_check = attempt.cobra.spot_check;
+    }
+}
 } // namespace chernobog::mba_smt

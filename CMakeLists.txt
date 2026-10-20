@@ -149,6 +149,25 @@ if(NOT _chernobog_rax_status STREQUAL "")
 endif()
 set(_chernobog_rax_source_provenance "submodule:vendor/rax@${_chernobog_rax_git_head}")
 
+include(cmake/Cobra.cmake)
+
+add_library(
+    chernobog_mba_smt_core STATIC
+    src/deobf/analysis/mba_smt.cpp
+    src/deobf/analysis/mba_smt_semantics.cpp
+    src/deobf/analysis/mba_smt_invariants.cpp
+    src/deobf/analysis/mba_smt_synthesis.cpp
+    src/deobf/analysis/mba_smt_algebra.cpp
+    src/deobf/analysis/mba_smt_masks.cpp
+    src/deobf/analysis/mba_smt_context.cpp)
+target_include_directories(chernobog_mba_smt_core PUBLIC "${PROJECT_SOURCE_DIR}/src")
+target_include_directories(chernobog_mba_smt_core SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
+target_link_libraries(
+    chernobog_mba_smt_core
+    PRIVATE libz3
+    PUBLIC chernobog_mba_cobra)
+target_compile_features(chernobog_mba_smt_core PRIVATE cxx_std_17)
+
 if(EXISTS "${_chernobog_rax_root}/capi/include/rax.h")
     set(_chernobog_rax_capi "${_chernobog_rax_root}/capi")
 elseif(EXISTS "${_chernobog_rax_root}/include/rax.h")
@@ -378,15 +397,19 @@ file(
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/*.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/*.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/*.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/patches/cobra/*.patch"
     "${CMAKE_CURRENT_SOURCE_DIR}/ida-cmake/*.cmake")
-list(APPEND CHERNOBOG_PROVENANCE_INPUTS "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
+list(APPEND CHERNOBOG_PROVENANCE_INPUTS "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+     "${CMAKE_CURRENT_SOURCE_DIR}/.gitmodules"
+     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cobra.provenance.cmake")
 list(REMOVE_DUPLICATES CHERNOBOG_PROVENANCE_INPUTS)
 list(SORT CHERNOBOG_PROVENANCE_INPUTS)
 set_property(
     DIRECTORY
     APPEND
     PROPERTY CMAKE_CONFIGURE_DEPENDS ${CHERNOBOG_PROVENANCE_INPUTS})
-set(CHERNOBOG_SOURCE_MATERIAL "")
+set(CHERNOBOG_SOURCE_MATERIAL "cobra:${CHERNOBOG_COBRA_PROVENANCE}\n")
 foreach(CHERNOBOG_PROVENANCE_INPUT IN LISTS CHERNOBOG_PROVENANCE_INPUTS)
     file(SHA256 "${CHERNOBOG_PROVENANCE_INPUT}" CHERNOBOG_PROVENANCE_INPUT_HASH)
     file(RELATIVE_PATH CHERNOBOG_PROVENANCE_INPUT_RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -456,13 +479,6 @@ ida_add_plugin(
     src/deobf/analysis/pattern_storage.cpp
     src/deobf/analysis/chain_simplify.cpp
     src/deobf/analysis/mba_diagnostics.cpp
-    src/deobf/analysis/mba_smt.cpp
-    src/deobf/analysis/mba_smt_semantics.cpp
-    src/deobf/analysis/mba_smt_invariants.cpp
-    src/deobf/analysis/mba_smt_synthesis.cpp
-    src/deobf/analysis/mba_smt_algebra.cpp
-    src/deobf/analysis/mba_smt_masks.cpp
-    src/deobf/analysis/mba_smt_context.cpp
     src/deobf/handlers/mba_smt.cpp
     src/deobf/handlers/mba_smt_calls.cpp
     src/deobf/handlers/mba_smt_ctree.cpp
@@ -543,7 +559,8 @@ endif()
 
 target_include_directories(chernobog SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS}
                                                     "${_chernobog_rax_capi}/include")
-target_link_libraries(chernobog PRIVATE libz3 chernobog::rax ${_chernobog_thread_libraries})
+target_link_libraries(chernobog PRIVATE libz3 chernobog::rax ${_chernobog_thread_libraries}
+                                        chernobog_mba_smt_core)
 
 # IDA's Python companion provides the linked evidence inspection workspace.
 set_property(
@@ -842,38 +859,71 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME chernobog.z3 COMMAND chernobog_z3_tests)
 
-    add_executable(
-        chernobog_mba_smt_tests
-        tests/mba_smt_tests.cpp
-        src/deobf/analysis/mba_smt.cpp
-        src/deobf/analysis/mba_smt_semantics.cpp
-        src/deobf/analysis/mba_smt_invariants.cpp
-        src/deobf/analysis/mba_smt_synthesis.cpp
-        src/deobf/analysis/mba_smt_algebra.cpp
-        src/deobf/analysis/mba_smt_masks.cpp)
+    add_executable(chernobog_mba_smt_tests tests/mba_smt_tests.cpp)
     target_include_directories(chernobog_mba_smt_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_include_directories(chernobog_mba_smt_tests SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
-    target_link_libraries(chernobog_mba_smt_tests PRIVATE libz3)
+    target_link_libraries(chernobog_mba_smt_tests PRIVATE chernobog_mba_smt_core)
     target_compile_features(chernobog_mba_smt_tests PRIVATE cxx_std_17)
     add_test(NAME chernobog.mba_smt COMMAND chernobog_mba_smt_tests)
 
-    add_executable(
-        chernobog_mba_smt_context_tests
-        tests/mba_smt_context_tests.cpp
-        src/deobf/analysis/mba_smt_context.cpp
-        src/deobf/analysis/mba_smt.cpp
-        src/deobf/analysis/mba_smt_semantics.cpp
-        src/deobf/analysis/mba_smt_invariants.cpp
-        src/deobf/analysis/mba_smt_synthesis.cpp
-        src/deobf/analysis/mba_smt_algebra.cpp
-        src/deobf/analysis/mba_smt_masks.cpp)
+    add_executable(chernobog_mba_smt_context_tests tests/mba_smt_context_tests.cpp)
     target_include_directories(chernobog_mba_smt_context_tests
                                PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_include_directories(chernobog_mba_smt_context_tests SYSTEM
                                PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
-    target_link_libraries(chernobog_mba_smt_context_tests PRIVATE libz3)
+    target_link_libraries(chernobog_mba_smt_context_tests PRIVATE chernobog_mba_smt_core)
     target_compile_features(chernobog_mba_smt_context_tests PRIVATE cxx_std_17)
     add_test(NAME chernobog.mba_smt_context COMMAND chernobog_mba_smt_context_tests)
+
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    set(_cobra_fixture_header "${CMAKE_CURRENT_BINARY_DIR}/mba_cobra_fixtures.hpp")
+    add_custom_command(
+        OUTPUT "${_cobra_fixture_header}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/mba_cobra_manifest.py"
+                --header "${_cobra_fixture_header}"
+        DEPENDS tests/mba_cobra_manifest.py tests/fixtures/mba_cobra_positive_manifest.json
+                tests/fixtures/mba_cobra_positive_manifest.sha256
+        VERBATIM)
+    add_executable(chernobog_mba_cobra_tests tests/mba_cobra_tests.cpp "${_cobra_fixture_header}")
+    target_include_directories(chernobog_mba_cobra_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src"
+                                                                 "${CMAKE_CURRENT_BINARY_DIR}")
+    target_include_directories(chernobog_mba_cobra_tests SYSTEM
+                               PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
+    target_link_libraries(chernobog_mba_cobra_tests PRIVATE chernobog_mba_smt_core)
+    target_compile_features(chernobog_mba_cobra_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.mba_cobra_candidates COMMAND chernobog_mba_cobra_tests)
+    set_tests_properties(chernobog.mba_cobra_candidates PROPERTIES TIMEOUT 1800)
+    add_test(NAME chernobog.mba_cobra_provenance
+             COMMAND "${Python3_EXECUTABLE}"
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cobra_provenance.py")
+    add_test(NAME chernobog.mba_cobra_manifest
+             COMMAND "${Python3_EXECUTABLE}"
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/mba_cobra_manifest.py")
+    add_library(chernobog_mba_cobra_header_tests OBJECT tests/mba_cobra_header_tests.cpp)
+    target_include_directories(chernobog_mba_cobra_header_tests
+                               PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    set_target_properties(
+        chernobog_mba_cobra_header_tests
+        PROPERTIES CXX_STANDARD 17
+                   CXX_STANDARD_REQUIRED YES
+                   CXX_EXTENSIONS NO)
+    if(CHERNOBOG_WITH_COBRA)
+        add_executable(chernobog_mba_cobra_budget_tests tests/mba_cobra_budget_tests.cpp)
+        target_link_libraries(chernobog_mba_cobra_budget_tests PRIVATE cobra-core)
+        target_compile_features(chernobog_mba_cobra_budget_tests PRIVATE cxx_std_23)
+        add_test(NAME chernobog.mba_cobra_budget COMMAND chernobog_mba_cobra_budget_tests)
+        add_executable(chernobog_mba_cobra_fault_tests tests/mba_cobra_fault_tests.cpp
+                                                       "${_cobra_fixture_header}")
+        target_include_directories(chernobog_mba_cobra_fault_tests
+                                   PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+        target_include_directories(chernobog_mba_cobra_fault_tests SYSTEM
+                                   PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
+        target_link_libraries(chernobog_mba_cobra_fault_tests PRIVATE chernobog_mba_smt_core
+                                                                      cobra-core)
+        target_compile_features(chernobog_mba_cobra_fault_tests PRIVATE cxx_std_23)
+        add_test(NAME chernobog.mba_cobra_faults COMMAND chernobog_mba_cobra_fault_tests)
+
+    endif()
 
     add_executable(chernobog_symbolic_executor_tests tests/symbolic_executor_tests.cpp
                                                      src/deobf/analysis/z3_solver.cpp)

@@ -1,0 +1,6393 @@
+{
+  "schema_version": 1,
+  "specification": "docs/MBA_COBRA_SPEC.md#frozen-positive-fixture-set",
+  "profiles": {
+    "Normal": {
+      "budget_ms": 1000,
+      "scratch_bytes": 67108864
+    },
+    "Deep": {
+      "budget_ms": 30000,
+      "scratch_bytes": 268435456
+    }
+  },
+  "fixtures": [
+    {
+      "id": "POS-LIN-01",
+      "width": 8,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 8
+        },
+        {
+          "name": "y",
+          "bits": 8
+        },
+        {
+          "name": "z",
+          "bits": 8
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 8,
+        "left": {
+          "op": "Xor",
+          "bits": 8,
+          "left": {
+            "op": "Add",
+            "bits": 8,
+            "left": {
+              "op": "Xor",
+              "bits": 8,
+              "left": {
+                "op": "Variable",
+                "bits": 8,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 8,
+                "name": "y"
+              }
+            },
+            "right": {
+              "op": "Mul",
+              "bits": 8,
+              "left": {
+                "op": "Constant",
+                "bits": 8,
+                "value": "2"
+              },
+              "right": {
+                "op": "And",
+                "bits": 8,
+                "left": {
+                  "op": "Variable",
+                  "bits": 8,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 8,
+                  "name": "y"
+                }
+              }
+            }
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 8,
+            "name": "z"
+          }
+        },
+        "right": {
+          "op": "Mul",
+          "bits": 8,
+          "left": {
+            "op": "Constant",
+            "bits": 8,
+            "value": "2"
+          },
+          "right": {
+            "op": "And",
+            "bits": 8,
+            "left": {
+              "op": "Add",
+              "bits": 8,
+              "left": {
+                "op": "Xor",
+                "bits": 8,
+                "left": {
+                  "op": "Variable",
+                  "bits": 8,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 8,
+                  "name": "y"
+                }
+              },
+              "right": {
+                "op": "Mul",
+                "bits": 8,
+                "left": {
+                  "op": "Constant",
+                  "bits": 8,
+                  "value": "2"
+                },
+                "right": {
+                  "op": "And",
+                  "bits": 8,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 8,
+                    "name": "x"
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 8,
+                    "name": "y"
+                  }
+                }
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 8,
+              "name": "z"
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 8,
+        "left": {
+          "op": "Add",
+          "bits": 8,
+          "left": {
+            "op": "Variable",
+            "bits": 8,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 8,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 8,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 12,
+      "reference_term_cost": 2,
+      "reference_nodes": 5,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 7
+    },
+    {
+      "id": "POS-LIN-02",
+      "width": 16,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 16
+        },
+        {
+          "name": "y",
+          "bits": 16
+        },
+        {
+          "name": "z",
+          "bits": 16
+        },
+        {
+          "name": "q_4",
+          "bits": 16
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 16,
+        "left": {
+          "op": "Add",
+          "bits": 16,
+          "left": {
+            "op": "Xor",
+            "bits": 16,
+            "left": {
+              "op": "Add",
+              "bits": 16,
+              "left": {
+                "op": "Xor",
+                "bits": 16,
+                "left": {
+                  "op": "Variable",
+                  "bits": 16,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 16,
+                  "name": "y"
+                }
+              },
+              "right": {
+                "op": "Mul",
+                "bits": 16,
+                "left": {
+                  "op": "Constant",
+                  "bits": 16,
+                  "value": "2"
+                },
+                "right": {
+                  "op": "And",
+                  "bits": 16,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 16,
+                    "name": "x"
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 16,
+                    "name": "y"
+                  }
+                }
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "z"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 16,
+            "left": {
+              "op": "Constant",
+              "bits": 16,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 16,
+              "left": {
+                "op": "Add",
+                "bits": 16,
+                "left": {
+                  "op": "Xor",
+                  "bits": 16,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 16,
+                    "name": "x"
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 16,
+                    "name": "y"
+                  }
+                },
+                "right": {
+                  "op": "Mul",
+                  "bits": 16,
+                  "left": {
+                    "op": "Constant",
+                    "bits": 16,
+                    "value": "2"
+                  },
+                  "right": {
+                    "op": "And",
+                    "bits": 16,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 16,
+                      "name": "x"
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 16,
+                      "name": "y"
+                    }
+                  }
+                }
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "z"
+              }
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 16,
+          "left": {
+            "op": "Add",
+            "bits": 16,
+            "left": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "q_4"
+            },
+            "right": {
+              "op": "Not",
+              "bits": 16,
+              "left": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "q_4"
+              }
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 16,
+            "value": "1"
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 16,
+        "left": {
+          "op": "Add",
+          "bits": 16,
+          "left": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 16,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 16,
+      "reference_term_cost": 2,
+      "reference_nodes": 5,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 7
+    },
+    {
+      "id": "POS-LIN-03",
+      "width": 24,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 24
+        },
+        {
+          "name": "y",
+          "bits": 24
+        },
+        {
+          "name": "z",
+          "bits": 24
+        },
+        {
+          "name": "q_4",
+          "bits": 24
+        },
+        {
+          "name": "q_5",
+          "bits": 24
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 24,
+        "left": {
+          "op": "Add",
+          "bits": 24,
+          "left": {
+            "op": "Add",
+            "bits": 24,
+            "left": {
+              "op": "Xor",
+              "bits": 24,
+              "left": {
+                "op": "Add",
+                "bits": 24,
+                "left": {
+                  "op": "Xor",
+                  "bits": 24,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 24,
+                    "name": "x"
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 24,
+                    "name": "y"
+                  }
+                },
+                "right": {
+                  "op": "Mul",
+                  "bits": 24,
+                  "left": {
+                    "op": "Constant",
+                    "bits": 24,
+                    "value": "2"
+                  },
+                  "right": {
+                    "op": "And",
+                    "bits": 24,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 24,
+                      "name": "x"
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 24,
+                      "name": "y"
+                    }
+                  }
+                }
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 24,
+                "name": "z"
+              }
+            },
+            "right": {
+              "op": "Mul",
+              "bits": 24,
+              "left": {
+                "op": "Constant",
+                "bits": 24,
+                "value": "2"
+              },
+              "right": {
+                "op": "And",
+                "bits": 24,
+                "left": {
+                  "op": "Add",
+                  "bits": 24,
+                  "left": {
+                    "op": "Xor",
+                    "bits": 24,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 24,
+                      "name": "x"
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 24,
+                      "name": "y"
+                    }
+                  },
+                  "right": {
+                    "op": "Mul",
+                    "bits": 24,
+                    "left": {
+                      "op": "Constant",
+                      "bits": 24,
+                      "value": "2"
+                    },
+                    "right": {
+                      "op": "And",
+                      "bits": 24,
+                      "left": {
+                        "op": "Variable",
+                        "bits": 24,
+                        "name": "x"
+                      },
+                      "right": {
+                        "op": "Variable",
+                        "bits": 24,
+                        "name": "y"
+                      }
+                    }
+                  }
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 24,
+                  "name": "z"
+                }
+              }
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 24,
+            "left": {
+              "op": "Add",
+              "bits": 24,
+              "left": {
+                "op": "Variable",
+                "bits": 24,
+                "name": "q_4"
+              },
+              "right": {
+                "op": "Not",
+                "bits": 24,
+                "left": {
+                  "op": "Variable",
+                  "bits": 24,
+                  "name": "q_4"
+                }
+              }
+            },
+            "right": {
+              "op": "Constant",
+              "bits": 24,
+              "value": "1"
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 24,
+          "left": {
+            "op": "Add",
+            "bits": 24,
+            "left": {
+              "op": "Variable",
+              "bits": 24,
+              "name": "q_5"
+            },
+            "right": {
+              "op": "Not",
+              "bits": 24,
+              "left": {
+                "op": "Variable",
+                "bits": 24,
+                "name": "q_5"
+              }
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 24,
+            "value": "1"
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 24,
+        "left": {
+          "op": "Add",
+          "bits": 24,
+          "left": {
+            "op": "Variable",
+            "bits": 24,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 24,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 24,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 20,
+      "reference_term_cost": 2,
+      "reference_nodes": 5,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 7
+    },
+    {
+      "id": "POS-LIN-04",
+      "width": 32,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 32
+        },
+        {
+          "name": "y",
+          "bits": 32
+        },
+        {
+          "name": "z",
+          "bits": 32
+        },
+        {
+          "name": "q_4",
+          "bits": 32
+        },
+        {
+          "name": "q_5",
+          "bits": 32
+        },
+        {
+          "name": "q_6",
+          "bits": 32
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 32,
+        "left": {
+          "op": "Add",
+          "bits": 32,
+          "left": {
+            "op": "Add",
+            "bits": 32,
+            "left": {
+              "op": "Add",
+              "bits": 32,
+              "left": {
+                "op": "Xor",
+                "bits": 32,
+                "left": {
+                  "op": "Add",
+                  "bits": 32,
+                  "left": {
+                    "op": "Xor",
+                    "bits": 32,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 32,
+                      "name": "x"
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 32,
+                      "name": "y"
+                    }
+                  },
+                  "right": {
+                    "op": "Mul",
+                    "bits": 32,
+                    "left": {
+                      "op": "Constant",
+                      "bits": 32,
+                      "value": "2"
+                    },
+                    "right": {
+                      "op": "And",
+                      "bits": 32,
+                      "left": {
+                        "op": "Variable",
+                        "bits": 32,
+                        "name": "x"
+                      },
+                      "right": {
+                        "op": "Variable",
+                        "bits": 32,
+                        "name": "y"
+                      }
+                    }
+                  }
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "z"
+                }
+              },
+              "right": {
+                "op": "Mul",
+                "bits": 32,
+                "left": {
+                  "op": "Constant",
+                  "bits": 32,
+                  "value": "2"
+                },
+                "right": {
+                  "op": "And",
+                  "bits": 32,
+                  "left": {
+                    "op": "Add",
+                    "bits": 32,
+                    "left": {
+                      "op": "Xor",
+                      "bits": 32,
+                      "left": {
+                        "op": "Variable",
+                        "bits": 32,
+                        "name": "x"
+                      },
+                      "right": {
+                        "op": "Variable",
+                        "bits": 32,
+                        "name": "y"
+                      }
+                    },
+                    "right": {
+                      "op": "Mul",
+                      "bits": 32,
+                      "left": {
+                        "op": "Constant",
+                        "bits": 32,
+                        "value": "2"
+                      },
+                      "right": {
+                        "op": "And",
+                        "bits": 32,
+                        "left": {
+                          "op": "Variable",
+                          "bits": 32,
+                          "name": "x"
+                        },
+                        "right": {
+                          "op": "Variable",
+                          "bits": 32,
+                          "name": "y"
+                        }
+                      }
+                    }
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 32,
+                    "name": "z"
+                  }
+                }
+              }
+            },
+            "right": {
+              "op": "Add",
+              "bits": 32,
+              "left": {
+                "op": "Add",
+                "bits": 32,
+                "left": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "q_4"
+                },
+                "right": {
+                  "op": "Not",
+                  "bits": 32,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 32,
+                    "name": "q_4"
+                  }
+                }
+              },
+              "right": {
+                "op": "Constant",
+                "bits": 32,
+                "value": "1"
+              }
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 32,
+            "left": {
+              "op": "Add",
+              "bits": 32,
+              "left": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "q_5"
+              },
+              "right": {
+                "op": "Not",
+                "bits": 32,
+                "left": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "q_5"
+                }
+              }
+            },
+            "right": {
+              "op": "Constant",
+              "bits": 32,
+              "value": "1"
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 32,
+          "left": {
+            "op": "Add",
+            "bits": 32,
+            "left": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "q_6"
+            },
+            "right": {
+              "op": "Not",
+              "bits": 32,
+              "left": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "q_6"
+              }
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 32,
+            "value": "1"
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 32,
+        "left": {
+          "op": "Add",
+          "bits": 32,
+          "left": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 32,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 24,
+      "reference_term_cost": 2,
+      "reference_nodes": 5,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 7
+    },
+    {
+      "id": "POS-LIN-05",
+      "width": 40,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 40
+        },
+        {
+          "name": "y",
+          "bits": 40
+        },
+        {
+          "name": "z",
+          "bits": 40
+        },
+        {
+          "name": "q_4",
+          "bits": 40
+        },
+        {
+          "name": "q_5",
+          "bits": 40
+        },
+        {
+          "name": "q_6",
+          "bits": 40
+        },
+        {
+          "name": "q_7",
+          "bits": 40
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 40,
+        "left": {
+          "op": "Add",
+          "bits": 40,
+          "left": {
+            "op": "Add",
+            "bits": 40,
+            "left": {
+              "op": "Add",
+              "bits": 40,
+              "left": {
+                "op": "Add",
+                "bits": 40,
+                "left": {
+                  "op": "Xor",
+                  "bits": 40,
+                  "left": {
+                    "op": "Add",
+                    "bits": 40,
+                    "left": {
+                      "op": "Xor",
+                      "bits": 40,
+                      "left": {
+                        "op": "Variable",
+                        "bits": 40,
+                        "name": "x"
+                      },
+                      "right": {
+                        "op": "Variable",
+                        "bits": 40,
+                        "name": "y"
+                      }
+                    },
+                    "right": {
+                      "op": "Mul",
+                      "bits": 40,
+                      "left": {
+                        "op": "Constant",
+                        "bits": 40,
+                        "value": "2"
+                      },
+                      "right": {
+                        "op": "And",
+                        "bits": 40,
+                        "left": {
+                          "op": "Variable",
+                          "bits": 40,
+                          "name": "x"
+                        },
+                        "right": {
+                          "op": "Variable",
+                          "bits": 40,
+                          "name": "y"
+                        }
+                      }
+                    }
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 40,
+                    "name": "z"
+                  }
+                },
+                "right": {
+                  "op": "Mul",
+                  "bits": 40,
+                  "left": {
+                    "op": "Constant",
+                    "bits": 40,
+                    "value": "2"
+                  },
+                  "right": {
+                    "op": "And",
+                    "bits": 40,
+                    "left": {
+                      "op": "Add",
+                      "bits": 40,
+                      "left": {
+                        "op": "Xor",
+                        "bits": 40,
+                        "left": {
+                          "op": "Variable",
+                          "bits": 40,
+                          "name": "x"
+                        },
+                        "right": {
+                          "op": "Variable",
+                          "bits": 40,
+                          "name": "y"
+                        }
+                      },
+                      "right": {
+                        "op": "Mul",
+                        "bits": 40,
+                        "left": {
+                          "op": "Constant",
+                          "bits": 40,
+                          "value": "2"
+                        },
+                        "right": {
+                          "op": "And",
+                          "bits": 40,
+                          "left": {
+                            "op": "Variable",
+                            "bits": 40,
+                            "name": "x"
+                          },
+                          "right": {
+                            "op": "Variable",
+                            "bits": 40,
+                            "name": "y"
+                          }
+                        }
+                      }
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 40,
+                      "name": "z"
+                    }
+                  }
+                }
+              },
+              "right": {
+                "op": "Add",
+                "bits": 40,
+                "left": {
+                  "op": "Add",
+                  "bits": 40,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 40,
+                    "name": "q_4"
+                  },
+                  "right": {
+                    "op": "Not",
+                    "bits": 40,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 40,
+                      "name": "q_4"
+                    }
+                  }
+                },
+                "right": {
+                  "op": "Constant",
+                  "bits": 40,
+                  "value": "1"
+                }
+              }
+            },
+            "right": {
+              "op": "Add",
+              "bits": 40,
+              "left": {
+                "op": "Add",
+                "bits": 40,
+                "left": {
+                  "op": "Variable",
+                  "bits": 40,
+                  "name": "q_5"
+                },
+                "right": {
+                  "op": "Not",
+                  "bits": 40,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 40,
+                    "name": "q_5"
+                  }
+                }
+              },
+              "right": {
+                "op": "Constant",
+                "bits": 40,
+                "value": "1"
+              }
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 40,
+            "left": {
+              "op": "Add",
+              "bits": 40,
+              "left": {
+                "op": "Variable",
+                "bits": 40,
+                "name": "q_6"
+              },
+              "right": {
+                "op": "Not",
+                "bits": 40,
+                "left": {
+                  "op": "Variable",
+                  "bits": 40,
+                  "name": "q_6"
+                }
+              }
+            },
+            "right": {
+              "op": "Constant",
+              "bits": 40,
+              "value": "1"
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 40,
+          "left": {
+            "op": "Add",
+            "bits": 40,
+            "left": {
+              "op": "Variable",
+              "bits": 40,
+              "name": "q_7"
+            },
+            "right": {
+              "op": "Not",
+              "bits": 40,
+              "left": {
+                "op": "Variable",
+                "bits": 40,
+                "name": "q_7"
+              }
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 40,
+            "value": "1"
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 40,
+        "left": {
+          "op": "Add",
+          "bits": 40,
+          "left": {
+            "op": "Variable",
+            "bits": 40,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 40,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 40,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 28,
+      "reference_term_cost": 2,
+      "reference_nodes": 5,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 7
+    },
+    {
+      "id": "POS-LIN-06",
+      "width": 48,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 48
+        },
+        {
+          "name": "y",
+          "bits": 48
+        },
+        {
+          "name": "z",
+          "bits": 48
+        },
+        {
+          "name": "q_4",
+          "bits": 48
+        },
+        {
+          "name": "q_5",
+          "bits": 48
+        },
+        {
+          "name": "q_6",
+          "bits": 48
+        },
+        {
+          "name": "q_7",
+          "bits": 48
+        },
+        {
+          "name": "q_8",
+          "bits": 48
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 48,
+        "left": {
+          "op": "Add",
+          "bits": 48,
+          "left": {
+            "op": "Add",
+            "bits": 48,
+            "left": {
+              "op": "Add",
+              "bits": 48,
+              "left": {
+                "op": "Add",
+                "bits": 48,
+                "left": {
+                  "op": "Add",
+                  "bits": 48,
+                  "left": {
+                    "op": "Xor",
+                    "bits": 48,
+                    "left": {
+                      "op": "Add",
+                      "bits": 48,
+                      "left": {
+                        "op": "Xor",
+                        "bits": 48,
+                        "left": {
+                          "op": "Variable",
+                          "bits": 48,
+                          "name": "x"
+                        },
+                        "right": {
+                          "op": "Variable",
+                          "bits": 48,
+                          "name": "y"
+                        }
+                      },
+                      "right": {
+                        "op": "Mul",
+                        "bits": 48,
+                        "left": {
+                          "op": "Constant",
+                          "bits": 48,
+                          "value": "2"
+                        },
+                        "right": {
+                          "op": "And",
+                          "bits": 48,
+                          "left": {
+                            "op": "Variable",
+                            "bits": 48,
+                            "name": "x"
+                          },
+                          "right": {
+                            "op": "Variable",
+                            "bits": 48,
+                            "name": "y"
+                          }
+                        }
+                      }
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 48,
+                      "name": "z"
+                    }
+                  },
+                  "right": {
+                    "op": "Mul",
+                    "bits": 48,
+                    "left": {
+                      "op": "Constant",
+                      "bits": 48,
+                      "value": "2"
+                    },
+                    "right": {
+                      "op": "And",
+                      "bits": 48,
+                      "left": {
+                        "op": "Add",
+                        "bits": 48,
+                        "left": {
+                          "op": "Xor",
+                          "bits": 48,
+                          "left": {
+                            "op": "Variable",
+                            "bits": 48,
+                            "name": "x"
+                          },
+                          "right": {
+                            "op": "Variable",
+                            "bits": 48,
+                            "name": "y"
+                          }
+                        },
+                        "right": {
+                          "op": "Mul",
+                          "bits": 48,
+                          "left": {
+                            "op": "Constant",
+                            "bits": 48,
+                            "value": "2"
+                          },
+                          "right": {
+                            "op": "And",
+                            "bits": 48,
+                            "left": {
+                              "op": "Variable",
+                              "bits": 48,
+                              "name": "x"
+                            },
+                            "right": {
+                              "op": "Variable",
+                              "bits": 48,
+                              "name": "y"
+                            }
+                          }
+                        }
+                      },
+                      "right": {
+                        "op": "Variable",
+                        "bits": 48,
+                        "name": "z"
+                      }
+                    }
+                  }
+                },
+                "right": {
+                  "op": "Add",
+                  "bits": 48,
+                  "left": {
+                    "op": "Add",
+                    "bits": 48,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 48,
+                      "name": "q_4"
+                    },
+                    "right": {
+                      "op": "Not",
+                      "bits": 48,
+                      "left": {
+                        "op": "Variable",
+                        "bits": 48,
+                        "name": "q_4"
+                      }
+                    }
+                  },
+                  "right": {
+                    "op": "Constant",
+                    "bits": 48,
+                    "value": "1"
+                  }
+                }
+              },
+              "right": {
+                "op": "Add",
+                "bits": 48,
+                "left": {
+                  "op": "Add",
+                  "bits": 48,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 48,
+                    "name": "q_5"
+                  },
+                  "right": {
+                    "op": "Not",
+                    "bits": 48,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 48,
+                      "name": "q_5"
+                    }
+                  }
+                },
+                "right": {
+                  "op": "Constant",
+                  "bits": 48,
+                  "value": "1"
+                }
+              }
+            },
+            "right": {
+              "op": "Add",
+              "bits": 48,
+              "left": {
+                "op": "Add",
+                "bits": 48,
+                "left": {
+                  "op": "Variable",
+                  "bits": 48,
+                  "name": "q_6"
+                },
+                "right": {
+                  "op": "Not",
+                  "bits": 48,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 48,
+                    "name": "q_6"
+                  }
+                }
+              },
+              "right": {
+                "op": "Constant",
+                "bits": 48,
+                "value": "1"
+              }
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 48,
+            "left": {
+              "op": "Add",
+              "bits": 48,
+              "left": {
+                "op": "Variable",
+                "bits": 48,
+                "name": "q_7"
+              },
+              "right": {
+                "op": "Not",
+                "bits": 48,
+                "left": {
+                  "op": "Variable",
+                  "bits": 48,
+                  "name": "q_7"
+                }
+              }
+            },
+            "right": {
+              "op": "Constant",
+              "bits": 48,
+              "value": "1"
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 48,
+          "left": {
+            "op": "Add",
+            "bits": 48,
+            "left": {
+              "op": "Variable",
+              "bits": 48,
+              "name": "q_8"
+            },
+            "right": {
+              "op": "Not",
+              "bits": 48,
+              "left": {
+                "op": "Variable",
+                "bits": 48,
+                "name": "q_8"
+              }
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 48,
+            "value": "1"
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 48,
+        "left": {
+          "op": "Add",
+          "bits": 48,
+          "left": {
+            "op": "Variable",
+            "bits": 48,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 48,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 48,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 32,
+      "reference_term_cost": 2,
+      "reference_nodes": 5,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 7
+    },
+    {
+      "id": "POS-LIN-07",
+      "width": 56,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 56
+        },
+        {
+          "name": "y",
+          "bits": 56
+        },
+        {
+          "name": "z",
+          "bits": 56
+        },
+        {
+          "name": "q_4",
+          "bits": 56
+        },
+        {
+          "name": "q_5",
+          "bits": 56
+        },
+        {
+          "name": "q_6",
+          "bits": 56
+        },
+        {
+          "name": "q_7",
+          "bits": 56
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 56,
+        "left": {
+          "op": "Add",
+          "bits": 56,
+          "left": {
+            "op": "Add",
+            "bits": 56,
+            "left": {
+              "op": "Add",
+              "bits": 56,
+              "left": {
+                "op": "Add",
+                "bits": 56,
+                "left": {
+                  "op": "Xor",
+                  "bits": 56,
+                  "left": {
+                    "op": "Add",
+                    "bits": 56,
+                    "left": {
+                      "op": "Xor",
+                      "bits": 56,
+                      "left": {
+                        "op": "Variable",
+                        "bits": 56,
+                        "name": "x"
+                      },
+                      "right": {
+                        "op": "Variable",
+                        "bits": 56,
+                        "name": "y"
+                      }
+                    },
+                    "right": {
+                      "op": "Mul",
+                      "bits": 56,
+                      "left": {
+                        "op": "Constant",
+                        "bits": 56,
+                        "value": "2"
+                      },
+                      "right": {
+                        "op": "And",
+                        "bits": 56,
+                        "left": {
+                          "op": "Variable",
+                          "bits": 56,
+                          "name": "x"
+                        },
+                        "right": {
+                          "op": "Variable",
+                          "bits": 56,
+                          "name": "y"
+                        }
+                      }
+                    }
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 56,
+                    "name": "z"
+                  }
+                },
+                "right": {
+                  "op": "Mul",
+                  "bits": 56,
+                  "left": {
+                    "op": "Constant",
+                    "bits": 56,
+                    "value": "2"
+                  },
+                  "right": {
+                    "op": "And",
+                    "bits": 56,
+                    "left": {
+                      "op": "Add",
+                      "bits": 56,
+                      "left": {
+                        "op": "Xor",
+                        "bits": 56,
+                        "left": {
+                          "op": "Variable",
+                          "bits": 56,
+                          "name": "x"
+                        },
+                        "right": {
+                          "op": "Variable",
+                          "bits": 56,
+                          "name": "y"
+                        }
+                      },
+                      "right": {
+                        "op": "Mul",
+                        "bits": 56,
+                        "left": {
+                          "op": "Constant",
+                          "bits": 56,
+                          "value": "2"
+                        },
+                        "right": {
+                          "op": "And",
+                          "bits": 56,
+                          "left": {
+                            "op": "Variable",
+                            "bits": 56,
+                            "name": "x"
+                          },
+                          "right": {
+                            "op": "Variable",
+                            "bits": 56,
+                            "name": "y"
+                          }
+                        }
+                      }
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 56,
+                      "name": "z"
+                    }
+                  }
+                }
+              },
+              "right": {
+                "op": "Add",
+                "bits": 56,
+                "left": {
+                  "op": "Add",
+                  "bits": 56,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 56,
+                    "name": "q_4"
+                  },
+                  "right": {
+                    "op": "Not",
+                    "bits": 56,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 56,
+                      "name": "q_4"
+                    }
+                  }
+                },
+                "right": {
+                  "op": "Constant",
+                  "bits": 56,
+                  "value": "1"
+                }
+              }
+            },
+            "right": {
+              "op": "Add",
+              "bits": 56,
+              "left": {
+                "op": "Add",
+                "bits": 56,
+                "left": {
+                  "op": "Variable",
+                  "bits": 56,
+                  "name": "q_5"
+                },
+                "right": {
+                  "op": "Not",
+                  "bits": 56,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 56,
+                    "name": "q_5"
+                  }
+                }
+              },
+              "right": {
+                "op": "Constant",
+                "bits": 56,
+                "value": "1"
+              }
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 56,
+            "left": {
+              "op": "Add",
+              "bits": 56,
+              "left": {
+                "op": "Variable",
+                "bits": 56,
+                "name": "q_6"
+              },
+              "right": {
+                "op": "Not",
+                "bits": 56,
+                "left": {
+                  "op": "Variable",
+                  "bits": 56,
+                  "name": "q_6"
+                }
+              }
+            },
+            "right": {
+              "op": "Constant",
+              "bits": 56,
+              "value": "1"
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 56,
+          "left": {
+            "op": "Add",
+            "bits": 56,
+            "left": {
+              "op": "Variable",
+              "bits": 56,
+              "name": "q_7"
+            },
+            "right": {
+              "op": "Not",
+              "bits": 56,
+              "left": {
+                "op": "Variable",
+                "bits": 56,
+                "name": "q_7"
+              }
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 56,
+            "value": "1"
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 56,
+        "left": {
+          "op": "Add",
+          "bits": 56,
+          "left": {
+            "op": "Variable",
+            "bits": 56,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 56,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 56,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 28,
+      "reference_term_cost": 2,
+      "reference_nodes": 5,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 7
+    },
+    {
+      "id": "POS-LIN-08",
+      "width": 64,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 64
+        },
+        {
+          "name": "y",
+          "bits": 64
+        },
+        {
+          "name": "z",
+          "bits": 64
+        },
+        {
+          "name": "q_4",
+          "bits": 64
+        },
+        {
+          "name": "q_5",
+          "bits": 64
+        },
+        {
+          "name": "q_6",
+          "bits": 64
+        },
+        {
+          "name": "q_7",
+          "bits": 64
+        },
+        {
+          "name": "q_8",
+          "bits": 64
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 64,
+        "left": {
+          "op": "Add",
+          "bits": 64,
+          "left": {
+            "op": "Add",
+            "bits": 64,
+            "left": {
+              "op": "Add",
+              "bits": 64,
+              "left": {
+                "op": "Add",
+                "bits": 64,
+                "left": {
+                  "op": "Add",
+                  "bits": 64,
+                  "left": {
+                    "op": "Xor",
+                    "bits": 64,
+                    "left": {
+                      "op": "Add",
+                      "bits": 64,
+                      "left": {
+                        "op": "Xor",
+                        "bits": 64,
+                        "left": {
+                          "op": "Variable",
+                          "bits": 64,
+                          "name": "x"
+                        },
+                        "right": {
+                          "op": "Variable",
+                          "bits": 64,
+                          "name": "y"
+                        }
+                      },
+                      "right": {
+                        "op": "Mul",
+                        "bits": 64,
+                        "left": {
+                          "op": "Constant",
+                          "bits": 64,
+                          "value": "2"
+                        },
+                        "right": {
+                          "op": "And",
+                          "bits": 64,
+                          "left": {
+                            "op": "Variable",
+                            "bits": 64,
+                            "name": "x"
+                          },
+                          "right": {
+                            "op": "Variable",
+                            "bits": 64,
+                            "name": "y"
+                          }
+                        }
+                      }
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 64,
+                      "name": "z"
+                    }
+                  },
+                  "right": {
+                    "op": "Mul",
+                    "bits": 64,
+                    "left": {
+                      "op": "Constant",
+                      "bits": 64,
+                      "value": "2"
+                    },
+                    "right": {
+                      "op": "And",
+                      "bits": 64,
+                      "left": {
+                        "op": "Add",
+                        "bits": 64,
+                        "left": {
+                          "op": "Xor",
+                          "bits": 64,
+                          "left": {
+                            "op": "Variable",
+                            "bits": 64,
+                            "name": "x"
+                          },
+                          "right": {
+                            "op": "Variable",
+                            "bits": 64,
+                            "name": "y"
+                          }
+                        },
+                        "right": {
+                          "op": "Mul",
+                          "bits": 64,
+                          "left": {
+                            "op": "Constant",
+                            "bits": 64,
+                            "value": "2"
+                          },
+                          "right": {
+                            "op": "And",
+                            "bits": 64,
+                            "left": {
+                              "op": "Variable",
+                              "bits": 64,
+                              "name": "x"
+                            },
+                            "right": {
+                              "op": "Variable",
+                              "bits": 64,
+                              "name": "y"
+                            }
+                          }
+                        }
+                      },
+                      "right": {
+                        "op": "Variable",
+                        "bits": 64,
+                        "name": "z"
+                      }
+                    }
+                  }
+                },
+                "right": {
+                  "op": "Add",
+                  "bits": 64,
+                  "left": {
+                    "op": "Add",
+                    "bits": 64,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 64,
+                      "name": "q_4"
+                    },
+                    "right": {
+                      "op": "Not",
+                      "bits": 64,
+                      "left": {
+                        "op": "Variable",
+                        "bits": 64,
+                        "name": "q_4"
+                      }
+                    }
+                  },
+                  "right": {
+                    "op": "Constant",
+                    "bits": 64,
+                    "value": "1"
+                  }
+                }
+              },
+              "right": {
+                "op": "Add",
+                "bits": 64,
+                "left": {
+                  "op": "Add",
+                  "bits": 64,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 64,
+                    "name": "q_5"
+                  },
+                  "right": {
+                    "op": "Not",
+                    "bits": 64,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 64,
+                      "name": "q_5"
+                    }
+                  }
+                },
+                "right": {
+                  "op": "Constant",
+                  "bits": 64,
+                  "value": "1"
+                }
+              }
+            },
+            "right": {
+              "op": "Add",
+              "bits": 64,
+              "left": {
+                "op": "Add",
+                "bits": 64,
+                "left": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "q_6"
+                },
+                "right": {
+                  "op": "Not",
+                  "bits": 64,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 64,
+                    "name": "q_6"
+                  }
+                }
+              },
+              "right": {
+                "op": "Constant",
+                "bits": 64,
+                "value": "1"
+              }
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 64,
+            "left": {
+              "op": "Add",
+              "bits": 64,
+              "left": {
+                "op": "Variable",
+                "bits": 64,
+                "name": "q_7"
+              },
+              "right": {
+                "op": "Not",
+                "bits": 64,
+                "left": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "q_7"
+                }
+              }
+            },
+            "right": {
+              "op": "Constant",
+              "bits": 64,
+              "value": "1"
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 64,
+          "left": {
+            "op": "Add",
+            "bits": 64,
+            "left": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "q_8"
+            },
+            "right": {
+              "op": "Not",
+              "bits": 64,
+              "left": {
+                "op": "Variable",
+                "bits": 64,
+                "name": "q_8"
+              }
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 64,
+            "value": "1"
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 64,
+        "left": {
+          "op": "Add",
+          "bits": 64,
+          "left": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 64,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 32,
+      "reference_term_cost": 2,
+      "reference_nodes": 5,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 7
+    },
+    {
+      "id": "POS-SEMI-01",
+      "width": 8,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 8
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 8,
+        "left": {
+          "op": "And",
+          "bits": 8,
+          "left": {
+            "op": "Variable",
+            "bits": 8,
+            "name": "x"
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 8,
+            "value": "85"
+          }
+        },
+        "right": {
+          "op": "And",
+          "bits": 8,
+          "left": {
+            "op": "Variable",
+            "bits": 8,
+            "name": "x"
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 8,
+            "value": "170"
+          }
+        }
+      },
+      "reference": {
+        "op": "Variable",
+        "bits": 8,
+        "name": "x"
+      },
+      "input_term_cost": 3,
+      "reference_term_cost": 0,
+      "reference_nodes": 1,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "strip_redundant_zext_mask": true
+    },
+    {
+      "id": "POS-SEMI-02",
+      "width": 16,
+      "variables": [
+        {
+          "name": "y",
+          "bits": 8
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 16,
+        "left": {
+          "op": "And",
+          "bits": 16,
+          "left": {
+            "op": "ZeroExtend",
+            "bits": 16,
+            "left": {
+              "op": "Variable",
+              "bits": 8,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 16,
+            "value": "21845"
+          }
+        },
+        "right": {
+          "op": "And",
+          "bits": 16,
+          "left": {
+            "op": "ZeroExtend",
+            "bits": 16,
+            "left": {
+              "op": "Variable",
+              "bits": 8,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 16,
+            "value": "43690"
+          }
+        }
+      },
+      "reference": {
+        "op": "ZeroExtend",
+        "bits": 16,
+        "left": {
+          "op": "Variable",
+          "bits": 8,
+          "name": "y"
+        }
+      },
+      "input_term_cost": 5,
+      "reference_term_cost": 1,
+      "reference_nodes": 2,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "strip_redundant_zext_mask": true
+    },
+    {
+      "id": "POS-SEMI-03",
+      "width": 24,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 24
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 24,
+        "left": {
+          "op": "And",
+          "bits": 24,
+          "left": {
+            "op": "Variable",
+            "bits": 24,
+            "name": "x"
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 24,
+            "value": "5592405"
+          }
+        },
+        "right": {
+          "op": "And",
+          "bits": 24,
+          "left": {
+            "op": "Variable",
+            "bits": 24,
+            "name": "x"
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 24,
+            "value": "11184810"
+          }
+        }
+      },
+      "reference": {
+        "op": "Variable",
+        "bits": 24,
+        "name": "x"
+      },
+      "input_term_cost": 3,
+      "reference_term_cost": 0,
+      "reference_nodes": 1,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "strip_redundant_zext_mask": true
+    },
+    {
+      "id": "POS-SEMI-04",
+      "width": 32,
+      "variables": [
+        {
+          "name": "y",
+          "bits": 24
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 32,
+        "left": {
+          "op": "And",
+          "bits": 32,
+          "left": {
+            "op": "ZeroExtend",
+            "bits": 32,
+            "left": {
+              "op": "Variable",
+              "bits": 24,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 32,
+            "value": "1431655765"
+          }
+        },
+        "right": {
+          "op": "And",
+          "bits": 32,
+          "left": {
+            "op": "ZeroExtend",
+            "bits": 32,
+            "left": {
+              "op": "Variable",
+              "bits": 24,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 32,
+            "value": "2863311530"
+          }
+        }
+      },
+      "reference": {
+        "op": "ZeroExtend",
+        "bits": 32,
+        "left": {
+          "op": "Variable",
+          "bits": 24,
+          "name": "y"
+        }
+      },
+      "input_term_cost": 5,
+      "reference_term_cost": 1,
+      "reference_nodes": 2,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "strip_redundant_zext_mask": true
+    },
+    {
+      "id": "POS-SEMI-05",
+      "width": 40,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 40
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 40,
+        "left": {
+          "op": "And",
+          "bits": 40,
+          "left": {
+            "op": "Variable",
+            "bits": 40,
+            "name": "x"
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 40,
+            "value": "366503875925"
+          }
+        },
+        "right": {
+          "op": "And",
+          "bits": 40,
+          "left": {
+            "op": "Variable",
+            "bits": 40,
+            "name": "x"
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 40,
+            "value": "733007751850"
+          }
+        }
+      },
+      "reference": {
+        "op": "Variable",
+        "bits": 40,
+        "name": "x"
+      },
+      "input_term_cost": 3,
+      "reference_term_cost": 0,
+      "reference_nodes": 1,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "strip_redundant_zext_mask": true
+    },
+    {
+      "id": "POS-SEMI-06",
+      "width": 48,
+      "variables": [
+        {
+          "name": "y",
+          "bits": 40
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 48,
+        "left": {
+          "op": "And",
+          "bits": 48,
+          "left": {
+            "op": "ZeroExtend",
+            "bits": 48,
+            "left": {
+              "op": "Variable",
+              "bits": 40,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 48,
+            "value": "93824992236885"
+          }
+        },
+        "right": {
+          "op": "And",
+          "bits": 48,
+          "left": {
+            "op": "ZeroExtend",
+            "bits": 48,
+            "left": {
+              "op": "Variable",
+              "bits": 40,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 48,
+            "value": "187649984473770"
+          }
+        }
+      },
+      "reference": {
+        "op": "ZeroExtend",
+        "bits": 48,
+        "left": {
+          "op": "Variable",
+          "bits": 40,
+          "name": "y"
+        }
+      },
+      "input_term_cost": 5,
+      "reference_term_cost": 1,
+      "reference_nodes": 2,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "strip_redundant_zext_mask": true
+    },
+    {
+      "id": "POS-SEMI-07",
+      "width": 56,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 56
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 56,
+        "left": {
+          "op": "And",
+          "bits": 56,
+          "left": {
+            "op": "Variable",
+            "bits": 56,
+            "name": "x"
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 56,
+            "value": "24019198012642645"
+          }
+        },
+        "right": {
+          "op": "And",
+          "bits": 56,
+          "left": {
+            "op": "Variable",
+            "bits": 56,
+            "name": "x"
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 56,
+            "value": "48038396025285290"
+          }
+        }
+      },
+      "reference": {
+        "op": "Variable",
+        "bits": 56,
+        "name": "x"
+      },
+      "input_term_cost": 3,
+      "reference_term_cost": 0,
+      "reference_nodes": 1,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "strip_redundant_zext_mask": true
+    },
+    {
+      "id": "POS-SEMI-08",
+      "width": 64,
+      "variables": [
+        {
+          "name": "y",
+          "bits": 56
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 64,
+        "left": {
+          "op": "And",
+          "bits": 64,
+          "left": {
+            "op": "ZeroExtend",
+            "bits": 64,
+            "left": {
+              "op": "Variable",
+              "bits": 56,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 64,
+            "value": "6148914691236517205"
+          }
+        },
+        "right": {
+          "op": "And",
+          "bits": 64,
+          "left": {
+            "op": "ZeroExtend",
+            "bits": 64,
+            "left": {
+              "op": "Variable",
+              "bits": 56,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 64,
+            "value": "12297829382473034410"
+          }
+        }
+      },
+      "reference": {
+        "op": "ZeroExtend",
+        "bits": 64,
+        "left": {
+          "op": "Variable",
+          "bits": 56,
+          "name": "y"
+        }
+      },
+      "input_term_cost": 5,
+      "reference_term_cost": 1,
+      "reference_nodes": 2,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "strip_redundant_zext_mask": true
+    },
+    {
+      "id": "POS-POLY-01",
+      "width": 8,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 8
+        },
+        {
+          "name": "y",
+          "bits": 8
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 8,
+        "left": {
+          "op": "Add",
+          "bits": 8,
+          "left": {
+            "op": "Xor",
+            "bits": 8,
+            "left": {
+              "op": "Variable",
+              "bits": 8,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 8,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 8,
+            "left": {
+              "op": "Constant",
+              "bits": 8,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 8,
+              "left": {
+                "op": "Variable",
+                "bits": 8,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 8,
+                "name": "y"
+              }
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 8,
+          "left": {
+            "op": "Xor",
+            "bits": 8,
+            "left": {
+              "op": "Variable",
+              "bits": 8,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 8,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 8,
+            "left": {
+              "op": "Constant",
+              "bits": 8,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 8,
+              "left": {
+                "op": "Variable",
+                "bits": 8,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 8,
+                "name": "y"
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 8,
+        "left": {
+          "op": "Add",
+          "bits": 8,
+          "left": {
+            "op": "Variable",
+            "bits": 8,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 8,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 8,
+          "left": {
+            "op": "Variable",
+            "bits": 8,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 8,
+            "name": "y"
+          }
+        }
+      },
+      "input_term_cost": 9,
+      "reference_term_cost": 3,
+      "reference_nodes": 7,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_cost_numerator": 1,
+      "max_cost_denominator": 2
+    },
+    {
+      "id": "POS-POLY-02",
+      "width": 16,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 16
+        },
+        {
+          "name": "y",
+          "bits": 16
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 16,
+        "left": {
+          "op": "Mul",
+          "bits": 16,
+          "left": {
+            "op": "Add",
+            "bits": 16,
+            "left": {
+              "op": "Xor",
+              "bits": 16,
+              "left": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "y"
+              }
+            },
+            "right": {
+              "op": "Mul",
+              "bits": 16,
+              "left": {
+                "op": "Constant",
+                "bits": 16,
+                "value": "2"
+              },
+              "right": {
+                "op": "And",
+                "bits": 16,
+                "left": {
+                  "op": "Variable",
+                  "bits": 16,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 16,
+                  "name": "y"
+                }
+              }
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 16,
+            "left": {
+              "op": "Xor",
+              "bits": 16,
+              "left": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "y"
+              }
+            },
+            "right": {
+              "op": "Mul",
+              "bits": 16,
+              "left": {
+                "op": "Constant",
+                "bits": 16,
+                "value": "2"
+              },
+              "right": {
+                "op": "And",
+                "bits": 16,
+                "left": {
+                  "op": "Variable",
+                  "bits": 16,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 16,
+                  "name": "y"
+                }
+              }
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 16,
+          "left": {
+            "op": "Xor",
+            "bits": 16,
+            "left": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 16,
+            "left": {
+              "op": "Constant",
+              "bits": 16,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 16,
+              "left": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "y"
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 16,
+        "left": {
+          "op": "Mul",
+          "bits": 16,
+          "left": {
+            "op": "Add",
+            "bits": 16,
+            "left": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 16,
+            "left": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "y"
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 16,
+          "left": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "y"
+          }
+        }
+      },
+      "input_term_cost": 14,
+      "reference_term_cost": 5,
+      "reference_nodes": 11,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_cost_numerator": 1,
+      "max_cost_denominator": 2
+    },
+    {
+      "id": "POS-POLY-03",
+      "width": 24,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 24
+        },
+        {
+          "name": "y",
+          "bits": 24
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 24,
+        "left": {
+          "op": "Add",
+          "bits": 24,
+          "left": {
+            "op": "Xor",
+            "bits": 24,
+            "left": {
+              "op": "Variable",
+              "bits": 24,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 24,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 24,
+            "left": {
+              "op": "Constant",
+              "bits": 24,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 24,
+              "left": {
+                "op": "Variable",
+                "bits": 24,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 24,
+                "name": "y"
+              }
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 24,
+          "left": {
+            "op": "Xor",
+            "bits": 24,
+            "left": {
+              "op": "Variable",
+              "bits": 24,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 24,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 24,
+            "left": {
+              "op": "Constant",
+              "bits": 24,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 24,
+              "left": {
+                "op": "Variable",
+                "bits": 24,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 24,
+                "name": "y"
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 24,
+        "left": {
+          "op": "Add",
+          "bits": 24,
+          "left": {
+            "op": "Variable",
+            "bits": 24,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 24,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 24,
+          "left": {
+            "op": "Variable",
+            "bits": 24,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 24,
+            "name": "y"
+          }
+        }
+      },
+      "input_term_cost": 9,
+      "reference_term_cost": 3,
+      "reference_nodes": 7,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_cost_numerator": 1,
+      "max_cost_denominator": 2
+    },
+    {
+      "id": "POS-POLY-04",
+      "width": 32,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 32
+        },
+        {
+          "name": "y",
+          "bits": 32
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 32,
+        "left": {
+          "op": "Mul",
+          "bits": 32,
+          "left": {
+            "op": "Add",
+            "bits": 32,
+            "left": {
+              "op": "Xor",
+              "bits": 32,
+              "left": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "y"
+              }
+            },
+            "right": {
+              "op": "Mul",
+              "bits": 32,
+              "left": {
+                "op": "Constant",
+                "bits": 32,
+                "value": "2"
+              },
+              "right": {
+                "op": "And",
+                "bits": 32,
+                "left": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "y"
+                }
+              }
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 32,
+            "left": {
+              "op": "Xor",
+              "bits": 32,
+              "left": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "y"
+              }
+            },
+            "right": {
+              "op": "Mul",
+              "bits": 32,
+              "left": {
+                "op": "Constant",
+                "bits": 32,
+                "value": "2"
+              },
+              "right": {
+                "op": "And",
+                "bits": 32,
+                "left": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "y"
+                }
+              }
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 32,
+          "left": {
+            "op": "Xor",
+            "bits": 32,
+            "left": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 32,
+            "left": {
+              "op": "Constant",
+              "bits": 32,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 32,
+              "left": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "y"
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 32,
+        "left": {
+          "op": "Mul",
+          "bits": 32,
+          "left": {
+            "op": "Add",
+            "bits": 32,
+            "left": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 32,
+            "left": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "y"
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 32,
+          "left": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "y"
+          }
+        }
+      },
+      "input_term_cost": 14,
+      "reference_term_cost": 5,
+      "reference_nodes": 11,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_cost_numerator": 1,
+      "max_cost_denominator": 2
+    },
+    {
+      "id": "POS-POLY-05",
+      "width": 40,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 40
+        },
+        {
+          "name": "y",
+          "bits": 40
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 40,
+        "left": {
+          "op": "Add",
+          "bits": 40,
+          "left": {
+            "op": "Xor",
+            "bits": 40,
+            "left": {
+              "op": "Variable",
+              "bits": 40,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 40,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 40,
+            "left": {
+              "op": "Constant",
+              "bits": 40,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 40,
+              "left": {
+                "op": "Variable",
+                "bits": 40,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 40,
+                "name": "y"
+              }
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 40,
+          "left": {
+            "op": "Xor",
+            "bits": 40,
+            "left": {
+              "op": "Variable",
+              "bits": 40,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 40,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 40,
+            "left": {
+              "op": "Constant",
+              "bits": 40,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 40,
+              "left": {
+                "op": "Variable",
+                "bits": 40,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 40,
+                "name": "y"
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 40,
+        "left": {
+          "op": "Add",
+          "bits": 40,
+          "left": {
+            "op": "Variable",
+            "bits": 40,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 40,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 40,
+          "left": {
+            "op": "Variable",
+            "bits": 40,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 40,
+            "name": "y"
+          }
+        }
+      },
+      "input_term_cost": 9,
+      "reference_term_cost": 3,
+      "reference_nodes": 7,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_cost_numerator": 1,
+      "max_cost_denominator": 2
+    },
+    {
+      "id": "POS-POLY-06",
+      "width": 48,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 48
+        },
+        {
+          "name": "y",
+          "bits": 48
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 48,
+        "left": {
+          "op": "Mul",
+          "bits": 48,
+          "left": {
+            "op": "Add",
+            "bits": 48,
+            "left": {
+              "op": "Xor",
+              "bits": 48,
+              "left": {
+                "op": "Variable",
+                "bits": 48,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 48,
+                "name": "y"
+              }
+            },
+            "right": {
+              "op": "Mul",
+              "bits": 48,
+              "left": {
+                "op": "Constant",
+                "bits": 48,
+                "value": "2"
+              },
+              "right": {
+                "op": "And",
+                "bits": 48,
+                "left": {
+                  "op": "Variable",
+                  "bits": 48,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 48,
+                  "name": "y"
+                }
+              }
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 48,
+            "left": {
+              "op": "Xor",
+              "bits": 48,
+              "left": {
+                "op": "Variable",
+                "bits": 48,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 48,
+                "name": "y"
+              }
+            },
+            "right": {
+              "op": "Mul",
+              "bits": 48,
+              "left": {
+                "op": "Constant",
+                "bits": 48,
+                "value": "2"
+              },
+              "right": {
+                "op": "And",
+                "bits": 48,
+                "left": {
+                  "op": "Variable",
+                  "bits": 48,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 48,
+                  "name": "y"
+                }
+              }
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 48,
+          "left": {
+            "op": "Xor",
+            "bits": 48,
+            "left": {
+              "op": "Variable",
+              "bits": 48,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 48,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 48,
+            "left": {
+              "op": "Constant",
+              "bits": 48,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 48,
+              "left": {
+                "op": "Variable",
+                "bits": 48,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 48,
+                "name": "y"
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 48,
+        "left": {
+          "op": "Mul",
+          "bits": 48,
+          "left": {
+            "op": "Add",
+            "bits": 48,
+            "left": {
+              "op": "Variable",
+              "bits": 48,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 48,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 48,
+            "left": {
+              "op": "Variable",
+              "bits": 48,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 48,
+              "name": "y"
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 48,
+          "left": {
+            "op": "Variable",
+            "bits": 48,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 48,
+            "name": "y"
+          }
+        }
+      },
+      "input_term_cost": 14,
+      "reference_term_cost": 5,
+      "reference_nodes": 11,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_cost_numerator": 1,
+      "max_cost_denominator": 2
+    },
+    {
+      "id": "POS-POLY-07",
+      "width": 56,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 56
+        },
+        {
+          "name": "y",
+          "bits": 56
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 56,
+        "left": {
+          "op": "Add",
+          "bits": 56,
+          "left": {
+            "op": "Xor",
+            "bits": 56,
+            "left": {
+              "op": "Variable",
+              "bits": 56,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 56,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 56,
+            "left": {
+              "op": "Constant",
+              "bits": 56,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 56,
+              "left": {
+                "op": "Variable",
+                "bits": 56,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 56,
+                "name": "y"
+              }
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 56,
+          "left": {
+            "op": "Xor",
+            "bits": 56,
+            "left": {
+              "op": "Variable",
+              "bits": 56,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 56,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 56,
+            "left": {
+              "op": "Constant",
+              "bits": 56,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 56,
+              "left": {
+                "op": "Variable",
+                "bits": 56,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 56,
+                "name": "y"
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 56,
+        "left": {
+          "op": "Add",
+          "bits": 56,
+          "left": {
+            "op": "Variable",
+            "bits": 56,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 56,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 56,
+          "left": {
+            "op": "Variable",
+            "bits": 56,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 56,
+            "name": "y"
+          }
+        }
+      },
+      "input_term_cost": 9,
+      "reference_term_cost": 3,
+      "reference_nodes": 7,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_cost_numerator": 1,
+      "max_cost_denominator": 2
+    },
+    {
+      "id": "POS-POLY-08",
+      "width": 64,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 64
+        },
+        {
+          "name": "y",
+          "bits": 64
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 64,
+        "left": {
+          "op": "Mul",
+          "bits": 64,
+          "left": {
+            "op": "Add",
+            "bits": 64,
+            "left": {
+              "op": "Xor",
+              "bits": 64,
+              "left": {
+                "op": "Variable",
+                "bits": 64,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 64,
+                "name": "y"
+              }
+            },
+            "right": {
+              "op": "Mul",
+              "bits": 64,
+              "left": {
+                "op": "Constant",
+                "bits": 64,
+                "value": "2"
+              },
+              "right": {
+                "op": "And",
+                "bits": 64,
+                "left": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "y"
+                }
+              }
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 64,
+            "left": {
+              "op": "Xor",
+              "bits": 64,
+              "left": {
+                "op": "Variable",
+                "bits": 64,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 64,
+                "name": "y"
+              }
+            },
+            "right": {
+              "op": "Mul",
+              "bits": 64,
+              "left": {
+                "op": "Constant",
+                "bits": 64,
+                "value": "2"
+              },
+              "right": {
+                "op": "And",
+                "bits": 64,
+                "left": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "y"
+                }
+              }
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 64,
+          "left": {
+            "op": "Xor",
+            "bits": 64,
+            "left": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 64,
+            "left": {
+              "op": "Constant",
+              "bits": 64,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 64,
+              "left": {
+                "op": "Variable",
+                "bits": 64,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 64,
+                "name": "y"
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 64,
+        "left": {
+          "op": "Mul",
+          "bits": 64,
+          "left": {
+            "op": "Add",
+            "bits": 64,
+            "left": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Add",
+            "bits": 64,
+            "left": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "y"
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 64,
+          "left": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "y"
+          }
+        }
+      },
+      "input_term_cost": 14,
+      "reference_term_cost": 5,
+      "reference_nodes": 11,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_cost_numerator": 1,
+      "max_cost_denominator": 2
+    },
+    {
+      "id": "POS-MIXP-01",
+      "width": 16,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 16
+        },
+        {
+          "name": "y",
+          "bits": 16
+        },
+        {
+          "name": "z",
+          "bits": 16
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 16,
+        "left": {
+          "op": "Xor",
+          "bits": 16,
+          "left": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 16,
+          "left": {
+            "op": "And",
+            "bits": 16,
+            "left": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "z"
+            }
+          },
+          "right": {
+            "op": "Or",
+            "bits": 16,
+            "left": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "z"
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 16,
+        "left": {
+          "op": "Xor",
+          "bits": 16,
+          "left": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 16,
+          "left": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "z"
+          }
+        }
+      },
+      "input_term_cost": 5,
+      "reference_term_cost": 3,
+      "reference_nodes": 7,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true
+    },
+    {
+      "id": "POS-MIXP-02",
+      "width": 16,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 16
+        },
+        {
+          "name": "y",
+          "bits": 16
+        },
+        {
+          "name": "z",
+          "bits": 16
+        },
+        {
+          "name": "q",
+          "bits": 16
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 16,
+        "left": {
+          "op": "Add",
+          "bits": 16,
+          "left": {
+            "op": "Xor",
+            "bits": 16,
+            "left": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 16,
+            "left": {
+              "op": "Constant",
+              "bits": 16,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 16,
+              "left": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "y"
+              }
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 16,
+          "left": {
+            "op": "Xor",
+            "bits": 16,
+            "left": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "z"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "q"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 16,
+            "left": {
+              "op": "Constant",
+              "bits": 16,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 16,
+              "left": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "z"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "q"
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 16,
+        "left": {
+          "op": "Add",
+          "bits": 16,
+          "left": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 16,
+          "left": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "z"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "q"
+          }
+        }
+      },
+      "input_term_cost": 9,
+      "reference_term_cost": 3,
+      "reference_nodes": 7,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true
+    },
+    {
+      "id": "POS-MIXP-03",
+      "width": 32,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 32
+        },
+        {
+          "name": "y",
+          "bits": 32
+        },
+        {
+          "name": "z",
+          "bits": 32
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 32,
+        "left": {
+          "op": "Xor",
+          "bits": 32,
+          "left": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 32,
+          "left": {
+            "op": "And",
+            "bits": 32,
+            "left": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "z"
+            }
+          },
+          "right": {
+            "op": "Or",
+            "bits": 32,
+            "left": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "z"
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 32,
+        "left": {
+          "op": "Xor",
+          "bits": 32,
+          "left": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 32,
+          "left": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "z"
+          }
+        }
+      },
+      "input_term_cost": 5,
+      "reference_term_cost": 3,
+      "reference_nodes": 7,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true
+    },
+    {
+      "id": "POS-MIXP-04",
+      "width": 32,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 32
+        },
+        {
+          "name": "y",
+          "bits": 32
+        },
+        {
+          "name": "z",
+          "bits": 32
+        },
+        {
+          "name": "q",
+          "bits": 32
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 32,
+        "left": {
+          "op": "Add",
+          "bits": 32,
+          "left": {
+            "op": "Xor",
+            "bits": 32,
+            "left": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 32,
+            "left": {
+              "op": "Constant",
+              "bits": 32,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 32,
+              "left": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "y"
+              }
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 32,
+          "left": {
+            "op": "Xor",
+            "bits": 32,
+            "left": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "z"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "q"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 32,
+            "left": {
+              "op": "Constant",
+              "bits": 32,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 32,
+              "left": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "z"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "q"
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 32,
+        "left": {
+          "op": "Add",
+          "bits": 32,
+          "left": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 32,
+          "left": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "z"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "q"
+          }
+        }
+      },
+      "input_term_cost": 9,
+      "reference_term_cost": 3,
+      "reference_nodes": 7,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true
+    },
+    {
+      "id": "POS-MIXP-05",
+      "width": 64,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 64
+        },
+        {
+          "name": "y",
+          "bits": 64
+        },
+        {
+          "name": "z",
+          "bits": 64
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 64,
+        "left": {
+          "op": "Xor",
+          "bits": 64,
+          "left": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 64,
+          "left": {
+            "op": "And",
+            "bits": 64,
+            "left": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "z"
+            }
+          },
+          "right": {
+            "op": "Or",
+            "bits": 64,
+            "left": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "z"
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 64,
+        "left": {
+          "op": "Xor",
+          "bits": 64,
+          "left": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 64,
+          "left": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "z"
+          }
+        }
+      },
+      "input_term_cost": 5,
+      "reference_term_cost": 3,
+      "reference_nodes": 7,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true
+    },
+    {
+      "id": "POS-MIXP-06",
+      "width": 64,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 64
+        },
+        {
+          "name": "y",
+          "bits": 64
+        },
+        {
+          "name": "z",
+          "bits": 64
+        },
+        {
+          "name": "q",
+          "bits": 64
+        }
+      ],
+      "input": {
+        "op": "Mul",
+        "bits": 64,
+        "left": {
+          "op": "Add",
+          "bits": 64,
+          "left": {
+            "op": "Xor",
+            "bits": 64,
+            "left": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "y"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 64,
+            "left": {
+              "op": "Constant",
+              "bits": 64,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 64,
+              "left": {
+                "op": "Variable",
+                "bits": 64,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 64,
+                "name": "y"
+              }
+            }
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 64,
+          "left": {
+            "op": "Xor",
+            "bits": 64,
+            "left": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "z"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "q"
+            }
+          },
+          "right": {
+            "op": "Mul",
+            "bits": 64,
+            "left": {
+              "op": "Constant",
+              "bits": 64,
+              "value": "2"
+            },
+            "right": {
+              "op": "And",
+              "bits": 64,
+              "left": {
+                "op": "Variable",
+                "bits": 64,
+                "name": "z"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 64,
+                "name": "q"
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Mul",
+        "bits": 64,
+        "left": {
+          "op": "Add",
+          "bits": 64,
+          "left": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "x"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Add",
+          "bits": 64,
+          "left": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "z"
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "q"
+          }
+        }
+      },
+      "input_term_cost": 9,
+      "reference_term_cost": 3,
+      "reference_nodes": 7,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true
+    },
+    {
+      "id": "POS-OPAQ-01",
+      "width": 8,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 8
+        },
+        {
+          "name": "y",
+          "bits": 8
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 8,
+        "left": {
+          "op": "Sub",
+          "bits": 8,
+          "left": {
+            "op": "Sub",
+            "bits": 8,
+            "left": {
+              "op": "Add",
+              "bits": 8,
+              "left": {
+                "op": "Or",
+                "bits": 8,
+                "left": {
+                  "op": "Variable",
+                  "bits": 8,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 8,
+                  "name": "y"
+                }
+              },
+              "right": {
+                "op": "And",
+                "bits": 8,
+                "left": {
+                  "op": "Variable",
+                  "bits": 8,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 8,
+                  "name": "y"
+                }
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 8,
+              "name": "x"
+            }
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 8,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Constant",
+          "bits": 8,
+          "value": "0"
+        }
+      },
+      "reference": {
+        "op": "Constant",
+        "bits": 8,
+        "value": "0"
+      },
+      "input_term_cost": 6,
+      "reference_term_cost": 0,
+      "reference_nodes": 1,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 1,
+      "canonical_support_empty": true
+    },
+    {
+      "id": "POS-OPAQ-02",
+      "width": 16,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 16
+        },
+        {
+          "name": "y",
+          "bits": 16
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 16,
+        "left": {
+          "op": "Sub",
+          "bits": 16,
+          "left": {
+            "op": "Sub",
+            "bits": 16,
+            "left": {
+              "op": "Add",
+              "bits": 16,
+              "left": {
+                "op": "Or",
+                "bits": 16,
+                "left": {
+                  "op": "Variable",
+                  "bits": 16,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 16,
+                  "name": "y"
+                }
+              },
+              "right": {
+                "op": "And",
+                "bits": 16,
+                "left": {
+                  "op": "Variable",
+                  "bits": 16,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 16,
+                  "name": "y"
+                }
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "x"
+            }
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 16,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Constant",
+          "bits": 16,
+          "value": "90"
+        }
+      },
+      "reference": {
+        "op": "Constant",
+        "bits": 16,
+        "value": "90"
+      },
+      "input_term_cost": 6,
+      "reference_term_cost": 0,
+      "reference_nodes": 1,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 1,
+      "canonical_support_empty": true
+    },
+    {
+      "id": "POS-OPAQ-03",
+      "width": 32,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 32
+        },
+        {
+          "name": "y",
+          "bits": 32
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 32,
+        "left": {
+          "op": "Sub",
+          "bits": 32,
+          "left": {
+            "op": "Sub",
+            "bits": 32,
+            "left": {
+              "op": "Add",
+              "bits": 32,
+              "left": {
+                "op": "Or",
+                "bits": 32,
+                "left": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "y"
+                }
+              },
+              "right": {
+                "op": "And",
+                "bits": 32,
+                "left": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "y"
+                }
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "x"
+            }
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Constant",
+          "bits": 32,
+          "value": "0"
+        }
+      },
+      "reference": {
+        "op": "Constant",
+        "bits": 32,
+        "value": "0"
+      },
+      "input_term_cost": 6,
+      "reference_term_cost": 0,
+      "reference_nodes": 1,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 1,
+      "canonical_support_empty": true
+    },
+    {
+      "id": "POS-OPAQ-04",
+      "width": 64,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 64
+        },
+        {
+          "name": "y",
+          "bits": 64
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 64,
+        "left": {
+          "op": "Sub",
+          "bits": 64,
+          "left": {
+            "op": "Sub",
+            "bits": 64,
+            "left": {
+              "op": "Add",
+              "bits": 64,
+              "left": {
+                "op": "Or",
+                "bits": 64,
+                "left": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "y"
+                }
+              },
+              "right": {
+                "op": "And",
+                "bits": 64,
+                "left": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "y"
+                }
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "x"
+            }
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Constant",
+          "bits": 64,
+          "value": "165"
+        }
+      },
+      "reference": {
+        "op": "Constant",
+        "bits": 64,
+        "value": "165"
+      },
+      "input_term_cost": 6,
+      "reference_term_cost": 0,
+      "reference_nodes": 1,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 1,
+      "canonical_support_empty": true
+    },
+    {
+      "id": "POS-OPAQ-05",
+      "width": 32,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 32
+        },
+        {
+          "name": "y",
+          "bits": 32
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 32,
+        "left": {
+          "op": "Sub",
+          "bits": 32,
+          "left": {
+            "op": "Sub",
+            "bits": 32,
+            "left": {
+              "op": "Add",
+              "bits": 32,
+              "left": {
+                "op": "Or",
+                "bits": 32,
+                "left": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "y"
+                }
+              },
+              "right": {
+                "op": "And",
+                "bits": 32,
+                "left": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "y"
+                }
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "x"
+            }
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Constant",
+          "bits": 32,
+          "value": "4294967295"
+        }
+      },
+      "reference": {
+        "op": "Constant",
+        "bits": 32,
+        "value": "4294967295"
+      },
+      "input_term_cost": 6,
+      "reference_term_cost": 0,
+      "reference_nodes": 1,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 1,
+      "canonical_support_empty": true
+    },
+    {
+      "id": "POS-OPAQ-06",
+      "width": 64,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 64
+        },
+        {
+          "name": "y",
+          "bits": 64
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 64,
+        "left": {
+          "op": "Sub",
+          "bits": 64,
+          "left": {
+            "op": "Sub",
+            "bits": 64,
+            "left": {
+              "op": "Add",
+              "bits": 64,
+              "left": {
+                "op": "Or",
+                "bits": 64,
+                "left": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "y"
+                }
+              },
+              "right": {
+                "op": "And",
+                "bits": 64,
+                "left": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 64,
+                  "name": "y"
+                }
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "x"
+            }
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "y"
+          }
+        },
+        "right": {
+          "op": "Constant",
+          "bits": 64,
+          "value": "18446744073709551615"
+        }
+      },
+      "reference": {
+        "op": "Constant",
+        "bits": 64,
+        "value": "18446744073709551615"
+      },
+      "input_term_cost": 6,
+      "reference_term_cost": 0,
+      "reference_nodes": 1,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "max_output_nodes": 1,
+      "canonical_support_empty": true
+    },
+    {
+      "id": "POS-NEST-01",
+      "width": 64,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 8
+        },
+        {
+          "name": "y",
+          "bits": 8
+        },
+        {
+          "name": "z",
+          "bits": 64
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 64,
+        "left": {
+          "op": "Xor",
+          "bits": 64,
+          "left": {
+            "op": "ZeroExtend",
+            "bits": 64,
+            "left": {
+              "op": "Add",
+              "bits": 8,
+              "left": {
+                "op": "Xor",
+                "bits": 8,
+                "left": {
+                  "op": "Variable",
+                  "bits": 8,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 8,
+                  "name": "y"
+                }
+              },
+              "right": {
+                "op": "Mul",
+                "bits": 8,
+                "left": {
+                  "op": "Constant",
+                  "bits": 8,
+                  "value": "2"
+                },
+                "right": {
+                  "op": "And",
+                  "bits": 8,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 8,
+                    "name": "x"
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 8,
+                    "name": "y"
+                  }
+                }
+              }
+            }
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "z"
+          }
+        },
+        "right": {
+          "op": "Mul",
+          "bits": 64,
+          "left": {
+            "op": "Constant",
+            "bits": 64,
+            "value": "2"
+          },
+          "right": {
+            "op": "And",
+            "bits": 64,
+            "left": {
+              "op": "ZeroExtend",
+              "bits": 64,
+              "left": {
+                "op": "Add",
+                "bits": 8,
+                "left": {
+                  "op": "Xor",
+                  "bits": 8,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 8,
+                    "name": "x"
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 8,
+                    "name": "y"
+                  }
+                },
+                "right": {
+                  "op": "Mul",
+                  "bits": 8,
+                  "left": {
+                    "op": "Constant",
+                    "bits": 8,
+                    "value": "2"
+                  },
+                  "right": {
+                    "op": "And",
+                    "bits": 8,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 8,
+                      "name": "x"
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 8,
+                      "name": "y"
+                    }
+                  }
+                }
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "z"
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 64,
+        "left": {
+          "op": "ZeroExtend",
+          "bits": 64,
+          "left": {
+            "op": "Add",
+            "bits": 8,
+            "left": {
+              "op": "Variable",
+              "bits": 8,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 8,
+              "name": "y"
+            }
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 64,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 14,
+      "reference_term_cost": 3,
+      "reference_nodes": 6,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "inner_width": 8,
+      "require_inner_outer_proofs": true
+    },
+    {
+      "id": "POS-NEST-02",
+      "width": 64,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 8
+        },
+        {
+          "name": "y",
+          "bits": 8
+        },
+        {
+          "name": "z",
+          "bits": 64
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 64,
+        "left": {
+          "op": "Xor",
+          "bits": 64,
+          "left": {
+            "op": "Sar",
+            "bits": 64,
+            "left": {
+              "op": "SignExtend",
+              "bits": 64,
+              "left": {
+                "op": "Add",
+                "bits": 8,
+                "left": {
+                  "op": "Xor",
+                  "bits": 8,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 8,
+                    "name": "x"
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 8,
+                    "name": "y"
+                  }
+                },
+                "right": {
+                  "op": "Mul",
+                  "bits": 8,
+                  "left": {
+                    "op": "Constant",
+                    "bits": 8,
+                    "value": "2"
+                  },
+                  "right": {
+                    "op": "And",
+                    "bits": 8,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 8,
+                      "name": "x"
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 8,
+                      "name": "y"
+                    }
+                  }
+                }
+              }
+            },
+            "right": {
+              "op": "Constant",
+              "bits": 8,
+              "value": "1"
+            }
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "z"
+          }
+        },
+        "right": {
+          "op": "Mul",
+          "bits": 64,
+          "left": {
+            "op": "Constant",
+            "bits": 64,
+            "value": "2"
+          },
+          "right": {
+            "op": "And",
+            "bits": 64,
+            "left": {
+              "op": "Sar",
+              "bits": 64,
+              "left": {
+                "op": "SignExtend",
+                "bits": 64,
+                "left": {
+                  "op": "Add",
+                  "bits": 8,
+                  "left": {
+                    "op": "Xor",
+                    "bits": 8,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 8,
+                      "name": "x"
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 8,
+                      "name": "y"
+                    }
+                  },
+                  "right": {
+                    "op": "Mul",
+                    "bits": 8,
+                    "left": {
+                      "op": "Constant",
+                      "bits": 8,
+                      "value": "2"
+                    },
+                    "right": {
+                      "op": "And",
+                      "bits": 8,
+                      "left": {
+                        "op": "Variable",
+                        "bits": 8,
+                        "name": "x"
+                      },
+                      "right": {
+                        "op": "Variable",
+                        "bits": 8,
+                        "name": "y"
+                      }
+                    }
+                  }
+                }
+              },
+              "right": {
+                "op": "Constant",
+                "bits": 8,
+                "value": "1"
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "z"
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 64,
+        "left": {
+          "op": "Sar",
+          "bits": 64,
+          "left": {
+            "op": "SignExtend",
+            "bits": 64,
+            "left": {
+              "op": "Add",
+              "bits": 8,
+              "left": {
+                "op": "Variable",
+                "bits": 8,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 8,
+                "name": "y"
+              }
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 8,
+            "value": "1"
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 64,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 16,
+      "reference_term_cost": 4,
+      "reference_nodes": 8,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "inner_width": 8,
+      "require_inner_outer_proofs": true
+    },
+    {
+      "id": "POS-NEST-03",
+      "width": 32,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 16
+        },
+        {
+          "name": "y",
+          "bits": 16
+        },
+        {
+          "name": "z",
+          "bits": 32
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 32,
+        "left": {
+          "op": "Xor",
+          "bits": 32,
+          "left": {
+            "op": "ZeroExtend",
+            "bits": 32,
+            "left": {
+              "op": "Add",
+              "bits": 16,
+              "left": {
+                "op": "Xor",
+                "bits": 16,
+                "left": {
+                  "op": "Variable",
+                  "bits": 16,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 16,
+                  "name": "y"
+                }
+              },
+              "right": {
+                "op": "Mul",
+                "bits": 16,
+                "left": {
+                  "op": "Constant",
+                  "bits": 16,
+                  "value": "2"
+                },
+                "right": {
+                  "op": "And",
+                  "bits": 16,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 16,
+                    "name": "x"
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 16,
+                    "name": "y"
+                  }
+                }
+              }
+            }
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "z"
+          }
+        },
+        "right": {
+          "op": "Mul",
+          "bits": 32,
+          "left": {
+            "op": "Constant",
+            "bits": 32,
+            "value": "2"
+          },
+          "right": {
+            "op": "And",
+            "bits": 32,
+            "left": {
+              "op": "ZeroExtend",
+              "bits": 32,
+              "left": {
+                "op": "Add",
+                "bits": 16,
+                "left": {
+                  "op": "Xor",
+                  "bits": 16,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 16,
+                    "name": "x"
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 16,
+                    "name": "y"
+                  }
+                },
+                "right": {
+                  "op": "Mul",
+                  "bits": 16,
+                  "left": {
+                    "op": "Constant",
+                    "bits": 16,
+                    "value": "2"
+                  },
+                  "right": {
+                    "op": "And",
+                    "bits": 16,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 16,
+                      "name": "x"
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 16,
+                      "name": "y"
+                    }
+                  }
+                }
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "z"
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 32,
+        "left": {
+          "op": "ZeroExtend",
+          "bits": 32,
+          "left": {
+            "op": "Add",
+            "bits": 16,
+            "left": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 16,
+              "name": "y"
+            }
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 32,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 14,
+      "reference_term_cost": 3,
+      "reference_nodes": 6,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "inner_width": 16,
+      "require_inner_outer_proofs": true
+    },
+    {
+      "id": "POS-NEST-04",
+      "width": 32,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 16
+        },
+        {
+          "name": "y",
+          "bits": 16
+        },
+        {
+          "name": "z",
+          "bits": 32
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 32,
+        "left": {
+          "op": "Xor",
+          "bits": 32,
+          "left": {
+            "op": "Sar",
+            "bits": 32,
+            "left": {
+              "op": "SignExtend",
+              "bits": 32,
+              "left": {
+                "op": "Add",
+                "bits": 16,
+                "left": {
+                  "op": "Xor",
+                  "bits": 16,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 16,
+                    "name": "x"
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 16,
+                    "name": "y"
+                  }
+                },
+                "right": {
+                  "op": "Mul",
+                  "bits": 16,
+                  "left": {
+                    "op": "Constant",
+                    "bits": 16,
+                    "value": "2"
+                  },
+                  "right": {
+                    "op": "And",
+                    "bits": 16,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 16,
+                      "name": "x"
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 16,
+                      "name": "y"
+                    }
+                  }
+                }
+              }
+            },
+            "right": {
+              "op": "Constant",
+              "bits": 8,
+              "value": "1"
+            }
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 32,
+            "name": "z"
+          }
+        },
+        "right": {
+          "op": "Mul",
+          "bits": 32,
+          "left": {
+            "op": "Constant",
+            "bits": 32,
+            "value": "2"
+          },
+          "right": {
+            "op": "And",
+            "bits": 32,
+            "left": {
+              "op": "Sar",
+              "bits": 32,
+              "left": {
+                "op": "SignExtend",
+                "bits": 32,
+                "left": {
+                  "op": "Add",
+                  "bits": 16,
+                  "left": {
+                    "op": "Xor",
+                    "bits": 16,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 16,
+                      "name": "x"
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 16,
+                      "name": "y"
+                    }
+                  },
+                  "right": {
+                    "op": "Mul",
+                    "bits": 16,
+                    "left": {
+                      "op": "Constant",
+                      "bits": 16,
+                      "value": "2"
+                    },
+                    "right": {
+                      "op": "And",
+                      "bits": 16,
+                      "left": {
+                        "op": "Variable",
+                        "bits": 16,
+                        "name": "x"
+                      },
+                      "right": {
+                        "op": "Variable",
+                        "bits": 16,
+                        "name": "y"
+                      }
+                    }
+                  }
+                }
+              },
+              "right": {
+                "op": "Constant",
+                "bits": 8,
+                "value": "1"
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "z"
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 32,
+        "left": {
+          "op": "Sar",
+          "bits": 32,
+          "left": {
+            "op": "SignExtend",
+            "bits": 32,
+            "left": {
+              "op": "Add",
+              "bits": 16,
+              "left": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 16,
+                "name": "y"
+              }
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 8,
+            "value": "1"
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 32,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 16,
+      "reference_term_cost": 4,
+      "reference_nodes": 8,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "inner_width": 16,
+      "require_inner_outer_proofs": true
+    },
+    {
+      "id": "POS-NEST-05",
+      "width": 64,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 32
+        },
+        {
+          "name": "y",
+          "bits": 32
+        },
+        {
+          "name": "z",
+          "bits": 64
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 64,
+        "left": {
+          "op": "Xor",
+          "bits": 64,
+          "left": {
+            "op": "ZeroExtend",
+            "bits": 64,
+            "left": {
+              "op": "Add",
+              "bits": 32,
+              "left": {
+                "op": "Xor",
+                "bits": 32,
+                "left": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "x"
+                },
+                "right": {
+                  "op": "Variable",
+                  "bits": 32,
+                  "name": "y"
+                }
+              },
+              "right": {
+                "op": "Mul",
+                "bits": 32,
+                "left": {
+                  "op": "Constant",
+                  "bits": 32,
+                  "value": "2"
+                },
+                "right": {
+                  "op": "And",
+                  "bits": 32,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 32,
+                    "name": "x"
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 32,
+                    "name": "y"
+                  }
+                }
+              }
+            }
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "z"
+          }
+        },
+        "right": {
+          "op": "Mul",
+          "bits": 64,
+          "left": {
+            "op": "Constant",
+            "bits": 64,
+            "value": "2"
+          },
+          "right": {
+            "op": "And",
+            "bits": 64,
+            "left": {
+              "op": "ZeroExtend",
+              "bits": 64,
+              "left": {
+                "op": "Add",
+                "bits": 32,
+                "left": {
+                  "op": "Xor",
+                  "bits": 32,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 32,
+                    "name": "x"
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 32,
+                    "name": "y"
+                  }
+                },
+                "right": {
+                  "op": "Mul",
+                  "bits": 32,
+                  "left": {
+                    "op": "Constant",
+                    "bits": 32,
+                    "value": "2"
+                  },
+                  "right": {
+                    "op": "And",
+                    "bits": 32,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 32,
+                      "name": "x"
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 32,
+                      "name": "y"
+                    }
+                  }
+                }
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "z"
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 64,
+        "left": {
+          "op": "ZeroExtend",
+          "bits": 64,
+          "left": {
+            "op": "Add",
+            "bits": 32,
+            "left": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "x"
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 32,
+              "name": "y"
+            }
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 64,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 14,
+      "reference_term_cost": 3,
+      "reference_nodes": 6,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "inner_width": 32,
+      "require_inner_outer_proofs": true
+    },
+    {
+      "id": "POS-NEST-06",
+      "width": 64,
+      "variables": [
+        {
+          "name": "x",
+          "bits": 32
+        },
+        {
+          "name": "y",
+          "bits": 32
+        },
+        {
+          "name": "z",
+          "bits": 64
+        }
+      ],
+      "input": {
+        "op": "Add",
+        "bits": 64,
+        "left": {
+          "op": "Xor",
+          "bits": 64,
+          "left": {
+            "op": "Sar",
+            "bits": 64,
+            "left": {
+              "op": "SignExtend",
+              "bits": 64,
+              "left": {
+                "op": "Add",
+                "bits": 32,
+                "left": {
+                  "op": "Xor",
+                  "bits": 32,
+                  "left": {
+                    "op": "Variable",
+                    "bits": 32,
+                    "name": "x"
+                  },
+                  "right": {
+                    "op": "Variable",
+                    "bits": 32,
+                    "name": "y"
+                  }
+                },
+                "right": {
+                  "op": "Mul",
+                  "bits": 32,
+                  "left": {
+                    "op": "Constant",
+                    "bits": 32,
+                    "value": "2"
+                  },
+                  "right": {
+                    "op": "And",
+                    "bits": 32,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 32,
+                      "name": "x"
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 32,
+                      "name": "y"
+                    }
+                  }
+                }
+              }
+            },
+            "right": {
+              "op": "Constant",
+              "bits": 8,
+              "value": "1"
+            }
+          },
+          "right": {
+            "op": "Variable",
+            "bits": 64,
+            "name": "z"
+          }
+        },
+        "right": {
+          "op": "Mul",
+          "bits": 64,
+          "left": {
+            "op": "Constant",
+            "bits": 64,
+            "value": "2"
+          },
+          "right": {
+            "op": "And",
+            "bits": 64,
+            "left": {
+              "op": "Sar",
+              "bits": 64,
+              "left": {
+                "op": "SignExtend",
+                "bits": 64,
+                "left": {
+                  "op": "Add",
+                  "bits": 32,
+                  "left": {
+                    "op": "Xor",
+                    "bits": 32,
+                    "left": {
+                      "op": "Variable",
+                      "bits": 32,
+                      "name": "x"
+                    },
+                    "right": {
+                      "op": "Variable",
+                      "bits": 32,
+                      "name": "y"
+                    }
+                  },
+                  "right": {
+                    "op": "Mul",
+                    "bits": 32,
+                    "left": {
+                      "op": "Constant",
+                      "bits": 32,
+                      "value": "2"
+                    },
+                    "right": {
+                      "op": "And",
+                      "bits": 32,
+                      "left": {
+                        "op": "Variable",
+                        "bits": 32,
+                        "name": "x"
+                      },
+                      "right": {
+                        "op": "Variable",
+                        "bits": 32,
+                        "name": "y"
+                      }
+                    }
+                  }
+                }
+              },
+              "right": {
+                "op": "Constant",
+                "bits": 8,
+                "value": "1"
+              }
+            },
+            "right": {
+              "op": "Variable",
+              "bits": 64,
+              "name": "z"
+            }
+          }
+        }
+      },
+      "reference": {
+        "op": "Add",
+        "bits": 64,
+        "left": {
+          "op": "Sar",
+          "bits": 64,
+          "left": {
+            "op": "SignExtend",
+            "bits": 64,
+            "left": {
+              "op": "Add",
+              "bits": 32,
+              "left": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "x"
+              },
+              "right": {
+                "op": "Variable",
+                "bits": 32,
+                "name": "y"
+              }
+            }
+          },
+          "right": {
+            "op": "Constant",
+            "bits": 8,
+            "value": "1"
+          }
+        },
+        "right": {
+          "op": "Variable",
+          "bits": 64,
+          "name": "z"
+        }
+      },
+      "input_term_cost": 16,
+      "reference_term_cost": 4,
+      "reference_nodes": 8,
+      "require_candidate": true,
+      "require_both_unsat": true,
+      "require_strict_term_and_emitted_reduction": true,
+      "inner_width": 32,
+      "require_inner_outer_proofs": true
+    }
+  ]
+}

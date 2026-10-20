@@ -10,6 +10,7 @@ inline constexpr const char dirty[] = "@CHERNOBOG_BUILD_DIRTY@";
 inline constexpr const char source_fingerprint[] =
     "@CHERNOBOG_SOURCE_FINGERPRINT@";
 inline constexpr const char ida_sdk[] = "@CHERNOBOG_IDA_SDK_VERSION@";
+inline constexpr const char cobra_tree[] = "@CHERNOBOG_COBRA_TREE@";
 inline constexpr const char rax_revision[] = "@CHERNOBOG_RAX_GIT_REVISION@";
 
 } // namespace chernobog::build_provenance

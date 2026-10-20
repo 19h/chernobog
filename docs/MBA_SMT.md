@@ -5,11 +5,12 @@ also executes typed integer expressions symbolically, searches replacement
 expressions, and checks the emitted microcode against the same CFG snapshot.
 `CHERNOBOG_MBA_SMT=0` (IDC option `mba_smt`) disables the new pass.
 
-The proposed [CoBRA MBA backend](MBA_COBRA_SPEC.md) replaces algebraic candidate
-generation while retaining this pass's Z3 proof gates and contextual analysis.
-Its deadline API, strict post-proof acceptance, emitted-frame checks, patched
-dependency provenance, and frozen promotion fixtures are proposed integration
-requirements. They are not implemented features of the baseline described here.
+The experimental [CoBRA MBA backend](MBA_COBRA_SPEC.md), selected with
+`CHERNOBOG_MBA_BACKEND=cobra`, replaces algebraic candidate generation while
+retaining this pass's Z3 proof gates and contextual analysis. Shared deadline
+checks, candidate/emission receipts, and final frame/snapshot checks protect
+mutation. Legacy remains the default pending native runtime qualification.
+`CHERNOBOG_WITH_COBRA=OFF` builds retain the legacy backend.
 
 | Entry point | Additional semantic-analysis budget per decompilation |
 |---|---:|

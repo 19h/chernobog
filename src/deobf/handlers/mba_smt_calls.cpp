@@ -129,6 +129,14 @@ class CallBudget
         return spent < budget_.limit_ms ? unsigned(budget_.limit_ms - spent) : 0;
     }
 
+    Clock::time_point deadline() const
+    {
+        const auto time = Clock::now();
+        const uint64_t limit = uint64_t(budget_.limit_ms) * 1000000;
+        const uint64_t spent = budget_.spent_ns + elapsed_ns();
+        return time + std::chrono::nanoseconds(spent < limit ? limit - spent : 0);
+    }
+
     bool available() const { return remaining_ms() != 0 && !user_cancelled(); }
 
     FunctionBudget &owner() { return budget_; }
@@ -740,7 +748,8 @@ class CallerSimplifier
     }
 
     bool verify_emitted(const cexpr_t &node, const ScalarContext &context,
-                        const ContextQuery &query, Analysis &analysis, cexpr_t &emitted)
+                        const ContextQuery &query, Analysis &analysis, cexpr_t &emitted,
+                        const ProofReceipt &candidate, std::shared_ptr<const ProofReceipt> &receipt)
     {
         if (emitted.type != node.type || integer_bits(emitted.type) != integer_bits(node.type))
         {
@@ -748,7 +757,8 @@ class CallerSimplifier
             return false;
         }
         const Term translated = query.lower(translate(emitted, context));
-        if (!translated || analysis.verify(query.block(), 0, translated) != Verdict::Verified)
+        receipt = translated ? analysis.prove_emission(candidate, translated) : nullptr;
+        if (!receipt)
         {
             return false;
         }
@@ -756,14 +766,19 @@ class CallerSimplifier
         return true;
     }
 
-    std::unique_ptr<cexpr_t> prepare_replacement(const cexpr_t &node, const ScalarContext &context,
-                                                 const ContextQuery &query, Analysis &analysis,
-                                                 const Term &candidate)
+    std::unique_ptr<cexpr_t>
+    prepare_replacement(const cexpr_t &node, const ScalarContext &context,
+                        const ContextQuery &query, Analysis &analysis, const Term &candidate,
+                        std::shared_ptr<const ProofReceipt> &receipt,
+                        const std::shared_ptr<const ProofReceipt> &proved = {})
     {
-        if (analysis.verify(query.block(), 0, candidate) != Verdict::Verified)
+        auto candidate_receipt =
+            proved ? proved : analysis.prove_candidate(query.block(), 0, candidate);
+        if (!candidate_receipt)
             return {};
         auto emitted = emit_replacement(node, context, query.restore(candidate));
-        if (!emitted || !verify_emitted(node, context, query, analysis, *emitted))
+        if (!emitted ||
+            !verify_emitted(node, context, query, analysis, *emitted, *candidate_receipt, receipt))
         {
             return {};
         }
@@ -793,6 +808,7 @@ class CallerSimplifier
         const auto saved_target =
             parent_target ? std::make_unique<cexpr_t>(*parent_target) : nullptr;
         bool legacy_fallback = false;
+        std::shared_ptr<const ProofReceipt> receipt;
         std::unique_ptr<cexpr_t> replacement;
         if (structural_only_)
         {
@@ -814,7 +830,9 @@ class CallerSimplifier
         ++attempts_;
 
         Options options;
+        options.absolute_deadline = budget_.deadline();
         options.profile = budget_.owner().profile;
+        options.backend = budget_.owner().backend;
         options.snapshot = snapshot;
         const bool deep = options.profile == Profile::Deep;
         options.budget_ms = std::min(budget_.remaining_ms(), deep ? deep_expression_budget_ms
@@ -830,14 +848,16 @@ class CallerSimplifier
         Analysis analysis(query.program(), options);
         if (structural_only_)
         {
-            if (!verify_emitted(node, context, query, analysis, *replacement))
+            auto candidate_receipt = analysis.prove_candidate(query.block(), 0, query.lower(value));
+            if (!candidate_receipt || !verify_emitted(node, context, query, analysis, *replacement,
+                                                      *candidate_receipt, receipt))
             {
                 replacement.reset();
             }
         }
         else if (const Term candidate = analysis.constant_value(query.block(), 0))
         {
-            replacement = prepare_replacement(node, context, query, analysis, candidate);
+            replacement = prepare_replacement(node, context, query, analysis, candidate, receipt);
         }
         // Besides expanded calls and derived values, reconstruct substantial
         // arithmetic/bitwise mixtures already present in the caller. A guard
@@ -848,18 +868,22 @@ class CallerSimplifier
             // Verify a cheaper expansion before spending the search budget.
             // This proof remains valid if a later search runs out of time:
             // neither the context nor the original expression has changed.
-            replacement = prepare_replacement(node, context, query, analysis, query.lower(value));
+            replacement =
+                prepare_replacement(node, context, query, analysis, query.lower(value), receipt);
             legacy_fallback = replacement && options.backend == Backend::Legacy;
             if (!replacement || scalar_expression_cost(*replacement) != 0)
             {
                 for (const Proposal &proposal : analysis.run())
                 {
+                    std::shared_ptr<const ProofReceipt> improved_receipt;
                     auto improved =
-                        prepare_replacement(node, context, query, analysis, proposal.replacement);
+                        prepare_replacement(node, context, query, analysis, proposal.replacement,
+                                            improved_receipt, proposal.proof);
                     if (improved &&
                         (!replacement || scalar_expression_improves(*improved, *replacement)))
                     {
                         replacement = std::move(improved);
+                        receipt = std::move(improved_receipt);
                         legacy_fallback = false;
                     }
                 }
@@ -874,20 +898,11 @@ class CallerSimplifier
                     (parent_target == parent_target_ && parent_target->type == saved_target->type &&
                      parent_target->compare(*saved_target) == 0));
         };
-        const bool eligible =
-            replacement && analysis.eligible_for_commit(legacy_fallback, unchanged);
+        const bool eligible = replacement && receipt &&
+                              analysis.eligible_for_commit(*receipt, legacy_fallback, unchanged);
         const auto &statistics = analysis.statistics();
         auto &totals = budget_.owner().totals;
-        totals.candidates += statistics.candidates;
-        totals.verified += statistics.verified;
-        totals.disproved += statistics.disproved;
-        totals.unknown += statistics.unknown;
-        totals.exhausted += statistics.exhausted;
-        totals.rejected_mutations += statistics.rejected_mutations;
-        totals.deadline_overshoot_ns =
-            std::max(totals.deadline_overshoot_ns, statistics.deadline_overshoot_ns);
-        if (statistics.cancel_stage != RejectReason::None)
-            totals.cancel_stage = statistics.cancel_stage;
+        accumulate_statistics(totals, statistics);
         if (!eligible)
         {
             return false;
@@ -896,6 +911,8 @@ class CallerSimplifier
         ++budget_.owner().snapshot.mutation_epoch;
         ++changes_;
         ++totals.applied;
+        if (receipt->from_cobra())
+            ++totals.cobra.applied;
         return true;
     }
 
@@ -1048,6 +1065,7 @@ class CallerSimplifier
             }
             node.cleanup();
             node.replace_by(replacement);
+            ++budget_.owner().snapshot.mutation_epoch;
             ++changes_;
             return statement(node, context);
         }

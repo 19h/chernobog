@@ -735,24 +735,6 @@ class MicrocodeAdapter
     }
 };
 
-void accumulate_statistics(Statistics &total, const Statistics &attempt)
-{
-    total.candidates += attempt.candidates;
-    total.verified += attempt.verified;
-    total.disproved += attempt.disproved;
-    total.unsupported += attempt.unsupported;
-    total.unknown += attempt.unknown;
-    total.invariant_candidates += attempt.invariant_candidates;
-    total.invariants += attempt.invariants;
-    total.invariants_rejected += attempt.invariants_rejected;
-    total.exhausted += attempt.exhausted;
-    total.rejected_mutations += attempt.rejected_mutations;
-    total.deadline_overshoot_ns =
-        std::max(total.deadline_overshoot_ns, attempt.deadline_overshoot_ns);
-    if (attempt.cancel_stage != RejectReason::None)
-        total.cancel_stage = attempt.cancel_stage;
-}
-
 class BudgetCharge
 {
   public:
@@ -762,6 +744,13 @@ class BudgetCharge
     }
 
     ~BudgetCharge() { budget_.spent_ns += elapsed_ns(); }
+
+    std::chrono::steady_clock::time_point deadline() const
+    {
+        const uint64_t limit = uint64_t(budget_.limit_ms) * 1000000;
+        return started_ +
+               std::chrono::nanoseconds(limit > budget_.spent_ns ? limit - budget_.spent_ns : 0);
+    }
 
     uint64_t elapsed_ns() const
     {
@@ -791,6 +780,7 @@ bool apply_verified_proposal(MicrocodeAdapter &adapter, Analysis &analysis,
         return false;
     const minsn_t &source = *saved->second;
     minsn_t replacement(source);
+    const auto emission_started = std::chrono::steady_clock::now();
     const mop_t value = adapter.emit_operand(proposal.replacement, original->ea);
 
     if (value.t == mop_d && value.d != nullptr)
@@ -815,10 +805,14 @@ bool apply_verified_proposal(MicrocodeAdapter &adapter, Analysis &analysis,
     // Emission is an independent boundary: verify the actual SDK operands,
     // not the synthesizer's expression or its textual representation.
     const Term emitted = adapter.translate_instruction(&replacement);
-    if (analysis.verify(proposal.block, proposal.statement, emitted) != Verdict::Verified)
-    {
+    analysis.record_emission(
+        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  std::chrono::steady_clock::now() - emission_started)
+                                  .count()));
+    const auto receipt =
+        proposal.proof ? analysis.prove_emission(*proposal.proof, emitted) : nullptr;
+    if (!receipt)
         return false;
-    }
 
     const auto same_source = [&]
     {
@@ -836,7 +830,7 @@ bool apply_verified_proposal(MicrocodeAdapter &adapter, Analysis &analysis,
         analysis.reject_mutation(RejectReason::EmittedDestinationOrFrameMismatch);
         return false;
     }
-    if (!analysis.eligible_for_commit(false, same_source))
+    if (!analysis.eligible_for_commit(*receipt, false, same_source))
         return false;
     original->swap(replacement);
     ++budget.snapshot.mutation_epoch;
@@ -871,7 +865,9 @@ int simplify_once(mbl_array_t *mba, FunctionBudget &budget, mblock_t *local_bloc
         }
 
         Options options = budget.profile == Profile::Deep ? Options::deep() : Options{};
+        options.absolute_deadline = charge.deadline();
         options.snapshot = budget.snapshot;
+        options.backend = budget.backend;
         options.budget_ms = budget.limit_ms - static_cast<unsigned>(used_ms);
         options.cancelled = [] { return user_cancelled(); };
 
@@ -884,6 +880,8 @@ int simplify_once(mbl_array_t *mba, FunctionBudget &budget, mblock_t *local_bloc
             {
                 applied = true;
                 ++budget.totals.applied;
+                if (proposal.proof && proposal.proof->from_cobra())
+                    ++budget.totals.cobra.applied;
                 break;
             }
         }

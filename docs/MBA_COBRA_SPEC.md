@@ -1,7 +1,9 @@
 # CoBRA MBA simplification specification
 
-Status: proposed implementation. This specification does not describe an
-implemented backend or measured performance improvement.
+Status: experimental integration. The selectable backend, cooperative budgets,
+proof receipts, and patched dependency checks are implemented. Legacy remains
+the default until the native SDK, installed-runtime, and promotion gates below
+are satisfied. Runtime performance improvement remains unmeasured.
 
 Use CoBRA to generate simplified MBA expressions, then use the existing Z3
 infrastructure to prove the candidate and the actual emitted replacement.
@@ -79,12 +81,9 @@ both top-level synthesis and nested reconstruction. Updating only
 
 Keep `mba_smt_semantics.cpp`, `rule_verifier.*`, and the microcode/ctree adapters
 as proof and effect authorities, with the strict acceptance and structural frame
-checks specified below. Reusing them unmodified is insufficient: the current
-solver wrapper polls before queries, successful mismatch proofs can return
-`Verified` without a post-query budget check, and emitted-value proofs do not
-independently compare destination identity. These checks are required integration
-work, not descriptions of implemented behavior. CoBRA cannot issue a mutation
-receipt.
+checks specified below. The integration adds post-query acceptance, destination
+checks, and snapshot-bound proof receipts to the baseline infrastructure. CoBRA
+cannot issue a mutation receipt.
 SDK callbacks, live operands, and live database access never enter CoBRA.
 
 ```text
@@ -250,6 +249,7 @@ CoBRA polynomial/semilinear passes or Z3 proof complexity.
 | Raw interned leaves per invocation | At most 8 | At most 12 |
 | Materialized input tree nodes | At most 512 | At most 512 |
 | Expression depth | At most 64 | At most 64 |
+| Instrumented live scratch payload | 67,108,864 B (64 MiB) | 268,435,456 B (256 MiB) |
 | Reconstructed output tree nodes | At most 512 | At most 512 |
 
 These are initial admission policies, not throughput predictions. Tighter
@@ -332,7 +332,9 @@ The preflight rule applies to CoBRA generation, not catalog or retained speciali
 reductions. Check cancellation and remaining budget after every stage.
 
 Do not claim hard preemption, a fixed cancellation latency, or a process-wide
-memory bound. Uninterrupted allocations, library operations, SDK work, cleanup,
+memory bound. The scratch ledger accounts instrumented core containers and AST
+payloads; allocator overhead and unrelated SDK/Z3/process allocations remain
+outside it. Report process peak resident bytes separately. Uninterrupted allocations, library operations, SDK work, cleanup,
 and scheduling can overshoot. Measure this overshoot explicitly. Detached work
 that continues after a timeout is excluded from this design.
 
