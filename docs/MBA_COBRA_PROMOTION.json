@@ -1,0 +1,2555 @@
+{
+  "schema_version": 1,
+  "scope": "pre-default native qualification; subsequent source changes require their own CI evidence",
+  "status": "passed",
+  "revision": "0e83dbb9a05dc13e252ace852f618fc6d91a19fe",
+  "source_fingerprint": "582813532884",
+  "vendor_tree": "b3692e6f746668eab4af27e97399b10ea434e18f",
+  "positive_manifest_sha256": "b85a70cd5519666846822eee00dc3faa07ba660147784f1d3b471d2127bcd973",
+  "legacy_manifest_sha256": "2ab2ac1fe2fa5d98158901b4e47428a4a7032301154ebb091efdfbf419db31b0",
+  "build_url": "https://github.com/19h/chernobog/actions/runs/39435391527",
+  "acceptance_url": "https://github.com/19h/chernobog/actions/runs/39439056116",
+  "aggregate_artifact": "cobra-promotion-result",
+  "positive_passes": 504,
+  "negative_rejections": 186,
+  "legacy_fallback_controls": 6,
+  "targets": [
+    {
+      "target": "linux-arm64",
+      "ida_version": "9.4",
+      "native_report_sha256": "de9b70a0e64f8b9c355d452a57d66c57e5c21839561356a8ea1f1e0b97b33cec",
+      "sdk_report_sha256": "f3e5d131be895034132b0e16d761df45cbd8128b3d57442bba0a1b154b633ff2",
+      "execution_groups": 10,
+      "artifact": "cobra-native-linux-arm64"
+    },
+    {
+      "target": "linux-x86_64",
+      "ida_version": "9.4",
+      "native_report_sha256": "b29b279d0ba9c471a11ae11423cc4e767c466e37de0fa9da88886196160be891",
+      "sdk_report_sha256": "b2a0967f44208a85949a1941eba43af0d490c23269d9d2cd6453ca5d1d6dc9ab",
+      "execution_groups": 10,
+      "artifact": "cobra-native-linux-x86_64"
+    },
+    {
+      "target": "macos-arm64",
+      "ida_version": "9.4",
+      "native_report_sha256": "9b9cee3f4e817d6bd22d5ba7fe81fa5f2750af3ef54a3c7db89e97cc819f1cd9",
+      "sdk_report_sha256": "3d7eef2d7417f1b1013af4f48ff094a241b48712723da55d7f0f912f26a1dc03",
+      "execution_groups": 10,
+      "artifact": "cobra-native-macos-arm64"
+    },
+    {
+      "target": "macos-x86_64",
+      "ida_version": "9.4",
+      "native_report_sha256": "9b1505be4008ae6510ac9274ff31cf815c3fb277eba3c08d8d2c56f06f90672e",
+      "sdk_report_sha256": "38a1562a1b999fb9d79c25d7871957fe4e63555e7f2177ab94bb56520d8b6305",
+      "execution_groups": 10,
+      "artifact": "cobra-native-macos-x86_64"
+    },
+    {
+      "target": "windows-arm64",
+      "ida_version": "9.4",
+      "native_report_sha256": "c0dc6cbe72791790ee7c1f114148bbee62d3bcca9b151ab10b043cb65ace50be",
+      "sdk_report_sha256": "96c447959de4837f8bbae4cec74fe25303e0720c34b1615e9b6d4158019c94d8",
+      "execution_groups": 10,
+      "artifact": "cobra-native-windows-arm64"
+    },
+    {
+      "target": "windows-x86_64",
+      "ida_version": "9.4",
+      "native_report_sha256": "c3dd97d3d4e495d3fc51efd78279a708d1e21694cc6bb890fb2ef304000c873b",
+      "sdk_report_sha256": "ebd0337dfa891f7c1e7624b316bd7cadb21a7da276445b26b86d5924882e3243",
+      "execution_groups": 10,
+      "artifact": "cobra-native-windows-x86_64"
+    }
+  ],
+  "metrics_scope": "nearest-rank p50/p95 timings in ns, process peak RSS in B, and separate injected-fault overshoot are retained in the aggregate artifact",
+  "phase_distributions": [
+    {
+      "target": "linux-arm64",
+      "backend": "legacy",
+      "profile": "normal",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 58220,
+          "p95": 376891,
+          "max": 376891
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 50913035,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 254214144
+    },
+    {
+      "target": "linux-arm64",
+      "backend": "legacy",
+      "profile": "deep",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 67777,
+          "p95": 407927,
+          "max": 407927
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 22665714,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 360202240
+    },
+    {
+      "target": "linux-arm64",
+      "backend": "legacy",
+      "profile": "restored",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 55322,
+          "p95": 167781,
+          "max": 167781
+        },
+        "emitted_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 20622759,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 254214144
+    },
+    {
+      "target": "linux-arm64",
+      "backend": "cobra",
+      "profile": "normal",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 51257,
+          "p95": 281539,
+          "max": 281539
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 25027995,
+          "p95": 669552435,
+          "max": 669552435
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 29240,
+          "p95": 185449,
+          "max": 185449
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 11680,
+          "p95": 77305,
+          "max": 77305
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 25111837,
+          "p95": 670096728,
+          "max": 670096728
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 2706846,
+          "p95": 432681415,
+          "max": 432681415
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 39856,
+          "p95": 306618,
+          "max": 306618
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 415000,
+          "p95": 923399,
+          "max": 923399
+        }
+      },
+      "applied": 11,
+      "proved": 11,
+      "max_deadline_overshoot_ns": 34010151,
+      "max_candidate_overshoot_ns": 1800117,
+      "peak_process_rss_bytes": 283996160
+    },
+    {
+      "target": "linux-arm64",
+      "backend": "cobra",
+      "profile": "deep",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 86050,
+          "p95": 245878,
+          "max": 245878
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 38789175,
+          "p95": 3253173634,
+          "max": 3253173634
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 55992,
+          "p95": 187009,
+          "max": 187009
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 13856,
+          "p95": 77290,
+          "max": 77290
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 38963817,
+          "p95": 3253406051,
+          "max": 3253406051
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 2728855,
+          "p95": 6954836167,
+          "max": 6954836167
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 41298,
+          "p95": 293731,
+          "max": 293731
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 415788,
+          "p95": 946759,
+          "max": 946759
+        }
+      },
+      "applied": 11,
+      "proved": 11,
+      "max_deadline_overshoot_ns": 185724915,
+      "max_candidate_overshoot_ns": 1803526,
+      "peak_process_rss_bytes": 749813760
+    },
+    {
+      "target": "linux-arm64",
+      "backend": "cobra",
+      "profile": "restored",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 7,
+          "min": 8064,
+          "p50": 48016,
+          "p95": 295296,
+          "max": 295296
+        },
+        "invocation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 64316573,
+          "p95": 670014529,
+          "max": 670014529
+        },
+        "reconstruction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 47522,
+          "p95": 220096,
+          "max": 220096
+        },
+        "cleanup_ns": {
+          "count": 7,
+          "min": 272,
+          "p50": 11784,
+          "p95": 86171,
+          "max": 86171
+        },
+        "generation_ns": {
+          "count": 7,
+          "min": 10200,
+          "p50": 64423895,
+          "p95": 670616092,
+          "max": 670616092
+        },
+        "candidate_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 1670211,
+          "p95": 27431770,
+          "max": 27431770
+        },
+        "emission_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 44411,
+          "p95": 304676,
+          "max": 304676
+        },
+        "emitted_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 412832,
+          "p95": 854826,
+          "max": 854826
+        }
+      },
+      "applied": 6,
+      "proved": 6,
+      "max_deadline_overshoot_ns": 19035814,
+      "max_candidate_overshoot_ns": 672319,
+      "peak_process_rss_bytes": 283996160
+    },
+    {
+      "target": "linux-x86_64",
+      "backend": "legacy",
+      "profile": "normal",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 11527,
+          "p50": 47189,
+          "p95": 356889,
+          "max": 356889
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 63834270,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 319930368
+    },
+    {
+      "target": "linux-x86_64",
+      "backend": "legacy",
+      "profile": "deep",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 11617,
+          "p50": 108731,
+          "p95": 421653,
+          "max": 421653
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 116388327,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 769249280
+    },
+    {
+      "target": "linux-x86_64",
+      "backend": "legacy",
+      "profile": "restored",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 7,
+          "min": 13681,
+          "p50": 36584,
+          "p95": 192083,
+          "max": 192083
+        },
+        "emitted_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 17879439,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 319930368
+    },
+    {
+      "target": "linux-x86_64",
+      "backend": "cobra",
+      "profile": "normal",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 18918,
+          "p95": 239709,
+          "max": 239709
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 19962426,
+          "p95": 677321579,
+          "max": 677321579
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 14862,
+          "p95": 208038,
+          "max": 208038
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 3245,
+          "p95": 56013,
+          "max": 56013
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 19998760,
+          "p95": 677711000,
+          "max": 677711000
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 4844069,
+          "p95": 162204689,
+          "max": 162204689
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 38958,
+          "p95": 304932,
+          "max": 304932
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 420143,
+          "p95": 923579,
+          "max": 923579
+        }
+      },
+      "applied": 10,
+      "proved": 21,
+      "max_deadline_overshoot_ns": 39690460,
+      "max_candidate_overshoot_ns": 1234113,
+      "peak_process_rss_bytes": 314925056
+    },
+    {
+      "target": "linux-x86_64",
+      "backend": "cobra",
+      "profile": "deep",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 20050,
+          "p95": 258449,
+          "max": 258449
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 19864402,
+          "p95": 2166994971,
+          "max": 2166994971
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 15033,
+          "p95": 237661,
+          "max": 237661
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 3214,
+          "p95": 74667,
+          "max": 74667
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 19902858,
+          "p95": 2167565748,
+          "max": 2167565748
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 4967022,
+          "p95": 202306633,
+          "max": 202306633
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 54241,
+          "p95": 287384,
+          "max": 287384
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 420932,
+          "p95": 885601,
+          "max": 885601
+        }
+      },
+      "applied": 10,
+      "proved": 22,
+      "max_deadline_overshoot_ns": 39797000,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 384397312
+    },
+    {
+      "target": "linux-x86_64",
+      "backend": "cobra",
+      "profile": "restored",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 18137,
+          "p95": 228680,
+          "max": 228680
+        },
+        "invocation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 19937520,
+          "p95": 676229465,
+          "max": 676229465
+        },
+        "reconstruction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 14231,
+          "p95": 210824,
+          "max": 210824
+        },
+        "cleanup_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 2965,
+          "p95": 55527,
+          "max": 55527
+        },
+        "generation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 19972853,
+          "p95": 676626872,
+          "max": 676626872
+        },
+        "candidate_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 2496630,
+          "p95": 67502832,
+          "max": 67502832
+        },
+        "emission_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 50915,
+          "p95": 270369,
+          "max": 270369
+        },
+        "emitted_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 427542,
+          "p95": 892928,
+          "max": 892928
+        }
+      },
+      "applied": 5,
+      "proved": 16,
+      "max_deadline_overshoot_ns": 30188480,
+      "max_candidate_overshoot_ns": 438640,
+      "peak_process_rss_bytes": 314925056
+    },
+    {
+      "target": "macos-arm64",
+      "backend": "legacy",
+      "profile": "normal",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 9208,
+          "p50": 96374,
+          "p95": 298833,
+          "max": 298833
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 104345458,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 761020416
+    },
+    {
+      "target": "macos-arm64",
+      "backend": "legacy",
+      "profile": "deep",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 9833,
+          "p50": 136333,
+          "p95": 645501,
+          "max": 645501
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 330220667,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 1638924288
+    },
+    {
+      "target": "macos-arm64",
+      "backend": "legacy",
+      "profile": "restored",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 7,
+          "min": 8833,
+          "p50": 22958,
+          "p95": 257125,
+          "max": 257125
+        },
+        "emitted_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 38664583,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 761151488
+    },
+    {
+      "target": "macos-arm64",
+      "backend": "cobra",
+      "profile": "normal",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 53292,
+          "p95": 165833,
+          "max": 165833
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 45162125,
+          "p95": 600902708,
+          "max": 600902708
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 23375,
+          "p95": 138876,
+          "max": 138876
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 9333,
+          "p95": 39292,
+          "max": 39292
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 45299626,
+          "p95": 601175500,
+          "max": 601175500
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 4881749,
+          "p95": 233149793,
+          "max": 233149793
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 68625,
+          "p95": 327584,
+          "max": 327584
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 659458,
+          "p95": 20548125,
+          "max": 20548125
+        }
+      },
+      "applied": 11,
+      "proved": 13,
+      "max_deadline_overshoot_ns": 105733208,
+      "max_candidate_overshoot_ns": 545960,
+      "peak_process_rss_bytes": 532840448
+    },
+    {
+      "target": "macos-arm64",
+      "backend": "cobra",
+      "profile": "deep",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 49459,
+          "p95": 158041,
+          "max": 158041
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 35562373,
+          "p95": 2520931043,
+          "max": 2520931043
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 48001,
+          "p95": 192999,
+          "max": 192999
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 10125,
+          "p95": 48212,
+          "max": 48212
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 35669958,
+          "p95": 2521218291,
+          "max": 2521218291
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 3978497,
+          "p95": 337228544,
+          "max": 337228544
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 67667,
+          "p95": 186418,
+          "max": 186418
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 350417,
+          "p95": 15970207,
+          "max": 15970207
+        }
+      },
+      "applied": 11,
+      "proved": 13,
+      "max_deadline_overshoot_ns": 127998126,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 1055981568
+    },
+    {
+      "target": "macos-arm64",
+      "backend": "cobra",
+      "profile": "restored",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 21750,
+          "p95": 138627,
+          "max": 138627
+        },
+        "invocation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 10848334,
+          "p95": 594457083,
+          "max": 594457083
+        },
+        "reconstruction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 13666,
+          "p95": 121335,
+          "max": 121335
+        },
+        "cleanup_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 3625,
+          "p95": 33294,
+          "max": 33294
+        },
+        "generation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 10861291,
+          "p95": 594717088,
+          "max": 594717088
+        },
+        "candidate_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 1601416,
+          "p95": 31509292,
+          "max": 31509292
+        },
+        "emission_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 20875,
+          "p95": 214042,
+          "max": 214042
+        },
+        "emitted_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 360125,
+          "p95": 801416,
+          "max": 801416
+        }
+      },
+      "applied": 5,
+      "proved": 7,
+      "max_deadline_overshoot_ns": 26507292,
+      "max_candidate_overshoot_ns": 466980,
+      "peak_process_rss_bytes": 532856832
+    },
+    {
+      "target": "macos-x86_64",
+      "backend": "legacy",
+      "profile": "normal",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 103119,
+          "p95": 968800,
+          "max": 968800
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 146403164,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 521916416
+    },
+    {
+      "target": "macos-x86_64",
+      "backend": "legacy",
+      "profile": "deep",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 146951,
+          "p95": 1458111,
+          "max": 1458111
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 47584794,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 958676992
+    },
+    {
+      "target": "macos-x86_64",
+      "backend": "legacy",
+      "profile": "restored",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 48536,
+          "p95": 338196,
+          "max": 338196
+        },
+        "emitted_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 104707799,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 521916416
+    },
+    {
+      "target": "macos-x86_64",
+      "backend": "cobra",
+      "profile": "normal",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 60500,
+          "p95": 963321,
+          "max": 963321
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 56289173,
+          "p95": 727925331,
+          "max": 727925331
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 33347,
+          "p95": 471319,
+          "max": 471319
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 12098,
+          "p95": 159714,
+          "max": 159714
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 56395118,
+          "p95": 729267555,
+          "max": 729267555
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 28270622,
+          "p95": 414739492,
+          "max": 414739492
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 85286,
+          "p95": 566462,
+          "max": 566462
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 1141864,
+          "p95": 6990695,
+          "max": 6990695
+        }
+      },
+      "applied": 12,
+      "proved": 14,
+      "max_deadline_overshoot_ns": 115533365,
+      "max_candidate_overshoot_ns": 2678413,
+      "peak_process_rss_bytes": 458924032
+    },
+    {
+      "target": "macos-x86_64",
+      "backend": "cobra",
+      "profile": "deep",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 68815,
+          "p95": 802730,
+          "max": 802730
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 48911803,
+          "p95": 10579385226,
+          "max": 10579385226
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 42283,
+          "p95": 980267,
+          "max": 980267
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 21730,
+          "p95": 215422,
+          "max": 215422
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 49117304,
+          "p95": 10581157474,
+          "max": 10581157474
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 32250004,
+          "p95": 4255759258,
+          "max": 4255759258
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 173700,
+          "p95": 571768,
+          "max": 571768
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 1112020,
+          "p95": 7599488,
+          "max": 7599488
+        }
+      },
+      "applied": 12,
+      "proved": 14,
+      "max_deadline_overshoot_ns": 1405884142,
+      "max_candidate_overshoot_ns": 2023302,
+      "peak_process_rss_bytes": 950808576
+    },
+    {
+      "target": "macos-x86_64",
+      "backend": "cobra",
+      "profile": "restored",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 68103,
+          "p95": 678493,
+          "max": 678493
+        },
+        "invocation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 145636153,
+          "p95": 817960586,
+          "max": 817960586
+        },
+        "reconstruction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 86989,
+          "p95": 552715,
+          "max": 552715
+        },
+        "cleanup_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 20084,
+          "p95": 164555,
+          "max": 164555
+        },
+        "generation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 145811329,
+          "p95": 819141527,
+          "max": 819141527
+        },
+        "candidate_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 6888087,
+          "p95": 42091483,
+          "max": 42091483
+        },
+        "emission_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 37833,
+          "p95": 813901,
+          "max": 813901
+        },
+        "emitted_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 844501,
+          "p95": 7037528,
+          "max": 7037528
+        }
+      },
+      "applied": 7,
+      "proved": 9,
+      "max_deadline_overshoot_ns": 159272964,
+      "max_candidate_overshoot_ns": 2558758,
+      "peak_process_rss_bytes": 458924032
+    },
+    {
+      "target": "windows-arm64",
+      "backend": "legacy",
+      "profile": "normal",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 16900,
+          "p50": 117300,
+          "p95": 382700,
+          "max": 382700
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 52015300,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 339927040
+    },
+    {
+      "target": "windows-arm64",
+      "backend": "legacy",
+      "profile": "deep",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 17100,
+          "p50": 117000,
+          "p95": 770900,
+          "max": 770900
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 41058500,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 736825344
+    },
+    {
+      "target": "windows-arm64",
+      "backend": "legacy",
+      "profile": "restored",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 7,
+          "min": 16500,
+          "p50": 33700,
+          "p95": 177100,
+          "max": 177100
+        },
+        "emitted_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 43608600,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 339927040
+    },
+    {
+      "target": "windows-arm64",
+      "backend": "cobra",
+      "profile": "normal",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 41500,
+          "p95": 193600,
+          "max": 193600
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 72253700,
+          "p95": 599551500,
+          "max": 599551500
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 27400,
+          "p95": 149100,
+          "max": 149100
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 6700,
+          "p95": 57000,
+          "max": 57000
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 72316400,
+          "p95": 599923100,
+          "max": 599923100
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 4524000,
+          "p95": 345391200,
+          "max": 345391200
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 46800,
+          "p95": 337900,
+          "max": 337900
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 540600,
+          "p95": 1446400,
+          "max": 1446400
+        }
+      },
+      "applied": 10,
+      "proved": 12,
+      "max_deadline_overshoot_ns": 45228100,
+      "max_candidate_overshoot_ns": 1497700,
+      "peak_process_rss_bytes": 528318464
+    },
+    {
+      "target": "windows-arm64",
+      "backend": "cobra",
+      "profile": "deep",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 115500,
+          "p95": 228400,
+          "max": 228400
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 108882700,
+          "p95": 4958813900,
+          "max": 4958813900
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 117700,
+          "p95": 234400,
+          "max": 234400
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 34300,
+          "p95": 59000,
+          "max": 59000
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 109224500,
+          "p95": 4959256600,
+          "max": 4959256600
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 4454200,
+          "p95": 407010300,
+          "max": 407010300
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 12100,
+          "p50": 73400,
+          "p95": 551900,
+          "max": 551900
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 539500,
+          "p95": 2009200,
+          "max": 2009200
+        }
+      },
+      "applied": 11,
+      "proved": 14,
+      "max_deadline_overshoot_ns": 68139900,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 749207552
+    },
+    {
+      "target": "windows-arm64",
+      "backend": "cobra",
+      "profile": "restored",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 72400,
+          "p95": 246100,
+          "max": 246100
+        },
+        "invocation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 214631900,
+          "p95": 600793800,
+          "max": 600793800
+        },
+        "reconstruction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 74200,
+          "p95": 161800,
+          "max": 161800
+        },
+        "cleanup_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 23200,
+          "p95": 54600,
+          "max": 54600
+        },
+        "generation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 214801700,
+          "p95": 601256300,
+          "max": 601256300
+        },
+        "candidate_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 2584200,
+          "p95": 29161400,
+          "max": 29161400
+        },
+        "emission_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 32200,
+          "p95": 250900,
+          "max": 250900
+        },
+        "emitted_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 528700,
+          "p95": 754100,
+          "max": 754100
+        }
+      },
+      "applied": 4,
+      "proved": 6,
+      "max_deadline_overshoot_ns": 58653700,
+      "max_candidate_overshoot_ns": 839050,
+      "peak_process_rss_bytes": 528318464
+    },
+    {
+      "target": "windows-x86_64",
+      "backend": "legacy",
+      "profile": "normal",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 45400,
+          "p95": 349900,
+          "max": 349900
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 30324800,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 521400320
+    },
+    {
+      "target": "windows-x86_64",
+      "backend": "legacy",
+      "profile": "deep",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 116000,
+          "p95": 407500,
+          "max": 407500
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 55150200,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 521400320
+    },
+    {
+      "target": "windows-x86_64",
+      "backend": "legacy",
+      "profile": "restored",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "invocation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "reconstruction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cleanup_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "generation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "candidate_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "emission_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 33800,
+          "p95": 175600,
+          "max": 175600
+        },
+        "emitted_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      },
+      "applied": 0,
+      "proved": 0,
+      "max_deadline_overshoot_ns": 31342300,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 521400320
+    },
+    {
+      "target": "windows-x86_64",
+      "backend": "cobra",
+      "profile": "normal",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 56900,
+          "p95": 222600,
+          "max": 222600
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 15562900,
+          "p95": 637182300,
+          "max": 637182300
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 22600,
+          "p95": 132500,
+          "max": 132500
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 7500,
+          "p95": 48200,
+          "max": 48200
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 15681800,
+          "p95": 637461100,
+          "max": 637461100
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 4494200,
+          "p95": 657221000,
+          "max": 657221000
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 35400,
+          "p95": 265800,
+          "max": 265800
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 551700,
+          "p95": 1175100,
+          "max": 1175100
+        }
+      },
+      "applied": 9,
+      "proved": 11,
+      "max_deadline_overshoot_ns": 32533100,
+      "max_candidate_overshoot_ns": 557400,
+      "peak_process_rss_bytes": 520269824
+    },
+    {
+      "target": "windows-x86_64",
+      "backend": "cobra",
+      "profile": "deep",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 52200,
+          "p95": 203600,
+          "max": 203600
+        },
+        "invocation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 42787100,
+          "p95": 1531142500,
+          "max": 1531142500
+        },
+        "reconstruction_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 53200,
+          "p95": 146100,
+          "max": 146100
+        },
+        "cleanup_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 12700,
+          "p95": 73500,
+          "max": 73500
+        },
+        "generation_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 42905200,
+          "p95": 1531363600,
+          "max": 1531363600
+        },
+        "candidate_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 4357400,
+          "p95": 279655800,
+          "max": 279655800
+        },
+        "emission_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 52300,
+          "p95": 265900,
+          "max": 265900
+        },
+        "emitted_proof_ns": {
+          "count": 13,
+          "min": 0,
+          "p50": 531300,
+          "p95": 1445400,
+          "max": 1445400
+        }
+      },
+      "applied": 10,
+      "proved": 12,
+      "max_deadline_overshoot_ns": 500291700,
+      "max_candidate_overshoot_ns": 0,
+      "peak_process_rss_bytes": 520269824
+    },
+    {
+      "target": "windows-x86_64",
+      "backend": "cobra",
+      "profile": "restored",
+      "timing_unit": "ns",
+      "phases": {
+        "extraction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 67000,
+          "p95": 175300,
+          "max": 175300
+        },
+        "invocation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 72047400,
+          "p95": 638072300,
+          "max": 638072300
+        },
+        "reconstruction_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 30200,
+          "p95": 128700,
+          "max": 128700
+        },
+        "cleanup_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 7100,
+          "p95": 47100,
+          "max": 47100
+        },
+        "generation_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 72151700,
+          "p95": 638354300,
+          "max": 638354300
+        },
+        "candidate_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 2492400,
+          "p95": 97508300,
+          "max": 97508300
+        },
+        "emission_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 35100,
+          "p95": 227800,
+          "max": 227800
+        },
+        "emitted_proof_ns": {
+          "count": 7,
+          "min": 0,
+          "p50": 520800,
+          "p95": 719500,
+          "max": 719500
+        }
+      },
+      "applied": 4,
+      "proved": 6,
+      "max_deadline_overshoot_ns": 17492900,
+      "max_candidate_overshoot_ns": 462500,
+      "peak_process_rss_bytes": 520269824
+    }
+  ],
+  "assumptions_and_probes": "MBA_COBRA_VALIDATION.md",
+  "qualification_limit": "other IDA releases and unmeasured protected binaries remain outside this qualification"
+}

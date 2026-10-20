@@ -1,3 +1,4 @@
+#include "mba_backend_selection.hpp"
 #include "deobf/analysis/mba_smt.hpp"
 #include "deobf/analysis/mba_cobra.hpp"
 #include "deobf/analysis/mba_smt_internal.hpp"
@@ -1162,6 +1163,7 @@ void test_word_proof_cancellation()
 
 int main()
 {
+    failures += mba_test_backend_selection();
     test_scalar_identity_synthesis();
     test_cobra_boolean_selector();
     test_joins_and_memory();

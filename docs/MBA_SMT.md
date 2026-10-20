@@ -5,12 +5,12 @@ also executes typed integer expressions symbolically, searches replacement
 expressions, and checks the emitted microcode against the same CFG snapshot.
 `CHERNOBOG_MBA_SMT=0` (IDC option `mba_smt`) disables the new pass.
 
-The experimental [CoBRA MBA backend](MBA_COBRA_SPEC.md), selected with
-`CHERNOBOG_MBA_BACKEND=cobra`, replaces algebraic candidate generation while
-retaining this pass's Z3 proof gates and contextual analysis. Shared deadline
-checks, candidate/emission receipts, and final frame/snapshot checks protect
-mutation. Legacy remains the default pending native runtime qualification.
-`CHERNOBOG_WITH_COBRA=OFF` builds retain the legacy backend.
+The [CoBRA MBA backend](MBA_COBRA_SPEC.md) supplies the default algebraic
+candidate generator while retaining this pass's Z3 proof gates and contextual
+analysis. Shared deadline checks, candidate/emission receipts, and final
+frame/snapshot checks protect mutation. `CHERNOBOG_MBA_BACKEND=legacy` selects
+the retained generator. `CHERNOBOG_WITH_COBRA=OFF` builds retain the legacy
+backend. Native qualification is recorded in [CoBRA validation](MBA_COBRA_VALIDATION.md).
 
 | Entry point | Additional semantic-analysis budget per decompilation |
 |---|---:|
@@ -227,7 +227,9 @@ division costs eight. A proved constant may also replace a local-variable read.
 These are readability weights, not a processor latency model. The helper's
 standalone body retains its general behavior.
 
-### Legacy fallback and proposed strict acceptance
+<a id="legacy-fallback-and-proposed-strict-acceptance"></a>
+
+### Legacy fallback and strict acceptance
 
 An already compact callee body is itself a replacement candidate. Its emitted
 form is proved before searching for a smaller expression. This verified fallback
@@ -236,7 +238,7 @@ original expression and context remain unchanged throughout the search.
 This is the legacy fallback exception, not permission to apply a newly generated
 or late-proved candidate after expiry. Cancellation still rejects the fallback.
 
-The proposed [CoBRA acceptance contract](MBA_COBRA_SPEC.md#post-proof-and-commit-eligibility)
+The implemented [CoBRA acceptance contract](MBA_COBRA_SPEC.md#post-proof-and-commit-eligibility)
 requires post-UNSAT and final pre-mutation checks. A tagged legacy fallback can
 bypass only deadline expiry if both proofs were accepted before expiry and its
 source/context, snapshot identity, emitted frame, effects, cancellation, and cost
@@ -244,15 +246,15 @@ remain valid. Every CoBRA-originated receipt remains strict, including a saved
 candidate from an earlier search stage. A lifecycle generation alone cannot
 establish that the source expression or its parent target remains unchanged.
 
-Under that proposed contract, complete structural/SDK work before the final
+Under that contract, complete structural/SDK work before the final
 cancellation poll, then sample the clock and check current snapshot identity
 immediately before swapping on the owning IDA thread, without intervening
 callbacks or yielding. Cancellation arriving after the final poll may follow
 the commit. This is a cooperative gate, not atomic cancellation through swap
 completion. Value equality and the final eligibility decision remain separate.
 
-The proposed [site reservation](MBA_COBRA_SPEC.md#deadline-interface-and-site-reservation)
-also differs from the existing microcode/ctree partition. A CoBRA site with less
+The implemented [site reservation](MBA_COBRA_SPEC.md#deadline-interface-and-site-reservation)
+is applied inside the existing microcode/ctree partition. A CoBRA site with less
 than 10 ms remaining is skipped; otherwise candidate work receives at most half
 the site allowance, reserving at least 5 ms of allowance for candidate proof,
 temporary emission, and emitted proof when candidate work returns in time.
@@ -262,8 +264,8 @@ budgets. This floor guarantees neither completed proofs nor hard preemption.
 Current source integration points are `SolverSession::check()` and
 `verify_replacement()` in `src/deobf/analysis/mba_smt_semantics.cpp`, the swap
 paths in `src/deobf/handlers/mba_smt.cpp` and `mba_smt_calls.cpp`, and function
-accounting in `src/deobf/deobf_main.cpp`. Their baseline implementation must be
-extended to satisfy these proposed post-proof, frame, and snapshot checks.
+accounting in `src/deobf/deobf_main.cpp`. These integration points enforce the
+post-proof, frame, and snapshot checks before mutation.
 
 | Caller expression | Proved result |
 |---|---|
@@ -393,8 +395,8 @@ The view probe navigates forward and backward through its function list.
 | A7 | The supplied nested examples use 32-bit wrapping arithmetic and zero-extend their final result to 64 bits. The example reductions depend on this interpretation. | Compile unsigned fixtures, inspect captured return conversions, and compare complete 64-bit results at overflow boundaries; a different width or sign extension in the original binary would invalidate this interpretation. |
 | A8 | The flag-store example uses a 32-bit field and the shown definitions of its two Boolean flags. Its compact displayed form depends on A1, A3, A6 and this interpretation. | Prove the masked identity at every scalar byte width; test all byte inputs, retained-bit overlap, boundary words, observer aliases and volatile destinations; compile captured ARM64 and x86-64 pseudocode. |
 | A9 | Removing a signed cast from a field shift requires a nonnegative operand and a result representable in the promoted signed type. Readable field emission depends on this bound. | Test all flag-byte inputs, negative signed bytes, full-width boundary patterns, and two-bit fields shifted into the sign bit; compile and execute captured normal/deep pseudocode with undefined-behavior sanitization. |
-| A10 | The legacy fallback stays tied to the same source/context and is rejected on cancellation. The proposed CoBRA integration preserves only its deadline exception. | Exhaust search after both fallback proofs complete, then independently cancel or change its source/frame; only the unchanged, uncancelled legacy fallback may commit after expiry. |
-| A11 | The proposed final eligibility check and swap run serially on the owning IDA thread. Cooperative commit semantics depend on this ownership. | Inject reentrant and same-generation edits before the check, then cancellation on each side of the final poll; reject stale receipts without claiming atomic cancellation. |
+| A10 | The legacy fallback stays tied to the same source/context and is rejected on cancellation. The CoBRA integration preserves only its deadline exception. | Exhaust search after both fallback proofs complete, then independently cancel or change its source/frame; only the unchanged, uncancelled legacy fallback may commit after expiry. |
+| A11 | The final eligibility check and swap run serially on the owning IDA thread. Cooperative commit semantics depend on this ownership. | Inject reentrant and same-generation edits before the check, then cancellation on each side of the final poll; reject stale receipts without claiming atomic cancellation. |
 
 Bounded findings: **high**, incomplete effects or predecessors can manufacture
 proofs and must invalidate facts; **medium**, nonlinear/array queries may exhaust
@@ -409,14 +411,16 @@ existing budget and never bypasses proof admission.
 obscure algebraic MBA identities; presentation converts multiplication only
 inside recognized field updates, and the nested-MBA regression checks both
 profiles.
-For the proposed CoBRA integration, **high**, the existing phase partition does
-not reserve candidate-versus-proof time and a successful RHS proof does not
-independently establish destination identity. The explicit site split and
-[structural frame gate](MBA_COBRA_SPEC.md#structural-emission-invariant) address
-those separate boundaries. **Medium**, native compatibility and useful corpus
-coverage remain unknown; the
+For the CoBRA integration, **high**, phase partitioning alone does not reserve
+candidate-versus-proof time, and a successful RHS proof alone does not establish
+destination identity. The explicit site split and
+[structural frame gate](MBA_COBRA_SPEC.md#structural-emission-invariant) enforce
+those separate boundaries. **Medium**, compatibility and reduction coverage
+outside the qualified IDA 9.4 targets and frozen corpus remain unknown. The
 [42 frozen promotion fixtures](MBA_COBRA_SPEC.md#frozen-positive-fixture-set)
-and native matrix are release gates, not current validation results.
+and six-target native matrix passed as recorded in
+[CoBRA validation](MBA_COBRA_VALIDATION.md); other runtime versions require
+separate qualification.
 
 Primary references: [SMT-LIB bitvectors](https://smt-lib.org/theories-FixedSizeBitVectors.shtml),
 [functional arrays](https://smt-lib.org/theories-ArraysEx.shtml), and

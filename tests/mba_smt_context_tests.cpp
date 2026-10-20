@@ -1,3 +1,4 @@
+#include "mba_backend_selection.hpp"
 #include "deobf/analysis/mba_smt_context.hpp"
 
 #include <cstdio>
@@ -178,6 +179,7 @@ void test_compaction_and_emitted_proofs()
 
 int main()
 {
+    failures += mba_test_backend_selection();
     test_symbolic_assignments();
     test_path_conditions();
     test_branch_merges();

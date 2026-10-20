@@ -1,9 +1,11 @@
 # CoBRA validation and promotion
 
-The runtime default remains `legacy`. `CHERNOBOG_MBA_BACKEND=cobra` selects the
-experimental backend when `CHERNOBOG_WITH_COBRA=ON`. An unavailable backend
-resolves to legacy with an explicit diagnostic. A failed or exhausted CoBRA
-invocation never reruns legacy candidate search for that region.
+The runtime default is `cobra` when `CHERNOBOG_WITH_COBRA=ON`.
+`CHERNOBOG_MBA_BACKEND=legacy` selects the retained generator. Builds with
+`CHERNOBOG_WITH_COBRA=OFF` use Legacy; explicitly requesting unavailable CoBRA
+records `cobra_unavailable`. Invalid overrides use the compiled release default
+and record `invalid_backend`. A failed or exhausted CoBRA invocation never
+reruns legacy candidate search for that region.
 
 Production handlers and the licensed SDK bridge share the same microcode
 emitter, frame checks, dual proof receipts, and final mutation functions. SDK receipts retain an immutable copy of the exact
@@ -127,6 +129,19 @@ its nested, caller/context, and mask groups passed local CoBRA captures and
 their corresponding oracles. Loading a Windows input under macOS is distinct
 from executing the Windows plugin in its native runtime.
 
+The default-promotion basis is revision
+`0e83dbb9a05dc13e252ace852f618fc6d91a19fe`, built in
+[the six-target native build](https://github.com/19h/chernobog/actions/runs/39435391527)
+and qualified by [native acceptance](https://github.com/19h/chernobog/actions/runs/39439056116).
+All six IDA 9.4 targets passed the complete paired corpus and compiled oracles,
+504 CoBRA SDK positives, 186 negative mutation rejections, and six Legacy
+fallback controls. The [promotion receipt](MBA_COBRA_PROMOTION.json) preserves
+the exact source, vendor, fixture, and per-target report digests, plus the
+measured phase distributions. Full records are retained in that acceptance
+run's `cobra-native-*` and `cobra-promotion-result` artifacts. These measurements
+do not establish a universal speedup. Any later source revision requires its
+own exact-revision build and acceptance evidence.
+
 | Assumption | Dependent result | Falsification probe |
 |---|---|---|
 | A1: The shared SDK library is the production emission implementation. | SDK proof and frame evidence applies to the handlers. | Link both handlers and the bridge to `chernobog_mba_sdk`; inspect build provenance and artifact identity. |
@@ -150,7 +165,7 @@ from executing the Windows plugin in its native runtime.
 | Complete-region generation can reduce repeated work but expose harder direct proofs. | High | Cache only instantiated fixed word identities proved UNSAT for arbitrary words in the same solver session; leave CoBRA inputs unchanged and retain both replacement proof boundaries. Wide, masked, and polynomial regions keep their established bottom-up schedule. |
 | Legacy's existing search can also spend its Normal allowance reproving unmasked word identities. | High | Reuse the same universally proved identities before its existing proof preparation, without changing candidate generation or its deadline; reject post-UNSAT cancellation for both engines. |
 | A small unmasked outer term can contain expensive scalar bindings. | High | Retain the 500 ms Normal Legacy cap for every unmasked query, including small outer terms; distinguish partial masks independently of outer cost and require the original nested corpus and known-bit caller fixtures together. |
-| An earlier masked call expansion can consume the allowance needed by a later known-bit reduction. | High | Preserve the 250 ms Legacy contextual/masked site cap; reserve the larger cap for substantial unmasked MBAs and require the unchanged `mba_context_known_bits` capture to return zero while retaining its observer call. |
+| An earlier masked call expansion can consume the allowance needed by a later known-bit reduction. | High | Preserve the 250 ms Legacy contextual/masked site cap; retain the larger cap for all unmasked MBAs and require the unchanged `mba_context_known_bits` capture to return zero while retaining its observer call. |
 | Caller constant and callee-expansion proofs precede algebraic search and can miss its word lemmas. | High | Prepare unconditional word proofs before those queries and retain universal identities only in their solver session. Use a 500 ms Normal ctree cap for CoBRA and unmasked Legacy queries, preserving the shorter 250 ms Legacy contextual/masked cap, the 1,000 ms charged function budget, the 250 ms solver-query cap, and both replacement proof boundaries. |
 | A narrow source argument annotation can make IDA 9.4 ARM64 overlap a helper argument with its wide return register. | Medium | Retain the inferred native argument carrier for the designated signed helper; require the original signed-byte result and compiled contextual oracle. |
 | Restored project objects can be newer than checked-out headers and preserve incompatible class layouts. | High | Discard top-level project compilation state after cache restore; retain dependency builds and content-checked compiler caches. |
@@ -167,5 +182,6 @@ The implementation follows the descriptive scope and assumptions of
 `MBA_COBRA_SPEC.md` (QG1-QG2), separates candidate/SDK/installed boundaries (QG3),
 uses explicit ns/B/bit units (QG4), rejects stale/late/malformed emissions (QG5),
 records source, dependency, installer, and artifact identities (QG6), and bounds
-the additional findings above (QG7). Native promotion remains an independent
-execution gate.
+the additional findings above (QG7). Native promotion is an independently
+executed gate; its qualifying receipt and subsequent exact-revision CI evidence
+remain distinct.

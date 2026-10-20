@@ -1,9 +1,12 @@
 # CoBRA MBA simplification specification
 
-Status: experimental integration. The selectable backend, cooperative budgets,
-proof receipts, and patched dependency checks are implemented. Legacy remains
-the default until the native SDK, installed-runtime, and promotion gates below
-are satisfied. Runtime performance improvement remains unmeasured.
+Status: qualified default integration for the six pinned IDA 9.4 native targets.
+The selectable backend, cooperative budgets, proof receipts, patched dependency
+checks, and frozen promotion gates are implemented. CoBRA is the default
+algebraic generator; Legacy remains selectable and supports CoBRA-disabled
+builds. The [qualification receipt](MBA_COBRA_PROMOTION.json) binds the paired
+runtime measurements and gate results to their source revision. Other runtime
+versions and unmeasured binaries require separate qualification.
 
 Use CoBRA to generate simplified MBA expressions, then use the existing Z3
 infrastructure to prove the candidate and the actual emitted replacement.

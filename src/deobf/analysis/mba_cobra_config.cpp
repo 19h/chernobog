@@ -14,7 +14,7 @@ namespace chernobog::mba_smt
 {
 namespace
 {
-constexpr Backend release_default = Backend::Legacy;
+constexpr Backend release_default = Backend::Cobra;
 }
 Backend selected_backend() noexcept
 {

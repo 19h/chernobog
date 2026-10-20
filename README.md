@@ -449,6 +449,7 @@ without applying any deobfuscation.
 | `CHERNOBOG_HIKARI_CFG=2` | Additionally rewrite side-effect-free dispatch tails to reversible direct conditional branches |
 | `CHERNOBOG_MBA_AFFINE=1` | Enable exact-Z3 affine MBA reconstruction (opt-in) |
 | `CHERNOBOG_MBA_SMT=0` | Disable bounded semantic MBA synthesis and caller-context simplification (default-on; IDC alias `mba_smt`) |
+| `CHERNOBOG_MBA_BACKEND=cobra\|legacy` | Select the algebraic generator (default `cobra`); `legacy` retains the previous generator. Builds with `CHERNOBOG_WITH_COBRA=OFF` use Legacy. Both generators retain candidate and emitted-code Z3 proofs; see [CoBRA validation](docs/MBA_COBRA_VALIDATION.md). |
 | `CHERNOBOG_MBA_DEBUG=1` | Log affine decisions to `/tmp/chernobog_mba_debug.log` |
 | `CHERNOBOG_VM=1` | Enable VM-family detection and rewriting (opt-in) |
 | `CHERNOBOG_VM_Z3=1` | Enable additional exact-Z3 VM residual simplification |
