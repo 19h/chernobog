@@ -199,6 +199,16 @@ jobs:
           restore-keys: |
             ccache-v1-${{ runner.os }}-${{ matrix.name }}-${{ matrix.ida_sdk_ref }}-
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Refresh restored project compilation state
+        shell: bash
+        run: |
+          python -m unittest tests.test_ci_refresh_build_tree
+          python tools/ci_refresh_build_tree.py --build-dir build
+
       - name: Set environment variables (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -613,6 +623,13 @@ jobs:
           key: ccache-v1-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'ida-cmake/**', '.gitmodules', 'vendor/cobra.provenance.cmake', 'patches/cobra/**', 'tests/fixtures/mba_cobra_positive_manifest*', 'src/**', '.github/workflows/build.yml') }}
           restore-keys: |
             ccache-v1-linux-windows-clang-${{ env.IDA_SDK_WINDOWS_COMPAT_REF }}-
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Refresh restored project compilation state
+        run: python tools/ci_refresh_build_tree.py --build-dir out/build/windows-clang-release
 
       - name: Set environment variables
         run: |

@@ -109,6 +109,73 @@ mop_t emit_microcode_operand(const Term &term, ea_t ea,
 }
 namespace
 {
+bool same_expression_metadata(const cexpr_t &left, const cexpr_t &right)
+{
+    if (left.op != right.op || left.type != right.type || left.ea != right.ea ||
+        left.exflags != right.exflags || left.label_num != right.label_num)
+        return false;
+    if (left.op == cot_var && (left.v.mba != right.v.mba || left.v.idx != right.v.idx))
+        return false;
+    if (left.op == cot_call)
+    {
+        if (!left.a || !right.a)
+            return left.a == right.a;
+        if (left.a->size() != right.a->size())
+            return false;
+        for (size_t i = 0; i < left.a->size(); ++i)
+            if ((*left.a)[i].formal_type != (*right.a)[i].formal_type ||
+                (*left.a)[i].is_vararg != (*right.a)[i].is_vararg)
+                return false;
+    }
+    return true;
+}
+struct CtreeFrames : ctree_visitor_t
+{
+    std::vector<const cexpr_t *> expressions;
+    std::vector<const cinsn_t *> instructions;
+    size_t limit;
+    size_t depth_limit;
+    explicit CtreeFrames(size_t count)
+        : ctree_visitor_t(CV_PARENTS), limit(count),
+          depth_limit(count == limits::expression_visits ? limits::expression_depth : 512)
+    {
+    }
+    int idaapi visit_expr(cexpr_t *node) override
+    {
+        if (expressions.size() + instructions.size() >= limit || parents.size() > depth_limit)
+            return 1;
+        expressions.push_back(node);
+        return 0;
+    }
+    int idaapi visit_insn(cinsn_t *node) override
+    {
+        if (expressions.size() + instructions.size() >= limit || parents.size() > depth_limit)
+            return 1;
+        instructions.push_back(node);
+        return 0;
+    }
+};
+template <class Tree> bool same_ctree(const Tree &left, const Tree &right, size_t limit)
+{
+    CtreeFrames a(limit), b(limit);
+    if (a.apply_to(const_cast<Tree *>(&left), nullptr) != 0 ||
+        b.apply_to(const_cast<Tree *>(&right), nullptr) != 0 ||
+        a.expressions.size() != b.expressions.size() ||
+        a.instructions.size() != b.instructions.size())
+        return false;
+    if (left.compare(right) != 0)
+        return false;
+    for (size_t i = 0; i < a.expressions.size(); ++i)
+        if (!same_expression_metadata(*a.expressions[i], *b.expressions[i]))
+            return false;
+    for (size_t i = 0; i < a.instructions.size(); ++i)
+    {
+        const auto &x = *a.instructions[i], &y = *b.instructions[i];
+        if (x.op != y.op || x.ea != y.ea || x.label_num != y.label_num)
+            return false;
+    }
+    return true;
+}
 bool pure_instruction(const minsn_t &instruction)
 {
     if (instruction.is_fpinsn() || instruction.is_mbarrier() || instruction.is_persistent() ||
@@ -174,6 +241,14 @@ bool same_eas(const mop_t &left, const mop_t &right, size_t &visits, unsigned de
            same_eas(left.d->d, right.d->d, visits, depth + 1);
 }
 }
+bool same_ctree_expression(const cexpr_t &left, const cexpr_t &right)
+{
+    return same_ctree(left, right, limits::expression_visits);
+}
+bool same_ctree_body(const cinsn_t &left, const cinsn_t &right)
+{
+    return same_ctree(left, right, 131072);
+}
 bool same_microcode_instruction(const minsn_t &left, const minsn_t &right)
 {
     size_t visits = 0;
@@ -206,9 +281,8 @@ bool commit_microcode_replacement(minsn_t &original, const minsn_t &snapshot, mi
         return false;
     const auto unchanged = [&]
     {
-        return current == expected && analysis.snapshot() == expected &&
-               (!domain_unchanged || domain_unchanged()) &&
-               same_microcode_instruction(original, snapshot) &&
+        return (!domain_unchanged || domain_unchanged()) && current == expected &&
+               analysis.snapshot() == expected && same_microcode_instruction(original, snapshot) &&
                same_microcode_instruction(replacement, emitted_snapshot);
     };
     if (!analysis.eligible_for_commit(receipt, false, unchanged))
@@ -227,13 +301,14 @@ bool commit_ctree_replacement(cexpr_t &original, const cexpr_t &snapshot, cexpr_
     const auto &emitted_snapshot = proof.emitted_snapshot();
     if (replacement.type != snapshot.type || replacement.ea != snapshot.ea ||
         replacement.exflags != snapshot.exflags || replacement.label_num != snapshot.label_num ||
-        replacement.compare(emitted_snapshot) != 0 || replacement.type != emitted_snapshot.type ||
-        replacement.ea != emitted_snapshot.ea || replacement.exflags != emitted_snapshot.exflags ||
+        !same_ctree_expression(replacement, emitted_snapshot) ||
+        replacement.type != emitted_snapshot.type || replacement.ea != emitted_snapshot.ea ||
+        replacement.exflags != emitted_snapshot.exflags ||
         replacement.label_num != emitted_snapshot.label_num ||
         replacement.type.get_size() * 8 != receipt.source_bits() ||
         original.type.get_size() * 8 != receipt.source_bits() ||
         (parent_target && (!saved_target || parent_target->type != saved_target->type ||
-                           parent_target->compare(*saved_target) != 0)))
+                           !same_ctree_expression(*parent_target, *saved_target))))
     {
         analysis.reject_mutation(RejectReason::EmittedDestinationOrFrameMismatch);
         return false;
@@ -246,16 +321,17 @@ bool commit_ctree_replacement(cexpr_t &original, const cexpr_t &snapshot, cexpr_
         return false;
     const auto unchanged = [&]
     {
-        return current == expected && analysis.snapshot() == expected &&
-               (!domain_unchanged || domain_unchanged()) && original.type == snapshot.type &&
+        return (!domain_unchanged || domain_unchanged()) && current == expected &&
+               analysis.snapshot() == expected && original.type == snapshot.type &&
                original.ea == snapshot.ea && original.exflags == snapshot.exflags &&
-               original.label_num == snapshot.label_num && original.compare(snapshot) == 0 &&
+               original.label_num == snapshot.label_num &&
+               same_ctree_expression(original, snapshot) &&
                replacement.type == emitted_snapshot.type && replacement.ea == emitted_snapshot.ea &&
                replacement.exflags == emitted_snapshot.exflags &&
                replacement.label_num == emitted_snapshot.label_num &&
-               replacement.compare(emitted_snapshot) == 0 &&
+               same_ctree_expression(replacement, emitted_snapshot) &&
                (!parent_target || (saved_target && parent_target->type == saved_target->type &&
-                                   parent_target->compare(*saved_target) == 0));
+                                   same_ctree_expression(*parent_target, *saved_target)));
     };
     if (!analysis.eligible_for_commit(receipt, legacy_fallback, unchanged))
         return false;

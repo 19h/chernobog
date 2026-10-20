@@ -49,7 +49,7 @@ at fingerprint resolution contained the six 9.4 installers; 9.5 runtime
 qualification remains separate from this matrix.
 
 The aggregate checker requires 504 successful SDK positives (42 fixtures times
-two profiles times six targets), 162 negative mutation rejections, six positive
+two profiles times six targets), 186 negative mutation rejections, six positive
 legacy deadline-fallback controls, and both unsigned corpus profiles for both
 backends on every target. Missing reports, skipped targets, differing source
 fingerprints, altered artifacts, and candidate-only evidence reject promotion.
@@ -62,7 +62,7 @@ candidate elapsed ns. Exceptional unwinding is charged to the active interval;
 publishes no candidate and reports unavailable timing as zero with that flag.
 
 Local validation on the implementation source exercised 33 CTest suites, 84 SDK
-positive rows, 27 negative SDK probes, and the positive legacy fallback control.
+positive rows, 31 negative SDK probes, and the positive legacy fallback control.
 The installed-plugin nested corpus passed with both backends and both profiles;
 each independently compiled unsigned profile checked 607,986 values with UBSan. These
 local results do not qualify the other native release targets.
@@ -79,6 +79,7 @@ local results do not qualify the other native release targets.
 | Same-generation edits can change proof context without changing the source expression. | High | Rebuild the typed microcode domain and compare the ctree body/local domain before the final clock gate. |
 | A newly reconstructed polynomial can retain equal literal factors below its root. | Medium | Apply deterministic scalar factoring, then require the same proofs and strict emitted cost reduction. |
 | Windows checkout newline conversion changes exact-byte patch and source digests. | Medium | Preserve patch bytes and normalize fingerprinted source checkout line endings. |
+| Restored project objects can be newer than checked-out headers and preserve incompatible class layouts. | High | Discard top-level project compilation state after cache restore; retain dependency builds and content-checked compiler caches. |
 | Native installer identity does not establish license or decompiler entitlement. | High | Require actual provisioning, plugin loading, SDK execution, and unsigned oracle completion. |
 
 The implementation follows the descriptive scope and assumptions of

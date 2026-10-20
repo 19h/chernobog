@@ -721,7 +721,7 @@ class CtreeDomainSnapshot
     bool matches(cfunc_t &function) const
     {
         if (!body_ || owner_ != function.mba || locals_.size() != function.get_lvars()->size() ||
-            body_->compare(function.body) != 0)
+            !same_ctree_body(*body_, function.body))
             return false;
         const auto &current = *function.get_lvars();
         for (size_t i = 0; i < locals_.size(); ++i)
@@ -731,7 +731,9 @@ class CtreeDomainSnapshot
                 locals_[i].is_used_byref() != current[i].is_used_byref() ||
                 locals_[i].is_overlapped_var() != current[i].is_overlapped_var() ||
                 locals_[i].is_shared() != current[i].is_shared() ||
-                locals_[i].is_noprop() != current[i].is_noprop())
+                locals_[i].is_noprop() != current[i].is_noprop() ||
+                locals_[i].is_fake_var() != current[i].is_fake_var() ||
+                locals_[i].in_asm() != current[i].in_asm())
                 return false;
         return true;
     }

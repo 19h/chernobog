@@ -40,8 +40,10 @@ class ProvenanceTests(unittest.TestCase):
         self.git("add", "input.txt", "added.txt")
         self.patch = self.root / "patches/cobra/0001.patch"
         self.patch.parent.mkdir(parents=True)
-        self.patch.write_text(
-            self.git("diff", "--no-ext-diff", "--no-textconv", "--cached", "--binary")
+        self.patch.write_bytes(
+            self.git("diff", "--no-ext-diff", "--no-textconv", "--cached", "--binary").encode(
+                "utf-8"
+            )
         )
         self.git("commit", "-qm", "patch")
         self.tree = self.git("rev-parse", "HEAD^{tree}").strip()
@@ -94,7 +96,7 @@ class ProvenanceTests(unittest.TestCase):
 
     def test_different_replayed_contents_rejected_even_with_matching_digest(self):
         raw = self.patch.read_text().replace("+patched", "+forged")
-        self.patch.write_text(raw)
+        self.patch.write_bytes(raw.encode("utf-8"))
         with self.assertRaises(RuntimeError):
             self.verify(digest=hashlib.sha256(self.patch.read_bytes()).hexdigest())
 

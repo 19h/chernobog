@@ -150,7 +150,7 @@ void number(cexpr_t &node, uint64_t value, const tinfo_t &type)
 int ctree_faults(qstring &output)
 {
     int failures = 0;
-    for (int fault = 0; fault < 9; ++fault)
+    for (int fault = 0; fault < 12; ++fault)
     {
         auto time = std::chrono::steady_clock::time_point{};
         bool cancelled = false;
@@ -179,6 +179,15 @@ int ctree_faults(qstring &output)
         target.obj_ea = 0x2000;
         target.type = type;
         const cexpr_t saved_target(target);
+        if (fault == 10 || fault == 11)
+        {
+            auto *literal = new cexpr_t(replacement);
+            replacement.cleanup();
+            replacement.op = cot_cast;
+            replacement.x = literal;
+            replacement.type = type;
+            replacement.ea = 0x1000;
+        }
         Program program;
         program.widths = {8};
         program.blocks.resize(1);
@@ -213,7 +222,9 @@ int ctree_faults(qstring &output)
                                        analysis, *candidate, replacement,
                                        [](const cexpr_t &temporary)
                                        {
-                                           return constant(temporary.numval(),
+                                           const auto &literal =
+                                               temporary.op == cot_cast ? *temporary.x : temporary;
+                                           return constant(literal.numval(),
                                                            unsigned(temporary.type.get_size() * 8));
                                        })
                                  : nullptr;
@@ -221,6 +232,10 @@ int ctree_faults(qstring &output)
         bool applied = false;
         if (receipt)
         {
+            if (fault == 10)
+                replacement.x->type = get_int_type_by_width_and_sign(2, type_unsigned);
+            if (fault == 11)
+                ++replacement.x->ea;
             if (fault == 8)
                 replacement.n->assign(2, 1, type_unsigned);
             if (fault == 1)
@@ -235,11 +250,17 @@ int ctree_faults(qstring &output)
                 time += std::chrono::milliseconds(150);
             applied =
                 commit_ctree_replacement(original, snapshot, replacement, analysis, *receipt,
-                                         options.snapshot, current, &target, &saved_target, true);
+                                         options.snapshot, current, &target, &saved_target, true,
+                                         [&]
+                                         {
+                                             if (fault == 9)
+                                                 ++current.mutation_epoch;
+                                             return true;
+                                         });
         }
         const bool expected = fault == 0;
         bool passed = applied == expected && (applied || original.compare(snapshot) == 0);
-        if (fault == 2 || fault == 3)
+        if (fault == 2 || fault == 3 || fault == 10 || fault == 11)
             passed = passed && analysis.statistics().cancel_stage ==
                                    RejectReason::EmittedDestinationOrFrameMismatch;
         if (fault == 6 || fault == 7)
@@ -261,7 +282,7 @@ int faults(qstring &output)
     int failures = 0;
     bool first = true;
     output = "[";
-    for (int fault = 0; fault < 19; ++fault)
+    for (int fault = 0; fault < 20; ++fault)
     {
         const auto fixture = fixtures::make()[fault == 14 ? 9 : 0];
         auto time = std::chrono::steady_clock::time_point{};
@@ -377,7 +398,12 @@ int faults(qstring &output)
                     current_domain.blocks[0].statements[0].value = constant(0, 8);
                 applied = commit_microcode_replacement(
                     original, snapshot, replacement, analysis, *receipt, options.snapshot, current,
-                    [&] { return same_program(fixture.program, current_domain); });
+                    [&]
+                    {
+                        if (fault == 19)
+                            ++current.mutation_epoch;
+                        return same_program(fixture.program, current_domain);
+                    });
             }
             rejected =
                 !applied && same_microcode_instruction(original, before ? *before : snapshot);

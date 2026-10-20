@@ -116,11 +116,11 @@ def verify(directory):
                 micro = [r for r in rows if r.get("route", "microcode") == "microcode"]
                 ctree = [r for r in rows if r.get("route") == "ctree"]
                 require(
-                    {r["fault"] for r in micro} == set(range(19)) and len(micro) == 19,
+                    {r["fault"] for r in micro} == set(range(20)) and len(micro) == 20,
                     f"Missing microcode faults: {target}",
                 )
                 require(
-                    {r["fault"] for r in ctree} == set(range(9)) and len(ctree) == 9,
+                    {r["fault"] for r in ctree} == set(range(12)) and len(ctree) == 12,
                     f"Missing ctree faults: {target}",
                 )
                 for row in rows:
@@ -243,7 +243,7 @@ def verify(directory):
         len(revisions) == len(sources) == len(trees) == 1, "Cross-target source provenance differs"
     )
     require(
-        positives == 504 and negatives == 162 and controls == 6,
+        positives == 504 and negatives == 186 and controls == 6,
         "Complete promotion cardinality failed",
     )
     return {
