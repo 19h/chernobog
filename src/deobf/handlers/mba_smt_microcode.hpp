@@ -442,8 +442,16 @@ class MicrocodeAdapter
                 memory_instruction && ins->iprops == 0 && !ins->is_fpinsn() &&
                 !ins->is_mbarrier() && !ins->is_persistent() && !ins->is_assert() &&
                 ins->l.oprops == 0 && ins->r.oprops == 0 && ins->d.oprops == 0;
-            const bool supported =
-                memory_instruction ? ordinary_memory : has_supported_properties(ins);
+            // A direct, propagatable DONT_COMB move still copies its value.
+            // Model that copy without making it a replacement site.
+            const bool ordinary_copy =
+                ins->opcode == m_mov && ins->r.t == mop_z && !ins->is_fpinsn() &&
+                !ins->is_mbarrier() && !ins->is_persistent() && !ins->is_assert() &&
+                ins->is_propagatable() && ins->l.oprops == 0 && ins->d.oprops == 0 &&
+                (ins->l.t == mop_r || ins->l.t == mop_n || ins->l.t == mop_S || ins->l.t == mop_l);
+            const bool supported = memory_instruction
+                                       ? ordinary_memory
+                                       : has_supported_properties(ins) || ordinary_copy;
             if (!supported)
             {
                 throw std::invalid_argument("unsupported instruction effects");
@@ -473,7 +481,14 @@ class MicrocodeAdapter
             }
             else
             {
-                value = translate_instruction(ins);
+                if (ordinary_copy && !has_supported_properties(ins))
+                {
+                    minsn_t modeled(*ins);
+                    modeled.iprops &= ~IPROP_DONT_COMB;
+                    value = translate_instruction(&modeled);
+                }
+                else
+                    value = translate_instruction(ins);
             }
 
             if (ins->d.t == mop_r && ins->d.r >= 8 && (ins->d.valnum == 0 || sequential_locations))
@@ -482,7 +497,8 @@ class MicrocodeAdapter
                 auto statement = Statement::assign(register_index, value);
                 statement.offset = bit_offset;
 
-                const bool pure_candidate = ins->opcode != m_ldx && !has_observable_read(ins->l) &&
+                const bool pure_candidate = has_supported_properties(ins) && ins->opcode != m_ldx &&
+                                            !has_observable_read(ins->l) &&
                                             !has_observable_read(ins->r);
                 const bool has_computation = ins->opcode != m_mov || ins->l.t == mop_d;
                 if (pure_candidate && has_computation)

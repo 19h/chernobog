@@ -131,6 +131,7 @@ from executing the Windows plugin in its native runtime.
 | Removing an empty statement changes the domain after a proved replacement. | Medium | Advance the mutation epoch and refresh the domain snapshot after owned structural cleanup. |
 | An unlowerable first proposal can hide later reductions and discard inference statistics. | High | Reject that site through the adapter admission predicate, continue in the same immutable analysis, and retain accumulated statistics; exercise both backends. |
 | x64 local-stage return carriers can be wider than the declared result, while narrowed calls-stage expressions carry value-number annotations. | High | Prove constants over a sequential CFG at the calls stage, without using value-number equalities or algebraic generation; preserve full source/frame checks and both value proofs. |
+| GCC loop-counter copies can carry `DONT_COMB` and split metadata without changing their copy semantics. | High | Model only direct propagatable ordinary copies, preserve the original instruction and flags, exclude protected copies from replacement, and continue rejecting `DONT_PROP`, assertions, persistence, floating-point instructions, and memory barriers. |
 | Native installer identity does not establish license or decompiler entitlement. | High | Require actual provisioning, plugin loading, SDK execution, and unsigned oracle completion. |
 
 The implementation follows the descriptive scope and assumptions of

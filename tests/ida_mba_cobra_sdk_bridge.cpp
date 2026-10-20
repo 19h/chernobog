@@ -296,7 +296,10 @@ int sequential_projection_checks()
     write.opcode = m_mov;
     write.l.make_number(7, 1);
     write.d = numbered;
+    write.iprops = IPROP_DONT_COMB;
+    const minsn_t protected_copy(write);
     adapter.translate_statement(&write, 0, block);
+    require(same_microcode_instruction(write, protected_copy) && adapter.originals.empty());
     block.statements.push_back(Statement::assign(
         2, expression(Op::Sub, adapter.translate_operand(numbered), variable(1, 8))));
     Analysis physical(adapter.program);
@@ -315,6 +318,17 @@ int sequential_projection_checks()
         rejected = true;
     }
     require(rejected);
+
+    for (unsigned effect :
+         {IPROP_MBARRIER, IPROP_PERSIST, IPROP_ASSERT, IPROP_FPINSN, IPROP_DONT_PROP})
+    {
+        minsn_t barred(protected_copy);
+        barred.iprops |= effect;
+        Block rejected_copy;
+        adapter.translate_statement(&barred, 0, rejected_copy);
+        require(rejected_copy.statements.size() == 1 &&
+                rejected_copy.statements.front().kind == Statement::Kind::Havoc);
+    }
 
     Block flags;
     minsn_t undefined(0x1000);
