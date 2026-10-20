@@ -16,6 +16,14 @@ def require(value, message):
         raise ValueError(message)
 
 
+def embedded_revision_matches(embedded, full):
+    return (
+        isinstance(embedded, str)
+        and re.fullmatch(r"[0-9a-f]{12,40}", embedded) is not None
+        and full.startswith(embedded)
+    )
+
+
 def distribution(values):
     ordered = sorted(values)
     return {
@@ -150,7 +158,7 @@ def verify(directory):
         )
         for (backend, profile), report in profiles.items():
             require(
-                report["revision"] == native["revision"]
+                embedded_revision_matches(report["revision"], native["revision"])
                 and report["manifest_sha256"] == manifest_hash
                 and report["boundary"] == "sdk_emitted"
                 and report["vendor_tree"] == tree

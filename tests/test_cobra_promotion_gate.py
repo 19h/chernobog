@@ -117,7 +117,7 @@ class PromotionGateTests(unittest.TestCase):
                     dict(
                         backend=backend,
                         profile=profile,
-                        revision=self.revision,
+                        revision=self.revision[:12],
                         manifest_sha256=hashlib.sha256(positive_path.read_bytes()).hexdigest(),
                         boundary="sdk_emitted",
                         vendor_tree=tree,
@@ -259,6 +259,19 @@ class PromotionGateTests(unittest.TestCase):
 
     def test_sdk_only_probe_cannot_qualify_promotion(self):
         self.mutate("native.json", lambda d: d.update(collection_mode="sdk_only"))
+
+    def test_wrong_embedded_revision(self):
+        self.mutate("sdk.json", lambda d: d["reports"][0].update(revision="0" * 12))
+
+    def test_too_short_embedded_revision_rejects(self):
+        self.mutate("sdk.json", lambda d: d["reports"][0].update(revision=self.revision[:1]))
+
+    def test_full_embedded_revision_also_matches(self):
+        path = self.directory / "linux-x86_64/sdk.json"
+        value = json.loads(path.read_text())
+        value["reports"][0]["revision"] = self.revision
+        self.write(path, value)
+        self.assertEqual(GATE.verify(self.directory)["positive_passes"], 504)
 
 
 if __name__ == "__main__":

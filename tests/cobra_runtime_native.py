@@ -18,6 +18,17 @@ ROOT = Path(__file__).resolve().parents[1]
 WINDOWS_IDA_REGISTRY = r"Software\Hex-Rays\IDA"
 
 
+def embedded_revision_matches(embedded, full):
+    # CMake's public provenance header embeds git --short=12. The complete
+    # source identity remains bound by the trusted bundle and file SHA-256s.
+    return (
+        isinstance(embedded, str)
+        and re.fullmatch(r"[0-9a-f]{12,40}", embedded) is not None
+        and re.fullmatch(r"[0-9a-f]{40}", full) is not None
+        and full.startswith(embedded)
+    )
+
+
 def digest(path):
     h = hashlib.sha256()
     with path.open("rb") as stream:
@@ -405,7 +416,10 @@ def collect(args, entry):
             raise RuntimeError("Paired SDK artifact/runtime mismatch")
     sdk_cobra["reports"] += sdk_legacy["reports"]
     sdk_cobra["errors"] += sdk_legacy["errors"]
-    if any(report["revision"] != revision for report in sdk_cobra["reports"]):
+    if any(
+        not embedded_revision_matches(report["revision"], revision)
+        for report in sdk_cobra["reports"]
+    ):
         raise RuntimeError("Loaded SDK code differs from the artifact source revision")
     (output / "sdk.json").write_text(json.dumps(sdk_cobra, indent=2) + "\n")
     report = {

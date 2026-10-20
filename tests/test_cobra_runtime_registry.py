@@ -45,6 +45,13 @@ class RegistryTests(unittest.TestCase):
             SetValueEx=Mock(),
         )
 
+    def test_embedded_revision_matches_only_a_complete_trusted_identity(self):
+        full = "1234567890abcdef1234567890abcdef12345678"
+        self.assertTrue(RUNTIME.embedded_revision_matches(full[:12], full))
+        self.assertTrue(RUNTIME.embedded_revision_matches(full, full))
+        for embedded in (full[:1], "0" * 12, "z" * 12, None):
+            self.assertFalse(RUNTIME.embedded_revision_matches(embedded, full))
+
     def test_windows_uses_native_versioned_registry_value(self):
         registry = self.registry()
         with patch.dict(sys.modules, {"winreg": registry}):

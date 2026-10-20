@@ -48,7 +48,9 @@ promotion, including when both revisions match. `probe_sdk_only` isolates SDK
 loading and faults; it omits installed-corpus qualification and is also rejected
 by the aggregate.
 `accept` requires the ID of a successful native build of the
-same master revision, with the harness also at that revision. It downloads the separate `cobra-sdk-*` test bundles and
+same master revision, with the harness also at that revision. CMake embeds
+`git --short=12`; that hexadecimal label must match the complete trusted bundle
+commit, which remains bound to the exact checkout and artifact SHA-256 digests. It downloads the separate `cobra-sdk-*` test bundles and
 the release plugin artifacts from that build. The protected `ida-runtime`
 environment provides `HCLI_API_KEY` and `IDA_LICENSE_ID` only during provisioning.
 Installer binaries, credentials, license files, databases, and provisioning
