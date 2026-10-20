@@ -944,6 +944,15 @@ if(BUILD_TESTING)
         target_compile_features(chernobog_mba_cobra_sdk_bridge PRIVATE cxx_std_17)
         set_target_properties(chernobog_mba_cobra_sdk_bridge PROPERTIES PREFIX "")
         add_executable(chernobog_mba_cobra_runtime_fixture tests/mba_cobra_runtime_fixture.c)
+        # Preserve the MBA expressions for installed-plugin acceptance. The independent oracle
+        # compiles captured output separately with UBSan.
+        set_target_properties(chernobog_mba_cobra_runtime_fixture
+                              PROPERTIES INTERPROCEDURAL_OPTIMIZATION FALSE)
+        if(MSVC)
+            target_compile_options(chernobog_mba_cobra_runtime_fixture PRIVATE /Od)
+        else()
+            target_compile_options(chernobog_mba_cobra_runtime_fixture PRIVATE -O0)
+        endif()
 
     endif()
 

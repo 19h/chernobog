@@ -141,6 +141,8 @@ enum class RejectReason
     StaleSnapshot,
     CallbackFailure,
     CobraGenerationExhausted,
+    EmissionAllocationFailure,
+    EmissionFailure,
 };
 
 struct SnapshotToken

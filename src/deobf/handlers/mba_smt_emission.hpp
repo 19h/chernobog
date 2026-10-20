@@ -1,5 +1,6 @@
 #pragma once
 #include "mba_smt.h"
+#include <new>
 namespace chernobog::mba_smt
 {
 // Own the exact SDK object that was independently lifted for Boundary 2.
@@ -22,9 +23,19 @@ template <class SdkExpression> class SdkEmissionProof
             result->receipt_ = analysis.prove_emission(candidate, term);
             return result->receipt_ ? result : nullptr;
         }
-        catch (...)
+        catch (const std::bad_alloc &)
+        {
+            analysis.reject_mutation(RejectReason::EmissionAllocationFailure);
+            return {};
+        }
+        catch (const std::invalid_argument &)
         {
             analysis.reject_mutation(RejectReason::EmittedDestinationOrFrameMismatch);
+            return {};
+        }
+        catch (...)
+        {
+            analysis.reject_mutation(RejectReason::EmissionFailure);
             return {};
         }
     }

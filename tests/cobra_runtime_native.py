@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import stat
 import subprocess
@@ -34,7 +35,27 @@ def execute(command, *, env=None, timeout=1800):
     except subprocess.TimeoutExpired:
         raise RuntimeError("Native runtime command exceeded its time limit") from None
     if result.returncode:
-        raise RuntimeError(f"{Path(command[0]).name} failed with status {result.returncode}")
+        text = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout.decode("utf-8", errors="replace"))
+        details = []
+        for line in text.splitlines():
+            for marker in ("Install failed:", "Could not create the Python environment:", "Error:"):
+                if marker not in line:
+                    continue
+                detail = line[line.index(marker) :]
+                for key in ("IDA_LICENSE_ID", "HCLI_API_KEY"):
+                    value = (env or os.environ).get(key)
+                    if value:
+                        detail = detail.replace(value, "<credential>")
+                detail = re.sub(r"https?://\S+", "<url>", detail)
+                detail = re.sub(r"\S+\.hexlic", "<license-file>", detail)
+                detail = re.sub(r"[\w.+-]+@[\w.-]+", "<email>", detail)
+                detail = detail.replace(str(Path.home()), "<home>").replace(str(ROOT), "<repo>")
+                details.append(detail[:400])
+                break
+        raise RuntimeError(
+            f"{Path(command[0]).name} failed with status {result.returncode}: "
+            + "; ".join(details[-2:])
+        )
 
 
 def provision(args, entry):
