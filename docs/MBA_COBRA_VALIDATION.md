@@ -23,8 +23,9 @@ memory state; unresolved flag-dependent predicates still discard edge facts.
 Caller constant and callee-expansion queries prepare unconditional word proofs
 before algebraic search. Width-specific universal theorems are retained only
 within that solver session, including later candidate and emitted-value queries.
-A Normal CoBRA ctree site and a substantial unmasked Legacy MBA site have a
-500 ms cap; other Legacy contextual and masked sites retain their 250 ms cap.
+Normal CoBRA and unmasked Legacy ctree sites have a 500 ms cap; masked
+Legacy sites retain their 250 ms cap. The outer term cost cannot bound proof
+cost when scalar bindings contain expanded expressions.
 Every site shares the remaining charged 1,000 ms function allowance; individual
 solver queries remain capped at 250 ms.
 Deep sites retain their 1,000 ms cap inside the 30,000 ms function allowance.
@@ -148,10 +149,12 @@ from executing the Windows plugin in its native runtime.
 | A host cancellation callback can reset its signal after an earlier observation. | Medium | Latch positive cancellation for the session and verify that final commit and legacy fallback still reject it. |
 | Complete-region generation can reduce repeated work but expose harder direct proofs. | High | Cache only instantiated fixed word identities proved UNSAT for arbitrary words in the same solver session; leave CoBRA inputs unchanged and retain both replacement proof boundaries. Wide, masked, and polynomial regions keep their established bottom-up schedule. |
 | Legacy's existing search can also spend its Normal allowance reproving unmasked word identities. | High | Reuse the same universally proved identities before its existing proof preparation, without changing candidate generation or its deadline; reject post-UNSAT cancellation for both engines. |
+| A small unmasked outer term can contain expensive scalar bindings. | High | Retain the 500 ms Normal Legacy cap for every unmasked query, including small outer terms; distinguish partial masks independently of outer cost and require the original nested corpus and known-bit caller fixtures together. |
 | An earlier masked call expansion can consume the allowance needed by a later known-bit reduction. | High | Preserve the 250 ms Legacy contextual/masked site cap; reserve the larger cap for substantial unmasked MBAs and require the unchanged `mba_context_known_bits` capture to return zero while retaining its observer call. |
-| Caller constant and callee-expansion proofs precede algebraic search and can miss its word lemmas. | High | Prepare unconditional word proofs before those queries and retain universal identities only in their solver session. Use a 500 ms Normal ctree cap for CoBRA and substantial unmasked Legacy MBAs, preserving the shorter 250 ms Legacy contextual/masked cap, the 1,000 ms charged function budget, the 250 ms solver-query cap, and both replacement proof boundaries. |
+| Caller constant and callee-expansion proofs precede algebraic search and can miss its word lemmas. | High | Prepare unconditional word proofs before those queries and retain universal identities only in their solver session. Use a 500 ms Normal ctree cap for CoBRA and unmasked Legacy queries, preserving the shorter 250 ms Legacy contextual/masked cap, the 1,000 ms charged function budget, the 250 ms solver-query cap, and both replacement proof boundaries. |
 | A narrow source argument annotation can make IDA 9.4 ARM64 overlap a helper argument with its wide return register. | Medium | Retain the inferred native argument carrier for the designated signed helper; require the original signed-byte result and compiled contextual oracle. |
 | Restored project objects can be newer than checked-out headers and preserve incompatible class layouts. | High | Discard top-level project compilation state after cache restore; retain dependency builds and content-checked compiler caches. |
+| A canceled preliminary build can leave an incomplete immutable exact-key dependency cache. | Medium | Identify the partial entry by its key and recorded byte count, remove only that entry, and retry the pending target at the same source revision. Verify the warm dependency cache and retain the other successful target artifacts. |
 | Removing an empty statement changes the domain after a proved replacement. | Medium | Advance the mutation epoch and refresh the domain snapshot after owned structural cleanup. |
 | An unlowerable first proposal can hide later reductions and discard inference statistics. | High | Reject that site through the adapter admission predicate, continue in the same immutable analysis, and retain accumulated statistics; exercise both backends. |
 | x64 local-stage return carriers can be wider than the declared result, while narrowed calls-stage expressions carry value-number annotations. | High | Prove constants over a sequential CFG at the calls stage, without using value-number equalities or algebraic generation; preserve full source/frame checks and both value proofs. |

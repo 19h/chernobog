@@ -122,10 +122,7 @@ unsigned normal_site_budget_ms(const Term &value, Backend backend)
 {
     if (backend == Backend::Cobra)
         return normal_expression_budget_ms;
-    if (cost(value) < 8 || !has_mixed_arithmetic(value))
-        return legacy_context_budget_ms;
-
-    // Larger unmasked MBAs need their word lemmas and proofs in one attempt.
+    // Even a small outer term can reference an expensive bound expression.
     // Preserve the shorter contextual allowance for masked expressions so a
     // failed earlier expansion cannot starve a later known-bit reduction.
     std::vector<Term> pending{value};
