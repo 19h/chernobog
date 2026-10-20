@@ -31,6 +31,7 @@
 #include "../hybrid/solver_inspection.hpp"
 
 #include <optional>
+#include <array>
 
 // Forward declaration
 static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx, bool replay_only = false);
@@ -190,10 +191,36 @@ static void optblock_debug(const char *fmt, ...)
     va_end(args);
 }
 
+static bool has_reachable_mba_loop(const mbl_array_t *mba)
+{
+    if (!mba || mba->qty <= 0 || mba->qty > int(chernobog::mba_smt::limits::blocks))
+        return false;
+    std::array<unsigned char, chernobog::mba_smt::limits::blocks> colors{};
+    const auto visit = [&](const auto &self, int index) -> bool
+    {
+        if (index < 0 || index >= mba->qty || colors[index] == 2)
+            return false;
+        if (colors[index] == 1)
+            return true;
+        colors[index] = 1;
+        const auto *block = mba->get_mblock(index);
+        for (int successor = 0; successor < block->nsucc(); ++successor)
+            if (self(self, block->succ(successor)))
+                return true;
+        colors[index] = 2;
+        return false;
+    };
+    return visit(visit, 0);
+}
+
 static int run_semantic_mba(mbl_array_t *mba)
 {
     auto *state = get_deobf_state();
     if (!state || !mba)
+        return 0;
+    // The extra calls-stage analysis recovers narrowed loop-carried constants.
+    // Straight-line sites retain their existing LOCOPT and ctree allowances.
+    if (mba->maturity == MMAT_CALLS && !has_reachable_mba_loop(mba))
         return 0;
 
     auto &budget = state->mba_smt_budgets[mba->entry_ea];
