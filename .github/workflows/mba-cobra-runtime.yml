@@ -19,8 +19,14 @@ jobs:
           HCLI_API_KEY: ${{ secrets.HCLI_API_KEY }}
           IDA_LICENSE_ID: ${{ secrets.IDA_LICENSE_ID }}
         run: python tests/cobra_runtime_inventory.py --output runtime-inventory/installers.json
+      - name: Inspect complete installer catalog
+        env:
+          HCLI_API_KEY: ${{ secrets.HCLI_API_KEY }}
+        run: |
+          python -m pip install ida-hcli==0.26.3
+          python tests/cobra_runtime_catalog.py --output runtime-inventory/catalog.json
       - uses: actions/upload-artifact@v6
         with:
           name: cobra-runtime-inventory
-          path: runtime-inventory/installers.json
+          path: runtime-inventory/*.json
           if-no-files-found: error
