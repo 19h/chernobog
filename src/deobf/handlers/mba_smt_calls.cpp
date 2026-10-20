@@ -21,8 +21,7 @@ constexpr size_t max_call_depth = 3;
 constexpr size_t max_callee_bytes = 4096;
 constexpr size_t max_expression_attempts = 128;
 constexpr size_t max_propagation_rounds = 3;
-constexpr unsigned normal_expression_budget_ms = 250;
-constexpr unsigned cobra_normal_expression_budget_ms = 500;
+constexpr unsigned normal_expression_budget_ms = 500;
 constexpr unsigned deep_expression_budget_ms = 1000;
 
 // Decompiling a callee can deliver another maturity callback. That callback
@@ -923,9 +922,7 @@ class CallerSimplifier
         options.snapshot = snapshot;
         const bool deep = options.profile == Profile::Deep;
         options.budget_ms = std::min(budget_.remaining_ms(), deep ? deep_expression_budget_ms
-                                                             : options.backend == Backend::Cobra
-                                                                 ? cobra_normal_expression_budget_ms
-                                                                 : normal_expression_budget_ms);
+                                                                  : normal_expression_budget_ms);
         if (structural_only_)
         {
             options.budget_ms = std::min(options.budget_ms, 25u);

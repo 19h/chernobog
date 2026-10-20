@@ -82,6 +82,9 @@ class SymbolicProgram
     void retain_verified_rewrite(const z3::expr &before, const z3::expr &after);
     z3::expr apply_verified_rewrites(z3::expr value) const;
 
+    // Width-specific universal theorems are reusable only in this session.
+    std::set<std::pair<unsigned, unsigned>> verified_word_laws;
+
     const SymbolicState &block_entry(size_t block) const;
     const SymbolicState &block_exit(size_t block) const;
     const SymbolicState &before_statement(size_t block, size_t statement) const;
@@ -130,6 +133,8 @@ class InvariantInference
 
 // Search samples may reject candidates cheaply. Only a solver query over the
 // complete site domain can accept one; a sample collision is never a proof.
+void prepare_algebraic_proofs(SymbolicProgram &program, const SymbolicState &state,
+                              const Term &original);
 Term simplify_algebraic(SymbolicProgram &program, const SymbolicState &state, const Term &original,
                         bool *cobra_origin = nullptr);
 

@@ -315,6 +315,12 @@ class AlgebraicSimplifier
                                    { return prove(before, after); });
     }
 
+    void prepare_proofs(const Term &original)
+    {
+        if (cost(original) >= 8)
+            prepare_word_regions(original);
+    }
+
     bool from_cobra() const noexcept { return cobra_origin_; }
 
   private:
@@ -472,8 +478,8 @@ class AlgebraicSimplifier
                 law = WordLaw::OrAndNot;
             }
         }
-        const auto identity = std::make_pair(bits, *law);
-        if (word_laws_.count(identity) == 0)
+        const auto identity = std::make_pair(bits, static_cast<unsigned>(*law));
+        if (program_.verified_word_laws.count(identity) == 0)
         {
             const auto x = session_.fresh_value(bits), y = session_.fresh_value(bits);
             const auto theorem = word_identity(*law, x, y);
@@ -489,7 +495,7 @@ class AlgebraicSimplifier
                     ++session_.statistics.unknown;
                 return;
             }
-            word_laws_.insert(identity);
+            program_.verified_word_laws.insert(identity);
         }
         z3::params parameters(session_.context);
         parameters.set("som", true);
@@ -1113,11 +1119,16 @@ class AlgebraicSimplifier
     std::map<std::string, Term> rewritten_;
     std::set<std::string> linearized_;
     std::set<std::string> word_prepared_;
-    std::set<std::pair<unsigned, WordLaw>> word_laws_;
     size_t visited_ = 0;
     bool cobra_origin_ = false;
 };
 } // namespace
+
+void prepare_algebraic_proofs(SymbolicProgram &program, const SymbolicState &state,
+                              const Term &original)
+{
+    AlgebraicSimplifier(program, state).prepare_proofs(original);
+}
 
 Term simplify_algebraic(SymbolicProgram &program, const SymbolicState &state, const Term &original,
                         bool *cobra_origin)

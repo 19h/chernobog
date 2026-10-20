@@ -577,6 +577,10 @@ Term Analysis::constant_value(size_t block, size_t statement)
         auto &session = impl_->session;
         const auto &assignment = impl_->program.blocks[block].statements[statement];
         const auto &state = symbolic.before_statement(block, statement);
+        // Caller expansion proofs precede algebraic candidate search. Prepare
+        // unconditional word lemmas before constant and fallback queries too;
+        // later synthesis reuses their same-session universal proof receipts.
+        detail::prepare_algebraic_proofs(symbolic, state, assignment.value);
         const z3::expr value = symbolic.evaluate(assignment.value, state);
         z3::solver solver(session.context);
         solver.add(symbolic.conjunction(impl_->invariants->at(block), symbolic.block_entry(block)));

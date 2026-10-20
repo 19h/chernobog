@@ -20,6 +20,12 @@ This projection cannot enter algebraic generation. Local algebraic snapshots
 retain their distinct value-number identities. Undefined flag writes and the
 explicit carry/overflow flag operators do not invalidate unrelated scalar or
 memory state; unresolved flag-dependent predicates still discard edge facts.
+Caller constant and callee-expansion queries prepare unconditional word proofs
+before algebraic search. Width-specific universal theorems are retained only
+within that solver session, including later candidate and emitted-value queries.
+Both backends cap a Normal ctree site at 500 ms, within the remaining charged
+1,000 ms function allowance; individual solver queries remain capped at 250 ms.
+Deep sites retain their 1,000 ms cap inside the 30,000 ms function allowance.
 Microcode fixtures exercise all eight admitted byte widths. Ctree emission
 admits the SDK's integral types at 8, 16, 32, and 64 bits. Neither a candidate-only
 test nor the SDK bridge establishes installed-plugin corpus behavior.
@@ -117,6 +123,7 @@ from executing the Windows plugin in its native runtime.
 | A4: Native runtime compatibility and performance require measurements. | Default promotion depends on the complete matrix. | Run `accept`; the aggregate rejects a missing native report. |
 | A5: Region scheduling affects generation cost and proof difficulty. | Unmasked linear arithmetic regions up to 32 bits try the complete region before its prefixes, after processing typed boundaries; wider, masked, and polynomial regions retain bottom-up proof lemmas. | Require all 42 frozen SDK positives in both profiles and the unchanged native Windows nested corpus; failed positives or retained nested MBAs reject the scheduling change. |
 | A6: Empty unconditional entry/exit wrappers add no constraints around a single statement block. | That body can use unconstrained inputs and symbolic statement order without invariant search. | Require replacement and counterexample proofs for a reordered entry/body/exit chain; retain inference for guarded edges, assignments in another block, disconnected blocks, and the existing loop fixtures. |
+| A7: Universal word identities do not depend on the source operand values or path facts. | One accepted width-specific theorem can support repeated queries in its own solver session. | Query the captured complemented-word expression before synthesis, repeat the query without repeating universal proofs, reject an unrelated constant, and require a new analysis to reprove its identities. |
 
 | Bounded finding | Impact | Contract |
 |---|---|---|
@@ -129,6 +136,7 @@ from executing the Windows plugin in its native runtime.
 | A host cancellation callback can reset its signal after an earlier observation. | Medium | Latch positive cancellation for the session and verify that final commit and legacy fallback still reject it. |
 | Complete-region generation can reduce repeated work but expose harder direct proofs. | High | Cache only instantiated fixed word identities proved UNSAT for arbitrary words in the same solver session; leave CoBRA inputs unchanged and retain both replacement proof boundaries. Wide, masked, and polynomial regions keep their established bottom-up schedule. |
 | Legacy's existing search can also spend its Normal allowance reproving unmasked word identities. | High | Reuse the same universally proved identities before its existing proof preparation, without changing candidate generation or its deadline; reject post-UNSAT cancellation for both engines. |
+| Caller constant and callee-expansion proofs precede algebraic search and can miss its word lemmas. | High | Prepare unconditional word proofs before those queries and retain universal identities only in their solver session. Use the same 500 ms Normal ctree site cap for both engines while preserving the 1,000 ms charged function budget, 250 ms solver-query cap, and both replacement proof boundaries. |
 | A narrow source argument annotation can make IDA 9.4 ARM64 overlap a helper argument with its wide return register. | Medium | Retain the inferred native argument carrier for the designated signed helper; require the original signed-byte result and compiled contextual oracle. |
 | Restored project objects can be newer than checked-out headers and preserve incompatible class layouts. | High | Discard top-level project compilation state after cache restore; retain dependency builds and content-checked compiler caches. |
 | Removing an empty statement changes the domain after a proved replacement. | Medium | Advance the mutation epoch and refresh the domain snapshot after owned structural cleanup. |

@@ -1066,6 +1066,60 @@ void test_cancellation_latch()
     check(!session.eligible_for_commit(true), "legacy expiry exemption cannot resume cancellation");
 }
 
+void test_boolean_operand_complements()
+{
+    const auto x = variable(0, 32), y = variable(1, 32), z = variable(2, 32);
+    const auto sum = add(x, y);
+    Term body = add(multiply(constant(2, 32), expression(Op::And, x, sum)),
+                    expression(Op::And, expression(Op::Not, expression(Op::And, z, x)), z));
+    for (const Term &part :
+         {expression(Op::Xor, x, sum), y, z, x, expression(Op::Or, expression(Op::Not, x), z),
+          expression(Op::And, expression(Op::Not, z), expression(Op::Or, z, y)), constant(1, 32)})
+        body = add(body, part);
+    body = expression(Op::Sub, body, expression(Op::Or, z, y));
+    const auto original = expression(Op::ZeroExtend, multiply(constant(2, 32), body), {}, 64);
+    const auto expected = expression(
+        Op::ZeroExtend, multiply(constant(2, 32), add(z, multiply(constant(2, 32), sum))), {}, 64);
+    for (Backend backend : {Backend::Legacy, Backend::Cobra})
+    {
+        if (backend == Backend::Cobra && !cobra_backend::available())
+            continue;
+        for (bool deep : {false, true})
+        {
+            auto program = make_program(32);
+            program.widths[3] = 64;
+            program.blocks[0].statements = {Statement::assign(3, original)};
+            Options options = deep ? Options::deep() : Options{};
+            options.backend = backend;
+            unsigned word_proofs = 0;
+            detail::SessionTestHooks hooks;
+            hooks.after_query = [&](const char *purpose, const z3::check_result &)
+            {
+                if (std::string(purpose) == "MBA Boolean word identity")
+                    ++word_proofs;
+            };
+            struct Restore
+            {
+                detail::SessionTestHooks *previous;
+                ~Restore() { detail::session_test_hooks = previous; }
+            } restore{detail::session_test_hooks};
+            detail::session_test_hooks = &hooks;
+            Analysis analysis(program, options);
+            check(!analysis.constant_value(0, 0) && word_proofs != 0,
+                  "constant and fallback proofs prepare unconditional word identities first");
+            const auto prepared_proofs = word_proofs;
+            check(!analysis.constant_value(0, 0) && word_proofs == prepared_proofs,
+                  "repeated queries reuse only same-session universal word proofs");
+            const auto proposals = analysis.run();
+            check(!proposals.empty() && cost(proposals.front().replacement) < cost(original),
+                  "Boolean operand complements reduce within both profile budgets");
+            check(analysis.verify(0, 0, expected) == Verdict::Verified &&
+                      analysis.verify(0, 0, constant(0, 64)) == Verdict::Disproved,
+                  "complement composition retains wrapping and its outer conversion");
+        }
+    }
+}
+
 void test_word_proof_cancellation()
 {
     auto program = make_program(32);
@@ -1130,6 +1184,7 @@ int main()
     test_unlowerable_proposal_continuation();
     test_post_proof_eligibility();
     test_cancellation_latch();
+    test_boolean_operand_complements();
     test_word_proof_cancellation();
     std::printf("MBA SMT failures: %d\n", failures);
     return failures != 0;
