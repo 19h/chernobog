@@ -178,6 +178,31 @@ def verify(directory):
                 f"Required corpus regression: {target}/{backend}",
             )
             require(
+                {f["name"] for f in capture["functions"]}
+                == {
+                    "mba_nested_1",
+                    "mba_nested_2",
+                    "mba_nested_3",
+                    "mba_nested_combined",
+                    "mba_nested_solve",
+                    "mba_nested_caller",
+                },
+                "Required corpus identity mismatch",
+            )
+            for function in capture["functions"]:
+                require(set(function["statistics"]) == {"normal", "deep"}, "Missing corpus profile")
+                for statistics in function["statistics"].values():
+                    algebraic = statistics["algebraic"]
+                    require(
+                        algebraic["backend"] == backend and algebraic["vendor_tree"] in trees,
+                        "Installed plugin backend/provenance mismatch",
+                    )
+                    require(
+                        algebraic["process_peak_rss_bytes"] > 0,
+                        "Installed plugin RSS measurement missing",
+                    )
+
+            require(
                 {r["profile"] for r in oracle["results"]} == {"normal", "deep"}
                 and all(
                     r["comparisons"] == 607986 and r.get("sanitizers") == ["undefined"]

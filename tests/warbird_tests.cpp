@@ -201,7 +201,9 @@ int main()
         warbird::merge_ranges({{0x1008, 0x1010}, {0x1000, 0x1008}, {0x2000, 0x2008}});
     require(merged == warbird::AddressRanges({{0x1000, 0x1010}, {0x2000, 0x2008}}),
             "alias ranges did not merge overlapping/adjacent intervals");
-    warbird::AliasOracle alias_oracle(context);
+    // This checks alias semantics. Keep production's 10 ms deadline separate
+    // from scheduling delays on shared native CI runners.
+    warbird::AliasOracle alias_oracle(context, 256, 1000);
     const warbird::AddressRanges region{{0x4000, 0x5000}};
     auto outside_region = z3::ult(x, numeral(0x4000)) || z3::uge(x, numeral(0x5000));
     require(alias_oracle.classify(x, 1, outside_region, region) == warbird::AliasResult::DISJOINT,

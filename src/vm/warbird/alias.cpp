@@ -72,7 +72,7 @@ AliasResult AliasOracle::classify(const z3::expr &address, unsigned bytes, const
         return AliasResult::UNKNOWN;
     ++queries_;
     z3::solver solver(address.ctx());
-    solver.set("timeout", 10u);
+    solver.set("timeout", query_timeout_ms_);
     solver.set("rlimit", 20000u);
     solver.add(domain && overlap);
     const auto result = solver.check();

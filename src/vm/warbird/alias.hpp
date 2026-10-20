@@ -26,6 +26,7 @@ class AliasOracle
     z3::context &context_;
     unsigned budget_;
     unsigned queries_ = 0;
+    unsigned query_timeout_ms_;
     using Key = std::tuple<unsigned, unsigned, unsigned, AddressRanges>;
     // Keep AST references alive: numeric Z3 IDs alone can be recycled after
     // destruction and must never authenticate a cached no-alias proof.
@@ -38,8 +39,9 @@ class AliasOracle
     std::map<Key, Entry> cache_;
 
   public:
-    explicit AliasOracle(z3::context &context, unsigned budget = 256)
-        : context_(context), budget_(budget)
+    explicit AliasOracle(z3::context &context, unsigned budget = 256,
+                         unsigned query_timeout_ms = 10)
+        : context_(context), budget_(budget), query_timeout_ms_(query_timeout_ms)
     {
     }
     AliasResult classify(const z3::expr &address, unsigned bytes, const z3::expr &domain,
