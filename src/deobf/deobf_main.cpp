@@ -131,7 +131,11 @@ void chernobog_begin_mba_tracking(mbl_array_t *mba)
     state->mba_generations[mba] = ++state->next_mba_generation;
     auto &budget = state->mba_smt_budgets[mba->entry_ea];
     budget = {};
-    budget.limit_ms = state->deep_functions.count(mba->entry_ea) ? 30000 : 1000;
+    budget.profile = state->deep_functions.count(mba->entry_ea)
+                         ? chernobog::mba_smt::Profile::Deep
+                         : chernobog::mba_smt::Profile::Normal;
+    budget.snapshot = {state->mba_generations[mba], 0};
+    budget.limit_ms = budget.profile == chernobog::mba_smt::Profile::Deep ? 30000 : 1000;
     chernobog::hybrid::solver_inspection_begin(uint64_t(mba->entry_ea));
 }
 

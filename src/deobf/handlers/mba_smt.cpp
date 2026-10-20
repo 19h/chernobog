@@ -1,5 +1,6 @@
 #include "mba_smt.h"
 #include "../../common/bitvector.h"
+#include "../analysis/ast.h"
 #include <chrono>
 #include <stdexcept>
 #include <tuple>
@@ -57,6 +58,7 @@ class MicrocodeAdapter
     std::vector<Register> registers;
     std::vector<std::pair<Term, mop_t>> available;
     std::map<std::pair<size_t, size_t>, minsn_t *> originals;
+    std::map<std::pair<size_t, size_t>, std::unique_ptr<minsn_t>> sources;
     std::map<int64_t, size_t> frames;
     std::map<std::pair<uintptr_t, int>, size_t> locals;
     std::map<std::tuple<int, int, int64_t, uint64_t, int>, size_t> local_values;
@@ -507,6 +509,8 @@ class MicrocodeAdapter
                 if (pure_candidate && has_computation)
                 {
                     originals[{block_index, output.statements.size()}] = ins;
+                    sources[{block_index, output.statements.size()}] =
+                        std::make_unique<minsn_t>(*ins);
                 }
 
                 output.statements.push_back(std::move(statement));
@@ -596,6 +600,7 @@ class MicrocodeAdapter
             program.blocks.resize(1);
             program.blocks[0].statements.push_back(Statement::assign(result, value));
             originals[{0, 0}] = local_instruction;
+            sources[{0, 0}] = std::make_unique<minsn_t>(*local_instruction);
             program.targets.push_back({0, 0});
             return;
         }
@@ -741,6 +746,11 @@ void accumulate_statistics(Statistics &total, const Statistics &attempt)
     total.invariants += attempt.invariants;
     total.invariants_rejected += attempt.invariants_rejected;
     total.exhausted += attempt.exhausted;
+    total.rejected_mutations += attempt.rejected_mutations;
+    total.deadline_overshoot_ns =
+        std::max(total.deadline_overshoot_ns, attempt.deadline_overshoot_ns);
+    if (attempt.cancel_stage != RejectReason::None)
+        total.cancel_stage = attempt.cancel_stage;
 }
 
 class BudgetCharge
@@ -766,7 +776,7 @@ class BudgetCharge
 };
 
 bool apply_verified_proposal(MicrocodeAdapter &adapter, Analysis &analysis,
-                             const Proposal &proposal)
+                             const Proposal &proposal, FunctionBudget &budget)
 {
     const auto site = std::make_pair(proposal.block, proposal.statement);
     const auto found = adapter.originals.find(site);
@@ -776,7 +786,11 @@ bool apply_verified_proposal(MicrocodeAdapter &adapter, Analysis &analysis,
     }
 
     minsn_t *original = found->second;
-    minsn_t replacement(*original);
+    const auto saved = adapter.sources.find(site);
+    if (saved == adapter.sources.end())
+        return false;
+    const minsn_t &source = *saved->second;
+    minsn_t replacement(source);
     const mop_t value = adapter.emit_operand(proposal.replacement, original->ea);
 
     if (value.t == mop_d && value.d != nullptr)
@@ -806,7 +820,26 @@ bool apply_verified_proposal(MicrocodeAdapter &adapter, Analysis &analysis,
         return false;
     }
 
+    const auto same_source = [&]
+    {
+        return proposal.snapshot == budget.snapshot && analysis.snapshot() == budget.snapshot &&
+               original->opcode == source.opcode && original->ea == source.ea &&
+               original->iprops == source.iprops && ast::mops_equal_strict(original->d, source.d) &&
+               ast::mops_equal_strict(original->l, source.l) &&
+               ast::mops_equal_strict(original->r, source.r);
+    };
+    // Value equivalence cannot authorize changing the destination or effects.
+    if (replacement.ea != source.ea || replacement.iprops != source.iprops ||
+        !ast::mops_equal_strict(replacement.d, source.d) ||
+        !MicrocodeAdapter::has_supported_properties(&replacement))
+    {
+        analysis.reject_mutation(RejectReason::EmittedDestinationOrFrameMismatch);
+        return false;
+    }
+    if (!analysis.eligible_for_commit(false, same_source))
+        return false;
     original->swap(replacement);
+    ++budget.snapshot.mutation_epoch;
     mblock_t *owner = adapter.local_block;
     if (!owner)
     {
@@ -837,7 +870,8 @@ int simplify_once(mbl_array_t *mba, FunctionBudget &budget, mblock_t *local_bloc
             return 0;
         }
 
-        Options options = budget.limit_ms > 1000 ? Options::deep() : Options{};
+        Options options = budget.profile == Profile::Deep ? Options::deep() : Options{};
+        options.snapshot = budget.snapshot;
         options.budget_ms = budget.limit_ms - static_cast<unsigned>(used_ms);
         options.cancelled = [] { return user_cancelled(); };
 
@@ -846,7 +880,7 @@ int simplify_once(mbl_array_t *mba, FunctionBudget &budget, mblock_t *local_bloc
         bool applied = false;
         for (const Proposal &proposal : proposals)
         {
-            if (apply_verified_proposal(adapter, analysis, proposal))
+            if (apply_verified_proposal(adapter, analysis, proposal, budget))
             {
                 applied = true;
                 ++budget.totals.applied;

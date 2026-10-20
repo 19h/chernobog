@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -118,8 +119,43 @@ struct Program
 
 bool validate(const Program &program);
 
+enum class Backend
+{
+    Legacy,
+    Cobra
+};
+enum class Profile
+{
+    Normal,
+    Deep
+};
+enum class RejectReason
+{
+    None,
+    PostProofExpiry,
+    BudgetExhaustedPreFlight,
+    PostProofDeadlineOrCancel,
+    EmittedDestinationOrFrameMismatch,
+    StaleSnapshot,
+    CallbackFailure,
+};
+
+struct SnapshotToken
+{
+    uint64_t generation = 0;
+    uint64_t mutation_epoch = 0;
+    bool operator==(const SnapshotToken &other) const noexcept
+    {
+        return generation == other.generation && mutation_epoch == other.mutation_epoch;
+    }
+    bool operator!=(const SnapshotToken &other) const noexcept { return !(*this == other); }
+};
+
 struct Options
 {
+    Backend backend = Backend::Legacy;
+    Profile profile = Profile::Normal;
+    SnapshotToken snapshot;
     unsigned budget_ms = limits::normal_budget_ms;
     unsigned query_ms = 250;
     unsigned resource_limit = 10000000;
@@ -150,6 +186,9 @@ struct Statistics
     size_t invariants_rejected = 0;
     size_t exhausted = 0;
     uint64_t elapsed_ns = 0;
+    uint64_t deadline_overshoot_ns = 0;
+    RejectReason cancel_stage = RejectReason::None;
+    size_t rejected_mutations = 0;
 };
 
 struct Proposal
@@ -157,6 +196,7 @@ struct Proposal
     size_t block;
     size_t statement;
     Term replacement;
+    SnapshotToken snapshot;
 };
 
 // One immutable CFG snapshot. Every proposal, including re-emitted code, must
@@ -176,6 +216,12 @@ class Analysis
     // This avoids expression enumeration when a caller only needs a constant.
     Term constant_value(size_t block, size_t statement);
     Verdict verify(size_t block, size_t statement, const Term &replacement);
+    // The tagged legacy fallback may waive deadline expiry only after both
+    // proofs completed in time. Cancellation is never exempt.
+    bool eligible_for_commit(bool legacy_deadline_exempt = false,
+                             const std::function<bool()> &unchanged = {});
+    SnapshotToken snapshot() const noexcept;
+    void reject_mutation(RejectReason reason);
     const Statistics &statistics() const;
 };
 } // namespace chernobog::mba_smt

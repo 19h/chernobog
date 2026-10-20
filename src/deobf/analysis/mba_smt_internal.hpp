@@ -19,12 +19,29 @@ void collect_literals(const Term &term, unsigned bit_width, std::set<uint64_t> &
 
 // The context and budget have the same lifetime as one immutable analysis.
 // Every solver query, including search queries, consumes this shared budget.
+// Private deterministic fault seam; never populated by product configuration.
+struct SessionTestHooks
+{
+    std::function<std::chrono::steady_clock::time_point()> now;
+    std::function<void(const char *)> after_query;
+};
+inline thread_local SessionTestHooks *session_test_hooks = nullptr;
+
 class SolverSession
 {
   public:
     SolverSession(Options options, Statistics &statistics);
 
+    using Clock = std::chrono::steady_clock;
+    Clock::time_point now() const;
+    Clock::time_point deadline() const noexcept;
+    std::chrono::nanoseconds remaining_budget(Clock::time_point now) const noexcept;
+    bool is_deadline_expired(Clock::time_point now) const noexcept;
+    bool is_cancelled();
     bool has_budget();
+    bool eligible_for_commit(bool legacy_deadline_exempt = false,
+                             const std::function<bool()> &unchanged = {});
+    void record_expiry(RejectReason stage);
     z3::check_result check(z3::solver &solver, const char *purpose);
     z3::expr fresh_value(unsigned bit_width);
     z3::expr fresh_memory(unsigned address_width);
@@ -34,9 +51,9 @@ class SolverSession
     Statistics &statistics;
 
   private:
-    using Clock = std::chrono::steady_clock;
-
     Clock::time_point started_;
+    Clock::time_point deadline_;
+    bool callback_failed_ = false;
     size_t next_symbol_ = 0;
 };
 

@@ -7,6 +7,8 @@ namespace chernobog::mba_smt
 // Elapsed work is accumulated across all maturities of one MBA generation.
 struct FunctionBudget
 {
+    Profile profile = Profile::Normal;
+    SnapshotToken snapshot;
     unsigned limit_ms = 1000;
     uint64_t spent_ns = 0;
     Statistics totals;

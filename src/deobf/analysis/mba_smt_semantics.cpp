@@ -23,48 +23,124 @@ z3::expr boolean_value(const z3::expr &condition)
 } // namespace
 
 SolverSession::SolverSession(Options configured_options, Statistics &output_statistics)
-    : options(std::move(configured_options)), statistics(output_statistics), started_(Clock::now())
+    : options(std::move(configured_options)), statistics(output_statistics), started_(now()),
+      deadline_(started_ + std::chrono::milliseconds(options.budget_ms))
 {
+}
+
+SolverSession::Clock::time_point SolverSession::now() const
+{
+    return session_test_hooks && session_test_hooks->now ? session_test_hooks->now() : Clock::now();
+}
+
+SolverSession::Clock::time_point SolverSession::deadline() const noexcept { return deadline_; }
+
+std::chrono::nanoseconds SolverSession::remaining_budget(Clock::time_point time) const noexcept
+{
+    return time >= deadline_
+               ? std::chrono::nanoseconds::zero()
+               : std::chrono::duration_cast<std::chrono::nanoseconds>(deadline_ - time);
+}
+
+bool SolverSession::is_deadline_expired(Clock::time_point time) const noexcept
+{
+    return time >= deadline_;
+}
+
+bool SolverSession::is_cancelled()
+{
+    if (callback_failed_)
+        return true;
+    try
+    {
+        return options.cancelled && options.cancelled();
+    }
+    catch (...)
+    {
+        callback_failed_ = true;
+        statistics.cancel_stage = RejectReason::CallbackFailure;
+        return true;
+    }
+}
+
+void SolverSession::record_expiry(RejectReason stage)
+{
+    const auto time = now();
+    statistics.elapsed_ns = static_cast<uint64_t>(std::max<int64_t>(
+        0, std::chrono::duration_cast<std::chrono::nanoseconds>(time - started_).count()));
+    if (!callback_failed_)
+        statistics.cancel_stage = stage;
+    if (time > deadline_)
+        statistics.deadline_overshoot_ns = std::max(
+            statistics.deadline_overshoot_ns,
+            static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(time - deadline_).count()));
+    ++statistics.exhausted;
 }
 
 bool SolverSession::has_budget()
 {
-    const auto elapsed = Clock::now() - started_;
-    statistics.elapsed_ns = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count());
+    // A callback can take time or reenter the host. Sample time after it.
+    const bool cancelled = is_cancelled();
+    const auto time = now();
+    statistics.elapsed_ns = static_cast<uint64_t>(std::max<int64_t>(
+        0, std::chrono::duration_cast<std::chrono::nanoseconds>(time - started_).count()));
+    return !cancelled && !is_deadline_expired(time);
+}
 
-    if (statistics.elapsed_ns / 1000000 >= options.budget_ms)
+bool SolverSession::eligible_for_commit(bool legacy_deadline_exempt,
+                                        const std::function<bool()> &unchanged)
+{
+    const bool cancelled = is_cancelled();
+    if (!cancelled && unchanged && !unchanged())
     {
+        ++statistics.rejected_mutations;
+        statistics.cancel_stage = RejectReason::StaleSnapshot;
         return false;
     }
-
-    return !options.cancelled || !options.cancelled();
+    const auto time = now();
+    if (cancelled || (!legacy_deadline_exempt && is_deadline_expired(time)))
+    {
+        record_expiry(RejectReason::PostProofDeadlineOrCancel);
+        ++statistics.rejected_mutations;
+        return false;
+    }
+    return true;
 }
 
 z3::check_result SolverSession::check(z3::solver &solver, const char *purpose)
 {
     if (!has_budget())
     {
-        ++statistics.exhausted;
+        record_expiry(RejectReason::PostProofExpiry);
         return z3::unknown;
     }
-
-    const uint64_t elapsed_ms = statistics.elapsed_ns / 1000000;
-    const uint64_t remaining_ms = options.budget_ms - elapsed_ms;
-    const unsigned timeout_ms = static_cast<unsigned>(
-        std::max<uint64_t>(1, std::min<uint64_t>(options.query_ms, remaining_ms)));
-
+    const auto remaining_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(remaining_budget(now())).count();
+    if (remaining_ms < 1 || options.query_ms == 0)
+    {
+        record_expiry(RejectReason::PostProofExpiry);
+        return z3::unknown;
+    }
+    const auto timeout_ms =
+        static_cast<unsigned>(std::min<int64_t>(options.query_ms, remaining_ms));
     z3::params parameters(context);
     parameters.set("timeout", timeout_ms);
     if (options.resource_limit != 0)
-    {
         parameters.set("rlimit", options.resource_limit);
-    }
     solver.set(parameters);
-
     const std::string description = "timeout_ms=" + std::to_string(timeout_ms) +
                                     ";rlimit=" + std::to_string(options.resource_limit);
-    return solver_evidence::check(solver, purpose, description.c_str());
+    const auto result = solver_evidence::check(solver, purpose, description.c_str());
+    if (session_test_hooks && session_test_hooks->after_query)
+        session_test_hooks->after_query(purpose);
+    // Capture preserves the observed solver result. Acceptance is a separate gate.
+    if (!has_budget())
+    {
+        record_expiry(RejectReason::PostProofExpiry);
+        return z3::unknown;
+    }
+    return result;
 }
 
 z3::expr SolverSession::fresh_value(unsigned bit_width)
@@ -80,9 +156,7 @@ z3::expr SolverSession::fresh_memory(unsigned address_width)
     return context.constant(name.c_str(), memory_sort);
 }
 
-SymbolicState::SymbolicState(z3::expr initial_memory) : memory(std::move(initial_memory))
-{
-}
+SymbolicState::SymbolicState(z3::expr initial_memory) : memory(std::move(initial_memory)) {}
 
 SymbolicProgram::SymbolicProgram(const Program &input_program, SolverSession &solver_session)
     : program(input_program), session(solver_session)
@@ -318,15 +392,9 @@ z3::expr SymbolicProgram::edge_condition(size_t source, const Edge &edge) const
     return edge.inverted ? !condition : condition;
 }
 
-const SymbolicState &SymbolicProgram::block_entry(size_t block) const
-{
-    return entries_.at(block);
-}
+const SymbolicState &SymbolicProgram::block_entry(size_t block) const { return entries_.at(block); }
 
-const SymbolicState &SymbolicProgram::block_exit(size_t block) const
-{
-    return exits_.at(block);
-}
+const SymbolicState &SymbolicProgram::block_exit(size_t block) const { return exits_.at(block); }
 
 const SymbolicState &SymbolicProgram::before_statement(size_t block, size_t statement) const
 {
@@ -381,7 +449,9 @@ Verdict verify_replacement(SymbolicProgram &symbolic_program, const BlockInvaria
     const auto feasibility = session.check(solver, "MBA site feasibility");
     if (feasibility != z3::sat)
     {
-        return feasibility == z3::unknown ? Verdict::Unknown : Verdict::Unsupported;
+        return !session.has_budget()        ? Verdict::Exhausted
+               : feasibility == z3::unknown ? Verdict::Unknown
+                                            : Verdict::Unsupported;
     }
 
     const auto &state = symbolic_program.before_statement(block, statement_index);
@@ -393,6 +463,11 @@ Verdict verify_replacement(SymbolicProgram &symbolic_program, const BlockInvaria
     const auto result = session.check(solver, "MBA contextual emitted replacement mismatch");
     if (result == z3::unsat)
     {
+        if (!session.has_budget())
+        {
+            session.record_expiry(RejectReason::PostProofExpiry);
+            return Verdict::Exhausted;
+        }
         ++session.statistics.verified;
         return Verdict::Verified;
     }

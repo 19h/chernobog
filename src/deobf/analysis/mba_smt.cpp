@@ -13,10 +13,7 @@ namespace chernobog::mba_smt
 {
 namespace
 {
-bool valid_bit_width(unsigned bits)
-{
-    return bits >= 8 && bits <= 64 && bits % 8 == 0;
-}
+bool valid_bit_width(unsigned bits) { return bits >= 8 && bits <= 64 && bits % 8 == 0; }
 
 bool is_unary_operation(Op op)
 {
@@ -242,6 +239,7 @@ Statement Statement::havoc(std::vector<size_t> spoiled)
 Options Options::deep()
 {
     Options options;
+    options.profile = Profile::Deep;
     options.budget_ms = limits::deep_budget_ms;
     options.query_ms = 2000;
     options.resource_limit = 10000000;
@@ -342,10 +340,7 @@ bool validate_expression(const Term &term, const Program &program)
     return validate_term(term, program, visits);
 }
 
-unsigned polynomial_degree(const Term &term)
-{
-    return expression_degree(term);
-}
+unsigned polynomial_degree(const Term &term) { return expression_degree(term); }
 
 void collect_literals(const Term &term, unsigned bit_width, std::set<uint64_t> &values)
 {
@@ -471,7 +466,8 @@ std::vector<Proposal> Analysis::run()
             {
                 // Applying this proposal invalidates the entire snapshot.
                 // Return one proposal so its owner must rebuild afterward.
-                return {{block, statement, std::move(replacement)}};
+                return {
+                    {block, statement, std::move(replacement), impl_->session.options.snapshot}};
             }
         }
     }
@@ -542,8 +538,14 @@ Verdict Analysis::verify(size_t block, size_t statement, const Term &replacement
             return Verdict::Unsupported;
         }
 
-        return detail::verify_replacement(impl_->symbolic, *impl_->invariants, block, statement,
-                                          replacement);
+        const auto verdict = detail::verify_replacement(impl_->symbolic, *impl_->invariants, block,
+                                                        statement, replacement);
+        if (verdict == Verdict::Verified && !impl_->session.has_budget())
+        {
+            impl_->session.record_expiry(RejectReason::PostProofExpiry);
+            return Verdict::Exhausted;
+        }
+        return verdict;
     }
     catch (const std::exception &)
     {
@@ -552,8 +554,19 @@ Verdict Analysis::verify(size_t block, size_t statement, const Term &replacement
     }
 }
 
-const Statistics &Analysis::statistics() const
+bool Analysis::eligible_for_commit(bool legacy_deadline_exempt,
+                                   const std::function<bool()> &unchanged)
 {
-    return impl_->statistics;
+    return impl_->session.eligible_for_commit(legacy_deadline_exempt, unchanged);
 }
+
+SnapshotToken Analysis::snapshot() const noexcept { return impl_->session.options.snapshot; }
+
+void Analysis::reject_mutation(RejectReason reason)
+{
+    ++impl_->statistics.rejected_mutations;
+    impl_->statistics.cancel_stage = reason;
+}
+
+const Statistics &Analysis::statistics() const { return impl_->statistics; }
 } // namespace chernobog::mba_smt

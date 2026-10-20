@@ -742,6 +742,11 @@ class CallerSimplifier
     bool verify_emitted(const cexpr_t &node, const ScalarContext &context,
                         const ContextQuery &query, Analysis &analysis, cexpr_t &emitted)
     {
+        if (emitted.type != node.type || integer_bits(emitted.type) != integer_bits(node.type))
+        {
+            analysis.reject_mutation(RejectReason::EmittedDestinationOrFrameMismatch);
+            return false;
+        }
         const Term translated = query.lower(translate(emitted, context));
         if (!translated || analysis.verify(query.block(), 0, translated) != Verdict::Verified)
         {
@@ -755,6 +760,8 @@ class CallerSimplifier
                                                  const ContextQuery &query, Analysis &analysis,
                                                  const Term &candidate)
     {
+        if (analysis.verify(query.block(), 0, candidate) != Verdict::Verified)
+            return {};
         auto emitted = emit_replacement(node, context, query.restore(candidate));
         if (!emitted || !verify_emitted(node, context, query, analysis, *emitted))
         {
@@ -780,6 +787,12 @@ class CallerSimplifier
         {
             return false;
         }
+        const cexpr_t original(node);
+        const auto snapshot = budget_.owner().snapshot;
+        const cexpr_t *parent_target = parent_target_;
+        const auto saved_target =
+            parent_target ? std::make_unique<cexpr_t>(*parent_target) : nullptr;
+        bool legacy_fallback = false;
         std::unique_ptr<cexpr_t> replacement;
         if (structural_only_)
         {
@@ -801,7 +814,9 @@ class CallerSimplifier
         ++attempts_;
 
         Options options;
-        const bool deep = budget_.owner().limit_ms > limits::normal_budget_ms;
+        options.profile = budget_.owner().profile;
+        options.snapshot = snapshot;
+        const bool deep = options.profile == Profile::Deep;
         options.budget_ms = std::min(budget_.remaining_ms(), deep ? deep_expression_budget_ms
                                                                   : normal_expression_budget_ms);
         if (structural_only_)
@@ -834,6 +849,7 @@ class CallerSimplifier
             // This proof remains valid if a later search runs out of time:
             // neither the context nor the original expression has changed.
             replacement = prepare_replacement(node, context, query, analysis, query.lower(value));
+            legacy_fallback = replacement && options.backend == Backend::Legacy;
             if (!replacement || scalar_expression_cost(*replacement) != 0)
             {
                 for (const Proposal &proposal : analysis.run())
@@ -844,11 +860,22 @@ class CallerSimplifier
                         (!replacement || scalar_expression_improves(*improved, *replacement)))
                     {
                         replacement = std::move(improved);
+                        legacy_fallback = false;
                     }
                 }
             }
         }
 
+        const auto unchanged = [&]
+        {
+            return budget_.owner().snapshot == snapshot && node.type == original.type &&
+                   node.ea == original.ea && node.compare(original) == 0 &&
+                   (!parent_target ||
+                    (parent_target == parent_target_ && parent_target->type == saved_target->type &&
+                     parent_target->compare(*saved_target) == 0));
+        };
+        const bool eligible =
+            replacement && analysis.eligible_for_commit(legacy_fallback, unchanged);
         const auto &statistics = analysis.statistics();
         auto &totals = budget_.owner().totals;
         totals.candidates += statistics.candidates;
@@ -856,11 +883,17 @@ class CallerSimplifier
         totals.disproved += statistics.disproved;
         totals.unknown += statistics.unknown;
         totals.exhausted += statistics.exhausted;
-        if (!replacement || user_cancelled())
+        totals.rejected_mutations += statistics.rejected_mutations;
+        totals.deadline_overshoot_ns =
+            std::max(totals.deadline_overshoot_ns, statistics.deadline_overshoot_ns);
+        if (statistics.cancel_stage != RejectReason::None)
+            totals.cancel_stage = statistics.cancel_stage;
+        if (!eligible)
         {
             return false;
         }
         node.swap(*replacement);
+        ++budget_.owner().snapshot.mutation_epoch;
         ++changes_;
         ++totals.applied;
         return true;
@@ -874,6 +907,14 @@ class CallerSimplifier
         }
         if (node->op == cot_asg && node->x && node->y)
         {
+            struct TargetScope
+            {
+                const cexpr_t *&slot;
+                const cexpr_t *old;
+                ~TargetScope() { slot = old; }
+            };
+            TargetScope scope{parent_target_, parent_target_};
+            parent_target_ = node->x;
             // The outer store does not invalidate private scalar bindings
             // before its RHS is evaluated. Only address-side writes make the
             // relative ordering of those bindings uncertain here.
@@ -937,7 +978,10 @@ class CallerSimplifier
     {
         ControlHazards rhs;
         rhs.apply_to(node.y, nullptr);
+        const cexpr_t *previous_target = parent_target_;
+        parent_target_ = node.x;
         expression_tree(node.y, context);
+        parent_target_ = previous_target;
         if (rhs.writes)
         {
             context.reset();
@@ -1166,6 +1210,7 @@ class CallerSimplifier
         }
     }
 
+    const cexpr_t *parent_target_ = nullptr;
     cfunc_t &function_;
     CallBudget &budget_;
     PureFunctions functions_;

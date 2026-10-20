@@ -763,6 +763,69 @@ void test_constant_queries()
     Analysis unavailable(program, exhausted);
     check(!unavailable.constant_value(0, 0), "exhausted constant queries fail closed");
 }
+void test_post_proof_eligibility()
+{
+    using Clock = std::chrono::steady_clock;
+    detail::SessionTestHooks hooks;
+    auto time = Clock::time_point{};
+    bool cancelled = false;
+    hooks.now = [&] { return time; };
+    struct Restore
+    {
+        detail::SessionTestHooks *old;
+        ~Restore() { detail::session_test_hooks = old; }
+    } restore{detail::session_test_hooks};
+    detail::session_test_hooks = &hooks;
+    Options options;
+    options.budget_ms = 100;
+    options.cancelled = [&] { return cancelled; };
+    Statistics statistics;
+    detail::SolverSession session(options, statistics);
+    check(session.remaining_budget(time) == std::chrono::milliseconds(100),
+          "session exposes exact remaining budget");
+    check(session.remaining_budget(session.deadline()) == std::chrono::nanoseconds(0),
+          "expiry is inclusive");
+    check(session.remaining_budget(session.deadline() + std::chrono::seconds(1)).count() == 0,
+          "remaining budget clamps to zero");
+    z3::solver solver(session.context);
+    solver.add(session.context.bool_val(false));
+    hooks.after_query = [&](const char *) { cancelled = true; };
+    check(session.check(solver, "post-poll cancellation") == z3::unknown,
+          "late cancellation rejects observed UNSAT");
+    check(statistics.cancel_stage == RejectReason::PostProofExpiry,
+          "post-proof rejection records its stage");
+    cancelled = false;
+    hooks.after_query = [&](const char *) { time += std::chrono::milliseconds(150); };
+    check(session.check(solver, "post-poll scheduling pause") == z3::unknown,
+          "150 ms pause exhausts 100 ms allowance");
+    check(statistics.deadline_overshoot_ns == 50000000, "overshoot is recorded in nanoseconds");
+    check(!session.eligible_for_commit(), "strict commit rejects deadline expiry");
+    check(session.eligible_for_commit(true),
+          "tagged preverified legacy fallback waives only deadline");
+    cancelled = true;
+    check(!session.eligible_for_commit(true), "legacy fallback never waives cancellation");
+    cancelled = false;
+    check(!session.eligible_for_commit(true, [] { return false; }),
+          "legacy fallback never waives snapshot mismatch");
+
+    time = Clock::time_point{};
+    hooks.after_query = {};
+    options.cancelled = [&]
+    {
+        time += std::chrono::milliseconds(150);
+        return false;
+    };
+    Statistics callback_statistics;
+    detail::SolverSession callback_session(options, callback_statistics);
+    check(!callback_session.has_budget(), "callback time is charged before clock eligibility");
+    options.cancelled = []() -> bool { throw std::runtime_error("callback"); };
+    Statistics failure_statistics;
+    detail::SolverSession failure_session(options, failure_statistics);
+    check(!failure_session.has_budget() &&
+              failure_statistics.cancel_stage == RejectReason::CallbackFailure,
+          "callback failure retains the original");
+}
+
 } // namespace
 
 int main()
@@ -784,6 +847,7 @@ int main()
     test_symbolic_opaque_expressions();
     test_known_bit_thresholds();
     test_constant_queries();
+    test_post_proof_eligibility();
     std::printf("MBA SMT failures: %d\n", failures);
     return failures != 0;
 }
