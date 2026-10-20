@@ -140,6 +140,7 @@ enum class RejectReason
     EmittedDestinationOrFrameMismatch,
     StaleSnapshot,
     CallbackFailure,
+    CobraGenerationExhausted,
 };
 
 struct SnapshotToken
@@ -187,11 +188,14 @@ struct CobraStatistics
     size_t raw_leaves = 0, input_nodes = 0, output_nodes = 0, raw_support = 0,
            canonical_support = 0;
     size_t scratch_peak_bytes = 0;
+    size_t admitted = 0, rejected = 0, input_cost = 0, output_cost = 0;
+    uint64_t extraction_ns = 0, invocation_ns = 0, reconstruction_ns = 0, cleanup_ns = 0;
     uint64_t generation_ns = 0, candidate_proof_ns = 0, emission_ns = 0, emitted_proof_ns = 0;
     uint64_t overshoot_ns = 0;
     uint64_t proved_widths = 0;
-    unsigned last_status = 0, last_reason = 0;
+    unsigned last_status = 0, last_reason = 0, last_generation_phase = 0;
     bool spot_check = false;
+    bool timings_complete = false;
     std::array<unsigned, 12> raw_indices{};
 };
 struct Statistics
@@ -213,6 +217,8 @@ struct Statistics
     size_t rejected_mutations = 0;
     unsigned last_solver_observed = 0; // 0 absent, 1 SAT, 2 UNSAT, 3 UNKNOWN
     bool last_solver_usable = false;
+    unsigned last_candidate_verdict = 0, last_emitted_verdict = 0; // 0 absent; Verdict + 1
+    bool last_receipt_cobra = false, last_deadline_exempt = false;
 };
 
 class ProofReceipt

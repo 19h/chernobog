@@ -616,7 +616,13 @@ std::shared_ptr<const ProofReceipt>
 Analysis::prove_candidate(size_t block, size_t statement, const Term &candidate, bool cobra_origin)
 {
     const auto started = impl_->session.now();
-    if (verify(block, statement, candidate) != Verdict::Verified)
+    const auto verdict = verify(block, statement, candidate);
+    impl_->statistics.last_candidate_verdict = unsigned(verdict) + 1;
+    if (cobra_origin)
+        impl_->statistics.cobra.candidate_proof_ns += static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(impl_->session.now() - started)
+                .count());
+    if (verdict != Verdict::Verified)
         return {};
     auto receipt = std::shared_ptr<ProofReceipt>(new ProofReceipt);
     receipt->analysis_ = impl_->identity;
@@ -626,15 +632,13 @@ Analysis::prove_candidate(size_t block, size_t statement, const Term &candidate,
     receipt->source_ = impl_->program.blocks[block].statements[statement].value;
     receipt->candidate_ = candidate;
     receipt->cobra_ = cobra_origin;
+    impl_->statistics.last_receipt_cobra = cobra_origin;
     if (!impl_->session.has_budget())
     {
         impl_->session.record_expiry(RejectReason::PostProofExpiry);
+        impl_->statistics.last_candidate_verdict = unsigned(Verdict::Exhausted) + 1;
         return {};
     }
-    if (cobra_origin)
-        impl_->statistics.cobra.candidate_proof_ns += static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(impl_->session.now() - started)
-                .count());
     return receipt;
 }
 
@@ -651,22 +655,26 @@ std::shared_ptr<const ProofReceipt> Analysis::prove_emission(const ProofReceipt 
         return {};
     }
     const auto started = impl_->session.now();
-    if (verify_at(candidate.block_, candidate.statement_, emitted,
-                  "MBA emitted replacement mismatch") != Verdict::Verified)
+    const auto verdict = verify_at(candidate.block_, candidate.statement_, emitted,
+                                   "MBA emitted replacement mismatch");
+    impl_->statistics.last_emitted_verdict = unsigned(verdict) + 1;
+    if (candidate.cobra_)
+        impl_->statistics.cobra.emitted_proof_ns += static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(impl_->session.now() - started)
+                .count());
+    if (verdict != Verdict::Verified)
         return {};
     auto receipt = std::shared_ptr<ProofReceipt>(new ProofReceipt(candidate));
     receipt->emitted_ = emitted;
     if (!impl_->session.has_budget())
     {
         impl_->session.record_expiry(RejectReason::PostProofExpiry);
+        impl_->statistics.last_emitted_verdict = unsigned(Verdict::Exhausted) + 1;
         return {};
     }
     if (candidate.cobra_)
     {
         ++impl_->statistics.cobra.emitted_proved;
-        impl_->statistics.cobra.emitted_proof_ns += static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(impl_->session.now() - started)
-                .count());
     }
     return receipt;
 }
@@ -682,6 +690,8 @@ bool Analysis::eligible_for_commit(const ProofReceipt &receipt, bool legacy_dead
     }
     const bool exempt = legacy_deadline_exempt &&
                         impl_->session.options.backend == Backend::Legacy && !receipt.cobra_;
+    impl_->statistics.last_receipt_cobra = receipt.cobra_;
+    impl_->statistics.last_deadline_exempt = exempt;
     return eligible_for_commit(exempt, unchanged);
 }
 
@@ -740,6 +750,20 @@ void accumulate_statistics(Statistics &total, const Statistics &attempt)
     total.cobra.applied += attempt.cobra.applied;
     total.cobra.frame_rejections += attempt.cobra.frame_rejections;
     total.cobra.generation_ns += attempt.cobra.generation_ns;
+    total.cobra.extraction_ns += attempt.cobra.extraction_ns;
+    total.cobra.invocation_ns += attempt.cobra.invocation_ns;
+    total.cobra.reconstruction_ns += attempt.cobra.reconstruction_ns;
+    total.cobra.cleanup_ns += attempt.cobra.cleanup_ns;
+    total.cobra.admitted += attempt.cobra.admitted;
+    total.cobra.rejected += attempt.cobra.rejected;
+    if (attempt.last_candidate_verdict)
+    {
+        total.last_candidate_verdict = attempt.last_candidate_verdict;
+        total.last_receipt_cobra = attempt.last_receipt_cobra;
+        total.last_deadline_exempt = attempt.last_deadline_exempt;
+    }
+    if (attempt.last_emitted_verdict)
+        total.last_emitted_verdict = attempt.last_emitted_verdict;
     total.cobra.candidate_proof_ns += attempt.cobra.candidate_proof_ns;
     total.cobra.emission_ns += attempt.cobra.emission_ns;
     total.cobra.emitted_proof_ns += attempt.cobra.emitted_proof_ns;
@@ -750,11 +774,15 @@ void accumulate_statistics(Statistics &total, const Statistics &attempt)
     if (attempt.cobra.calls)
     {
         total.cobra.raw_leaves = attempt.cobra.raw_leaves;
+        total.cobra.input_cost = attempt.cobra.input_cost;
+        total.cobra.output_cost = attempt.cobra.output_cost;
+        total.cobra.timings_complete = attempt.cobra.timings_complete;
         total.cobra.raw_indices = attempt.cobra.raw_indices;
         total.cobra.input_nodes = attempt.cobra.input_nodes;
         total.cobra.output_nodes = attempt.cobra.output_nodes;
         total.cobra.raw_support = attempt.cobra.raw_support;
         total.cobra.canonical_support = attempt.cobra.canonical_support;
+        total.cobra.last_generation_phase = attempt.cobra.last_generation_phase;
         total.cobra.last_status = attempt.cobra.last_status;
         total.cobra.last_reason = attempt.cobra.last_reason;
         total.cobra.spot_check = attempt.cobra.spot_check;

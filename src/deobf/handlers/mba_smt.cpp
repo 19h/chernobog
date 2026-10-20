@@ -115,13 +115,19 @@ bool apply_verified_proposal(MicrocodeAdapter &adapter, Analysis &analysis,
 
     // Emission is an independent boundary: verify the actual SDK operands,
     // not the synthesizer's expression or its textual representation.
-    const Term emitted = adapter.translate_instruction(&replacement);
-    analysis.record_emission(
-        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                  std::chrono::steady_clock::now() - emission_started)
-                                  .count()));
     const auto receipt =
-        proposal.proof ? analysis.prove_emission(*proposal.proof, emitted) : nullptr;
+        proposal.proof ? MicrocodeEmissionProof::prove(
+                             analysis, *proposal.proof, replacement,
+                             [&](const minsn_t &temporary)
+                             {
+                                 const auto emitted = adapter.translate_instruction(&temporary);
+                                 analysis.record_emission(static_cast<uint64_t>(
+                                     std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                         std::chrono::steady_clock::now() - emission_started)
+                                         .count()));
+                                 return emitted;
+                             })
+                       : nullptr;
     if (!receipt)
         return false;
 

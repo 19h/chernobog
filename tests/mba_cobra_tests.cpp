@@ -83,6 +83,21 @@ int main(int argc, char **argv)
                 ++failures;
         }
     }
+    cb::Request timed;
+    auto ticks = cb::Clock::time_point{};
+    timed.now = [&]
+    {
+        const auto value = ticks;
+        ticks += std::chrono::nanoseconds(1);
+        return value;
+    };
+    timed.deadline = ticks + std::chrono::seconds(10);
+    const auto timing =
+        cb::generate(fixtures::make().front().program.blocks[0].statements[0].value, timed);
+    check(timing.timings_complete && timing.extraction_ns + timing.invocation_ns +
+                                             timing.reconstruction_ns + timing.cleanup_ns ==
+                                         timing.elapsed_ns,
+          "complete phase intervals exactly partition candidate elapsed nanoseconds");
     cb::Request exhausted;
     exhausted.deadline = cb::Clock::now() - std::chrono::milliseconds(1);
     check(cb::generate(expression(Op::Add, variable(0, 32), constant(0, 32)), exhausted).status ==

@@ -92,6 +92,29 @@ int main(int argc, char **argv)
           "false signature hypothesis rejected by Z3");
     hooks.generated = {};
     auto limited = request;
+    for (auto phase : {detail::CobraPhase::Extraction, detail::CobraPhase::Invocation,
+                       detail::CobraPhase::Reconstruction, detail::CobraPhase::Cleanup})
+    {
+        bool cancel = false;
+        hooks.entered_phase = [&](detail::CobraPhase entered)
+        {
+            if (entered == phase)
+                cancel = true;
+        };
+        limited.cancelled = [&] { return cancel; };
+        const auto stopped = cb::generate(original, limited);
+        check(!stopped.candidate && stopped.status == cb::Status::Exhausted &&
+                  stopped.reason == cb::Reason::Cancellation,
+              "each adapter phase propagates cancellation without publishing a hypothesis");
+    }
+    hooks.entered_phase = {};
+    limited = request;
+    limited.now = []() -> cb::Clock::time_point { throw std::runtime_error("clock"); };
+    const auto bad_clock = cb::generate(original, limited);
+    check(!bad_clock.candidate && bad_clock.status == cb::Status::Failure &&
+              bad_clock.reason == cb::Reason::Callback,
+          "clock callback failure preserves the original without escaping");
+    limited = request;
     limited.scratch_bytes = 1;
     check(cb::generate(original, limited).status == cb::Status::Exhausted,
           "allocation allowance enforced before payload allocation");
@@ -101,6 +124,9 @@ int main(int argc, char **argv)
     hooks.generated = [](cobra::SimplifyOutcome &) { throw std::runtime_error("upstream"); };
     check(cb::generate(original, request).status == cb::Status::Failure,
           "upstream exception preserves original");
+    hooks.generated = [](cobra::SimplifyOutcome &) { throw std::bad_alloc{}; };
+    check(cb::generate(original, request).status == cb::Status::Exhausted,
+          "upstream allocation failure preserves original");
     hooks.generated = {};
     auto time = cb::Clock::time_point{};
     request.now = [&] { return time; };
@@ -139,7 +165,8 @@ int main(int argc, char **argv)
     for (size_t i = 1; i < 9; ++i)
         too_many = expression(Op::Add, too_many, variable(i, 8));
     const auto over_limit = cb::generate(too_many, admission);
-    check(over_limit.status == cb::Status::Unsupported && over_limit.scratch_peak_bytes == 0,
+    check(over_limit.status == cb::Status::Unsupported && over_limit.scratch_peak_bytes == 0 &&
+              over_limit.raw_leaves == 9,
           "raw leaf admission precedes CoBRA tree and signature allocations");
     Program collision;
     collision.widths = {8, 8};

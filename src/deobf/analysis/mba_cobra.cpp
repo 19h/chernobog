@@ -22,6 +22,7 @@ bool same(const Term &a, const Term &b)
 }
 struct ShapeFailure
 {
+    size_t leaves = 0, nodes = 0;
 };
 struct MappingFailure
 {
@@ -105,7 +106,7 @@ struct Region
             if (same(admitted_atoms[i], term))
                 return;
         if (admitted_count >= leaf_limit)
-            throw ShapeFailure{};
+            throw ShapeFailure{admitted_count + 1, lowered_nodes};
         admitted_atoms[admitted_count++] = term;
     }
     void admit(const Term &term)
@@ -327,8 +328,39 @@ bool available() noexcept { return true; }
 Outcome generate(const Term &original, const Request &request)
 {
     Outcome outcome;
-    const auto now = [&] { return request.now ? request.now() : Clock::now(); };
+    bool clock_failed = false;
+    const auto now = [&]() noexcept
+    {
+        try
+        {
+            return request.now ? request.now() : Clock::now();
+        }
+        catch (...)
+        {
+            clock_failed = true;
+            return Clock::now();
+        }
+    };
     const auto started = now();
+    auto phase_started = started;
+    auto *phase = &outcome.extraction_ns;
+    const auto enter = [&](uint64_t &next)
+    {
+        const auto time = now();
+        *phase += static_cast<uint64_t>(std::max<int64_t>(
+            0, std::chrono::duration_cast<std::chrono::nanoseconds>(time - phase_started).count()));
+        phase_started = time;
+        phase = &next;
+    };
+    const auto signal = [&](detail::CobraPhase current)
+    {
+        outcome.last_phase = unsigned(current) + 1;
+        if (detail::cobra_test_hooks && detail::cobra_test_hooks->entered_phase)
+        {
+            detail::cobra_test_hooks->entered_phase(current);
+            cobra::budget::Checkpoint(true);
+        }
+    };
     const auto allowance = request.scratch_bytes              ? request.scratch_bytes
                            : request.profile == Profile::Deep ? 268435456u
                                                               : 67108864u;
@@ -336,16 +368,24 @@ Outcome generate(const Term &original, const Request &request)
     try
     {
         ledger = std::make_shared<cobra::budget::Ledger>(allowance);
-        cobra::budget::Scope scope({request.deadline, request.cancelled, request.now, ledger});
+        if (clock_failed)
+            throw cobra::budget::Exhausted{cobra::budget::Reason::Callback};
+        cobra::budget::Scope scope({request.deadline, request.cancelled, now, ledger});
+        signal(detail::CobraPhase::Extraction);
         cobra::budget::Checkpoint(true);
         if (!original)
             throw ShapeFailure{};
         Region region{original->bits, request.profile == Profile::Deep ? size_t(12) : size_t(8)};
         region.inspect(original);
         outcome.input_nodes = region.visits;
+        outcome.input_cost = cost(original);
         region.prepare_atoms(original);
+        outcome.input_nodes = region.lowered_nodes;
+        outcome.admitted = true;
         auto input = region.lower(original);
         outcome.raw_leaves = region.atoms.size();
+        enter(outcome.invocation_ns);
+        signal(detail::CobraPhase::Invocation);
         auto signature = cobra::EvaluateBooleanSignature(
             *input, static_cast<uint32_t>(region.atoms.size()), region.bits);
         cobra::Options options;
@@ -353,6 +393,10 @@ Outcome generate(const Term &original, const Request &request)
         options.max_vars = static_cast<uint32_t>(region.leaf_limit);
         options.spot_check = true;
         auto result = cobra::Simplify(signature, region.names, input.get(), options);
+        enter(outcome.reconstruction_ns);
+        signal(detail::CobraPhase::Reconstruction);
+        if (result)
+            outcome.spot_check = result->verified;
         if (result && detail::cobra_test_hooks && detail::cobra_test_hooks->generated)
             detail::cobra_test_hooks->generated(*result);
         if (!result)
@@ -382,6 +426,7 @@ Outcome generate(const Term &original, const Request &request)
             Term candidate = region.restore(*result->expr, mapping, nodes, support);
             size_t restored_visits = 0;
             outcome.output_nodes = materialized_nodes(candidate, restored_visits);
+            outcome.output_cost = cost(candidate);
             if (outcome.output_nodes > 512)
                 throw ShapeFailure{};
             support.clear();
@@ -399,6 +444,9 @@ Outcome generate(const Term &original, const Request &request)
             }
         }
         cobra::budget::Checkpoint(true);
+        outcome.timings_complete = true;
+        enter(outcome.cleanup_ns);
+        signal(detail::CobraPhase::Cleanup);
     }
     catch (const cobra::budget::Exhausted &error)
     {
@@ -414,8 +462,12 @@ Outcome generate(const Term &original, const Request &request)
         outcome.status = Status::Unsupported;
         outcome.reason = Reason::Mapping;
     }
-    catch (const ShapeFailure &)
+    catch (const ShapeFailure &shape)
     {
+        if (shape.leaves)
+            outcome.raw_leaves = shape.leaves;
+        if (shape.nodes)
+            outcome.input_nodes = shape.nodes;
         outcome.status = Status::Unsupported;
         outcome.reason = Reason::Shape;
     }
@@ -429,6 +481,10 @@ Outcome generate(const Term &original, const Request &request)
         outcome.status = Status::Failure;
         outcome.reason = Reason::Upstream;
     }
+    // On exceptional exits, unwinding belongs to the last observed phase;
+    // timings_complete distinguishes those samples from complete phase splits.
+    if (phase != &outcome.cleanup_ns)
+        enter(outcome.cleanup_ns);
     outcome.scratch_peak_bytes = ledger ? ledger->peak : 0;
     // All upstream temporaries have been destroyed before accepting the result.
     try
@@ -452,6 +508,8 @@ Outcome generate(const Term &original, const Request &request)
         outcome.reason = Reason::Callback;
     }
     const auto finished = now();
+    outcome.cleanup_ns += static_cast<uint64_t>(std::max<int64_t>(
+        0, std::chrono::duration_cast<std::chrono::nanoseconds>(finished - phase_started).count()));
     outcome.elapsed_ns = static_cast<uint64_t>(std::max<int64_t>(
         0, std::chrono::duration_cast<std::chrono::nanoseconds>(finished - started).count()));
     if (cancelled || finished >= request.deadline)
@@ -462,6 +520,15 @@ Outcome generate(const Term &original, const Request &request)
             outcome.overshoot_ns = static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(finished - request.deadline)
                     .count());
+    }
+    if (clock_failed)
+    {
+        outcome.status = Status::Failure;
+        outcome.reason = Reason::Callback;
+        outcome.timings_complete = false;
+        outcome.elapsed_ns = 0;
+        outcome.extraction_ns = outcome.invocation_ns = outcome.reconstruction_ns =
+            outcome.cleanup_ns = 0;
     }
     if (outcome.status != Status::Candidate)
         outcome.candidate.reset();

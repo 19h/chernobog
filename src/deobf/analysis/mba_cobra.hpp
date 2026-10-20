@@ -58,9 +58,13 @@ struct Outcome
     std::array<unsigned, 12> raw_indices{};
     size_t canonical_support = 0;
     size_t scratch_peak_bytes = 0;
+    size_t input_cost = 0, output_cost = 0;
+    uint64_t extraction_ns = 0, invocation_ns = 0, reconstruction_ns = 0, cleanup_ns = 0;
     uint64_t elapsed_ns = 0;
     uint64_t overshoot_ns = 0;
+    unsigned last_phase = 0; // 0 absent, 1 extraction, 2 invocation, 3 reconstruction, 4 cleanup
     bool spot_check = false;
+    bool admitted = false, timings_complete = false;
 };
 uint64_t process_peak_rss_bytes() noexcept;
 bool available() noexcept;

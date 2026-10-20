@@ -271,7 +271,20 @@ qstring chernobog_mba_smt_statistics(ea_t ea)
             result += ",";
         result.cat_sprnt("\"v%u\"", statistics.cobra.raw_indices[i]);
     }
-    result += "]}}";
+    result.cat_sprnt(
+        "],\"admitted\":%zu,\"rejected\":%zu,\"input_cost\":%zu,\"output_cost\":%zu,\"extraction_ns\":%llu,\"invocation_ns\":%llu,\"reconstruction_ns\":%llu,\"cleanup_ns\":%llu,\"timings_complete\":%s,\"last_candidate_verdict\":%u,\"last_emitted_verdict\":%u,\"last_receipt_cobra\":%s,\"last_deadline_exempt\":%s,\"snapshot_generation\":%llu,\"mutation_epoch\":%llu,\"last_generation_phase\":%u}}",
+        statistics.cobra.admitted, statistics.cobra.rejected, statistics.cobra.input_cost,
+        statistics.cobra.output_cost,
+        static_cast<unsigned long long>(statistics.cobra.extraction_ns),
+        static_cast<unsigned long long>(statistics.cobra.invocation_ns),
+        static_cast<unsigned long long>(statistics.cobra.reconstruction_ns),
+        static_cast<unsigned long long>(statistics.cobra.cleanup_ns),
+        statistics.cobra.timings_complete ? "true" : "false", statistics.last_candidate_verdict,
+        statistics.last_emitted_verdict, statistics.last_receipt_cobra ? "true" : "false",
+        statistics.last_deadline_exempt ? "true" : "false",
+        static_cast<unsigned long long>(budget.snapshot.generation),
+        static_cast<unsigned long long>(budget.snapshot.mutation_epoch),
+        statistics.cobra.last_generation_phase);
     return result;
 }
 

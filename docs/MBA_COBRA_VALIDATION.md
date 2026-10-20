@@ -6,7 +6,9 @@ resolves to legacy with an explicit diagnostic. A failed or exhausted CoBRA
 invocation never reruns legacy candidate search for that region.
 
 Production handlers and the licensed SDK bridge share the same microcode
-emitter, frame checks, dual proof receipts, and final mutation functions.
+emitter, frame checks, dual proof receipts, and final mutation functions. SDK receipts retain an immutable copy of the exact
+emitted object lifted before Boundary 2; post-proof edits of temporary RHS values,
+metadata, or parent targets reject before mutation.
 Microcode fixtures exercise all eight admitted byte widths. Ctree emission
 admits the SDK's integral types at 8, 16, 32, and 64 bits. Neither a candidate-only
 test nor the SDK bridge establishes installed-plugin corpus behavior.
@@ -44,18 +46,22 @@ at fingerprint resolution contained the six 9.4 installers; 9.5 runtime
 qualification remains separate from this matrix.
 
 The aggregate checker requires 504 successful SDK positives (42 fixtures times
-two profiles times six targets), 126 negative mutation rejections, six positive
+two profiles times six targets), 162 negative mutation rejections, six positive
 legacy deadline-fallback controls, and both unsigned corpus profiles for both
 backends on every target. Missing reports, skipped targets, differing source
 fingerprints, altered artifacts, and candidate-only evidence reject promotion.
 Timing is measured in ns and memory in B. SDK backend processes are separate;
 process RSS is a lifetime high-water mark. The 64 MiB and 256 MiB scratch limits
 apply to instrumented container and AST payloads, separately from process RSS.
+Complete extraction, invocation, reconstruction, and cleanup intervals partition
+candidate elapsed ns. Exceptional unwinding is charged to the active interval;
+`timings_complete=false` identifies these partial splits. A failed clock callback
+publishes no candidate and reports unavailable timing as zero with that flag.
 
 Local validation on the implementation source exercised 33 CTest suites, 84 SDK
-positive rows, 21 negative SDK probes, and the positive legacy fallback control.
+positive rows, 27 negative SDK probes, and the positive legacy fallback control.
 The installed-plugin nested corpus passed with both backends and both profiles;
-each independently compiled unsigned profile checked 607,986 values. These
+each independently compiled unsigned profile checked 607,986 values with UBSan. These
 local results do not qualify the other native release targets.
 
 | Assumption | Dependent result | Falsification probe |

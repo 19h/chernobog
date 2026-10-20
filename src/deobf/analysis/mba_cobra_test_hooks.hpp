@@ -4,8 +4,16 @@
 #include <functional>
 namespace chernobog::mba_smt::detail
 {
+enum class CobraPhase
+{
+    Extraction,
+    Invocation,
+    Reconstruction,
+    Cleanup
+};
 struct CobraTestHooks
 {
+    std::function<void(CobraPhase)> entered_phase;
     std::function<void(cobra::SimplifyOutcome &)> generated;
     std::function<void()> after_cleanup;
 };

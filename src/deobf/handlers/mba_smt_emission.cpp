@@ -190,18 +190,20 @@ bool verify_emitted_instruction_frame(const minsn_t &source, const minsn_t &emit
            pure_operand(emitted.l, visits) && pure_operand(emitted.r, visits);
 }
 bool commit_microcode_replacement(minsn_t &original, const minsn_t &snapshot, minsn_t &replacement,
-                                  Analysis &analysis, const ProofReceipt &receipt,
+                                  Analysis &analysis, const MicrocodeEmissionProof &proof,
                                   SnapshotToken expected, SnapshotToken &current,
                                   const std::function<bool()> &domain_unchanged)
 {
-    if (!verify_emitted_instruction_frame(snapshot, replacement))
+    const auto &receipt = proof.core();
+    const auto &emitted_snapshot = proof.emitted_snapshot();
+    if (!verify_emitted_instruction_frame(snapshot, replacement) ||
+        !same_microcode_instruction(replacement, emitted_snapshot))
     {
         analysis.reject_mutation(RejectReason::EmittedDestinationOrFrameMismatch);
         return false;
     }
     if (microcode_expression_cost(&replacement) >= microcode_expression_cost(&snapshot))
         return false;
-    const minsn_t emitted_snapshot(replacement);
     const auto unchanged = [&]
     {
         return current == expected && analysis.snapshot() == expected &&
@@ -216,12 +218,18 @@ bool commit_microcode_replacement(minsn_t &original, const minsn_t &snapshot, mi
     return true;
 }
 bool commit_ctree_replacement(cexpr_t &original, const cexpr_t &snapshot, cexpr_t &replacement,
-                              Analysis &analysis, const ProofReceipt &receipt,
+                              Analysis &analysis, const CtreeEmissionProof &proof,
                               SnapshotToken expected, SnapshotToken &current,
                               const cexpr_t *parent_target, const cexpr_t *saved_target,
                               bool legacy_fallback, const std::function<bool()> &domain_unchanged)
 {
+    const auto &receipt = proof.core();
+    const auto &emitted_snapshot = proof.emitted_snapshot();
     if (replacement.type != snapshot.type || replacement.ea != snapshot.ea ||
+        replacement.exflags != snapshot.exflags || replacement.label_num != snapshot.label_num ||
+        replacement.compare(emitted_snapshot) != 0 || replacement.type != emitted_snapshot.type ||
+        replacement.ea != emitted_snapshot.ea || replacement.exflags != emitted_snapshot.exflags ||
+        replacement.label_num != emitted_snapshot.label_num ||
         replacement.type.get_size() * 8 != receipt.source_bits() ||
         original.type.get_size() * 8 != receipt.source_bits() ||
         (parent_target && (!saved_target || parent_target->type != saved_target->type ||
@@ -236,14 +244,15 @@ bool commit_ctree_replacement(cexpr_t &original, const cexpr_t &snapshot, cexpr_
     if (receipt.from_cobra() &&
         scalar_expression_cost(replacement) >= scalar_expression_cost(snapshot))
         return false;
-    const cexpr_t emitted_snapshot(replacement);
     const auto unchanged = [&]
     {
         return current == expected && analysis.snapshot() == expected &&
                (!domain_unchanged || domain_unchanged()) && original.type == snapshot.type &&
                original.ea == snapshot.ea && original.exflags == snapshot.exflags &&
                original.label_num == snapshot.label_num && original.compare(snapshot) == 0 &&
-               replacement.type == emitted_snapshot.type &&
+               replacement.type == emitted_snapshot.type && replacement.ea == emitted_snapshot.ea &&
+               replacement.exflags == emitted_snapshot.exflags &&
+               replacement.label_num == emitted_snapshot.label_num &&
                replacement.compare(emitted_snapshot) == 0 &&
                (!parent_target || (saved_target && parent_target->type == saved_target->type &&
                                    parent_target->compare(*saved_target) == 0));

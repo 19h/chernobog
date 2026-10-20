@@ -762,6 +762,7 @@ class AlgebraicSimplifier
         if (!budget.admitted)
         {
             ++statistics.exhausted;
+            ++statistics.rejected;
             session_.statistics.cancel_stage = RejectReason::BudgetExhaustedPreFlight;
             return {};
         }
@@ -774,6 +775,15 @@ class AlgebraicSimplifier
         const auto outcome = cobra_backend::generate(term, request);
         ++statistics.calls;
         statistics.generation_ns += outcome.elapsed_ns;
+        statistics.extraction_ns += outcome.extraction_ns;
+        statistics.invocation_ns += outcome.invocation_ns;
+        statistics.reconstruction_ns += outcome.reconstruction_ns;
+        statistics.cleanup_ns += outcome.cleanup_ns;
+        statistics.admitted += outcome.admitted;
+        statistics.rejected += !outcome.admitted;
+        statistics.input_cost = outcome.input_cost;
+        statistics.output_cost = outcome.output_cost;
+        statistics.timings_complete = outcome.timings_complete;
         statistics.overshoot_ns = std::max(statistics.overshoot_ns, outcome.overshoot_ns);
         statistics.scratch_peak_bytes =
             std::max(statistics.scratch_peak_bytes, outcome.scratch_peak_bytes);
@@ -784,6 +794,9 @@ class AlgebraicSimplifier
         statistics.canonical_support = outcome.canonical_support;
         statistics.raw_indices = outcome.raw_indices;
         statistics.spot_check = outcome.spot_check;
+        statistics.last_generation_phase = outcome.last_phase;
+        if (outcome.status == cobra_backend::Status::Exhausted)
+            session_.statistics.cancel_stage = RejectReason::CobraGenerationExhausted;
         statistics.last_status = unsigned(outcome.status);
         statistics.last_reason = unsigned(outcome.reason);
         switch (outcome.status)

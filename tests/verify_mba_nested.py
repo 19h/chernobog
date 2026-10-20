@@ -74,7 +74,16 @@ def main():
         definitions = [functions[name][profile] for name in FUNCTIONS]
         source.write_text("\n".join(prefix + definitions) + harness, encoding="utf-8")
         build = subprocess.run(
-            compiler + ["-std=c11", "-O1", source.name, "-o", binary.name],
+            compiler
+            + [
+                "-std=c11",
+                "-O1",
+                "-fsanitize=undefined",
+                "-fno-sanitize-recover=all",
+                source.name,
+                "-o",
+                binary.name,
+            ],
             cwd=output,
             capture_output=True,
             text=True,
@@ -90,6 +99,7 @@ def main():
         results.append(
             {
                 "profile": profile,
+                "sanitizers": ["undefined"],
                 "comparisons": int(match[1]),
                 "source_sha256": sha256(source),
                 "binary_sha256": sha256(binary),

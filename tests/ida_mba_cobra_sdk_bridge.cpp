@@ -75,10 +75,20 @@ int positive(Backend backend, Profile profile, qstring &output)
         {
             const auto &proposal = proposals.front();
             minsn_t replacement(snapshot);
+            const auto emission_started = std::chrono::steady_clock::now();
             assign_value(replacement, adapter.emit_operand(proposal.replacement, original.ea));
             frame = verify_emitted_instruction_frame(snapshot, replacement);
-            emitted = adapter.translate_instruction(&replacement);
-            const auto receipt = analysis.prove_emission(*proposal.proof, emitted);
+            const auto receipt = MicrocodeEmissionProof::prove(
+                analysis, *proposal.proof, replacement,
+                [&](const minsn_t &temporary)
+                {
+                    emitted = adapter.translate_instruction(&temporary);
+                    analysis.record_emission(static_cast<uint64_t>(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now() - emission_started)
+                            .count()));
+                    return emitted;
+                });
             emitted_unsat = bool(receipt);
             emitted_cost = microcode_expression_cost(&replacement);
             if (receipt)
@@ -140,7 +150,7 @@ void number(cexpr_t &node, uint64_t value, const tinfo_t &type)
 int ctree_faults(qstring &output)
 {
     int failures = 0;
-    for (int fault = 0; fault < 8; ++fault)
+    for (int fault = 0; fault < 9; ++fault)
     {
         auto time = std::chrono::steady_clock::time_point{};
         bool cancelled = false;
@@ -184,6 +194,8 @@ int ctree_faults(qstring &output)
         auto candidate =
             analysis.prove_candidate(0, 0, constant(1, 8), options.backend == Backend::Cobra);
         if (fault == 6 || fault == 7)
+        {
+            time += std::chrono::milliseconds(5);
             hooks.after_query = [&](const char *purpose, const z3::check_result &observed)
             {
                 if (std::string(purpose) == "MBA emitted replacement mismatch" &&
@@ -195,12 +207,22 @@ int ctree_faults(qstring &output)
                         time += std::chrono::milliseconds(150);
                 }
             };
-        const auto receipt =
-            candidate ? analysis.prove_emission(*candidate, constant(1, 8)) : nullptr;
+        }
+        const auto receipt = candidate
+                                 ? CtreeEmissionProof::prove(
+                                       analysis, *candidate, replacement,
+                                       [](const cexpr_t &temporary)
+                                       {
+                                           return constant(temporary.numval(),
+                                                           unsigned(temporary.type.get_size() * 8));
+                                       })
+                                 : nullptr;
         SnapshotToken current = options.snapshot;
         bool applied = false;
         if (receipt)
         {
+            if (fault == 8)
+                replacement.n->assign(2, 1, type_unsigned);
             if (fault == 1)
                 cancelled = true;
             if (fault == 2)
@@ -239,9 +261,9 @@ int faults(qstring &output)
     int failures = 0;
     bool first = true;
     output = "[";
-    for (int fault = 0; fault < 14; ++fault)
+    for (int fault = 0; fault < 19; ++fault)
     {
-        const auto fixture = fixtures::make().front();
+        const auto fixture = fixtures::make()[fault == 14 ? 9 : 0];
         auto time = std::chrono::steady_clock::time_point{};
         bool cancelled = false;
         detail::SessionTestHooks hooks;
@@ -263,7 +285,8 @@ int faults(qstring &output)
         initialize(adapter, fixture.program);
         assign_value(original, adapter.emit_operand(fixture.program.blocks[0].statements[0].value,
                                                     original.ea));
-        original.d.make_reg(mr_first + 2048, 1);
+        original.d.make_reg(mr_first + 2048,
+                            int(fixture.program.blocks[0].statements[0].value->bits / 8));
         const minsn_t snapshot(original);
         Analysis analysis(fixture.program, options);
         const auto proposals = analysis.run();
@@ -274,6 +297,8 @@ int faults(qstring &output)
             assign_value(replacement,
                          adapter.emit_operand(proposals.front().replacement, original.ea));
             if (fault == 5 || fault == 6)
+            {
+                time += std::chrono::milliseconds(5);
                 hooks.after_query = [&](const char *purpose, const z3::check_result &observed)
                 {
                     if (std::string(purpose) == "MBA emitted replacement mismatch" &&
@@ -285,18 +310,42 @@ int faults(qstring &output)
                             time += std::chrono::milliseconds(150);
                     }
                 };
+            }
             if (fault == 9)
             {
                 replacement.opcode = m_mov;
                 replacement.l.make_number(1, 1);
                 replacement.r.erase();
             }
-            const auto emitted = adapter.translate_instruction(&replacement);
-            const auto receipt = analysis.prove_emission(*proposals.front().proof, emitted);
+            if (fault == 14)
+                replacement.opcode = m_xds;
+            if (fault == 15)
+            {
+                replacement.opcode = m_shl;
+                replacement.l = adapter.emit_operand(proposals.front().replacement, original.ea);
+                replacement.r.make_number(1, 1);
+            }
+            if (fault == 16)
+                ++replacement.l.size;
+            if (fault == 17)
+            {
+                replacement.opcode = m_ldx;
+                replacement.l.make_number(0, 8);
+                replacement.r.make_number(0x2000, 8);
+            }
+            const auto receipt = MicrocodeEmissionProof::prove(
+                analysis, *proposals.front().proof, replacement, [&](const minsn_t &temporary)
+                { return adapter.translate_instruction(&temporary); });
             SnapshotToken current = options.snapshot;
             std::unique_ptr<minsn_t> before;
             if (receipt)
             {
+                if (fault == 18)
+                {
+                    replacement.opcode = m_mov;
+                    replacement.l.make_number(1, 1);
+                    replacement.r.erase();
+                }
                 if (fault == 0)
                     replacement.d.r += 1;
                 if (fault == 1)
@@ -339,6 +388,10 @@ int faults(qstring &output)
                 rejected = rejected && analysis.statistics().last_solver_observed == 2 &&
                            !analysis.statistics().last_solver_usable && !receipt &&
                            analysis.statistics().cancel_stage == RejectReason::PostProofExpiry;
+            if (fault >= 14 && fault <= 17)
+                rejected = rejected && !receipt;
+            if (fault == 6)
+                rejected = rejected && analysis.statistics().deadline_overshoot_ns == 55000000;
         }
         if (!rejected)
             ++failures;

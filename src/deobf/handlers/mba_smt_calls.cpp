@@ -806,29 +806,37 @@ class CallerSimplifier
 
     bool verify_emitted(const cexpr_t &node, const ScalarContext &context,
                         const ContextQuery &query, Analysis &analysis, cexpr_t &emitted,
-                        const ProofReceipt &candidate, std::shared_ptr<const ProofReceipt> &receipt)
+                        const ProofReceipt &candidate,
+                        std::shared_ptr<const CtreeEmissionProof> &receipt)
     {
         if (emitted.type != node.type || integer_bits(emitted.type) != integer_bits(node.type))
         {
             analysis.reject_mutation(RejectReason::EmittedDestinationOrFrameMismatch);
             return false;
         }
-        const Term translated = query.lower(translate(emitted, context));
-        receipt = translated ? analysis.prove_emission(candidate, translated) : nullptr;
-        if (!receipt)
-        {
-            return false;
-        }
         emitted.ea = node.ea;
         emitted.label_num = node.label_num;
         emitted.exflags = node.exflags;
+        receipt = CtreeEmissionProof::prove(
+            analysis, candidate, emitted,
+            [&](const cexpr_t &temporary)
+            {
+                const auto started = Clock::now();
+                const Term translated = query.lower(translate(temporary, context));
+                analysis.record_emission(static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - started)
+                        .count()));
+                return translated;
+            });
+        if (!receipt)
+            return false;
         return true;
     }
 
     std::unique_ptr<cexpr_t>
     prepare_replacement(const cexpr_t &node, const ScalarContext &context,
                         const ContextQuery &query, Analysis &analysis, const Term &candidate,
-                        std::shared_ptr<const ProofReceipt> &receipt,
+                        std::shared_ptr<const CtreeEmissionProof> &receipt,
                         const std::shared_ptr<const ProofReceipt> &proved = {})
     {
         auto candidate_receipt =
@@ -838,7 +846,10 @@ class CallerSimplifier
             deobf::log_verbose("[mba_smt_calls] Candidate proof rejected at %a\n", node.ea);
             return {};
         }
+        const auto started = Clock::now();
         auto emitted = emit_replacement(node, context, query.restore(candidate));
+        analysis.record_emission(static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - started).count()));
         if (!emitted)
             deobf::log_verbose(
                 "[mba_smt_calls] Emission not improving at %a: term_cost=%zu node_cost=%zu\n",
@@ -875,13 +886,18 @@ class CallerSimplifier
         const auto saved_target =
             parent_target ? std::make_unique<cexpr_t>(*parent_target) : nullptr;
         bool legacy_fallback = false;
-        std::shared_ptr<const ProofReceipt> receipt;
+        std::shared_ptr<const CtreeEmissionProof> receipt;
         std::unique_ptr<cexpr_t> replacement;
+        uint64_t structural_emission_ns = 0;
         if (structural_only_)
         {
             // Most expressions already have their cheapest readable form.
             // Reject those before constructing a CFG or a solver context.
+            const auto started = Clock::now();
             replacement = emit_replacement(node, context, value);
+            structural_emission_ns = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - started)
+                    .count());
             if (!replacement)
             {
                 return false;
@@ -921,6 +937,7 @@ class CallerSimplifier
                 "[mba_smt_calls] Invalid query at %a: widths=%zu blocks=%zu term_cost=%zu\n",
                 node.ea, query.program().widths.size(), query.program().blocks.size(), cost(value));
         Analysis analysis(query.program(), options);
+        analysis.record_emission(structural_emission_ns);
         if (structural_only_)
         {
             auto candidate_receipt = analysis.prove_candidate(query.block(), 0, query.lower(value));
@@ -953,7 +970,7 @@ class CallerSimplifier
             {
                 for (const Proposal &proposal : analysis.run())
                 {
-                    std::shared_ptr<const ProofReceipt> improved_receipt;
+                    std::shared_ptr<const CtreeEmissionProof> improved_receipt;
                     auto improved =
                         prepare_replacement(node, context, query, analysis, proposal.replacement,
                                             improved_receipt, proposal.proof);

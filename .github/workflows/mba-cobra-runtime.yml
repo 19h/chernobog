@@ -4,7 +4,7 @@ on:
     inputs:
       operation:
         type: choice
-        options: [inventory, resolve, accept]
+        options: [inventory, resolve, provision, accept]
         default: inventory
       build_run:
         description: Successful native build run ID for this master revision
@@ -13,6 +13,24 @@ permissions:
   contents: read
   actions: read
 jobs:
+  provision:
+    if: github.ref == 'refs/heads/master' && inputs.operation == 'provision'
+    environment: ida-runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install runtime dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgl1 libegl1 libxkbcommon0 libxcb-xinerama0 libxcb-cursor0
+      - name: Verify native installer and license provisioning
+        env:
+          HCLI_API_KEY: ${{ secrets.HCLI_API_KEY }}
+          IDA_LICENSE_ID: ${{ secrets.IDA_LICENSE_ID }}
+        run: python tests/cobra_runtime_native.py provision --target linux-x86_64 --directory "$RUNNER_TEMP/cobra-provision"
+
   inventory:
     if: github.ref == 'refs/heads/master' && inputs.operation == 'inventory'
     environment: ida-runtime

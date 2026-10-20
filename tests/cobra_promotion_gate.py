@@ -87,11 +87,11 @@ def verify(directory):
                 micro = [r for r in rows if r.get("route", "microcode") == "microcode"]
                 ctree = [r for r in rows if r.get("route") == "ctree"]
                 require(
-                    {r["fault"] for r in micro} == set(range(14)) and len(micro) == 14,
+                    {r["fault"] for r in micro} == set(range(19)) and len(micro) == 19,
                     f"Missing microcode faults: {target}",
                 )
                 require(
-                    {r["fault"] for r in ctree} == set(range(8)) and len(ctree) == 8,
+                    {r["fault"] for r in ctree} == set(range(9)) and len(ctree) == 9,
                     f"Missing ctree faults: {target}",
                 )
                 for row in rows:
@@ -179,14 +179,17 @@ def verify(directory):
             )
             require(
                 {r["profile"] for r in oracle["results"]} == {"normal", "deep"}
-                and all(r["comparisons"] == 607986 for r in oracle["results"]),
+                and all(
+                    r["comparisons"] == 607986 and r.get("sanitizers") == ["undefined"]
+                    for r in oracle["results"]
+                ),
                 "Independent unsigned oracle incomplete",
             )
     require(
         len(revisions) == len(sources) == len(trees) == 1, "Cross-target source provenance differs"
     )
     require(
-        positives == 504 and negatives == 126 and controls == 6,
+        positives == 504 and negatives == 162 and controls == 6,
         "Complete promotion cardinality failed",
     )
     return {
