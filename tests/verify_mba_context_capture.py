@@ -140,6 +140,22 @@ def main():
         if sys.platform == "darwin"
         else shlex.split(os.environ.get("CC", "cc"))
     )
+    if sys.platform == "win32":
+        import platform
+
+        compiler = [
+            "clang",
+            "--target="
+            + (
+                "aarch64-pc-windows-msvc"
+                if platform.machine().lower() in ("arm64", "aarch64")
+                else "x86_64-pc-windows-msvc"
+            ),
+        ]
+    if sys.platform == "win32":
+        # Trap instrumentation avoids a dependency on architecture-specific
+        # compiler-rt DLLs while preserving fatal checks on native Windows.
+        compiler += ["-fsanitize-trap=undefined"]
     checks = [f"CHECK_CALL({name}, x);" for name in UNARY]
     checks.extend(f"CHECK_CALL({name}, x, y);" for name in BINARY)
     prefix = ["#include <stdbool.h>", "#define __fastcall", "#define __int8 char"]
@@ -166,7 +182,17 @@ def main():
             encoding="utf-8",
         )
         build = subprocess.run(
-            compiler + ["-std=c11", "-O1", source.name, "-o", binary.name],
+            compiler
+            + [
+                "-std=c11",
+                "-fsigned-char",
+                "-O1",
+                "-fsanitize=undefined",
+                "-fno-sanitize-recover=all",
+                source.name,
+                "-o",
+                binary.name,
+            ],
             cwd=output,
             capture_output=True,
             text=True,
@@ -183,6 +209,7 @@ def main():
             {
                 "profile": profile,
                 "comparisons": int(match[1]),
+                "sanitizers": ["undefined"],
                 "source_sha256": sha256(source),
                 "binary_sha256": sha256(binary),
             }

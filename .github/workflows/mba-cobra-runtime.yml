@@ -43,7 +43,7 @@ jobs:
           ref: ${{ steps.source.outputs.revision }}
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - run: sudo apt-get update && sudo apt-get install -y libgl1 libegl1 libxkbcommon0 libxcb-xinerama0 libxcb-cursor0
       - uses: actions/download-artifact@v8
         with:
@@ -82,7 +82,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - name: Install runtime dependencies
         run: sudo apt-get update && sudo apt-get install -y libgl1 libegl1 libxkbcommon0 libxcb-xinerama0 libxcb-cursor0
       - name: Verify native installer and license provisioning
@@ -103,7 +103,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - name: Resolve exact installer identities
         env:
           HCLI_API_KEY: ${{ secrets.HCLI_API_KEY }}
@@ -129,6 +129,8 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@v7
+      - name: Verify promotion checker rejection cases
+        run: python -m unittest tests.test_cobra_promotion_gate
       - name: Validate build provenance and frozen runtime matrix
         id: plan
         env:
@@ -142,7 +144,7 @@ jobs:
           if not run_id.isdecimal(): raise RuntimeError('Numeric build run ID required')
           run=json.loads(subprocess.check_output(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{run_id}']))
           revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          if run['name']!='Build Chernobog Plugin' or run['head_sha']!=revision or run['head_branch']!='master' or run['conclusion']!='success':
+          if run['name']!='Build Chernobog Plugin' or run['head_sha']!=revision or run['head_branch']!='master' or run['conclusion']!='success' or run['event']!='push' or run['head_repository']['full_name']!=os.environ['GITHUB_REPOSITORY']:
               raise RuntimeError('Acceptance requires a successful native build of this exact master revision')
           manifest=json.loads(Path('tests/fixtures/ida_cobra_runtime_manifest.json').read_text())
           if manifest['status']!='checksums_frozen' or len(manifest['runtimes'])!=6:
@@ -167,7 +169,7 @@ jobs:
           ref: ${{ needs.acceptance-plan.outputs.revision }}
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
         with:
@@ -238,7 +240,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - name: Freeze exact installer fingerprints
         env:
           HCLI_API_KEY: ${{ secrets.HCLI_API_KEY }}

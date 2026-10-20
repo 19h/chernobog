@@ -506,6 +506,25 @@ std::vector<Proposal> Analysis::run()
                 return {};
             }
 
+            // Invariant-backed constants are a retained contextual proof path,
+            // independent of algebraic candidate generation. In particular,
+            // CoBRA intentionally does not admit loads or synthesize loop facts.
+            // Run this before CoBRA; a failed CoBRA search never reruns legacy.
+            if (impl_->session.options.backend == Backend::Cobra &&
+                !impl_->invariants->at(block).empty())
+            {
+                if (Term candidate = constant_value(block, statement))
+                {
+                    if (cost(candidate) <
+                        cost(impl_->program.blocks[block].statements[statement].value))
+                    {
+                        if (auto proof = prove_candidate(block, statement, candidate))
+                            return {{block, statement, std::move(candidate),
+                                     impl_->session.options.snapshot, std::move(proof)}};
+                    }
+                }
+            }
+
             detail::CandidateSynthesis synthesis(impl_->symbolic, *impl_->invariants, block,
                                                  statement);
             Term replacement = synthesis.run();

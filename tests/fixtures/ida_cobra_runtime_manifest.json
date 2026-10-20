@@ -51,5 +51,6 @@
       "installer_size": 593251824,
       "installer_sha256": "e2f271e4ab865c3edc9483b529497752cdf70750c65f83cca8c2ceb58e69147b"
     }
-  ]
+  ],
+  "legacy_manifest_sha256": "2ab2ac1fe2fa5d98158901b4e47428a4a7032301154ebb091efdfbf419db31b0"
 }

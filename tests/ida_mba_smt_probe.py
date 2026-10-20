@@ -107,6 +107,28 @@ def main():
     report = {"functions": [], "errors": []}
     try:
         ida_auto.auto_wait()
+        manifest_path = os.environ.get("CHERNOBOG_MBA_FIXTURE_TYPES")
+        if manifest_path:
+            import ida_typeinf
+
+            manifest = json.loads(Path(manifest_path).read_text())
+            for name, declaration in manifest["prototypes"].items():
+                # Keep the native carrier when a narrow source annotation
+                # prevents the SDK from reconstructing its signed return.
+                if name in manifest["native_abi_inferred"]:
+                    continue
+                entry = next(
+                    (
+                        ida_name.get_name_ea(ida_idaapi.BADADDR, symbol)
+                        for symbol in (name, "_" + name)
+                        if ida_name.get_name_ea(ida_idaapi.BADADDR, symbol) != ida_idaapi.BADADDR
+                    ),
+                    ida_idaapi.BADADDR,
+                )
+                if entry == ida_idaapi.BADADDR or not ida_typeinf.apply_cdecl(
+                    None, entry, declaration
+                ):
+                    raise RuntimeError("Cannot apply frozen fixture prototype: " + name)
         if not ida_hexrays.init_hexrays_plugin():
             raise RuntimeError("Hex-Rays is unavailable")
         if not ida_loader.load_plugin(os.environ["CHERNOBOG_PLUGIN_PATH"]):

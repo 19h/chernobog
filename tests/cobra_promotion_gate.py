@@ -16,6 +16,17 @@ def require(value, message):
         raise ValueError(message)
 
 
+def distribution(values):
+    ordered = sorted(values)
+    return {
+        "count": len(ordered),
+        "min": ordered[0],
+        "p50": ordered[(50 * len(ordered) + 99) // 100 - 1],
+        "p95": ordered[(95 * len(ordered) + 99) // 100 - 1],
+        "max": ordered[-1],
+    }
+
+
 def verify(directory):
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     tree = re.search(
@@ -29,6 +40,17 @@ def verify(directory):
     runtimes = json.loads((ROOT / "tests/fixtures/ida_cobra_runtime_manifest.json").read_text())
     require(runtimes["status"] == "checksums_frozen", "Installer fingerprints must be frozen")
     targets = {r["target"]: r for r in runtimes["runtimes"]}
+    legacy_path = ROOT / "tests/fixtures/mba_cobra_legacy_manifest.json"
+    legacy = json.loads(legacy_path.read_text())
+    legacy_hash = hashlib.sha256(legacy_path.read_bytes()).hexdigest()
+    require(
+        legacy_hash == runtimes["legacy_manifest_sha256"], "Legacy manifest fingerprint changed"
+    )
+    for name, expected_hash in legacy["sources"].items():
+        require(
+            hashlib.sha256((ROOT / name).read_bytes()).hexdigest() == expected_hash,
+            "Legacy source fingerprint changed",
+        )
     require(len(expected) == 42 and len(targets) == 6, "Frozen fixture or target set changed")
     reports = list(directory.glob("*/native.json"))
     observed = [json.loads(p.read_text()) for p in reports]
@@ -39,6 +61,8 @@ def verify(directory):
     revisions, sources, trees = set(), set(), set()
     positives = negatives = controls = 0
     measurements = []
+    corpus_measurements = []
+    fault_measurements = []
     for path, native in zip(reports, observed):
         target = native["target"]
         require(
@@ -52,6 +76,21 @@ def verify(directory):
             "Evidence revision/bundle target differs from gate checkout",
         )
         revisions.add(native["revision"])
+        require(native["legacy_manifest_sha256"] == legacy_hash, "Native legacy manifest differs")
+        require(
+            native["native_control"]
+            == {
+                group: legacy["oracle_comparisons"][group]
+                for group in ("nested", "masks", "semantic")
+            },
+            "Original native controls incomplete",
+        )
+        fixture_hashes = [
+            digest
+            for name, digest in native["bundle"]["files"].items()
+            if name.startswith("chernobog_mba_cobra_runtime_fixture") and not name.endswith(".pdb")
+        ]
+        require(fixture_hashes == [native["fixture_sha256"]], "Native fixture identity mismatch")
         sdk = json.loads((path.parent / "sdk.json").read_text())
         require(
             not sdk["errors"] and sdk["kernel_version"].startswith(targets[target]["ida_version"]),
@@ -76,8 +115,14 @@ def verify(directory):
         require(arm == target.endswith("arm64"), f"SDK process architecture mismatch: {target}")
         runs = native["runs"]
         require(
-            {r["label"] for r in runs} == {"sdk-cobra", "sdk-legacy", "legacy", "cobra"}
-            and len(runs) == 4,
+            {r["label"] for r in runs}
+            == {"sdk-cobra", "sdk-legacy", "legacy", "cobra"}
+            | {
+                backend + "-" + group
+                for backend in ("legacy", "cobra")
+                for group in ("semantic", "calls", "masks")
+            }
+            and len(runs) == 10,
             f"Missing paired execution: {target}",
         )
         require(
@@ -124,6 +169,12 @@ def verify(directory):
                     f"Missing ctree faults: {target}",
                 )
                 for row in rows:
+                    require(
+                        (row.get("kind") == "control")
+                        == (row.get("route") == "ctree" and row["fault"] == 0),
+                        "Legacy control identity mismatch",
+                    )
+                    fault_measurements.append({"target": target, **row})
                     if row.get("kind") == "control":
                         require(
                             row["passed"] and row["expected_apply"] and row["mutations"] == 1,
@@ -203,6 +254,12 @@ def verify(directory):
             capture = json.loads((path.parent / (backend + ".json")).read_text())
             oracle = json.loads((path.parent / (backend + "-oracle.json")).read_text())
             require(
+                oracle["fixture_sha256"] == legacy["sources"]["tests/vmp_native/mba_nested.c"]
+                and oracle["capture_sha256"]
+                == hashlib.sha256((path.parent / (backend + ".json")).read_bytes()).hexdigest(),
+                "Nested oracle source/capture mismatch",
+            )
+            require(
                 not capture["errors"] and len(capture["functions"]) == 6,
                 f"Required corpus regression: {target}/{backend}",
             )
@@ -220,8 +277,18 @@ def verify(directory):
             )
             for function in capture["functions"]:
                 require(set(function["statistics"]) == {"normal", "deep"}, "Missing corpus profile")
-                for statistics in function["statistics"].values():
+                for profile, statistics in function["statistics"].items():
                     algebraic = statistics["algebraic"]
+                    corpus_measurements.append(
+                        {
+                            "target": target,
+                            "backend": backend,
+                            "profile": profile,
+                            "group": "nested",
+                            "function": function["name"],
+                            **algebraic,
+                        }
+                    )
                     require(
                         algebraic["backend"] == backend and algebraic["vendor_tree"] in trees,
                         "Installed plugin backend/provenance mismatch",
@@ -239,6 +306,75 @@ def verify(directory):
                 ),
                 "Independent unsigned oracle incomplete",
             )
+            for group in ("semantic", "calls", "masks"):
+                capture_path = path.parent / (backend + "-" + group + ".json")
+                capture = json.loads(capture_path.read_text())
+                oracle = json.loads(
+                    (path.parent / (backend + "-" + group + "-oracle.json")).read_text()
+                )
+                require(
+                    not capture["errors"]
+                    and len(capture["functions"]) == len(legacy["groups"][group])
+                    and {f["name"] for f in capture["functions"]} == set(legacy["groups"][group]),
+                    f"Required {group} regression: {target}/{backend}",
+                )
+                profiles_expected = (
+                    {"normal", "deep", "restored"} if group == "semantic" else {"normal", "deep"}
+                )
+                for function in capture["functions"]:
+                    if group == "semantic":
+                        for profile in profiles_expected:
+                            statistics = function[profile]
+                            corpus_measurements.append(
+                                {
+                                    "target": target,
+                                    "backend": backend,
+                                    "profile": profile,
+                                    "group": group,
+                                    "function": function["name"],
+                                    **statistics["algebraic"],
+                                }
+                            )
+                            require(
+                                statistics["budget_ms"] == (30000 if profile == "deep" else 1000),
+                                "Scoped semantic profile not restored",
+                            )
+                            require(
+                                statistics["algebraic"]["backend"] == backend
+                                and statistics["algebraic"]["vendor_tree"] == tree,
+                                "Semantic backend attribution mismatch",
+                            )
+                    else:
+                        require(
+                            set(function["captures"]) == profiles_expected,
+                            "Missing required capture profile",
+                        )
+                if group == "calls":
+                    require(
+                        re.search(r"\bmba_transform_2\s*\(", capture["disabled"]),
+                        "Disable-option regression",
+                    )
+                source = (
+                    "tests/vmp_native/mba_masks.c"
+                    if group == "masks"
+                    else "tests/vmp_native/mba_smt.c"
+                )
+                require(
+                    oracle["fixture_sha256"] == legacy["sources"][source]
+                    and oracle["capture_sha256"]
+                    == hashlib.sha256(capture_path.read_bytes()).hexdigest(),
+                    "Compiled oracle source/capture mismatch",
+                )
+                require(
+                    len(oracle["results"]) == len(profiles_expected)
+                    and {r["profile"] for r in oracle["results"]} == profiles_expected
+                    and all(
+                        r["comparisons"] == legacy["oracle_comparisons"][group]
+                        and r.get("sanitizers") == ["undefined"]
+                        for r in oracle["results"]
+                    ),
+                    "Required compiled oracle incomplete",
+                )
     require(
         len(revisions) == len(sources) == len(trees) == 1, "Cross-target source provenance differs"
     )
@@ -246,6 +382,48 @@ def verify(directory):
         positives == 504 and negatives == 186 and controls == 6,
         "Complete promotion cardinality failed",
     )
+    phase_distributions = []
+    phase_keys = (
+        "extraction_ns",
+        "invocation_ns",
+        "reconstruction_ns",
+        "cleanup_ns",
+        "generation_ns",
+        "candidate_proof_ns",
+        "emission_ns",
+        "emitted_proof_ns",
+    )
+    for target in sorted(targets):
+        for backend in ("legacy", "cobra"):
+            for profile in ("normal", "deep", "restored"):
+                selected = [
+                    r
+                    for r in corpus_measurements
+                    if r["target"] == target and r["backend"] == backend and r["profile"] == profile
+                ]
+                phase_distributions.append(
+                    {
+                        "target": target,
+                        "backend": backend,
+                        "profile": profile,
+                        "timing_unit": "ns",
+                        "phases": {
+                            key: distribution([r.get(key, 0) for r in selected])
+                            for key in phase_keys
+                        },
+                        "applied": sum(r.get("applied", 0) for r in selected),
+                        "proved": sum(r.get("proved", 0) for r in selected),
+                        "max_deadline_overshoot_ns": max(
+                            r.get("deadline_overshoot_ns", 0) for r in selected
+                        ),
+                        "max_candidate_overshoot_ns": max(
+                            r.get("overshoot_ns", 0) for r in selected
+                        ),
+                        "peak_process_rss_bytes": max(
+                            r["process_peak_rss_bytes"] for r in selected
+                        ),
+                    }
+                )
     return {
         "schema_version": 1,
         "status": "passed",
@@ -253,10 +431,14 @@ def verify(directory):
         "source_fingerprint": next(iter(sources)),
         "vendor_tree": next(iter(trees)),
         "manifest_sha256": manifest_hash,
+        "legacy_manifest_sha256": legacy_hash,
         "positive_passes": positives,
         "negative_rejections": negatives,
         "legacy_fallback_controls": controls,
         "measurements": measurements,
+        "corpus_measurements": corpus_measurements,
+        "phase_distributions": phase_distributions,
+        "fault_measurements": fault_measurements,
         "rss_scope": "process high-water mark; instrumented payload is separately bounded",
     }
 

@@ -1235,6 +1235,9 @@ class CallerSimplifier
                 if (empty && child.label_num < 0)
                 {
                     iterator = node.cblock->erase(iterator);
+                    ++budget_.owner().snapshot.mutation_epoch;
+                    if (!domain_.capture(function_))
+                        domain_valid_ = false;
                 }
                 else
                 {
@@ -1246,6 +1249,9 @@ class CallerSimplifier
             if (node.cblock->empty())
             {
                 node.new_insn(node.ea);
+                ++budget_.owner().snapshot.mutation_epoch;
+                if (!domain_.capture(function_))
+                    domain_valid_ = false;
             }
             return continues;
         }

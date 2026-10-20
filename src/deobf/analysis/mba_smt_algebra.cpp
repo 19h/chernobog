@@ -76,11 +76,61 @@ Term cancel_summands(const Term &original)
     return cost(result) < cost(original) ? result : original;
 }
 
+// Fixed word identity: (a | b) + ~a + 1 == ~a & b modulo 2^w.
+// This bounded normalization still needs its ordinary compositional proof;
+// it performs no signature enumeration or legacy search.
+Term fold_complemented_word_sum(const Term &term)
+{
+    if (term->op != Op::Add)
+        return term;
+    const Term literal = term->right->op == Op::Constant ? term->right : term->left;
+    const Term sum = term->right->op == Op::Constant ? term->left : term->right;
+    if (literal->op != Op::Constant || literal->value != 1 || sum->op != Op::Add)
+        return term;
+    for (bool reversed : {false, true})
+    {
+        const Term disjunction = reversed ? sum->right : sum->left;
+        const Term complement = reversed ? sum->left : sum->right;
+        if (disjunction->op != Op::Or || complement->op != Op::Not)
+            continue;
+        if (key(disjunction->left) == key(complement->left))
+            return expression(Op::And, complement, disjunction->right);
+        if (key(disjunction->right) == key(complement->left))
+            return expression(Op::And, complement, disjunction->left);
+    }
+    return term;
+}
+
 struct UnsignedRange
 {
     uint64_t minimum;
     uint64_t maximum;
 };
+
+// Complement normalization exposes shared Boolean atoms during proof search.
+// Fold it back before comparing costs so a smaller hypothesis does not acquire
+// an extra emitted NOT merely because its literal uses the upper half-word.
+Term compact_complements(const Term &term,
+                         const std::function<bool(const Term &, const Term &)> &verify)
+{
+    if (!term || !term->left)
+        return term;
+    Term left = compact_complements(term->left, verify);
+    Term right = compact_complements(term->right, verify);
+    if (term->op == Op::Not && left->op == Op::Xor)
+    {
+        const Term literal = left->right->op == Op::Constant ? left->right : left->left;
+        const Term input = left->right->op == Op::Constant ? left->left : left->right;
+        if (literal->op == Op::Constant)
+        {
+            const Term candidate = expression(
+                Op::Xor, input, constant(literal->value ^ width_mask(term->bits), term->bits));
+            if (verify(expression(term->op, left, right, term->bits), candidate))
+                return candidate;
+        }
+    }
+    return expression(term->op, left, right, term->bits);
+}
 
 UnsignedRange unsigned_range(const Term &term)
 {
@@ -257,7 +307,8 @@ class AlgebraicSimplifier
         {
             prepare_bitwise_proofs(original);
         }
-        return rewrite(original);
+        return compact_complements(rewrite(original), [&](const Term &before, const Term &after)
+                                   { return prove(before, after); });
     }
 
     bool from_cobra() const noexcept { return cobra_origin_; }
@@ -341,14 +392,14 @@ class AlgebraicSimplifier
             if (Term candidate = simplify_cobra(term))
                 term = std::move(candidate);
         }
-        // Normalize the returned hypothesis structurally as well: it can
-        // introduce a repeated constant factor below its root.
+        // A returned hypothesis can reconstruct equal factors or replace a
+        // complementary word's canonical literal form below its root.
         std::function<Term(const Term &)> normalize = [&](const Term &input) -> Term
         {
             if (!input || !input->left)
                 return input;
-            return cancel_summands(expression(input->op, normalize(input->left),
-                                              normalize(input->right), input->bits));
+            return fold_complemented_word_sum(normalize_complement(cancel_summands(expression(
+                input->op, normalize(input->left), normalize(input->right), input->bits))));
         };
         term = normalize(term);
 
@@ -740,20 +791,18 @@ class AlgebraicSimplifier
 
     Term simplify_cobra(const Term &term)
     {
-        bool arithmetic = false, bitwise = false;
+        bool bitwise = false;
         std::function<void(const Term &)> classify = [&](const Term &node)
         {
             if (!node || node->bits != term->bits)
                 return;
-            arithmetic |= node->op == Op::Add || node->op == Op::Sub || node->op == Op::Mul ||
-                          node->op == Op::Neg;
             bitwise |= node->op == Op::And || node->op == Op::Or || node->op == Op::Xor ||
                        node->op == Op::Not;
             classify(node->left);
             classify(node->right);
         };
         classify(term);
-        if (!arithmetic || !bitwise || !session_.has_budget())
+        if (!bitwise || !session_.has_budget())
             return {};
         auto &statistics = session_.statistics.cobra;
         const auto time = session_.now();

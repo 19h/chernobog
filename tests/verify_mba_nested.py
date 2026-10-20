@@ -56,6 +56,10 @@ def main():
                 else "x86_64-pc-windows-msvc"
             ),
         ]
+    if sys.platform == "win32":
+        # Trap instrumentation avoids a dependency on architecture-specific
+        # compiler-rt DLLs while preserving fatal checks on native Windows.
+        compiler += ["-fsanitize-trap=undefined"]
     prefix = ["#define __fastcall", "#define __int64 long long"]
     prefix.extend(f"#define {name} reference_{name}" for name in FUNCTIONS)
     prefix.extend(("#define main reference_main", f'#include "{os.path.relpath(fixture, output)}"'))

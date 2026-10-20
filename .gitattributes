@@ -13,3 +13,5 @@ ida-cmake/** text eol=lf
 CMakeLists.txt text eol=lf
 .gitmodules text eol=lf
 vendor/cobra.provenance.cmake text eol=lf
+tests/fixtures/mba_cobra_legacy_manifest.json -text
+tests/vmp_native/mba_*.c text eol=lf

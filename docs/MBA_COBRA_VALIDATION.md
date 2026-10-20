@@ -52,10 +52,16 @@ qualification remains separate from this matrix.
 
 The aggregate checker requires 504 successful SDK positives (42 fixtures times
 two profiles times six targets), 186 negative mutation rejections, six positive
-legacy deadline-fallback controls, and both unsigned corpus profiles for both
-backends on every target. Missing reports, skipped targets, differing source
+legacy deadline-fallback controls, and the frozen legacy regression manifest for both backends on every target.
+The latter requires six nested, seven semantic, 32 caller/context, and five
+flag/store captures; semantic captures also restore the Normal profile. Independent
+UBSan oracles check 607,986 nested, 1,176,672 flag/store, 1,437,084 contextual,
+and 17,768,781 semantic comparisons per captured profile. The source fixtures
+retain their historical bytes and SHA-256 identities. Missing reports, skipped targets, differing source
 fingerprints, altered artifacts, and candidate-only evidence reject promotion.
-Timing is measured in ns and memory in B. SDK backend processes are separate;
+The aggregate reports nearest-rank p50/p95 phase timing distributions, solved
+and applied counts, corpus deadline overshoot, and peak RSS; injected-fault
+overshoots are recorded separately. Timing is measured in ns and memory in B. SDK backend processes are separate;
 process RSS is a lifetime high-water mark. The 64 MiB and 256 MiB scratch limits
 apply to instrumented container and AST payloads, separately from process RSS.
 Complete extraction, invocation, reconstruction, and cleanup intervals partition
@@ -66,8 +72,11 @@ publishes no candidate and reports unavailable timing as zero with that flag.
 Local validation on the implementation source exercised 33 CTest suites, 84 SDK
 positive rows, 31 negative SDK probes, and the positive legacy fallback control.
 The installed-plugin nested corpus passed with both backends and both profiles;
-each independently compiled unsigned profile checked 607,986 values with UBSan. These
-local results do not qualify the other native release targets.
+each independently compiled unsigned profile checked 607,986 values with UBSan.
+The expanded local corpus also passed seven semantic, 32 caller/context, and
+five flag/store captures with both backends. Compiled UBSan oracles checked
+17,768,781 semantic, 1,437,084 caller/context, and 1,176,672 flag/store values per
+profile, including restored Normal semantic captures. These local results do not qualify the other native release targets.
 
 | Assumption | Dependent result | Falsification probe |
 |---|---|---|
@@ -81,7 +90,11 @@ local results do not qualify the other native release targets.
 | Same-generation edits can change proof context without changing the source expression. | High | Rebuild the typed microcode domain and compare the ctree body/local domain before the final clock gate. |
 | A newly reconstructed polynomial can retain equal literal factors below its root. | Medium | Apply deterministic scalar factoring, then require the same proofs and strict emitted cost reduction. |
 | Windows checkout newline conversion changes exact-byte patch and source digests. | Medium | Preserve patch bytes and normalize fingerprinted source checkout line endings. |
+| Invariant-backed loop constants and Boolean-only selectors are outside an arithmetic-mixture-only admission rule. | High | Retain contextual constant proofs before generation and admit Boolean selectors to CoBRA without requiring an arithmetic node. |
+| A canonical complement can inflate output cost despite reducing the algebraic core. | Medium | Prove local XOR-literal compaction; retain the fixed modular complemented-word sum identity before candidate acceptance. |
+| A narrow source argument annotation can make IDA 9.4 ARM64 overlap a helper argument with its wide return register. | Medium | Retain the inferred native argument carrier for the designated signed helper; require the original signed-byte result and compiled contextual oracle. |
 | Restored project objects can be newer than checked-out headers and preserve incompatible class layouts. | High | Discard top-level project compilation state after cache restore; retain dependency builds and content-checked compiler caches. |
+| Removing an empty statement changes the domain after a proved replacement. | Medium | Advance the mutation epoch and refresh the domain snapshot after owned structural cleanup. |
 | Native installer identity does not establish license or decompiler entitlement. | High | Require actual provisioning, plugin loading, SDK execution, and unsigned oracle completion. |
 
 The implementation follows the descriptive scope and assumptions of

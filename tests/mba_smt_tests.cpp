@@ -57,6 +57,25 @@ void test_scalar_identity_synthesis()
     }
 }
 
+void test_cobra_boolean_selector()
+{
+    auto program = make_program();
+    const Term x = read_register(0);
+    const Term selector = expression(
+        Op::Not, expression(Op::And, expression(Op::Or, expression(Op::Not, x), number(86)),
+                            expression(Op::Or, x, number(169))));
+    program.blocks[0].statements = {Statement::assign(2, selector)};
+    Options options;
+    options.backend = Backend::Cobra;
+    options.max_invariants = 0;
+    Analysis analysis(program, options);
+    const auto proposals = analysis.run();
+    check(!proposals.empty() && cost(proposals.front().replacement) < cost(selector),
+          "CoBRA simplifies constant-masked Boolean selectors without arithmetic nodes");
+    check(analysis.verify(0, 0, expression(Op::Xor, x, number(86))) == Verdict::Verified,
+          "Boolean selector retains all byte values");
+}
+
 void test_joins_and_memory()
 {
     auto program = make_program();
@@ -113,6 +132,15 @@ void test_polynomial_loop()
         Statement::assign(0, add(read_register(0), number(1)))};
     program.blocks[2].edges = {{1, {}, false}};
 
+    program.targets = {{1, 0}};
+    Options cobra_options = Options::deep();
+    cobra_options.backend = Backend::Cobra;
+    Analysis cobra_induction(program, cobra_options);
+    const auto cobra_proposals = cobra_induction.run();
+    check(!cobra_proposals.empty() && cobra_proposals.front().replacement->op == Op::Constant &&
+              cobra_proposals.front().replacement->value == 0,
+          "CoBRA retains invariant-backed scalar constant discovery");
+
     Analysis induction(program, Options::deep());
     induction.run();
 
@@ -149,6 +177,15 @@ void test_known_bits_loop()
         Statement::assign(0, expression(Op::And, add(read_register(0), number(16)), number(0xF0)))};
     program.blocks[2].edges = {{1, {}, false}};
 
+    program.targets = {{1, 0}};
+    Options cobra_options = Options::deep();
+    cobra_options.backend = Backend::Cobra;
+    Analysis cobra_known_bits(program, cobra_options);
+    const auto cobra_proposals = cobra_known_bits.run();
+    check(!cobra_proposals.empty() && cobra_proposals.front().replacement->op == Op::Constant &&
+              cobra_proposals.front().replacement->value == 0,
+          "CoBRA retains known-bit invariant constant discovery");
+
     Analysis analysis(program, Options::deep());
     analysis.run();
 
@@ -177,6 +214,15 @@ void test_memory_polynomial_loop()
         Statement::store(x_address, add(x, number(1)))};
     program.blocks[2].edges = {{1, {}, false}};
 
+    program.targets = {{1, 0}};
+    Options cobra_options = Options::deep();
+    cobra_options.backend = Backend::Cobra;
+    Analysis cobra_memory(program, cobra_options);
+    const auto cobra_proposals = cobra_memory.run();
+    check(!cobra_proposals.empty() && cobra_proposals.front().replacement->op == Op::Constant &&
+              cobra_proposals.front().replacement->value == 0,
+          "CoBRA retains invariant-backed memory constant discovery");
+
     Analysis analysis(program, Options::deep());
     analysis.run();
 
@@ -187,6 +233,12 @@ void test_memory_polynomial_loop()
     program.blocks[1].edges.push_back({3, read_register(3), false});
     program.blocks[3].statements = {Statement::store(x_address, add(x, number(2)))};
     program.blocks[3].edges = {{1, {}, false}};
+
+    Analysis cobra_invalid(program, cobra_options);
+    const auto invalid_proposals = cobra_invalid.run();
+    check(invalid_proposals.empty() || invalid_proposals.front().replacement->op != Op::Constant ||
+              invalid_proposals.front().replacement->value != 0,
+          "CoBRA rejects a constant invalidated by a second memory backedge");
 
     Analysis invalid_backedge(program, Options::deep());
     invalid_backedge.run();
@@ -623,6 +675,24 @@ void test_symbolic_opaque_expressions()
         constant(0x55588C79, 32));
     check_symbolic_reduction(make_program(32), 3, value, expected,
                              "complemented symbolic words reduce inside masked arithmetic");
+    auto cobra_program = make_program(32);
+    cobra_program.blocks[0].statements = {Statement::assign(3, value)};
+    Options cobra_options = Options::deep();
+    cobra_options.backend = Backend::Cobra;
+    cobra_options.max_invariants = 0;
+    Analysis cobra_masked(cobra_program, cobra_options);
+    const auto cobra_proposals = cobra_masked.run();
+    if (cobra_proposals.empty())
+        std::fprintf(
+            stderr,
+            "CoBRA masked diagnostics: calls=%zu proved=%zu verified=%zu unknown=%zu exhausted=%zu\n",
+            cobra_masked.statistics().cobra.calls, cobra_masked.statistics().cobra.proved,
+            cobra_masked.statistics().verified, cobra_masked.statistics().unknown,
+            cobra_masked.statistics().exhausted);
+    check(!cobra_proposals.empty() && cost(cobra_proposals.front().replacement) <= cost(expected),
+          "CoBRA complemented words remain smaller under the emitted operation model");
+    check(cobra_masked.verify(0, 0, expected) == Verdict::Verified,
+          "CoBRA masked arithmetic retains every 32-bit valuation");
 
     auto predicate = make_program(32);
     predicate.widths[3] = 8;
@@ -832,6 +902,7 @@ void test_post_proof_eligibility()
 int main()
 {
     test_scalar_identity_synthesis();
+    test_cobra_boolean_selector();
     test_joins_and_memory();
     test_polynomial_loop();
     test_known_bits_loop();

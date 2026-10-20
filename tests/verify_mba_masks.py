@@ -76,6 +76,22 @@ def main():
         if sys.platform == "darwin"
         else shlex.split(os.environ.get("CC", "cc"))
     )
+    if sys.platform == "win32":
+        import platform
+
+        compiler = [
+            "clang",
+            "--target="
+            + (
+                "aarch64-pc-windows-msvc"
+                if platform.machine().lower() in ("arm64", "aarch64")
+                else "x86_64-pc-windows-msvc"
+            ),
+        ]
+    if sys.platform == "win32":
+        # Trap instrumentation avoids a dependency on architecture-specific
+        # compiler-rt DLLs while preserving fatal checks on native Windows.
+        compiler += ["-fsanitize-trap=undefined"]
     prefix = ["#define __fastcall", "#define __int8 char", "#define __int64 long long"]
     prefix.extend(f"#define {name} reference_{name}" for name in FUNCTIONS)
     prefix.extend(("#define main reference_main", f'#include "{os.path.relpath(fixture, output)}"'))
@@ -118,6 +134,7 @@ def main():
             {
                 "profile": profile,
                 "comparisons": int(match[1]),
+                "sanitizers": ["undefined"],
                 "source_sha256": sha256(source),
                 "binary_sha256": sha256(binary),
             }

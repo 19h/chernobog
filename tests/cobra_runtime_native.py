@@ -202,6 +202,25 @@ def collect(args, entry):
     shutil.copy2(plugins[0], plugin)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    legacy_path = ROOT / "tests/fixtures/mba_cobra_legacy_manifest.json"
+    legacy_hash = digest(legacy_path)
+    legacy = json.loads(legacy_path.read_text())
+    for name, expected in legacy["sources"].items():
+        if digest(ROOT / name) != expected:
+            raise RuntimeError("Frozen legacy fixture source mismatch")
+    fixture.chmod(fixture.stat().st_mode | stat.S_IXUSR)
+    native_control = subprocess.run([str(fixture)], capture_output=True, text=True, timeout=120)
+    native_control.check_returncode()
+    counts = {}
+    for group, marker in (
+        ("nested", "Nested MBA"),
+        ("masks", "Mask update"),
+        ("semantic", "MBA SMT native"),
+    ):
+        match = re.search(marker + r" comparisons: (\d+)", native_control.stdout)
+        if not match or int(match[1]) != legacy["oracle_comparisons"][group]:
+            raise RuntimeError("Original native fixture oracle failed: " + group)
+        counts[group] = int(match[1])
     base = [sys.executable, str(ROOT / "tests/run_ida_smoke.py"), str(fixture)]
     common = [
         "--ida",
@@ -212,7 +231,7 @@ def collect(args, entry):
         config["template"],
     ]
     runs = []
-    for label, probe, settings in (
+    cases = [
         (
             "sdk-cobra",
             "ida_mba_cobra_sdk_probe.py",
@@ -231,28 +250,83 @@ def collect(args, entry):
         ),
         ("legacy", "ida_mba_nested_probe.py", ["CHERNOBOG_MBA_BACKEND=legacy"]),
         ("cobra", "ida_mba_nested_probe.py", ["CHERNOBOG_MBA_BACKEND=cobra"]),
-    ):
+    ]
+    for backend in ("legacy", "cobra"):
+        for group in ("semantic", "calls", "masks"):
+            probe = "ida_mba_smt_probe.py" if group == "semantic" else f"ida_mba_{group}_probe.py"
+            cases.append(
+                (
+                    backend + "-" + group,
+                    probe,
+                    [
+                        "CHERNOBOG_MBA_BACKEND=" + backend,
+                        "CHERNOBOG_MBA_FIXTURE_TYPES=" + str(legacy_path),
+                    ],
+                )
+            )
+    for label, probe, settings in cases:
         run_dir = directory / ("run-" + label)
         command = base + [str(ROOT / "tests" / probe)] + common + ["--output-dir", str(run_dir)]
         for setting in settings:
             command += ["--set", setting]
-        execute(command)
+        try:
+            execute(command)
+        finally:
+            # Preserve only the runner's redacted report and owned test JSON,
+            # including when a probe rejects an artifact. Never copy IDAUSR.
+            if (run_dir / "run.json").is_file():
+                shutil.copy2(run_dir / "run.json", output / (label + "-run.json"))
+            capture_names = (
+                "mba_cobra_sdk.json",
+                "mba_nested.json",
+                "mba_smt.json",
+                "mba_calls.json",
+                "mba_masks.json",
+            )
+            for name in capture_names:
+                if (run_dir / name).is_file():
+                    shutil.copy2(run_dir / name, output / (label + ".json"))
         run = json.loads((run_dir / "run.json").read_text())
         if not run["artifacts_unchanged"] or run["runner_return_code"]:
             raise RuntimeError("Installed plugin run failed integrity checks")
-        capture = "mba_cobra_sdk.json" if label.startswith("sdk-") else "mba_nested.json"
+        group = label.split("-", 1)[1] if "-" in label else "nested"
+        capture = (
+            "mba_cobra_sdk.json"
+            if label.startswith("sdk-")
+            else "mba_smt.json" if group == "semantic" else f"mba_{group}.json"
+        )
         shutil.copy2(run_dir / capture, output / (label + ".json"))
         if not label.startswith("sdk-"):
             oracle = directory / ("oracle-" + label)
-            execute(
-                [
-                    sys.executable,
-                    str(ROOT / "tests/verify_mba_nested.py"),
-                    str(run_dir / capture),
-                    "--output-dir",
-                    str(oracle),
-                ]
-            )
+            try:
+                execute(
+                    [
+                        sys.executable,
+                        str(
+                            ROOT
+                            / "tests"
+                            / {
+                                "nested": "verify_mba_nested.py",
+                                "semantic": "verify_mba_semantic_capture.py",
+                                "calls": "verify_mba_context_capture.py",
+                                "masks": "verify_mba_masks.py",
+                            }[group]
+                        ),
+                        str(run_dir / capture),
+                        "--output-dir",
+                        str(oracle),
+                    ]
+                )
+            except RuntimeError:
+                for log in oracle.glob("*-build.log"):
+                    content = (
+                        log.read_text(errors="replace")
+                        .replace(str(ROOT), "<repo>")
+                        .replace(str(Path.home()), "<home>")
+                        .replace(str(directory), "<runtime>")
+                    )
+                    (output / (label + "-" + log.name)).write_text(content)
+                raise
             shutil.copy2(oracle / "verification.json", output / (label + "-oracle.json"))
         runs.append(
             {
@@ -285,8 +359,13 @@ def collect(args, entry):
         "hcli_sha256": config["hcli_sha256"],
         "runs": runs,
         "bundle": identity,
+        "legacy_manifest_sha256": legacy_hash,
+        "fixture_sha256": digest(fixture),
+        "native_control": counts,
         "status": "passed",
     }
+    if digest(legacy_path) != legacy_hash:
+        raise RuntimeError("Frozen legacy manifest changed during acceptance")
     (output / "native.json").write_text(json.dumps(report, indent=2) + "\n")
     print(
         f"Native SDK, installed-plugin corpus, and paired unsigned oracles passed: {entry['target']}"
@@ -305,6 +384,11 @@ def main():
     manifest = json.loads((ROOT / "tests/fixtures/ida_cobra_runtime_manifest.json").read_text())
     if manifest["status"] != "checksums_frozen":
         raise RuntimeError("Runtime checksums are not frozen")
+    if (
+        digest(ROOT / "tests/fixtures/mba_cobra_legacy_manifest.json")
+        != manifest["legacy_manifest_sha256"]
+    ):
+        raise RuntimeError("Frozen legacy manifest fingerprint mismatch")
     entry = next(row for row in manifest["runtimes"] if row["target"] == args.target)
     if not entry["installer_sha256"] or len(entry["installer_sha256"]) != 64:
         raise RuntimeError("Installer fingerprint unavailable")
