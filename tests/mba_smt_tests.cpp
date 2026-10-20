@@ -755,6 +755,28 @@ void test_symbolic_opaque_expressions()
     check(!proposals.empty() && cost(proposals.front().replacement) <= cost(result),
           "the emitted quotient drops the forced mask bits and wide comparison");
 
+    auto narrow_program = make_program(32);
+    const auto narrow_quotient = expression(Op::UnsignedDivide, masked, constant(0x52AC7B5E, 32));
+    narrow_program.blocks[0].statements = {Statement::assign(3, narrow_quotient)};
+    const auto narrow_result = add(constant(2, 32), expression(Op::ZeroExtend, upper, {}, 32));
+    for (Backend backend : {Backend::Legacy, Backend::Cobra})
+    {
+        if (backend == Backend::Cobra && !cobra_backend::available())
+            continue;
+        for (bool deep : {false, true})
+        {
+            Options options = deep ? Options::deep() : Options{};
+            options.backend = backend;
+            Analysis narrow(narrow_program, options);
+            const auto candidates = narrow.run();
+            check(candidates.size() == 1 && key(candidates[0].replacement) == key(narrow_result) &&
+                      cost(candidates[0].replacement) < cost(narrow_quotient),
+                  "32-bit quotient retains the equal-cost local two-bit predicate");
+            check(narrow.verify(0, 0, narrow_result) == Verdict::Verified,
+                  "the narrowed quotient is independently proved for every input");
+        }
+    }
+
     program.blocks[0].statements = {Statement::assign(3, quotient)};
     Analysis varying(program, Options::deep());
     check(varying.verify(0, 0, constant(2, 64)) == Verdict::Disproved,

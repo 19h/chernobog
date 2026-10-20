@@ -290,7 +290,10 @@ Term simplify_threshold(const Term &term)
     const Op comparison = suffix_result ? Op::Equal : Op::NotEqual;
     const Term candidate =
         expression(comparison, observed, constant(expected, observed->bits), term->bits);
-    return cost(candidate) < cost(term) ? candidate : term;
+    // This local form can cost the same as OR + threshold. Retain it inside
+    // a cheaper enclosing division replacement; the complete candidate and
+    // actual SDK emission must still pass their strict cost gates.
+    return cost(candidate) <= cost(term) ? candidate : term;
 }
 
 class AlgebraicSimplifier
