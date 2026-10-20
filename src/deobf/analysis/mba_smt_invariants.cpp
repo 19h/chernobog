@@ -5,6 +5,32 @@
 
 namespace chernobog::mba_smt::detail
 {
+namespace
+{
+bool has_only_one_unconditional_statement_block(const Program &program)
+{
+    std::vector<bool> visited(program.blocks.size());
+    size_t block = program.entry;
+    size_t visited_count = 0;
+    size_t statement_blocks = 0;
+    while (!visited[block])
+    {
+        visited[block] = true;
+        ++visited_count;
+        const auto &current = program.blocks[block];
+        if (!current.statements.empty() && ++statement_blocks > 1)
+            return false;
+        if (current.edges.empty())
+            return visited_count == program.blocks.size();
+        if (current.edges.size() != 1 || current.edges.front().condition ||
+            current.edges.front().inverted)
+            return false;
+        block = current.edges.front().target;
+    }
+    return false;
+}
+} // namespace
+
 InvariantInference::InvariantInference(SymbolicProgram &symbolic_program)
     : symbolic_(symbolic_program), session_(symbolic_program.session)
 {
@@ -214,9 +240,13 @@ bool InvariantInference::check_transitions()
 BlockInvariants InvariantInference::run()
 {
     const auto &program = symbolic_.program;
-    if (program.blocks.size() == 1 && program.blocks.front().edges.empty())
+    // Empty, unconditional entry/exit wrappers supply no facts. The sole body
+    // still executes symbolically in statement order from unconstrained inputs.
+    // Keep inference for every guard, cycle, disconnected block, and inter-block
+    // assignment dependency. The validated CFG bounds this scan to O(V) work.
+    if (has_only_one_unconditional_statement_block(program))
     {
-        return BlockInvariants(1);
+        return BlockInvariants(program.blocks.size());
     }
 
     collect_definition_templates();

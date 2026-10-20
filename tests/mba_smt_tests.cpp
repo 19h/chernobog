@@ -123,6 +123,55 @@ void test_joins_and_memory()
     check(!validate(memory), "invalid pointer width is rejected");
 }
 
+void test_invariant_wrapper_chain()
+{
+    for (Backend backend : {Backend::Legacy, Backend::Cobra})
+    {
+        if (backend == Backend::Cobra && !cobra_backend::available())
+            continue;
+        Options options = Options::deep();
+        options.backend = backend;
+        auto program = make_program();
+        program.blocks.resize(3);
+        program.entry = 2;
+        program.blocks[2].edges = {{0, {}, false}};
+        program.blocks[0].edges = {{1, {}, false}};
+        const Term x = read_register(0);
+        program.blocks[0].statements = {Statement::assign(2, expression(Op::Xor, x, x))};
+        Analysis wrappers(program, options);
+        check(!wrappers.run().empty() && wrappers.statistics().invariant_candidates == 0,
+              "empty unconditional wrappers need no invariant search");
+        check(wrappers.verify(0, 0, number(0)) == Verdict::Verified &&
+                  wrappers.verify(0, 0, number(1)) == Verdict::Disproved,
+              "wrapper fast path retains independent replacement proofs");
+
+        program.blocks[2].statements = {Statement::assign(0, number(7))};
+        program.blocks[0].statements = {Statement::assign(2, expression(Op::Sub, x, number(7)))};
+        Analysis assignments(program, options);
+        assignments.run();
+        check(assignments.statistics().invariant_candidates > 0 &&
+                  assignments.verify(0, 0, number(0)) == Verdict::Verified,
+              "assignments in another block retain invariant inference");
+
+        program.blocks[2].statements.clear();
+        program.blocks[2].edges[0].condition = expression(Op::Equal, x, number(7), 8);
+        Analysis guarded(program, options);
+        guarded.run();
+        check(guarded.statistics().invariant_candidates > 0 &&
+                  guarded.verify(0, 0, number(0)) == Verdict::Verified &&
+                  guarded.verify(0, 0, number(1)) == Verdict::Disproved,
+              "guarded empty wrappers retain their proved path constraints");
+
+        program.blocks[2].edges[0].condition = {};
+        program.blocks.resize(4);
+        Analysis disconnected(program, options);
+        disconnected.run();
+        check(disconnected.statistics().invariant_candidates > 0 &&
+                  disconnected.verify(0, 0, number(0)) == Verdict::Disproved,
+              "an additional disconnected block does not authorize a contextual constant");
+    }
+}
+
 void test_polynomial_loop()
 {
     auto program = make_program();
@@ -1062,6 +1111,7 @@ int main()
     test_scalar_identity_synthesis();
     test_cobra_boolean_selector();
     test_joins_and_memory();
+    test_invariant_wrapper_chain();
     test_polynomial_loop();
     test_known_bits_loop();
     test_memory_polynomial_loop();
