@@ -22,6 +22,7 @@ constexpr size_t max_callee_bytes = 4096;
 constexpr size_t max_expression_attempts = 128;
 constexpr size_t max_propagation_rounds = 3;
 constexpr unsigned normal_expression_budget_ms = 500;
+constexpr unsigned legacy_context_budget_ms = 250;
 constexpr unsigned deep_expression_budget_ms = 1000;
 
 // Decompiling a callee can deliver another maturity callback. That callback
@@ -115,6 +116,41 @@ bool has_mixed_arithmetic(const Term &root)
         }
     }
     return false;
+}
+
+unsigned normal_site_budget_ms(const Term &value, Backend backend)
+{
+    if (backend == Backend::Cobra)
+        return normal_expression_budget_ms;
+    if (cost(value) < 8 || !has_mixed_arithmetic(value))
+        return legacy_context_budget_ms;
+
+    // Larger unmasked MBAs need their word lemmas and proofs in one attempt.
+    // Preserve the shorter contextual allowance for masked expressions so a
+    // failed earlier expansion cannot starve a later known-bit reduction.
+    std::vector<Term> pending{value};
+    size_t visited = 0;
+    while (!pending.empty() && visited++ < limits::expression_visits)
+    {
+        const Term term = pending.back();
+        pending.pop_back();
+        if (term->op == Op::And || term->op == Op::Or || term->op == Op::Xor)
+        {
+            if (!term->left || !term->right || term->bits < 8 || term->bits > 64 ||
+                term->bits % 8 != 0)
+                return legacy_context_budget_ms;
+            const uint64_t mask = term->bits == 64 ? UINT64_MAX : (UINT64_C(1) << term->bits) - 1;
+            for (const auto &operand : {term->left, term->right})
+                if (operand->op == Op::Constant && operand->value != 0 &&
+                    (operand->value & mask) != mask)
+                    return legacy_context_budget_ms;
+        }
+        if (term->left)
+            pending.push_back(term->left);
+        if (term->right)
+            pending.push_back(term->right);
+    }
+    return pending.empty() ? normal_expression_budget_ms : legacy_context_budget_ms;
 }
 
 class CallBudget
@@ -921,8 +957,9 @@ class CallerSimplifier
         options.backend = budget_.owner().backend;
         options.snapshot = snapshot;
         const bool deep = options.profile == Profile::Deep;
-        options.budget_ms = std::min(budget_.remaining_ms(), deep ? deep_expression_budget_ms
-                                                                  : normal_expression_budget_ms);
+        options.budget_ms =
+            std::min(budget_.remaining_ms(), deep ? deep_expression_budget_ms
+                                                  : normal_site_budget_ms(value, options.backend));
         if (structural_only_)
         {
             options.budget_ms = std::min(options.budget_ms, 25u);
