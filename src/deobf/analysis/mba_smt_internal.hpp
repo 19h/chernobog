@@ -66,14 +66,16 @@ struct SymbolicState
     z3::expr memory;
 };
 
-// Block entry states are independent symbols. Edge proofs relate them to the
-// predecessor's final state; statement snapshots retain instruction ordering.
+// Unconditional whole-program chains execute from one initial state. Other CFGs
+// use independent block entries related by proved edge invariants. Statement
+// snapshots retain instruction ordering in both cases.
 class SymbolicProgram
 {
   public:
     SymbolicProgram(const Program &program, SolverSession &session);
 
     void build();
+    bool executes_unconditional_chain() const noexcept { return unconditional_chain_; }
     z3::expr evaluate(const Term &term, const SymbolicState &state) const;
     z3::expr conjunction(const std::vector<Term> &terms, const SymbolicState &state) const;
     z3::expr edge_condition(size_t source, const Edge &edge) const;
@@ -107,6 +109,7 @@ class SymbolicProgram
     std::vector<SymbolicState> exits_;
     std::vector<std::vector<SymbolicState>> statement_states_;
     std::vector<std::pair<z3::expr, z3::expr>> verified_rewrites_;
+    bool unconditional_chain_ = false;
 };
 
 // Candidate annotations become usable only after initiation and every edge

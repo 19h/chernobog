@@ -124,7 +124,7 @@ void test_joins_and_memory()
     check(!validate(memory), "invalid pointer width is rejected");
 }
 
-void test_invariant_wrapper_chain()
+void test_unconditional_chains()
 {
     for (Backend backend : {Backend::Legacy, Backend::Cobra})
     {
@@ -150,9 +150,40 @@ void test_invariant_wrapper_chain()
         program.blocks[0].statements = {Statement::assign(2, expression(Op::Sub, x, number(7)))};
         Analysis assignments(program, options);
         assignments.run();
-        check(assignments.statistics().invariant_candidates > 0 &&
-                  assignments.verify(0, 0, number(0)) == Verdict::Verified,
-              "assignments in another block retain invariant inference");
+        check(assignments.statistics().invariant_candidates == 0 &&
+                  assignments.verify(0, 0, number(0)) == Verdict::Verified &&
+                  assignments.verify(0, 0, number(1)) == Verdict::Disproved,
+              "unconditional chain executes predecessor assignments exactly");
+
+        auto overwritten = program;
+        overwritten.blocks[0].statements.insert(overwritten.blocks[0].statements.begin(),
+                                                Statement::assign(0, number(9)));
+        Analysis overwrite_analysis(overwritten, options);
+        check(overwrite_analysis.verify(0, 1, number(2)) == Verdict::Verified &&
+                  overwrite_analysis.verify(0, 1, number(0)) == Verdict::Disproved,
+              "chain snapshots retain writes after a predecessor assignment");
+
+        auto spoiled = program;
+        spoiled.blocks[0].statements.insert(spoiled.blocks[0].statements.begin(),
+                                            Statement::havoc({0}));
+        Analysis spoiled_analysis(spoiled, options);
+        check(spoiled_analysis.verify(0, 1, number(0)) == Verdict::Disproved,
+              "chain havoc invalidates a predecessor register fact");
+
+        auto memory = program;
+        const Term address = number(4096, 32);
+        memory.blocks[2].statements = {Statement::store(address, number(0x42))};
+        memory.blocks[0].statements = {Statement::assign(2, load(address, 8))};
+        Analysis memory_analysis(memory, options);
+        check(memory_analysis.verify(0, 0, number(0x42)) == Verdict::Verified &&
+                  memory_analysis.verify(0, 0, number(0x43)) == Verdict::Disproved &&
+                  memory_analysis.statistics().invariant_candidates == 0,
+              "chain forwards the exact predecessor memory array");
+        memory.blocks[0].statements.insert(memory.blocks[0].statements.begin(),
+                                           Statement::havoc({0}));
+        Analysis clobbered_memory(memory, options);
+        check(clobbered_memory.verify(0, 1, number(0x42)) == Verdict::Disproved,
+              "chain havoc invalidates predecessor memory even with a scalar spoil list");
 
         program.blocks[2].statements.clear();
         program.blocks[2].edges[0].condition = expression(Op::Equal, x, number(7), 8);
@@ -1167,7 +1198,7 @@ int main()
     test_scalar_identity_synthesis();
     test_cobra_boolean_selector();
     test_joins_and_memory();
-    test_invariant_wrapper_chain();
+    test_unconditional_chains();
     test_polynomial_loop();
     test_known_bits_loop();
     test_memory_polynomial_loop();

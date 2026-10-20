@@ -10,6 +10,25 @@ namespace chernobog::mba_smt::detail
 {
 namespace
 {
+std::vector<size_t> unconditional_chain(const Program &program)
+{
+    std::vector<size_t> order;
+    std::vector<bool> visited(program.blocks.size());
+    size_t block = program.entry;
+    while (block < program.blocks.size() && !visited[block])
+    {
+        visited[block] = true;
+        order.push_back(block);
+        const auto &edges = program.blocks[block].edges;
+        if (edges.empty())
+            return order.size() == program.blocks.size() ? order : std::vector<size_t>{};
+        if (edges.size() != 1 || edges.front().condition || edges.front().inverted)
+            return {};
+        block = edges.front().target;
+    }
+    return {};
+}
+
 bool contains_register(const std::vector<size_t> &registers, size_t index)
 {
     return std::find(registers.begin(), registers.end(), index) != registers.end();
@@ -210,8 +229,9 @@ void SymbolicProgram::build()
     {
         entries_.push_back(fresh_state());
     }
+    exits_ = entries_;
 
-    for (size_t block = 0; block < program.blocks.size(); ++block)
+    const auto execute_block = [&](size_t block)
     {
         SymbolicState state = entries_[block];
         auto &snapshots = statement_states_[block];
@@ -222,7 +242,25 @@ void SymbolicProgram::build()
             snapshots.push_back(state);
             execute(statement, state);
         }
-        exits_.push_back(std::move(state));
+        exits_[block] = std::move(state);
+    };
+
+    const auto order = unconditional_chain(program);
+    unconditional_chain_ = !order.empty();
+    if (unconditional_chain_)
+    {
+        for (size_t index = 0; index < order.size(); ++index)
+        {
+            const size_t block = order[index];
+            if (index != 0)
+                entries_[block] = exits_[order[index - 1]];
+            execute_block(block);
+        }
+    }
+    else
+    {
+        for (size_t block = 0; block < program.blocks.size(); ++block)
+            execute_block(block);
     }
 }
 
