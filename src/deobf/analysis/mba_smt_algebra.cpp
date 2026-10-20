@@ -412,16 +412,6 @@ class AlgebraicSimplifier
         return has_word_masks(node->left) || has_word_masks(node->right);
     }
 
-    enum class WordLaw
-    {
-        Invert,
-        Or,
-        Xor,
-        AndNot,
-        OrNot,
-        OrAndNot
-    };
-
     std::pair<z3::expr, z3::expr> word_identity(WordLaw law, const z3::expr &a,
                                                 const z3::expr &b) const
     {
@@ -487,7 +477,7 @@ class AlgebraicSimplifier
                 law = WordLaw::OrAndNot;
             }
         }
-        const auto identity = std::make_pair(bits, static_cast<unsigned>(*law));
+        const auto identity = std::make_pair(bits, *law);
         if (program_.verified_word_laws.count(identity) == 0)
         {
             const auto x = session_.fresh_value(bits), y = session_.fresh_value(bits);
@@ -695,8 +685,12 @@ class AlgebraicSimplifier
     {
         const z3::expr original = program_.evaluate(before, state_);
         const z3::expr replacement = program_.evaluate(after, state_);
-        const auto normalized_original = program_.apply_verified_rewrites(original);
-        const auto normalized_replacement = program_.apply_verified_rewrites(replacement);
+        // Keep retained-equality matching keys unchanged. Canonicalize only
+        // the final miter operands, after those equalities have been applied.
+        const auto normalized_original =
+            program_.canonicalize_verified_complements(program_.apply_verified_rewrites(original));
+        const auto normalized_replacement = program_.canonicalize_verified_complements(
+            program_.apply_verified_rewrites(replacement));
         z3::params simplifier(session_.context);
         simplifier.set("som", true);
         simplifier.set("bv_sort_ac", true);

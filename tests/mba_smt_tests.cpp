@@ -1152,6 +1152,51 @@ void test_boolean_operand_complements()
     }
 }
 
+void test_verified_complement_normalization()
+{
+    for (unsigned bits = 8; bits <= 64; bits += 8)
+    {
+        auto program = make_program(bits);
+        Options options = Options::deep();
+        Statistics statistics;
+        detail::SolverSession session(options, statistics);
+        detail::SymbolicProgram symbolic(program, session);
+        symbolic.build();
+        const auto &state = symbolic.block_entry(0);
+        const auto x = symbolic.evaluate(variable(0, bits), state);
+        const auto y = symbolic.evaluate(variable(1, bits), state);
+        const auto original = ~((~x) | ~(x + y));
+        const auto alternate = ~((-x - 1) | ~(x + y));
+        check(z3::eq(symbolic.canonicalize_verified_complements(original), original),
+              "an unproved complement theorem cannot normalize proof expressions");
+
+        z3::solver theorem(session.context);
+        theorem.add(~x != -x - 1);
+        const bool proved = session.check(theorem, "MBA Boolean word identity") == z3::unsat;
+        check(proved, "complement theorem is independently UNSAT at each byte width");
+        if (!proved)
+            continue;
+        symbolic.verified_word_laws.insert({bits, detail::WordLaw::Invert});
+        check(z3::eq(symbolic.apply_verified_rewrites(original), original),
+              "final proof normalization cannot change retained-equality matching keys");
+        const auto normalized = symbolic.canonicalize_verified_complements(original);
+        check(z3::eq(normalized, symbolic.canonicalize_verified_complements(alternate)),
+              "new complemented words share one canonical proof expression");
+        z3::solver independent(session.context);
+        independent.add(original != normalized);
+        check(session.check(independent, "independent complement normalization") == z3::unsat,
+              "canonicalization preserves the complete original bit-vector value");
+        z3::solver corrupted(session.context);
+        corrupted.add(normalized != symbolic.canonicalize_verified_complements(alternate + 1));
+        check(session.check(corrupted, "corrupted complement normalization") == z3::sat,
+              "canonicalization retains counterexamples for a corrupt replacement");
+        const unsigned other_bits = bits == 64 ? 56 : 64;
+        const auto other = ~session.fresh_value(other_bits);
+        check(z3::eq(symbolic.canonicalize_verified_complements(other), other),
+              "a complement proof cannot cross its proved scalar width");
+    }
+}
+
 void test_small_linear_word_boundaries()
 {
     for (unsigned bits : {8u, 16u, 24u, 32u})
@@ -1265,6 +1310,7 @@ int main()
     test_post_proof_eligibility();
     test_cancellation_latch();
     test_boolean_operand_complements();
+    test_verified_complement_normalization();
     test_small_linear_word_boundaries();
     test_word_proof_cancellation();
     std::printf("MBA SMT failures: %d\n", failures);

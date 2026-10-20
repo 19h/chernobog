@@ -31,6 +31,16 @@ word regions up to 32 bits before reconstructing their prefixes. Legacy retains
 its existing linear reconstruction algorithm and defers prefix equality proofs
 until a complete attempt fails. Leading truncations and extensions keep their
 typed boundary while exposing the inner region to this ordering.
+Final proof expressions, after retained-equality substitution, also normalize
+complemented words to one arithmetic spelling,
+including words introduced by parent rewrites or absent from the source. This
+instantiates only the width-specific complement theorem already proved UNSAT in
+that solver session. A memoized walk normalizes at most 512 DAG nodes with depth
+64 and at most 512 arguments per admitted node; it polls cancellation and the
+deadline. Z3 simplification has a 10,000-step bound. The walk uses expected
+O(N + E) time and O(N + E) space for its N admitted DAG nodes and E outgoing
+edges, in addition to the existing retained-equality substitutions. Neither a new assumption nor a
+candidate is exported to CoBRA by this proof-only normalization.
 Normal CoBRA ctree sites retain a 500 ms cap. Unmasked Legacy sites have a
 750 ms cap; masked Legacy sites retain their 250 ms cap. The outer term cost
 cannot bound proof cost when scalar bindings contain expanded expressions.
@@ -177,6 +187,7 @@ own exact-revision build and acceptance evidence.
 | A8: Target jobs have independent runtime configuration and process state. | Concurrent targets retain each target's sequential backend comparison. | Exercise all six native jobs with `native_parallelism=6`; require complete per-target provisioning, artifact identities, and paired oracles. A failed job rejects the aggregate and can be retried serially without changing fixtures or thresholds. |
 | A9: Failed searches on local microcode prefixes can consume time needed by a complete ctree expression. | Normal Legacy functions with a complete unconditional chain containing arithmetic and either bitwise operations or a direct call limit microcode to 250 ms and reserve 750 ms for ctree. Pure Boolean, branching, cyclic, disconnected, and unclassified CFGs retain the existing microcode budget. | Re-run the unchanged nested, loop, semantic, caller/context, and mask corpus on all six targets with the 1,000 ms function allowance. Require the original masked known-bit reductions and unchanged late-proof rejection. |
 | A10: Summary construction can retain a callee's MBA after its microcode allowance expires. | Legacy tries the complete unmasked linear word before prefix reconstruction, including regions below leading typed conversions; small regions prepare universal proofs before contextual queries. | Require the unchanged native nested caller and symbolic-add caller in both profiles. Prove small 8-, 16-, 24-, and 32-bit regions at both boundaries, reject a corrupted emitted value, and repeat post-proof cancellation probes. |
+| A11: Parent rewrites can introduce new complemented words after earlier node-specific equalities have been applied. | Normalize final proof-only complements consistently using an accepted, same-session universal theorem at exactly its proved width; retain the original equality-matching keys. | Independently prove the complete normalized value at each of the eight byte widths, reject a corrupted value, and verify that complement substitution does not cross an unproved width. Require both SDK boundaries, all negative probes, and the unchanged native nested-solve fixture in both profiles. |
 
 | Bounded finding | Impact | Contract |
 |---|---|---|
@@ -203,6 +214,7 @@ own exact-revision build and acceptance evidence.
 | A fresh macOS x86-64 worker can exhaust Legacy Normal caller proofs after a previous worker completed them. | High | Preserve [both failed attempts](https://github.com/19h/chernobog/actions/runs/39448113815) and their source identities. Remove the measured invariant-search work through exact chain execution; retain the 1,000 ms function allowance, unchanged site/query limits, both value proofs, frame checks, and final expiry rejection. Requalify the resulting source across all six native targets. |
 | Local microcode prefixes and ordinary conversion trees can exhaust Normal search before a cheap complete ctree proof. | High | Preserve [the failed source qualification](https://github.com/19h/chernobog/actions/runs/39458294026). Reserve 750 ms for ctree in qualifying unconditional Legacy Normal chains, admit unmasked Legacy sites up to that remaining allowance, and preserve masked sites at 250 ms. CoBRA, pure Boolean and guarded/loop analysis, Deep, total function budgets, proof gates, and fixture thresholds are unchanged. |
 | A phase reservation alone can leave an unsimplified callee body for the caller's remaining allowance. | High | Preserve [the failed reservation qualification](https://github.com/19h/chernobog/actions/runs/39471635395). Attempt complete unmasked linear words before expensive prefix equalities, including below typed boundaries. Preserve both backends' candidate and emitted proofs, total and site deadlines, frozen fixture thresholds, and failure artifacts; requalify the resulting source on all six targets. |
+| Equivalent complemented words can retain different SMT spellings and require expensive bit-vector proofs. | High | Preserve [the failed native diagnostic](https://github.com/19h/chernobog/actions/runs/39480157836). Instantiate only an independently proved, width-specific complement theorem in the same solver session, normalize the bounded proof DAG, and retain the 250 ms Normal query limit, function/site deadlines, both replacement proofs, and unchanged fixture thresholds. Diagnostic probes cannot qualify promotion. |
 | GCC loop-counter copies can carry `DONT_COMB` and split metadata without changing their copy semantics. | High | Model only direct propagatable ordinary copies, preserve the original instruction and flags, exclude protected copies from replacement, and continue rejecting `DONT_PROP`, assertions, persistence, floating-point instructions, and memory barriers. |
 | Native installer identity does not establish license or decompiler entitlement. | High | Require actual provisioning, plugin loading, SDK execution, and unsigned oracle completion. |
 

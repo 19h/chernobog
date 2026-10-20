@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 
 namespace chernobog::mba_smt::detail
@@ -482,6 +483,53 @@ z3::expr SymbolicProgram::apply_verified_rewrites(z3::expr value) const
     return value;
 }
 
+z3::expr SymbolicProgram::canonicalize_verified_complements(z3::expr value) const
+{
+    const bool has_complement_proof =
+        std::any_of(verified_word_laws.begin(), verified_word_laws.end(),
+                    [](const auto &law) { return law.second == WordLaw::Invert; });
+    if (!has_complement_proof || !session.has_budget())
+        return value;
+
+    // Parent rewrites and Z3's bitwise normal forms can introduce fresh NOTs
+    // after an earlier node-specific equality has already been substituted.
+    // Instantiate the accepted universal theorem at every encountered word of
+    // its proved width, including candidate/emitted words absent from the source.
+    // This changes proof expressions only; CoBRA still receives the original IR.
+    z3::params parameters(session.context);
+    parameters.set("som", true);
+    parameters.set("bv_sort_ac", true);
+    parameters.set("max_steps", 10000u);
+    std::unordered_map<unsigned, z3::expr> memo;
+    size_t visits = 0;
+    const auto normalize = [&](const auto &self, const z3::expr &node, unsigned depth) -> z3::expr
+    {
+        const unsigned identity = Z3_get_ast_id(session.context, node);
+        const auto found = memo.find(identity);
+        if (found != memo.end())
+            return found->second;
+        if (++visits > limits::expression_visits || depth > limits::expression_depth ||
+            !node.is_app() || node.num_args() > limits::expression_visits ||
+            ((visits & 63) == 0 && !session.has_budget()))
+            return node;
+        if (node.num_args() == 0)
+        {
+            memo.emplace(identity, node);
+            return node;
+        }
+        z3::expr_vector arguments(session.context);
+        for (unsigned index = 0; index < node.num_args(); ++index)
+            arguments.push_back(self(self, node.arg(index), depth + 1));
+        z3::expr result = node.decl()(arguments);
+        if (node.decl().decl_kind() == Z3_OP_BNOT &&
+            verified_word_laws.count({node.get_sort().bv_size(), WordLaw::Invert}) != 0)
+            result = -arguments[0] - 1;
+        memo.emplace(identity, result);
+        return result;
+    };
+    return normalize(normalize, value.simplify(parameters), 0).simplify(parameters);
+}
+
 Verdict verify_replacement(SymbolicProgram &symbolic_program, const BlockInvariants &invariants,
                            size_t block, size_t statement_index, const Term &replacement,
                            const char *purpose)
@@ -521,9 +569,10 @@ Verdict verify_replacement(SymbolicProgram &symbolic_program, const BlockInvaria
 
     const auto &state = symbolic_program.before_statement(block, statement_index);
     solver.add(
-        symbolic_program.apply_verified_rewrites(
-            symbolic_program.evaluate(statement.value, state)) !=
-        symbolic_program.apply_verified_rewrites(symbolic_program.evaluate(replacement, state)));
+        symbolic_program.canonicalize_verified_complements(symbolic_program.apply_verified_rewrites(
+            symbolic_program.evaluate(statement.value, state))) !=
+        symbolic_program.canonicalize_verified_complements(symbolic_program.apply_verified_rewrites(
+            symbolic_program.evaluate(replacement, state))));
 
     const auto result = session.check(solver, purpose);
     if (result == z3::unsat)
