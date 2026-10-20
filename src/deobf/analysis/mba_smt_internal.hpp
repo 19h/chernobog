@@ -38,7 +38,6 @@ class SolverSession
     std::chrono::nanoseconds remaining_budget(Clock::time_point now) const noexcept;
     bool is_deadline_expired(Clock::time_point now) const noexcept;
     bool is_cancelled();
-    std::function<bool()> generation_cancellation();
     bool has_budget();
     bool eligible_for_commit(bool legacy_deadline_exempt = false,
                              const std::function<bool()> &unchanged = {});
@@ -54,7 +53,6 @@ class SolverSession
   private:
     Clock::time_point started_;
     Clock::time_point deadline_;
-    Clock::time_point next_generation_cancel_poll_ = Clock::time_point::min();
     bool cancel_latched_ = false;
     bool callback_failed_ = false;
     size_t next_symbol_ = 0;

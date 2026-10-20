@@ -70,28 +70,6 @@ bool SolverSession::is_cancelled()
     }
 }
 
-std::function<bool()> SolverSession::generation_cancellation()
-{
-    // Only candidate generation coalesces host UI polls. Proof acceptance and
-    // mutation call is_cancelled() directly; every generation checkpoint still
-    // samples its deadline. Positive cancellation remains sticky for the site.
-    return [this]
-    {
-        if (cancel_latched_ || callback_failed_)
-            return true;
-        if (!options.cancelled)
-            return false;
-        const auto time = now();
-        if (time < next_generation_cancel_poll_)
-            return false;
-        const auto interval =
-            std::chrono::duration_cast<Clock::duration>(std::chrono::milliseconds(1));
-        next_generation_cancel_poll_ =
-            time > Clock::time_point::max() - interval ? Clock::time_point::max() : time + interval;
-        return is_cancelled();
-    };
-}
-
 void SolverSession::record_expiry(RejectReason stage)
 {
     const auto time = now();

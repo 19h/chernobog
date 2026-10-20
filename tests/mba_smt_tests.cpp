@@ -974,18 +974,8 @@ void test_post_proof_eligibility()
           "callback failure retains the original");
 }
 
-void test_generation_cancellation_polling()
+void test_cancellation_latch()
 {
-    using Clock = std::chrono::steady_clock;
-    auto time = Clock::time_point{};
-    detail::SessionTestHooks hooks;
-    hooks.now = [&] { return time; };
-    struct Restore
-    {
-        detail::SessionTestHooks *old;
-        ~Restore() { detail::session_test_hooks = old; }
-    } restore{detail::session_test_hooks};
-    detail::session_test_hooks = &hooks;
     unsigned polls = 0;
     bool cancelled = false;
     Options options;
@@ -996,20 +986,46 @@ void test_generation_cancellation_polling()
     };
     Statistics statistics;
     detail::SolverSession session(options, statistics);
-    auto generation_cancelled = session.generation_cancellation();
-    check(!generation_cancelled() && polls == 1, "generation polls host cancellation at entry");
-    time += std::chrono::microseconds(999);
-    check(!generation_cancelled() && polls == 1, "generation coalesces sub-millisecond UI polls");
-    time += std::chrono::microseconds(1);
-    check(!generation_cancelled() && polls == 2, "generation refreshes cancellation at 1 ms");
+    check(session.has_budget() && polls == 1, "session polls host cancellation at entry");
     cancelled = true;
-    check(!generation_cancelled() && polls == 2, "generation alone may defer the next UI poll");
-    check(!session.eligible_for_commit() && polls == 3,
-          "commit checks cancellation immediately inside the generation polling interval");
+    check(!session.has_budget() && polls == 2, "session immediately observes cancellation");
     cancelled = false;
-    check(generation_cancelled() && !session.has_budget(),
+    check(session.is_cancelled() && !session.has_budget() && polls == 2,
           "observed cancellation cannot be lost when a host callback resets");
     check(!session.eligible_for_commit(true), "legacy expiry exemption cannot resume cancellation");
+}
+
+void test_cobra_word_proof_cancellation()
+{
+    if (!cobra_backend::available())
+        return;
+    auto program = make_program(32);
+    const auto x = variable(0, 32), y = variable(1, 32);
+    program.blocks[0].statements = {Statement::assign(
+        2, add(expression(Op::Xor, x, y), multiply(constant(2, 32), expression(Op::And, x, y))))};
+    bool cancelled = false, observed_word_proof = false;
+    detail::SessionTestHooks hooks;
+    hooks.after_query = [&](const char *purpose, const z3::check_result &observed)
+    {
+        if (std::string(purpose) == "MBA Boolean word identity" && observed == z3::unsat)
+            cancelled = observed_word_proof = true;
+    };
+    struct Restore
+    {
+        detail::SessionTestHooks *old;
+        ~Restore() { detail::session_test_hooks = old; }
+    } restore{detail::session_test_hooks};
+    detail::session_test_hooks = &hooks;
+    Options options;
+    options.backend = Backend::Cobra;
+    options.max_invariants = 0;
+    options.cancelled = [&] { return cancelled; };
+    Analysis analysis(program, options);
+    check(analysis.run().empty() && observed_word_proof && analysis.statistics().cobra.calls == 0,
+          "late word-theorem cancellation cannot authorize generation or a replacement");
+    check(analysis.statistics().last_solver_observed == 2 &&
+              !analysis.statistics().last_solver_usable,
+          "word-theorem observation and eligibility remain distinct");
 }
 
 } // namespace
@@ -1036,7 +1052,8 @@ int main()
     test_constant_queries();
     test_unlowerable_proposal_continuation();
     test_post_proof_eligibility();
-    test_generation_cancellation_polling();
+    test_cancellation_latch();
+    test_cobra_word_proof_cancellation();
     std::printf("MBA SMT failures: %d\n", failures);
     return failures != 0;
 }

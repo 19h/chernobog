@@ -368,7 +368,165 @@ class AlgebraicSimplifier
         prepare_bitwise_proofs(term->right);
     }
 
-    Term rewrite(const Term &original)
+    unsigned word_degree(const Term &node) const
+    {
+        if (node->op == Op::Constant)
+            return 0;
+        if (node->op == Op::Mul)
+            return std::min(2u, word_degree(node->left) + word_degree(node->right));
+        if (node->op == Op::Add || node->op == Op::Sub)
+            return std::max(word_degree(node->left), word_degree(node->right));
+        if (node->op == Op::Neg)
+            return word_degree(node->left);
+        return 1; // Boolean words and typed boundaries are atoms here.
+    }
+
+    bool has_word_masks(const Term &node) const
+    {
+        if (!node || !node->left)
+            return false;
+        if (node->op == Op::And || node->op == Op::Or || node->op == Op::Xor)
+            for (const auto &operand : {node->left, node->right})
+                if (operand->op == Op::Constant && operand->value != 0 &&
+                    (operand->value & width_mask(node->bits)) != width_mask(node->bits))
+                    return true;
+        return has_word_masks(node->left) || has_word_masks(node->right);
+    }
+
+    enum class WordLaw
+    {
+        Invert,
+        Or,
+        Xor,
+        AndNot,
+        OrNot,
+        OrAndNot
+    };
+
+    std::pair<z3::expr, z3::expr> word_identity(WordLaw law, const z3::expr &a,
+                                                const z3::expr &b) const
+    {
+        switch (law)
+        {
+        case WordLaw::Invert:
+            return {~a, -a - 1};
+        case WordLaw::Or:
+            return {a | b, a + b - (a & b)};
+        case WordLaw::Xor:
+            return {a ^ b, a + b - 2 * (a & b)};
+        case WordLaw::AndNot:
+            return {a & ~b, a - (a & b)};
+        case WordLaw::OrNot:
+            return {a | ~b, -b - 1 + (a & b)};
+        case WordLaw::OrAndNot:
+            return {(a | b) & ~b, a - (a & b)};
+        }
+        throw std::invalid_argument("unsupported word identity");
+    }
+
+    void prepare_word_proofs(const Term &node, unsigned bits)
+    {
+        if (!node || !node->left || node->bits != bits || !session_.has_budget() ||
+            !linearized_.insert(key(node)).second)
+            return;
+        prepare_word_proofs(node->left, bits);
+        prepare_word_proofs(node->right, bits);
+        Term a = node->left, b = node->right;
+        std::optional<WordLaw> law;
+        if (node->op == Op::Not)
+            law = WordLaw::Invert;
+        else if (node->op == Op::Xor)
+            law = WordLaw::Xor;
+        else if (node->op == Op::Or || node->op == Op::And)
+        {
+            if (b->op == Op::Not)
+            {
+                law = node->op == Op::And ? WordLaw::AndNot : WordLaw::OrNot;
+                b = b->left;
+            }
+            else if (a->op == Op::Not)
+            {
+                law = node->op == Op::And ? WordLaw::AndNot : WordLaw::OrNot;
+                a = node->right;
+                b = node->left->left;
+            }
+            else if (node->op == Op::Or)
+                law = WordLaw::Or;
+        }
+        if (!law)
+            return;
+        if (*law == WordLaw::AndNot && a->op == Op::Or)
+        {
+            if (key(a->left) == key(b))
+            {
+                a = a->right;
+                law = WordLaw::OrAndNot;
+            }
+            else if (key(a->right) == key(b))
+            {
+                a = a->left;
+                law = WordLaw::OrAndNot;
+            }
+        }
+        const auto identity = std::make_pair(bits, *law);
+        if (word_laws_.count(identity) == 0)
+        {
+            const auto x = session_.fresh_value(bits), y = session_.fresh_value(bits);
+            const auto theorem = word_identity(*law, x, y);
+            z3::solver solver(session_.context);
+            solver.add(theorem.first != theorem.second);
+            ++session_.statistics.candidates;
+            const auto result = session_.check(solver, "MBA Boolean word identity");
+            if (result != z3::unsat)
+            {
+                if (result == z3::sat)
+                    ++session_.statistics.disproved;
+                else
+                    ++session_.statistics.unknown;
+                return;
+            }
+            word_laws_.insert(identity);
+        }
+        z3::params parameters(session_.context);
+        parameters.set("som", true);
+        parameters.set("bv_sort_ac", true);
+        parameters.set("max_steps", 10000u);
+        const auto normalized = [&](const Term &value)
+        {
+            return program_.apply_verified_rewrites(program_.evaluate(value, state_))
+                .simplify(parameters);
+        };
+        const auto left = normalized(a);
+        const auto right = b ? normalized(b) : left;
+        const auto after = word_identity(*law, left, right).second.simplify(parameters);
+        const auto original = program_.evaluate(node, state_);
+        const auto before = program_.apply_verified_rewrites(original);
+        // Universal word theorem instantiation, composed with previously proved
+        // child equalities. These entries assist proof only; the unchanged input
+        // still goes to CoBRA, which alone supplies the algebraic candidate.
+        program_.retain_verified_rewrite(before, after);
+        if (!z3::eq(original, before))
+            program_.retain_verified_rewrite(original, after);
+    }
+
+    Term prepare_boundaries(const Term &node)
+    {
+        if (!node || !node->left)
+            return node;
+        const bool region_operator = node->op == Op::Add || node->op == Op::Sub ||
+                                     node->op == Op::Mul || node->op == Op::And ||
+                                     node->op == Op::Or || node->op == Op::Xor ||
+                                     node->op == Op::Not || node->op == Op::Neg ||
+                                     ((node->op == Op::Shl || node->op == Op::Shr) && node->right &&
+                                      node->right->op == Op::Constant);
+        const auto left = region_operator ? prepare_boundaries(node->left) : rewrite(node->left);
+        const auto right = region_operator ? prepare_boundaries(node->right) : rewrite(node->right);
+        return left == node->left && right == node->right
+                   ? node
+                   : expression(node->op, left, right, node->bits);
+    }
+
+    Term rewrite(const Term &original, bool boundaries_prepared = false)
     {
         if (!original || !original->left || !session_.has_budget())
         {
@@ -385,12 +543,42 @@ class AlgebraicSimplifier
             return original;
         }
 
-        Term term = expression(original->op, rewrite(original->left), rewrite(original->right),
-                               original->bits);
-        if (session_.options.backend == Backend::Cobra && cost(term) >= 2)
+        Term term;
+        const bool arithmetic =
+            original->op == Op::Add || original->op == Op::Sub || original->op == Op::Mul;
+        if (session_.options.backend == Backend::Cobra && arithmetic && original->bits <= 32 &&
+            word_degree(original) <= 1 && !has_word_masks(original))
         {
-            if (Term candidate = simplify_cobra(term))
+            // Visit typed/opaque boundaries bottom-up, then give the complete
+            // same-width region its allowance before spending it on prefixes.
+            // A failed complete attempt may still expose useful child regions.
+            const auto prepared = boundaries_prepared ? original : prepare_boundaries(original);
+            const auto proof_started = session_.now();
+            if (session_.remaining_budget(proof_started) >= std::chrono::milliseconds(10))
+                prepare_word_proofs(prepared, prepared->bits);
+            session_.statistics.cobra.candidate_proof_ns += static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(session_.now() - proof_started)
+                    .count());
+            if (Term candidate = cost(prepared) >= 2 ? simplify_cobra(prepared) : Term{})
                 term = std::move(candidate);
+            else
+            {
+                term = expression(prepared->op, rewrite(prepared->left, true),
+                                  rewrite(prepared->right, true), prepared->bits);
+                if (cost(term) >= 2 && key(term) != key(prepared))
+                    if (Term candidate = simplify_cobra(term))
+                        term = std::move(candidate);
+            }
+        }
+        else
+        {
+            term = expression(original->op, rewrite(original->left), rewrite(original->right),
+                              original->bits);
+            // Wide and polynomial roots need the child equality lemmas before
+            // their full-width proof; retain their bottom-up schedule.
+            if (session_.options.backend == Backend::Cobra && cost(term) >= 2)
+                if (Term candidate = simplify_cobra(term))
+                    term = std::move(candidate);
         }
         // A returned hypothesis can reconstruct equal factors or replace a
         // complementary word's canonical literal form below its root.
@@ -819,7 +1007,7 @@ class AlgebraicSimplifier
         request.deadline = budget.candidate_deadline;
         request.profile = session_.options.profile;
         request.snapshot = session_.options.snapshot;
-        request.cancelled = session_.generation_cancellation();
+        request.cancelled = [&] { return session_.is_cancelled(); };
         request.now = [&] { return session_.now(); };
         const auto outcome = cobra_backend::generate(term, request);
         ++statistics.calls;
@@ -905,6 +1093,7 @@ class AlgebraicSimplifier
     const SymbolicState &state_;
     std::map<std::string, Term> rewritten_;
     std::set<std::string> linearized_;
+    std::set<std::pair<unsigned, WordLaw>> word_laws_;
     size_t visited_ = 0;
     bool cobra_origin_ = false;
 };
