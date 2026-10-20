@@ -819,7 +819,7 @@ class AlgebraicSimplifier
         request.deadline = budget.candidate_deadline;
         request.profile = session_.options.profile;
         request.snapshot = session_.options.snapshot;
-        request.cancelled = [&] { return session_.is_cancelled(); };
+        request.cancelled = session_.generation_cancellation();
         request.now = [&] { return session_.now(); };
         const auto outcome = cobra_backend::generate(term, request);
         ++statistics.calls;

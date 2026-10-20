@@ -867,9 +867,13 @@ void test_post_proof_eligibility()
     z3::solver solver(session.context);
     solver.add(session.context.bool_val(false));
     hooks.after_query = [&](const char *, const z3::check_result &) { cancelled = true; };
-    check(session.check(solver, "post-poll cancellation") == z3::unknown,
+    Statistics cancellation_statistics;
+    detail::SolverSession cancellation_session(options, cancellation_statistics);
+    z3::solver cancellation_solver(cancellation_session.context);
+    cancellation_solver.add(cancellation_session.context.bool_val(false));
+    check(cancellation_session.check(cancellation_solver, "post-poll cancellation") == z3::unknown,
           "late cancellation rejects observed UNSAT");
-    check(statistics.cancel_stage == RejectReason::PostProofExpiry,
+    check(cancellation_statistics.cancel_stage == RejectReason::PostProofExpiry,
           "post-proof rejection records its stage");
     cancelled = false;
     hooks.after_query = [&](const char *, const z3::check_result &)
@@ -883,7 +887,9 @@ void test_post_proof_eligibility()
     cancelled = true;
     check(!session.eligible_for_commit(true), "legacy fallback never waives cancellation");
     cancelled = false;
-    check(!session.eligible_for_commit(true, [] { return false; }),
+    Statistics snapshot_statistics;
+    detail::SolverSession snapshot_session(options, snapshot_statistics);
+    check(!snapshot_session.eligible_for_commit(true, [] { return false; }),
           "legacy fallback never waives snapshot mismatch");
 
     time = Clock::time_point{};
@@ -902,6 +908,44 @@ void test_post_proof_eligibility()
     check(!failure_session.has_budget() &&
               failure_statistics.cancel_stage == RejectReason::CallbackFailure,
           "callback failure retains the original");
+}
+
+void test_generation_cancellation_polling()
+{
+    using Clock = std::chrono::steady_clock;
+    auto time = Clock::time_point{};
+    detail::SessionTestHooks hooks;
+    hooks.now = [&] { return time; };
+    struct Restore
+    {
+        detail::SessionTestHooks *old;
+        ~Restore() { detail::session_test_hooks = old; }
+    } restore{detail::session_test_hooks};
+    detail::session_test_hooks = &hooks;
+    unsigned polls = 0;
+    bool cancelled = false;
+    Options options;
+    options.cancelled = [&]
+    {
+        ++polls;
+        return cancelled;
+    };
+    Statistics statistics;
+    detail::SolverSession session(options, statistics);
+    auto generation_cancelled = session.generation_cancellation();
+    check(!generation_cancelled() && polls == 1, "generation polls host cancellation at entry");
+    time += std::chrono::microseconds(999);
+    check(!generation_cancelled() && polls == 1, "generation coalesces sub-millisecond UI polls");
+    time += std::chrono::microseconds(1);
+    check(!generation_cancelled() && polls == 2, "generation refreshes cancellation at 1 ms");
+    cancelled = true;
+    check(!generation_cancelled() && polls == 2, "generation alone may defer the next UI poll");
+    check(!session.eligible_for_commit() && polls == 3,
+          "commit checks cancellation immediately inside the generation polling interval");
+    cancelled = false;
+    check(generation_cancelled() && !session.has_budget(),
+          "observed cancellation cannot be lost when a host callback resets");
+    check(!session.eligible_for_commit(true), "legacy expiry exemption cannot resume cancellation");
 }
 
 } // namespace
@@ -927,6 +971,7 @@ int main()
     test_known_bit_thresholds();
     test_constant_queries();
     test_post_proof_eligibility();
+    test_generation_cancellation_polling();
     std::printf("MBA SMT failures: %d\n", failures);
     return failures != 0;
 }
