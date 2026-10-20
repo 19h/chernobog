@@ -4,7 +4,7 @@ on:
     inputs:
       operation:
         type: choice
-        options: [inventory, resolve, provision, accept]
+        options: [inventory, resolve, provision, probe, accept]
         default: inventory
       build_run:
         description: Successful native build run ID for this master revision
@@ -13,6 +13,66 @@ permissions:
   contents: read
   actions: read
 jobs:
+  probe:
+    if: github.ref == 'refs/heads/master' && inputs.operation == 'probe'
+    environment: ida-runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Resolve successful Linux artifact source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN: ${{ inputs.build_run }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          run_id=os.environ['BUILD_RUN']
+          if not run_id.isdecimal(): raise RuntimeError('Numeric build run required')
+          prefix=f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{run_id}'
+          run=json.loads(subprocess.check_output(['gh','api',prefix]))
+          if run['name']!='Build Chernobog Plugin' or run['head_branch']!='master' or run['event']!='push' or run['head_repository']['full_name']!=os.environ['GITHUB_REPOSITORY']:
+              raise RuntimeError('Probe requires a trusted master push build')
+          jobs=json.loads(subprocess.check_output(['gh','api',prefix+'/jobs?per_page=100']))['jobs']
+          if not any(j['name']=='Build linux-x86_64' and j['conclusion']=='success' for j in jobs):
+              raise RuntimeError('Linux build is not yet successful')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as stream: stream.write('revision='+run['head_sha']+'\n')
+          PY
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.source.outputs.revision }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: sudo apt-get update && sudo apt-get install -y libgl1 libegl1 libxkbcommon0 libxcb-xinerama0 libxcb-cursor0
+      - uses: actions/download-artifact@v8
+        with:
+          name: chernobog-linux-x86_64
+          path: native-plugin
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.build_run }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: cobra-sdk-linux-x86_64
+          path: native-sdk
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.build_run }}
+      - name: Provision pinned runtime
+        env:
+          HCLI_API_KEY: ${{ secrets.HCLI_API_KEY }}
+          IDA_LICENSE_ID: ${{ secrets.IDA_LICENSE_ID }}
+        run: |
+          python -m pip install ida-hcli==0.26.3
+          python tests/cobra_runtime_native.py provision --target linux-x86_64 --directory "$RUNNER_TEMP/cobra-probe"
+      - name: Exercise artifact in installed runtime
+        run: python tests/cobra_runtime_native.py collect --target linux-x86_64 --directory "$RUNNER_TEMP/cobra-probe" --bundle native-sdk --plugin native-plugin --output probe-evidence
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: cobra-probe-linux-x86_64
+          path: probe-evidence/
+          if-no-files-found: error
+
   provision:
     if: github.ref == 'refs/heads/master' && inputs.operation == 'provision'
     environment: ida-runtime

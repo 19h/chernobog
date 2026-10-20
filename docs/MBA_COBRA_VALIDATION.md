@@ -32,7 +32,9 @@ Candidate-only CTest --> actual SDK emission (Normal + Deep)
 
 The native workflow is `.github/workflows/mba-cobra-runtime.yml`. Its `inventory`
 operation reports only installer identity fields; `resolve` computes installer
-SHA-256 digests. `accept` requires the ID of a successful native build of the
+SHA-256 digests. `probe` exercises a successful trusted Linux artifact independently
+of the other build jobs; its separate artifact cannot qualify promotion.
+`accept` requires the ID of a successful native build of the
 same master revision. It downloads the separate `cobra-sdk-*` test bundles and
 the release plugin artifacts from that build. The protected `ida-runtime`
 environment provides `HCLI_API_KEY` and `IDA_LICENSE_ID` only during provisioning.
