@@ -37,7 +37,10 @@ same master revision. It downloads the separate `cobra-sdk-*` test bundles and
 the release plugin artifacts from that build. The protected `ida-runtime`
 environment provides `HCLI_API_KEY` and `IDA_LICENSE_ID` only during provisioning.
 Installer binaries, credentials, license files, databases, and provisioning
-configuration are excluded from uploaded evidence.
+configuration are excluded from uploaded evidence. License resolution uses the
+exact active ID across accessible accounts through the pinned official client;
+it does not invoke the CLI's interactive customer picker. Native corpus inputs
+are compiled with optimization disabled so the MBA source reaches the plugin.
 
 `tests/fixtures/ida_cobra_runtime_manifest.json` freezes six IDA 9.4 installers
 by exact asset key, byte count, and SHA-256. HCLI 0.26.3 binaries are independently

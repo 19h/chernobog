@@ -5,6 +5,8 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -15,6 +17,11 @@ def require(value, message):
 
 
 def verify(directory):
+    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    tree = re.search(
+        r'COBRA_EXPECTED_TREE_HASH "([0-9a-f]+)"',
+        (ROOT / "vendor/cobra.provenance.cmake").read_text(),
+    ).group(1)
     manifest_path = ROOT / "tests/fixtures/mba_cobra_positive_manifest.json"
     manifest = json.loads(manifest_path.read_text())
     manifest_hash = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
@@ -38,12 +45,33 @@ def verify(directory):
             native["runtime"] == targets[target] and native["status"] == "passed",
             f"Runtime mismatch: {target}",
         )
+        require(
+            native["revision"] == revision
+            and native["bundle"]["revision"] == revision
+            and native["bundle"]["target"] == target,
+            "Evidence revision/bundle target differs from gate checkout",
+        )
         revisions.add(native["revision"])
         sdk = json.loads((path.parent / "sdk.json").read_text())
         require(
             not sdk["errors"] and sdk["kernel_version"].startswith(targets[target]["ida_version"]),
             f"SDK runtime failed: {target}",
         )
+        require(
+            sdk["system"]
+            == {"macos": "Darwin", "linux": "Linux", "windows": "Windows"}[target.split("-")[0]],
+            "SDK process operating system mismatch",
+        )
+        require(
+            sdk["machine"].lower() in ("arm64", "aarch64", "x86_64", "amd64"),
+            "Unsupported native process architecture",
+        )
+        bridge = [
+            digest
+            for name, digest in native["bundle"]["files"].items()
+            if name.startswith("chernobog_mba_cobra_sdk_bridge.")
+        ]
+        require(bridge == [sdk["bridge_sha256"]], "SDK bridge artifact identity mismatch")
         arm = sdk["machine"].lower() in ("arm64", "aarch64")
         require(arm == target.endswith("arm64"), f"SDK process architecture mismatch: {target}")
         runs = native["runs"]
@@ -77,6 +105,7 @@ def verify(directory):
                 report["revision"] == native["revision"]
                 and report["manifest_sha256"] == manifest_hash
                 and report["boundary"] == "sdk_emitted"
+                and report["vendor_tree"] == tree
                 and report["failures"] == 0,
                 f"Proof/source attribution failed: {target}/{backend}/{profile}",
             )

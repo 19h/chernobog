@@ -38,7 +38,14 @@ def execute(command, *, env=None, timeout=1800):
         text = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout.decode("utf-8", errors="replace"))
         details = []
         for line in text.splitlines():
-            for marker in ("Install failed:", "Could not create the Python environment:", "Error:"):
+            for marker in (
+                "Install failed:",
+                "Could not create the Python environment:",
+                "Error:",
+                "No such option:",
+                "Got unexpected extra argument",
+                "License provisioning failed:",
+            ):
                 if marker not in line:
                     continue
                 detail = line[line.index(marker) :]
@@ -52,6 +59,15 @@ def execute(command, *, env=None, timeout=1800):
                 detail = detail.replace(str(Path.home()), "<home>").replace(str(ROOT), "<repo>")
                 details.append(detail[:400])
                 break
+        if not details:
+            for marker, category in (
+                ("Select customer:", "interactive_customer_selection"),
+                ("Aborted!", "interactive_abort"),
+                ("Usage:", "invalid_cli_usage"),
+                ("Traceback", "python_exception"),
+            ):
+                if marker in text:
+                    details.append(category)
         raise RuntimeError(
             f"{Path(command[0]).name} failed with status {result.returncode}: "
             + "; ".join(details[-2:])
@@ -104,6 +120,16 @@ def provision(args, entry):
     ):
         raise RuntimeError("Pinned IDA installer digest mismatch")
     installation = directory / "ida"
+    # Select the exact license before the CLI can prompt for a customer.
+    execute(
+        [
+            sys.executable,
+            str(ROOT / "tests/cobra_runtime_license.py"),
+            "--directory",
+            environment["IDAUSR"],
+        ],
+        env=environment,
+    )
     execute(
         [
             str(hcli),
@@ -115,17 +141,15 @@ def provision(args, entry):
             "--accept-eula",
             "--install-dir",
             str(installation),
-            "--license-id",
-            environment["IDA_LICENSE_ID"],
             "--create-python-environment",
-            "--no-set-default",
+            "--set-default",
         ],
         env=environment,
     )
     idat = [
         p for p in installation.rglob("idat.exe" if system == "windows" else "idat") if p.is_file()
     ]
-    licenses = list(installation.rglob("*.hexlic"))
+    licenses = list((directory / "idauser").glob("*.hexlic"))
     if len(idat) != 1 or len(licenses) != 1:
         raise RuntimeError("Expected one native IDA text executable and license")
     template = directory / "idauser"

@@ -29,7 +29,10 @@ jobs:
         env:
           HCLI_API_KEY: ${{ secrets.HCLI_API_KEY }}
           IDA_LICENSE_ID: ${{ secrets.IDA_LICENSE_ID }}
-        run: python tests/cobra_runtime_native.py provision --target linux-x86_64 --directory "$RUNNER_TEMP/cobra-provision"
+        run: |
+          python -m unittest tests.test_cobra_runtime_license
+          python -m pip install ida-hcli==0.26.3
+          python tests/cobra_runtime_native.py provision --target linux-x86_64 --directory "$RUNNER_TEMP/cobra-provision"
 
   inventory:
     if: github.ref == 'refs/heads/master' && inputs.operation == 'inventory'
@@ -129,7 +132,10 @@ jobs:
         env:
           HCLI_API_KEY: ${{ secrets.HCLI_API_KEY }}
           IDA_LICENSE_ID: ${{ secrets.IDA_LICENSE_ID }}
-        run: python tests/cobra_runtime_native.py provision --target "${{ matrix.target }}" --directory "$RUNNER_TEMP/cobra-runtime"
+        run: |
+          python -m unittest tests.test_cobra_runtime_license
+          python -m pip install ida-hcli==0.26.3
+          python tests/cobra_runtime_native.py provision --target "${{ matrix.target }}" --directory "$RUNNER_TEMP/cobra-runtime"
       - name: Exercise actual SDK emission and installed plugin
         shell: bash
         run: python tests/cobra_runtime_native.py collect --target "${{ matrix.target }}" --directory "$RUNNER_TEMP/cobra-runtime" --bundle native-sdk --plugin native-plugin --output "native-evidence/${{ matrix.target }}"
