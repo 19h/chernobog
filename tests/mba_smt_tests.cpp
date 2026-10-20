@@ -80,6 +80,8 @@ void test_cobra_boolean_selector()
     const auto proposals = analysis.run();
     check(!proposals.empty() && cost(proposals.front().replacement) < cost(selector),
           "CoBRA simplifies constant-masked Boolean selectors without arithmetic nodes");
+    check(analysis.statistics().cobra.calls != 0,
+          "legacy selector templates cannot supply the CoBRA backend's candidate");
     check(analysis.verify(0, 0, expression(Op::Xor, x, number(86))) == Verdict::Verified,
           "Boolean selector retains all byte values");
 }
@@ -1197,6 +1199,74 @@ void test_verified_complement_normalization()
     }
 }
 
+void test_legacy_masked_selectors()
+{
+    for (unsigned bits = 8; bits <= 64; bits += 8)
+    {
+        const uint64_t mask = bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1;
+        const auto x = variable(0, bits);
+        const auto literal = constant(UINT64_C(0xA35AA53C5AA55A56) & mask, bits);
+        const auto opposite = constant(literal->value ^ mask, bits);
+        const auto expected = expression(Op::Xor, x, literal);
+        for (bool disjunctive : {false, true})
+        {
+            const auto negated =
+                disjunctive ? expression(Op::Xor, x, constant(mask, bits)) : expression(Op::Not, x);
+            const auto first = expression(disjunctive ? Op::And : Op::Or, negated, literal);
+            const auto second = expression(disjunctive ? Op::And : Op::Or, opposite, x);
+            const auto original = disjunctive
+                                      ? expression(Op::Or, second, first)
+                                      : expression(Op::Not, expression(Op::And, first, second));
+            auto program = make_program(bits);
+            program.blocks[0].statements = {Statement::assign(3, original)};
+            Options options;
+            options.backend = Backend::Legacy;
+            options.max_candidates = 1;
+            Analysis analysis(program, options);
+            const auto proposals = analysis.run();
+            check(!proposals.empty() && cost(proposals.front().replacement) <= 1,
+                  "masked selector reduces at every width without general grammar enumeration");
+            const auto candidate = analysis.prove_candidate(0, 0, expected);
+            check(candidate && analysis.prove_emission(*candidate, expected),
+                  "masked selector crosses both independent proof boundaries");
+
+            const auto wrong_mask = constant(opposite->value ^ 1, bits);
+            program.blocks[0].statements[0].value = expression(
+                Op::Not, expression(Op::And, expression(Op::Or, expression(Op::Not, x), literal),
+                                    expression(Op::Or, x, wrong_mask)));
+            Analysis near_match(program, options);
+            check(near_match.verify(0, 0, expected) == Verdict::Disproved,
+                  "a near-complementary mask retains an XOR counterexample");
+            const auto selected =
+                expression(Op::And, x, constant((literal->value ^ wrong_mask->value) & mask, bits));
+            const auto partial_expected =
+                expression(Op::Xor, selected, constant(wrong_mask->value ^ mask, bits));
+            const auto partial = near_match.run();
+            check(!partial.empty() && cost(partial.front().replacement) <= 2 &&
+                      near_match.verify(0, 0, partial_expected) == Verdict::Verified,
+                  "partial selector masks retain their fixed output bits");
+        }
+    }
+
+    auto program = make_program(32);
+    const auto byte = expression(Op::Low, variable(0, 32), {}, 8);
+    const auto promoted = expression(Op::SignExtend, byte, {}, 32);
+    const auto selector = expression(
+        Op::Not,
+        expression(Op::And, expression(Op::Or, expression(Op::Not, promoted), constant(86, 32)),
+                   expression(Op::Or, promoted, constant(UINT64_C(0xFFFFFFA9), 32))));
+    const auto original = expression(Op::ZeroExtend, expression(Op::Low, selector, {}, 8), {}, 32);
+    const auto expected =
+        expression(Op::ZeroExtend, expression(Op::Xor, byte, constant(86, 8)), {}, 32);
+    program.blocks[0].statements = {Statement::assign(3, original)};
+    Options options;
+    options.backend = Backend::Legacy;
+    options.max_candidates = 1;
+    Analysis analysis(program, options);
+    check(!analysis.run().empty() && analysis.verify(0, 0, expected) == Verdict::Verified,
+          "selector reconstruction preserves sign extension and the narrow return boundary");
+}
+
 void test_small_linear_word_boundaries()
 {
     for (unsigned bits : {8u, 16u, 24u, 32u})
@@ -1311,6 +1381,7 @@ int main()
     test_cancellation_latch();
     test_boolean_operand_complements();
     test_verified_complement_normalization();
+    test_legacy_masked_selectors();
     test_small_linear_word_boundaries();
     test_word_proof_cancellation();
     std::printf("MBA SMT failures: %d\n", failures);

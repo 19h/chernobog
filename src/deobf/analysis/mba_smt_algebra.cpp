@@ -15,6 +15,70 @@ constexpr size_t max_boolean_candidates = 65536;
 
 uint64_t width_mask(unsigned bits) { return bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1; }
 
+// Constant masks select bits of one word. The caller proves this exact
+// template before using it; partial masks do not form the
+// uniform Boolean cube used by the general legacy reconstruction.
+Term masked_selector(const Term &original)
+{
+    const bool inverted = original->op == Op::Not;
+    const Term root = inverted ? original->left : original;
+    if (!root || !root->left || !root->right ||
+        (root->op != Op::And && root->op != Op::Or && root->op != Op::Xor))
+        return {};
+    const Op branch = root->op == Op::And ? Op::Or : Op::And;
+    const auto split = [&](const Term &term, Term &input, Term &literal)
+    {
+        if (term->op != branch || !term->left || !term->right)
+            return false;
+        literal = term->right->op == Op::Constant ? term->right : term->left;
+        input = term->right->op == Op::Constant ? term->left : term->right;
+        return literal->op == Op::Constant && literal->bits == root->bits &&
+               input->bits == root->bits;
+    };
+    Term a, b, first_mask, second_mask;
+    if (!split(root->left, a, first_mask) || !split(root->right, b, second_mask))
+        return {};
+    const auto complement = [&](const Term &term) -> Term
+    {
+        if (term->op == Op::Not)
+            return term->left;
+        if (term->op == Op::Xor && term->left && term->right)
+        {
+            const Term literal = term->right->op == Op::Constant ? term->right : term->left;
+            if (literal->op == Op::Constant &&
+                (literal->value & width_mask(term->bits)) == width_mask(term->bits))
+                return term->right->op == Op::Constant ? term->left : term->right;
+        }
+        return {};
+    };
+    Term input, complemented_mask, plain_mask;
+    if (const Term plain = complement(a); plain && key(plain) == key(b))
+    {
+        input = b;
+        complemented_mask = first_mask;
+        plain_mask = second_mask;
+    }
+    else if (const Term plain = complement(b); plain && key(plain) == key(a))
+    {
+        input = a;
+        complemented_mask = second_mask;
+        plain_mask = first_mask;
+    }
+    if (!input)
+        return {};
+    const uint64_t mask = width_mask(root->bits);
+    const uint64_t varying = (complemented_mask->value ^ plain_mask->value) & mask;
+    const uint64_t base = root->op == Op::And ? plain_mask->value : complemented_mask->value;
+    const uint64_t offset = (base ^ (inverted ? mask : 0)) & mask;
+    const Term selected = varying == mask ? input
+                          : varying == 0
+                              ? constant(0, root->bits)
+                              : expression(Op::And, input, constant(varying, root->bits));
+    return varying == 0  ? constant(offset, root->bits)
+           : offset == 0 ? selected
+                         : expression(Op::Xor, selected, constant(offset, root->bits));
+}
+
 // Cancel identical summands without enumerating Boolean functions or fitting
 // coefficients. The full-width proof below authorizes every resulting change.
 Term cancel_summands(const Term &original)
@@ -306,19 +370,22 @@ class AlgebraicSimplifier
 
     Term run(const Term &original)
     {
+        Term prepared = original;
         if (session_.options.backend == Backend::Legacy)
         {
-            prepare_word_regions(original);
+            size_t fixed_visits = 0;
+            prepared = prepare_masked_selectors(original, fixed_visits, 0);
+            prepare_word_regions(prepared);
             // Linear word regions get their complete reconstruction before
             // potentially expensive equality proofs for individual prefixes.
-            Term region = original;
+            Term region = prepared;
             while (region->left && (region->op == Op::Low || region->op == Op::High ||
                                     region->op == Op::ZeroExtend || region->op == Op::SignExtend))
                 region = region->left;
-            if (cost(original) >= 8 && !is_linear_word_region(region))
-                prepare_bitwise_proofs(original);
+            if (cost(prepared) >= 8 && !is_linear_word_region(region))
+                prepare_bitwise_proofs(prepared);
         }
-        return compact_complements(rewrite(original), [&](const Term &before, const Term &after)
+        return compact_complements(rewrite(prepared), [&](const Term &before, const Term &after)
                                    { return prove(before, after); });
     }
 
@@ -327,6 +394,22 @@ class AlgebraicSimplifier
     bool from_cobra() const noexcept { return cobra_origin_; }
 
   private:
+    Term prepare_masked_selectors(const Term &node, size_t &visits, unsigned depth)
+    {
+        if (!node || !node->left || ++visits > limits::expression_visits ||
+            depth > limits::expression_depth || !session_.has_budget())
+            return node;
+        if (const Term candidate = masked_selector(node);
+            candidate && cost(candidate) < cost(node) && prove(node, candidate))
+            return prepare_masked_selectors(candidate, visits, depth + 1);
+        const Term left = prepare_masked_selectors(node->left, visits, depth + 1);
+        const Term right = prepare_masked_selectors(node->right, visits, depth + 1);
+        const Term prepared = left == node->left && right == node->right
+                                  ? node
+                                  : expression(node->op, left, right, node->bits);
+        return prepared;
+    }
+
     bool is_linear_word_region(const Term &term) const
     {
         const bool arithmetic = term->op == Op::Add || term->op == Op::Sub || term->op == Op::Mul;
