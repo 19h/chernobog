@@ -50,6 +50,8 @@ def accept_windows_eula(version):
     # HCLI's requested --accept-eula can be skipped when its bundled Python
     # cannot import idalib. Perform that same requested action through the
     # documented native registry backend; license checks remain independent.
+    if version != "9.4":
+        raise RuntimeError("Native EULA fallback is qualified only for the pinned IDA 9.4 runtime")
     import winreg
 
     try:
@@ -59,7 +61,10 @@ def accept_windows_eula(version):
             0,
             winreg.KEY_SET_VALUE | winreg.KEY_WOW64_64KEY,
         ) as key:
-            winreg.SetValueEx(key, "EULA " + version.replace(".", ""), 0, winreg.REG_DWORD, 1)
+            # Match the pinned HCLI accept_eula() procedure exactly: a current
+            # IDA build may retain an earlier 9.x agreement-version key.
+            for accepted in ("90", "91", "92", "93", "94"):
+                winreg.SetValueEx(key, "EULA " + accepted, 0, winreg.REG_DWORD, 1)
     except OSError:
         raise RuntimeError("Unable to configure requested native Windows EULA acceptance") from None
 
@@ -195,9 +200,7 @@ def provision(args, entry):
     for license_file in licenses:
         shutil.copy2(license_file, idat[0].parent / license_file.name)
     template = directory / "idauser"
-    if system == "windows" and not accepted_ida_configuration(
-        template, "Windows", entry["ida_version"]
-    ):
+    if system == "windows":
         accept_windows_eula(entry["ida_version"])
     if not accepted_ida_configuration(template, platform.system(), entry["ida_version"]):
         raise RuntimeError("HCLI did not produce accepted IDA configuration")

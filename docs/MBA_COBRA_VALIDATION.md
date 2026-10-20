@@ -31,8 +31,9 @@ Candidate-only CTest --> actual SDK emission (Normal + Deep)
 ```
 
 Windows acceptance is checked in the native HKCU registry: IDA does not use
-`ida.reg` on Windows. If HCLI leaves the requested EULA acceptance unset,
-provisioning writes only the current version's DWORD and verifies the readback.
+`ida.reg` on Windows. Provisioning applies the pinned HCLI 9.x acceptance procedure through native
+HKCU and verifies the readback. Startup failure artifacts contain fixed error
+categories and numeric Windows error codes, excluding arbitrary license text.
 Unix runners still require that file. The smoke runner
 copies only platform-appropriate configuration and the selected Python startup
 files. This follows the [SDK registry contract](https://python.docs.hex-rays.com/ida_registry/index.html); license and decompiler checks remain mandatory.

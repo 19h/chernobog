@@ -7,7 +7,7 @@ import sys
 import tempfile
 import types
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 
 def module(name):
@@ -64,12 +64,30 @@ class RegistryTests(unittest.TestCase):
         with patch.dict(sys.modules, {"winreg": registry}):
             self.assertFalse(RUNTIME.accepted_ida_configuration(self.source, "Windows", "9.4"))
 
-    def test_requested_windows_acceptance_writes_only_current_version(self):
+    def test_requested_windows_acceptance_matches_pinned_hcli(self):
         registry = self.registry()
         with patch.dict(sys.modules, {"winreg": registry}):
             RUNTIME.accept_windows_eula("9.4")
         registry.CreateKeyEx.assert_called_once_with(1, r"Software\Hex-Rays\IDA", 0, 0x102)
-        registry.SetValueEx.assert_called_once_with("handle", "EULA 94", 0, 4, 1)
+        self.assertEqual(
+            registry.SetValueEx.call_args_list,
+            [
+                call("handle", "EULA " + version, 0, 4, 1)
+                for version in ("90", "91", "92", "93", "94")
+            ],
+        )
+
+    def test_unqualified_windows_agreement_version_rejects(self):
+        with self.assertRaises(RuntimeError):
+            RUNTIME.accept_windows_eula("9.5")
+
+    def test_startup_diagnostics_do_not_publish_license_text(self):
+        text = "License agreement: Jane Example example@example.test secret-key; IDAPython DLL failed: WinError 193"
+        diagnostic = RUNNER.startup_diagnostics(text)
+        self.assertEqual(diagnostic["categories"], ["eula", "license", "loader", "python"])
+        self.assertEqual(diagnostic["windows_error_codes"], ["193"])
+        self.assertNotIn("Example", str(diagnostic))
+        self.assertNotIn("secret-key", str(diagnostic))
 
     def test_failed_windows_acceptance_rejects(self):
         registry = self.registry()

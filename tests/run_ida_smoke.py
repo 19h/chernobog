@@ -98,6 +98,28 @@ def chernobog_environment_sha256(environment: dict[str, str]) -> str:
     return hashlib.sha256(serialized).hexdigest()
 
 
+def startup_diagnostics(text: str) -> dict:
+    # Report fixed classifications, never arbitrary startup text that can
+    # contain a license holder, key, machine identifier, or credential.
+    patterns = {
+        "eula": r"eula|license agreement|accept.{0,40}agreement",
+        "license": r"license|licensing|entitlement",
+        "python": r"idapython|python|modulenotfounderror|importerror",
+        "loader": r"loadlibrary|dll|shared library|could not load|cannot load",
+        "command_line": r"unknown option|invalid option|bad argument|command.line",
+        "input": r"cannot open|could not open|file format|input file",
+    }
+    return {
+        "categories": sorted(
+            name for name, pattern in patterns.items() if re.search(pattern, text, re.IGNORECASE)
+        ),
+        "windows_error_codes": sorted(
+            set(re.findall(r"(?:WinError|error code)\s*\[?(\d+)", text, re.IGNORECASE))
+        ),
+        "text_bytes": len(text.encode("utf-8")),
+    }
+
+
 def parse_assignment(raw: str) -> tuple[str, str]:
     key, separator, value = raw.partition("=")
     if not separator or not key or "\x00" in raw:
@@ -358,6 +380,8 @@ def main() -> int:
         "expected_log_pattern": arguments.expect_log,
         "expected_log_found": marker_found,
         "internal_error_found": internal_error,
+        "startup_diagnostics": startup_diagnostics(log_text + completed.stdout + completed.stderr),
+        "ida_log_present": log_path.is_file(),
         "runner_return_code": return_code,
     }
     report_path = run_dir / "run.json"
