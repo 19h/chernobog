@@ -28,6 +28,7 @@ class LicenseSelectionTests(unittest.TestCase):
             },
         ):
             spec.loader.exec_module(self.module)
+        self.module.license_records = self.api.get_licenses
         self.env = patch.dict(os.environ, {"IDA_LICENSE_ID": "fixture-id"})
         self.env.start()
         self.addCleanup(self.env.stop)
@@ -62,7 +63,9 @@ class LicenseSelectionTests(unittest.TestCase):
         self.api.download_license.assert_not_awaited()
 
     def test_duplicate_selection_never_downloads(self):
-        self.api.get_licenses.return_value = [self.record(), self.record()]
+        second = self.record()
+        second.license_key = "different-fixture-key"
+        self.api.get_licenses.return_value = [self.record(), second]
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(RuntimeError):
                 asyncio.run(self.module.download(Path(directory)))
@@ -73,6 +76,49 @@ class LicenseSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(RuntimeError):
                 asyncio.run(self.module.download(Path(directory)))
+
+    def test_bundle_and_repeated_account_aliases(self):
+        self.api.get_licenses.return_value = [self.record(), self.record()]
+
+        async def download(account, key, kind, directory):
+            for name in ("ida.hexlic", "decompiler.hexlic"):
+                Path(directory, name).write_text("synthetic license fixture")
+
+        self.api.download_license.side_effect = download
+        with tempfile.TemporaryDirectory() as directory:
+            asyncio.run(self.module.download(Path(directory)))
+            self.assertEqual(len(list(Path(directory).glob("*.hexlic"))), 2)
+        self.api.download_license.assert_awaited_once()
+
+    def test_catalog_reads_beyond_first_page(self):
+        records = AsyncMock(
+            side_effect=[
+                {"items": [self.record("other")], "total": 2},
+                {"items": [self.record()], "total": 2},
+            ]
+        )
+        client = types.SimpleNamespace(get_json=records)
+        # Load the real paginator separately from the selection API test stub.
+        spec = importlib.util.spec_from_file_location(
+            "runtime_license_pagination", Path(__file__).with_name("cobra_runtime_license.py")
+        )
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(
+            "sys.modules",
+            {
+                "hcli.lib.api.customer": types.SimpleNamespace(customer=self.customer),
+                "hcli.lib.api.license": types.SimpleNamespace(
+                    license=self.api, PagedResponse=lambda **fields: types.SimpleNamespace(**fields)
+                ),
+                "hcli.lib.api.common": types.SimpleNamespace(
+                    get_api_client=AsyncMock(return_value=client)
+                ),
+            },
+        ):
+            spec.loader.exec_module(module)
+            result = asyncio.run(module.license_records("account"))
+        self.assertEqual([r.pubhash for r in result], ["other", "fixture-id"])
+        self.assertIn("page=2", records.await_args_list[-1].args[0])
 
 
 if __name__ == "__main__":

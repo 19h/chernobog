@@ -45,6 +45,7 @@ def execute(command, *, env=None, timeout=1800):
                 "No such option:",
                 "Got unexpected extra argument",
                 "License provisioning failed:",
+                "License diagnostic:",
             ):
                 if marker not in line:
                     continue
@@ -150,8 +151,10 @@ def provision(args, entry):
         p for p in installation.rglob("idat.exe" if system == "windows" else "idat") if p.is_file()
     ]
     licenses = list((directory / "idauser").glob("*.hexlic"))
-    if len(idat) != 1 or len(licenses) != 1:
-        raise RuntimeError("Expected one native IDA text executable and license")
+    if len(idat) != 1 or not licenses:
+        raise RuntimeError("Expected one native IDA text executable and its license bundle")
+    for license_file in licenses:
+        shutil.copy2(license_file, idat[0].parent / license_file.name)
     template = directory / "idauser"
     if not (template / "ida.reg").is_file():
         raise RuntimeError("HCLI did not produce accepted IDA configuration")
@@ -165,7 +168,7 @@ def provision(args, entry):
     config = {
         "python": str(venv_python),
         "ida": str(idat[0]),
-        "license": str(licenses[0]),
+        "license_files": len(licenses),
         "template": str(template),
         "hcli_sha256": digest(hcli),
         "installer_sha256": digest(installer),
@@ -205,8 +208,6 @@ def collect(args, entry):
         config["ida"],
         "--plugin",
         str(plugin),
-        "--license",
-        config["license"],
         "--ida-user-template",
         config["template"],
     ]
