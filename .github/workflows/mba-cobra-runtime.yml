@@ -98,7 +98,7 @@ jobs:
   provision:
     if: github.ref == 'refs/heads/master' && inputs.operation == 'provision'
     environment: ida-runtime
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON('{"linux-x86_64":"ubuntu-latest","linux-arm64":"ubuntu-24.04-arm","macos-x86_64":"macos-15-intel","macos-arm64":"macos-latest","windows-x86_64":"windows-latest","windows-arm64":"windows-11-arm"}')[inputs.probe_target] }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -106,15 +106,17 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install runtime dependencies
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgl1 libegl1 libxkbcommon0 libxcb-xinerama0 libxcb-cursor0
       - name: Verify native installer and license provisioning
+        shell: bash
         env:
           HCLI_API_KEY: ${{ secrets.HCLI_API_KEY }}
           IDA_LICENSE_ID: ${{ secrets.IDA_LICENSE_ID }}
         run: |
-          python -m unittest tests.test_cobra_runtime_license
+          python -m unittest tests.test_cobra_runtime_license tests.test_cobra_runtime_registry
           python -m pip install ida-hcli==0.26.3
-          python tests/cobra_runtime_native.py provision --target linux-x86_64 --directory "$RUNNER_TEMP/cobra-provision"
+          python tests/cobra_runtime_native.py provision --target "${{ inputs.probe_target }}" --directory "$RUNNER_TEMP/cobra-provision"
 
   inventory:
     if: github.ref == 'refs/heads/master' && inputs.operation == 'inventory'
@@ -217,7 +219,7 @@ jobs:
           HCLI_API_KEY: ${{ secrets.HCLI_API_KEY }}
           IDA_LICENSE_ID: ${{ secrets.IDA_LICENSE_ID }}
         run: |
-          python -m unittest tests.test_cobra_runtime_license
+          python -m unittest tests.test_cobra_runtime_license tests.test_cobra_runtime_registry
           python -m pip install ida-hcli==0.26.3
           python tests/cobra_runtime_native.py provision --target "${{ matrix.target }}" --directory "$RUNNER_TEMP/cobra-runtime"
       - name: Exercise actual SDK emission and installed plugin

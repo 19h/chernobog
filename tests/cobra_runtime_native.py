@@ -25,6 +25,26 @@ def digest(path):
     return h.hexdigest()
 
 
+def accepted_ida_configuration(template, system, version):
+    if system != "Windows":
+        return (template / "ida.reg").is_file()
+    # IDA's Windows registry backend is independent of IDAUSR. HCLI writes
+    # these versioned values through ida_registry, rather than creating ida.reg.
+    import winreg
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Hex-Rays\IDA",
+            0,
+            winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
+        ) as key:
+            value, kind = winreg.QueryValueEx(key, "EULA " + version.replace(".", ""))
+            return kind == winreg.REG_DWORD and value == 1
+    except OSError:
+        return False
+
+
 def execute(command, *, env=None, timeout=1800):
     # HCLI's installation output includes a license identifier. Keep it out of
     # logs and artifacts, including failure paths and subprocess exceptions.
@@ -156,7 +176,7 @@ def provision(args, entry):
     for license_file in licenses:
         shutil.copy2(license_file, idat[0].parent / license_file.name)
     template = directory / "idauser"
-    if not (template / "ida.reg").is_file():
+    if not accepted_ida_configuration(template, platform.system(), entry["ida_version"]):
         raise RuntimeError("HCLI did not produce accepted IDA configuration")
     if not (template / "ida-config.json").is_file():
         (template / "ida-config.json").write_text("{}\n")

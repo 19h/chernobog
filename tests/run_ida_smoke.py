@@ -68,6 +68,24 @@ def observed_sha256(path: Path) -> str | None:
         return None
 
 
+def copy_ida_configuration(source_directory: Path, destination: Path, *, windows: bool):
+    # Native Windows stores EULA acceptance in HKCU, independently of IDAUSR.
+    # Unix uses ida.reg; retain its strict file requirement on those platforms.
+    for filename in ("ida.reg", "ida-config.json"):
+        source = source_directory / filename
+        if not source.is_file():
+            if windows and filename == "ida.reg":
+                continue
+            raise SystemExit("missing IDA acceptance configuration: " + filename)
+        shutil.copy2(source, destination / filename)
+    for filename in ("cfg/idapython.cfg", "idapythonrc.py"):
+        source = source_directory / filename
+        if source.is_file():
+            target = destination / filename
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+
+
 def chernobog_environment_sha256(environment: dict[str, str]) -> str:
     configuration = {
         key: value
@@ -120,7 +138,7 @@ def parser() -> argparse.ArgumentParser:
         "--ida-user-template",
         type=Path,
         default=Path.home() / ".idapro",
-        help="source for ida.reg and ida-config.json only",
+        help="source for platform configuration and the selected IDAPython environment",
     )
     result.add_argument("--allow-database", action="store_true")
     result.add_argument("--enable-rax", action="store_true")
@@ -189,19 +207,11 @@ def main() -> int:
     ida_user = run_dir / "idauser"
     plugins = ida_user / "plugins"
     plugins.mkdir(parents=True)
-    for filename in ("ida.reg", "ida-config.json"):
-        source = arguments.ida_user_template.expanduser().resolve() / filename
-        if not source.is_file():
-            raise SystemExit("missing IDA acceptance configuration: %s" % source)
-        shutil.copy2(source, ida_user / filename)
-    # Preserve the explicitly selected runtime's Python configuration. HCLI
-    # writes these files when provisioning a native interpreter environment.
-    for filename in ("cfg/idapython.cfg", "idapythonrc.py"):
-        source = arguments.ida_user_template.expanduser().resolve() / filename
-        if source.is_file():
-            destination = ida_user / filename
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
+    copy_ida_configuration(
+        arguments.ida_user_template.expanduser().resolve(),
+        ida_user,
+        windows=sys.platform == "win32",
+    )
     installed_plugin = plugins / plugin.name
     shutil.copy2(plugin, installed_plugin)
     probe_directory = run_dir / "probe"

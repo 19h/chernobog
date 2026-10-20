@@ -30,8 +30,14 @@ Candidate-only CTest --> actual SDK emission (Normal + Deep)
                        fail-closed promotion aggregate
 ```
 
+Windows acceptance is checked in the native HKCU registry: IDA does not use
+`ida.reg` on Windows. Unix runners still require that file. The smoke runner
+copies only platform-appropriate configuration and the selected Python startup
+files. This follows the [SDK registry contract](https://python.docs.hex-rays.com/ida_registry/index.html); license and decompiler checks remain mandatory.
+
 The native workflow is `.github/workflows/mba-cobra-runtime.yml`. Its `inventory`
-operation reports only installer identity fields; `resolve` computes installer
+operation reports only installer identity fields; `provision` validates the
+selected `probe_target` without requiring a compiled test bundle; `resolve` computes installer
 SHA-256 digests. `probe` exercises a successful trusted native artifact independently
 of the other build jobs; its separate artifact cannot qualify promotion.
 `accept` requires the ID of a successful native build of the
