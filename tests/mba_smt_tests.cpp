@@ -230,6 +230,19 @@ void test_memory_polynomial_loop()
               cobra_proposals.front().replacement->value == 0,
           "CoBRA retains invariant-backed memory constant discovery");
 
+    for (Backend backend : {Backend::Legacy, Backend::Cobra})
+    {
+        Options constants = Options::deep();
+        constants.backend = backend;
+        constants.contextual_constants_only = true;
+        Analysis sequential(program, constants);
+        const auto proposals = sequential.run();
+        check(proposals.size() == 1 && proposals.front().replacement->op == Op::Constant &&
+                  proposals.front().replacement->value == 0 &&
+                  sequential.statistics().cobra.calls == 0,
+              "sequential contextual mode proves the loop without algebraic generation");
+    }
+
     Analysis analysis(program, Options::deep());
     analysis.run();
 
@@ -246,6 +259,12 @@ void test_memory_polynomial_loop()
     check(invalid_proposals.empty() || invalid_proposals.front().replacement->op != Op::Constant ||
               invalid_proposals.front().replacement->value != 0,
           "CoBRA rejects a constant invalidated by a second memory backedge");
+
+    Options constants = Options::deep();
+    constants.contextual_constants_only = true;
+    Analysis sequential_invalid(program, constants);
+    check(sequential_invalid.run().empty(),
+          "sequential contextual mode rejects an invalid memory backedge");
 
     Analysis invalid_backedge(program, Options::deep());
     invalid_backedge.run();
@@ -346,6 +365,16 @@ void test_nested_linear_reconstruction()
             Analysis analysis(program, options);
             const auto proposals = analysis.run();
             check(!proposals.empty(), "nested arithmetic reconstruction produces a replacement");
+            if (proposals.empty())
+            {
+                const auto &statistics = analysis.statistics();
+                std::fprintf(stderr,
+                             "Empty nested case: bits=%u original=%zu unknown=%zu "
+                             "exhausted=%zu elapsed_ns=%llu stage=%u\n",
+                             bits, cost(original), statistics.unknown, statistics.exhausted,
+                             static_cast<unsigned long long>(statistics.elapsed_ns),
+                             unsigned(statistics.cancel_stage));
+            }
             if (!proposals.empty())
             {
                 if (cost(proposals.front().replacement) > cost(expected))
@@ -840,6 +869,41 @@ void test_constant_queries()
     Analysis unavailable(program, exhausted);
     check(!unavailable.constant_value(0, 0), "exhausted constant queries fail closed");
 }
+
+void test_unlowerable_proposal_continuation()
+{
+    auto program = make_program(32);
+    const auto x = variable(0, 32), y = variable(1, 32);
+    program.blocks[0].statements = {
+        Statement::assign(2, add(expression(Op::Xor, x, y),
+                                 multiply(constant(2, 32), expression(Op::And, x, y)))),
+        Statement::assign(3, expression(Op::Xor, x, x))};
+    for (Backend backend : {Backend::Legacy, Backend::Cobra})
+    {
+        if (backend == Backend::Cobra && !cobra_backend::available())
+            continue;
+        Options options = Options::deep();
+        options.backend = backend;
+        Analysis analysis(program, options);
+        unsigned rejected = 0;
+        const auto proposals = analysis.run(
+            [&](const Proposal &proposal)
+            {
+                if (proposal.statement == 0)
+                {
+                    ++rejected;
+                    return false;
+                }
+                return true;
+            });
+        check(rejected == 1 && proposals.size() == 1 && proposals[0].statement == 1 &&
+                  proposals[0].replacement->op == Op::Constant &&
+                  proposals[0].replacement->value == 0,
+              "unlowerable first proposal does not hide another proved site");
+        check(analysis.verify(0, 1, constant(0, 32)) == Verdict::Verified,
+              "continued proposal retains its independent value proof");
+    }
+}
 void test_post_proof_eligibility()
 {
     using Clock = std::chrono::steady_clock;
@@ -970,6 +1034,7 @@ int main()
     test_symbolic_opaque_expressions();
     test_known_bit_thresholds();
     test_constant_queries();
+    test_unlowerable_proposal_continuation();
     test_post_proof_eligibility();
     test_generation_cancellation_polling();
     std::printf("MBA SMT failures: %d\n", failures);

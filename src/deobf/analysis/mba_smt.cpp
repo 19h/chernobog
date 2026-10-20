@@ -488,7 +488,7 @@ Analysis::Analysis(Program program, Options options)
 
 Analysis::~Analysis() = default;
 
-std::vector<Proposal> Analysis::run()
+std::vector<Proposal> Analysis::run(const std::function<bool(const Proposal &)> &can_emit)
 {
     try
     {
@@ -510,7 +510,8 @@ std::vector<Proposal> Analysis::run()
             // independent of algebraic candidate generation. In particular,
             // CoBRA intentionally does not admit loads or synthesize loop facts.
             // Run this before CoBRA; a failed CoBRA search never reruns legacy.
-            if (impl_->session.options.backend == Backend::Cobra &&
+            if ((impl_->session.options.backend == Backend::Cobra ||
+                 impl_->session.options.contextual_constants_only) &&
                 !impl_->invariants->at(block).empty())
             {
                 if (Term candidate = constant_value(block, statement))
@@ -519,11 +520,19 @@ std::vector<Proposal> Analysis::run()
                         cost(impl_->program.blocks[block].statements[statement].value))
                     {
                         if (auto proof = prove_candidate(block, statement, candidate))
-                            return {{block, statement, std::move(candidate),
-                                     impl_->session.options.snapshot, std::move(proof)}};
+                        {
+                            Proposal proposal{block, statement, std::move(candidate),
+                                              impl_->session.options.snapshot, std::move(proof)};
+                            if (!can_emit || can_emit(proposal))
+                                return {std::move(proposal)};
+                            continue;
+                        }
                     }
                 }
             }
+
+            if (impl_->session.options.contextual_constants_only)
+                continue;
 
             detail::CandidateSynthesis synthesis(impl_->symbolic, *impl_->invariants, block,
                                                  statement);
@@ -537,8 +546,10 @@ std::vector<Proposal> Analysis::run()
                 prove_candidate(block, statement, replacement, synthesis.from_cobra());
             if (proof)
             {
-                return {{block, statement, std::move(replacement), impl_->session.options.snapshot,
-                         proof}};
+                Proposal proposal{block, statement, std::move(replacement),
+                                  impl_->session.options.snapshot, proof};
+                if (!can_emit || can_emit(proposal))
+                    return {std::move(proposal)};
             }
         }
     }

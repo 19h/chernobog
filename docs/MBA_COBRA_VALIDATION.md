@@ -9,6 +9,17 @@ Production handlers and the licensed SDK bridge share the same microcode
 emitter, frame checks, dual proof receipts, and final mutation functions. SDK receipts retain an immutable copy of the exact
 emitted object lifted before Boundary 2; post-proof edits of temporary RHS values,
 metadata, or parent targets reject before mutation.
+The microcode adapter can reject a proved proposal that refers to operands it
+cannot lower, then inspect other sites in the same immutable analysis. Admission
+performs temporary lowering and a cost check; the accepted site's independent
+emission proof, frame validation, and final eligibility gates remain mandatory.
+The calls stage also runs contextual constant analysis after the SDK narrows
+return values. Its CFG model executes physical register and ordinary memory
+locations in order; value-number equality annotations add no assumptions.
+This projection cannot enter algebraic generation. Local algebraic snapshots
+retain their distinct value-number identities. Undefined flag writes and the
+explicit carry/overflow flag operators do not invalidate unrelated scalar or
+memory state; unresolved flag-dependent predicates still discard edge facts.
 Microcode fixtures exercise all eight admitted byte widths. Ctree emission
 admits the SDK's integral types at 8, 16, 32, and 64 bits. Neither a candidate-only
 test nor the SDK bridge establishes installed-plugin corpus behavior.
@@ -92,6 +103,11 @@ The expanded local corpus also passed seven semantic, 32 caller/context, and
 five flag/store captures with both backends. Compiled UBSan oracles checked
 17,768,781 semantic, 1,437,084 caller/context, and 1,176,672 flag/store values per
 profile, including restored Normal semantic captures. These local results do not qualify the other native release targets.
+The Windows-compiled x64 corpus also passed local macOS captures and compiled
+UBSan oracles for both semantic backends after calls-stage constant recovery;
+its nested, caller/context, and mask groups passed local CoBRA captures and
+their corresponding oracles. Loading a Windows input under macOS is distinct
+from executing the Windows plugin in its native runtime.
 
 | Assumption | Dependent result | Falsification probe |
 |---|---|---|
@@ -112,6 +128,8 @@ profile, including restored Normal semantic captures. These local results do not
 | A narrow source argument annotation can make IDA 9.4 ARM64 overlap a helper argument with its wide return register. | Medium | Retain the inferred native argument carrier for the designated signed helper; require the original signed-byte result and compiled contextual oracle. |
 | Restored project objects can be newer than checked-out headers and preserve incompatible class layouts. | High | Discard top-level project compilation state after cache restore; retain dependency builds and content-checked compiler caches. |
 | Removing an empty statement changes the domain after a proved replacement. | Medium | Advance the mutation epoch and refresh the domain snapshot after owned structural cleanup. |
+| An unlowerable first proposal can hide later reductions and discard inference statistics. | High | Reject that site through the adapter admission predicate, continue in the same immutable analysis, and retain accumulated statistics; exercise both backends. |
+| x64 local-stage return carriers can be wider than the declared result, while narrowed calls-stage expressions carry value-number annotations. | High | Prove constants over a sequential CFG at the calls stage, without using value-number equalities or algebraic generation; preserve full source/frame checks and both value proofs. |
 | Native installer identity does not establish license or decompiler entitlement. | High | Require actual provisioning, plugin loading, SDK execution, and unsigned oracle completion. |
 
 The implementation follows the descriptive scope and assumptions of

@@ -134,6 +134,7 @@ bool apply_verified_proposal(MicrocodeAdapter &adapter, Analysis &analysis,
     const auto domain_unchanged = [&]
     {
         MicrocodeAdapter current(adapter.mba, adapter.local_block, adapter.local_instruction);
+        current.sequential_locations = adapter.sequential_locations;
         current.build();
         const auto current_site = current.originals.find(site);
         if (current_site == current.originals.end() || current_site->second != original ||
@@ -170,6 +171,7 @@ int simplify_once(mbl_array_t *mba, FunctionBudget &budget, mblock_t *local_bloc
     try
     {
         MicrocodeAdapter adapter(mba, local_block, local_instruction);
+        adapter.sequential_locations = !local_instruction && mba->maturity == MMAT_CALLS;
         adapter.build();
         if (adapter.originals.empty())
         {
@@ -187,22 +189,61 @@ int simplify_once(mbl_array_t *mba, FunctionBudget &budget, mblock_t *local_bloc
         options.absolute_deadline = charge.deadline();
         options.snapshot = budget.snapshot;
         options.backend = budget.backend;
+        options.contextual_constants_only = adapter.sequential_locations;
         options.budget_ms = budget.limit_ms - static_cast<unsigned>(used_ms);
         options.cancelled = [] { return user_cancelled(); };
 
         const Program snapshot_program = adapter.program;
         Analysis analysis(snapshot_program, options);
-        const auto proposals = analysis.run();
+        const auto proposals = analysis.run(
+            [&](const Proposal &proposal)
+            {
+                const auto found = adapter.originals.find({proposal.block, proposal.statement});
+                if (found == adapter.originals.end())
+                    return false;
+                const auto started = std::chrono::steady_clock::now();
+                bool lowerable = false;
+                try
+                {
+                    const auto value =
+                        adapter.emit_operand(proposal.replacement, found->second->ea);
+                    lowerable =
+                        (value.t == mop_d ? MicrocodeAdapter::expression_cost(value.d) : 0) <
+                        MicrocodeAdapter::expression_cost(found->second);
+                }
+                catch (const std::invalid_argument &error)
+                {
+                    ++budget.totals.unsupported;
+                    deobf::log_verbose("[MBA SMT] Retained unlowerable proposal: %s\n",
+                                       error.what());
+                }
+                analysis.record_emission(
+                    static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                              std::chrono::steady_clock::now() - started)
+                                              .count()));
+                return lowerable;
+            });
         bool applied = false;
         for (const Proposal &proposal : proposals)
         {
-            if (apply_verified_proposal(adapter, analysis, proposal, budget, snapshot_program))
+            try
             {
-                applied = true;
-                ++budget.totals.applied;
-                if (proposal.proof && proposal.proof->from_cobra())
-                    ++budget.totals.cobra.applied;
-                break;
+                if (apply_verified_proposal(adapter, analysis, proposal, budget, snapshot_program))
+                {
+                    applied = true;
+                    ++budget.totals.applied;
+                    if (proposal.proof && proposal.proof->from_cobra())
+                        ++budget.totals.cobra.applied;
+                    break;
+                }
+            }
+            catch (const std::invalid_argument &error)
+            {
+                // A proved value can mention a snapshot-only operand that
+                // this site cannot emit. Reject that temporary and continue
+                // with other proved sites in the same immutable analysis.
+                ++budget.totals.unsupported;
+                deobf::log_verbose("[MBA SMT] Retained unlowerable proposal: %s\n", error.what());
             }
         }
         accumulate_statistics(budget.totals, analysis.statistics());

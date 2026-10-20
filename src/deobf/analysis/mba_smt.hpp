@@ -161,6 +161,7 @@ const char *backend_diagnostic() noexcept;
 
 struct Options
 {
+    bool contextual_constants_only = false;
     Backend backend = selected_backend();
     Profile profile = Profile::Normal;
     SnapshotToken snapshot;
@@ -260,7 +261,9 @@ class Analysis
     ~Analysis();
     Analysis(const Analysis &) = delete;
     Analysis &operator=(const Analysis &) = delete;
-    std::vector<Proposal> run();
+    // The adapter may reject a proved proposal that it cannot lower. Continue
+    // with other sites without rebuilding the immutable symbolic snapshot.
+    std::vector<Proposal> run(const std::function<bool(const Proposal &)> &can_emit = {});
     // A model proposes one value; a universal mismatch check must prove it.
     // This avoids expression enumeration when a caller only needs a constant.
     Term constant_value(size_t block, size_t statement);

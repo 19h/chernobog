@@ -277,9 +277,83 @@ int ctree_faults(qstring &output)
     }
     return failures;
 }
-int faults(qstring &output)
+int sequential_projection_checks()
 {
     int failures = 0;
+    const auto require = [&](bool condition) { failures += !condition; };
+    Program program;
+    program.widths = {8, 8, 8};
+    program.blocks.resize(1);
+    MicrocodeAdapter adapter(nullptr);
+    initialize(adapter, program);
+    adapter.sequential_locations = true;
+    mop_t numbered = adapter.available[0].second;
+    numbered.valnum = 42;
+    const auto before = adapter.translate_operand(numbered);
+    auto &block = adapter.program.blocks[0];
+    block.statements.push_back(Statement::assign(1, before));
+    minsn_t write(0x1000);
+    write.opcode = m_mov;
+    write.l.make_number(7, 1);
+    write.d = numbered;
+    adapter.translate_statement(&write, 0, block);
+    block.statements.push_back(Statement::assign(
+        2, expression(Op::Sub, adapter.translate_operand(numbered), variable(1, 8))));
+    Analysis physical(adapter.program);
+    require(physical.verify(0, 2, expression(Op::Sub, constant(7, 8), variable(1, 8))) ==
+            Verdict::Verified);
+    require(physical.verify(0, 2, constant(0, 8)) == Verdict::Disproved);
+    MicrocodeAdapter strict(nullptr);
+    initialize(strict, program);
+    bool rejected = false;
+    try
+    {
+        strict.translate_operand(numbered);
+    }
+    catch (const std::invalid_argument &)
+    {
+        rejected = true;
+    }
+    require(rejected);
+
+    Block flags;
+    minsn_t undefined(0x1000);
+    undefined.opcode = m_und;
+    undefined.d.make_reg(0, 1);
+    adapter.translate_statement(&undefined, 0, flags);
+    require(flags.statements.empty());
+    minsn_t overflow(0x1000);
+    overflow.opcode = m_ofadd;
+    overflow.d.make_reg(0, 1);
+    overflow.l.make_number(1, 1);
+    overflow.r.make_number(2, 1);
+    adapter.translate_statement(&overflow, 0, flags);
+    require(flags.statements.empty());
+    overflow.l.erase();
+    overflow.l.t = mop_d;
+    overflow.l.size = 1;
+    overflow.l.d = new minsn_t(0x1000);
+    overflow.l.d->opcode = m_call;
+    overflow.l.d->d.size = 1;
+    adapter.translate_statement(&overflow, 0, flags);
+    require(flags.statements.size() == 1 &&
+            flags.statements.front().kind == Statement::Kind::Havoc);
+    rejected = false;
+    try
+    {
+        adapter.translate_operand(undefined.d);
+    }
+    catch (const std::invalid_argument &)
+    {
+        rejected = true;
+    }
+    require(rejected);
+    return failures;
+}
+
+int faults(qstring &output)
+{
+    int failures = sequential_projection_checks();
     bool first = true;
     output = "[";
     for (int fault = 0; fault < 20; ++fault)

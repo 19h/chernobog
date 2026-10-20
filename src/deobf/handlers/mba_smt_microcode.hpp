@@ -31,6 +31,10 @@ class MicrocodeAdapter
     size_t visits = 0;
     mblock_t *local_block = nullptr;
     minsn_t *local_instruction = nullptr;
+    // Value numbers annotate equal values; the calls-stage constant analysis
+    // instead executes physical locations in CFG order. It does not expose
+    // these projected operands to algebraic candidate generation.
+    bool sequential_locations = false;
 
     explicit MicrocodeAdapter(mbl_array_t *value, mblock_t *block = nullptr,
                               minsn_t *instruction = nullptr)
@@ -73,7 +77,7 @@ class MicrocodeAdapter
         }
         else if (op.t == mop_r && op.r >= 8 && bitvector::valid_byte_width(op.size))
         {
-            registers.push_back({op.r, op.size, uint64_t(op.valnum)});
+            registers.push_back({op.r, op.size, sequential_locations ? 0 : uint64_t(op.valnum)});
         }
     }
 
@@ -95,7 +99,8 @@ class MicrocodeAdapter
     {
         for (size_t i = 0; i < registers.size(); ++i)
         {
-            if (uint64_t(op.valnum) == registers[i].value_number && op.r >= registers[i].start &&
+            if ((sequential_locations ? 0 : uint64_t(op.valnum)) == registers[i].value_number &&
+                op.r >= registers[i].start &&
                 op.r + op.size <= registers[i].start + registers[i].bytes)
             {
                 return {i, unsigned(op.r - registers[i].start) * 8};
@@ -186,7 +191,8 @@ class MicrocodeAdapter
         {
             return constant(uint64_t(op.nnn->value), bits);
         }
-        if (op.t == mop_r && op.r >= 8 && (local_instruction || op.valnum == 0))
+        if (op.t == mop_r && op.r >= 8 &&
+            (local_instruction || sequential_locations || op.valnum == 0))
         {
             auto [id, offset] = locate_register_view(op);
             auto term = register_view(id, offset, bits);
@@ -211,7 +217,7 @@ class MicrocodeAdapter
         }
         if (op.t == mop_v || op.t == mop_S || op.t == mop_l)
         {
-            if (op.valnum != 0)
+            if (op.valnum != 0 && !sequential_locations)
             {
                 throw std::invalid_argument(
                     "numbered memory snapshot requires a reaching definition");
@@ -391,12 +397,19 @@ class MicrocodeAdapter
 
         if (ins->d.t == mop_r && ins->d.r < 8 && has_supported_properties(ins))
         {
+            if (ins->opcode == m_und && ins->l.t == mop_z && ins->r.t == mop_z)
+            {
+                // Flags are absent from the scalar state. A later predicate
+                // that still reads one fails translation and havocs its edge.
+                return;
+            }
             const bool flag_copy = ins->opcode == m_mov && (ins->l.t == mop_n || ins->l.t == mop_r);
             if (flag_copy)
             {
                 return;
             }
-            if (is_mcode_set(ins->opcode))
+            if (is_mcode_set(ins->opcode) || ins->opcode == m_ofadd || ins->opcode == m_cfadd ||
+                ins->opcode == m_cfshl || ins->opcode == m_cfshr)
             {
                 try
                 {
@@ -463,7 +476,7 @@ class MicrocodeAdapter
                 value = translate_instruction(ins);
             }
 
-            if (ins->d.t == mop_r && ins->d.r >= 8 && ins->d.valnum == 0)
+            if (ins->d.t == mop_r && ins->d.r >= 8 && (ins->d.valnum == 0 || sequential_locations))
             {
                 const auto [register_index, bit_offset] = locate_register_view(ins->d);
                 auto statement = Statement::assign(register_index, value);

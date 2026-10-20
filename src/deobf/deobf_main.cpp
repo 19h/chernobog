@@ -559,7 +559,7 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
                 total_changes += changes;
             }
         }
-        return total_changes;
+        return total_changes + run_semantic_mba(mba);
     }
 
     if (maturity == MMAT_GLBOPT2)
