@@ -78,6 +78,15 @@ exact active ID across accessible accounts through the pinned official client;
 it does not invoke the CLI's interactive customer picker. Native corpus inputs
 are compiled with optimization disabled so the MBA source reaches the plugin.
 
+`native_parallelism` selects one, two, three, or six concurrent acceptance
+targets and defaults to one. Each target still runs its backend pair and
+profiles sequentially. These labels use separate [GitHub-hosted virtual
+machines](https://docs.github.com/en/actions/reference/runners/github-hosted-runners),
+with runner-local runtime configuration and evidence paths. Concurrency changes
+scheduling only; every target, provisioning check, proof, and oracle remains
+mandatory. A failed concurrent run cannot qualify promotion; a serial retry
+uses the same artifacts and source revision.
+
 `tests/fixtures/ida_cobra_runtime_manifest.json` freezes six IDA 9.4 installers
 by exact asset key, byte count, and SHA-256. HCLI 0.26.3 binaries are independently
 pinned in `tests/fixtures/hcli_0.26.3.json`. The authenticated catalog visible
@@ -126,6 +135,7 @@ from executing the Windows plugin in its native runtime.
 | A5: Region scheduling affects generation cost and proof difficulty. | Unmasked linear arithmetic regions up to 32 bits try the complete region before its prefixes, after processing typed boundaries; wider, masked, and polynomial regions retain bottom-up proof lemmas. | Require all 42 frozen SDK positives in both profiles and the unchanged native Windows nested corpus; failed positives or retained nested MBAs reject the scheduling change. |
 | A6: Empty unconditional entry/exit wrappers add no constraints around a single statement block. | That body can use unconstrained inputs and symbolic statement order without invariant search. | Require replacement and counterexample proofs for a reordered entry/body/exit chain; retain inference for guarded edges, assignments in another block, disconnected blocks, and the existing loop fixtures. |
 | A7: Universal word identities do not depend on the source operand values or path facts. | One accepted width-specific theorem can support repeated queries in its own solver session. | Query the captured complemented-word expression before synthesis, repeat the query without repeating universal proofs, reject an unrelated constant, and require a new analysis to reprove its identities. |
+| A8: Target jobs have independent runtime configuration and process state. | Concurrent targets retain each target's sequential backend comparison. | Exercise all six native jobs with `native_parallelism=6`; require complete per-target provisioning, artifact identities, and paired oracles. A failed job rejects the aggregate and can be retried serially without changing fixtures or thresholds. |
 
 | Bounded finding | Impact | Contract |
 |---|---|---|

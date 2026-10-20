@@ -26,6 +26,11 @@ on:
         description: Diagnose SDK loading without qualifying the installed corpus
         type: boolean
         default: false
+      native_parallelism:
+        description: Maximum concurrent native acceptance targets
+        type: choice
+        default: "1"
+        options: ["1", "2", "3", "6"]
 permissions:
   contents: read
   actions: read
@@ -187,7 +192,7 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: ${{ fromJSON(inputs.native_parallelism || '1') }}
       matrix: ${{ fromJSON(needs.acceptance-plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
