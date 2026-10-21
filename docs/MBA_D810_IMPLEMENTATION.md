@@ -289,3 +289,13 @@ captures cover both memory fixtures in Normal/Deep across the three supplied
 x86-64 binaries and both ELF fixtures (20 captures); their emitted-C value,
 store, ordered-read and fault-prefix oracle passes 66560 UBSan checks. Native
 host execution remains a separate six-target qualification boundary.
+
+MSVC ARM64 can load large immediate masks from a literal pool that ctree has
+already folded into constants. Such unrepresented native reads remain outside
+this adapter and cause refusal; they are not exempted as readable image data.
+The supplemental fixture constructs its mask constants with bounded 16-bit
+immediate steps so its positive shape tests ordinary parameter reads and stores
+on every compiler. Its algebraic values and expected stores remain unchanged.
+Fault injection locates the actual staged reads independently of pure scalar
+prefixes. The original MSVC literal-pool refusal is retained as diagnostic
+evidence, not relabeled as a successful native transformation.

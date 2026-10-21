@@ -6,6 +6,7 @@
 #include "deobf/handlers/mba_smt_emission.hpp"
 #include "deobf/analysis/mba_smt_internal.hpp"
 #include <cstring>
+#include <stdexcept>
 
 using namespace chernobog::mba_smt;
 namespace
@@ -125,9 +126,22 @@ extern "C" D810_EXPORT int chernobog_mba_d810_memory_probe(uint64_t ea, int faul
             visited = true;
             if (fault == 0)
                 return;
+            const auto is_read = [](const cinsn_t &statement)
+            {
+                return statement.op == cit_expr && statement.cexpr &&
+                       statement.cexpr->op == cot_asg && statement.cexpr->y &&
+                       (statement.cexpr->y->op == cot_ptr || statement.cexpr->y->op == cot_idx);
+            };
             auto first = staged.cblock->begin();
+            while (first != staged.cblock->end() && !is_read(*first))
+                ++first;
             auto second = first;
-            ++second;
+            if (second != staged.cblock->end())
+                ++second;
+            while (second != staged.cblock->end() && !is_read(*second))
+                ++second;
+            if (first == staged.cblock->end() || second == staged.cblock->end())
+                throw std::runtime_error("Missing staged read fault target");
             if (fault == 1)
                 first->cexpr->x->v.idx++;
             if (fault == 2)

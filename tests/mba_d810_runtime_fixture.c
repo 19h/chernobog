@@ -13,14 +13,28 @@ D810_FN uint32_t test_chained_add(uint32_t *p)
 {
     return p[2] + p[0] + 23u - (0u - 17u - (~p[2] + p[1] - p[0] + 12u) - p[1]);
 }
+// Keep ordinary-data tests independent of compiler literal-pool reads, which
+// the native effect inventory deliberately refuses when absent from ctree.
+#define D810_WORD(name, high, low)                                                                 \
+    uint32_t name = high;                                                                          \
+    name <<= 16;                                                                                   \
+    name |= low
+
 D810_FN uint32_t test_cst_simplification(uint32_t *p)
 {
-    const uint32_t v5 = ((p[0] & 1u) | 0x222E69C2u) - ((p[0] & 1u) | 2u);
+    D810_WORD(c1, 0x222Eu, 0x69C2u);
+    D810_WORD(mask2, 0x5021u, 0x1120u);
+    D810_WORD(c2, 0x5029u, 0x5930u);
+    D810_WORD(c3, 0x8302u, 0x0001u);
+    D810_WORD(mask3, 0x1050u, 0x0855u);
+    D810_WORD(c4, 0x0200u, 0x9500u);
+    D810_WORD(c5, 0x0520u, 0x4000u);
+    D810_WORD(c6, 0x1548u, 0x2637u);
+    const uint32_t v5 = ((p[0] & 1u) | c1) - ((p[0] & 1u) | 2u);
     p[1] = v5;
-    const uint32_t v4 = ((p[1] & 0x50211120u) ^ 0x50295930u) + ((p[1] & 0x50211120u) | 0x83020001u);
+    const uint32_t v4 = ((p[1] & mask2) ^ c2) + ((p[1] & mask2) | c3);
     p[2] = v4;
-    const uint32_t v3 =
-        (((p[2] & 0x10500855u) | 0x2009500u) + ((~p[2] & 0x10500855u) | 0x5204000u)) ^ 0x15482637u;
+    const uint32_t v3 = (((p[2] & mask3) | c4) + ((~p[2] & mask3) | c5)) ^ c6;
     p[3] = v3;
     const uint32_t v2 = (((p[3] + 4u - (v3 | 4u)) & 0x7FFFFCu) >> 2) | 0xA29u;
     p[4] = v2;
