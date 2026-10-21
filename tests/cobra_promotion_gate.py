@@ -89,6 +89,15 @@ def verify_d810(report, native, sdk):
         ),
         "Supplemental signed-literal matrix failed",
     )
+    booleans = report["booleans"]
+    require(
+        {r["input"] for r in booleans} == {0, 1, 2}
+        and len(booleans) == 3
+        and all(
+            not r["code"] and r["text"] and r["expected"] == int(r["input"] != 0) for r in booleans
+        ),
+        "Supplemental Boolean conversion failed",
+    )
     require(
         embedded_revision_matches(report["revision"], native["revision"])
         and all(report["source_fingerprint"] == r["source_fingerprint"] for r in sdk["reports"]),
@@ -112,7 +121,9 @@ def verify_d810(report, native, sdk):
         ]
         require(hashes == [expected], "Supplemental artifact identity mismatch")
     require(
-        native["d810"]["cases"] == 124 and native["d810"]["literals"] == 3,
+        native["d810"]["cases"] == 124
+        and native["d810"]["literals"] == 3
+        and native["d810"]["booleans"] == 3,
         "Supplemental native receipt incomplete",
     )
 

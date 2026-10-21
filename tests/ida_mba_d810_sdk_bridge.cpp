@@ -368,6 +368,45 @@ extern "C" D810_EXPORT int chernobog_mba_d810_literal_probe(uint64_t ea, uint32_
     }
 }
 
+extern "C" D810_EXPORT int chernobog_mba_d810_boolean_probe(uint64_t ea, uint32_t input,
+                                                            char *buffer, size_t capacity)
+{
+    try
+    {
+        if (!chernobog::hexrays::handshake() || input > 2)
+            return -1;
+        hexrays_failure_t failure;
+        auto function = decompile(ea, &failure, DECOMP_NO_CACHE);
+        if (!function)
+            return -2;
+        Program program;
+        program.widths = {8};
+        program.blocks.resize(1);
+        const Term expected = constant(input != 0, 8);
+        program.blocks[0].statements.push_back(Statement::assign(0, expected));
+        Analysis analysis(program, Options::deep());
+        const auto candidate = analysis.prove_candidate(0, 0, expected);
+        ScalarContext context({});
+        cexpr_t emitted;
+        if (!candidate || !emit_scalar_expression(*function, context, constant(input, 8),
+                                                  tinfo_t(BTF_BOOL), emitted))
+            return -3;
+        const auto proof = CtreeEmissionProof::prove(
+            analysis, *candidate, emitted, [&](const cexpr_t &actual)
+            { return lift_scalar_expression(actual, {}, function->mba); });
+        if (!proof || (input <= 1 && (emitted.op != cot_num || emitted.numval() != input)))
+            return -4;
+        qstring text;
+        emitted.print1(&text, function);
+        qsnprintf(buffer, capacity, "%s", text.c_str());
+        return 0;
+    }
+    catch (...)
+    {
+        return -5;
+    }
+}
+
 extern "C" D810_EXPORT const char *chernobog_mba_d810_revision()
 {
     return chernobog::build_provenance::revision;

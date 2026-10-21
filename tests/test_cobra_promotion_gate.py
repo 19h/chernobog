@@ -88,7 +88,7 @@ class PromotionGateTests(unittest.TestCase):
                     collection_mode="full",
                     legacy_manifest_sha256=hashlib.sha256(legacy_path.read_bytes()).hexdigest(),
                     fixture_sha256="fixture",
-                    d810=dict(cases=124, literals=3, fixture_sha256="d810-fixture"),
+                    d810=dict(cases=124, literals=3, booleans=3, fixture_sha256="d810-fixture"),
                     native_control={
                         g: legacy["oracle_comparisons"][g] for g in ("nested", "masks", "semantic")
                     },
@@ -169,6 +169,10 @@ class PromotionGateTests(unittest.TestCase):
                             post_poll=fault in (14, 15),
                         )
                         for route, name, fault in sorted(GATE.d810_probes())
+                    ],
+                    booleans=[
+                        dict(input=v, expected=int(v != 0), code=0, text="synthetic")
+                        for v in (0, 1, 2)
                     ],
                     literals=[
                         dict(
@@ -318,6 +322,9 @@ class PromotionGateTests(unittest.TestCase):
 
     def test_d810_wrong_literal(self):
         self.mutate("d810-sdk.json", lambda d: d["literals"][0].update(expected64=0))
+
+    def test_d810_wrong_boolean(self):
+        self.mutate("d810-sdk.json", lambda d: d["booleans"][2].update(expected=2))
 
     def test_d810_wrong_artifact(self):
         self.mutate("d810-sdk.json", lambda d: d.update(bridge_sha256="other"))

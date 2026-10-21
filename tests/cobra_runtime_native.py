@@ -483,6 +483,8 @@ def collect(args, entry):
             or supplemental["bridge_sha256"] != digest(d810_bridge)
             or len(supplemental["literals"]) != 3
             or any(row["code"] for row in supplemental["literals"])
+            or len(supplemental["booleans"]) != 3
+            or any(row["code"] for row in supplemental["booleans"])
             or not run["artifacts_unchanged"]
             or run["runner_return_code"]
         ):
@@ -543,6 +545,7 @@ def collect(args, entry):
             else {
                 "cases": len(supplemental["rows"]),
                 "literals": len(supplemental["literals"]),
+                "booleans": len(supplemental["booleans"]),
                 "fixture_sha256": digest(d810_fixture),
             }
         ),

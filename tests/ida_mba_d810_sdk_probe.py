@@ -84,6 +84,21 @@ def main():
                 "text": ida_lines.tag_remove(output.value.decode()),
             }
         )
+    boolean_probe = library.chernobog_mba_d810_boolean_probe
+    boolean_probe.argtypes = literal_probe.argtypes
+    boolean_probe.restype = ctypes.c_int
+    booleans = []
+    for value in (0, 1, 2):
+        output = ctypes.create_string_buffer(4096)
+        code = boolean_probe(ea, value, output, len(output))
+        booleans.append(
+            dict(
+                input=value,
+                expected=int(value != 0),
+                code=code,
+                text=ida_lines.tag_remove(output.value.decode()),
+            )
+        )
     library.chernobog_mba_d810_revision.restype = ctypes.c_char_p
     library.chernobog_mba_d810_source_fingerprint.restype = ctypes.c_char_p
     report = {
@@ -98,7 +113,8 @@ def main():
         "machine": platform.machine(),
         "rows": rows,
         "literals": literals,
-        "failures": sum(r["code"] != 0 for r in rows + literals),
+        "booleans": booleans,
+        "failures": sum(r["code"] != 0 for r in rows + literals + booleans),
     }
     (Path(os.environ["IDAUSR"]).parent / "d810_sdk.json").write_text(
         json.dumps(report, indent=2) + "\n", encoding="utf-8"

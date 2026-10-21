@@ -299,3 +299,12 @@ on every compiler. Its algebraic values and expected stores remain unchanged.
 Fault injection locates the actual staged reads independently of pure scalar
 prefixes. The original MSVC literal-pool refusal is retained as diagnostic
 evidence, not relabeled as a successful native transformation.
+
+Canonical Boolean literals `0` and `1` retain numeric ctree form when converted
+to `bool`, allowing ordinary constant-branch cleanup and legacy caller-context
+fixtures to retain their previous compact results. Noncanonical values still
+undergo Boolean conversion; signed high-bit integer literals retain their
+explicit signed cast. Three supplemental SDK cases prove and re-lift Boolean
+conversions of `0`, `1`, and `2`, independently of the three signed-literal cases.
+The six-target gate requires both sets. The unchanged legacy caller-context
+capture checks also reject an impossible branch or redundant cast left behind.

@@ -67,6 +67,14 @@ ExpressionPtr cast(ExpressionPtr value, const tinfo_t &type)
     {
         return value;
     }
+    // Canonical truth values can retain numeric form so the ordinary ctree
+    // cleanup still removes constant branches. Other integers must undergo
+    // Boolean conversion rather than being retagged as an 8-bit value.
+    if (value->op == cot_num && type.is_bool() && value->type.is_integral() && value->numval() <= 1)
+    {
+        value->type = type;
+        return value;
+    }
     if (value->op == cot_num && type.is_integral() && !type.is_bool() &&
         value->type.get_size() == type.get_size() &&
         (!type.is_signed() || (value->numval() & width_mask(unsigned(type.get_size() * 8))) <=
