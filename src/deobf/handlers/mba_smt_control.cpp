@@ -268,7 +268,7 @@ class Control
         options.max_invariants = 2;
         options.cancelled = [&] { return cancelled(); };
         options.diagnostic = {DiagnosticPhase::Control, uint64_t(node.ea), int(function_.maturity),
-                              true};
+                              node.ea != BADADDR};
         auto analysis = std::make_unique<Analysis>(query.program(), options);
         const Term value = analysis->constant_value(query.block(), 0);
         std::shared_ptr<const CtreeEmissionProof> proof;

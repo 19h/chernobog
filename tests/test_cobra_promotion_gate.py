@@ -88,7 +88,7 @@ class PromotionGateTests(unittest.TestCase):
                     collection_mode="full",
                     legacy_manifest_sha256=hashlib.sha256(legacy_path.read_bytes()).hexdigest(),
                     fixture_sha256="fixture",
-                    d810=dict(cases=123, literals=3, fixture_sha256="d810-fixture"),
+                    d810=dict(cases=124, literals=3, fixture_sha256="d810-fixture"),
                     native_control={
                         g: legacy["oracle_comparisons"][g] for g in ("nested", "masks", "semantic")
                     },

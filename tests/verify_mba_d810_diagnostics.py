@@ -71,7 +71,10 @@ def verify(captures):
                         or event["statement"] < 0
                         or (
                             event["source_ea"] is not None
-                            and not re.fullmatch(r"0x[0-9a-fA-F]+", event["source_ea"])
+                            and (
+                                not re.fullmatch(r"0x[0-9a-fA-F]+", event["source_ea"])
+                                or int(event["source_ea"], 16) == (1 << 64) - 1
+                            )
                         )
                     ):
                         raise ValueError("Invalid region provenance")

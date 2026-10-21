@@ -29,7 +29,7 @@ def main():
             ea = ida_name.get_name_ea(0xFFFFFFFFFFFFFFFF, "_" + name)
         if ea == 0xFFFFFFFFFFFFFFFF:
             raise RuntimeError("Missing supplemental fixture: " + name)
-        for fault in range(23):
+        for fault in range(24 if name == "test_cst_simplification" else 23):
             output = ctypes.create_string_buffer(4096)
             code = probe(ea, fault, output, len(output))
             row = json.loads(output.value)

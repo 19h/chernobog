@@ -732,7 +732,7 @@ class CallerSimplifier
         options.max_invariants = 2;
         options.cancelled = [] { return user_cancelled(); };
         options.diagnostic = {DiagnosticPhase::Calls, uint64_t(node.ea), int(function_.maturity),
-                              true};
+                              node.ea != BADADDR};
         if (!validate(query.program()))
             deobf::log_verbose(
                 "[mba_smt_calls] Invalid query at %a: widths=%zu blocks=%zu term_cost=%zu\n",

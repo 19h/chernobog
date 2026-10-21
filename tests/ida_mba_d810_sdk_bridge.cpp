@@ -33,7 +33,7 @@ extern "C" D810_EXPORT int chernobog_mba_d810_memory_probe(uint64_t ea, int faul
 {
     try
     {
-        if (!chernobog::hexrays::handshake() || fault < 0 || fault > 22)
+        if (!chernobog::hexrays::handshake() || fault < 0 || fault > 23)
             return -1;
         hexrays_failure_t failure;
         auto function = decompile(ea, &failure, DECOMP_NO_CACHE);
@@ -65,6 +65,20 @@ extern "C" D810_EXPORT int chernobog_mba_d810_memory_probe(uint64_t ea, int faul
                 call.cexpr->a = new carglist_t;
                 function->body.cblock->push_front(call);
             }
+        }
+        if (fault == 23)
+        {
+            bool corrupted = false;
+            for (auto &statement : *function->body.cblock)
+                if (statement.op == cit_expr && statement.cexpr && statement.cexpr->op == cot_asg &&
+                    statement.cexpr->x && statement.cexpr->x->op != cot_var)
+                {
+                    ++statement.cexpr->ea;
+                    corrupted = true;
+                    break;
+                }
+            if (!corrupted)
+                return -4;
         }
         cinsn_t original(function->body);
         const lvars_t original_locals(*function->get_lvars());
@@ -155,8 +169,11 @@ extern "C" D810_EXPORT int chernobog_mba_d810_memory_probe(uint64_t ea, int faul
                           ? changes > 0 && visited && !unchanged
                           : changes == 0 && unchanged &&
                                 (fault == 14 || fault == 15                    ? post_poll
-                                 : (fault >= 16 && fault <= 19) || fault == 22 ? !visited
+                                 : (fault >= 16 && fault <= 19) || fault >= 22 ? !visited
                                                                                : visited);
+        if (fault == 22)
+            passed =
+                passed && budget.spent_ns >= UINT64_C(150000000) && budget.totals.exhausted != 0;
         if (expected_apply)
             function->verify(ALLOW_UNUSED_LABELS, true);
         qsnprintf(

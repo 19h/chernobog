@@ -450,7 +450,7 @@ def collect(args, entry):
             {
                 ("memory", name, fault)
                 for name in ("test_chained_add", "test_cst_simplification")
-                for fault in range(23)
+                for fault in range(24 if name == "test_cst_simplification" else 23)
             }
             | {
                 ("control", name, fault)

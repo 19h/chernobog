@@ -258,9 +258,9 @@ change to either proof boundary, site allowance, emission frame, or cost test.
 | D2 | Expensive identity validation can observe cancellation or advance the deadline. | Cancel inside the unchanged callback, including the legacy-waived path; advance a deterministic clock by 150 ms under a 100 ms allowance. Require rejection. |
 | D3 | Memory preflight/snapshot work consumes the same phase allowance. | Inject 150 ms before snapshot construction under a 100 ms budget; require no proof/emission visitation and unchanged body/locals. |
 | D4 | SDK mutations occur on the owning analysis thread with generation changes for project-owned edits. | Revalidate complete frames/native bytes and the generation/owner immediately before commit; reject stale generations and changed source frames. This does not establish thread-safe mutation by arbitrary external plugins. |
-| D5 | Native evidence must correspond to the exact artifact source and runtime. | Bind supplemental bridge/fixture hashes, embedded revision and source fingerprint, kernel/decompiler version, OS/architecture, exact 123-case matrix and three literal cases. Reject missing, duplicate, failed or mismatched evidence. |
+| D5 | Native evidence must correspond to the exact artifact source and runtime. | Bind supplemental bridge/fixture hashes, embedded revision and source fingerprint, kernel/decompiler version, OS/architecture, exact 124-case matrix and three literal cases. Reject missing, duplicate, failed or mismatched evidence. |
 
-The supplemental SDK matrix consists of 46 memory cases, 72 control cases and
+The supplemental SDK matrix consists of 47 memory cases, 72 control cases and
 five rejection controls, plus three signed-literal emissions. The native bundle
 and strict six-target promotion checker require that matrix in addition to the
 unchanged frozen 42-fixture Normal/Deep and legacy acceptance evidence. Synthetic
@@ -272,3 +272,20 @@ and fixed storage), and native solver scheduling sensitivity (medium: retain the
 Boolean proof shape and qualify each native target). Core, SDK, corpus, emitted-C
 oracle, installed-artifact and six-target results remain separate evidence
 boundaries. Historical review artifacts retain their original source identities.
+
+Native write-event matching uses the assignment expression's instruction EA.
+A lvalue's EA can identify a separate address calculation, including GCC's LEA;
+that metadata remains unchanged in the emitted frame. The native inventory still
+requires every external write exactly once at the expected width and rejects an
+unknown, displaced, unrepresented or read-modify-write store. The supplemental
+constant-store fixture includes a corrupted-assignment-EA rejection probe.
+Unknown expression EAs are serialized as `null`, including IDA's `BADADDR`
+sentinel; they are never presented as physical addresses.
+
+This write-anchor follow-up passes all 34 CTest suites and 37 runtime/checker
+unit cases. Local licensed SDK probes pass the 124-case matrix on the compiled
+Mach-O ARM64 and GCC-produced ELF x86-64/ARM64 fixtures. Production integration
+captures cover both memory fixtures in Normal/Deep across the three supplied
+x86-64 binaries and both ELF fixtures (20 captures); their emitted-C value,
+store, ordered-read and fault-prefix oracle passes 66560 UBSan checks. Native
+host execution remains a separate six-target qualification boundary.

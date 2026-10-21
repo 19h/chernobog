@@ -29,7 +29,7 @@ def d810_probes():
         {
             ("memory", name, fault)
             for name in ("test_chained_add", "test_cst_simplification")
-            for fault in range(23)
+            for fault in range(24 if name == "test_cst_simplification" else 23)
         }
         | {
             ("control", name, fault)
@@ -58,7 +58,7 @@ def verify_d810(report, native, sdk):
     rows = report["rows"]
     require(
         {(r["route"], r["function"], r["fault"]) for r in rows} == d810_probes()
-        and len(rows) == 123,
+        and len(rows) == 124,
         "Supplemental D810 matrix incomplete",
     )
     require(
@@ -112,7 +112,7 @@ def verify_d810(report, native, sdk):
         ]
         require(hashes == [expected], "Supplemental artifact identity mismatch")
     require(
-        native["d810"]["cases"] == 123 and native["d810"]["literals"] == 3,
+        native["d810"]["cases"] == 124 and native["d810"]["literals"] == 3,
         "Supplemental native receipt incomplete",
     )
 

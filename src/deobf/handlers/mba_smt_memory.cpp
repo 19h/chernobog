@@ -58,6 +58,7 @@ struct Item
     cinsn_t source, lifted, emitted;
     std::vector<Read> reads;
     size_t site = 0;
+    ea_t store_ea = BADADDR;
     Term original;
     std::shared_ptr<const CtreeEmissionProof> proof;
     Item(const cinsn_t &node) : source(node), lifted(node), emitted(node) {}
@@ -184,7 +185,7 @@ class Slice
             options.max_invariants = 0;
             options.cancelled = [&] { return cancelled(); };
             options.diagnostic = {DiagnosticPhase::Memory, uint64_t(value->ea),
-                                  int(function_.maturity), true};
+                                  int(function_.maturity), value->ea != BADADDR};
             program_.targets = {{0, item.site}};
             auto analysis = std::make_unique<Analysis>(program_, options);
             const auto proposals = before ? analysis->run() : std::vector<Proposal>{};
@@ -282,9 +283,9 @@ class Slice
             {
                 Options event;
                 event.snapshot = snapshot_;
-                event.diagnostic = {DiagnosticPhase::Memory,
-                                    uint64_t(rhs(const_cast<cinsn_t &>(item.source))->ea),
-                                    int(function_.maturity), true};
+                const ea_t source_ea = rhs(const_cast<cinsn_t &>(item.source))->ea;
+                event.diagnostic = {DiagnosticPhase::Memory, uint64_t(source_ea),
+                                    int(function_.maturity), source_ea != BADADDR};
                 record_diagnostic(budget_.totals, event, DiagnosticStage::Commit,
                                   DiagnosticOutcome::Applied, 0, item.site,
                                   diagnostic_region_key(item.original));
@@ -490,11 +491,16 @@ class Slice
                 {
                     const cexpr_t &target = *statement.cexpr->x;
                     const Term location = address(target);
+                    // The lvalue EA may identify address calculation (e.g.
+                    // GCC's LEA), while the assignment identifies the actual
+                    // native write. Retain both original metadata frames.
+                    item.store_ea = statement.cexpr->ea;
                     if (!location || !scalar_integer_bits(target.type) ||
-                        target.type.get_size() != value->type.get_size() || target.ea == BADADDR ||
-                        (previous_effect != BADADDR && target.ea <= previous_effect))
+                        target.type.get_size() != value->type.get_size() ||
+                        item.store_ea == BADADDR ||
+                        (previous_effect != BADADDR && item.store_ea <= previous_effect))
                         return false;
-                    previous_effect = target.ea;
+                    previous_effect = item.store_ea;
                     program_.blocks[0].statements.push_back(
                         Statement::store(location, variable(temporary, item.original->bits)));
                 }
@@ -515,9 +521,8 @@ class Slice
                 accesses.emplace(read.source.ea, unsigned(read.source.type.get_size()));
             if (item.source.op == cit_expr && item.source.cexpr->x->op != cot_var)
             {
-                stores.insert(item.source.cexpr->x->ea);
-                accesses.emplace(item.source.cexpr->x->ea,
-                                 unsigned(item.source.cexpr->x->type.get_size()));
+                stores.insert(item.store_ea);
+                accesses.emplace(item.store_ea, unsigned(item.source.cexpr->x->type.get_size()));
             }
         }
         if (accesses.empty())
