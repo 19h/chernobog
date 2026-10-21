@@ -1,6 +1,7 @@
 #include "mba_smt_calls.h"
 #include "mba_smt_ctree.h"
 #include "mba_smt_emission.hpp"
+#include "mba_smt_memory.h"
 
 #include <algorithm>
 #include <chrono>
@@ -29,59 +30,6 @@ constexpr unsigned deep_expression_budget_ms = 1000;
 // Decompiling a callee can deliver another maturity callback. That callback
 // must not start a second interprocedural pass or recursively visit its caller.
 thread_local bool building_call_summaries = false;
-
-unsigned integer_bits(const tinfo_t &type)
-{
-    if (!type.is_integral() || type.is_volatile() || type.is_enum())
-    {
-        return 0;
-    }
-    const size_t bytes = type.get_size();
-    return bytes == 1 || bytes == 2 || bytes == 4 || bytes == 8 ? unsigned(bytes * 8) : 0;
-}
-
-Term resize_integer(Term value, unsigned bits, bool sign_extend)
-{
-    if (!value || value->bits == 0 || bits == 0)
-    {
-        return {};
-    }
-    if (value->op == Op::Constant)
-    {
-        const uint64_t source_mask =
-            value->bits == 64 ? UINT64_MAX : (uint64_t{1} << value->bits) - 1;
-        const uint64_t target_mask = bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1;
-        uint64_t literal = value->value & source_mask;
-        if (bits > value->bits && sign_extend && (literal & (uint64_t{1} << (value->bits - 1))))
-        {
-            literal |= ~source_mask;
-        }
-        return constant(literal & target_mask, bits);
-    }
-    if (bits == value->bits)
-    {
-        return value;
-    }
-    if (bits < value->bits)
-    {
-        return expression(Op::Low, value, {}, bits);
-    }
-    return expression(sign_extend ? Op::SignExtend : Op::ZeroExtend, value, {}, bits);
-}
-
-Term convert_integer(Term value, const tinfo_t &source, const tinfo_t &destination)
-{
-    const unsigned bits = integer_bits(destination);
-    if (!value || bits == 0)
-    {
-        return {};
-    }
-    if (destination.is_bool())
-    {
-        return expression(Op::NotEqual, value, constant(0, value->bits), bits);
-    }
-    return resize_integer(value, bits, source.is_signed());
-}
 
 bool has_mixed_arithmetic(const Term &root)
 {
@@ -283,16 +231,17 @@ class PureFunctions
         {
             const carg_t &argument = (*call->a)[index];
             if (!argument.formal_type.empty() &&
-                integer_bits(argument.formal_type) != integer_bits(summary->parameters[index]))
+                scalar_integer_bits(argument.formal_type) !=
+                    scalar_integer_bits(summary->parameters[index]))
             {
                 needs_refresh_ = true;
                 deobf::log_verbose("[mba_smt_calls] Argument width at %a: call=%u callee=%u\n",
-                                   call->ea, integer_bits(argument.formal_type),
-                                   integer_bits(summary->parameters[index]));
+                                   call->ea, scalar_integer_bits(argument.formal_type),
+                                   scalar_integer_bits(summary->parameters[index]));
                 return {};
             }
-            Term value = convert_integer(terms.translate(&argument), argument.type,
-                                         summary->parameters[index]);
+            Term value = convert_scalar_integer(terms.translate(&argument), argument.type,
+                                                summary->parameters[index]);
             if (!value)
             {
                 return {};
@@ -302,17 +251,17 @@ class PureFunctions
 
         // A narrower caller result observes only low return bits. Widening an
         // inferred return type would assume an ABI extension that is not proved.
-        if (integer_bits(call->type) > integer_bits(summary->return_type))
+        if (scalar_integer_bits(call->type) > scalar_integer_bits(summary->return_type))
         {
             needs_refresh_ = true;
             deobf::log_verbose("[mba_smt_calls] Rejected return widening at %a: %u -> %u bits\n",
-                               call->ea, integer_bits(summary->return_type),
-                               integer_bits(call->type));
+                               call->ea, scalar_integer_bits(summary->return_type),
+                               scalar_integer_bits(call->type));
             return {};
         }
         size_t remaining = limits::expression_visits;
         Term result = substitute_parameters(summary->result, arguments, remaining);
-        return convert_integer(result, summary->return_type, call->type);
+        return convert_scalar_integer(result, summary->return_type, call->type);
     }
 
   private:
@@ -357,7 +306,7 @@ class PureFunctions
         func_type_data_t details;
         if (!function.get_func_type(&type) || !type.get_func_details(&details) ||
             details.is_vararg_cc() || is_user_cc(details.get_cc()) ||
-            !integer_bits(details.rettype) || function.argidx.size() != details.size() ||
+            !scalar_integer_bits(details.rettype) || function.argidx.size() != details.size() ||
             function.body.op != cit_block || !function.body.cblock ||
             function.body.cblock->size() > limits::statements)
         {
@@ -376,13 +325,13 @@ class PureFunctions
         {
             const int local = function.argidx[index];
             if (local < 0 || size_t(local) >= locals->size() ||
-                !integer_bits(details[index].type) || (*locals)[local].is_used_byref() ||
+                !scalar_integer_bits(details[index].type) || (*locals)[local].is_used_byref() ||
                 (*locals)[local].is_overlapped_var())
             {
                 return {};
             }
             summary.parameters.push_back(details[index].type);
-            bindings[local] = variable(index, integer_bits(details[index].type));
+            bindings[local] = variable(index, scalar_integer_bits(details[index].type));
         }
 
         for (const cinsn_t &statement : *function.body.cblock)
@@ -396,7 +345,7 @@ class PureFunctions
             {
                 const cexpr_t &value = statement.creturn->expr;
                 summary.result =
-                    convert_integer(terms.translate(&value), value.type, details.rettype);
+                    convert_scalar_integer(terms.translate(&value), value.type, details.rettype);
                 if (!summary.result)
                 {
                     return {};
@@ -413,8 +362,8 @@ class PureFunctions
                 {
                     return {};
                 }
-                Term value = convert_integer(terms.translate(assignment.y), assignment.y->type,
-                                             assignment.x->type);
+                Term value = convert_scalar_integer(terms.translate(assignment.y),
+                                                    assignment.y->type, assignment.x->type);
                 if (!value)
                 {
                     return {};
@@ -439,200 +388,26 @@ class PureFunctions
 
 Term CtreeTerms::translate(const cexpr_t *node, unsigned depth)
 {
-    if (!node || !functions_.available() || depth > limits::expression_depth ||
-        ++visits_ > limits::expression_visits || !integer_bits(node->type))
+    const auto resolve = [&](const cexpr_t &leaf) -> Term
     {
-        return {};
-    }
-    const unsigned bits = integer_bits(node->type);
-    if (node->op == cot_num)
-    {
-        const uint64_t mask = bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1;
-        return constant(node->numval() & mask, bits);
-    }
-    if (node->op == cot_var)
-    {
-        const auto bound = bindings_.find(node->v.idx);
-        if (bound != bindings_.end())
+        if (leaf.op == cot_var)
         {
-            used_context |= !context_ || context_->derived(node->v.idx);
-            return bound->second->bits == bits ? bound->second : Term{};
+            const auto bound = bindings_.find(leaf.v.idx);
+            if (bound == bindings_.end())
+                return {};
+            used_context |= !context_ || context_->derived(leaf.v.idx);
+            return bound->second;
+        }
+        if (leaf.op == cot_call && expand_calls_)
+        {
+            Term value = functions_.instantiate(&leaf, *this);
+            used_context |= bool(value);
+            return value;
         }
         return {};
-    }
-    if (node->op == cot_call)
-    {
-        if (!expand_calls_)
-        {
-            return {};
-        }
-        Term value = functions_.instantiate(node, *this);
-        used_context |= bool(value);
-        return value;
-    }
-    if (node->op == cot_cast)
-    {
-        return node->x ? convert_integer(translate(node->x, depth + 1), node->x->type, node->type)
-                       : Term{};
-    }
-    if (node->op == cot_land || node->op == cot_lor)
-    {
-        Term left = translate(node->x, depth + 1);
-        Term right = translate(node->y, depth + 1);
-        if (!left || !right)
-        {
-            return {};
-        }
-        left = expression(Op::NotEqual, left, constant(0, left->bits), 8);
-        right = expression(Op::NotEqual, right, constant(0, right->bits), 8);
-        return resize_integer(expression(node->op == cot_land ? Op::And : Op::Or, left, right),
-                              bits, false);
-    }
-
-    if (!is_binary(node->op) && node->op != cot_lnot && node->op != cot_bnot && node->op != cot_neg)
-    {
-        return {};
-    }
-
-    Term left = translate(node->x, depth + 1);
-    if (!left)
-    {
-        return {};
-    }
-    if (node->op == cot_lnot)
-    {
-        return expression(Op::Equal, left, constant(0, left->bits), bits);
-    }
-    if (node->op == cot_bnot || node->op == cot_neg)
-    {
-        left = convert_integer(left, node->x->type, node->type);
-        return left ? expression(node->op == cot_bnot ? Op::Not : Op::Neg, left) : Term{};
-    }
-
-    Op operation;
-    bool comparison = false;
-    bool reverse = false;
-    bool invert = false;
-    switch (node->op)
-    {
-    case cot_add:
-        operation = Op::Add;
-        break;
-    case cot_sub:
-        operation = Op::Sub;
-        break;
-    case cot_mul:
-        operation = Op::Mul;
-        break;
-    case cot_udiv:
-        operation = Op::UnsignedDivide;
-        break;
-    case cot_band:
-        operation = Op::And;
-        break;
-    case cot_bor:
-        operation = Op::Or;
-        break;
-    case cot_xor:
-        operation = Op::Xor;
-        break;
-    case cot_shl:
-        operation = Op::Shl;
-        break;
-    case cot_ushr:
-        operation = Op::Shr;
-        break;
-    case cot_sshr:
-        operation = Op::Sar;
-        break;
-    case cot_eq:
-        operation = Op::Equal;
-        comparison = true;
-        break;
-    case cot_ne:
-        operation = Op::NotEqual;
-        comparison = true;
-        break;
-    case cot_slt:
-        operation = Op::SignedLess;
-        comparison = true;
-        break;
-    case cot_ult:
-        operation = Op::UnsignedLess;
-        comparison = true;
-        break;
-    case cot_sgt:
-        operation = Op::SignedLess;
-        comparison = true;
-        reverse = true;
-        break;
-    case cot_ugt:
-        operation = Op::UnsignedLess;
-        comparison = true;
-        reverse = true;
-        break;
-    case cot_sge:
-        operation = Op::SignedLess;
-        comparison = true;
-        invert = true;
-        break;
-    case cot_uge:
-        operation = Op::UnsignedLess;
-        comparison = true;
-        invert = true;
-        break;
-    case cot_sle:
-        operation = Op::SignedLess;
-        comparison = true;
-        reverse = true;
-        invert = true;
-        break;
-    case cot_ule:
-        operation = Op::UnsignedLess;
-        comparison = true;
-        reverse = true;
-        invert = true;
-        break;
-    default:
-        return {};
-    }
-    Term right = translate(node->y, depth + 1);
-    if (!right)
-    {
-        return {};
-    }
-
-    // C integer promotions happen before the operation; a narrow result is
-    // truncated afterwards. In particular, truncating before division or a
-    // right shift would change the result.
-    const bool shift = operation == Op::Shl || operation == Op::Shr || operation == Op::Sar;
-    const unsigned operand_bits =
-        std::max({32u, left->bits, shift ? 0u : right->bits, comparison ? 0u : bits});
-    left = resize_integer(left, operand_bits, node->x->type.is_signed());
-
-    if (shift)
-    {
-        if (right->op != Op::Constant || right->value >= operand_bits)
-        {
-            return {};
-        }
-        right = constant(right->value, 8);
-    }
-    else
-    {
-        right = resize_integer(right, operand_bits, node->y->type.is_signed());
-    }
-    if (operation == Op::UnsignedDivide && (right->op != Op::Constant || right->value == 0))
-    {
-        return {};
-    }
-    Term result = expression(operation, reverse ? right : left, reverse ? left : right,
-                             comparison ? bits : operand_bits);
-    if (!comparison && operand_bits != bits)
-    {
-        result = expression(Op::Low, result, {}, bits);
-    }
-    return invert ? expression(Op::Equal, result, constant(0, bits), bits) : result;
+    };
+    return lift_scalar_expression_with_leaves(
+        node, resolve, [&] { return functions_.available(); }, visits_, depth);
 }
 
 struct LocalSafety final : ctree_visitor_t
@@ -644,7 +419,7 @@ struct LocalSafety final : ctree_visitor_t
             // A mapping destination is a canonical ctree local: the SDK has
             // replaced its mapped references, and assignments here version that
             // canonical index. Shared chains and overlapping storage still fail.
-            safe.push_back(integer_bits(local.tif) && !local.is_used_byref() &&
+            safe.push_back(scalar_integer_bits(local.tif) && !local.is_used_byref() &&
                            !local.is_overlapped_var() && !local.is_shared() &&
                            !local.is_fake_var() && !local.is_noprop() && !local.in_asm());
         }
@@ -756,19 +531,7 @@ class CtreeDomainSnapshot
         if (!body_ || owner_ != function.mba || locals_.size() != function.get_lvars()->size() ||
             !same_ctree_body(*body_, function.body))
             return false;
-        const auto &current = *function.get_lvars();
-        for (size_t i = 0; i < locals_.size(); ++i)
-            if (locals_[i].tif != current[i].tif || locals_[i].width != current[i].width ||
-                locals_[i].location != current[i].location ||
-                locals_[i].defea != current[i].defea ||
-                locals_[i].is_used_byref() != current[i].is_used_byref() ||
-                locals_[i].is_overlapped_var() != current[i].is_overlapped_var() ||
-                locals_[i].is_shared() != current[i].is_shared() ||
-                locals_[i].is_noprop() != current[i].is_noprop() ||
-                locals_[i].is_fake_var() != current[i].is_fake_var() ||
-                locals_[i].in_asm() != current[i].in_asm())
-                return false;
-        return true;
+        return same_ctree_locals(locals_, *function.get_lvars());
     }
 };
 
@@ -782,7 +545,7 @@ class CallerSimplifier
         const lvars_t &locals = *function_.get_lvars();
         for (size_t index = 0; index < locals.size(); ++index)
         {
-            widths_.push_back(safety_.safe[index] ? integer_bits(locals[index].tif) : 0);
+            widths_.push_back(safety_.safe[index] ? scalar_integer_bits(locals[index].tif) : 0);
         }
     }
 
@@ -844,7 +607,8 @@ class CallerSimplifier
                         const ProofReceipt &candidate,
                         std::shared_ptr<const CtreeEmissionProof> &receipt)
     {
-        if (emitted.type != node.type || integer_bits(emitted.type) != integer_bits(node.type))
+        if (emitted.type != node.type ||
+            scalar_integer_bits(emitted.type) != scalar_integer_bits(node.type))
         {
             analysis.reject_mutation(RejectReason::EmittedDestinationOrFrameMismatch);
             return false;
@@ -1169,7 +933,7 @@ class CallerSimplifier
             value = translate(calculation, context);
         }
         const tinfo_t &source_type = node.op == cot_asg ? node.y->type : node.type;
-        context.assign(node.x->v.idx, convert_integer(value, source_type, node.x->type));
+        context.assign(node.x->v.idx, convert_scalar_integer(value, source_type, node.x->type));
     }
 
     bool conditional(cinsn_t &node, ScalarContext &context)
@@ -1397,11 +1161,13 @@ CallSimplification simplify_calls(cfunc_t *function, FunctionBudget &budget)
         ~SummaryGuard() { building_call_summaries = false; }
     } guard;
 
+    const int memory_changes = simplify_memory_values(*function, budget);
     CallBudget allowance(budget);
     deobf::log_verbose("[mba_smt_calls] Starting %a with %u ms remaining\n", function->entry_ea,
                        allowance.remaining_ms());
     CallerSimplifier simplifier(*function, allowance);
-    const auto result = simplifier.run();
+    auto result = simplifier.run();
+    result.changes += memory_changes;
     if (result.changes)
     {
         function->recalc_item_addresses();

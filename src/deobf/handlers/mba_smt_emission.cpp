@@ -245,6 +245,53 @@ bool same_ctree_expression(const cexpr_t &left, const cexpr_t &right)
 {
     return same_ctree(left, right, limits::expression_visits);
 }
+bool same_ctree_locals(const lvars_t &left, const lvars_t &right)
+{
+    const auto properties = [](const lvar_t &local)
+    {
+        return std::array<bool, 29>{{local.used(),
+                                     local.typed(),
+                                     local.mreg_done(),
+                                     local.has_nice_name(),
+                                     local.is_unknown_width(),
+                                     local.has_user_info(),
+                                     local.has_user_name(),
+                                     local.has_user_type(),
+                                     local.is_result_var(),
+                                     local.is_arg_var(),
+                                     local.is_fake_var(),
+                                     local.is_overlapped_var(),
+                                     local.is_floating_var(),
+                                     local.is_spoiled_var(),
+                                     local.is_partialy_typed(),
+                                     local.is_noptr_var(),
+                                     local.is_mapdst_var(),
+                                     local.is_thisarg(),
+                                     local.is_split_var(),
+                                     local.has_regname(),
+                                     local.in_asm(),
+                                     local.is_dummy_arg(),
+                                     local.is_notarg(),
+                                     local.is_automapped(),
+                                     local.is_used_byref(),
+                                     local.is_decl_unused(),
+                                     local.is_shared(),
+                                     local.was_scattered_arg(),
+                                     local.is_noprop()}};
+    };
+    if (left.size() != right.size())
+        return false;
+    for (size_t i = 0; i < left.size(); ++i)
+    {
+        const auto &a = left[i], &b = right[i];
+        if (a.tif != b.tif || a.width != b.width || a.location != b.location ||
+            a.defea != b.defea || a.defblk != b.defblk || a.divisor != b.divisor ||
+            a.name != b.name || a.cmt != b.cmt || properties(a) != properties(b))
+            return false;
+    }
+    return true;
+}
+
 bool same_ctree_body(const cinsn_t &left, const cinsn_t &right)
 {
     return same_ctree(left, right, 131072);

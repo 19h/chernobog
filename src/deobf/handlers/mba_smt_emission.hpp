@@ -51,6 +51,7 @@ mop_t emit_microcode_operand(const Term &term, ea_t ea,
 bool verify_emitted_instruction_frame(const minsn_t &source, const minsn_t &emitted);
 bool same_microcode_instruction(const minsn_t &left, const minsn_t &right);
 bool same_ctree_expression(const cexpr_t &left, const cexpr_t &right);
+bool same_ctree_locals(const lvars_t &left, const lvars_t &right);
 bool same_ctree_body(const cinsn_t &left, const cinsn_t &right);
 bool commit_microcode_replacement(minsn_t &original, const minsn_t &snapshot, minsn_t &replacement,
                                   Analysis &analysis, const MicrocodeEmissionProof &proof,

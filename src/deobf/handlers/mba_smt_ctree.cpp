@@ -113,7 +113,8 @@ ExpressionPtr binary(ctype_t operation, ExpressionPtr left, ExpressionPtr right,
 class ScalarEmitter
 {
   public:
-    ScalarEmitter(cfunc_t &function, const ScalarContext &context) : function_(function)
+    ScalarEmitter(cfunc_t &function, const ScalarContext &context, const ScalarLeaves *leaves)
+        : function_(function), leaves_(leaves)
     {
         for (const auto &[local, value] : context.bindings())
         {
@@ -138,6 +139,11 @@ class ScalarEmitter
                 value->bits >= 32 && value->value <= (width_mask(value->bits) >> 1);
             return number(value->value, value->bits, signed_literal);
         }
+
+        if (leaves_)
+            for (const auto &leaf : *leaves_)
+                if (key(leaf.first) == key(value))
+                    return std::make_unique<cexpr_t>(leaf.second);
 
         const auto local = locals_.find(key(value));
         if (local != locals_.end())
@@ -438,15 +444,16 @@ class ScalarEmitter
     }
 
     cfunc_t &function_;
+    const ScalarLeaves *leaves_;
     std::map<std::string, int> locals_;
     size_t visits_ = 0;
 };
 } // namespace
 
 bool emit_scalar_expression(cfunc_t &function, const ScalarContext &context, const Term &value,
-                            const tinfo_t &type, cexpr_t &output)
+                            const tinfo_t &type, cexpr_t &output, const ScalarLeaves *leaves)
 {
-    ScalarEmitter emitter(function, context);
+    ScalarEmitter emitter(function, context, leaves);
     ExpressionPtr result = cast(emitter.emit(value), type);
     if (!result)
     {

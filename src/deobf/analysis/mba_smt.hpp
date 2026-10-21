@@ -162,6 +162,9 @@ const char *backend_diagnostic() noexcept;
 struct Options
 {
     bool contextual_constants_only = false;
+    // Detached straight-line adapters may expose current materialized scalar
+    // values to generation. This never changes the source used by either proof.
+    bool snapshot_values = false;
     Backend backend = selected_backend();
     Profile profile = Profile::Normal;
     SnapshotToken snapshot;

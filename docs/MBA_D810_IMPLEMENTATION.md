@@ -67,3 +67,81 @@ All six ARM64 hard-MBA fixtures have compact value forms in Normal and Deep.
 `test_xor` and `test_mba_guessing` reduce to their XOR forms in both profiles in
 each of the three x86-64 inputs. These observations address candidate preparation;
 they do not claim that memory-value admission or small CFG coverage is complete.
+
+## Ordered memory-value slices
+
+A bounded straight-line ctree pass materializes each admitted ordinary read in a
+private local, ordered by its original native instruction address. Every read,
+store, original lvalue and retained statement property remains in the staged
+body. The six `test_chained_add` reads illustrate why AST preorder is insufficient:
+the required element order is `0, 2, 1, 1, 0, 2`. Arithmetic can disappear; an
+unused read remains an explicit statement with its original address and type.
+
+Candidate generation may reuse a materialized scalar only when its evaluated
+symbolic value is structurally identical in the current byte-array memory
+version, or is an exact numeral. Parameter pointers share the same array:
+possibly aliased stores and partial overlapping writes receive no disjointness
+assumption. The complete source prefix remains the input to the candidate proof.
+The actual detached SDK RHS is independently lifted for the emission proof. An
+already proved RHS may replace its equal private program definition for later
+sites; these substitutions compose sequentially within the staged slice.
+
+The typed scalar lifter is shared with caller-context analysis. It preserves
+integer promotions, signed extensions, Boolean conversion, comparisons and
+bounded constant shift counts. Calls and loads require their separate explicit
+adapters; the pure binding interface accepts only this MBA's bound locals.
+
+A final frame check reconstructs the entire staged body from immutable source
+frames, exact read copies and actual SDK emission receipts. It checks the full
+local-variable frame, including all exposed SDK property bits. Body, locals,
+native bytes, MBA owner, generation, cancellation and the absolute deadline are
+rechecked before the no-throw body/local swaps. Rejection installs no temporary
+local and changes no source expression. The legacy fallback exemption remains
+unchanged in its existing paths; this new staged pass uses a strict deadline.
+
+Admission is limited to 64 straight-line statements, 4096 ctree nodes, depth 64,
+64 total symbolic storage regions, 256 core statements and 16384 native bytes.
+Addresses use an unchanged scalar pointer base and constant scaled offsets.
+Calls, branches, loops, volatile types, overlapping/escaping/shared locals,
+ambiguous/RMW/vector accesses, duplicate read addresses, native control transfer
+and unrepresented memory effects are refused. Native access order is checked
+against decoded instructions. Accessible, nonescaping private frame accesses are
+recognized separately; a canonical register argument's eliminated spill requires
+an initial direct store of its unchanged incoming register and read-only reuse.
+No general stack-relative operand is exempted from the effect inventory.
+
+The generation-only value preparation has `O(V*R)` structural comparisons for
+`V <= 512` expression visits and `R <= 64` materialized representatives. Native
+inventory is linear in the admitted byte range; frame reconstruction is linear
+in staged nodes. Z3 simplification and solver queries retain their independent
+step, resource and deadline bounds; these structural bounds are not a solver
+latency guarantee.
+
+| ID | Assumption / dependent result | Falsification probe |
+|---|---|---|
+| M1 | Ordinary memory follows the existing sequential byte-array snapshot model. No asynchronous writer changes an ordinary read between modeled events. | Keep volatile observations and unknown calls outside admission; havoc splits memory versions in core tests. Concurrent/external mutation requires an independent observation model and is not silently correlated. |
+| M2 | IDA's safe nonescaping scalar locals denote accessible private frame storage. Parameter accesses do not alias that private storage. | Require SDK safety flags and native spill/frame recognition; refuse unrepresented accesses, overlapping locals and address escape. All parameter-to-parameter aliases remain possible in the SMT array. |
+| M3 | Native instruction order is the relevant observable external-memory order within the admitted straight-line range. | Decode unique read addresses and widths; reject branches, calls, RMW, hidden effects and reordered/dropped/duplicated staged events. |
+| M4 | Previously proved staged definitions remain equal under subsequent memory versions. | Keep exact store order and independently prove source/emitted RHS values; test possibly aliased partial writes, endian-dependent forwarding and havoc. |
+| M5 | The source and actual emitted SDK frames remain immutable through commit. | Inject read address/width/EA, destination, body, local frame, generation, cancellation and post-proof expiry faults; require unchanged body and locals on rejection. |
+
+Additional bounded risks are concurrent-memory assumptions (high, M1), private
+frame interpretation (high, M2), and expression growth during store forwarding
+(medium, bounded nodes/resources/deadlines). This pass does not claim an alias
+partition beyond the private-frame contract or whole-native-function equivalence
+for arbitrary external interleavings.
+
+The memory changes pass all 33 CTest suites and the three core suites with CoBRA
+excluded. The unchanged licensed five-mode SDK matrix passes, together with 44
+supplemental memory probes (two controls and 42 negative probes). The latter
+include malformed emitted frames, stale generations, volatile/unsupported
+source admission, cancellation, and a deterministic 150 ms late proof under a
+100 ms allowance. Rejected probes preserve both body and local-variable table.
+The raw source-input cap is checked before generation-only value correlation.
+
+Both memory fixtures simplify in Normal and Deep in each of the three original
+x86-64 binaries. `tests/verify_mba_d810_memory.py` compiles those 12 actual captured
+outputs with UBSan and checks 39936 deterministic result, store and memory-event
+fault-prefix cases. This is an emitted-C oracle under M1-M2, separate from SDK
+frame proofs and native instruction-byte immutability; it is not a claim of
+arbitrary concurrent native execution equivalence.

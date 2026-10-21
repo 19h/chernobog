@@ -656,7 +656,59 @@ Term CandidateSynthesis::search_grammar()
 
 Term CandidateSynthesis::run()
 {
-    if (Term candidate = simplify_algebraic(symbolic_, state_, original_, &cobra_origin_))
+    Term generation = original_;
+    if (session_.options.snapshot_values)
+    {
+        if (session_.options.backend == Backend::Cobra &&
+            variables(original_).size() > (session_.options.profile == Profile::Deep ? 12u : 8u))
+            return {};
+        // Equal byte-array selects refer to the same memory version. A store
+        // (including an aliased partial store) or havoc changes that version.
+        // Only leaves actually materialized by the adapter may represent it.
+        if (symbolic_.program.available.size() > limits::storage_regions)
+            return {};
+        std::vector<std::pair<z3::expr, Term>> representatives;
+        z3::params parameters(session_.context);
+        parameters.set("max_steps", 10000u);
+        for (const Term &available : symbolic_.program.available)
+            if (available && available->op == Op::Variable && session_.has_budget())
+                representatives.emplace_back(
+                    symbolic_.evaluate(available, state_).simplify(parameters), available);
+        size_t visits = 0;
+        const auto replace = [&](const auto &self, const Term &term, unsigned depth) -> Term
+        {
+            if (!term || ++visits > limits::expression_visits || depth > limits::expression_depth ||
+                !session_.has_budget())
+                return {};
+            if (term->op == Op::Variable)
+            {
+                const z3::expr value = symbolic_.evaluate(term, state_).simplify(parameters);
+                uint64_t literal;
+                if (value.is_numeral_u64(literal))
+                    return constant(literal, term->bits);
+                for (const auto &representative : representatives)
+                    if (representative.second->bits == term->bits &&
+                        z3::eq(value, representative.first))
+                        return representative.second;
+                return term;
+            }
+            if (term->op == Op::Constant)
+                return term;
+            // Candidate algebra must never hide an effectful source node.
+            if (term->op == Op::Load)
+                return {};
+            const Term left = self(self, term->left, depth + 1);
+            const Term right = term->right ? self(self, term->right, depth + 1) : Term{};
+            return left && (!term->right || right) ? expression(term->op, left, right, term->bits)
+                                                   : Term{};
+        };
+        generation = replace(replace, original_, 0);
+        if (!generation)
+            return {};
+        if (cost(generation) < cost(original_))
+            return generation;
+    }
+    if (Term candidate = simplify_algebraic(symbolic_, state_, generation, &cobra_origin_))
     {
         return candidate;
     }

@@ -1469,6 +1469,97 @@ void test_word_proof_cancellation()
     }
 }
 
+void test_snapshot_memory_values()
+{
+    {
+        Program many;
+        many.address_bits = 64;
+        many.widths = {64};
+        many.widths.resize(11, 32);
+        many.blocks.resize(1);
+        Term value;
+        for (size_t i = 1; i <= 9; ++i)
+        {
+            many.blocks[0].statements.push_back(Statement::assign(i, load(variable(0, 64), 32)));
+            const Term input = variable(i, 32);
+            many.available.push_back(input);
+            value = value ? expression(Op::Xor, value, input) : input;
+        }
+        many.blocks[0].statements.push_back(Statement::assign(10, value));
+        many.targets = {{0, 9}};
+        Options limited;
+        limited.backend = Backend::Cobra;
+        limited.snapshot_values = true;
+        limited.max_invariants = 0;
+        Analysis refused(many, limited);
+        check(refused.run().empty(), "memory-value correlation cannot hide excessive raw inputs");
+    }
+
+    for (const bool big_endian : {false, true})
+    {
+        Program program;
+        program.address_bits = 64;
+        program.big_endian = big_endian;
+        program.widths = {64, 64, 32, 32, 32, 32};
+        program.blocks.resize(1);
+        const auto p = variable(0, 64), q = variable(1, 64);
+        const auto a = variable(2, 32), b = variable(3, 32), c = variable(4, 32);
+        program.available = {a, b, c};
+        const auto next = add(p, constant(4, 64));
+        program.blocks[0].statements = {
+            Statement::assign(2, load(p, 32)), Statement::assign(3, load(next, 32)),
+            Statement::assign(4, load(p, 32)),
+            Statement::assign(5, add(expression(Op::Sub, a, c),
+                                     add(multiply(constant(2, 32), b), constant(51, 32))))};
+        program.targets = {{0, 3}};
+        Options options = Options::deep();
+        options.backend = Backend::Cobra;
+        options.snapshot_values = true;
+        options.max_invariants = 0;
+        Analysis same_memory(program, options);
+        const auto proposals = same_memory.run();
+        const auto reference = add(multiply(constant(2, 32), b), constant(51, 32));
+        check(!proposals.empty() && cost(proposals.front().replacement) <= cost(reference),
+              "materialized reads of the same memory version share a candidate value");
+        if (!proposals.empty())
+            check(bool(same_memory.prove_emission(*proposals.front().proof,
+                                                  proposals.front().replacement)),
+                  "snapshot-value candidate crosses both unchanged source proofs");
+        check(same_memory.verify(0, 3, reference) == Verdict::Verified,
+              "memory correlation is proved against the complete original read prefix");
+
+        // Unknown parameter aliasing cannot preserve an earlier read through a
+        // write. The array model, rather than a disjointness heuristic, decides.
+        program.blocks[0].statements = {
+            Statement::assign(2, load(p, 32)), Statement::store(q, constant(0xAB, 8)),
+            Statement::assign(4, load(p, 32)), Statement::assign(5, expression(Op::Sub, a, c))};
+        Analysis aliased(program, options);
+        check(aliased.verify(0, 3, constant(0, 32)) == Verdict::Disproved,
+              "possibly aliased partial store prevents stale read correlation");
+        const auto changed = aliased.run();
+        check(changed.empty() || changed.front().replacement->op != Op::Constant,
+              "snapshot generation cannot turn distinct memory versions into a constant");
+
+        program.blocks[0].statements[1] = Statement::havoc({1});
+        Analysis havoc(program, options);
+        check(havoc.verify(0, 3, constant(0, 32)) == Verdict::Disproved,
+              "unknown effects and independent volatile observations split memory versions");
+
+        program.blocks[0].statements = {
+            Statement::store(p, constant(0x11223344, 32)),
+            Statement::store(add(p, constant(1, 64)), constant(0xAA, 8)),
+            Statement::assign(2, load(p, 32)), Statement::assign(5, add(a, constant(1, 32)))};
+        Analysis forwarding(program, options);
+        const uint64_t expected = big_endian ? 0x11AA3345 : 0x1122AA45;
+        check(forwarding.verify(0, 3, constant(expected, 32)) == Verdict::Verified,
+              "byte-array forwarding preserves partial-store endianness exactly");
+        const auto constants = forwarding.run();
+        check(!constants.empty() && constants.front().replacement->op == Op::Constant &&
+                  constants.front().replacement->value == expected,
+              "known stored bytes produce a proved constant candidate");
+    }
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -1481,7 +1572,13 @@ int main(int argc, char **argv)
         test_cobra_word_view_guards();
         return failures != 0;
     }
+    if (argc == 2 && std::strcmp(argv[1], "--memory-values") == 0)
+    {
+        test_snapshot_memory_values();
+        return failures != 0;
+    }
     failures += mba_test_backend_selection();
+    test_snapshot_memory_values();
     test_scalar_identity_synthesis();
     test_cobra_boolean_selector();
     test_joins_and_memory();
