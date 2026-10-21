@@ -2,6 +2,7 @@
 #include "mba_smt_ctree.h"
 #include "mba_smt_emission.hpp"
 #include "mba_smt_memory.h"
+#include "mba_smt_control.h"
 
 #include <algorithm>
 #include <chrono>
@@ -1161,13 +1162,14 @@ CallSimplification simplify_calls(cfunc_t *function, FunctionBudget &budget)
         ~SummaryGuard() { building_call_summaries = false; }
     } guard;
 
+    const int control_changes = simplify_bounded_control_flow(*function, budget);
     const int memory_changes = simplify_memory_values(*function, budget);
     CallBudget allowance(budget);
     deobf::log_verbose("[mba_smt_calls] Starting %a with %u ms remaining\n", function->entry_ea,
                        allowance.remaining_ms());
     CallerSimplifier simplifier(*function, allowance);
     auto result = simplifier.run();
-    result.changes += memory_changes;
+    result.changes += memory_changes + control_changes;
     if (result.changes)
     {
         function->recalc_item_addresses();

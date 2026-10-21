@@ -71,6 +71,17 @@ bool read_instruction(ea_t ea, unsigned bytes)
     insn_t instruction;
     if (!decode_insn(&instruction, ea))
         return false;
+    const bool ordinary =
+        PH.id == PLFM_386
+            ? instruction.itype == NN_mov || instruction.itype == NN_movsx ||
+                  instruction.itype == NN_movsxd || instruction.itype == NN_movzx ||
+                  instruction.itype == NN_add || instruction.itype == NN_sub ||
+                  instruction.itype == NN_imul || instruction.itype == NN_and ||
+                  instruction.itype == NN_or || instruction.itype == NN_xor ||
+                  instruction.itype == NN_cmp || instruction.itype == NN_test
+            : PH.id == PLFM_ARM && (instruction.itype == ARM_ldr || instruction.itype == ARM_ldur);
+    if (!ordinary)
+        return false;
     const uint32 features = instruction.get_canon_feature(PH);
     if (features & (CF_CALL | CF_JUMP | CF_STOP))
         return false;
@@ -483,7 +494,7 @@ class Slice
                 {
                     if (private_frame_access(instruction, i))
                         continue;
-                    if (PH.id == PLFM_386 && is_stkvar(get_flags(ea), i))
+                    if ((PH.id == PLFM_386 || PH.id == PLFM_ARM) && is_stkvar(get_flags(ea), i))
                     {
                         const sval_t offset = calc_frame_offset_ea(
                             function_.entry_ea, sval_t(operand.addr), &instruction, &operand);
@@ -494,13 +505,22 @@ class Slice
                         // Recognize only its initial direct store, before any
                         // modeled access or overwrite of the incoming register.
                         bool initialized_spill = false;
-                        if (ea < accesses.begin()->first && instruction.itype == NN_mov && i == 0 &&
-                            write && instruction.Op2.type == o_reg &&
-                            !overwritten.count(reg2mreg(instruction.Op2.reg)))
+                        const int source_operand =
+                            PH.id == PLFM_386 && instruction.itype == NN_mov && i == 0 ? 1
+                            : PH.id == PLFM_ARM &&
+                                    (instruction.itype == ARM_str ||
+                                     instruction.itype == ARM_stur) &&
+                                    i == 1
+                                ? 0
+                                : -1;
+                        if (ea < accesses.begin()->first && source_operand >= 0 && write &&
+                            instruction.ops[source_operand].type == o_reg &&
+                            !overwritten.count(reg2mreg(instruction.ops[source_operand].reg)))
                             for (const auto &local : source_locals_)
                                 if (local.is_arg_var() && safe_local(local) &&
                                     local.location.is_reg1() &&
-                                    local.location.reg1() == reg2mreg(instruction.Op2.reg) &&
+                                    local.location.reg1() ==
+                                        reg2mreg(instruction.ops[source_operand].reg) &&
                                     local.width == int(bytes))
                                     initialized_spill =
                                         argument_spills.emplace(offset, bytes).second;
@@ -539,7 +559,19 @@ class Slice
                 local.location.stkoff() == offset &&
                 local.width == int(get_dtype_size(access.dtype)))
                 return true;
-        return false;
+        // IDA may eliminate a scalar spill's ctree local entirely. Its exact
+        // typed frame member still has to be wholly inside the private local
+        // area. The admitted complete body cannot take/escape a frame address.
+        range_t private_area;
+        tinfo_t frame_type;
+        udm_t member;
+        const unsigned bytes = get_dtype_size(access.dtype);
+        return frame >= 0 && get_frame_part_ea(&private_area, function_.entry_ea, FPC_LVARS) &&
+               private_area.contains(ea_t(frame)) && bytes <= private_area.end_ea - ea_t(frame) &&
+               get_func_frame_ea(&frame_type, function_.entry_ea) &&
+               frame_type.get_udm_by_offset(&member, uint64_t(frame) * 8) >= 0 &&
+               member.offset == uint64_t(frame) * 8 && member.size == uint64_t(bytes) * 8 &&
+               !member.type.is_volatile() && (member.type.is_integral() || member.type.is_ptr());
     }
     bool source_matches() const
     {

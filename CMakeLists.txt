@@ -562,7 +562,8 @@ target_include_directories(chernobog SYSTEM PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS}
 add_library(
     chernobog_mba_sdk STATIC
     src/deobf/handlers/mba_smt_emission.cpp src/deobf/handlers/mba_smt_ctree.cpp
-    src/deobf/handlers/mba_smt_scalar.cpp src/deobf/handlers/mba_smt_memory.cpp)
+    src/deobf/handlers/mba_smt_scalar.cpp src/deobf/handlers/mba_smt_memory.cpp
+    src/deobf/handlers/mba_smt_control.cpp)
 target_include_directories(chernobog_mba_sdk PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(
     chernobog_mba_sdk
@@ -954,6 +955,15 @@ if(BUILD_TESTING)
                                                                     idasdk::plugin)
         target_compile_features(chernobog_mba_d810_sdk_bridge PRIVATE cxx_std_17)
         set_target_properties(chernobog_mba_d810_sdk_bridge PROPERTIES PREFIX "")
+        add_executable(chernobog_mba_d810_runtime_fixture tests/mba_d810_runtime_fixture.c)
+        set_target_properties(chernobog_mba_d810_runtime_fixture
+                              PROPERTIES INTERPROCEDURAL_OPTIMIZATION FALSE)
+        if(MSVC)
+            target_compile_options(chernobog_mba_d810_runtime_fixture PRIVATE /Od)
+        else()
+            target_compile_options(chernobog_mba_d810_runtime_fixture PRIVATE -O0)
+        endif()
+        add_test(NAME chernobog.mba_d810_runtime_fixture COMMAND chernobog_mba_d810_runtime_fixture)
         add_executable(chernobog_mba_cobra_runtime_fixture tests/mba_cobra_runtime_fixture.c)
         # Preserve the MBA expressions for installed-plugin acceptance. The independent oracle
         # compiles captured output separately with UBSan.

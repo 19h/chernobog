@@ -106,8 +106,9 @@ Calls, branches, loops, volatile types, overlapping/escaping/shared locals,
 ambiguous/RMW/vector accesses, duplicate read addresses, native control transfer
 and unrepresented memory effects are refused. Native access order is checked
 against decoded instructions. Accessible, nonescaping private frame accesses are
-recognized separately; a canonical register argument's eliminated spill requires
-an initial direct store of its unchanged incoming register and read-only reuse.
+recognized separately. Without an exact typed private frame member, a canonical
+register argument's eliminated spill requires an initial direct store of its
+unchanged incoming register and read-only reuse.
 No general stack-relative operand is exempted from the effect inventory.
 
 The generation-only value preparation has `O(V*R)` structural comparisons for
@@ -145,3 +146,66 @@ outputs with UBSan and checks 39936 deterministic result, store and memory-event
 fault-prefix cases. This is an emitted-C oracle under M1-M2, separate from SDK
 frame proofs and native instruction-byte immutability; it is not a claim of
 arbitrary concurrent native execution equivalence.
+
+## Bounded control-flow specialization
+
+A separate ctree interpreter follows typed scalar state through complete paths.
+It handles `for`, `while`, `do`, switch fallthrough, nearest-scope `break`, and
+nearest-loop `continue`. It retains unknown data conditionals and specializes
+both continuations. Unresolved loop/switch state, labels/gotos/assembly, resource
+limits, or any failed proof discard the whole staged body.
+
+Every removed guard or selected switch value has an independent candidate proof
+and a proof of the actual detached SDK constant in its path context. A second
+interpreter execution reconstructs the emitted body using the immutable proof
+certificates and exact query programs. It checks all retained expressions,
+destinations, types, addresses and properties. Native bytes, complete source
+body/locals, owner, generation, cancellation and deadline remain commit gates.
+Calls and other unsupported data expressions remain unchanged; their effects
+invalidate scalar facts conservatively. No case-count, magic-value, recurrence
+or diversity threshold in the existing classifier is relaxed.
+
+A private assignment of a ternary value can be lowered to two assignments under
+the original condition. Each selected arm is first converted to the ternary's
+common type, preserving its subsequent assignment conversion. Private dead
+scalar definitions are removed only after dependency liveness reaches a fixed
+point. Potentially observable reads/calls, unsafe destinations and potentially
+trapping expressions remain. A negative same-width signed literal retains an
+explicit cast when its hexadecimal spelling would otherwise be unsigned C.
+
+Switch selectors are limited to 32 or 64 bits; narrow case-value promotion is
+outside this adapter. Bounds are 4096 source/output nodes, depth 64, 256 interpreter steps, 16 forks,
+128 proof certificates and 16384 native bytes. Output growth is additionally
+capped at `2 * source_nodes + 64`. A failed attempt uses at most 250 ms in Normal
+or 1000 ms in Deep, capped by the remaining phase allowance. These are cooperative
+deadlines: late results are rejected, not a hard scheduler latency guarantee.
+Structural interpretation/replay is `O(S*N)` for `S <= 256`, `N <= 4096`;
+liveness is bounded by 64 scalar regions. Search/SMT resources remain independently
+bounded. All allocations and replay precede the body/local-table swaps.
+
+The portable memory adapter also recognizes exact nonvolatile integral/pointer
+members wholly inside IDA's private local-frame area when the compiler spill's
+ctree local has been eliminated. It does not exempt arbitrary stack-relative
+addresses. Ordinary-load opcode admission excludes acquire/exclusive/atomic
+loads. M1-M2 continue to bound this interpretation of frame storage.
+
+| ID | Assumption / dependent result | Falsification probe |
+|---|---|---|
+| C1 | Safe scalar locals retain their values between copied statements unless an unsupported effect invalidates the context. | Address-taken/shared/overlapping/volatile state is excluded; mutable escaped-state and dynamic-loop controls reject the complete transformation. |
+| C2 | A complete finite path can be specialized without changing its ordered data/effect expressions. | Replay every certificate against the same query and compare the complete staged body/locals; reject dropped, duplicated, changed and reordered frames, stale generations, cancellation and expiry. |
+| C3 | Fixture references are specific to their binary and typed arithmetic. | The PE opaque-helper fixture uses XOR constant `0xCC8CAC2CD812A432`; Mach-O uses `0xCD455C2CD812A432`. Compile actual captured code under separate controlled helper bindings. Do not infer native equivalence from the C spelling of a signed literal. |
+| C4 | Unbounded and unknown-state programs must retain their source behavior. | Reject real dynamic loops/switches, typed volatile state, escaped mutable state and an observable nonterminating cycle; no prefix of a failed specialization is installed. |
+| C5 | Printed signed literals preserve the SDK expression's widening semantics. | Independently prove and compile actual SDK emissions for `0xFFFFFFFF`, `0x80000000`, and `0xADC07CB7` sign-extended from 32 to 64 bits. |
+
+All 20 designated CFG functions in each of the original PE and large Mach-O
+inputs lose their loops/switches in Normal and Deep (80 captures). The emitted-C
+oracle checks 42496 cases with UBSan, using scalar inputs in `[-10000, 10000]` to
+avoid signed C overflow in retained arithmetic. Its opaque helper reads use
+controlled readable objects. The SDK path proofs use the complete admitted
+bit-vector domain; the compiled oracle is a distinct, bounded check.
+
+The original sample passes 116 supplemental SDK cases. The compiled ARM64
+fixture passes 121 cases, including five rejection controls, plus three
+independently proved signed-literal emissions. Cancellation/expiry injected after
+the final emitted proof leaves the complete body and local-variable table
+unchanged. The frozen 42-fixture promotion manifest remains unchanged.

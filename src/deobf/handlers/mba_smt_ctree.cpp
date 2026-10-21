@@ -67,7 +67,10 @@ ExpressionPtr cast(ExpressionPtr value, const tinfo_t &type)
     {
         return value;
     }
-    if (value->op == cot_num && type.is_integral() && value->type.get_size() == type.get_size())
+    if (value->op == cot_num && type.is_integral() && !type.is_bool() &&
+        value->type.get_size() == type.get_size() &&
+        (!type.is_signed() || (value->numval() & width_mask(unsigned(type.get_size() * 8))) <=
+                                  (width_mask(unsigned(type.get_size() * 8)) >> 1)))
     {
         value->type = type;
         return value;
