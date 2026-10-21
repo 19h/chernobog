@@ -402,6 +402,99 @@ def collect(args, entry):
                 "artifacts_unchanged": True,
             }
         )
+    d810_files = [name for name in identity["files"] if name.startswith("chernobog_mba_d810_")]
+    supplemental = None
+    if len(d810_files) != 2 and not args.sdk_only:
+        raise RuntimeError(
+            "The acceptance bundle is missing the supplemental D810 fixture/SDK bridge"
+        )
+    if len(d810_files) == 2:
+        d810_bridge = next(bundle.glob("chernobog_mba_d810_sdk_bridge.*"))
+        d810_fixture = next(
+            p for p in bundle.glob("chernobog_mba_d810_runtime_fixture*") if p.suffix != ".pdb"
+        )
+        d810_fixture.chmod(d810_fixture.stat().st_mode | stat.S_IXUSR)
+        subprocess.run([str(d810_fixture)], capture_output=True, text=True, timeout=120, check=True)
+        run_dir = directory / "run-d810-sdk"
+        command = (
+            [
+                sys.executable,
+                str(ROOT / "tests/run_ida_smoke.py"),
+                str(d810_fixture),
+                str(ROOT / "tests/ida_mba_d810_sdk_probe.py"),
+            ]
+            + common
+            + [
+                "--output-dir",
+                str(run_dir),
+                "--set",
+                "CHERNOBOG_DISABLE=1",
+                "--set",
+                "CHERNOBOG_D810_SDK_BRIDGE=" + str(d810_bridge),
+                "--set",
+                "CHERNOBOG_D810_CONTROL_NEGATIVES=d810_control_dynamic,d810_control_switch,d810_control_volatile,d810_control_cycle,d810_control_escape",
+            ]
+        )
+        try:
+            execute(command)
+        finally:
+            for source, destination in (
+                ("run.json", "d810-sdk-run.json"),
+                ("d810_sdk.json", "d810-sdk.json"),
+            ):
+                if (run_dir / source).is_file():
+                    shutil.copy2(run_dir / source, output / destination)
+        supplemental = json.loads((output / "d810-sdk.json").read_text())
+        run = json.loads((run_dir / "run.json").read_text())
+        expected = (
+            {
+                ("memory", name, fault)
+                for name in ("test_chained_add", "test_cst_simplification")
+                for fault in range(23)
+            }
+            | {
+                ("control", name, fault)
+                for name in (
+                    "single_iteration_simple",
+                    "abc_f6_add_dispatch",
+                    "nested_simple",
+                    "while_switch_flattened",
+                )
+                for fault in range(18)
+            }
+            | {
+                ("negative-control", name, 16 if name == "d810_control_volatile" else -1)
+                for name in (
+                    "d810_control_dynamic",
+                    "d810_control_switch",
+                    "d810_control_volatile",
+                    "d810_control_cycle",
+                    "d810_control_escape",
+                )
+            }
+        )
+        actual = {(row["route"], row["function"], row["fault"]) for row in supplemental["rows"]}
+        if (
+            actual != expected
+            or len(actual) != len(supplemental["rows"])
+            or supplemental["failures"]
+            or any(row["code"] or not row["passed"] for row in supplemental["rows"])
+            or not embedded_revision_matches(supplemental["revision"], revision)
+            or supplemental["bridge_sha256"] != digest(d810_bridge)
+            or len(supplemental["literals"]) != 3
+            or any(row["code"] for row in supplemental["literals"])
+            or not run["artifacts_unchanged"]
+            or run["runner_return_code"]
+        ):
+            raise RuntimeError("Supplemental D810 runtime/provenance/fault matrix failed")
+        runs.append(
+            {
+                "label": "d810-sdk",
+                "plugin_sha256": run["plugin_sha256"],
+                "process_elapsed_ns": run["process_elapsed_ns"],
+                "artifacts_unchanged": True,
+            }
+        )
     sdk_cobra = json.loads((output / "sdk-cobra.json").read_text())
     sdk_legacy = json.loads((output / "sdk-legacy.json").read_text())
     for key in (
@@ -414,6 +507,15 @@ def collect(args, entry):
     ):
         if sdk_cobra[key] != sdk_legacy[key]:
             raise RuntimeError("Paired SDK artifact/runtime mismatch")
+    if supplemental is not None:
+        for key in ("kernel_version", "hexrays_version", "system", "machine"):
+            if supplemental[key] != sdk_cobra[key]:
+                raise RuntimeError("Supplemental SDK runtime identity mismatch")
+        if any(
+            supplemental["source_fingerprint"] != report["source_fingerprint"]
+            for report in sdk_cobra["reports"] + sdk_legacy["reports"]
+        ):
+            raise RuntimeError("Supplemental SDK source fingerprint mismatch")
     sdk_cobra["reports"] += sdk_legacy["reports"]
     sdk_cobra["errors"] += sdk_legacy["errors"]
     if any(
@@ -435,6 +537,15 @@ def collect(args, entry):
         "legacy_manifest_sha256": legacy_hash,
         "fixture_sha256": digest(fixture),
         "native_control": counts,
+        "d810": (
+            None
+            if supplemental is None
+            else {
+                "cases": len(supplemental["rows"]),
+                "literals": len(supplemental["literals"]),
+                "fixture_sha256": digest(d810_fixture),
+            }
+        ),
         "status": "diagnostic" if args.artifact_revision is not None else "passed",
     }
     if digest(legacy_path) != legacy_hash:

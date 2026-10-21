@@ -1,4 +1,5 @@
 #include "mba_simplify.h"
+#include "../deobf_main.h"
 #include "../analysis/ast.h"
 #include "../analysis/ast_builder.h"
 #include "../analysis/chain_simplify.h"
@@ -876,6 +877,7 @@ int mba_simplify_handler_t::apply_match(mblock_t *blk, minsn_t *ins,
     blk->mark_lists_dirty();
 
     total_simplified_++;
+    chernobog_record_catalog_application(blk->mba, orig_ea);
 
     return 1;
 }

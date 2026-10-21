@@ -192,6 +192,18 @@ int simplify_once(mbl_array_t *mba, FunctionBudget &budget, mblock_t *local_bloc
         options.contextual_constants_only = adapter.sequential_locations;
         options.budget_ms = budget.limit_ms - static_cast<unsigned>(used_ms);
         options.cancelled = [] { return user_cancelled(); };
+        options.diagnostic = {DiagnosticPhase::Microcode, 0, int(mba->maturity), false};
+        options.diagnostic_context = [&](size_t block, size_t statement)
+        {
+            DiagnosticContext context{DiagnosticPhase::Microcode, 0, int(mba->maturity), false};
+            const auto found = adapter.originals.find({block, statement});
+            if (found != adapter.originals.end())
+            {
+                context.source_ea = uint64_t(found->second->ea);
+                context.source_known = found->second->ea != BADADDR;
+            }
+            return context;
+        };
 
         const Program snapshot_program = adapter.program;
         Analysis analysis(snapshot_program, options);

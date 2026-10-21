@@ -2,10 +2,10 @@ name: Build Chernobog Plugin
 
 on:
   push:
-    branches: [ master, main ]
-    tags: [ 'v*' ]
+    branches: [master, main]
+    tags: ["v*"]
   pull_request:
-    branches: [ master, main ]
+    branches: [master, main]
   workflow_dispatch:
 
 env:
@@ -201,7 +201,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
 
       - name: Refresh restored project compilation state
         shell: bash
@@ -274,7 +274,7 @@ jobs:
       - name: Build (Windows MSVC)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cmake --build build --config Release --target chernobog chernobog_program_model_tests chernobog_evidence_tests chernobog_analysis_prefix_tests chernobog_mba_smt_tests chernobog_mba_smt_context_tests chernobog_mba_cobra_tests chernobog_mba_cobra_budget_tests chernobog_mba_cobra_fault_tests chernobog_mba_cobra_header_tests chernobog_mba_cobra_sdk_bridge chernobog_mba_cobra_runtime_fixture --parallel $env:NUMBER_OF_PROCESSORS
+        run: cmake --build build --config Release --target chernobog chernobog_program_model_tests chernobog_evidence_tests chernobog_analysis_prefix_tests chernobog_mba_smt_tests chernobog_mba_smt_context_tests chernobog_mba_cobra_tests chernobog_mba_cobra_budget_tests chernobog_mba_cobra_fault_tests chernobog_mba_cobra_header_tests chernobog_mba_cobra_sdk_bridge chernobog_mba_cobra_runtime_fixture chernobog_mba_d810_sdk_bridge chernobog_mba_d810_runtime_fixture --parallel $env:NUMBER_OF_PROCESSORS
 
       - name: Test analysis (Windows)
         if: runner.os == 'Windows'
@@ -626,7 +626,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
 
       - name: Refresh restored project compilation state
         run: python tools/ci_refresh_build_tree.py --build-dir out/build/windows-clang-release

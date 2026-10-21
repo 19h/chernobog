@@ -24,6 +24,99 @@ def embedded_revision_matches(embedded, full):
     )
 
 
+def d810_probes():
+    return (
+        {
+            ("memory", name, fault)
+            for name in ("test_chained_add", "test_cst_simplification")
+            for fault in range(23)
+        }
+        | {
+            ("control", name, fault)
+            for name in (
+                "single_iteration_simple",
+                "abc_f6_add_dispatch",
+                "nested_simple",
+                "while_switch_flattened",
+            )
+            for fault in range(18)
+        }
+        | {
+            ("negative-control", name, 16 if name == "d810_control_volatile" else -1)
+            for name in (
+                "d810_control_dynamic",
+                "d810_control_switch",
+                "d810_control_volatile",
+                "d810_control_cycle",
+                "d810_control_escape",
+            )
+        }
+    )
+
+
+def verify_d810(report, native, sdk):
+    rows = report["rows"]
+    require(
+        {(r["route"], r["function"], r["fault"]) for r in rows} == d810_probes()
+        and len(rows) == 123,
+        "Supplemental D810 matrix incomplete",
+    )
+    require(
+        not report["failures"] and all(not r["code"] and r["passed"] for r in rows),
+        "Supplemental D810 probe failed",
+    )
+    for row in rows:
+        positive = row["route"] != "negative-control" and row["fault"] == 0
+        require(
+            (
+                (row["changes"] > 0 and not row["unchanged"])
+                if positive
+                else (row["changes"] == 0 and row["unchanged"])
+            ),
+            "Supplemental D810 mutation contract failed",
+        )
+        if row["route"] != "negative-control" and row["fault"] in (14, 15):
+            require(row["post_poll"], "Supplemental post-proof fault was not reached")
+    literals = report["literals"]
+    require(
+        {r["input32"] for r in literals} == {0xFFFFFFFF, 0x80000000, 0xADC07CB7}
+        and len(literals) == 3
+        and all(
+            not r["code"]
+            and r["text"]
+            and r["expected64"] == ((r["input32"] - (1 << 32)) & ((1 << 64) - 1))
+            for r in literals
+        ),
+        "Supplemental signed-literal matrix failed",
+    )
+    require(
+        embedded_revision_matches(report["revision"], native["revision"])
+        and all(report["source_fingerprint"] == r["source_fingerprint"] for r in sdk["reports"]),
+        "Supplemental source provenance differs",
+    )
+    require(
+        all(
+            report[key] == sdk[key]
+            for key in ("kernel_version", "hexrays_version", "system", "machine")
+        ),
+        "Supplemental native runtime differs",
+    )
+    for stem, expected in (
+        ("chernobog_mba_d810_sdk_bridge.", report["bridge_sha256"]),
+        ("chernobog_mba_d810_runtime_fixture", native["d810"]["fixture_sha256"]),
+    ):
+        hashes = [
+            value
+            for name, value in native["bundle"]["files"].items()
+            if name.startswith(stem) and not name.endswith(".pdb")
+        ]
+        require(hashes == [expected], "Supplemental artifact identity mismatch")
+    require(
+        native["d810"]["cases"] == 123 and native["d810"]["literals"] == 3,
+        "Supplemental native receipt incomplete",
+    )
+
+
 def distribution(values):
     ordered = sorted(values)
     return {
@@ -124,16 +217,17 @@ def verify(directory):
         require(bridge == [sdk["bridge_sha256"]], "SDK bridge artifact identity mismatch")
         arm = sdk["machine"].lower() in ("arm64", "aarch64")
         require(arm == target.endswith("arm64"), f"SDK process architecture mismatch: {target}")
+        verify_d810(json.loads((path.parent / "d810-sdk.json").read_text()), native, sdk)
         runs = native["runs"]
         require(
             {r["label"] for r in runs}
-            == {"sdk-cobra", "sdk-legacy", "legacy", "cobra"}
+            == {"sdk-cobra", "sdk-legacy", "legacy", "cobra", "d810-sdk"}
             | {
                 backend + "-" + group
                 for backend in ("legacy", "cobra")
                 for group in ("semantic", "calls", "masks")
             }
-            and len(runs) == 10,
+            and len(runs) == 11,
             f"Missing paired execution: {target}",
         )
         require(

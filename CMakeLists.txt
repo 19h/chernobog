@@ -949,6 +949,8 @@ if(BUILD_TESTING)
         set_target_properties(chernobog_mba_cobra_sdk_bridge PROPERTIES PREFIX "")
         add_library(chernobog_mba_d810_sdk_bridge MODULE tests/ida_mba_d810_sdk_bridge.cpp
                                                          src/deobf/analysis/ast.cpp)
+        target_include_directories(chernobog_mba_d810_sdk_bridge
+                                   PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/include")
         target_include_directories(chernobog_mba_d810_sdk_bridge SYSTEM
                                    PRIVATE ${CHERNOBOG_Z3_INCLUDE_DIRS})
         target_link_libraries(chernobog_mba_d810_sdk_bridge PRIVATE chernobog_mba_sdk

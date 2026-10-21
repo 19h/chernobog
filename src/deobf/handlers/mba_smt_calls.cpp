@@ -731,6 +731,8 @@ class CallerSimplifier
         // entry edge's guard and its negation are needed at this query block.
         options.max_invariants = 2;
         options.cancelled = [] { return user_cancelled(); };
+        options.diagnostic = {DiagnosticPhase::Calls, uint64_t(node.ea), int(function_.maturity),
+                              true};
         if (!validate(query.program()))
             deobf::log_verbose(
                 "[mba_smt_calls] Invalid query at %a: widths=%zu blocks=%zu term_cost=%zu\n",

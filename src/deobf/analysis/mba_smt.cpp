@@ -416,8 +416,15 @@ struct Analysis::Impl
         }
 
         preparation_attempted = true;
-        if (!session.has_budget() || !validate(program))
+        if (!session.has_budget())
         {
+            session.record_expiry(RejectReason::BudgetExhaustedPreFlight);
+            return false;
+        }
+        if (!validate(program))
+        {
+            record_diagnostic(statistics, session.options, DiagnosticStage::Extraction,
+                              DiagnosticOutcome::ExtractionRefused);
             return false;
         }
 
@@ -500,9 +507,13 @@ std::vector<Proposal> Analysis::run(const std::function<bool(const Proposal &)> 
 
         for (const auto &[block, statement] : impl_->prioritized_sites())
         {
+            impl_->session.diagnostic_block = block;
+            impl_->session.diagnostic_statement = statement;
+            impl_->session.diagnostic_region =
+                diagnostic_region_key(impl_->program.blocks[block].statements[statement].value);
             if (!impl_->session.has_budget())
             {
-                ++impl_->statistics.exhausted;
+                impl_->session.record_expiry(RejectReason::BudgetExhaustedPreFlight);
                 return {};
             }
 
@@ -562,8 +573,34 @@ std::vector<Proposal> Analysis::run(const std::function<bool(const Proposal &)> 
     return {};
 }
 
+namespace
+{
+DiagnosticOutcome diagnostic_verdict(Verdict verdict)
+{
+    switch (verdict)
+    {
+    case Verdict::Verified:
+        return DiagnosticOutcome::Verified;
+    case Verdict::Disproved:
+        return DiagnosticOutcome::Disproved;
+    case Verdict::Unknown:
+        return DiagnosticOutcome::Unknown;
+    case Verdict::Exhausted:
+        return DiagnosticOutcome::Exhausted;
+    default:
+        return DiagnosticOutcome::ExtractionRefused;
+    }
+}
+}
 Term Analysis::constant_value(size_t block, size_t statement)
 {
+    impl_->session.diagnostic_block = block;
+    impl_->session.diagnostic_statement = statement;
+    impl_->session.diagnostic_region =
+        block < impl_->program.blocks.size() &&
+                statement < impl_->program.blocks[block].statements.size()
+            ? diagnostic_region_key(impl_->program.blocks[block].statements[statement].value)
+            : 0;
     try
     {
         if (!impl_->prepare() || block >= impl_->program.blocks.size() ||
@@ -596,8 +633,12 @@ Term Analysis::constant_value(size_t block, size_t statement)
         }
         const Term candidate = constant(literal, assignment.value->bits);
         ++impl_->statistics.candidates;
-        if (detail::verify_replacement(symbolic, *impl_->invariants, block, statement, candidate) ==
-            Verdict::Verified)
+        const auto verdict =
+            detail::verify_replacement(symbolic, *impl_->invariants, block, statement, candidate);
+        record_diagnostic(impl_->statistics, impl_->session.options, DiagnosticStage::ContextProof,
+                          diagnostic_verdict(verdict), block, statement,
+                          impl_->session.diagnostic_region);
+        if (verdict == Verdict::Verified)
         {
             return candidate;
         }
@@ -611,12 +652,24 @@ Term Analysis::constant_value(size_t block, size_t statement)
 
 Verdict Analysis::verify(size_t block, size_t statement, const Term &replacement)
 {
-    return verify_at(block, statement, replacement, "MBA contextual candidate mismatch");
+    const auto verdict =
+        verify_at(block, statement, replacement, "MBA contextual candidate mismatch");
+    record_diagnostic(impl_->statistics, impl_->session.options, DiagnosticStage::ContextProof,
+                      diagnostic_verdict(verdict), block, statement,
+                      impl_->session.diagnostic_region);
+    return verdict;
 }
 
 Verdict Analysis::verify_at(size_t block, size_t statement, const Term &replacement,
                             const char *purpose)
 {
+    impl_->session.diagnostic_block = block;
+    impl_->session.diagnostic_statement = statement;
+    impl_->session.diagnostic_region =
+        block < impl_->program.blocks.size() &&
+                statement < impl_->program.blocks[block].statements.size()
+            ? diagnostic_region_key(impl_->program.blocks[block].statements[statement].value)
+            : 0;
     try
     {
         if (!impl_->session.has_budget())
@@ -650,7 +703,15 @@ std::shared_ptr<const ProofReceipt>
 Analysis::prove_candidate(size_t block, size_t statement, const Term &candidate, bool cobra_origin)
 {
     const auto started = impl_->session.now();
-    const auto verdict = verify(block, statement, candidate);
+    const auto verdict =
+        verify_at(block, statement, candidate, "MBA contextual candidate mismatch");
+    record_diagnostic(
+        impl_->statistics, impl_->session.options, DiagnosticStage::CandidateProof,
+        diagnostic_verdict(verdict), block, statement,
+        block < impl_->program.blocks.size() &&
+                statement < impl_->program.blocks[block].statements.size()
+            ? diagnostic_region_key(impl_->program.blocks[block].statements[statement].value)
+            : 0);
     impl_->statistics.last_candidate_verdict = unsigned(verdict) + 1;
     if (cobra_origin)
         impl_->statistics.cobra.candidate_proof_ns += static_cast<uint64_t>(
@@ -671,6 +732,9 @@ Analysis::prove_candidate(size_t block, size_t statement, const Term &candidate,
     {
         impl_->session.record_expiry(RejectReason::PostProofExpiry);
         impl_->statistics.last_candidate_verdict = unsigned(Verdict::Exhausted) + 1;
+        record_diagnostic(impl_->statistics, impl_->session.options,
+                          DiagnosticStage::CandidateProof, DiagnosticOutcome::Exhausted, block,
+                          statement, 0, 0, RejectReason::PostProofExpiry);
         return {};
     }
     return receipt;
@@ -692,6 +756,9 @@ std::shared_ptr<const ProofReceipt> Analysis::prove_emission(const ProofReceipt 
     const auto verdict = verify_at(candidate.block_, candidate.statement_, emitted,
                                    "MBA emitted replacement mismatch");
     impl_->statistics.last_emitted_verdict = unsigned(verdict) + 1;
+    record_diagnostic(impl_->statistics, impl_->session.options, DiagnosticStage::EmittedProof,
+                      diagnostic_verdict(verdict), candidate.block_, candidate.statement_,
+                      diagnostic_region_key(candidate.source_));
     if (candidate.cobra_)
         impl_->statistics.cobra.emitted_proof_ns += static_cast<uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(impl_->session.now() - started)
@@ -704,6 +771,9 @@ std::shared_ptr<const ProofReceipt> Analysis::prove_emission(const ProofReceipt 
     {
         impl_->session.record_expiry(RejectReason::PostProofExpiry);
         impl_->statistics.last_emitted_verdict = unsigned(Verdict::Exhausted) + 1;
+        record_diagnostic(impl_->statistics, impl_->session.options, DiagnosticStage::EmittedProof,
+                          DiagnosticOutcome::Exhausted, candidate.block_, candidate.statement_, 0,
+                          0, RejectReason::PostProofExpiry);
         return {};
     }
     if (candidate.cobra_)
@@ -716,6 +786,9 @@ std::shared_ptr<const ProofReceipt> Analysis::prove_emission(const ProofReceipt 
 bool Analysis::eligible_for_commit(const ProofReceipt &receipt, bool legacy_deadline_exempt,
                                    const std::function<bool()> &unchanged)
 {
+    impl_->session.diagnostic_block = receipt.block_;
+    impl_->session.diagnostic_statement = receipt.statement_;
+    impl_->session.diagnostic_region = diagnostic_region_key(receipt.source_);
     if (!receipt.emitted_ || receipt.analysis_ != impl_->identity ||
         receipt.snapshot_ != snapshot())
     {
@@ -743,6 +816,10 @@ void Analysis::reject_mutation(RejectReason reason)
     if (reason == RejectReason::EmittedDestinationOrFrameMismatch)
         ++impl_->statistics.cobra.frame_rejections;
     impl_->statistics.cancel_stage = reason;
+    record_diagnostic(impl_->statistics, impl_->session.options, DiagnosticStage::Commit,
+                      DiagnosticOutcome::EmissionRejected, impl_->session.diagnostic_block,
+                      impl_->session.diagnostic_statement, impl_->session.diagnostic_region, 0,
+                      reason);
 }
 
 void Analysis::record_emission(uint64_t elapsed_ns)
@@ -751,8 +828,109 @@ void Analysis::record_emission(uint64_t elapsed_ns)
 }
 
 const Statistics &Analysis::statistics() const { return impl_->statistics; }
+void RegionDiagnostics::record(const DiagnosticEvent &event) noexcept
+{
+    const size_t index = size_t(event.outcome);
+    if (index >= counts.size())
+        return;
+    ++counts[index];
+    if (used < events.size())
+        events[used++] = event;
+    else
+        ++unrecorded;
+}
+void RegionDiagnostics::accumulate(const RegionDiagnostics &other) noexcept
+{
+    if (this == &other)
+    {
+        const RegionDiagnostics copy(other);
+        accumulate(copy);
+        return;
+    }
+    for (size_t i = 0; i < counts.size(); ++i)
+        counts[i] += other.counts[i];
+    unrecorded += other.unrecorded;
+    for (size_t i = 0; i < other.used; ++i)
+        if (used < events.size())
+            events[used++] = other.events[i];
+        else
+            ++unrecorded;
+}
+const char *diagnostic_phase_name(DiagnosticPhase phase) noexcept
+{
+    static constexpr const char *names[] = {"core",   "microcode", "calls",
+                                            "memory", "control",   "catalog"};
+    return size_t(phase) < std::size(names) ? names[size_t(phase)] : "unknown";
+}
+const char *diagnostic_stage_name(DiagnosticStage stage) noexcept
+{
+    static constexpr const char *names[] = {"extraction",      "generation",    "context_proof",
+                                            "candidate_proof", "emitted_proof", "commit",
+                                            "solver_query"};
+    return size_t(stage) < std::size(names) ? names[size_t(stage)] : "unknown";
+}
+const char *diagnostic_outcome_name(DiagnosticOutcome outcome) noexcept
+{
+    static constexpr const char *names[] = {
+        "extraction_refused", "no_improvement", "generated", "generation_failed", "verified",
+        "disproved",          "unknown",        "exhausted", "emission_rejected", "applied"};
+    return size_t(outcome) < std::size(names) ? names[size_t(outcome)] : "unknown";
+}
+uint64_t diagnostic_region_key(const Term &value) noexcept
+{
+    uint64_t hash = UINT64_C(14695981039346656037);
+    size_t visits = 0;
+    const auto add = [&](uint64_t word)
+    {
+        for (unsigned byte = 0; byte < 8; ++byte)
+        {
+            hash ^= (word >> (8 * byte)) & 255;
+            hash *= UINT64_C(1099511628211);
+        }
+    };
+    const auto visit = [&](const auto &self, const Term &node, unsigned depth) -> bool
+    {
+        if (!node)
+        {
+            add(0);
+            return true;
+        }
+        if (++visits > limits::expression_visits || depth > limits::expression_depth)
+            return false;
+        add(1);
+        add(uint64_t(node->op));
+        add(node->bits);
+        add(node->value);
+        return self(self, node->left, depth + 1) && self(self, node->right, depth + 1);
+    };
+    return visit(visit, value, 0) ? hash : 0;
+}
+void record_diagnostic(Statistics &statistics, const Options &options, DiagnosticStage stage,
+                       DiagnosticOutcome outcome, size_t block, size_t statement,
+                       uint64_t region_key, unsigned generation_reason,
+                       RejectReason reject_reason) noexcept
+{
+    DiagnosticContext context = options.diagnostic;
+    try
+    {
+        if (options.diagnostic_context)
+            context = options.diagnostic_context(block, statement);
+    }
+    catch (...)
+    {
+    }
+    statistics.regions.record({context, options.snapshot, stage, outcome, block, statement,
+                               region_key, generation_reason, reject_reason});
+}
+void Analysis::record_applied(const ProofReceipt &receipt)
+{
+    record_diagnostic(impl_->statistics, impl_->session.options, DiagnosticStage::Commit,
+                      DiagnosticOutcome::Applied, receipt.block_, receipt.statement_,
+                      diagnostic_region_key(receipt.source_));
+}
 void accumulate_statistics(Statistics &total, const Statistics &attempt)
 {
+    total.regions.accumulate(attempt.regions);
     total.candidates += attempt.candidates;
     total.verified += attempt.verified;
     total.applied += attempt.applied;

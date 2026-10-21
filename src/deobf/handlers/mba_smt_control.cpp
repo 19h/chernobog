@@ -183,10 +183,21 @@ class Control
         };
         if (!last_analysis_->eligible_for_commit(last_proof_->core(), false, unchanged))
             return 0;
+        if (budget_.snapshot != snapshot_ || function_.mba != owner_)
+        {
+            last_analysis_->reject_mutation(RejectReason::StaleSnapshot);
+            return 0;
+        }
         function_.body.swap(staged);
         function_.get_lvars()->swap(locals);
         ++budget_.snapshot.mutation_epoch;
         ++budget_.totals.applied;
+        Options diagnostics;
+        diagnostics.snapshot = snapshot_;
+        diagnostics.diagnostic = {DiagnosticPhase::Control, uint64_t(function_.entry_ea),
+                                  int(function_.maturity), true};
+        record_diagnostic(budget_.totals, diagnostics, DiagnosticStage::Commit,
+                          DiagnosticOutcome::Applied);
         return 1;
     }
 
@@ -256,6 +267,8 @@ class Control
                 std::chrono::duration_cast<std::chrono::milliseconds>(deadline_ - now()).count())));
         options.max_invariants = 2;
         options.cancelled = [&] { return cancelled(); };
+        options.diagnostic = {DiagnosticPhase::Control, uint64_t(node.ea), int(function_.maturity),
+                              true};
         auto analysis = std::make_unique<Analysis>(query.program(), options);
         const Term value = analysis->constant_value(query.block(), 0);
         std::shared_ptr<const CtreeEmissionProof> proof;

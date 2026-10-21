@@ -1,12 +1,15 @@
 """Supplemental D810 SDK faults, separate from the frozen promotion manifest."""
 
 import ctypes
+import hashlib
+import platform
 import json
 import os
 from pathlib import Path
 import ida_auto
 import ida_hexrays
 import ida_name
+import ida_kernwin
 import ida_lines
 import ida_pro
 
@@ -26,11 +29,11 @@ def main():
             ea = ida_name.get_name_ea(0xFFFFFFFFFFFFFFFF, "_" + name)
         if ea == 0xFFFFFFFFFFFFFFFF:
             raise RuntimeError("Missing supplemental fixture: " + name)
-        for fault in range(22):
+        for fault in range(23):
             output = ctypes.create_string_buffer(4096)
             code = probe(ea, fault, output, len(output))
             row = json.loads(output.value)
-            row.update(function=name, code=code)
+            row.update(function=name, route="memory", code=code)
             rows.append(row)
             print("[chernobog][d810-sdk]", name, fault, code, flush=True)
     control = library.chernobog_mba_d810_control_probe
@@ -81,7 +84,18 @@ def main():
                 "text": ida_lines.tag_remove(output.value.decode()),
             }
         )
+    library.chernobog_mba_d810_revision.restype = ctypes.c_char_p
+    library.chernobog_mba_d810_source_fingerprint.restype = ctypes.c_char_p
     report = {
+        "revision": library.chernobog_mba_d810_revision().decode(),
+        "source_fingerprint": library.chernobog_mba_d810_source_fingerprint().decode(),
+        "bridge_sha256": hashlib.sha256(
+            Path(os.environ["CHERNOBOG_D810_SDK_BRIDGE"]).read_bytes()
+        ).hexdigest(),
+        "kernel_version": ida_kernwin.get_kernel_version(),
+        "hexrays_version": ida_hexrays.get_hexrays_version(),
+        "system": platform.system(),
+        "machine": platform.machine(),
         "rows": rows,
         "literals": literals,
         "failures": sum(r["code"] != 0 for r in rows + literals),

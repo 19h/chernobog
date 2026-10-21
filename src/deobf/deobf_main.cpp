@@ -323,6 +323,26 @@ static int run_semantic_mba(mbl_array_t *mba)
     return chernobog::mba_smt::simplify(mba, budget);
 }
 
+void chernobog_record_catalog_application(mbl_array_t *mba, ea_t source)
+{
+    auto *state = get_deobf_state();
+    if (!state || !mba)
+        return;
+    const auto found = state->mba_smt_budgets.find(mba->entry_ea);
+    if (found == state->mba_smt_budgets.end())
+        return;
+    auto &budget = found->second;
+    chernobog::mba_smt::Options event;
+    event.snapshot = budget.snapshot;
+    event.diagnostic = {chernobog::mba_smt::DiagnosticPhase::Catalog, uint64_t(source),
+                        int(mba->maturity), source != BADADDR};
+    ++budget.catalog_applied;
+    ++budget.snapshot.mutation_epoch;
+    chernobog::mba_smt::record_diagnostic(budget.totals, event,
+                                          chernobog::mba_smt::DiagnosticStage::Commit,
+                                          chernobog::mba_smt::DiagnosticOutcome::Applied);
+}
+
 qstring chernobog_mba_smt_statistics(ea_t ea)
 {
     qstring result;
@@ -385,6 +405,46 @@ qstring chernobog_mba_smt_statistics(ea_t ea)
         static_cast<unsigned long long>(budget.snapshot.generation),
         static_cast<unsigned long long>(budget.snapshot.mutation_epoch),
         statistics.cobra.last_generation_phase);
+    // The existing algebraic object remains unchanged for API compatibility.
+    result.remove(result.length() - 1, 1);
+    result.cat_sprnt(
+        ",\"catalog_applied\":%zu,\"cleanup_applied\":%zu,\"handler_changes\":%zu,\"regions\":{\"capacity\":%zu,\"unrecorded\":%llu,\"counts\":{",
+        budget.catalog_applied, budget.cleanup_applied, budget.handler_changes,
+        chernobog::mba_smt::RegionDiagnostics::capacity,
+        static_cast<unsigned long long>(statistics.regions.unrecorded));
+    for (size_t i = 0; i < statistics.regions.counts.size(); ++i)
+    {
+        if (i)
+            result += ",";
+        result.cat_sprnt("\"%s\":%llu",
+                         chernobog::mba_smt::diagnostic_outcome_name(
+                             static_cast<chernobog::mba_smt::DiagnosticOutcome>(i)),
+                         static_cast<unsigned long long>(statistics.regions.counts[i]));
+    }
+    result += "},\"events\":[";
+    for (size_t i = 0; i < statistics.regions.used; ++i)
+    {
+        const auto &event = statistics.regions.events[i];
+        if (i)
+            result += ",";
+        result.cat_sprnt("{\"phase\":\"%s\",\"stage\":\"%s\",\"outcome\":\"%s\",\"source_ea\":",
+                         chernobog::mba_smt::diagnostic_phase_name(event.context.phase),
+                         chernobog::mba_smt::diagnostic_stage_name(event.stage),
+                         chernobog::mba_smt::diagnostic_outcome_name(event.outcome));
+        if (event.context.source_known)
+            result.cat_sprnt("\"0x%llX\"",
+                             static_cast<unsigned long long>(event.context.source_ea));
+        else
+            result += "null";
+        result.cat_sprnt(
+            ",\"maturity\":%d,\"block\":%zu,\"statement\":%zu,\"generation\":%llu,\"mutation_epoch\":%llu,\"region_key\":\"%016llx\",\"generation_reason\":%u,\"reject_reason\":%u}",
+            event.context.maturity, event.block, event.statement,
+            static_cast<unsigned long long>(event.snapshot.generation),
+            static_cast<unsigned long long>(event.snapshot.mutation_epoch),
+            static_cast<unsigned long long>(event.region_key), event.generation_reason,
+            unsigned(event.reject_reason));
+    }
+    result += "]}}";
     return result;
 }
 
@@ -418,9 +478,16 @@ int chernobog_simplify_mba_calls(cfuncptr_t &function)
         }
         if (result.changes)
         {
-            ctree_const_fold_handler_t::run(function);
+            const int cleanup = ctree_const_fold_handler_t::run(function);
+            state->mba_smt_budgets[function->entry_ea].cleanup_applied +=
+                size_t(std::max(0, cleanup));
             function->recalc_item_addresses();
         }
+        const auto &completed = state->mba_smt_budgets[function->entry_ea];
+        deobf::log(
+            "[chernobog] Ctree snapshot %a generation=%llu: catalog=%zu semantic=%zu cleanup=%zu\n",
+            function->entry_ea, static_cast<unsigned long long>(completed.snapshot.generation),
+            completed.catalog_applied, completed.totals.applied, completed.cleanup_applied);
         return result.changes + int(regenerated);
     }
     return int(regenerated);
@@ -1076,13 +1143,16 @@ static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx, bool rep
         record_changes("Ctree string literals materialized", str_changes);
     }
 
+    if (auto *state = get_deobf_state())
+        state->mba_smt_budgets[ctx->func_ea].handler_changes += size_t(std::max(0, total_changes));
     if (total_changes == 0)
     {
-        deobf::log("[chernobog] Deobfuscation complete. No transformations applied\n");
+        deobf::log("[chernobog] Handler pass complete for this IR snapshot: no changes\n");
         return 0;
     }
 
-    deobf::log("[chernobog] Deobfuscation complete. Total changes: %d\n", total_changes);
+    deobf::log("[chernobog] Handler pass complete for this IR snapshot: %d changes\n",
+               total_changes);
     for (const auto &entry : applied_changes)
         deobf::log("[chernobog]   %s: %d\n", entry.first, entry.second);
     return total_changes;

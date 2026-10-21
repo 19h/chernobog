@@ -1104,6 +1104,7 @@ class AlgebraicSimplifier
 
     Term simplify_cobra(const Term &term)
     {
+        session_.diagnostic_region = diagnostic_region_key(term);
         bool bitwise = false;
         std::function<void(const Term &)> classify = [&](const Term &node)
         {
@@ -1126,6 +1127,10 @@ class AlgebraicSimplifier
             ++statistics.exhausted;
             ++statistics.rejected;
             session_.statistics.cancel_stage = RejectReason::BudgetExhaustedPreFlight;
+            record_diagnostic(session_.statistics, session_.options, DiagnosticStage::Generation,
+                              DiagnosticOutcome::Exhausted, session_.diagnostic_block,
+                              session_.diagnostic_statement, diagnostic_region_key(term), 0,
+                              RejectReason::BudgetExhaustedPreFlight);
             return {};
         }
         cobra_backend::Request request;
@@ -1188,6 +1193,27 @@ class AlgebraicSimplifier
             session_.statistics.cancel_stage = RejectReason::CobraGenerationExhausted;
         statistics.last_status = unsigned(outcome.status);
         statistics.last_reason = unsigned(outcome.reason);
+        DiagnosticOutcome diagnostic = DiagnosticOutcome::GenerationFailed;
+        switch (outcome.status)
+        {
+        case cobra_backend::Status::Candidate:
+            diagnostic = DiagnosticOutcome::Generated;
+            break;
+        case cobra_backend::Status::Unchanged:
+            diagnostic = DiagnosticOutcome::NoImprovement;
+            break;
+        case cobra_backend::Status::Unsupported:
+            diagnostic = DiagnosticOutcome::ExtractionRefused;
+            break;
+        case cobra_backend::Status::Exhausted:
+            diagnostic = DiagnosticOutcome::Exhausted;
+            break;
+        case cobra_backend::Status::Failure:
+            break;
+        }
+        record_diagnostic(session_.statistics, session_.options, DiagnosticStage::Generation,
+                          diagnostic, session_.diagnostic_block, session_.diagnostic_statement,
+                          diagnostic_region_key(term), unsigned(outcome.reason));
         switch (outcome.status)
         {
         case cobra_backend::Status::Candidate:

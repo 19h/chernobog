@@ -13,6 +13,7 @@ struct FunctionBudget
     SnapshotToken snapshot;
     unsigned limit_ms = 1000;
     uint64_t spent_ns = 0;
+    size_t catalog_applied = 0, cleanup_applied = 0, handler_changes = 0;
     Statistics totals;
 };
 

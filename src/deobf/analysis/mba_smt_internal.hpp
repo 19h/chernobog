@@ -49,6 +49,8 @@ class SolverSession
     z3::context context;
     const Options options;
     Statistics &statistics;
+    size_t diagnostic_block = 0, diagnostic_statement = 0;
+    uint64_t diagnostic_region = 0;
 
   private:
     Clock::time_point started_;

@@ -74,7 +74,7 @@ class PromotionGateTests(unittest.TestCase):
             target = entry["target"]
             directory = self.directory / target
             directory.mkdir()
-            labels = ["sdk-cobra", "sdk-legacy", "legacy", "cobra"] + [
+            labels = ["sdk-cobra", "sdk-legacy", "legacy", "cobra", "d810-sdk"] + [
                 b + "-" + g for b in ("legacy", "cobra") for g in ("semantic", "calls", "masks")
             ]
             self.write(
@@ -88,6 +88,7 @@ class PromotionGateTests(unittest.TestCase):
                     collection_mode="full",
                     legacy_manifest_sha256=hashlib.sha256(legacy_path.read_bytes()).hexdigest(),
                     fixture_sha256="fixture",
+                    d810=dict(cases=123, literals=3, fixture_sha256="d810-fixture"),
                     native_control={
                         g: legacy["oracle_comparisons"][g] for g in ("nested", "masks", "semantic")
                     },
@@ -97,6 +98,8 @@ class PromotionGateTests(unittest.TestCase):
                         files={
                             "chernobog_mba_cobra_sdk_bridge.so": "bridge",
                             "chernobog_mba_cobra_runtime_fixture": "fixture",
+                            "chernobog_mba_d810_sdk_bridge.so": "d810-bridge",
+                            "chernobog_mba_d810_runtime_fixture": "d810-fixture",
                         },
                     ),
                     runs=[
@@ -131,6 +134,7 @@ class PromotionGateTests(unittest.TestCase):
                 dict(
                     errors=[],
                     kernel_version=entry["ida_version"],
+                    hexrays_version=entry["ida_version"],
                     system={"macos": "Darwin", "linux": "Linux", "windows": "Windows"}[
                         target.split("-")[0]
                     ],
@@ -138,6 +142,43 @@ class PromotionGateTests(unittest.TestCase):
                     bridge_sha256="bridge",
                     plugin_sha256="plugin",
                     reports=reports,
+                ),
+            )
+            self.write(
+                directory / "d810-sdk.json",
+                dict(
+                    revision=self.revision[:12],
+                    source_fingerprint="synthetic",
+                    bridge_sha256="d810-bridge",
+                    kernel_version=entry["ida_version"],
+                    hexrays_version=entry["ida_version"],
+                    system={"macos": "Darwin", "linux": "Linux", "windows": "Windows"}[
+                        target.split("-")[0]
+                    ],
+                    machine="arm64" if target.endswith("arm64") else "x86_64",
+                    failures=0,
+                    rows=[
+                        dict(
+                            route=route,
+                            function=name,
+                            fault=fault,
+                            code=0,
+                            passed=True,
+                            changes=int(route != "negative-control" and fault == 0),
+                            unchanged=not (route != "negative-control" and fault == 0),
+                            post_poll=fault in (14, 15),
+                        )
+                        for route, name, fault in sorted(GATE.d810_probes())
+                    ],
+                    literals=[
+                        dict(
+                            input32=v,
+                            expected64=(v - (1 << 32)) & ((1 << 64) - 1),
+                            text="synthetic",
+                            code=0,
+                        )
+                        for v in (0xFFFFFFFF, 0x80000000, 0xADC07CB7)
+                    ],
                 ),
             )
             for backend in ("legacy", "cobra"):
@@ -265,6 +306,21 @@ class PromotionGateTests(unittest.TestCase):
 
     def test_too_short_embedded_revision_rejects(self):
         self.mutate("sdk.json", lambda d: d["reports"][0].update(revision=self.revision[:1]))
+
+    def test_missing_d810_fault(self):
+        self.mutate("d810-sdk.json", lambda d: d["rows"].pop())
+
+    def test_d810_negative_mutates(self):
+        self.mutate("d810-sdk.json", lambda d: d["rows"][1].update(changes=1, unchanged=False))
+
+    def test_d810_wrong_source(self):
+        self.mutate("d810-sdk.json", lambda d: d.update(source_fingerprint="other"))
+
+    def test_d810_wrong_literal(self):
+        self.mutate("d810-sdk.json", lambda d: d["literals"][0].update(expected64=0))
+
+    def test_d810_wrong_artifact(self):
+        self.mutate("d810-sdk.json", lambda d: d.update(bridge_sha256="other"))
 
     def test_full_embedded_revision_also_matches(self):
         path = self.directory / "linux-x86_64/sdk.json"

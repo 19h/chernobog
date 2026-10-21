@@ -103,6 +103,12 @@ void SolverSession::record_expiry(RejectReason stage)
             static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(time - deadline_).count()));
     ++statistics.exhausted;
+    record_diagnostic(statistics, options,
+                      stage == RejectReason::PostProofDeadlineOrCancel
+                          ? DiagnosticStage::Commit
+                          : DiagnosticStage::SolverQuery,
+                      DiagnosticOutcome::Exhausted, diagnostic_block, diagnostic_statement,
+                      diagnostic_region, 0, statistics.cancel_stage);
 }
 
 bool SolverSession::has_budget()
@@ -118,7 +124,7 @@ bool SolverSession::has_budget()
 bool SolverSession::eligible_for_commit(bool legacy_deadline_exempt,
                                         const std::function<bool()> &unchanged)
 {
-    const bool cancelled = is_cancelled();
+    bool cancelled = is_cancelled();
     bool identity_valid = true;
     try
     {
@@ -128,6 +134,9 @@ bool SolverSession::eligible_for_commit(bool legacy_deadline_exempt,
     {
         identity_valid = false;
     }
+    // Snapshot/frame validation can be expensive or reenter the host. A
+    // cancellation arriving inside it must still reject this mutation.
+    cancelled = is_cancelled() || cancelled;
     const auto time = now();
     statistics.elapsed_ns = static_cast<uint64_t>(std::max<int64_t>(
         0, std::chrono::duration_cast<std::chrono::nanoseconds>(time - started_).count()));
@@ -136,16 +145,19 @@ bool SolverSession::eligible_for_commit(bool legacy_deadline_exempt,
             statistics.deadline_overshoot_ns,
             static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(time - deadline_).count()));
-    if (!identity_valid)
-    {
-        ++statistics.rejected_mutations;
-        statistics.cancel_stage = RejectReason::StaleSnapshot;
-        return false;
-    }
     if (cancelled || (!legacy_deadline_exempt && is_deadline_expired(time)))
     {
         record_expiry(RejectReason::PostProofDeadlineOrCancel);
         ++statistics.rejected_mutations;
+        return false;
+    }
+    if (!identity_valid)
+    {
+        ++statistics.rejected_mutations;
+        statistics.cancel_stage = RejectReason::StaleSnapshot;
+        record_diagnostic(statistics, options, DiagnosticStage::Commit,
+                          DiagnosticOutcome::EmissionRejected, diagnostic_block,
+                          diagnostic_statement, diagnostic_region, 0, RejectReason::StaleSnapshot);
         return false;
     }
     return true;
@@ -186,6 +198,10 @@ z3::check_result SolverSession::check(z3::solver &solver, const char *purpose)
         return z3::unknown;
     }
     statistics.last_solver_usable = true;
+    if (result == z3::unknown)
+        record_diagnostic(statistics, options, DiagnosticStage::SolverQuery,
+                          DiagnosticOutcome::Unknown, diagnostic_block, diagnostic_statement,
+                          diagnostic_region);
     return result;
 }
 

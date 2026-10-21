@@ -1364,9 +1364,14 @@ void test_cobra_compound_words()
             if (proposals.empty() || cost(proposals.front().replacement) > cost(expected))
                 std::fprintf(
                     stderr,
-                    "compound diagnostic bits=%u shape=%zu calls=%zu unknown=%zu exhausted=%zu\n",
+                    "compound diagnostic bits=%u shape=%zu calls=%zu unknown=%zu exhausted=%zu "
+                    "generated=%zu proved=%zu status=%u reason=%u solver=%d usable=%d\n",
                     bits, shape, analysis.statistics().cobra.calls, analysis.statistics().unknown,
-                    analysis.statistics().exhausted);
+                    analysis.statistics().exhausted, analysis.statistics().cobra.candidates,
+                    analysis.statistics().cobra.proved, analysis.statistics().cobra.last_status,
+                    analysis.statistics().cobra.last_reason,
+                    analysis.statistics().last_solver_observed,
+                    int(analysis.statistics().last_solver_usable));
             check(!proposals.empty() && cost(proposals.front().replacement) <= cost(expected),
                   "compound word and reassociated operands reduce within Normal");
             if (!proposals.empty())
@@ -1560,6 +1565,83 @@ void test_snapshot_memory_values()
     }
 }
 
+void test_region_diagnostics_and_callback_gate()
+{
+    Options options;
+    options.snapshot = {71, 9};
+    options.diagnostic = {DiagnosticPhase::Memory, 0x1000, 8, true};
+    Statistics inventory;
+    for (size_t i = 0; i < 40; ++i)
+        record_diagnostic(inventory, options, DiagnosticStage::Generation,
+                          DiagnosticOutcome::NoImprovement, 2, i,
+                          diagnostic_region_key(variable(i, 32)));
+    check(inventory.regions.used == 32 && inventory.regions.unrecorded == 8 &&
+              inventory.regions.counts[size_t(DiagnosticOutcome::NoImprovement)] == 40,
+          "region details are bounded while every outcome is counted");
+    Statistics combined;
+    accumulate_statistics(combined, inventory);
+    accumulate_statistics(combined, inventory);
+    check(combined.regions.used == 32 && combined.regions.unrecorded == 48 &&
+              combined.regions.events[0].snapshot == options.snapshot &&
+              combined.regions.events[0].context.source_ea == 0x1000 &&
+              combined.regions.counts[size_t(DiagnosticOutcome::NoImprovement)] == 80,
+          "aggregation preserves each event's own source snapshot and overflow count");
+    RegionDiagnostics self;
+    self.record(inventory.regions.events[0]);
+    self.accumulate(self);
+    check(self.used == 2 && self.counts[size_t(DiagnosticOutcome::NoImprovement)] == 2,
+          "diagnostic self-aggregation has ordinary value semantics");
+    check(std::strcmp(diagnostic_stage_name(DiagnosticStage::SolverQuery), "solver_query") == 0,
+          "solver failures have an explicit diagnostic stage");
+    check(diagnostic_region_key(variable(0, 8)) != diagnostic_region_key(variable(0, 16)),
+          "region correlation keys retain scalar widths");
+    for (int mode = 0; mode < 3; ++mode)
+    {
+        auto time = std::chrono::steady_clock::time_point{};
+        bool cancelled = false;
+        detail::SessionTestHooks hooks;
+        hooks.now = [&] { return time; };
+        struct Restore
+        {
+            detail::SessionTestHooks *old;
+            ~Restore() { detail::session_test_hooks = old; }
+        } restore{detail::session_test_hooks};
+        detail::session_test_hooks = &hooks;
+        Program program = make_program(8);
+        const auto x = variable(0, 8);
+        program.blocks[0].statements = {Statement::assign(1, add(x, constant(0, 8)))};
+        Options request;
+        request.backend = Backend::Legacy;
+        request.budget_ms = 100;
+        request.snapshot = {81, 0};
+        request.max_invariants = 0;
+        request.cancelled = [&] { return cancelled; };
+        request.diagnostic = options.diagnostic;
+        request.diagnostic_context = [](size_t, size_t) -> DiagnosticContext
+        { throw std::runtime_error("observational resolver fault"); };
+        Analysis analysis(program, request);
+        const auto candidate = analysis.prove_candidate(0, 0, x);
+        const auto emitted = candidate ? analysis.prove_emission(*candidate, x) : nullptr;
+        check(bool(emitted), "diagnostic resolver exceptions do not change either proof boundary");
+        unsigned mutations = 0;
+        if (emitted && analysis.eligible_for_commit(*emitted, mode != 1,
+                                                    [&]
+                                                    {
+                                                        if (mode == 0)
+                                                            cancelled = true;
+                                                        else
+                                                            time += std::chrono::milliseconds(150);
+                                                        return true;
+                                                    }))
+            ++mutations;
+        check(mutations == unsigned(mode == 2),
+              "post-validation cancel/expiry reject while the intentional legacy waiver remains");
+        if (mode != 2)
+            check(analysis.statistics().regions.counts[size_t(DiagnosticOutcome::Exhausted)] != 0,
+                  "commit rejection is attributed directly to its region");
+    }
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -1577,7 +1659,13 @@ int main(int argc, char **argv)
         test_snapshot_memory_values();
         return failures != 0;
     }
+    if (argc == 2 && std::strcmp(argv[1], "--diagnostics") == 0)
+    {
+        test_region_diagnostics_and_callback_gate();
+        return failures != 0;
+    }
     failures += mba_test_backend_selection();
+    test_region_diagnostics_and_callback_gate();
     test_snapshot_memory_values();
     test_scalar_identity_synthesis();
     test_cobra_boolean_selector();

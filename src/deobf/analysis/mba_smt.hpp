@@ -159,6 +159,72 @@ struct SnapshotToken
 Backend selected_backend() noexcept;
 const char *backend_diagnostic() noexcept;
 
+enum class DiagnosticPhase
+{
+    Core,
+    Microcode,
+    Calls,
+    Memory,
+    Control,
+    Catalog
+};
+enum class DiagnosticStage
+{
+    Extraction,
+    Generation,
+    ContextProof,
+    CandidateProof,
+    EmittedProof,
+    Commit,
+    SolverQuery
+};
+enum class DiagnosticOutcome
+{
+    ExtractionRefused,
+    NoImprovement,
+    Generated,
+    GenerationFailed,
+    Verified,
+    Disproved,
+    Unknown,
+    Exhausted,
+    EmissionRejected,
+    Applied,
+    Count
+};
+struct DiagnosticContext
+{
+    DiagnosticPhase phase = DiagnosticPhase::Core;
+    uint64_t source_ea = 0;
+    int maturity = 0;
+    bool source_known = false;
+};
+struct DiagnosticEvent
+{
+    DiagnosticContext context;
+    SnapshotToken snapshot;
+    DiagnosticStage stage = DiagnosticStage::Extraction;
+    DiagnosticOutcome outcome = DiagnosticOutcome::ExtractionRefused;
+    size_t block = 0, statement = 0;
+    uint64_t region_key = 0;
+    unsigned generation_reason = 0;
+    RejectReason reject_reason = RejectReason::None;
+};
+struct RegionDiagnostics
+{
+    static constexpr size_t capacity = 32;
+    std::array<uint64_t, size_t(DiagnosticOutcome::Count)> counts{};
+    std::array<DiagnosticEvent, capacity> events{};
+    size_t used = 0;
+    uint64_t unrecorded = 0;
+    void record(const DiagnosticEvent &event) noexcept;
+    void accumulate(const RegionDiagnostics &other) noexcept;
+};
+const char *diagnostic_phase_name(DiagnosticPhase phase) noexcept;
+const char *diagnostic_stage_name(DiagnosticStage stage) noexcept;
+const char *diagnostic_outcome_name(DiagnosticOutcome outcome) noexcept;
+uint64_t diagnostic_region_key(const Term &value) noexcept;
+
 struct Options
 {
     bool contextual_constants_only = false;
@@ -176,6 +242,10 @@ struct Options
     size_t max_invariants = 256;
     size_t max_candidates = 4096;
     std::function<bool()> cancelled;
+    DiagnosticContext diagnostic;
+    // Observational only. Exceptions in a site resolver cannot authorize or
+    // prevent a rewrite; the fixed context remains the fallback.
+    std::function<DiagnosticContext(size_t, size_t)> diagnostic_context;
     static Options deep();
 };
 enum class Verdict
@@ -206,6 +276,7 @@ struct CobraStatistics
 };
 struct Statistics
 {
+    RegionDiagnostics regions;
     CobraStatistics cobra;
     size_t candidates = 0;
     size_t verified = 0;
@@ -285,7 +356,12 @@ class Analysis
     SnapshotToken snapshot() const noexcept;
     void reject_mutation(RejectReason reason);
     void record_emission(uint64_t elapsed_ns);
+    void record_applied(const ProofReceipt &receipt);
     const Statistics &statistics() const;
 };
 void accumulate_statistics(Statistics &total, const Statistics &attempt);
+void record_diagnostic(Statistics &statistics, const Options &options, DiagnosticStage stage,
+                       DiagnosticOutcome outcome, size_t block = 0, size_t statement = 0,
+                       uint64_t region_key = 0, unsigned generation_reason = 0,
+                       RejectReason reject_reason = RejectReason::None) noexcept;
 } // namespace chernobog::mba_smt

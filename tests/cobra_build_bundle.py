@@ -15,7 +15,12 @@ def main():
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     files = {}
-    for stem in ("chernobog_mba_cobra_sdk_bridge", "chernobog_mba_cobra_runtime_fixture"):
+    for stem in (
+        "chernobog_mba_cobra_sdk_bridge",
+        "chernobog_mba_cobra_runtime_fixture",
+        "chernobog_mba_d810_sdk_bridge",
+        "chernobog_mba_d810_runtime_fixture",
+    ):
         candidates = [
             p
             for p in Path("build").rglob(stem + "*")

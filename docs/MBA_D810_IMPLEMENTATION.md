@@ -209,3 +209,66 @@ fixture passes 121 cases, including five rejection controls, plus three
 independently proved signed-literal emissions. Cancellation/expiry injected after
 the final emitted proof leaves the complete body and local-variable table
 unchanged. The frozen 42-fixture promotion manifest remains unchanged.
+
+## Region diagnostics and commit accounting
+
+Each outcome event carries its own phase, source EA when known, ctree/microcode
+maturity, source generation and mutation epoch, block/statement coordinates,
+bounded structural region key, stage, and rejection/generation reason. Outcomes
+separate extraction refusal, unchanged generation, generated candidates, generator
+failure, verified/disproved/unknown proofs, exhaustion, emission rejection and
+actual application. The pre-existing `last_*` fields remain compatibility fields;
+they do not attribute an earlier region's outcome.
+
+Every function budget retains at most 32 detailed events. Outcome counters remain
+complete, with an explicit `unrecorded` count for omitted details. Counts describe
+events, not distinct sites: one site can generate a candidate, pass both proofs,
+and commit, or later expire. Keys are bounded FNV correlation identifiers, not
+collision-resistant identity or proof authority. Diagnostic collection is
+observational: resolver exceptions do not alter proof acceptance. Recording is
+`O(1)` per event after bounded key construction; merging examines at most 32
+stored events and the fixed outcome array. Storage is constant per function.
+
+`catalog_applied`, semantic `applied`, ctree `cleanup_applied`, and
+`handler_changes` describe their respective passes. Catalog and semantic
+application events are recorded only after actual IR swaps. Progress messages
+explicitly identify a handler pass or ctree snapshot and its generation; an early
+zero-change pass no longer announces completion of the whole decompilation.
+`tests/verify_mba_d810_diagnostics.py` checks actual capture schemas, complete
+counter/detail/overflow accounting, and agreement between application events and
+catalog plus semantic mutations.
+
+Snapshot validation can execute a callback or substantial frame reconstruction.
+The commit gate therefore polls cancellation again after that work, samples the
+clock afterwards, then rechecks the cheap generation/owner token before swapping.
+The intentional legacy deadline waiver still never waives cancellation. The
+ordered-memory pass charges preflight and snapshot copying against its absolute
+phase deadline. Its last analysis is accounted after the final gates so a late
+rejection remains visible in diagnostics.
+
+The complement view's arbitrary-word theorem retains a purely Boolean miter as
+bitwise logic. Expanding that miter into modular products made the 64-bit selector
+sensitive to native solver search scheduling on x86-64. Arithmetic views retain
+the separately proved word identities. This changes proof preparation, with no
+change to either proof boundary, site allowance, emission frame, or cost test.
+
+| ID | Assumption / dependent result | Falsification probe |
+|---|---|---|
+| D1 | Diagnostics describe individual immutable attempts and actual commits, not final-output quality by themselves. | Validate event coordinates/snapshot, exact counters plus overflow, and catalog-only rewrites in actual captures. Keep explicit compact-form and emitted-C oracles. |
+| D2 | Expensive identity validation can observe cancellation or advance the deadline. | Cancel inside the unchanged callback, including the legacy-waived path; advance a deterministic clock by 150 ms under a 100 ms allowance. Require rejection. |
+| D3 | Memory preflight/snapshot work consumes the same phase allowance. | Inject 150 ms before snapshot construction under a 100 ms budget; require no proof/emission visitation and unchanged body/locals. |
+| D4 | SDK mutations occur on the owning analysis thread with generation changes for project-owned edits. | Revalidate complete frames/native bytes and the generation/owner immediately before commit; reject stale generations and changed source frames. This does not establish thread-safe mutation by arbitrary external plugins. |
+| D5 | Native evidence must correspond to the exact artifact source and runtime. | Bind supplemental bridge/fixture hashes, embedded revision and source fingerprint, kernel/decompiler version, OS/architecture, exact 123-case matrix and three literal cases. Reject missing, duplicate, failed or mismatched evidence. |
+
+The supplemental SDK matrix consists of 46 memory cases, 72 control cases and
+five rejection controls, plus three signed-literal emissions. The native bundle
+and strict six-target promotion checker require that matrix in addition to the
+unchanged frozen 42-fixture Normal/Deep and legacy acceptance evidence. Synthetic
+checker fixtures only test fail-closed validation; they are not native evidence.
+
+Additional bounded risks are truncated detail history (medium: exact counts and
+explicit overflow), accidental diagnostic influence (medium: isolated resolver
+and fixed storage), and native solver scheduling sensitivity (medium: retain the
+Boolean proof shape and qualify each native target). Core, SDK, corpus, emitted-C
+oracle, installed-artifact and six-target results remain separate evidence
+boundaries. Historical review artifacts retain their original source identities.

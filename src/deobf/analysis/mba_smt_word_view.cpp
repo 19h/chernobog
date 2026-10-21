@@ -332,6 +332,17 @@ bool CobraWordView::certify(SymbolicProgram &program, const SymbolicState &state
     if (!restored_input || !restored_candidate)
         return false;
 
+    const auto certified = [&](z3::solver &solver, const char *purpose)
+    {
+        ++session.statistics.candidates;
+        const auto result = session.check(solver, purpose);
+        if (result == z3::sat)
+            ++session.statistics.disproved;
+        else if (result == z3::unknown)
+            ++session.statistics.unknown;
+        return result == z3::unsat;
+    };
+
     // First prove the candidate on independent arbitrary words. Concrete
     // products, additions and correlations cannot make this theorem easier.
     SymbolicState arbitrary(session.fresh_memory(program.program.address_bits));
@@ -340,15 +351,43 @@ bool CobraWordView::certify(SymbolicProgram &program, const SymbolicState &state
             i < program.program.widths.size() ? program.program.widths[i] : source_->bits));
     for (size_t i = 0; i < atoms_.size(); ++i)
         arbitrary.registers[first_virtual_ + i] = session.fresh_value(atoms_[i]->bits);
-    prepare_algebraic_word_proofs(program, arbitrary, input_);
-    prepare_algebraic_word_proofs(program, arbitrary, candidate);
+    const auto boolean_only = [](const auto &self, const Term &node) -> bool
+    {
+        if (!node)
+            return true;
+        switch (node->op)
+        {
+        case Op::Variable:
+        case Op::Constant:
+        case Op::And:
+        case Op::Or:
+        case Op::Xor:
+        case Op::Not:
+            return self(self, node->left) && self(self, node->right);
+        default:
+            return false;
+        }
+    };
+    // Preserve a Boolean miter as bitwise logic. Expanding XOR into modular
+    // products obscures bit independence and makes this otherwise trivial
+    // width-generic theorem sensitive to the native solver's search schedule.
+    const bool pure_boolean =
+        boolean_only(boolean_only, input_) && boolean_only(boolean_only, candidate);
+    if (!pure_boolean)
+    {
+        prepare_algebraic_word_proofs(program, arbitrary, input_);
+        prepare_algebraic_word_proofs(program, arbitrary, candidate);
+    }
+    const auto word_value = [&](const Term &value)
+    {
+        auto result = program.evaluate(value, arbitrary);
+        return pure_boolean ? result
+                            : program.canonicalize_verified_complements(
+                                  program.apply_verified_rewrites(result));
+    };
     z3::solver word(session.context);
-    word.add(program.canonicalize_verified_complements(
-                 program.apply_verified_rewrites(program.evaluate(input_, arbitrary))) !=
-             program.canonicalize_verified_complements(
-                 program.apply_verified_rewrites(program.evaluate(candidate, arbitrary))));
-    ++session.statistics.candidates;
-    if (session.check(word, "CoBRA compound-word universal mismatch") != z3::unsat)
+    word.add(word_value(input_) != word_value(candidate));
+    if (!certified(word, "CoBRA compound-word universal mismatch"))
         return false;
 
     // Independently prove the algebraic bridge from the actual source to the
@@ -360,8 +399,7 @@ bool CobraWordView::certify(SymbolicProgram &program, const SymbolicState &state
         const auto value = session.fresh_value(source_->bits);
         z3::solver invert(session.context);
         invert.add(~value != -value - 1);
-        ++session.statistics.candidates;
-        if (session.check(invert, "CoBRA compound-word complement mismatch") != z3::unsat)
+        if (!certified(invert, "CoBRA compound-word complement mismatch"))
             return false;
         program.verified_word_laws.insert(identity);
     }
@@ -370,8 +408,7 @@ bool CobraWordView::certify(SymbolicProgram &program, const SymbolicState &state
     z3::solver bridge(session.context);
     bridge.add(program.canonicalize_verified_complements(before) !=
                program.canonicalize_verified_complements(restored));
-    ++session.statistics.candidates;
-    if (session.check(bridge, "CoBRA compound-word restoration mismatch") != z3::unsat)
+    if (!certified(bridge, "CoBRA compound-word restoration mismatch"))
         return false;
 
     // The arbitrary-word theorem is instantiated only after the exact restore

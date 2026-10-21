@@ -334,8 +334,14 @@ bool commit_microcode_replacement(minsn_t &original, const minsn_t &snapshot, mi
     };
     if (!analysis.eligible_for_commit(receipt, false, unchanged))
         return false;
+    if (current != expected)
+    {
+        analysis.reject_mutation(RejectReason::StaleSnapshot);
+        return false;
+    }
     original.swap(replacement);
     ++current.mutation_epoch;
+    analysis.record_applied(receipt);
     return true;
 }
 bool commit_ctree_replacement(cexpr_t &original, const cexpr_t &snapshot, cexpr_t &replacement,
@@ -382,8 +388,14 @@ bool commit_ctree_replacement(cexpr_t &original, const cexpr_t &snapshot, cexpr_
     };
     if (!analysis.eligible_for_commit(receipt, legacy_fallback, unchanged))
         return false;
+    if (current != expected)
+    {
+        analysis.reject_mutation(RejectReason::StaleSnapshot);
+        return false;
+    }
     original.swap(replacement);
     ++current.mutation_epoch;
+    analysis.record_applied(receipt);
     return true;
 }
 }

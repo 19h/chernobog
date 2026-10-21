@@ -103,19 +103,15 @@ bool read_instruction(ea_t ea, unsigned bytes)
 class Slice
 {
   public:
-    Slice(cfunc_t &function, FunctionBudget &budget, const MemorySliceTestHooks *tests)
+    Slice(cfunc_t &function, FunctionBudget &budget, const MemorySliceTestHooks *tests,
+          Clock::time_point started)
         : function_(function), budget_(budget), owner_(function.mba), tests_(tests),
-          started_(now()), source_(function.body), source_locals_(*function.get_lvars()),
+          started_(started), source_(function.body), source_locals_(*function.get_lvars()),
           locals_(source_locals_), snapshot_(budget.snapshot)
     {
         const uint64_t limit = uint64_t(budget.limit_ms) * 1000000;
         deadline_ = started_ +
                     std::chrono::nanoseconds(limit > budget.spent_ns ? limit - budget.spent_ns : 0);
-    }
-    ~Slice()
-    {
-        budget_.spent_ns += uint64_t(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(now() - started_).count());
     }
     Clock::time_point now() const { return tests_ && tests_->now ? tests_->now() : Clock::now(); }
     bool cancelled() const
@@ -126,11 +122,44 @@ class Slice
 
     int run()
     {
-        if (!build() || !available())
+        Options admission;
+        admission.snapshot = snapshot_;
+        admission.diagnostic = {DiagnosticPhase::Memory, uint64_t(function_.entry_ea),
+                                int(function_.maturity), true};
+        if (!available())
+        {
+            ++budget_.totals.exhausted;
+            record_diagnostic(budget_.totals, admission, DiagnosticStage::Extraction,
+                              DiagnosticOutcome::Exhausted, 0, 0, 0, 0,
+                              RejectReason::BudgetExhaustedPreFlight);
+            return 0;
+        }
+        if (!build())
+        {
+            record_diagnostic(budget_.totals, admission, DiagnosticStage::Extraction,
+                              DiagnosticOutcome::ExtractionRefused);
+            return 0;
+        }
+        if (!available())
             return 0;
         int changes = 0;
         size_t original_cost = 0, emitted_cost = 0;
-        std::unique_ptr<Analysis> final_analysis;
+        struct FinalAttempt
+        {
+            Statistics &total;
+            std::unique_ptr<Analysis> analysis;
+            ~FinalAttempt()
+            {
+                if (analysis)
+                    accumulate_statistics(total, analysis->statistics());
+            }
+            void replace(std::unique_ptr<Analysis> next)
+            {
+                if (analysis)
+                    accumulate_statistics(total, analysis->statistics());
+                analysis = std::move(next);
+            }
+        } final{budget_.totals, {}};
         std::shared_ptr<const CtreeEmissionProof> final_proof;
         for (auto &item : items_)
         {
@@ -154,6 +183,8 @@ class Slice
                            .count())));
             options.max_invariants = 0;
             options.cancelled = [&] { return cancelled(); };
+            options.diagnostic = {DiagnosticPhase::Memory, uint64_t(value->ea),
+                                  int(function_.maturity), true};
             program_.targets = {{0, item.site}};
             auto analysis = std::make_unique<Analysis>(program_, options);
             const auto proposals = before ? analysis->run() : std::vector<Proposal>{};
@@ -195,11 +226,12 @@ class Slice
                 }
             }
             emitted_cost += scalar_expression_cost(*value);
-            accumulate_statistics(budget_.totals, analysis->statistics());
             if (item.proof)
-                final_analysis = std::move(analysis);
+                final.replace(std::move(analysis));
+            else
+                accumulate_statistics(budget_.totals, analysis->statistics());
         }
-        if (!changes || emitted_cost >= original_cost || !final_analysis || !final_proof)
+        if (!changes || emitted_cost >= original_cost || !final.analysis || !final_proof)
             return 0;
         cinsn_t staged;
         staged.op = cit_block;
@@ -224,17 +256,40 @@ class Slice
         }
         if (tests_ && tests_->before_commit)
             tests_->before_commit(staged, locals_);
-        if (!frame(staged) || !final_analysis->eligible_for_commit(
-                                  final_proof->core(), false,
-                                  [&] { return available() && source_matches() && frame(staged); }))
+        if (!frame(staged))
+        {
+            final.analysis->reject_mutation(RejectReason::EmittedDestinationOrFrameMismatch);
+            return 0;
+        }
+        if (!final.analysis->eligible_for_commit(
+                final_proof->core(), false,
+                [&] { return available() && source_matches() && frame(staged); }))
             return 0;
         // All allocation, re-lifting and proof work precedes this no-throw commit.
+        if (budget_.snapshot != snapshot_ || function_.mba != owner_)
+        {
+            final.analysis->reject_mutation(RejectReason::StaleSnapshot);
+            return 0;
+        }
         function_.body.swap(staged);
         function_.get_lvars()->swap(locals_);
         ++budget_.snapshot.mutation_epoch;
         budget_.totals.applied += changes;
         for (const auto &item : items_)
+        {
             budget_.totals.cobra.applied += item.proof && item.proof->from_cobra();
+            if (item.proof)
+            {
+                Options event;
+                event.snapshot = snapshot_;
+                event.diagnostic = {DiagnosticPhase::Memory,
+                                    uint64_t(rhs(const_cast<cinsn_t &>(item.source))->ea),
+                                    int(function_.maturity), true};
+                record_diagnostic(budget_.totals, event, DiagnosticStage::Commit,
+                                  DiagnosticOutcome::Applied, 0, item.site,
+                                  diagnostic_region_key(item.original));
+            }
+        }
         return changes;
     }
 
@@ -654,6 +709,22 @@ int simplify_memory_values(cfunc_t &function, FunctionBudget &budget,
 {
     try
     {
+        const auto now = [&] { return tests && tests->now ? tests->now() : Clock::now(); };
+        const auto started = now();
+        struct Charge
+        {
+            FunctionBudget &budget;
+            const std::function<Clock::time_point()> now;
+            Clock::time_point started;
+            ~Charge()
+            {
+                budget.spent_ns += uint64_t(std::max<int64_t>(
+                    0,
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(now() - started).count()));
+            }
+        } charge{budget, now, started};
+        if (tests && tests->before_snapshot)
+            tests->before_snapshot();
         if (!function.mba || !function.get_lvars() ||
             function.get_lvars()->size() >= limits::storage_regions ||
             function.body.op != cit_block || !function.body.cblock ||
@@ -675,7 +746,7 @@ int simplify_memory_values(cfunc_t &function, FunctionBudget &budget,
         } bound;
         if (bound.apply_to(&function.body, nullptr) || !bound.reads)
             return 0;
-        return Slice(function, budget, tests).run();
+        return Slice(function, budget, tests, started).run();
     }
     catch (...)
     {

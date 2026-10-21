@@ -1,4 +1,5 @@
 #include "common/hexrays_handshake.hpp"
+#include "chernobog/build_provenance.hpp"
 #include "deobf/handlers/mba_smt_memory.h"
 #include "deobf/handlers/mba_smt_control.h"
 #include "deobf/handlers/mba_smt_ctree.h"
@@ -32,7 +33,7 @@ extern "C" D810_EXPORT int chernobog_mba_d810_memory_probe(uint64_t ea, int faul
 {
     try
     {
-        if (!chernobog::hexrays::handshake() || fault < 0 || fault > 21)
+        if (!chernobog::hexrays::handshake() || fault < 0 || fault > 22)
             return -1;
         hexrays_failure_t failure;
         auto function = decompile(ea, &failure, DECOMP_NO_CACHE);
@@ -73,12 +74,16 @@ extern "C" D810_EXPORT int chernobog_mba_d810_memory_probe(uint64_t ea, int faul
         budget.snapshot = {53, 0};
         auto time = std::chrono::steady_clock::now();
         bool cancelled = false, visited = false, post_poll = false;
+        size_t emitted_queries = 0;
+        static std::map<uint64_t, size_t> expected_queries;
         detail::SessionTestHooks session;
         session.now = [&] { return time; };
         session.after_query = [&](const char *purpose, const z3::check_result &result)
         {
-            if ((fault == 14 || fault == 15) && result == z3::unsat &&
-                std::strstr(purpose, "emitted replacement"))
+            if (result != z3::unsat || !std::strstr(purpose, "emitted replacement"))
+                return;
+            ++emitted_queries;
+            if ((fault == 14 || fault == 15) && emitted_queries == expected_queries[ea])
             {
                 post_poll = true;
                 if (fault == 14)
@@ -96,6 +101,11 @@ extern "C" D810_EXPORT int chernobog_mba_d810_memory_probe(uint64_t ea, int faul
         MemorySliceTestHooks hooks;
         hooks.now = [&] { return time; };
         hooks.cancelled = [&] { return cancelled; };
+        hooks.before_snapshot = [&]
+        {
+            if (fault == 22)
+                time += std::chrono::milliseconds(150);
+        };
         hooks.before_commit = [&](cinsn_t &staged, lvars_t &locals)
         {
             visited = true;
@@ -136,14 +146,17 @@ extern "C" D810_EXPORT int chernobog_mba_d810_memory_probe(uint64_t ea, int faul
                 locals.back().set_used_byref();
         };
         const int changes = simplify_memory_values(*function, budget, &hooks);
+        if (fault == 0)
+            expected_queries[ea] = emitted_queries;
         const bool unchanged = same_ctree_body(original, function->body) &&
                                same_ctree_locals(original_locals, *function->get_lvars());
         const bool expected_apply = fault == 0;
-        bool passed = expected_apply ? changes > 0 && visited && !unchanged
-                                     : changes == 0 && unchanged &&
-                                           (fault == 14 || fault == 15   ? post_poll
-                                            : fault >= 16 && fault <= 19 ? !visited
-                                                                         : visited);
+        bool passed = expected_apply
+                          ? changes > 0 && visited && !unchanged
+                          : changes == 0 && unchanged &&
+                                (fault == 14 || fault == 15                    ? post_poll
+                                 : (fault >= 16 && fault <= 19) || fault == 22 ? !visited
+                                                                               : visited);
         if (expected_apply)
             function->verify(ALLOW_UNUSED_LABELS, true);
         qsnprintf(
@@ -322,4 +335,13 @@ extern "C" D810_EXPORT int chernobog_mba_d810_literal_probe(uint64_t ea, uint32_
     {
         return -5;
     }
+}
+
+extern "C" D810_EXPORT const char *chernobog_mba_d810_revision()
+{
+    return chernobog::build_provenance::revision;
+}
+extern "C" D810_EXPORT const char *chernobog_mba_d810_source_fingerprint()
+{
+    return chernobog::build_provenance::source_fingerprint;
 }
