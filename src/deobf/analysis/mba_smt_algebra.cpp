@@ -1,5 +1,6 @@
 #include "mba_smt_internal.hpp"
 #include "mba_cobra.hpp"
+#include "mba_smt_word_view.hpp"
 
 #include <algorithm>
 #include <map>
@@ -390,6 +391,14 @@ class AlgebraicSimplifier
     }
 
     void prepare_proofs(const Term &original) { prepare_word_regions(original); }
+    void prepare_all_words(const Term &node)
+    {
+        if (!node || !session_.has_budget())
+            return;
+        prepare_word_proofs(node, node->bits);
+        prepare_all_words(node->left);
+        prepare_all_words(node->right);
+    }
 
     bool from_cobra() const noexcept { return cobra_origin_; }
 
@@ -651,7 +660,8 @@ class AlgebraicSimplifier
         }
 
         Term term;
-        if (is_linear_word_region(original))
+        if (is_linear_word_region(original) ||
+            (session_.options.backend == Backend::Cobra && CobraWordView::useful(original)))
         {
             // Visit typed/opaque boundaries bottom-up, then give the complete
             // same-width region its allowance before spending it on prefixes.
@@ -669,7 +679,7 @@ class AlgebraicSimplifier
                                               session_.now() - proof_started)
                                               .count());
             if (Term candidate = cost(prepared) >= 2 ? simplify_region(prepared) : Term{})
-                term = std::move(candidate);
+                term = rewrite(candidate, true);
             else
             {
                 if (!cobra && cost(prepared) >= 8)
@@ -1124,7 +1134,34 @@ class AlgebraicSimplifier
         request.snapshot = session_.options.snapshot;
         request.cancelled = [&] { return session_.is_cancelled(); };
         request.now = [&] { return session_.now(); };
-        const auto outcome = cobra_backend::generate(term, request);
+        const auto extraction_started = session_.now();
+        const CobraWordView view(term, session_);
+        const auto extraction_ns =
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                      session_.now() - extraction_started)
+                                      .count());
+        auto outcome = cobra_backend::generate(view.input(), request);
+        outcome.elapsed_ns += extraction_ns;
+        outcome.extraction_ns += extraction_ns;
+        outcome.input_cost = cost(term);
+        const Term virtual_candidate = outcome.candidate;
+        if (outcome.candidate)
+        {
+            outcome.candidate = view.restore(outcome.candidate);
+            if (!outcome.candidate || cost(outcome.candidate) >= cost(term))
+            {
+                outcome.candidate.reset();
+                outcome.status = cobra_backend::Status::Unchanged;
+                outcome.reason = cobra_backend::Reason::Cost;
+            }
+            else
+            {
+                outcome.output_cost = cost(outcome.candidate);
+                const auto nodes = [](const auto &self, const Term &node) -> size_t
+                { return node ? 1 + self(self, node->left) + self(self, node->right) : 0; };
+                outcome.output_nodes = nodes(nodes, outcome.candidate);
+            }
+        }
         ++statistics.calls;
         statistics.generation_ns += outcome.elapsed_ns;
         statistics.extraction_ns += outcome.extraction_ns;
@@ -1172,7 +1209,8 @@ class AlgebraicSimplifier
         if (outcome.status != cobra_backend::Status::Candidate || !session_.has_budget())
             return {};
         const auto proof_start = session_.now();
-        const bool accepted = prove(term, outcome.candidate);
+        const bool accepted =
+            view.certify(program_, state_, virtual_candidate) && prove(term, outcome.candidate);
         statistics.candidate_proof_ns += static_cast<uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(session_.now() - proof_start)
                 .count());
@@ -1218,6 +1256,12 @@ void prepare_algebraic_proofs(SymbolicProgram &program, const SymbolicState &sta
                               const Term &original)
 {
     AlgebraicSimplifier(program, state).prepare_proofs(original);
+}
+
+void prepare_algebraic_word_proofs(SymbolicProgram &program, const SymbolicState &state,
+                                   const Term &original)
+{
+    AlgebraicSimplifier(program, state).prepare_all_words(original);
 }
 
 Term simplify_algebraic(SymbolicProgram &program, const SymbolicState &state, const Term &original,

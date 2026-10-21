@@ -158,6 +158,7 @@ add_library(
     src/deobf/analysis/mba_smt_invariants.cpp
     src/deobf/analysis/mba_smt_synthesis.cpp
     src/deobf/analysis/mba_smt_algebra.cpp
+    src/deobf/analysis/mba_smt_word_view.cpp
     src/deobf/analysis/mba_smt_masks.cpp
     src/deobf/analysis/mba_smt_context.cpp)
 target_include_directories(chernobog_mba_smt_core PUBLIC "${PROJECT_SOURCE_DIR}/src")

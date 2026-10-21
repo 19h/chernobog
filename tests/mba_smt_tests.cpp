@@ -2,7 +2,9 @@
 #include "deobf/analysis/mba_smt.hpp"
 #include "deobf/analysis/mba_cobra.hpp"
 #include "deobf/analysis/mba_smt_internal.hpp"
+#include "deobf/analysis/mba_smt_word_view.hpp"
 #include <cstdio>
+#include <cstring>
 #include <stdexcept>
 
 using namespace chernobog::mba_smt;
@@ -10,6 +12,7 @@ using namespace chernobog::mba_smt;
 namespace
 {
 int failures = 0;
+unsigned compound_width = 0;
 
 void check(bool ok, const char *description)
 {
@@ -1314,6 +1317,120 @@ void test_small_linear_word_boundaries()
     }
 }
 
+void test_cobra_compound_words()
+{
+    if (!cobra_backend::available())
+        return;
+    for (unsigned bits = 8; bits <= 64; bits += 8)
+    {
+        if (compound_width && bits != compound_width)
+            continue;
+        const auto x = variable(0, bits), y = variable(1, bits), z = variable(2, bits);
+        const auto d = variable(3, bits);
+        const auto two = constant(2, bits);
+        const auto u = add(multiply(two, x), constant(1, bits));
+        const auto v = expression(Op::Sub, y, constant(3, bits));
+        const auto product = multiply(x, z);
+        const auto selector = expression(
+            Op::Xor,
+            expression(Op::And, expression(Op::Sub, constant(28, bits), x), expression(Op::Not, y)),
+            expression(Op::And, expression(Op::Sub, x, constant(29, bits)), y));
+        const auto a = expression(Op::And, add(x, d), x), b = add(x, z);
+        const std::vector<std::pair<Term, Term>> cases = {
+            {selector, expression(Op::Xor, expression(Op::Sub, constant(28, bits), x), y)},
+            {expression(Op::Sub, add(u, v), multiply(two, expression(Op::And, u, v))),
+             expression(Op::Xor, u, v)},
+            {expression(Op::Sub, expression(Op::Sub, add(y, multiply(two, x)), two),
+                        multiply(two, expression(Op::And, u, v))),
+             expression(Op::Xor, u, v)},
+            {expression(Op::Sub, add(product, v), multiply(two, expression(Op::And, product, v))),
+             expression(Op::Xor, product, v)},
+            {expression(Op::Sub,
+                        expression(Op::Sub, expression(Op::Sub, a, b),
+                                   multiply(two, expression(Op::Or, expression(Op::Not, b), a))),
+                        two),
+             expression(Op::Xor, a, b)}};
+        size_t shape = 0;
+        for (const auto &[original, expected] : cases)
+        {
+            auto program = make_program(bits);
+            program.blocks[0].statements = {Statement::assign(3, original)};
+            Options options;
+            options.backend = Backend::Cobra;
+            options.max_invariants = 0;
+            options.max_candidates = 1;
+            Analysis analysis(program, options);
+            const auto proposals = analysis.run();
+            if (proposals.empty() || cost(proposals.front().replacement) > cost(expected))
+                std::fprintf(
+                    stderr,
+                    "compound diagnostic bits=%u shape=%zu calls=%zu unknown=%zu exhausted=%zu\n",
+                    bits, shape, analysis.statistics().cobra.calls, analysis.statistics().unknown,
+                    analysis.statistics().exhausted);
+            check(!proposals.empty() && cost(proposals.front().replacement) <= cost(expected),
+                  "compound word and reassociated operands reduce within Normal");
+            if (!proposals.empty())
+            {
+                const auto emitted = analysis.prove_emission(*proposals.front().proof,
+                                                             proposals.front().replacement);
+                check(emitted && emitted->has_emitted_proof() && emitted->from_cobra(),
+                      "restored compound operands cross both independent proof boundaries");
+            }
+            Options independent_options = Options::deep();
+            independent_options.backend = Backend::Cobra;
+            independent_options.max_invariants = 0;
+            Analysis independent(program, independent_options);
+            independent.run();
+            const auto reference = independent.verify(0, 0, expected);
+            if (reference != Verdict::Verified)
+                std::fprintf(stderr, "reference diagnostic bits=%u shape=%zu verdict=%u\n", bits,
+                             shape, unsigned(reference));
+            check(reference == Verdict::Verified,
+                  "fresh analysis proves the complete reference at each byte width");
+            check(independent.verify(0, 0, add(expected, constant(1, bits))) == Verdict::Disproved,
+                  "compound proofs cannot authorize a corrupted complete reference");
+            ++shape;
+        }
+    }
+}
+
+void test_cobra_word_view_guards()
+{
+    using namespace chernobog::mba_smt::detail;
+    const auto x = variable(0, 64), y = variable(1, 64);
+    const auto u = expression(Op::Sub, x, constant(0, 64));
+    const auto source =
+        expression(Op::Xor,
+                   expression(Op::And, expression(Op::Sub, constant(UINT64_MAX, 64), x),
+                              expression(Op::Not, y)),
+                   expression(Op::And, u, y));
+    Statistics statistics;
+    SolverSession session(Options::deep(), statistics);
+    CobraWordView view(source, session);
+    check(view.lifted() && view.restore(view.input()),
+          "complement preparation handles wrapped c+1");
+    Program program = make_program(64);
+    program.blocks[0].statements = {Statement::assign(3, source)};
+    Analysis proof(program, Options::deep());
+    check(proof.verify(0, 0, view.restore(view.input())) == Verdict::Verified,
+          "candidate-only preparation itself preserves the full modular source value");
+
+    const auto memory = add(load(variable(2, 64), 64), constant(1, 64));
+    CobraWordView loads(expression(Op::And, memory, x), session);
+    check(!loads.lifted(), "a virtual operand cannot hide a memory read");
+    Term many = variable(0, 64);
+    for (size_t i = 1; i < 13; ++i)
+        many = add(many, variable(i, 64));
+    CobraWordView over_limit(expression(Op::And, many, x), session);
+    check(!over_limit.lifted(), "virtual operands cannot hide excessive raw source inputs");
+    Options cancelled;
+    cancelled.cancelled = [] { return true; };
+    SolverSession stopped(cancelled, statistics);
+    CobraWordView late(source, stopped);
+    check(!late.lifted() && key(late.input()) == key(source),
+          "cancelled preparation preserves the source and cannot yield a virtual candidate");
+}
+
 void test_word_proof_cancellation()
 {
     auto program = make_program(32);
@@ -1354,8 +1471,16 @@ void test_word_proof_cancellation()
 
 } // namespace
 
-int main()
+int main(int argc, char **argv)
 {
+    if (argc == 2 && (std::strcmp(argv[1], "--compound-words") == 0 ||
+                      std::strcmp(argv[1], "--compound-64") == 0))
+    {
+        compound_width = std::strcmp(argv[1], "--compound-64") == 0 ? 64 : 0;
+        test_cobra_compound_words();
+        test_cobra_word_view_guards();
+        return failures != 0;
+    }
     failures += mba_test_backend_selection();
     test_scalar_identity_synthesis();
     test_cobra_boolean_selector();
@@ -1383,6 +1508,8 @@ int main()
     test_verified_complement_normalization();
     test_legacy_masked_selectors();
     test_small_linear_word_boundaries();
+    test_cobra_compound_words();
+    test_cobra_word_view_guards();
     test_word_proof_cancellation();
     std::printf("MBA SMT failures: %d\n", failures);
     return failures != 0;

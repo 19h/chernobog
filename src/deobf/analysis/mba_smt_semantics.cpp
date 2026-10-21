@@ -568,6 +568,8 @@ Verdict verify_replacement(SymbolicProgram &symbolic_program, const BlockInvaria
     }
 
     const auto &state = symbolic_program.before_statement(block, statement_index);
+    if (symbolic_program.has_compound_word_proofs)
+        prepare_algebraic_word_proofs(symbolic_program, state, replacement);
     solver.add(
         symbolic_program.canonicalize_verified_complements(symbolic_program.apply_verified_rewrites(
             symbolic_program.evaluate(statement.value, state))) !=

@@ -97,6 +97,7 @@ class SymbolicProgram
 
     // Width-specific universal theorems are reusable only in this session.
     std::set<std::pair<unsigned, WordLaw>> verified_word_laws;
+    bool has_compound_word_proofs = false;
 
     const SymbolicState &block_entry(size_t block) const;
     const SymbolicState &block_exit(size_t block) const;
@@ -149,6 +150,8 @@ class InvariantInference
 // complete site domain can accept one; a sample collision is never a proof.
 void prepare_algebraic_proofs(SymbolicProgram &program, const SymbolicState &state,
                               const Term &original);
+void prepare_algebraic_word_proofs(SymbolicProgram &program, const SymbolicState &state,
+                                   const Term &original);
 Term simplify_algebraic(SymbolicProgram &program, const SymbolicState &state, const Term &original,
                         bool *cobra_origin = nullptr);
 
