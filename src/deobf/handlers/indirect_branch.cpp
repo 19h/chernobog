@@ -4,6 +4,7 @@
 #include "../analysis/opaque_eval.h"
 #include "../analysis/finite_targets.h"
 #include "../../common/arm64_branch.h"
+#include "../../common/arm64e.h"
 #include "../../common/bitvector.h"
 #include "../../common/ida_memory.h"
 #include "../../hybrid/z3_bridge.hpp"
@@ -128,13 +129,31 @@ std::optional<range_t> frame_fragment(ea_t root, ea_t target)
     }
     const int fp = str2reg("X29");
     const int sp = str2reg("SP");
+    const int first_saved = str2reg("X19"), last_saved = str2reg("X28");
+    std::set<int> defined;
+    bool inherited_register = false;
     ea_t ea = target;
-    for (unsigned count = 0; count < 16 && ea < function->end_ea; ++count)
+    for (unsigned count = 0; count < 32 && ea < function->end_ea; ++count)
     {
         insn_t instruction;
-        if (decode_insn(&instruction, ea) != 4 || is_call_insn(instruction))
+        const int size = decode_insn(&instruction, ea);
+        if (size <= 0 || size > 16 || (size & 3) != 0 || ea + ea_t(size) > function->end_ea ||
+            is_call_insn(instruction))
+            return std::nullopt;
+        const auto primitive = chernobog::arm64e::decode(get_dword(ea));
+        if (primitive && primitive->kind == chernobog::arm64e::Kind::sign && primitive->implicit &&
+            primitive->destination == 30)
             return std::nullopt;
         const uint32_t features = instruction.get_canon_feature(PH);
+        // Check every operand before accepting a read: a paired store can
+        // read X29 before its later operand allocates a new stack frame.
+        for (unsigned index = 0; index < UA_MAXOP && instruction.ops[index].type != o_void; ++index)
+        {
+            const op_t &op = instruction.ops[index];
+            if ((op.type == o_displ && op.reg == sp && sval_t(op.addr) < 0) ||
+                (op.type == o_reg && (op.reg == fp || op.reg == sp) && has_cf_chg(features, index)))
+                return std::nullopt;
+        }
         for (unsigned index = 0; index < UA_MAXOP; ++index)
         {
             const op_t &op = instruction.ops[index];
@@ -142,12 +161,22 @@ std::optional<range_t> frame_fragment(ea_t root, ea_t target)
                 break;
             if ((op.type == o_phrase || op.type == o_displ) && (op.reg == fp || op.reg == sp))
                 return range_t(target, function->end_ea);
-            if (op.type == o_reg && (op.reg == fp || op.reg == sp) && has_cf_chg(features, index))
-                return std::nullopt;
+            if (op.type == o_reg && (op.reg == fp || op.reg == sp) && has_cf_use(features, index))
+                return range_t(target, function->end_ea);
+            if ((op.type == o_reg && has_cf_use(features, index)) || op.type == o_phrase ||
+                op.type == o_displ)
+                if (op.reg >= first_saved && op.reg <= last_saved && !defined.count(op.reg))
+                    inherited_register = true;
         }
-        if (is_ret_insn(instruction) || is_indirect_jump_insn(instruction))
+        if (is_ret_insn(instruction))
             return std::nullopt;
-        ea += 4;
+        if ((features & (CF_JUMP | CF_STOP)) != 0 || is_indirect_jump_insn(instruction))
+            return inherited_register ? std::optional<range_t>(range_t(target, function->end_ea))
+                                      : std::nullopt;
+        for (unsigned index = 0; index < UA_MAXOP && instruction.ops[index].type != o_void; ++index)
+            if (instruction.ops[index].type == o_reg && has_cf_chg(features, index))
+                defined.insert(instruction.ops[index].reg);
+        ea += ea_t(size);
     }
     return std::nullopt;
 }
@@ -203,6 +232,7 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
         if (!linked)
             return false;
     }
+    bool all_covered = true;
     for (ea_t target : finite.targets)
     {
         const auto fragment = frame_fragment(mba->entry_ea, target);
@@ -213,7 +243,18 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
                 return false;
             proof.fragments.push_back(*fragment);
         }
+        else
+        {
+            bool present = false;
+            for (int index = 0; index < mba->qty; ++index)
+                present |= mba->get_mblock(index)->start == target;
+            all_covered &= present;
+        }
     }
+    // Partial projection cannot establish the complete switch before native
+    // liveness analysis. Do not retain an orphan fragment with lost inputs.
+    if (!all_covered)
+        proof.fragments.clear();
     const projection_key_t key{get_dbctx_id(), mba->entry_ea};
     if (projections.size() >= 128 && projections.count(key) == 0)
         return false;
@@ -611,63 +652,109 @@ int lower_conditional_targets(mbl_array_t *mba, mblock_t *src,
     if (finite.condition.empty() || finite.targets.size() != 2 ||
         finite.condition.has_side_effects(true))
         return 0;
-    mblock_t *destinations[2] = {nullptr, nullptr};
-    for (int index = 0; index < mba->qty; ++index)
+    std::array<mblock_t *, 2> destinations = {nullptr, nullptr};
+    const minsn_t *table = src->tail;
+    if (table->opcode == m_jtbl)
     {
-        mblock_t *candidate = mba->get_mblock(index);
+        if (table->r.t != mop_c || !table->r.c ||
+            table->r.c->values.size() != table->r.c->targets.size())
+            return 0;
+        // Case edges remain authoritative after prolog/epilog elimination
+        // moves a destination's first instruction away from its native entry.
         for (unsigned outcome = 0; outcome < 2; ++outcome)
-        {
-            if (candidate->start == finite.targets_by_condition[outcome])
+            for (size_t entry = 0; entry < table->r.c->values.size(); ++entry)
             {
+                const auto &values = table->r.c->values[entry];
+                if (std::find(values.begin(), values.end(), finite.targets_by_condition[outcome]) ==
+                    values.end())
+                    continue;
+                const int destination = table->r.c->targets[entry];
+                if (destination < 0 || destination >= mba->qty)
+                    return 0;
+                mblock_t *candidate = mba->get_mblock(destination);
+                if (destinations[outcome] && destinations[outcome] != candidate)
+                    return 0;
+                destinations[outcome] = candidate;
+            }
+    }
+    else
+    {
+        for (int index = 0; index < mba->qty; ++index)
+            for (unsigned outcome = 0; outcome < 2; ++outcome)
+            {
+                mblock_t *candidate = mba->get_mblock(index);
+                if (candidate->start != finite.targets_by_condition[outcome])
+                    continue;
                 if (destinations[outcome])
                     return 0;
                 destinations[outcome] = candidate;
             }
-        }
     }
-    if (!destinations[0] || !destinations[1])
+    if (!destinations[0] || !destinations[1] || destinations[0] == destinations[1])
         return 0;
-
-    if (destinations[0]->serial == src->serial + 1)
+    mop_t left = finite.condition, right;
+    mcode_t relation = m_jnz;
+    if (finite.condition.t == mop_d && finite.condition.d &&
+        is_mcode_convertible_to_jmp(finite.condition.d->opcode))
     {
-        minsn_t *branch = src->tail;
-        const mop_t &original_target = branch->opcode == m_jtbl ? branch->l : branch->d;
-        if (!chernobog::preserve_indirect_target_effects(src, branch, original_target))
-            return 0;
-        branch->opcode = m_jcnd;
-        branch->l = finite.condition;
-        branch->r.erase();
-        branch->d.make_blkref(destinations[1]->serial);
-        replace_cfg_successors(mba, src, destinations[1]->serial);
-        src->succset.push_back(destinations[0]->serial);
-        std::sort(src->succset.begin(), src->succset.end());
-        auto &predecessors = destinations[0]->predset;
-        if (std::find(predecessors.begin(), predecessors.end(), src->serial) == predecessors.end())
-            predecessors.push_back(src->serial);
-        std::sort(predecessors.begin(), predecessors.end());
-        src->type = BLT_2WAY;
-        src->flags &= ~(MBL_NORET | MBL_TCAL);
-        src->mark_lists_dirty();
-        destinations[0]->mark_lists_dirty();
-        mba->mark_chains_dirty();
-        return 1;
+        relation = set2jcnd(finite.condition.d->opcode);
+        left = finite.condition.d->l;
+        right = finite.condition.d->r;
     }
-
+    else
+        right.make_number(0, left.size);
     if (destinations[1]->serial == src->serial + 1)
     {
-        chernobog::finite_targets_t inverted = finite;
-        minsn_t inverse(src->tail->ea);
-        inverse.opcode = m_lnot;
-        inverse.l = finite.condition;
-        inverse.d.size = 1;
-        inverted.condition.create_from_insn(&inverse);
-        std::swap(inverted.targets_by_condition[0], inverted.targets_by_condition[1]);
-        return lower_conditional_targets(mba, src, inverted);
+        relation = negate_mcode_relation(relation);
+        std::swap(destinations[0], destinations[1]);
     }
-    // A switch already preserves this exact target set when neither edge is
-    // the physical fallthrough. Retain it instead of renumbering unrelated
-    // blocks and their branch/case operands inside a late optimizer callback.
-    return 0;
+    minsn_t *branch = src->tail;
+    const mop_t &original_target = branch->opcode == m_jtbl ? branch->l : branch->d;
+    if (!chernobog::preserve_indirect_target_effects(src, branch, original_target))
+        return 0;
+    mblock_t *fallthrough = destinations[0];
+    if (fallthrough->serial != src->serial + 1)
+    {
+        // The SDK insertion API renumbers existing block and case references.
+        // A local bridge supplies the physical fallthrough without moving or
+        // cloning either destination's instructions or observable effects.
+        fallthrough = mba->insert_block(src->serial + 1);
+        const ea_t address = mba->alloc_fict_ea(branch->ea);
+        fallthrough->start = address;
+        fallthrough->end = address + 1;
+        fallthrough->flags |= MBL_FAKE;
+        fallthrough->type = BLT_1WAY;
+        fallthrough->flags &= ~(MBL_NORET | MBL_TCAL);
+        fallthrough->maxbsp = src->maxbsp;
+        fallthrough->minbstkref = src->minbstkref;
+        fallthrough->minbargref = src->minbargref;
+        auto *jump = new minsn_t(address);
+        jump->opcode = m_goto;
+        jump->l.make_blkref(destinations[0]->serial);
+        fallthrough->insert_into_block(jump, nullptr);
+        fallthrough->succset.push_back(destinations[0]->serial);
+        auto &predecessors = destinations[0]->predset;
+        predecessors.push_back(fallthrough->serial);
+        std::sort(predecessors.begin(), predecessors.end());
+    }
+    branch->opcode = relation;
+    branch->l = left;
+    branch->r = right;
+    branch->d.make_blkref(destinations[1]->serial);
+    replace_cfg_successors(mba, src, destinations[1]->serial);
+    src->succset.insert(src->succset.begin(), fallthrough->serial);
+    auto &predecessors = fallthrough->predset;
+    if (std::find(predecessors.begin(), predecessors.end(), src->serial) == predecessors.end())
+        predecessors.push_back(src->serial);
+    std::sort(predecessors.begin(), predecessors.end());
+    src->type = BLT_2WAY;
+    src->flags &= ~(MBL_NORET | MBL_TCAL);
+    src->mark_lists_dirty();
+    fallthrough->mark_lists_dirty();
+    destinations[0]->mark_lists_dirty();
+    destinations[1]->mark_lists_dirty();
+    mba->mark_chains_dirty();
+    return 1;
 }
 
 //--------------------------------------------------------------------------
@@ -855,34 +942,16 @@ int indirect_branch_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
         }
         else if (blk && blk->tail && blk->tail->opcode == m_jtbl)
         {
-            const minsn_t *table = blk->tail;
-            if (table->r.t != mop_c || !table->r.c ||
-                table->r.c->values.size() != table->r.c->targets.size())
-                continue;
+            const int before = mba->qty;
             const auto finite = chernobog::evaluate_finite_targets(blk->tail->l, blk->tail, blk);
             if (finite && !finite->condition.empty())
             {
-                bool exact = true;
-                for (ea_t target : finite->targets)
-                {
-                    bool matched = false;
-                    for (size_t entry = 0; entry < table->r.c->values.size(); ++entry)
-                    {
-                        const auto &values = table->r.c->values[entry];
-                        const int destination = table->r.c->targets[entry];
-                        if (std::find(values.begin(), values.end(), target) != values.end() &&
-                            destination >= 0 && destination < mba->qty &&
-                            mba->get_mblock(destination)->start == target)
-                            matched = true;
-                    }
-                    exact &= matched;
-                }
-                if (!exact)
-                    continue;
                 const int changed = lower_conditional_targets(mba, blk, *finite);
                 ctx->branches_simplified += changed;
                 changes += changed;
             }
+            if (mba->qty != before)
+                break; // Rebuild the block-start index after SDK renumbering.
         }
     }
 
@@ -1025,14 +1094,18 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
             mblock_t *block = mba->get_mblock(index);
             if (!block->tail || block->tail->ea != site || block->tail->opcode != m_ijmp)
                 continue;
-            if (proof.targets.size() != 2)
+            if (proof.targets.empty() || proof.targets.size() > 2)
                 continue;
             std::array<mblock_t *, 2> destinations = {nullptr, nullptr};
             for (int destination = 0; destination < mba->qty; ++destination)
-                for (unsigned outcome = 0; outcome < 2; ++outcome)
+                for (unsigned outcome = 0; outcome < proof.targets.size(); ++outcome)
                     if (mba->get_mblock(destination)->start == proof.targets[outcome])
                         destinations[outcome] = mba->get_mblock(destination);
-            if (!destinations[0] || !destinations[1])
+            if (!destinations[0] || (proof.targets.size() == 2 && !destinations[1]))
+                continue;
+            minsn_t *jump = block->tail;
+            if (proof.targets.size() == 1 &&
+                !chernobog::preserve_indirect_target_effects(block, jump, jump->d))
                 continue;
             // Function-mode generation elides the frame-pointer setup. The
             // extra ranges must see that same frame, rather than an unrelated
@@ -1049,7 +1122,16 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
             block->insert_into_block(frame, block->tail->prev);
             // Publish control edges before liveness can discard registers
             // consumed by the projected fragments. KEEP alone is insufficient.
-            minsn_t *jump = block->tail;
+            if (proof.targets.size() == 1)
+            {
+                jump->opcode = m_goto;
+                jump->l.make_blkref(destinations[0]->serial);
+                jump->r.erase();
+                jump->d.erase();
+                block->flags &= ~(MBL_NORET | MBL_TCAL);
+                block->mark_lists_dirty();
+                continue;
+            }
             jump->l = jump->d;
             jump->d.erase();
             jump->r.erase();

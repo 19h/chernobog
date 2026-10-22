@@ -99,10 +99,34 @@ class Graph
         if (const auto value = constant_value(id))
             return constant(*value, bytes);
 
-        // Abstract pure byte arithmetic as one byte, without abstracting away
-        // any lookup relation. This bounds (a-b)*k before T[u] ^ u to 256
-        // assignments even if a and b have arbitrarily wide runtime values.
-        if (bytes == 1 && !node.table)
+        // A wide register masked to its low byte has at most 256 possible
+        // values. Keep its wide, zero-extended representation and correlate
+        // repeated masks by expression identity, without truncating addresses.
+        if (op == Op::bit_and && !node.table && input_bits_[id] > 8)
+        {
+            const auto lhs = literal(left), rhs = literal(right);
+            if (lhs || rhs)
+            {
+                uint64_t bound = mask(lhs ? *lhs : *rhs, bytes);
+                if (bound == 0)
+                    return constant(0, bytes);
+                if (bound <= 255)
+                {
+                    unsigned bits = 0;
+                    while (bound)
+                    {
+                        ++bits;
+                        bound >>= 1;
+                    }
+                    return variable(uint64_t(id) | (uint64_t{1} << 63), bytes, bits);
+                }
+            }
+        }
+
+        // Abstract unbounded pure byte arithmetic without discarding a known
+        // Boolean domain or a lookup relation. This bounds (a-b)*k before
+        // T[u] ^ u to 256 assignments even for wide runtime inputs.
+        if (bytes == 1 && !node.table && input_bits_[id] > 8)
             return variable(uint64_t(id) | (uint64_t{1} << 63), bytes, 8);
         return id;
     }
@@ -173,6 +197,9 @@ class Graph
   private:
     Reader reader_;
     std::vector<Node> nodes_;
+    // A conservative domain-size estimate, capped above the byte budget.
+    // Shared inputs can be counted twice; this only loses precision.
+    std::vector<unsigned> input_bits_;
     std::map<std::tuple<Op, int, Id, Id, uint64_t>, Id> interned_;
     std::map<std::pair<uint64_t, int>, std::optional<uint64_t>> reads_;
     size_t work_ = 0;
@@ -194,7 +221,14 @@ class Graph
             return invalid;
         }
         const Id id = nodes_.size();
+        unsigned bits = 0;
+        if (node.op == Op::variable)
+            bits = unsigned(std::min<Id>(node.right, 9));
+        else if (node.op != Op::constant)
+            bits = std::min(9U, input_bits_[node.left] +
+                                    (node.right == invalid ? 0U : input_bits_[node.right]));
         nodes_.push_back(node);
+        input_bits_.push_back(bits);
         interned_.emplace(key, id);
         return id;
     }

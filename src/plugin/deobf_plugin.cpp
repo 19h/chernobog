@@ -709,6 +709,16 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
                       static_cast<unsigned long long>(mba != nullptr ? mba->entry_ea : BADADDR));
         }
     }
+    // Let native ABI analysis collect arguments from a proven callee type,
+    // before a late indirect-call rewrite has to preserve an existing ABI.
+    else if (event == hxe_build_callinfo)
+    {
+        mblock_t *block = va_arg(va, mblock_t *);
+        tinfo_t *type = va_arg(va, tinfo_t *);
+        if (block && block->mba && !is_disabled_mode_enabled() &&
+            chernobog_function_deobfuscation_enabled(block->mba->entry_ea))
+            indirect_call_handler_t::resolve_call_type(block, type);
+    }
     // Global optimization exposes exact register-defined tail targets that do
     // not exist at LOCOPT. Hex-Rays requires MERR_LOOP after any mutation at
     // this event so its global optimizer can rebuild coherent chains.

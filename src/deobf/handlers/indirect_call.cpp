@@ -2,6 +2,7 @@
 #include "../analysis/finite_targets.h"
 #include "../analysis/opaque_eval.h"
 #include "../../hybrid/z3_bridge.hpp"
+#include "../../common/arm64_branch.h"
 
 //--------------------------------------------------------------------------
 // File-based debug logging
@@ -70,6 +71,38 @@ struct computed_call_collector_t final : minsn_visitor_t
     }
 };
 } // namespace
+
+bool indirect_call_handler_t::resolve_call_type(mblock_t *block, tinfo_t *type)
+{
+    if (!block || !block->mba || !block->tail || !type || PH.id != PLFM_ARM || !inf_is_64bit())
+        return false;
+    minsn_t *call = block->tail;
+    if (call->opcode != m_icall || call->ea == BADADDR)
+        return false;
+    const auto native = chernobog::arm64_branch::decode_indirect(get_dword(call->ea));
+    if (!native || !native->call)
+        return false;
+    const auto finite = chernobog::evaluate_finite_targets(call->r, call, block, true);
+    if (!finite || finite->targets.size() != 1)
+        return false;
+    const ea_t target = finite->targets.front();
+    const segment_t *segment = getseg(target);
+    const func_t *function = get_func(target);
+    if (!segment || (segment->type != SEG_XTRN && (!function || function->start_ea != target)))
+        return false;
+    tinfo_t callee;
+    if (!get_tinfo(&callee, target))
+        return false;
+    if (callee.is_funcptr())
+        callee = callee.get_pointed_object();
+    if (!callee.is_func() || callee == *type)
+        return false;
+    *type = callee;
+    deobf::log_verbose(
+        "[indirect_call] Supplied exact callee type at %a -> %a before ABI analysis\n", call->ea,
+        target);
+    return true;
+}
 
 bool indirect_call_handler_t::detect(mbl_array_t *mba)
 {

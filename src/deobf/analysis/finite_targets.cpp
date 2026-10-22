@@ -80,6 +80,11 @@ class Builder
     std::vector<finite_targets_t::dependency_t> dependencies;
     bool authentication_guarded = false;
 
+    Id value(const minsn_t &ins, const minsn_t *before)
+    {
+        return bounded_ ? instruction(ins, before, 0) : invalid;
+    }
+
     Id operand(const mop_t &op, const minsn_t *before, unsigned depth = 0)
     {
         if (!bounded_ || depth > 96 || !bitvector::valid_byte_width(op.size))
@@ -104,7 +109,7 @@ class Builder
             // separate identities unless Hex-Rays supplied a value number.
             return unknown(1, op.g, op.size, before);
         case mop_S:
-            return op.s ? unknown(2, uint64_t(op.s->off), op.size, memory_epoch(before)) : invalid;
+            return op.s ? stack(op, before, depth + 1) : invalid;
         case mop_r:
             return reg(op, before, depth + 1);
         case mop_d:
@@ -124,6 +129,7 @@ class Builder
         ea_t site;
     };
     std::map<Id, SignedPointer> signed_;
+    std::map<std::tuple<mcode_t, Id, Id, int>, Id> predicates_;
     std::map<std::tuple<ea_t, Id, Id, arm64e::Key, const minsn_t *>, Id> signatures_;
     bool bounded_ = true;
     size_t scans_ = 0;
@@ -175,6 +181,65 @@ class Builder
         return nullptr;
     }
 
+    Id stack(const mop_t &op, const minsn_t *before, unsigned depth)
+    {
+        if (!block_ || op.s->mba != block_->mba)
+            return invalid;
+        for (const minsn_t *ins = before ? before->prev : nullptr; ins; ins = ins->prev)
+        {
+            if (++scans_ > 32768)
+                return invalid;
+            if (mcode_modifies_d(ins->opcode) && ins->d.t == mop_S && ins->d.s &&
+                ins->d.s->mba == op.s->mba && ins->d.s->off < op.s->off + op.size &&
+                op.s->off < ins->d.s->off + ins->d.size)
+            {
+                if (ins->d.s->off > op.s->off || ins->d.s->off + ins->d.size < op.s->off + op.size)
+                    break;
+                Id value = instruction(*ins, ins, depth + 1);
+                if (value == invalid)
+                    return invalid;
+                if (op.s->off != ins->d.s->off)
+                    value =
+                        graph.make(Op::shr, ins->d.size, value,
+                                   graph.constant(uint64_t((op.s->off - ins->d.s->off) * 8), 1));
+                return graph.make(Op::low, op.size, value);
+            }
+            if (ins->opcode == m_ext || ins->opcode == m_stx)
+                break;
+            if (ins->contains_call(true) || ins->is_mbarrier())
+            {
+                struct Effects : minsn_visitor_t
+                {
+                    size_t &work;
+                    bool safe = true;
+                    explicit Effects(size_t &counter) : work(counter) {}
+                    int idaapi visit_minsn() override
+                    {
+                        if (++work > 32768)
+                            safe = false;
+                        else if (is_mcode_call(curins->opcode))
+                            safe &= curins->opcode == m_call && curins->l.t == mop_h &&
+                                    curins->l.helper &&
+                                    arm64e::helper_instruction(curins->l.helper) &&
+                                    curins->d.t == mop_f && curins->d.f &&
+                                    curins->d.f->visible_memory.empty() &&
+                                    curins->d.f->spoiled.mem.empty();
+                        else if (curins->is_mbarrier() || curins->opcode == m_ext ||
+                                 curins->opcode == m_stx)
+                            safe = false;
+                        return safe ? 0 : 1;
+                    }
+                } effects(scans_);
+                // Check every nested call: an intrinsic argument can itself
+                // contain a real call that writes the stack slot.
+                const_cast<minsn_t *>(ins)->for_all_insns(effects);
+                if (!effects.safe)
+                    break;
+            }
+        }
+        return unknown(2, uint64_t(op.s->off), op.size, memory_epoch(before));
+    }
+
     Id reg(const mop_t &op, const minsn_t *before, unsigned depth)
     {
         const auto owner = owners_.find(before);
@@ -200,21 +265,20 @@ class Builder
             {
                 if (ins->d.r > op.r || ins->d.r + ins->d.size < op.r + op.size)
                     return unknown(3, uint64_t(op.r), op.size, ins);
-                if (op.size == 1 && ins->d.size == 1 &&
-                    (ins->opcode == m_mul || ins->opcode == m_add || ins->opcode == m_sub))
-                {
-                    // All 256 values cover this arithmetic result regardless
-                    // of how deeply its runtime inputs were computed. Use the
-                    // reaching definition as the identity of the cut, so all
-                    // repeated uses remain correlated through later lookups.
-                    return unknown(6, uint64_t(op.r), 1, ins);
-                }
                 const auto key = std::make_pair(ins, ins->d.size);
                 auto found = definitions_.find(key);
                 Id value;
                 if (found == definitions_.end())
                 {
                     value = instruction(*ins, ins, depth + 1);
+                    if (value == invalid && op.size == 1 && ins->d.size == 1 &&
+                        (ins->opcode == m_mul || ins->opcode == m_add || ins->opcode == m_sub))
+                    {
+                        // Preserve a bounded Boolean input when it is
+                        // available. An unsupported arithmetic byte still
+                        // admits the conservative domain of all 256 values.
+                        value = unknown(6, uint64_t(op.r), 1, ins);
+                    }
                     definitions_[key] = value;
                 }
                 else
@@ -428,12 +492,28 @@ class Builder
         {
             // A comparison is always Boolean, even when its data inputs are
             // not enumerable. Preserve the actual comparison for CFG output.
+            const Id lhs = left(), rhs = right();
+            const auto predicate = std::make_tuple(ins.opcode, lhs, rhs, bytes);
+            if (lhs != invalid && rhs != invalid)
+            {
+                const auto old = predicates_.find(predicate);
+                if (old != predicates_.end())
+                    return old->second;
+            }
             const uint64_t key =
                 token(4, uint64_t(reinterpret_cast<uintptr_t>(&ins)), bytes, memory_epoch(before));
+            minsn_t comparison(ins.ea);
+            comparison.opcode = ins.opcode;
+            comparison.l = ins.l;
+            comparison.r = ins.r;
+            comparison.d.size = bytes;
             mop_t condition;
-            condition.create_from_insn(&ins);
+            condition.create_from_insn(&comparison);
             conditions.emplace(key, std::move(condition));
-            return graph.variable(key, bytes, 1);
+            const Id value = graph.variable(key, bytes, 1);
+            if (lhs != invalid && rhs != invalid)
+                predicates_[predicate] = value;
+            return value;
         }
         default:
             return invalid;
@@ -497,60 +577,60 @@ int fold_finite_table_expressions(mba_t *mba)
 {
     if (!mba || mba->qty > 512)
         return 0;
-    int changes = 0;
-    size_t inspected = 0;
-    size_t attempted = 0;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(20);
-    const auto has_load = [](const auto &self, const mop_t &operand, unsigned depth) -> bool
+    struct Folder : minsn_visitor_t
     {
-        return depth < 32 && operand.t == mop_d && operand.d &&
-               (operand.d->opcode == m_ldx || self(self, operand.d->l, depth + 1) ||
-                self(self, operand.d->r, depth + 1));
-    };
-    for (int index = 0; index < mba->qty; ++index)
-    {
-        mblock_t *block = mba->get_mblock(index);
-        for (minsn_t *ins = block->head; ins; ins = ins->next)
+        int changes = 0;
+        size_t inspected = 0;
+        size_t attempted = 0;
+        const std::chrono::steady_clock::time_point deadline =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(20);
+
+        int idaapi visit_minsn() override
         {
-            if (++inspected > 4096 || std::chrono::steady_clock::now() >= deadline)
+            if (++inspected > 4096 || attempted >= 32 ||
+                std::chrono::steady_clock::now() >= deadline)
+                return 1;
+            minsn_t *ins = curins;
+            if (!blk || !topins || !bitvector::valid_byte_width(ins->d.size) ||
+                ins->contains_call(true) || ins->is_mbarrier() || ins->is_fpinsn() ||
+                ins->is_persistent() || ins->is_assert() || !mcode_modifies_d(ins->opcode))
+                return 0;
+            const auto has_load = [](const auto &self, const mop_t &operand, unsigned depth) -> bool
             {
-                if (changes > 0)
-                    mba->mark_chains_dirty();
-                return changes;
-            }
-            if (ins->d.t != mop_r || ins->contains_call(true) || ins->opcode == m_mov ||
-                ins->is_mbarrier() || ins->is_fpinsn())
-                continue;
+                return depth < 32 && operand.t == mop_d && operand.d &&
+                       (operand.d->opcode == m_ldx || self(self, operand.d->l, depth + 1) ||
+                        self(self, operand.d->r, depth + 1));
+            };
             if (ins->opcode != m_ldx && !has_load(has_load, ins->l, 0) &&
                 !has_load(has_load, ins->r, 0))
-                continue;
-            if (++attempted > 32)
-                break;
-            mop_t expression;
-            expression.create_from_insn(ins);
-            Builder builder(block);
-            const Id root = builder.operand(expression, ins);
+                return 0;
+            ++attempted;
+            Builder builder(blk);
+            const Id root = builder.value(*ins, topins);
             const auto values = builder.graph.enumerate(root);
             if (!values || values->results.empty() || builder.dependencies.empty() ||
                 !std::all_of(values->results.begin(), values->results.end(),
                              [&](uint64_t value) { return value == values->results.front(); }))
-                continue;
-            auto history = fold_history[{get_dbctx_id(), mba->entry_ea}];
+                return 0;
+            const HistoryKey key{get_dbctx_id(), blk->mba->entry_ea};
+            auto history = fold_history[key];
             for (const auto &dependency : builder.dependencies)
                 history[{dependency.address, dependency.bytes.size()}] = dependency;
             if (history.size() > 4096)
-                continue;
-            fold_history[{get_dbctx_id(), mba->entry_ea}] = std::move(history);
+                return 0;
+            fold_history[key] = std::move(history);
             ins->opcode = m_mov;
             ins->l.make_number(values->results.front(), ins->d.size);
             ins->r.erase();
-            block->mark_lists_dirty();
+            blk->mark_lists_dirty();
             ++changes;
+            return 0;
         }
-    }
-    if (changes > 0)
+    } folder;
+    mba->for_all_insns(folder);
+    if (folder.changes > 0)
         mba->mark_chains_dirty();
-    return changes;
+    return folder.changes;
 }
 
 std::optional<finite_targets_t> evaluate_finite_targets(const mop_t &operand, const minsn_t *before,

@@ -74,6 +74,32 @@ int main()
     const Id result = lookup(graph, byte);
     require(graph.literal(result) == 0xE5, "correlated lookup must be universally constant");
 
+    const Id masked = graph.make(Op::bit_and, 4, mixed, graph.constant(255, 4));
+    require(graph.literal(lookup(graph, masked)) == 0xE5,
+            "wide masked byte lookups must remain correlated and bounded");
+    const auto domain = graph.enumerate(masked);
+    require(domain && domain->results.size() == 256 && domain->results.back() == 255,
+            "a zero-extended masked byte must cover all 256 values");
+    require(graph.literal(graph.make(Op::bit_and, 4, a, graph.constant(0, 4))) == 0,
+            "zero mask has exactly one value");
+    require(!graph.enumerate(graph.make(Op::bit_and, 4, a, graph.constant(0x100, 4))),
+            "a mask above the byte domain must not be silently truncated");
+    require(!graph.enumerate(graph.make(Op::bit_xor, 4, a, masked)),
+            "a full-width input must not alias its masked byte");
+    const Id byte_condition = graph.variable(40, 1, 1);
+    const Id narrow_dispatch =
+        graph.make(Op::bit_xor, 1, graph.make(Op::mul, 1, byte_condition, graph.constant(0x4A, 1)),
+                   graph.constant(0x7F, 1));
+    const auto narrow_targets = graph.enumerate(narrow_dispatch);
+    require(narrow_targets && narrow_targets->inputs.size() == 1 &&
+                narrow_targets->results == std::vector<uint64_t>{0x7F, 0x35},
+            "byte-sized Boolean arithmetic must retain its two outcomes");
+    const auto masked_targets =
+        graph.enumerate(graph.make(Op::bit_and, 4, narrow_dispatch, graph.constant(255, 4)));
+    require(masked_targets && masked_targets->inputs == narrow_targets->inputs &&
+                masked_targets->results == narrow_targets->results,
+            "a wide byte mask must preserve an already bounded Boolean relation");
+
     const Id condition = graph.variable(3, 4, 1);
     const Id index =
         graph.make(Op::bit_xor, 4, graph.make(Op::mul, 4, condition, graph.constant(0x5DC0, 4)),

@@ -57,6 +57,7 @@ bool emit_helper(codegen_t &codegen, const char *name, const mop_t &value, const
     call->d.f->flags &= ~(FCI_PURE | FCI_NOSIDE);
     call->d.f->flags |= FCI_FINAL | FCI_SPLOK;
     call->d.f->spoiled.clear();
+    call->d.f->visible_memory.clear();
     if (memory)
         call->d.f->visible_memory.set_all_values();
     call->set_mbarrier();

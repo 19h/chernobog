@@ -35,6 +35,9 @@ class indirect_call_handler_t
     // Detection - checks for indirect call patterns
     static bool detect(mbl_array_t *mba);
 
+    // Supply a proven callee type before native argument/return collection.
+    static bool resolve_call_type(mblock_t *block, tinfo_t *type);
+
     // Main deobfuscation pass
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
 

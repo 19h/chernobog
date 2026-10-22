@@ -48,6 +48,12 @@ declined if moving that evaluation could reorder another call. Conditional
 lowering is declined when copying the predicate would duplicate an effect.
 Scalar table folding never removes nested calls.
 
+Signing, authentication and stripping intrinsics have empty memory effects;
+their architectural guards remain non-pure and observable. Authenticated-load
+intrinsics retain conservative memory visibility. A single proven callee's
+existing prototype can be supplied before native ABI analysis, allowing typed
+arguments and returns without replacing an already-built argument vector.
+
 Authenticated-load reads remain observable even when the destination is XZR or
 the result is unused. Writeback follows the read, and the authenticated base is
 not written back for the offset-only form. Temporary IR operands preserve the
