@@ -12,12 +12,15 @@
 // Include component headers to trigger registration
 #include "../deobf/deobf_main.h"
 #include "../deobf/analysis/pattern_match.h"
+#include "../deobf/analysis/finite_targets.h"
 #include "../deobf/handlers/ctree_const_fold.h"
 #include "../deobf/handlers/ctree_switch_fold.h"
 #include "../deobf/handlers/ctree_indirect_call.h"
 #include "../deobf/handlers/ctree_string_decrypt.h"
 #include "../deobf/handlers/rotating_string_ctree.h"
 #include "../deobf/handlers/hikari_cfg.h"
+#include "../deobf/handlers/indirect_branch.h"
+#include "../deobf/handlers/indirect_call.h"
 #include "../deobf/handlers/jump_optimizer.h"
 #include "../deobf/handlers/native_opaque.h"
 #include "../hybrid/session.hpp"
@@ -486,6 +489,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     {
         ea_t function_ea = BADADDR;
         bitset_t *reachable = nullptr;
+        mba_t *flowchart_mba = nullptr;
         const qflow_chart_t *legacy_flowchart = nullptr;
 #if IDA_SDK_VERSION >= 940
         const qflow_chart_ea_t *ea_flowchart = nullptr;
@@ -495,6 +499,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         {
             ea_flowchart = va_arg(va, const qflow_chart_ea_t *);
             mba_t *mba = va_arg(va, mba_t *);
+            flowchart_mba = mba;
             reachable = va_arg(va, bitset_t *);
             function_ea = ea_flowchart != nullptr ? ea_flowchart->func_ea : BADADDR;
             if (function_ea == BADADDR && mba != nullptr)
@@ -505,6 +510,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         {
             legacy_flowchart = va_arg(va, const qflow_chart_t *);
             mba_t *mba = va_arg(va, mba_t *);
+            flowchart_mba = mba;
             reachable = va_arg(va, bitset_t *);
             if (legacy_flowchart != nullptr && legacy_flowchart->pfn != nullptr)
             {
@@ -545,6 +551,21 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         // has built a native flowchart, but has not generated microcode yet.
         // It is intentionally independent of CHERNOBOG_AUTO and distinct from
         // the later MMAT_LOCOPT deobfuscation pipeline.
+        if (function_ea != BADADDR && chernobog_function_deobfuscation_enabled(function_ea) &&
+            !is_disabled_mode_enabled())
+        {
+#if IDA_SDK_VERSION >= 940
+            if (ea_flowchart != nullptr)
+                indirect_branch_handler_t::extend_flowchart(
+                    const_cast<qflow_chart_ea_t *>(ea_flowchart), reachable, flowchart_mba);
+            else
+#endif
+                if (legacy_flowchart != nullptr)
+                indirect_branch_handler_t::extend_flowchart(
+                    const_cast<qflow_chart_t *>(legacy_flowchart), reachable, flowchart_mba);
+            if (indirect_branch_handler_t::take_projection_restart(function_ea))
+                return MERR_REDO;
+        }
         if (self->early_hexrays != nullptr)
         {
             int changes = 0;
@@ -619,6 +640,12 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             self->schedule_call_refresh(vu);
         }
     }
+    if (event == hxe_stkpnts)
+    {
+        mba_t *mba = va_arg(va, mba_t *);
+        stkpnts_t *points = va_arg(va, stkpnts_t *);
+        indirect_branch_handler_t::adjust_fragment_stack(mba, points);
+    }
     // This event is reserved for generated-microcode repair. The installed
     // optinsn/optblock handlers still own the later deobfuscation pipeline;
     // running that whole pipeline here would duplicate work at an invalid
@@ -626,6 +653,9 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
     else if (event == hxe_microcode)
     {
         mba_t *mba = va_arg(va, mba_t *);
+        if (mba)
+            chernobog::reset_finite_table_history(mba->entry_ea);
+        indirect_branch_handler_t::apply_generated_projections(mba);
         chernobog_begin_mba_tracking(mba);
         if (mba != nullptr)
         {
@@ -688,10 +718,19 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             deobf_ctx_t branch_ctx;
             branch_ctx.mba = mba;
             branch_ctx.func_ea = mba->entry_ea;
-            int changes = 0;
+            const bool transfers =
+                chernobog_t::has_indirect_branches(mba) || indirect_call_handler_t::detect(mba);
+            int changes = transfers ? chernobog::fold_finite_table_expressions(mba) : 0;
+            if (changes > 0)
+                changes += indirect_call_handler_t::run(mba, &branch_ctx);
             if (chernobog_t::has_indirect_branches(mba))
             {
                 changes += chernobog_t::resolve_indirect_branches(mba, &branch_ctx);
+            }
+            if (indirect_branch_handler_t::take_projection_restart(mba->entry_ea))
+            {
+                chernobog::hybrid::hybrid_abandon_deobfuscation_projection(uint64_t(mba->entry_ea));
+                return MERR_REDO;
             }
             changes +=
                 chernobog::jump_optimizer_handler_t::run_local_constant_branches(mba, &branch_ctx);
@@ -815,6 +854,7 @@ static bool is_hexrays_plugin(const plugin_t *entry)
 
 void chernobog_plugmod_t::clear_processing_state()
 {
+    indirect_branch_handler_t::clear_projections();
     clear_rotating_string_facts(database_id);
     rax_pipeline_target = BADADDR;
     rax_completed_functions.clear();

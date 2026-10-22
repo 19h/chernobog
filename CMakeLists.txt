@@ -503,6 +503,7 @@ ida_add_plugin(
     src/deobf/handlers/string_decrypt.cpp
     src/deobf/handlers/const_decrypt.cpp
     src/deobf/handlers/indirect_branch.cpp
+    src/deobf/analysis/finite_targets.cpp
     src/deobf/handlers/indirect_call.cpp
     src/deobf/handlers/resolver_call_args.cpp
     src/deobf/handlers/block_merge.cpp
@@ -621,6 +622,11 @@ endif()
 # and the alignment-sensitive hashing utilities used by the AST matcher.
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(chernobog_finite_domain_tests tests/finite_domain_tests.cpp)
+    target_include_directories(chernobog_finite_domain_tests
+                               PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_features(chernobog_finite_domain_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.finite_domain COMMAND chernobog_finite_domain_tests)
     add_executable(
         chernobog_warbird_tests
         tests/warbird_tests.cpp

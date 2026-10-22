@@ -1,4 +1,6 @@
 #include "hikari_cfg.h"
+#include "indirect_branch.h"
+#include "../analysis/finite_targets.h"
 
 #include "../analysis/arch_utils.h"
 #include "../../common/arm64_branch.h"
@@ -506,6 +508,9 @@ bool patchable_dispatch_instruction(const insn_t &instruction)
 
 bool patch_compact_dispatcher(const dispatcher_proof_t &proof)
 {
+    const auto branch = chernobog::arm64_branch::decode_indirect(get_dword(proof.branch_ea));
+    if (!branch || branch->authenticated)
+        return false;
     if (proof.cset_index == 0 || proof.tail[proof.cset_index - 1].insn.itype != ARM_cmp)
     {
         return false;
@@ -576,6 +581,50 @@ bool patch_compact_dispatcher(const dispatcher_proof_t &proof)
     return true;
 }
 
+std::optional<std::array<ea_t, 2>> recover_table_dispatcher(func_t *function)
+{
+    // This fallback admits the actual target expression, not a particular
+    // ADD/NEG/EOR instruction template. It is bounded separately from the
+    // inexpensive native recognizer and never patches authentication away.
+    static bool active = false;
+    if (active || !function || function->end_ea - function->start_ea > 4096)
+        return std::nullopt;
+    const auto items = function_instructions(function, TAIL_WINDOW);
+    if (items.empty() || items.back().insn.itype != ARM_br ||
+        std::none_of(items.begin(), items.end(),
+                     [](const native_insn_t &item) { return item.insn.itype == ARM_cset; }))
+        return std::nullopt;
+    struct Guard
+    {
+        Guard() { active = true; }
+        ~Guard() { active = false; }
+    } guard;
+    hexrays_failure_t failure;
+    std::unique_ptr<mba_t> mba(gen_microcode(mba_ranges_t(function), &failure, nullptr,
+                                             DECOMP_NO_CACHE | DECOMP_NO_WAIT, MMAT_GLBOPT3));
+    if (!mba)
+        return std::nullopt;
+    if (const auto targets =
+            indirect_branch_handler_t::proven_targets(function->start_ea, items.back().ea))
+        return targets;
+    for (int index = 0; index < mba->qty; ++index)
+    {
+        mblock_t *block = mba->get_mblock(index);
+        minsn_t *tail = block->tail;
+        if (!tail || tail->opcode != m_ijmp)
+            continue;
+        const auto finite = chernobog::evaluate_finite_targets(tail->d, tail, block);
+        if (!finite || finite->targets.size() != 2 || finite->condition.empty())
+            continue;
+        deobf_ctx_t context;
+        context.mba = mba.get();
+        context.func_ea = function->start_ea;
+        indirect_branch_handler_t::run(mba.get(), &context);
+        return finite->targets_by_condition;
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 int hikari_cfg_handler_t::mode()
@@ -638,12 +687,10 @@ hikari_cfg_stats_t hikari_cfg_handler_t::run()
         }
     }
     stats.root_state_slots = static_cast<int>(root_tables.size());
-    if (!root || root_tables.size() < 4 || root_ambiguous)
-    {
+    const bool legacy_root = root && root_tables.size() >= 4 && !root_ambiguous;
+    if (!legacy_root)
         deobf::log("[hikari_cfg] No unique root state-table initializer found\n");
-        return stats;
-    }
-    const ea_t root_ea = root->start_ea;
+    const ea_t root_ea = legacy_root ? root->start_ea : BADADDR;
 
     std::vector<dispatcher_proof_t> proofs;
     for (ea_t function_ea : function_starts)
@@ -655,7 +702,9 @@ hikari_cfg_stats_t hikari_cfg_handler_t::run()
         if (!tail.empty() && tail.back().insn.itype == ARM_br)
             ++stats.terminal_indirect_branches;
 
-        const auto proof = analyze_dispatcher(function, root_tables, immediates, function_starts);
+        const auto proof =
+            legacy_root ? analyze_dispatcher(function, root_tables, immediates, function_starts)
+                        : std::nullopt;
         if (proof)
             proofs.push_back(*proof);
     }
@@ -670,8 +719,33 @@ hikari_cfg_stats_t hikari_cfg_handler_t::run()
             ++stats.patched_dispatchers;
     }
 
-    std::set<ea_t> reachable = {root_ea};
-    std::deque<ea_t> queue = {root_ea};
+    size_t generic_attempts = 0;
+    for (ea_t function_ea : function_starts)
+    {
+        if (graph.count(function_ea) != 0)
+            continue;
+        func_t *function = get_func(function_ea);
+        const auto tail = function_instructions(function, TAIL_WINDOW);
+        if (tail.empty() || tail.back().insn.itype != ARM_br ||
+            std::none_of(tail.begin(), tail.end(),
+                         [](const native_insn_t &item) { return item.insn.itype == ARM_cset; }))
+            continue;
+        if (++generic_attempts > 64)
+            break;
+        if (const auto targets = recover_table_dispatcher(function))
+        {
+            graph[function_ea] = *targets;
+            ++stats.recovered_dispatchers;
+        }
+    }
+
+    std::set<ea_t> reachable;
+    std::deque<ea_t> queue;
+    if (root_ea != BADADDR)
+    {
+        reachable.insert(root_ea);
+        queue.push_back(root_ea);
+    }
     while (!queue.empty())
     {
         const ea_t source = queue.front();

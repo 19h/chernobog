@@ -8,6 +8,29 @@ namespace chernobog
 namespace arm64_branch
 {
 
+struct IndirectBranch
+{
+    bool call = false;
+    bool authenticated = false;
+    unsigned target_register = 0;
+    unsigned modifier_register = 0;
+};
+
+// IDA uses ARM_br/ARM_blr for both plain and authenticated forms. Decode
+// authentication from the instruction word, independently of SDK enum names.
+inline std::optional<IndirectBranch> decode_indirect(uint32_t word)
+{
+    if ((word & 0xFFDFFC1FU) == 0xD61F0000U)
+        return IndirectBranch{(word & 0x00200000U) != 0, false, (word >> 5) & 31U, 0};
+    if ((word & 0xFEDFF800U) != 0xD61F0800U)
+        return std::nullopt;
+    const bool register_modifier = (word & 0x01000000U) != 0;
+    if (!register_modifier && (word & 31U) != 31U)
+        return std::nullopt;
+    return IndirectBranch{(word & 0x00200000U) != 0, true, (word >> 5) & 31U,
+                          register_modifier ? word & 31U : 32U};
+}
+
 // Encode AArch64 B <target>. The signed imm26 is measured in 4-byte words,
 // giving a byte displacement interval of [-2^27, 2^27 - 4].
 inline std::optional<uint32_t> encode_b(uint64_t source, uint64_t target)

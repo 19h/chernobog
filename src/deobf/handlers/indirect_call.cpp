@@ -1,4 +1,5 @@
 #include "indirect_call.h"
+#include "../analysis/finite_targets.h"
 #include "../analysis/opaque_eval.h"
 #include "../../hybrid/z3_bridge.hpp"
 
@@ -320,9 +321,15 @@ bool indirect_call_handler_t::analyze_indirect_call(mblock_t *blk, minsn_t *call
     // Resolve only the call's own expression. The evaluator recursively folds
     // integer operations and exact loads from non-writable segments; it does
     // not correlate unrelated constants or tables elsewhere in the function.
-    const std::optional<uint64_t> target = call_insn->opcode == m_icall && target_op->t == mop_v
-                                               ? std::optional<uint64_t>(target_op->g)
-                                               : opaque_eval_t::evaluate_operand(*target_op);
+    std::optional<uint64_t> target = call_insn->opcode == m_icall && target_op->t == mop_v
+                                         ? std::optional<uint64_t>(target_op->g)
+                                         : opaque_eval_t::evaluate_operand(*target_op);
+    if (!target)
+    {
+        const auto finite = chernobog::evaluate_finite_targets(*target_op, call_insn, blk, true);
+        if (finite && finite->targets.size() == 1)
+            target = finite->targets.front();
+    }
     if (!target)
     {
         icall_debug("[indirect_call]   Call target expression is not constant\n");
@@ -445,13 +452,10 @@ int indirect_call_handler_t::replace_indirect_call(mbl_array_t *mba, mblock_t *b
             mcallinfo_t *mci = call->d.f;
             mci->callee = ic.resolved_target;
 
-            // Try to get function type for better decompilation
-            tinfo_t func_type;
-            if (get_tinfo(&func_type, ic.resolved_target))
-            {
-                mci->set_type(func_type);
-                icall_debug("[indirect_call]   Set function type from database\n");
-            }
+            // Preserve the analyzed call-site arguments and return locations.
+            // set_type() alone changes the signature without rebuilding the
+            // argument vector, which produces invalid calls (notably imports
+            // whose parameter widths differ from the original pointer type).
 
             // Clear and set l to resolved target
             call->l.erase();

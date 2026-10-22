@@ -1,4 +1,5 @@
 #include "early_hexrays.hpp"
+#include "../deobf/handlers/indirect_branch.h"
 
 #include "analysis_config.hpp"
 #include "get_pc_ida.hpp"
@@ -1427,6 +1428,9 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
 
     bool match(codegen_t &codegen) override
     {
+        if (get_dbctx_id() == owner_database &&
+            indirect_branch_handler_t::is_projected_return(codegen))
+            return true;
         return get_dbctx_id() == owner_database && config.enabled && is_x86_database() &&
                (known_condition(codegen).has_value() ||
                 (config.call_pop_codegen && is_return_instruction(codegen.insn) &&
@@ -1437,6 +1441,15 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
     {
         if (get_dbctx_id() != owner_database)
             return MERR_INSN;
+        if (indirect_branch_handler_t::is_projected_return(codegen))
+        {
+            // The standard generator treats a RET belonging to another IDB
+            // function as an external block. Its proven shared-frame return
+            // has the same IR form as a normal RET/RETAA/RETAB. Native bytes,
+            // including authentication, remain intact.
+            codegen.emit(m_ret, nullptr, nullptr, nullptr);
+            return MERR_OK;
+        }
         if (const auto condition = known_condition(codegen))
             return apply_condition(codegen, *condition);
         if (const auto stub = resolve_stack_stub_return(codegen.insn.ea))
@@ -1492,7 +1505,7 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
 
     bool install_filter()
     {
-        if (installed || !config.enabled || (!config.call_pop_codegen && !config.condition_codegen))
+        if (installed)
             return true;
         installed = install_microcode_filter(this, true);
         return installed;
