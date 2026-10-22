@@ -1,4 +1,5 @@
 #include "early_hexrays.hpp"
+#include "arm64e_hexrays.hpp"
 #include "../deobf/handlers/indirect_branch.h"
 
 #include "analysis_config.hpp"
@@ -1429,7 +1430,8 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
     bool match(codegen_t &codegen) override
     {
         if (get_dbctx_id() == owner_database &&
-            indirect_branch_handler_t::is_projected_return(codegen))
+            (matches_arm64e_primitive(codegen) ||
+             indirect_branch_handler_t::is_projected_return(codegen)))
             return true;
         return get_dbctx_id() == owner_database && config.enabled && is_x86_database() &&
                (known_condition(codegen).has_value() ||
@@ -1441,6 +1443,8 @@ struct EarlyHexRaysAnalysis::Impl final : microcode_filter_t
     {
         if (get_dbctx_id() != owner_database)
             return MERR_INSN;
+        if (matches_arm64e_primitive(codegen))
+            return emit_arm64e_primitive(codegen);
         if (indirect_branch_handler_t::is_projected_return(codegen))
         {
             // The standard generator treats a RET belonging to another IDB

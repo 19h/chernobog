@@ -1580,6 +1580,7 @@ bool arch_params(HybridArch a, bool big_endian, HybridEntryMode entry_mode, int 
         rax_arch = RAX_ARCH_ARM64;
         mode = big_endian ? RAX_MODE_BIG_ENDIAN : RAX_MODE_LITTLE_ENDIAN;
         sp_reg = RAX_ARM64_REG_SP;
+        fp_reg = RAX_ARM64_X(29);
         lr_reg = RAX_ARM64_X(30);
         pc_reg = RAX_ARM64_REG_PC;
         ret_reg = RAX_ARM64_X(0);

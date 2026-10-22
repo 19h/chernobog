@@ -839,6 +839,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         }
         if (cfunc != nullptr && maturity == CMAT_FINAL)
         {
+            indirect_branch_handler_t::restore_projected_function(cfunc->mba);
             if (!is_disabled_mode_enabled() &&
                 chernobog_function_deobfuscation_enabled(cfunc->entry_ea))
                 capture_rotating_string_facts(cfunc);

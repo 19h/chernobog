@@ -118,6 +118,17 @@ try:
     )
     cfunc = ida_hexrays.decompile(root, flags=ida_hexrays.DECOMP_NO_CACHE)
     assert cfunc is not None
+    check("projected decompilation finishes as a function", not cfunc.mba.is_snippet())
+    cached = ida_hexrays.decompile(root)
+    cached_again = ida_hexrays.decompile(root)
+    check(
+        "projected function can be cached and reopened",
+        cached is not None
+        and cached_again is not None
+        and cached.entry_ea == root
+        and cached_again.entry_ea == root
+        and not cached_again.mba.is_snippet(),
+    )
     report["pseudocode"] = "\n".join(
         ida_lines.tag_remove(line.line) for line in cfunc.get_pseudocode()
     )

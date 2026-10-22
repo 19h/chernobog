@@ -398,6 +398,12 @@ int indirect_call_handler_t::replace_indirect_call(mbl_array_t *mba, mblock_t *b
     }
 
     minsn_t *call = ic.call_insn;
+    if (call->d.t != mop_f || call->d.f == nullptr)
+        return 0;
+    const mop_t &original_target = call->opcode == m_icall ? call->r : call->l;
+    if (!chernobog::preserve_indirect_target_effects(blk, ic.top_insn ? ic.top_insn : call,
+                                                     original_target, call))
+        return 0;
 
     icall_debug("[indirect_call]   Before modification: opcode=%d, l.t=%d, r.t=%d, d.t=%d\n",
                 call->opcode, call->l.t, call->r.t, call->d.t);

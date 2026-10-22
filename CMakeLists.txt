@@ -444,6 +444,7 @@ ida_add_plugin(
     src/ida_analysis/get_pc_ida.cpp
     src/ida_analysis/native_engine.cpp
     src/ida_analysis/early_hexrays.cpp
+    src/ida_analysis/arm64e_hexrays.cpp
     src/ida_analysis/evidence_apply.cpp
     src/vm/warbird/model.cpp
     src/vm/warbird/recovery.cpp
@@ -622,6 +623,15 @@ endif()
 # and the alignment-sensitive hashing utilities used by the AST matcher.
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(chernobog_arm64e_tests tests/arm64e_tests.cpp)
+    target_include_directories(chernobog_arm64e_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_features(chernobog_arm64e_tests PRIVATE cxx_std_17)
+    add_test(NAME chernobog.arm64e COMMAND chernobog_arm64e_tests)
+    add_library(chernobog_arm64e_sdk_bridge MODULE tests/ida_arm64e_sdk_bridge.cpp
+                                                   src/deobf/analysis/arch_utils.cpp)
+    target_link_libraries(chernobog_arm64e_sdk_bridge PRIVATE chernobog_mba_sdk idasdk::plugin)
+    target_compile_features(chernobog_arm64e_sdk_bridge PRIVATE cxx_std_17)
+    set_target_properties(chernobog_arm64e_sdk_bridge PROPERTIES PREFIX "")
     add_executable(chernobog_finite_domain_tests tests/finite_domain_tests.cpp)
     target_include_directories(chernobog_finite_domain_tests
                                PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")

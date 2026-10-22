@@ -48,6 +48,15 @@ using projection_key_t = std::pair<ssize_t, ea_t>;
 std::map<projection_key_t, std::map<ea_t, projection_t>> projections;
 std::set<projection_key_t> projection_restarts;
 
+// Function ranges of the microcode arrays that a projection turned into
+// snippets, restored once the decompilation is final.
+struct projected_function_t
+{
+    ssize_t database = 0;
+    decomp_ranges_t ranges;
+};
+std::map<const mba_t *, projected_function_t> projected_functions;
+
 void revoke_projection(const projection_t &proof)
 {
     for (ea_t target : proof.owned_edges)
@@ -302,7 +311,11 @@ int extend_projection(Flowchart *flowchart, bitset_t *reachable, ea_t root, mba_
         rebuild_flowchart(flowchart, ranges);
         if (mba)
         {
+            // Snippet mode lets microcode generation accept fragments owned by
+            // other functions. Remember the function to restore it afterwards.
             auto &decompilation = const_cast<decomp_ranges_t &>(mba->get_decomp_ranges());
+            if (!decompilation.is_snippet())
+                projected_functions[mba] = {get_dbctx_id(), decompilation};
             decompilation.func_ea = BADADDR;
             decompilation.ranges = ranges;
         }
@@ -595,7 +608,8 @@ void replace_cfg_successors(mbl_array_t *mba, mblock_t *src, int target_idx)
 int lower_conditional_targets(mbl_array_t *mba, mblock_t *src,
                               const chernobog::finite_targets_t &finite)
 {
-    if (finite.condition.empty() || finite.targets.size() != 2)
+    if (finite.condition.empty() || finite.targets.size() != 2 ||
+        finite.condition.has_side_effects(true))
         return 0;
     mblock_t *destinations[2] = {nullptr, nullptr};
     for (int index = 0; index < mba->qty; ++index)
@@ -617,6 +631,9 @@ int lower_conditional_targets(mbl_array_t *mba, mblock_t *src,
     if (destinations[0]->serial == src->serial + 1)
     {
         minsn_t *branch = src->tail;
+        const mop_t &original_target = branch->opcode == m_jtbl ? branch->l : branch->d;
+        if (!chernobog::preserve_indirect_target_effects(src, branch, original_target))
+            return 0;
         branch->opcode = m_jcnd;
         branch->l = finite.condition;
         branch->r.erase();
@@ -687,6 +704,8 @@ int resolve_ijmp(mbl_array_t *mba, mblock_t *src, deobf_ctx_t *ctx,
             }
             else if (finite->targets.size() == 1)
                 comment.sprnt("DEOBF: exact indirect target -> %a", finite->targets.front());
+            if (finite->authentication_guarded)
+                comment += " (authentication retained)";
             record_projection(mba, ijmp->ea, *finite, comment);
             if (finite->targets.size() == 1)
                 value = finite->targets.front();
@@ -728,6 +747,8 @@ int resolve_ijmp(mbl_array_t *mba, mblock_t *src, deobf_ctx_t *ctx,
         if (segment && (segment->perm & SEGPERM_EXEC) != 0 && target_function &&
             target_function->start_ea == target_ea)
         {
+            if (!chernobog::preserve_indirect_target_effects(src, ijmp, ijmp->d))
+                return 0;
             const bool already_canonical = ijmp->d.t == mop_v && ijmp->d.g == target_ea;
             add_cref(ijmp->ea, target_ea, fl_JN);
 
@@ -764,6 +785,8 @@ int resolve_ijmp(mbl_array_t *mba, mblock_t *src, deobf_ctx_t *ctx,
                "(target %a)\n",
                src->serial, target_idx, target_ea);
 
+    if (!chernobog::preserve_indirect_target_effects(src, ijmp, ijmp->d))
+        return 0;
     ijmp->opcode = m_goto;
     ijmp->l.make_blkref(target_idx);
     ijmp->r.erase();
@@ -903,6 +926,27 @@ void indirect_branch_handler_t::clear_projections()
             it = projection_restarts.erase(it);
         else
             ++it;
+    for (auto it = projected_functions.begin(); it != projected_functions.end();)
+        if (it->second.database == database)
+            it = projected_functions.erase(it);
+        else
+            ++it;
+}
+
+void indirect_branch_handler_t::restore_projected_function(mba_t *mba)
+{
+    const auto found = projected_functions.find(mba);
+    if (found == projected_functions.end())
+        return;
+    // A function request has to finish as a function: Hex-Rays caches the
+    // result under the microcode's ranges and fails with an internal error
+    // when they describe a snippet. The microcode is final by now, so the
+    // fragments stay decompiled as extra ranges of the function.
+    auto &decompilation = const_cast<decomp_ranges_t &>(mba->get_decomp_ranges());
+    if (found->second.database == get_dbctx_id() && decompilation.is_snippet() &&
+        mba->entry_ea == found->second.ranges.func_ea)
+        decompilation = found->second.ranges;
+    projected_functions.erase(found);
 }
 
 void indirect_branch_handler_t::adjust_fragment_stack(mba_t *mba, stkpnts_t *points)

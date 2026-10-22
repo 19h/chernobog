@@ -1,6 +1,7 @@
 #include "finite_targets.h"
 
 #include "../../common/finite_domain.h"
+#include "../../common/arm64e.h"
 #include "../../common/ida_memory.h"
 
 #include <limits>
@@ -31,6 +32,27 @@ std::optional<uint64_t> read_immutable(uint64_t address, int bytes)
     return ida_memory::read_integer(ea_t(address), bytes);
 }
 
+bool stable_key_interval(ea_t sign, ea_t use)
+{
+    if (sign == BADADDR || use <= sign || use - sign > 256 || (sign & 3U) || (use & 3U))
+        return false;
+    func_t *function = get_func(sign);
+    if (!function || get_func(use) != function)
+        return false;
+    for (ea_t ea = sign + 4; ea < use; ea += 4)
+    {
+        insn_t ins;
+        if (!func_contains(function, ea) || decode_insn(&ins, ea) != 4 ||
+            (ins.get_canon_feature(PH) & (CF_CALL | CF_JUMP | CF_STOP)) != 0)
+            return false;
+        const uint32_t word = get_dword(ea);
+        if ((word & 0xFF000000U) == 0xD4000000U ||
+            ((word & 0xFFC00000U) == 0xD5000000U && word != 0xD503201FU && !arm64e::decode(word)))
+            return false;
+    }
+    return true;
+}
+
 class Builder
 {
   public:
@@ -56,6 +78,7 @@ class Builder
     Graph graph;
     std::map<uint64_t, mop_t> conditions;
     std::vector<finite_targets_t::dependency_t> dependencies;
+    bool authentication_guarded = false;
 
     Id operand(const mop_t &op, const minsn_t *before, unsigned depth = 0)
     {
@@ -93,6 +116,15 @@ class Builder
 
   private:
     const mblock_t *block_;
+    struct SignedPointer
+    {
+        Id raw;
+        Id modifier;
+        arm64e::Key key;
+        ea_t site;
+    };
+    std::map<Id, SignedPointer> signed_;
+    std::map<std::tuple<ea_t, Id, Id, arm64e::Key, const minsn_t *>, Id> signatures_;
     bool bounded_ = true;
     size_t scans_ = 0;
     uint64_t next_token_ = 1;
@@ -136,8 +168,8 @@ class Builder
         {
             if (++scans_ > 32768)
                 return before;
-            if (ins->contains_call(true) || ins->opcode == m_stx || ins->d.t == mop_v ||
-                ins->d.t == mop_S)
+            if (ins->contains_call(true) || ins->opcode == m_ext || ins->opcode == m_stx ||
+                ins->d.t == mop_v || ins->d.t == mop_S)
                 return ins;
         }
         return nullptr;
@@ -194,6 +226,8 @@ class Builder
                                        graph.constant(uint64_t((op.r - ins->d.r) * 8), 1));
                 return graph.make(Op::low, op.size, value);
             }
+            if (ins->opcode == m_ext || (ins->is_mbarrier() && !ins->contains_call(true)))
+                return invalid;
             if (ins->contains_call(true))
             {
                 // Reaching definitions must stop at ABI clobbers. In
@@ -207,9 +241,113 @@ class Builder
         return unknown(3, uint64_t(op.r), op.size, nullptr);
     }
 
+    Id helper(const minsn_t &ins, const minsn_t *before, unsigned depth)
+    {
+        if (ins.opcode != m_call || ins.l.t != mop_h || !ins.l.helper || ins.d.t != mop_f ||
+            !ins.d.f)
+            return invalid;
+        const auto native = arm64e::decode(get_dword(ins.ea));
+        if (!native)
+            return invalid;
+        const auto &arguments = ins.d.f->args;
+        if (std::string_view(ins.l.helper) == "__arm64e_load64")
+        {
+            if (native->kind != arm64e::Kind::load || arguments.size() != 1 ||
+                arguments[0].size != 8)
+                return invalid;
+            return graph.make(Op::load, 8, operand(arguments[0], before, depth + 1));
+        }
+        const auto primitive = arm64e::helper_instruction(ins.l.helper);
+        if (!primitive || primitive->key != native->key ||
+            (primitive->kind != native->kind &&
+             !(primitive->kind == arm64e::Kind::authenticate &&
+               native->kind == arm64e::Kind::load) &&
+             !(primitive->kind == arm64e::Kind::branch && native->kind == arm64e::Kind::call)) ||
+            arguments.size() != (primitive->kind == arm64e::Kind::strip ? 1 : 2) ||
+            std::any_of(arguments.begin(), arguments.end(),
+                        [](const auto &arg) { return arg.size != 8; }))
+            return invalid;
+        if (primitive->kind == arm64e::Kind::generic)
+            return unknown(9, ins.ea, 8, before);
+        const Id input = operand(arguments[0], before, depth + 1);
+        if (input == invalid)
+            return invalid;
+        if (primitive->kind == arm64e::Kind::sign)
+        {
+            const Id modifier = operand(arguments[1], before, depth + 1);
+            if (modifier == invalid)
+                return invalid;
+            const auto signature = std::make_tuple(ins.ea, input, modifier, primitive->key, before);
+            const auto old = signatures_.find(signature);
+            if (old != signatures_.end())
+                return old->second;
+            const Id signed_value = graph.variable(next_token_++, 8, 64);
+            signatures_[signature] = signed_value;
+            signed_[signed_value] = {input, modifier, primitive->key, ins.ea};
+            return signed_value;
+        }
+        const auto origin = signed_.find(input);
+        if (origin == signed_.end())
+        {
+            // IDB relocations expose raw address origins, without runtime PAC
+            // fields. A combined authenticating branch/load has only these
+            // normal-completion addresses; its non-pure IR guard stays live.
+            // Standalone AUT/XPAC and arbitrary signed integers get no such
+            // interpretation.
+            if ((primitive->kind != arm64e::Kind::authenticate ||
+                 native->kind != arm64e::Kind::load) &&
+                (primitive->kind != arm64e::Kind::branch ||
+                 (native->kind != arm64e::Kind::branch && native->kind != arm64e::Kind::call)))
+                return invalid;
+            const auto addresses = graph.enumerate(input);
+            if (!addresses || addresses->results.empty())
+                return invalid;
+            for (uint64_t address : addresses->results)
+            {
+                const segment_t *segment = getseg(ea_t(address));
+                const flags64_t flags = get_flags(ea_t(address));
+                const bool memory = native->kind == arm64e::Kind::load;
+                if (!segment || (memory ? (segment->perm & SEGPERM_READ) == 0
+                                        : !((segment->perm & SEGPERM_EXEC) && is_code(flags) &&
+                                            is_head(flags)) &&
+                                              !(segment->type == SEG_XTRN && has_any_name(flags))))
+                    return invalid;
+            }
+            authentication_guarded = true;
+            return input;
+        }
+        if (!stable_key_interval(origin->second.site, ins.ea))
+            return invalid;
+        // Signing overwrites PAC bits. An arbitrary integer is not an address
+        // identity under AUT/XPAC, even when its key and modifier match.
+        const auto raw_addresses = graph.enumerate(origin->second.raw);
+        if (!raw_addresses || raw_addresses->results.empty() ||
+            std::any_of(raw_addresses->results.begin(), raw_addresses->results.end(),
+                        [](uint64_t address)
+                        {
+                            const segment_t *segment = getseg(ea_t(address));
+                            return !segment ||
+                                   ((segment->perm & (SEGPERM_READ | SEGPERM_EXEC)) == 0 &&
+                                    segment->type != SEG_XTRN);
+                        }))
+            return invalid;
+        if (primitive->kind == arm64e::Kind::strip)
+            return arm64e::same_strip_domain(primitive->key, origin->second.key)
+                       ? origin->second.raw
+                       : invalid;
+        const Id modifier = operand(arguments[1], before, depth + 1);
+        return primitive->key == origin->second.key && modifier == origin->second.modifier
+                   ? origin->second.raw
+                   : invalid;
+    }
+
     Id instruction(const minsn_t &ins, const minsn_t *before, unsigned depth)
     {
-        if (depth > 96 || ins.is_fpinsn() || ins.is_mbarrier())
+        if (depth > 96 || ins.is_fpinsn())
+            return invalid;
+        if (ins.opcode == m_call)
+            return helper(ins, before, depth);
+        if (ins.is_mbarrier())
             return invalid;
         const int bytes = ins.d.size > 0 ? ins.d.size : 8;
         if (!bitvector::valid_byte_width(bytes))
@@ -305,6 +443,48 @@ class Builder
 
 } // namespace
 
+bool preserve_indirect_target_effects(mblock_t *block, minsn_t *top, const mop_t &target,
+                                      const minsn_t *selected_call)
+{
+    if (!target.has_side_effects(true))
+        return true;
+    if (!block || !top || !bitvector::valid_byte_width(target.size))
+        return false;
+    struct Calls : minsn_visitor_t
+    {
+        std::set<const minsn_t *> calls;
+        size_t inspected = 0;
+        int idaapi visit_minsn() override
+        {
+            if (++inspected > 32768)
+                return 1;
+            if (is_mcode_call(curins->opcode))
+                calls.insert(curins);
+            return 0;
+        }
+    } allowed, enclosing;
+    if (target.t == mop_d && target.d)
+        target.d->for_all_insns(allowed);
+    if (selected_call)
+        allowed.calls.insert(selected_call);
+    top->for_all_insns(enclosing);
+    if (allowed.inspected > 32768 || enclosing.inspected > 32768 ||
+        !std::includes(allowed.calls.begin(), allowed.calls.end(), enclosing.calls.begin(),
+                       enclosing.calls.end(), std::less<const minsn_t *>()))
+        return false;
+    const mreg_t temporary = block->mba->alloc_kreg(size_t(target.size));
+    if (temporary == mr_none)
+        return false;
+    auto *evaluation = new minsn_t(top->ea);
+    evaluation->opcode = m_mov;
+    evaluation->l = target;
+    evaluation->d.make_reg(temporary, target.size);
+    block->insert_into_block(evaluation, top->prev);
+    block->mark_lists_dirty();
+    block->mba->mark_chains_dirty();
+    return true;
+}
+
 void reset_finite_table_history(ea_t function)
 {
     const HistoryKey key{get_dbctx_id(), function};
@@ -338,8 +518,8 @@ int fold_finite_table_expressions(mba_t *mba)
                     mba->mark_chains_dirty();
                 return changes;
             }
-            if (ins->d.t != mop_r || ins->opcode == m_call || ins->opcode == m_icall ||
-                ins->opcode == m_mov || ins->is_mbarrier() || ins->is_fpinsn())
+            if (ins->d.t != mop_r || ins->contains_call(true) || ins->opcode == m_mov ||
+                ins->is_mbarrier() || ins->is_fpinsn())
                 continue;
             if (ins->opcode != m_ldx && !has_load(has_load, ins->l, 0) &&
                 !has_load(has_load, ins->r, 0))
@@ -384,6 +564,7 @@ std::optional<finite_targets_t> evaluate_finite_targets(const mop_t &operand, co
     if (!values || values->results.empty() || builder.graph.failed())
         return std::nullopt;
     finite_targets_t result;
+    result.authentication_guarded = builder.authentication_guarded;
     result.dependencies = std::move(builder.dependencies);
     const auto history = fold_history.find({get_dbctx_id(), block->mba->entry_ea});
     if (history != fold_history.end())

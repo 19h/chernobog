@@ -45,6 +45,9 @@ translated to the incoming frame, and the omitted frame-pointer setup is
 represented explicitly in microcode. The frame interpretation relies on IDA's
 frame and stack-point metadata.
 
+The temporary snippet range view is restored to the function request when the
+ctree is final, so projected functions can be cached and reopened normally.
+
 Code bytes, table bytes, memory permissions, function ranges, and frame metadata
 are checked before a cached view is reused. A stale proof removes only the
 resolver's own edges and comment and causes a fresh analysis. User-owned edges
@@ -84,3 +87,6 @@ changing a table byte or its segment permissions. It also captures the resulting
 pseudocode, including a resolved authenticated helper call whose used return
 value is nested inside another microcode instruction. The fixture contains no
 bytes from an external application.
+
+ARM64e value semantics, authentication guards and pointer-origin proofs are
+described in [ARM64e primitive support](arm64e-primitives.md).

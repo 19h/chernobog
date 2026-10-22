@@ -33,12 +33,12 @@ bool is_64bit();  // Any 64-bit architecture
 // First function argument register
 // x86-64 System V: RDI (7)
 // x86-64 Windows:  RCX (1)
-// ARM64:           X0 (0)
+// ARM64:           X0 (processor-module register number)
 int get_first_arg_reg();
 
 // Return value register
 // x86-64: RAX (0)
-// ARM64:  X0 (0)
+// ARM64:  X0 (processor-module register number)
 int get_return_reg();
 
 //--------------------------------------------------------------------------

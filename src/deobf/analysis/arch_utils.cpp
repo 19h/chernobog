@@ -1,4 +1,5 @@
 #include "arch_utils.h"
+#include "../../common/arm64e.h"
 #include "../../common/ida_memory.h"
 
 // IDA's unified instruction enumeration contains both Intel and ARM IDs.
@@ -34,7 +35,7 @@ int get_first_arg_reg()
     }
     else if (is_arm64())
     {
-        return 0; // X0
+        return str2reg("X0"); // IDA native register number, not architectural encoding
     }
     else if (is_x86())
     {
@@ -56,7 +57,7 @@ int get_return_reg()
     }
     else if (is_arm())
     {
-        return 0; // (X/R)0
+        return str2reg(is_arm64() ? "X0" : "R0");
     }
     return -1;
 }
@@ -164,8 +165,9 @@ bool is_identity_mov(const insn_t &insn)
     {
         // Check for: mov x0, x0 (explicit identity)
         // This is rare; usually ARM64 identity functions just return
-        if (insn.itype == ARM_mov && insn.Op1.type == o_reg && insn.Op1.reg == 0 &&
-            insn.Op2.type == o_reg && insn.Op2.reg == 0)
+        if (insn.itype == ARM_mov && insn.Op1.type == o_reg && insn.Op1.reg == get_return_reg() &&
+            insn.Op2.type == o_reg && insn.Op2.reg == get_first_arg_reg() &&
+            get_dtype_size(insn.Op1.dtype) == 8 && get_dtype_size(insn.Op2.dtype) == 8)
         {
             return true;
         }
@@ -239,8 +241,8 @@ bool analyze_identity_function(ea_t ea)
     if (!func)
         return false;
 
-    // Identity functions are typically very short (< 32 bytes for x86, < 16 bytes for ARM64)
-    size_t max_size = is_arm64() ? 16 : 32;
+    // Bound identity scanning, including ARM64 landing pads and protected returns.
+    size_t max_size = is_arm64() ? 40 : 32;
     if (func->end_ea - func->start_ea > max_size)
         return false;
 
@@ -248,6 +250,7 @@ bool analyze_identity_function(ea_t ea)
     insn_t insn;
     int insn_count = 0;
     bool saw_identity_mov = false;
+    std::optional<chernobog::arm64e::Instruction> signed_lr;
 
     while (curr < func->end_ea && insn_count < 10)
     {
@@ -263,6 +266,37 @@ bool analyze_identity_function(ea_t ea)
             continue;
         }
 
+        if (is_arm64())
+        {
+            const auto primitive = chernobog::arm64e::decode(get_dword(curr));
+            if (primitive && primitive->kind == chernobog::arm64e::Kind::landing_pad)
+            {
+                // A call landing pad accepts a normal BL/BLR entry. BTI J
+                // does not, so it cannot justify eliminating a call.
+                if (primitive->modifier == 2)
+                    return false;
+                curr += 4;
+                continue;
+            }
+            if (primitive && primitive->implicit && primitive->destination == 30)
+            {
+                using chernobog::arm64e::Kind;
+                if (primitive->kind == Kind::sign && !signed_lr)
+                    signed_lr = primitive;
+                else if (primitive->kind == Kind::authenticate && signed_lr &&
+                         primitive->key == signed_lr->key &&
+                         primitive->zero_modifier == signed_lr->zero_modifier &&
+                         primitive->modifier == signed_lr->modifier)
+                    signed_lr.reset();
+                else if (primitive->kind == Kind::strip && signed_lr)
+                    signed_lr.reset();
+                else
+                    return false;
+                curr += 4;
+                continue;
+            }
+        }
+
         if (is_identity_mov(insn))
         {
             if (saw_identity_mov)
@@ -276,7 +310,16 @@ bool analyze_identity_function(ea_t ea)
         {
             // AArch64 returns X0 unchanged without an explicit move. AMD64
             // must transfer the ABI's first-argument register into RAX.
-            return is_arm64() || (is_x86_64() && saw_identity_mov);
+            if (is_arm64())
+            {
+                const uint32_t word = get_dword(curr);
+                const auto primitive = chernobog::arm64e::decode(word);
+                if (primitive && primitive->kind == chernobog::arm64e::Kind::ret)
+                    return signed_lr && primitive->key == signed_lr->key &&
+                           !signed_lr->zero_modifier && signed_lr->modifier == 31;
+                return word == 0xD65F03C0U && !signed_lr;
+            }
+            return is_x86_64() && saw_identity_mov;
         }
 
         // Any arithmetic, memory access, call, or control-flow instruction can
