@@ -19,8 +19,9 @@
 // well as on which magic was accepted.
 //
 // MERR_LOOP is not one of those two. Hex-Rays moved it from -36 to -37 on
-// 2026-06-30, while the 9.4 decompiler still answered magic 5. That decision
-// stays in hexrays_compat.h, keyed by get_hexrays_version().
+// 2026-06-30, while the 9.4 decompiler still answered magic 5, and later back
+// to -36. That decision stays in hexrays_compat.h, keyed by
+// get_hexrays_version() and the decompiler's description of -36.
 //
 // Pure: no IDA headers, so the decisions are testable without a database.
 

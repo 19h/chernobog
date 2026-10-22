@@ -1,6 +1,7 @@
 #ifndef CHERNOBOG_HEXRAYS_COMPAT_H
 #define CHERNOBOG_HEXRAYS_COMPAT_H
 
+#include <cstring>
 #include <limits>
 
 namespace chernobog::hexrays_compat
@@ -76,17 +77,34 @@ inline bool uses_timeout_merror_layout(const char *runtime_version)
     return version.build_date >= first_timeout_layout.build_date;
 }
 
-// MERR_LOOP is -36 before the timeout insertion and -37 after it, including
-// every 9.5 decompiler. compiled_merr_loop is the enumerator in the SDK this
-// binary was built against. An unreadable runtime version keeps that value.
-inline int merr_loop_value(const char *runtime_version, int compiled_merr_loop)
+// Later decompilers restored MERR_LOOP to -36 and moved MERR_TIMEOUT to -37.
+// The version string does not tell the two timeout-era layouts apart, so the
+// loaded decompiler decides: in the shifted layout it describes -36 as the
+// timeout. Returning the wrong value from hxe_glbopt fails the function with
+// "decompilation timed out".
+inline bool is_shifted_timeout_desc(const char *minus36_desc)
+{
+    return minus36_desc != nullptr && std::strcmp(minus36_desc, "decompilation timed out") == 0;
+}
+
+// MERR_LOOP is -36 before the timeout insertion, -37 while the timeout held
+// -36, and -36 again once it was restored. compiled_merr_loop is the enumerator
+// in the SDK this binary was built against; an unreadable runtime version keeps
+// that value. minus36_desc is the loaded decompiler's description of -36, or
+// nullptr when it was not queried, which assumes the shifted layout.
+inline int merr_loop_value(const char *runtime_version, int compiled_merr_loop,
+                           const char *minus36_desc = nullptr)
 {
     constexpr int pre_timeout_loop = -36;
     constexpr int timeout_loop = -37;
     decompiler_version_t version;
     if (!parse_decompiler_version(runtime_version, &version))
         return compiled_merr_loop;
-    return uses_timeout_merror_layout(runtime_version) ? timeout_loop : pre_timeout_loop;
+    if (!uses_timeout_merror_layout(runtime_version))
+        return pre_timeout_loop;
+    if (minus36_desc != nullptr && !is_shifted_timeout_desc(minus36_desc))
+        return pre_timeout_loop;
+    return timeout_loop;
 }
 
 } // namespace chernobog::hexrays_compat

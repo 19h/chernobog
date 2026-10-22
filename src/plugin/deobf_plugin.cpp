@@ -50,15 +50,21 @@ static void debug_log(const char *fmt, ...)
 // MERR_LOOP is an internal callback control value and therefore must match the
 // loaded decompiler, not merely the header used to compile this plugin. The
 // 2026-06-30 timeout addition inserted MERR_TIMEOUT at -36 and shifted
-// MERR_LOOP to -37. IDA 9.5 keeps that numbering. A 9.4 header still defines
-// -36; a 9.5 header already defines -37.
+// MERR_LOOP to -37; later decompilers restored MERR_LOOP to -36 and moved
+// MERR_TIMEOUT to -37. The decompiler's description of -36 tells the two
+// timeout-era layouts apart.
 static merror_t compatible_merr_loop()
 {
     static const merror_t runtime_value = []() -> merror_t
     {
         const char *runtime_version = get_hexrays_version();
         const int compiled = static_cast<int>(MERR_LOOP);
-        const int resolved = chernobog::hexrays_compat::merr_loop_value(runtime_version, compiled);
+        // Older decompilers have no description for -36.
+        qstring minus36_desc;
+        if (chernobog::hexrays_compat::uses_timeout_merror_layout(runtime_version))
+            get_merror_desc(&minus36_desc, static_cast<merror_t>(-36), nullptr);
+        const int resolved = chernobog::hexrays_compat::merr_loop_value(
+            runtime_version, compiled, minus36_desc.empty() ? nullptr : minus36_desc.c_str());
         if (resolved != compiled)
         {
             debug_log("[chernobog] Hex-Rays %s MERR_LOOP=%d (header %d)\n",

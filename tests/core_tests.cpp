@@ -251,6 +251,15 @@ void test_hexrays_merror_layout_compatibility()
               merr_loop_value("9.5.0.260701", -37) == -37 &&
               merr_loop_value("10.0.0.270101", -36) == -37,
           "timeout-era and 9.5 decompilers use MERR_LOOP -37");
+    check(merr_loop_value("9.5.0.260701", -36, "decompilation timed out") == -37 &&
+              merr_loop_value("9.4.0.260717", -36, "decompilation timed out") == -37,
+          "shifted timeout layout describes -36 as the timeout");
+    check(merr_loop_value("9.5.0.261021", -37, "other") == -36 &&
+              merr_loop_value("9.5.0.261021", -36, "other") == -36 &&
+              merr_loop_value("10.0.0.270101", -37, "other") == -36,
+          "restored layout keeps MERR_LOOP at -36");
+    check(merr_loop_value("9.4.0.260629", -37, "decompilation timed out") == -36,
+          "pre-timeout decompiler ignores the -36 description");
     check(merr_loop_value(nullptr, -36) == -36 && merr_loop_value(nullptr, -37) == -37 &&
               merr_loop_value("9.4.0", -37) == -37 &&
               merr_loop_value("9.4.0.99999999999999999999", -36) == -36,
