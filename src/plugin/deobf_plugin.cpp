@@ -718,10 +718,13 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             deobf_ctx_t branch_ctx;
             branch_ctx.mba = mba;
             branch_ctx.func_ea = mba->entry_ea;
-            const bool transfers =
-                chernobog_t::has_indirect_branches(mba) || indirect_call_handler_t::detect(mba);
+            const bool calls = indirect_call_handler_t::detect(mba);
+            const bool transfers = chernobog_t::has_indirect_branches(mba) || calls;
             int changes = transfers ? chernobog::fold_finite_table_expressions(mba) : 0;
-            if (changes > 0)
+            // Global propagation can expose a call target even when this pass
+            // did not fold another table expression. Revisit those operands
+            // before completing optimization, retaining the analyzed ABI.
+            if (calls)
                 changes += indirect_call_handler_t::run(mba, &branch_ctx);
             if (chernobog_t::has_indirect_branches(mba))
             {

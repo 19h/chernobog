@@ -44,6 +44,7 @@ class indirect_call_handler_t
     {
         int block_idx;        // Block containing the call
         minsn_t *call_insn;   // The call instruction
+        minsn_t *top_insn;    // Owner used for reaching definitions
         ea_t table_addr;      // Global table base address
         int table_index;      // Index into table (-1 if variable)
         int64_t offset;       // Offset subtracted from table entry
@@ -52,8 +53,8 @@ class indirect_call_handler_t
         qstring target_name;  // Name of resolved target (if any)
 
         indirect_call_t()
-            : block_idx(-1), call_insn(nullptr), table_addr(BADADDR), table_index(-1), offset(0),
-              resolved_target(BADADDR), is_resolved(false)
+            : block_idx(-1), call_insn(nullptr), top_insn(nullptr), table_addr(BADADDR),
+              table_index(-1), offset(0), resolved_target(BADADDR), is_resolved(false)
         {
         }
     };

@@ -46,47 +46,39 @@ static flags64_t get_flags_safe(ea_t ea)
 // Pattern 1: icall with computed target
 // Pattern 2: call with target loaded from table and modified
 //--------------------------------------------------------------------------
+namespace
+{
+struct computed_call_collector_t final : minsn_visitor_t
+{
+    std::vector<minsn_t *> calls;
+    size_t inspected = 0;
+    bool first_only = false;
+
+    int idaapi visit_minsn() override
+    {
+        if (++inspected > 32768)
+            return 1;
+        if (curins &&
+            (curins->opcode == m_icall ||
+             (curins->opcode == m_call && (curins->l.t == mop_r || curins->l.t == mop_d))))
+        {
+            calls.push_back(curins);
+            if (first_only || calls.size() >= 256)
+                return 1;
+        }
+        return 0;
+    }
+};
+} // namespace
+
 bool indirect_call_handler_t::detect(mbl_array_t *mba)
 {
     if (!mba)
         return false;
-
-    icall_debug("[indirect_call] detect() called for func 0x%llx\n",
-                (unsigned long long)mba->entry_ea);
-
-    // Look for icall instructions or calls with complex computed targets
-    for (int i = 0; i < mba->qty; ++i)
-    {
-        mblock_t *blk = mba->get_mblock(i);
-        if (!blk)
-            continue;
-
-        for (minsn_t *ins = blk->head; ins; ins = ins->next)
-        {
-            // Check for icall (indirect call)
-            if (ins->opcode == m_icall)
-            {
-                icall_debug("[indirect_call] Found m_icall in block %d\n", i);
-                return true;
-            }
-
-            // Check for call with computed target
-            // A direct call has l operand as mop_v (global) or mop_a (address)
-            // A computed call has l operand as mop_r (register) or mop_d (result of computation)
-            if (ins->opcode == m_call)
-            {
-                if (ins->l.t == mop_r || ins->l.t == mop_d)
-                {
-                    icall_debug("[indirect_call] Found m_call with computed target in block %d\n",
-                                i);
-                    return true;
-                }
-            }
-        }
-    }
-
-    icall_debug("[indirect_call] No indirect call patterns detected\n");
-    return false;
+    computed_call_collector_t visitor;
+    visitor.first_only = true;
+    mba->for_all_insns(visitor);
+    return !visitor.calls.empty();
 }
 
 //--------------------------------------------------------------------------
@@ -155,51 +147,31 @@ indirect_call_handler_t::find_indirect_calls(mbl_array_t *mba)
     if (!mba)
         return result;
 
-    // First pass: look for explicit icall/call with computed target
-    for (int i = 0; i < mba->qty; ++i)
+    // Calls with a used return value can be nested inside another instruction.
+    // Keep the top-level owner as the reaching-definition boundary. Collect
+    // children before parents so rewriting a parent's target cannot invalidate
+    // a call pointer that is still waiting to be processed.
+    computed_call_collector_t visitor;
+    for (int i = 0; i < mba->qty && visitor.inspected <= 32768 && result.size() < 256; ++i)
     {
         mblock_t *blk = mba->get_mblock(i);
         if (!blk)
             continue;
-
-        for (minsn_t *ins = blk->head; ins; ins = ins->next)
+        for (minsn_t *top = blk->head; top && visitor.inspected <= 32768 && result.size() < 256;
+             top = top->next)
         {
-            bool is_indirect = false;
-
-            // Check for icall
-            if (ins->opcode == m_icall)
-            {
-                is_indirect = true;
-            }
-            // Check for call with computed target
-            else if (ins->opcode == m_call)
-            {
-                if (ins->l.t == mop_r || ins->l.t == mop_d)
-                {
-                    is_indirect = true;
-                }
-            }
-
-            if (is_indirect)
+            visitor.calls.clear();
+            top->for_all_insns(visitor);
+            for (auto call = visitor.calls.rbegin(); call != visitor.calls.rend(); ++call)
             {
                 indirect_call_t ic;
                 ic.block_idx = i;
-                ic.call_insn = ins;
-                ic.table_addr = BADADDR;
-                ic.table_index = -1;
-                ic.offset = 0;
-                ic.resolved_target = BADADDR;
-                ic.is_resolved = false;
-
-                // Try to analyze and resolve
-                if (analyze_indirect_call(blk, ins, &ic))
-                {
-                    icall_debug(
-                        "[indirect_call] Analyzed call in block %d: table=0x%llx, index=%d, offset=%lld\n",
-                        i, (unsigned long long)ic.table_addr, ic.table_index, (long long)ic.offset);
-                }
-
-                result.push_back(ic);
+                ic.call_insn = *call;
+                ic.top_insn = top;
+                analyze_indirect_call(blk, *call, &ic);
+                result.push_back(std::move(ic));
+                if (result.size() >= 256)
+                    break;
             }
         }
     }
@@ -326,7 +298,8 @@ bool indirect_call_handler_t::analyze_indirect_call(mblock_t *blk, minsn_t *call
                                          : opaque_eval_t::evaluate_operand(*target_op);
     if (!target)
     {
-        const auto finite = chernobog::evaluate_finite_targets(*target_op, call_insn, blk, true);
+        const auto finite = chernobog::evaluate_finite_targets(
+            *target_op, out->top_insn ? out->top_insn : call_insn, blk, true);
         if (finite && finite->targets.size() == 1)
             target = finite->targets.front();
     }

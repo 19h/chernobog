@@ -136,8 +136,8 @@ class Builder
         {
             if (++scans_ > 32768)
                 return before;
-            if (ins->opcode == m_call || ins->opcode == m_icall || ins->opcode == m_stx ||
-                ins->d.t == mop_v || ins->d.t == mop_S)
+            if (ins->contains_call(true) || ins->opcode == m_stx || ins->d.t == mop_v ||
+                ins->d.t == mop_S)
                 return ins;
         }
         return nullptr;
@@ -194,7 +194,7 @@ class Builder
                                        graph.constant(uint64_t((op.r - ins->d.r) * 8), 1));
                 return graph.make(Op::low, op.size, value);
             }
-            if (ins->opcode == m_call || ins->opcode == m_icall)
+            if (ins->contains_call(true))
             {
                 // Reaching definitions must stop at ABI clobbers. In
                 // particular, never correlate two caller-saved values across

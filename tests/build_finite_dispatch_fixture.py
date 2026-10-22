@@ -34,6 +34,13 @@ _main:
     adrp x28, _pointer_table@PAGE
     add x28, x28, _pointer_table@PAGEOFF
     ldr x28, [x28, w9, uxtw #3]
+    ldr w0, [x29, #16]
+    ldr x8, [x28]
+    mov x17, #0x1234
+.globl _call_site
+_call_site:
+    blraa x8, x17
+    str w0, [x29, #16]
     ldr w8, [x29, #16]
     cmp w8, #7
     cset w9, eq
@@ -64,6 +71,12 @@ _fragment_true:
     ldp x29, x30, [sp], #32
     retab
 
+.p2align 2
+.globl _identity_helper
+_identity_helper:
+    add w0, w0, #0
+    ret
+
 .data
 .p2align 3
 .globl _runtime
@@ -91,7 +104,8 @@ _pointer_table:
     .space 8 * 0xe5
     .quad _target_table
 _target_table:
-    .space 8 * 0x38e4
+    .quad _identity_helper
+    .space 8 * (0x38e4 - 1)
     .quad _fragment_false
     .space 8 * (0x6524 - 0x38e4 - 1)
     .quad _fragment_true

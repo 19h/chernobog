@@ -22,12 +22,13 @@ unsupported operation, or exhausted bound prevents a proof.
 | Scalar table folding | 32 candidates and a 20 ms pass budget |
 | Memory | Exact reads from readable, non-writable segments |
 | Calls | Existing executable entries or named external symbols; retain the call-site ABI |
+| Call scanning | Top-level and nested instructions; at most 32,768 instructions and 256 calls |
 
 For `N` expression nodes and `A` admitted assignments, one enumeration uses
 at most `A * N` node evaluations. Ordered-map lookups add
 `O(log(N + R))` overhead per lookup, and storage is `O(N + R + A)`, where
-`R` is the number of distinct table reads. All limits fail closed. Folding carries its original table-byte
-dependencies into later target proofs so a folded base does not conceal the
+`R` is the number of distinct table reads. All limits fail closed. Folding
+carries its original table-byte dependencies into later target proofs so a folded base does not conceal the
 evidence needed to invalidate a cached result.
 
 ## Conditional control flow and frames
@@ -55,6 +56,15 @@ Native encoding checks distinguish authentication. Resolving these transfers
 does not validate a PAC. Direct native patching is disabled for authenticated
 forms, and their bytes remain unchanged.
 
+## Model assumptions
+
+| Assumption | Falsification probe or boundary |
+| --- | --- |
+| Read-only IDB bytes describe the tables | Change any consulted byte or its segment permissions; the cached projection is rejected |
+| IDA frame and stack metadata describe the inherited frame | Change the root frame size/offset or the source stack delta; the cached projection is rejected |
+| An authenticated transfer passes its runtime authentication check | PAC execution is not modeled or tested; native authenticated instructions remain intact |
+| The predicate may be either Boolean value | Both are enumerated; this overapproximation does not prove that each is reachable |
+
 ## Verification
 
 `chernobog.finite_domain` checks correlated lookups, Boolean target polarity,
@@ -71,4 +81,6 @@ Run `tests/ida_finite_dispatch_probe.py` with `tests/run_ida_smoke.py` and an
 explicit plugin artifact. The probe checks both successors, the projected
 frame, unchanged native bytes and function owners, and invalidation after
 changing a table byte or its segment permissions. It also captures the resulting
-pseudocode. The fixture contains no bytes from an external application.
+pseudocode, including a resolved authenticated helper call whose used return
+value is nested inside another microcode instruction. The fixture contains no
+bytes from an external application.
