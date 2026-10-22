@@ -77,6 +77,7 @@ class Builder
 
     Graph graph;
     std::map<uint64_t, mop_t> conditions;
+    std::map<uint64_t, std::pair<const mblock_t *, const minsn_t *>> condition_points;
     std::vector<finite_targets_t::dependency_t> dependencies;
     bool authentication_guarded = false;
 
@@ -87,7 +88,7 @@ class Builder
 
     Id operand(const mop_t &op, const minsn_t *before, unsigned depth = 0)
     {
-        if (!bounded_ || depth > 96 || !bitvector::valid_byte_width(op.size))
+        if (!bounded_ || depth > 96 || !bitvector::valid_byte_width(op.size) || op.is_undef_val())
             return invalid;
         switch (op.t)
         {
@@ -98,6 +99,16 @@ class Builder
         case mop_a:
             if (op.a && op.a->t == mop_v)
                 return graph.constant(op.a->g, op.size);
+            if (op.a && op.a->t == mop_S && op.a->s && op.a->oprops == 0 && block_ &&
+                op.a->s->mba == block_->mba)
+            {
+                const auto key =
+                    std::make_tuple(op.a->s->off, op.a->size, op.a->insize, op.a->outsize);
+                auto [entry, inserted] = address_tokens_.emplace(key, next_token_);
+                if (inserted)
+                    ++next_token_;
+                return graph.variable(entry->second, op.size, unsigned(op.size * 8));
+            }
             return invalid;
         case mop_v:
             if (const auto value = read(op.g, op.size))
@@ -136,6 +147,7 @@ class Builder
     uint64_t next_token_ = 1;
     using Key = std::tuple<int, uint64_t, int, const minsn_t *>;
     std::map<Key, uint64_t> tokens_;
+    std::map<std::tuple<sval_t, int, int, int>, uint64_t> address_tokens_;
     std::map<std::pair<const minsn_t *, int>, Id> definitions_;
     std::map<const minsn_t *, const mblock_t *> owners_;
 
@@ -181,7 +193,7 @@ class Builder
         return nullptr;
     }
 
-    Id stack(const mop_t &op, const minsn_t *before, unsigned depth)
+    Id local_stack(const mop_t &op, const minsn_t *before, unsigned depth)
     {
         if (!block_ || op.s->mba != block_->mba)
             return invalid;
@@ -238,6 +250,72 @@ class Builder
             }
         }
         return unknown(2, uint64_t(op.s->off), op.size, memory_epoch(before));
+    }
+
+    Id stack(const mop_t &op, const minsn_t *before, unsigned depth)
+    {
+        if (PH.id != PLFM_386 || !inf_is_64bit())
+            return local_stack(op, before, depth);
+        if (!block_ || op.s->mba != block_->mba)
+            return invalid;
+        const auto owner = owners_.find(before);
+        const mblock_t *block = owner == owners_.end() ? block_ : owner->second;
+        mlist_t slot;
+        block->append_use_list(&slot, op, MUST_ACCESS);
+        if (slot.mem.empty())
+            return invalid;
+        std::set<int> visited;
+        const minsn_t *epoch = before;
+        const minsn_t *ins = before ? before->prev : nullptr;
+        while (block)
+        {
+            if (!ins)
+            {
+                epoch = block->head ? block->head : before;
+                if (!visited.insert(block->serial).second || block->predset.size() != 1)
+                    break;
+                const int predecessor = block->predset.front();
+                if (predecessor < 0 || predecessor >= block->mba->qty || visited.count(predecessor))
+                    break;
+                block = block->mba->get_mblock(predecessor);
+                ins = block->tail;
+                continue;
+            }
+            epoch = ins;
+            if (++scans_ > 32768)
+                return invalid;
+            if (mcode_modifies_d(ins->opcode) && ins->d.t == mop_S && ins->d.s &&
+                ins->d.s->mba == op.s->mba && ins->d.s->off < op.s->off + op.size &&
+                op.s->off < ins->d.s->off + ins->d.size)
+            {
+                if (ins->d.s->off > op.s->off || ins->d.s->off + ins->d.size < op.s->off + op.size)
+                    break;
+                Id value = instruction(*ins, ins, depth + 1);
+                if (value == invalid)
+                    return invalid;
+                if (op.s->off != ins->d.s->off)
+                    value =
+                        graph.make(Op::shr, ins->d.size, value,
+                                   graph.constant(uint64_t((op.s->off - ins->d.s->off) * 8), 1));
+                return graph.make(Op::low, op.size, value);
+            }
+            if (ins->opcode == m_ext)
+                break;
+            if (ins->opcode == m_stx || ins->contains_call(true) || ins->is_mbarrier())
+            {
+                // Use the SDK's complete may-def memory effects. An escaped
+                // stack slot stops here; a disjoint unaliased local may retain
+                // its reaching definition across ordinary ABI calls.
+                const mlist_t effects =
+                    block->build_def_list(*ins, MAY_ACCESS | INCLUDE_RESTRICTED);
+                if (effects.has_common(slot))
+                    break;
+                if (!ins->contains_call(true) && ins->is_mbarrier())
+                    break;
+            }
+            ins = ins->prev;
+        }
+        return unknown(2, uint64_t(op.s->off), op.size, epoch);
     }
 
     Id reg(const mop_t &op, const minsn_t *before, unsigned depth)
@@ -510,6 +588,9 @@ class Builder
             mop_t condition;
             condition.create_from_insn(&comparison);
             conditions.emplace(key, std::move(condition));
+            const auto owner = owners_.find(before);
+            condition_points.emplace(
+                key, std::make_pair(owner == owners_.end() ? block_ : owner->second, before));
             const Id value = graph.variable(key, bytes, 1);
             if (lhs != invalid && rhs != invalid)
                 predicates_[predicate] = value;
@@ -634,7 +715,8 @@ int fold_finite_table_expressions(mba_t *mba)
 }
 
 std::optional<finite_targets_t> evaluate_finite_targets(const mop_t &operand, const minsn_t *before,
-                                                        const mblock_t *block, bool allow_imports)
+                                                        const mblock_t *block, bool allow_imports,
+                                                        bool allow_undecoded_code)
 {
     if (!before || !block)
         return std::nullopt;
@@ -657,8 +739,16 @@ std::optional<finite_targets_t> evaluate_finite_targets(const mop_t &operand, co
         const flags64_t flags = get_flags(target);
         const bool imported =
             allow_imports && segment && segment->type == SEG_XTRN && has_any_name(flags);
+        bool instruction_origin = is_code(flags) && is_head(flags);
+        if (!instruction_origin && allow_undecoded_code && segment &&
+            (segment->perm & SEGPERM_EXEC) != 0)
+        {
+            insn_t instruction;
+            const int size = decode_insn(&instruction, target);
+            instruction_origin = size > 0 && target + ea_t(size) <= segment->end_ea;
+        }
         if (!imported && (target == BADADDR || !segment || (segment->perm & SEGPERM_EXEC) == 0 ||
-                          !is_code(flags) || !is_head(flags)))
+                          !instruction_origin))
             return std::nullopt;
         if (std::find(result.targets.begin(), result.targets.end(), target) == result.targets.end())
             result.targets.push_back(target);
@@ -670,6 +760,12 @@ std::optional<finite_targets_t> evaluate_finite_targets(const mop_t &operand, co
         if (found != builder.conditions.end())
         {
             result.condition = found->second;
+            const auto point = builder.condition_points.find(node.value);
+            if (point != builder.condition_points.end())
+            {
+                result.condition_block = point->second.first;
+                result.condition_before = point->second.second;
+            }
             result.targets_by_condition = {ea_t(values->results[0]), ea_t(values->results[1])};
         }
     }

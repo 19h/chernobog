@@ -71,6 +71,30 @@ struct InstanceTranslator
                                std::to_string(value.valnum) + ":";
         switch (value.t)
         {
+        case mop_a:
+        {
+            if (!value.a || value.a->oprops != 0)
+                return reject("unsupported address value");
+            const mop_addr_t &address = *value.a;
+            identity += "address:" + std::to_string(address.t) + ":" +
+                        std::to_string(address.size) + ":" + std::to_string(address.valnum) + ":" +
+                        std::to_string(address.insize) + ":" + std::to_string(address.outsize) +
+                        ":";
+            if (address.t == mop_v)
+                identity += std::to_string(address.g);
+            else if (address.t == mop_S && address.s && address.s->mba)
+                identity += std::to_string(reinterpret_cast<uintptr_t>(address.s->mba)) + ":" +
+                            std::to_string(address.s->off);
+            else if (address.t == mop_l && address.l && address.l->mba)
+                identity += std::to_string(reinterpret_cast<uintptr_t>(address.l->mba)) + ":" +
+                            std::to_string(address.l->idx) + ":" + std::to_string(address.l->off);
+            else
+                return reject("unsupported address origin");
+            // An address is a value, not an implicit memory read. Leave it
+            // symbolic: no link-time integer, alignment, or relation between
+            // different frame offsets is assumed by this identity proof.
+            break;
+        }
         case mop_r:
             identity += std::to_string(value.r);
             break;

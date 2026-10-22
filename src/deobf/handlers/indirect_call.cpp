@@ -1,6 +1,7 @@
 #include "indirect_call.h"
 #include "../analysis/finite_targets.h"
 #include "../analysis/opaque_eval.h"
+#include "../analysis/arch_utils.h"
 #include "../../hybrid/z3_bridge.hpp"
 #include "../../common/arm64_branch.h"
 
@@ -74,13 +75,24 @@ struct computed_call_collector_t final : minsn_visitor_t
 
 bool indirect_call_handler_t::resolve_call_type(mblock_t *block, tinfo_t *type)
 {
-    if (!block || !block->mba || !block->tail || !type || PH.id != PLFM_ARM || !inf_is_64bit())
+    if (!block || !block->mba || !block->tail || !type || !inf_is_64bit())
         return false;
     minsn_t *call = block->tail;
     if (call->opcode != m_icall || call->ea == BADADDR)
         return false;
-    const auto native = chernobog::arm64_branch::decode_indirect(get_dword(call->ea));
-    if (!native || !native->call)
+    if (arch::is_arm64())
+    {
+        const auto native = chernobog::arm64_branch::decode_indirect(get_dword(call->ea));
+        if (!native || !native->call)
+            return false;
+    }
+    else if (arch::is_x86_64())
+    {
+        insn_t native;
+        if (decode_insn(&native, call->ea) <= 0 || !arch::is_indirect_call(native.itype))
+            return false;
+    }
+    else
         return false;
     const auto finite = chernobog::evaluate_finite_targets(call->r, call, block, true);
     if (!finite || finite->targets.size() != 1)

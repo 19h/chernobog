@@ -908,6 +908,38 @@ bool test_typed_instances()
             okay &= expect(both_not, inverted, RuleVerificationStatus::UNSUPPORTED,
                            "implicit and explicit memory reads cannot mix");
         }
+    for (int bytes : {4, 8})
+    {
+        const auto owner = reinterpret_cast<mba_t *>(uintptr_t{0x1000});
+        stkvar_ref_t slot(owner, 24), other_slot(owner, 32);
+        mop_addr_t address, other;
+        address.t = other.t = mop_S;
+        address.s = &slot;
+        other.s = &other_slot;
+        address.size = other.size = bytes;
+        address.insize = other.insize = 0;
+        address.outsize = other.outsize = 0;
+        ValueInsn either(m_or, bytes), both(m_and, bytes), sum(m_add, bytes), direct(m_add, bytes);
+        either.l.t = both.l.t = direct.l.t = mop_a;
+        either.l.a = both.l.a = direct.l.a = &address;
+        either.l.size = both.l.size = direct.l.size = bytes;
+        reg(either.r, 100, bytes);
+        reg(both.r, 100, bytes);
+        reg(direct.r, 100, bytes);
+        nested(sum.l, either);
+        nested(sum.r, both);
+        okay &= expect(sum, direct, RuleVerificationStatus::VERIFIED,
+                       "address-valued MBA retains its opaque origin");
+        direct.l.a = &other;
+        okay &= expect(sum, direct, RuleVerificationStatus::DISPROVED,
+                       "different frame addresses stay independent");
+        direct.l.a = &address;
+        address.oprops = OPROP_UDEFVAL;
+        okay &= expect(sum, direct, RuleVerificationStatus::UNSUPPORTED,
+                       "undefined address origin rejects");
+        address.zero();
+        other.zero();
+    }
     // Real rejected SDK trees exercise independent width/reason keys beyond
     // the diagnostic quota. Dropping a reason must never drop its rejection.
     for (int bytes : {1, 2, 4, 8})

@@ -29,6 +29,7 @@
 #include "../deobf/analysis/pattern_match.h"
 #include "../deobf/analysis/mba_diagnostics.hpp"
 #include "../deobf/handlers/hikari_cfg.h"
+#include "../deobf/handlers/indirect_branch.h"
 #include "../deobf/handlers/native_opaque.h"
 #include "../deobf/rules/rule_registry.h"
 #include "../deobf/rules/rule_verifier.h"
@@ -2029,6 +2030,17 @@ error_t idaapi idc_warbird_profiles(idc_value_t *, idc_value_t *result)
 
 error_t idaapi idc_help(idc_value_t *, idc_value_t *r);
 
+error_t idaapi idc_recover_indirect_regions(idc_value_t *argv, idc_value_t *r)
+{
+    if (!ready_host())
+        r->set_string("{\"error\":\"decompiler unavailable\"}");
+    else
+        r->set_string(indirect_branch_handler_t::recover_regions(resolve_function(argv[0]),
+                                                                 unsigned(argv[1].num))
+                          .c_str());
+    return eOk;
+}
+
 //--------------------------------------------------------------------------
 // Function table
 //--------------------------------------------------------------------------
@@ -2126,6 +2138,9 @@ const idc_entry_t idc_entries[] = {
      "Clear the Hex-Rays decompiler cache"},
 
     // Native, pre-Hex-Rays passes
+    {"chernobog_recover_indirect_regions", idc_recover_indirect_regions, args_ea_long,
+     "chernobog_recover_indirect_regions(ea, flags)",
+     "JSON: preview exact ownerless jump regions (0), create (1), allow orphan overlaps (3)"},
     {"chernobog_hikari_cfg", idc_hikari_cfg, args_none, "chernobog_hikari_cfg()",
      "Run Hikari ARM64 dispatch recovery and report its statistics"},
     {"chernobog_native_opaque", idc_native_opaque, args_none, "chernobog_native_opaque()",

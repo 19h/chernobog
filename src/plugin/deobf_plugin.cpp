@@ -26,6 +26,7 @@
 #include "../hybrid/session.hpp"
 #include "../hybrid/z3_bridge.hpp"
 #include "../ida_analysis/early_hexrays.hpp"
+#include "../ida_analysis/inline_abi.hpp"
 #include "../ida_analysis/native_engine.hpp"
 #include "../hybrid/solver_inspection.hpp"
 #include "../vm/ida_native_trace.hpp"
@@ -708,6 +709,26 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             debug_log("[chernobog] hxe_preoptimized applied %d early rewrites at %llx\n", changes,
                       static_cast<unsigned long long>(mba != nullptr ? mba->entry_ea : BADADDR));
         }
+    }
+    // Inlined conventional callees must retain the native nonvolatile values
+    // that their prologue and every normal epilogue save and restore.
+#if IDA_SDK_VERSION >= 940
+    else if (event == hxe_inlined_function)
+#else
+    else if (event == hxe_inlined_func)
+#endif
+    {
+        codegen_t *codegen = va_arg(va, codegen_t *);
+        const int source = va_arg(va, int);
+#if IDA_SDK_VERSION >= 940
+        (void)va_arg(va, const decomp_ranges_t *);
+#else
+        (void)va_arg(va, const mba_ranges_t *);
+#endif
+        const int first = va_arg(va, int), last = va_arg(va, int);
+        if (codegen && codegen->mba && !is_disabled_mode_enabled() &&
+            chernobog_function_deobfuscation_enabled(codegen->mba->entry_ea))
+            chernobog::ida_analysis::preserve_inlined_abi(codegen, source, first, last);
     }
     // Let native ABI analysis collect arguments from a proven callee type,
     // before a late indirect-call rewrite has to preserve an existing ABI.

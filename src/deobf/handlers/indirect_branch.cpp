@@ -10,12 +10,8 @@
 #include "../../hybrid/z3_bridge.hpp"
 #include "../../common/warn_off.h"
 #include <fixup.hpp>
+#include <intel.hpp>
 #include "../../common/warn_on.h"
-
-#ifndef ALLINS_HPP_INCLUDED
-#define ALLINS_HPP_INCLUDED
-#include <allins.hpp>
-#endif
 
 #include <unordered_map>
 #include <gdl.hpp>
@@ -26,11 +22,30 @@ namespace
 
 constexpr int MAX_TARGET_EVAL_DEPTH = 16;
 
+bool native_jump(ea_t address)
+{
+    insn_t instruction;
+    if (decode_insn(&instruction, address) <= 0)
+        return false;
+    if (arch::is_x86_64())
+        return instruction.itype == NN_jmp || instruction.itype == NN_jmpni;
+    return arch::is_arm64() && instruction.itype == ARM_br;
+}
+
+bool native_tail(const mblock_t *block)
+{
+    return block && block->tail &&
+           ((block->tail->opcode == m_call && block->tail->l.t == mop_v) ||
+            block->tail->opcode == m_icall) &&
+           native_jump(block->tail->ea);
+}
+
 struct projection_t
 {
     ea_t site = BADADDR;
     std::vector<ea_t> targets;
     std::vector<range_t> fragments;
+    std::vector<range_t> root_ranges, source_ranges;
     std::vector<chernobog::finite_targets_t::dependency_t> dependencies;
     std::vector<ea_t> owned_edges;
     qstring previous_comment;
@@ -58,6 +73,20 @@ struct projected_function_t
 };
 std::map<const mba_t *, projected_function_t> projected_functions;
 
+std::vector<range_t> function_ranges(const func_t *function)
+{
+    std::vector<range_t> ranges;
+    func_tail_iterator_t iterator(const_cast<func_t *>(function));
+    for (bool valid = iterator.main(); valid; valid = iterator.next())
+    {
+        if (ranges.size() >= 128)
+            return {};
+        const auto &chunk = iterator.chunk();
+        ranges.emplace_back(chunk.start_ea, chunk.end_ea);
+    }
+    return ranges;
+}
+
 void revoke_projection(const projection_t &proof)
 {
     for (ea_t target : proof.owned_edges)
@@ -72,11 +101,13 @@ bool fresh_projection(const projection_t &proof)
 {
     const func_t *root = get_func(proof.root);
     if (!root || root->start_ea != proof.root || root->end_ea != proof.root_end ||
-        root->frsize != proof.frame_size || root->fpd != proof.frame_delta)
+        root->frsize != proof.frame_size || root->fpd != proof.frame_delta ||
+        function_ranges(root) != proof.root_ranges)
         return false;
     func_t *source = get_func(proof.source_owner);
     if (!source || source->start_ea != proof.source_owner ||
-        get_spd(source, proof.site) != proof.source_spd)
+        get_spd(source, proof.site) != proof.source_spd ||
+        (source != root && function_ranges(source) != proof.source_ranges))
         return false;
     for (const auto &fragment : proof.fragments)
     {
@@ -111,36 +142,47 @@ bool capture_code(projection_t &proof, ea_t start, ea_t end)
     return true;
 }
 
+bool capture_function(projection_t &proof, const func_t *function, std::vector<range_t> &ranges)
+{
+    ranges = function_ranges(function);
+    if (ranges.empty())
+        return false;
+    size_t total = 0;
+    for (const range_t &range : ranges)
+    {
+        if (range.end_ea <= range.start_ea || range.size() > 16384 - total ||
+            !capture_code(proof, range.start_ea, range.end_ea))
+            return false;
+        total += size_t(range.size());
+    }
+    return true;
+}
+
 // A jump does not establish an independent call frame. Admit only small,
 // automatically named fragments that consume the incoming frame before
 // redefining it, and that have no call-site or user-prototype evidence.
-std::optional<range_t> frame_fragment(ea_t root, ea_t target)
+std::optional<range_t> incoming_frame_prefix(ea_t target, ea_t end)
 {
-    const func_t *function = get_func(target);
-    if (!function || function->start_ea != target || target == root || function->end_ea <= target ||
-        function->end_ea - target > 4096 || (function->flags & (FUNC_LIB | FUNC_THUNK)) != 0 ||
-        has_user_name(get_flags(target)) || is_userti(target) || get_func_tail_qty(target) != 0)
-        return std::nullopt;
-    xrefblk_t xref;
-    for (bool ok = xref.first_to(target, XREF_FAR); ok; ok = xref.next_to())
-    {
-        if (xref.iscode && (xref.type == fl_CN || xref.type == fl_CF))
-            return std::nullopt;
-    }
-    const int fp = str2reg("X29");
-    const int sp = str2reg("SP");
+    const bool arm64 = arch::is_arm64();
+    const int fp = str2reg(arm64 ? "X29" : "RBP");
+    const int sp = str2reg(arm64 ? "SP" : "RSP");
     const int first_saved = str2reg("X19"), last_saved = str2reg("X28");
+    const std::set<int> x86_saved = {R_bx, R_r12, R_r13, R_r14, R_r15};
+    const auto saved = [&](int reg)
+    { return arm64 ? reg >= first_saved && reg <= last_saved : x86_saved.count(reg) != 0; };
     std::set<int> defined;
     bool inherited_register = false;
     ea_t ea = target;
-    for (unsigned count = 0; count < 32 && ea < function->end_ea; ++count)
+    for (unsigned count = 0; count < 32 && ea < end; ++count)
     {
         insn_t instruction;
         const int size = decode_insn(&instruction, ea);
-        if (size <= 0 || size > 16 || (size & 3) != 0 || ea + ea_t(size) > function->end_ea ||
-            is_call_insn(instruction))
+        if (size <= 0 || size > (arm64 ? 16 : 15) || (arm64 && (size & 3) != 0) ||
+            ea + ea_t(size) > end || is_call_insn(instruction))
             return std::nullopt;
-        const auto primitive = chernobog::arm64e::decode(get_dword(ea));
+        if (!arm64 && (instruction.itype == NN_push || instruction.itype == NN_enter))
+            return std::nullopt;
+        const auto primitive = arm64 ? chernobog::arm64e::decode(get_dword(ea)) : std::nullopt;
         if (primitive && primitive->kind == chernobog::arm64e::Kind::sign && primitive->implicit &&
             primitive->destination == 30)
             return std::nullopt;
@@ -150,7 +192,9 @@ std::optional<range_t> frame_fragment(ea_t root, ea_t target)
         for (unsigned index = 0; index < UA_MAXOP && instruction.ops[index].type != o_void; ++index)
         {
             const op_t &op = instruction.ops[index];
-            if ((op.type == o_displ && op.reg == sp && sval_t(op.addr) < 0) ||
+            const bool memory = op.type == o_phrase || op.type == o_displ;
+            const int base = !memory ? -1 : arm64 ? op.reg : x86_base_reg(instruction, op);
+            if ((op.type == o_displ && base == sp && sval_t(op.addr) < 0) ||
                 (op.type == o_reg && (op.reg == fp || op.reg == sp) && has_cf_chg(features, index)))
                 return std::nullopt;
         }
@@ -159,20 +203,24 @@ std::optional<range_t> frame_fragment(ea_t root, ea_t target)
             const op_t &op = instruction.ops[index];
             if (op.type == o_void)
                 break;
-            if ((op.type == o_phrase || op.type == o_displ) && (op.reg == fp || op.reg == sp))
-                return range_t(target, function->end_ea);
+            const bool memory = op.type == o_phrase || op.type == o_displ;
+            const int base = !memory ? -1 : arm64 ? op.reg : x86_base_reg(instruction, op);
+            const int index_reg = arm64 || !memory ? -1 : x86_index_reg(instruction, op);
+            if ((op.type == o_phrase || op.type == o_displ) && (base == fp || base == sp))
+                return range_t(target, end);
             if (op.type == o_reg && (op.reg == fp || op.reg == sp) && has_cf_use(features, index))
-                return range_t(target, function->end_ea);
-            if ((op.type == o_reg && has_cf_use(features, index)) || op.type == o_phrase ||
-                op.type == o_displ)
-                if (op.reg >= first_saved && op.reg <= last_saved && !defined.count(op.reg))
-                    inherited_register = true;
+                return range_t(target, end);
+            if (op.type == o_reg && has_cf_use(features, index) && saved(op.reg) &&
+                !defined.count(op.reg))
+                inherited_register = true;
+            if (op.type == o_phrase || op.type == o_displ)
+                inherited_register |= (saved(base) && !defined.count(base)) ||
+                                      (saved(index_reg) && !defined.count(index_reg));
         }
         if (is_ret_insn(instruction))
             return std::nullopt;
         if ((features & (CF_JUMP | CF_STOP)) != 0 || is_indirect_jump_insn(instruction))
-            return inherited_register ? std::optional<range_t>(range_t(target, function->end_ea))
-                                      : std::nullopt;
+            return inherited_register ? std::optional<range_t>(range_t(target, end)) : std::nullopt;
         for (unsigned index = 0; index < UA_MAXOP && instruction.ops[index].type != o_void; ++index)
             if (instruction.ops[index].type == o_reg && has_cf_chg(features, index))
                 defined.insert(instruction.ops[index].reg);
@@ -181,10 +229,117 @@ std::optional<range_t> frame_fragment(ea_t root, ea_t target)
     return std::nullopt;
 }
 
+std::optional<range_t> frame_fragment(ea_t root, ea_t target)
+{
+    const func_t *function = get_func(target);
+    if (!function || function->start_ea != target || target == root || function->end_ea <= target ||
+        function->end_ea - target > 4096 || (function->flags & (FUNC_LIB | FUNC_THUNK)) != 0 ||
+        has_user_name(get_flags(target)) || is_userti(target) || get_func_tail_qty(target) != 0)
+        return std::nullopt;
+    xrefblk_t xref;
+    for (bool ok = xref.first_to(target, XREF_FAR); ok; ok = xref.next_to())
+        if (xref.iscode && (xref.type == fl_CN || xref.type == fl_CF))
+            return std::nullopt;
+    return incoming_frame_prefix(target, function->end_ea);
+}
+
+struct recovery_region_t
+{
+    ea_t target = BADADDR, end = BADADDR, clear_start = BADADDR, clear_end = BADADDR;
+    std::vector<std::pair<ea_t, int>> instructions;
+    std::vector<range_t> removals;
+    std::vector<uint8_t> bytes;
+    bool overlap = false;
+    const char *status = "ready";
+};
+
+recovery_region_t inspect_recovery_region(ea_t target)
+{
+    recovery_region_t region;
+    region.target = target;
+    const auto refuse = [&](const char *reason)
+    {
+        region.status = reason;
+        return region;
+    };
+    const segment_t *segment = getseg(target);
+    if (!segment || (segment->perm & SEGPERM_EXEC) == 0 || get_func(target))
+        return refuse("owned or non-executable");
+    ea_t cursor = target;
+    bool terminal = false;
+    while (region.instructions.size() < 256 && cursor - target < 4096)
+    {
+        insn_t instruction;
+        const int size = decode_insn(&instruction, cursor);
+        if (size <= 0 || size > 15 || cursor + ea_t(size) > segment->end_ea ||
+            cursor + ea_t(size) - target > 4096)
+            return refuse("invalid or excessive region");
+        const uint32_t features = instruction.get_canon_feature(PH);
+        if ((features & CF_JUMP) != 0 && (features & (CF_CALL | CF_STOP)) == 0)
+            return refuse("nonlinear region");
+        region.instructions.emplace_back(cursor, size);
+        cursor += ea_t(size);
+        if ((features & CF_STOP) != 0)
+        {
+            terminal = true;
+            break;
+        }
+    }
+    if (!terminal || !incoming_frame_prefix(target, cursor))
+        return refuse("no bounded incoming-frame continuation");
+    region.end = cursor;
+    region.clear_start = get_item_head(target);
+    region.clear_end = get_item_end(cursor - 1);
+    if (region.clear_start > target || target - region.clear_start > 14 ||
+        region.clear_end < cursor || region.clear_end - cursor > 14 ||
+        region.clear_start < segment->start_ea || region.clear_end > segment->end_ea)
+        return refuse("invalid item boundaries");
+    std::set<ea_t> new_heads;
+    for (const auto &[address, size] : region.instructions)
+    {
+        new_heads.insert(address);
+        region.overlap |= is_tail(get_flags(address)) ||
+                          (is_head(get_flags(address)) && get_item_size(address) != asize_t(size));
+        if (!is_head(get_flags(address)) || get_item_size(address) != asize_t(size))
+        {
+            const range_t removal(get_item_head(address), get_item_end(address + ea_t(size) - 1));
+            if (!region.removals.empty() && region.removals.back().end_ea >= removal.start_ea)
+                region.removals.back().end_ea = qmax(region.removals.back().end_ea, removal.end_ea);
+            else
+                region.removals.push_back(removal);
+        }
+    }
+    region.overlap |= region.clear_start != target || region.clear_end != cursor;
+    for (ea_t address = region.clear_start; address < region.clear_end; ++address)
+    {
+        const flags64_t flags = get_flags(address);
+        if (get_func(address) || !is_loaded(address) || is_data(flags) || has_user_name(flags) ||
+            has_cmt(flags) || has_extra_cmts(flags) || is_userti(address) ||
+            is_manual_insn(address))
+            return refuse("protected bytes or metadata");
+        for (const auto &removal : region.removals)
+            if (removal.contains(address))
+                for (int index = 0; index < UA_MAXOP; ++index)
+                    if (is_forced_operand(address, index))
+                        return refuse("forced operand in replaced item");
+        xrefblk_t xref;
+        for (bool ok = xref.first_to(address, XREF_ALL); ok; ok = xref.next_to())
+            if (xref.user || (xref.iscode && (xref.type == fl_CN || xref.type == fl_CF)) ||
+                (new_heads.count(address) == 0 &&
+                 (xref.from < region.clear_start || xref.from >= region.clear_end)))
+                return refuse("protected incoming reference");
+    }
+    region.bytes.resize(size_t(region.clear_end - region.clear_start));
+    if (!chernobog::ida_memory::read_exact(region.bytes.data(), region.bytes.size(),
+                                           region.clear_start))
+        return refuse("unavailable bytes");
+    return region;
+}
+
 bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targets_t &finite,
                        const qstring &comment)
 {
-    if (!arch::is_arm64() || finite.targets.size() > 2)
+    if ((!arch::is_arm64() && !arch::is_x86_64()) || finite.targets.size() > 2)
         return false;
     projection_t proof;
     proof.site = site;
@@ -192,7 +347,7 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
     proof.dependencies = finite.dependencies;
     proof.frame_offset = mba->frsize - mba->fpd;
     const func_t *root = get_func(mba->entry_ea);
-    if (!root || !capture_code(proof, root->start_ea, root->end_ea))
+    if (!root || !capture_function(proof, root, proof.root_ranges))
         return false;
     proof.root = root->start_ea;
     proof.root_end = root->end_ea;
@@ -204,7 +359,7 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
         return false;
     proof.source_owner = source_owner->start_ea;
     proof.source_spd = get_spd(source_owner, site);
-    if (source_owner != root && !capture_code(proof, source_owner->start_ea, source_owner->end_ea))
+    if (source_owner != root && !capture_function(proof, source_owner, proof.source_ranges))
         return false;
     proof.inherited_spd = get_spd(source_owner, site);
     if (source_owner->start_ea != root->start_ea)
@@ -260,7 +415,8 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
         return false;
     auto &sites = projections[key];
     const auto old = sites.find(site);
-    if (old != sites.end() && old->second.targets == proof.targets && fresh_projection(old->second))
+    if (old != sites.end() && old->second.targets == proof.targets &&
+        old->second.fragments == proof.fragments && fresh_projection(old->second))
         return false;
     if (sites.size() >= 32)
         return false;
@@ -646,72 +802,62 @@ void replace_cfg_successors(mbl_array_t *mba, mblock_t *src, int target_idx)
     dst->mark_lists_dirty();
 }
 
-int lower_conditional_targets(mbl_array_t *mba, mblock_t *src,
-                              const chernobog::finite_targets_t &finite)
+int lower_two_way(mbl_array_t *mba, mblock_t *src, const mop_t &condition,
+                  std::array<mblock_t *, 2> destinations,
+                  const chernobog::finite_targets_t *proof = nullptr)
 {
-    if (finite.condition.empty() || finite.targets.size() != 2 ||
-        finite.condition.has_side_effects(true))
-        return 0;
-    std::array<mblock_t *, 2> destinations = {nullptr, nullptr};
-    const minsn_t *table = src->tail;
-    if (table->opcode == m_jtbl)
-    {
-        if (table->r.t != mop_c || !table->r.c ||
-            table->r.c->values.size() != table->r.c->targets.size())
-            return 0;
-        // Case edges remain authoritative after prolog/epilog elimination
-        // moves a destination's first instruction away from its native entry.
-        for (unsigned outcome = 0; outcome < 2; ++outcome)
-            for (size_t entry = 0; entry < table->r.c->values.size(); ++entry)
-            {
-                const auto &values = table->r.c->values[entry];
-                if (std::find(values.begin(), values.end(), finite.targets_by_condition[outcome]) ==
-                    values.end())
-                    continue;
-                const int destination = table->r.c->targets[entry];
-                if (destination < 0 || destination >= mba->qty)
-                    return 0;
-                mblock_t *candidate = mba->get_mblock(destination);
-                if (destinations[outcome] && destinations[outcome] != candidate)
-                    return 0;
-                destinations[outcome] = candidate;
-            }
-    }
-    else
-    {
-        for (int index = 0; index < mba->qty; ++index)
-            for (unsigned outcome = 0; outcome < 2; ++outcome)
-            {
-                mblock_t *candidate = mba->get_mblock(index);
-                if (candidate->start != finite.targets_by_condition[outcome])
-                    continue;
-                if (destinations[outcome])
-                    return 0;
-                destinations[outcome] = candidate;
-            }
-    }
     if (!destinations[0] || !destinations[1] || destinations[0] == destinations[1])
         return 0;
-    mop_t left = finite.condition, right;
-    mcode_t relation = m_jnz;
-    if (finite.condition.t == mop_d && finite.condition.d &&
-        is_mcode_convertible_to_jmp(finite.condition.d->opcode))
+    mop_t predicate = condition;
+    mblock_t *capture_block = nullptr;
+    minsn_t *capture_before = nullptr;
+    if (proof && proof->condition_before != src->tail)
     {
-        relation = set2jcnd(finite.condition.d->opcode);
-        left = finite.condition.d->l;
-        right = finite.condition.d->r;
+        if (!proof->condition_before || !proof->condition_block ||
+            proof->condition_block->mba != mba)
+            return 0;
+        capture_block = const_cast<mblock_t *>(proof->condition_block);
+        for (minsn_t *ins = capture_block->head; ins; ins = ins->next)
+            if (ins == proof->condition_before)
+                capture_before = ins;
+        if (!capture_before)
+            return 0;
+    }
+    mop_t left = predicate, right;
+    mcode_t relation = m_jnz;
+    if (condition.t == mop_d && condition.d && is_mcode_convertible_to_jmp(condition.d->opcode))
+    {
+        relation = set2jcnd(condition.d->opcode);
+        left = condition.d->l;
+        right = condition.d->r;
     }
     else
         right.make_number(0, left.size);
-    if (destinations[1]->serial == src->serial + 1)
+    const bool inverted = destinations[1]->serial == src->serial + 1;
+    if (inverted)
     {
         relation = negate_mcode_relation(relation);
         std::swap(destinations[0], destinations[1]);
     }
     minsn_t *branch = src->tail;
+    const mreg_t temporary = capture_before ? mba->alloc_kreg(size_t(condition.size)) : mr_none;
+    if (capture_before && temporary == mr_none)
+        return 0;
     const mop_t &original_target = branch->opcode == m_jtbl ? branch->l : branch->d;
     if (!chernobog::preserve_indirect_target_effects(src, branch, original_target))
         return 0;
+    if (capture_before)
+    {
+        auto *capture = new minsn_t(capture_before->ea);
+        capture->opcode = m_mov;
+        capture->l = condition;
+        capture->d.make_reg(temporary, condition.size);
+        capture_block->insert_into_block(capture, capture_before->prev);
+        capture_block->mark_lists_dirty();
+        left.make_reg(temporary, condition.size);
+        right.make_number(0, condition.size);
+        relation = inverted ? m_jz : m_jnz;
+    }
     mblock_t *fallthrough = destinations[0];
     if (fallthrough->serial != src->serial + 1)
     {
@@ -757,6 +903,88 @@ int lower_conditional_targets(mbl_array_t *mba, mblock_t *src,
     return 1;
 }
 
+int lower_conditional_targets(mbl_array_t *mba, mblock_t *src,
+                              const chernobog::finite_targets_t &finite)
+{
+    if (finite.condition.empty() || finite.targets.size() != 2 ||
+        finite.condition.has_side_effects(true))
+        return 0;
+    std::array<mblock_t *, 2> destinations = {nullptr, nullptr};
+    const minsn_t *table = src->tail;
+    if (table->opcode == m_jtbl)
+    {
+        if (table->r.t != mop_c || !table->r.c ||
+            table->r.c->values.size() != table->r.c->targets.size())
+            return 0;
+        // Case edges remain authoritative after prolog/epilog elimination
+        // moves a destination's first instruction away from its native entry.
+        for (unsigned outcome = 0; outcome < 2; ++outcome)
+            for (size_t entry = 0; entry < table->r.c->values.size(); ++entry)
+            {
+                const auto &values = table->r.c->values[entry];
+                if (std::find(values.begin(), values.end(), finite.targets_by_condition[outcome]) ==
+                    values.end())
+                    continue;
+                const int destination = table->r.c->targets[entry];
+                if (destination < 0 || destination >= mba->qty)
+                    return 0;
+                mblock_t *candidate = mba->get_mblock(destination);
+                if (destinations[outcome] && destinations[outcome] != candidate)
+                    return 0;
+                destinations[outcome] = candidate;
+            }
+    }
+    else
+    {
+        for (int index = 0; index < mba->qty; ++index)
+            for (unsigned outcome = 0; outcome < 2; ++outcome)
+            {
+                mblock_t *candidate = mba->get_mblock(index);
+                if (candidate->start != finite.targets_by_condition[outcome])
+                    continue;
+                if (destinations[outcome])
+                    return 0;
+                destinations[outcome] = candidate;
+            }
+    }
+    return lower_two_way(mba, src, finite.condition, destinations, &finite);
+}
+
+int lower_boolean_switch(mbl_array_t *mba, mblock_t *src)
+{
+    const minsn_t *table = src->tail;
+    if (!table || table->opcode != m_jtbl || !table->l.is01() || table->l.has_side_effects(true) ||
+        table->r.t != mop_c || !table->r.c ||
+        table->r.c->values.size() != table->r.c->targets.size() || table->r.c->values.size() > 3)
+        return 0;
+    std::array<mblock_t *, 2> destinations = {nullptr, nullptr};
+    mblock_t *fallback = nullptr;
+    for (size_t entry = 0; entry < table->r.c->values.size(); ++entry)
+    {
+        const int index = table->r.c->targets[entry];
+        if (index < 0 || index >= mba->qty)
+            return 0;
+        mblock_t *destination = mba->get_mblock(index);
+        const auto &values = table->r.c->values[entry];
+        if (values.empty())
+        {
+            if (fallback)
+                return 0;
+            fallback = destination;
+        }
+        for (uint64 value : values)
+        {
+            if (value > 1 || destinations[size_t(value)])
+                return 0;
+            destinations[size_t(value)] = destination;
+        }
+    }
+    for (auto &destination : destinations)
+        if (!destination)
+            destination = fallback;
+    return lower_two_way(mba, src, table->l, destinations);
+}
+
 //--------------------------------------------------------------------------
 // Resolve the actual m_ijmp offset operand.  A target merely contained in a
 // block is insufficient: m_goto transfers to the block start, so accepting an
@@ -780,7 +1008,8 @@ int resolve_ijmp(mbl_array_t *mba, mblock_t *src, deobf_ctx_t *ctx,
     }
     if (!value)
     {
-        const auto finite = chernobog::evaluate_finite_targets(ijmp->d, ijmp, src);
+        const auto finite =
+            chernobog::evaluate_finite_targets(ijmp->d, ijmp, src, false, arch::is_x86_64());
         if (finite)
         {
             qstring comment;
@@ -793,6 +1022,10 @@ int resolve_ijmp(mbl_array_t *mba, mblock_t *src, deobf_ctx_t *ctx,
                 comment.sprnt("DEOBF: exact indirect target -> %a", finite->targets.front());
             if (finite->authentication_guarded)
                 comment += " (authentication retained)";
+            if (std::any_of(
+                    finite->targets.begin(), finite->targets.end(), [](ea_t address)
+                    { return !is_code(get_flags(address)) || !is_head(get_flags(address)); }))
+                comment += " (disassembly boundary unresolved)";
             record_projection(mba, ijmp->ea, *finite, comment);
             if (finite->targets.size() == 1)
                 value = finite->targets.front();
@@ -825,6 +1058,27 @@ int resolve_ijmp(mbl_array_t *mba, mblock_t *src, deobf_ctx_t *ctx,
 
     if (target_idx < 0)
     {
+        // Constant address arithmetic can take the fast evaluator above.
+        // Shared-frame admission still needs a dependency-carrying proof,
+        // including a plain address origin already canonicalized as mop_v.
+        if (ijmp->d.t == mop_v)
+        {
+            mop_t address;
+            address.make_number(target_ea, 8);
+            if (const auto direct = chernobog::evaluate_finite_targets(address, ijmp, src))
+            {
+                qstring comment;
+                comment.sprnt("DEOBF: exact indirect target -> %a", target_ea);
+                record_projection(mba, ijmp->ea, *direct, comment);
+            }
+        }
+        else if (const auto finite = chernobog::evaluate_finite_targets(ijmp->d, ijmp, src);
+                 finite && finite->targets.size() == 1 && finite->targets.front() == target_ea)
+        {
+            qstring comment;
+            comment.sprnt("DEOBF: exact indirect target -> %a", target_ea);
+            record_projection(mba, ijmp->ea, *finite, comment);
+        }
         // An exact target outside the current MBA cannot become m_goto, but
         // canonicalizing the ijmp operand is still semantics-preserving and
         // exposes a tail target to ctree. Require an executable function entry
@@ -902,6 +1156,8 @@ bool indirect_branch_handler_t::detect(mbl_array_t *mba)
             return true;
         if (blk && blk->tail && blk->tail->opcode == m_jtbl)
             return true;
+        if (native_tail(blk))
+            return true;
     }
     return false;
 }
@@ -943,15 +1199,37 @@ int indirect_branch_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
         else if (blk && blk->tail && blk->tail->opcode == m_jtbl)
         {
             const int before = mba->qty;
-            const auto finite = chernobog::evaluate_finite_targets(blk->tail->l, blk->tail, blk);
-            if (finite && !finite->condition.empty())
+            int changed = lower_boolean_switch(mba, blk);
+            if (!changed)
             {
-                const int changed = lower_conditional_targets(mba, blk, *finite);
-                ctx->branches_simplified += changed;
-                changes += changed;
+                const auto finite =
+                    chernobog::evaluate_finite_targets(blk->tail->l, blk->tail, blk);
+                if (finite && !finite->condition.empty())
+                    changed = lower_conditional_targets(mba, blk, *finite);
             }
+            ctx->branches_simplified += changed;
+            changes += changed;
             if (mba->qty != before)
                 break; // Rebuild the block-start index after SDK renumbering.
+        }
+        else if (native_tail(blk))
+        {
+            mop_t address = blk->tail->r;
+            if (blk->tail->opcode == m_call)
+                address.make_number(blk->tail->l.g, 8);
+            const auto finite = chernobog::evaluate_finite_targets(address, blk->tail, blk, false,
+                                                                   arch::is_x86_64());
+            if (finite && (finite->targets.size() == 1 || !finite->condition.empty()))
+            {
+                qstring comment;
+                if (finite->targets.size() == 1)
+                    comment.sprnt("DEOBF: exact continuation target -> %a",
+                                  finite->targets.front());
+                else
+                    comment.sprnt("DEOBF: conditional continuation targets: false=%a, true=%a",
+                                  finite->targets_by_condition[0], finite->targets_by_condition[1]);
+                record_projection(mba, blk->tail->ea, *finite, comment);
+            }
         }
     }
 
@@ -975,6 +1253,77 @@ std::optional<std::array<ea_t, 2>> indirect_branch_handler_t::proven_targets(ea_
         !fresh_projection(proof->second))
         return std::nullopt;
     return std::array<ea_t, 2>{proof->second.targets[0], proof->second.targets[1]};
+}
+
+qstring indirect_branch_handler_t::recover_regions(ea_t function, unsigned flags)
+{
+    if (!arch::is_x86_64() || (flags != 0 && flags != 1 && flags != 3))
+        return "{\"error\":\"requires AMD64 and flags 0, 1 or 3\"}";
+    // Copy before mutating the IDB: notifications can invalidate cached proofs.
+    std::map<ea_t, projection_t> candidates;
+    const auto found = projections.find({get_dbctx_id(), function});
+    if (found != projections.end())
+        for (const auto &[site, proof] : found->second)
+            if (fresh_projection(proof))
+                for (ea_t target : proof.targets)
+                    if (!get_func(target))
+                        candidates.emplace(target, proof);
+    qstring result("{\"regions\":[");
+    size_t recovered = 0, count = 0;
+    for (const auto &[target, proof] : candidates)
+    {
+        recovery_region_t region = inspect_recovery_region(target);
+        if (strcmp(region.status, "ready") == 0 && flags != 0)
+        {
+            if (region.overlap && (flags & 2) == 0)
+                region.status = "overlap requires flag 2";
+            else if (!fresh_projection(proof))
+                region.status = "stale proof";
+            else
+            {
+                bool decoded = true;
+                for (const auto &removal : region.removals)
+                    if (!del_items(removal.start_ea, DELIT_SIMPLE, removal.size()))
+                    {
+                        decoded = false;
+                        break;
+                    }
+                for (const auto &[address, size] : region.instructions)
+                    if (!decoded || create_insn(address) != size)
+                    {
+                        decoded = false;
+                        break;
+                    }
+                if (!decoded || !add_func(target, region.end))
+                    region.status = "recovery incomplete after item removal";
+                else
+                {
+                    region.status = "recovered";
+                    ++recovered;
+                }
+                std::vector<uint8_t> after(region.bytes.size());
+                if (!chernobog::ida_memory::read_exact(after.data(), after.size(),
+                                                       region.clear_start) ||
+                    after != region.bytes)
+                    region.status = "native bytes changed externally";
+            }
+        }
+        if (count++)
+            result += ',';
+        result.cat_sprnt(
+            "{\"site\":%llu,\"target\":%llu,\"end\":%llu,"
+            "\"clear_start\":%llu,\"clear_end\":%llu,\"instructions\":%zu,"
+            "\"overlap\":%s,\"status\":\"%s\"}",
+            static_cast<unsigned long long>(proof.site), static_cast<unsigned long long>(target),
+            static_cast<unsigned long long>(region.end),
+            static_cast<unsigned long long>(region.clear_start),
+            static_cast<unsigned long long>(region.clear_end), region.instructions.size(),
+            region.overlap ? "true" : "false", region.status);
+    }
+    result.cat_sprnt("],\"recovered\":%zu}", recovered);
+    if (recovered)
+        mark_cfunc_dirty(function);
+    return result;
 }
 
 void indirect_branch_handler_t::clear_projections()
@@ -1038,10 +1387,15 @@ void indirect_branch_handler_t::adjust_fragment_stack(mba_t *mba, stkpnts_t *poi
             if (!owner)
                 continue;
             const sval_t origin = get_spd(owner, fragment.start_ea);
-            for (ea_t ea = fragment.start_ea; ea < fragment.end_ea; ea += 4)
+            for (ea_t ea = fragment.start_ea; ea < fragment.end_ea;)
             {
                 const sval_t value = proof.inherited_spd + get_spd(owner, ea) - origin;
                 projected[ea] = value;
+                insn_t instruction;
+                const int size = decode_insn(&instruction, ea);
+                if (size <= 0 || ea + ea_t(size) > fragment.end_ea)
+                    break;
+                ea += ea_t(size);
             }
         }
     }
@@ -1052,10 +1406,15 @@ void indirect_branch_handler_t::adjust_fragment_stack(mba_t *mba, stkpnts_t *poi
 
 bool indirect_branch_handler_t::is_projected_return(const codegen_t &codegen)
 {
-    if (!codegen.mba || !arch::is_arm64())
+    if (!codegen.mba || (!arch::is_arm64() && !arch::is_x86_64()))
         return false;
-    const uint32_t word = uint32_t(get_dword(codegen.insn.ea));
-    if (word != 0xD65F03C0U && word != 0xD65F0BFFU && word != 0xD65F0FFFU)
+    if (arch::is_arm64())
+    {
+        const uint32_t word = uint32_t(get_dword(codegen.insn.ea));
+        if (word != 0xD65F03C0U && word != 0xD65F0BFFU && word != 0xD65F0FFFU)
+            return false;
+    }
+    else if (codegen.insn.itype != NN_retn || codegen.insn.Op1.type != o_void)
         return false;
     const auto found = projections.find({get_dbctx_id(), codegen.mba->entry_ea});
     if (found == projections.end())
@@ -1089,10 +1448,12 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
     {
         if (!fresh_projection(proof) || proof.fragments.empty())
             continue;
+        bool connected = false;
         for (int index = 0; index < mba->qty; ++index)
         {
             mblock_t *block = mba->get_mblock(index);
-            if (!block->tail || block->tail->ea != site || block->tail->opcode != m_ijmp)
+            if (!block->tail || block->tail->ea != site ||
+                (block->tail->opcode != m_ijmp && !native_tail(block)))
                 continue;
             if (proof.targets.empty() || proof.targets.size() > 2)
                 continue;
@@ -1104,22 +1465,38 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
             if (!destinations[0] || (proof.targets.size() == 2 && !destinations[1]))
                 continue;
             minsn_t *jump = block->tail;
+            if (native_tail(block))
+            {
+                // This was a native jump. A projected shared-frame target is
+                // internal flow, so the generated tail-call ABI is inapplicable.
+                if (jump->d.t == mop_f && jump->d.f && !jump->d.f->args.empty())
+                    continue;
+                mop_t address = jump->opcode == m_icall ? jump->r : jump->l;
+                jump->opcode = m_ijmp;
+                jump->l.erase();
+                jump->r.erase();
+                jump->d = address;
+                jump->clr_tailcall();
+            }
             if (proof.targets.size() == 1 &&
                 !chernobog::preserve_indirect_target_effects(block, jump, jump->d))
                 continue;
             // Function-mode generation elides the frame-pointer setup. The
             // extra ranges must see that same frame, rather than an unrelated
             // incoming X29 supplied by their standalone IDB prototypes.
-            mop_t slot;
-            slot.make_stkvar(mba, mba->tmpstk_size + proof.frame_offset);
-            slot.size = NOSIZE;
-            minsn_t *frame = new minsn_t(site);
-            frame->opcode = m_mov;
-            frame->l.t = mop_a;
-            frame->l.a = new mop_addr_t(slot, NOSIZE, NOSIZE);
-            frame->l.size = 8;
-            frame->d.make_reg(reg2mreg(str2reg("X29")), 8);
-            block->insert_into_block(frame, block->tail->prev);
+            if (arch::is_arm64())
+            {
+                mop_t slot;
+                slot.make_stkvar(mba, mba->tmpstk_size + proof.frame_offset);
+                slot.size = NOSIZE;
+                minsn_t *frame = new minsn_t(site);
+                frame->opcode = m_mov;
+                frame->l.t = mop_a;
+                frame->l.a = new mop_addr_t(slot, NOSIZE, NOSIZE);
+                frame->l.size = 8;
+                frame->d.make_reg(reg2mreg(str2reg("X29")), 8);
+                block->insert_into_block(frame, block->tail->prev);
+            }
             // Publish control edges before liveness can discard registers
             // consumed by the projected fragments. KEEP alone is insufficient.
             if (proof.targets.size() == 1)
@@ -1130,6 +1507,7 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
                 jump->d.erase();
                 block->flags &= ~(MBL_NORET | MBL_TCAL);
                 block->mark_lists_dirty();
+                connected = true;
                 continue;
             }
             jump->l = jump->d;
@@ -1150,7 +1528,10 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
             jump->opcode = m_jtbl;
             block->flags &= ~(MBL_NORET | MBL_TCAL);
             block->mark_lists_dirty();
+            connected = true;
         }
+        if (!connected)
+            continue;
         for (int index = 0; index < mba->qty; ++index)
         {
             mblock_t *block = mba->get_mblock(index);

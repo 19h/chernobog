@@ -20,9 +20,11 @@ unbounded arithmetic byte is widened to all 256 values. A constant-time
 conservative domain-size estimate controls this choice and can overcount shared
 inputs, which loses precision rather than inventing equalities.
 Different mutable snapshots remain independent. Exact same-block stack stores
-can supply a later value; partial writes, indirect stores, unknown operations
-and real calls interrupt that search. Every nested call is checked before an
-authentication intrinsic is allowed to preserve the stack snapshot.
+can supply a later value; partial writes and unknown operations interrupt that
+search. The ARM path stops at indirect stores and real calls, checking every
+nested call before an authentication intrinsic can preserve a stack snapshot.
+AMD64 can also follow a unique predecessor and cross effects whose SDK may-def
+list excludes the queried slot, as detailed in the AMD64 adapter document below.
 
 | Boundary | Limit or behavior |
 | --- | --- |
@@ -138,3 +140,6 @@ rejection. Both fixtures require structured conditions in final pseudocode.
 
 ARM64e value semantics, authentication guards and pointer-origin proofs are
 described in [ARM64e primitive support](arm64e-primitives.md).
+
+AMD64 relative dispatch, address-valued proofs and outlined-register
+preservation are described in [AMD64 finite dispatch](x86-finite-dispatch.md).

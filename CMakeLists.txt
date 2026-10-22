@@ -444,6 +444,7 @@ ida_add_plugin(
     src/ida_analysis/get_pc_ida.cpp
     src/ida_analysis/native_engine.cpp
     src/ida_analysis/early_hexrays.cpp
+    src/ida_analysis/inline_abi.cpp
     src/ida_analysis/arm64e_hexrays.cpp
     src/ida_analysis/evidence_apply.cpp
     src/vm/warbird/model.cpp

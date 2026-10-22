@@ -23,6 +23,9 @@ class indirect_branch_handler_t
     static bool is_projected_return(const codegen_t &codegen);
     static int apply_generated_projections(mba_t *mba);
     static std::optional<std::array<ea_t, 2>> proven_targets(ea_t function, ea_t site);
+    // Explicit IDB recovery: 0 previews, 1 creates ownerless regions, 3 also
+    // selects proven entries overlapping unprotected ownerless code items.
+    static qstring recover_regions(ea_t function, unsigned flags);
     static int extend_flowchart(qflow_chart_t *flowchart, bitset_t *reachable, mba_t *mba);
 #if IDA_SDK_VERSION >= 940
     static int extend_flowchart(qflow_chart_ea_t *flowchart, bitset_t *reachable, mba_t *mba);
