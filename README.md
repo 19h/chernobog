@@ -448,7 +448,7 @@ without applying any deobfuscation.
 | `CHERNOBOG_WRITABLE_CONST=1` | Inline loaded 1/2/4/8-byte writable scalars with classified direct reads, no direct writes, no address escape, and no loader fixup on the scalar |
 | `CHERNOBOG_WRITABLE_CONST=2` | Additionally admit address-taken scalars/objects (including resolved data-pointer xrefs without retained fixups) and relocation-backed code-pointer slots in writable data; requires ruling out indirect mutation |
 | `CHERNOBOG_NATIVE_OPAQUE=1` | Before Hex-Rays lifting, reversibly rewrite proven constant ARM64 `B.cond`/`CBZ`/`CBNZ` terminators to `B` or `NOP`; writable seeds additionally require `CHERNOBOG_WRITABLE_CONST=1` or `2` |
-| `CHERNOBOG_PATCH_BRANCHES=1` | Reversibly patch a proven ARM64 indirect tail `BR` to an equivalent in-range direct `B`; re-decompile once after discovery |
+| `CHERNOBOG_PATCH_BRANCHES=1` | Retained for configuration compatibility; optimized-IR tail targets no longer authorize native branch patches |
 | `CHERNOBOG_DEAD_GLOBAL_STORES=1` | Remove direct stores to auto-named writable scalars with write xrefs but no direct reads, fixups, data references, or user/export names |
 | `CHERNOBOG_HIKARI_CFG=1` | Recover exact two-target ARM64 Hikari dispatch edges across IDA function boundaries and add IDB xrefs/comments |
 | `CHERNOBOG_HIKARI_CFG=2` | Additionally rewrite side-effect-free dispatch tails to reversible direct conditional branches |
@@ -523,13 +523,12 @@ The scan is `O(I + X)` time and `O(R + S)` transient state per block, where
 tracked registers, and `S` is tracked stack slots. Writable-mode assumptions
 remain exactly those described above; mode 0 admits only read-only storage.
 
-`CHERNOBOG_PATCH_BRANCHES=1` is independent and remains disabled by default.
-It activates only after exact target evaluation, requires the native instruction
-to be an ARM64 register `BR`, requires a 4-byte-aligned external function entry
-within the signed 26-bit `B` range, and uses IDA's reversible patch API (the
-input file is unchanged). The first decompilation discovers and patches the
-tail; re-decompile the function to let Hex-Rays regenerate microcode from the
-direct branch.
+`CHERNOBOG_PATCH_BRANCHES` remains accepted for configuration compatibility.
+A target proved in optimized IR can depend on a single-predecessor assumption
+that later edge discovery invalidates. Such results no longer authorize native
+`BR` patches. Discovered targets instead enter a guarded CFG view, and a new
+edge restarts generation from native instructions. See
+[indirect-target proof lifetime](docs/indirect-cfg-proof-lifetime.md).
 
 `CHERNOBOG_DEAD_GLOBAL_STORES=1` is a closed-world analysis mode. Its static
 gate rejects direct reads, loader/data references, fixups, user-named objects,
@@ -756,7 +755,7 @@ can be modified safely:
 - **Indirect Call Resolution and Resolver Cleanup (`MMAT_CALLS`)**: Once call arguments are materialized, indirect calls are resolved, a first VM-family pass runs, and pure call-site argument expressions that a recurrent, statically closed resolver thunk provably never reads are neutralized (physical ABI slots are retained so live arguments do not shift)
 - **Deferred Reapplication (`MMAT_GLBOPT1`)**: Global-constant inlining is retried and the deferred identity-call and deflattening analyses are applied — or flattening is freshly re-detected — once addresses have resolved
 - **Late VM/MBA Recovery (`MMAT_GLBOPT2`)**: VM-family and residual MBA passes run again
-- **Late Branch Resolution (`hxe_glbopt`, auto mode only)**: Register-defined indirect tail targets are resolved in microcode and constant same-block conditional branches are simplified; with the separate `CHERNOBOG_PATCH_BRANCHES=1` opt-in a resolved ARM64 `BR` tail is additionally patched to a reversible direct `B`. Native opaque-predicate patching runs earlier, at flowchart/auto-analysis time (see `CHERNOBOG_NATIVE_OPAQUE`)
+- **Late Branch Resolution (`hxe_glbopt`, auto mode only)**: Register-defined indirect tail targets are resolved in microcode and constant same-block conditional branches are simplified. New discovered edges restart native generation; cached addresses retain target guards and an indirect fallback. Native opaque-predicate patching runs earlier, at flowchart/auto-analysis time (see `CHERNOBOG_NATIVE_OPAQUE`)
 
 ### Phase 3: Ctree Cleanup (CMAT_FINAL)
 - **High-Level Optimization**: Additional cleanup at the decompiler AST level

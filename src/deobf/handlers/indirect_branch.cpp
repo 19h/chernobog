@@ -1,15 +1,11 @@
 #include "indirect_branch.h"
 
 #include "../analysis/arch_utils.h"
-#include "../analysis/opaque_eval.h"
 #include "../analysis/finite_targets.h"
-#include "../../common/arm64_branch.h"
 #include "../../common/arm64e.h"
 #include "../../common/bitvector.h"
 #include "../../common/ida_memory.h"
-#include "../../hybrid/z3_bridge.hpp"
 #include "../../common/warn_off.h"
-#include <fixup.hpp>
 #include <intel.hpp>
 #include "../../common/warn_on.h"
 
@@ -19,8 +15,6 @@
 
 namespace
 {
-
-constexpr int MAX_TARGET_EVAL_DEPTH = 16;
 
 bool native_jump(ea_t address)
 {
@@ -43,6 +37,8 @@ bool native_tail(const mblock_t *block)
 struct projection_t
 {
     ea_t site = BADADDR;
+    // A union of discovered destinations, not an exhaustive target proof for
+    // the current CFG. Generation must retain the actual target and fallback.
     std::vector<ea_t> targets;
     std::vector<range_t> fragments;
     std::vector<range_t> root_ranges, source_ranges;
@@ -99,6 +95,8 @@ void revoke_projection(const projection_t &proof)
 
 bool fresh_projection(const projection_t &proof)
 {
+    // This validates a discovery hint's sources, not a target proof for the
+    // current predecessor set. The native target still guards every case.
     const func_t *root = get_func(proof.root);
     if (!root || root->start_ea != proof.root || root->end_ea != proof.root_end ||
         root->frsize != proof.frame_size || root->fpd != proof.frame_delta ||
@@ -415,16 +413,40 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
         return false;
     auto &sites = projections[key];
     const auto old = sites.find(site);
+    if (old != sites.end() && fresh_projection(old->second))
+    {
+        for (ea_t target : old->second.targets)
+            if (std::find(proof.targets.begin(), proof.targets.end(), target) ==
+                proof.targets.end())
+                proof.targets.push_back(target);
+        for (const range_t &fragment : old->second.fragments)
+            if (std::find(proof.fragments.begin(), proof.fragments.end(), fragment) ==
+                proof.fragments.end())
+                proof.fragments.push_back(fragment);
+        std::map<std::pair<ea_t, size_t>, chernobog::finite_targets_t::dependency_t> dependencies;
+        for (const auto &dependency : old->second.dependencies)
+            dependencies[{dependency.address, dependency.bytes.size()}] = dependency;
+        for (const auto &dependency : proof.dependencies)
+            dependencies[{dependency.address, dependency.bytes.size()}] = dependency;
+        proof.dependencies.clear();
+        for (auto &[location, dependency] : dependencies)
+            proof.dependencies.push_back(std::move(dependency));
+    }
+    std::sort(proof.targets.begin(), proof.targets.end());
+    std::sort(proof.fragments.begin(), proof.fragments.end(),
+              [](const range_t &a, const range_t &b) { return a.start_ea < b.start_ea; });
+    if (proof.targets.size() > 128 || proof.dependencies.size() > 8192)
+        return false;
     if (old != sites.end() && old->second.targets == proof.targets &&
         old->second.fragments == proof.fragments && fresh_projection(old->second))
         return false;
-    if (sites.size() >= 32)
+    if (sites.size() >= 32 && old == sites.end())
         return false;
     if (old != sites.end())
         revoke_projection(old->second);
     get_cmt(&proof.previous_comment, site, false);
     proof.published_comment = comment;
-    for (ea_t target : finite.targets)
+    for (ea_t target : proof.targets)
     {
         bool present = false;
         xrefblk_t xref;
@@ -434,20 +456,36 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
             proof.owned_edges.push_back(target);
     }
     deobf::set_cmt_if_changed(site, comment.c_str(), false);
-    const bool restart = !proof.fragments.empty();
+    // Even an internal edge can introduce another predecessor after the SDK
+    // has propagated values. Discard that entire MBA before using those values.
     deobf::log_verbose(
-        "[indirect_branch] Proved %zu targets at %a; projecting %zu frame fragments\n",
+        "[indirect_branch] Discovered %zu target addresses at %a; projecting %zu frame fragments\n",
         proof.targets.size(), site, proof.fragments.size());
     sites[site] = std::move(proof);
-    if (restart)
-        projection_restarts.insert(key);
-    return restart;
+    projection_restarts.insert(key);
+    return true;
 }
 
 void rebuild_flowchart(qflow_chart_t *flowchart, const rangevec_t &ranges)
 {
     const qstring title = flowchart->title;
     flowchart->create(title.c_str(), ranges, flowchart->flags);
+}
+
+bool discovered_targets(mba_t *mba, ea_t site, const chernobog::finite_targets_t &finite)
+{
+    const auto function = projections.find({get_dbctx_id(), mba->entry_ea});
+    if (function == projections.end())
+        return false;
+    const auto proof = function->second.find(site);
+    return proof != function->second.end() && fresh_projection(proof->second) &&
+           std::all_of(finite.targets.begin(), finite.targets.end(),
+                       [&](ea_t target)
+                       {
+                           return std::find(proof->second.targets.begin(),
+                                            proof->second.targets.end(),
+                                            target) != proof->second.targets.end();
+                       });
 }
 
 #if IDA_SDK_VERSION >= 940
@@ -580,195 +618,6 @@ int extend_projection(Flowchart *flowchart, bitset_t *reachable, ea_t root, mba_
     return changes;
 }
 
-bool aggressive_writable_pointer_mode_enabled()
-{
-    static int cached = -1;
-    if (cached == -1)
-    {
-        qstring value;
-        cached = qgetenv("CHERNOBOG_WRITABLE_CONST", &value) && !value.empty() && value[0] == '2'
-                     ? 1
-                     : 0;
-    }
-    return cached == 1;
-}
-
-bool direct_branch_patch_mode_enabled()
-{
-    static int cached = -1;
-    if (cached == -1)
-    {
-        qstring value;
-        cached = qgetenv("CHERNOBOG_PATCH_BRANCHES", &value) && !value.empty() && value[0] == '1'
-                     ? 1
-                     : 0;
-    }
-    return cached == 1;
-}
-
-bool patch_arm64_indirect_tail(ea_t branch_ea, ea_t target_ea)
-{
-    if (!direct_branch_patch_mode_enabled() || !arch::is_arm64() || branch_ea == BADADDR ||
-        target_ea == BADADDR)
-    {
-        return false;
-    }
-
-    insn_t instruction;
-    if (decode_insn(&instruction, branch_ea) != 4 || instruction.itype != ARM_br ||
-        instruction.Op1.type != o_reg)
-    {
-        return false;
-    }
-    const auto native_branch = chernobog::arm64_branch::decode_indirect(get_dword(branch_ea));
-    if (!native_branch || native_branch->authenticated)
-        return false; // A direct B would remove the authentication operation.
-
-    const std::optional<uint32_t> encoding =
-        chernobog::arm64_branch::encode_b(branch_ea, target_ea);
-    if (!encoding)
-        return false;
-
-    // patch_dword preserves the original IDB bytes for Edit/Patch program/
-    // Revert. The input file on disk is not modified.
-    patch_dword(branch_ea, *encoding);
-    if (static_cast<uint32_t>(get_dword(branch_ea)) != *encoding)
-        return false;
-
-    // A display projection can retain this exact Chernobog-owned patch, but
-    // no other function-byte change in the decompiler window. Authorization
-    // records the bytes after patch_dword has verified the final encoding.
-    const func_t *owner = get_func(branch_ea);
-    if (owner != nullptr)
-    {
-        (void)chernobog::hybrid::hybrid_authorize_deobfuscation_patch(
-            uint64_t(owner->start_ea), uint64_t(branch_ea), sizeof(uint32_t));
-    }
-
-    // A prior multi-target CFG annotation may have attached several exact
-    // successors to the original BR. Once an opaque predicate proves one
-    // target, retaining those stale crefs makes Hex-Rays treat the direct B as
-    // an inconsistent multi-successor instruction.
-    std::vector<ea_t> stale_targets;
-    xrefblk_t xref;
-    for (bool ok = xref.first_from(branch_ea, XREF_FAR); ok; ok = xref.next_from())
-    {
-        if (xref.iscode && xref.to != target_ea)
-            stale_targets.push_back(xref.to);
-    }
-    for (ea_t stale_target : stale_targets)
-        del_cref(branch_ea, stale_target, false);
-    add_cref(branch_ea, target_ea, fl_JN);
-    deobf::log("[indirect_branch] Patched ARM64 BR at %a to reversible B %a "
-               "(0x%08X)\n",
-               branch_ea, target_ea, *encoding);
-    return true;
-}
-
-std::optional<uint64_t> relocated_code_pointer(const mop_t &operand)
-{
-    if (operand.t != mop_v || operand.g == BADADDR || operand.size != (inf_is_64bit() ? 8 : 4))
-    {
-        return std::nullopt;
-    }
-
-    const segment_t *slot_segment = getseg(operand.g);
-    if (!slot_segment || (slot_segment->perm & SEGPERM_EXEC) != 0)
-        return std::nullopt;
-    if ((slot_segment->perm & SEGPERM_WRITE) != 0 && !aggressive_writable_pointer_mode_enabled())
-    {
-        return std::nullopt;
-    }
-
-    fixup_data_t fixup;
-    if (!get_fixup(&fixup, operand.g) || fixup.is_unused())
-        return std::nullopt;
-
-    const std::optional<uint64_t> pointer =
-        chernobog::ida_memory::read_integer(operand.g, operand.size);
-    if (!pointer)
-        return std::nullopt;
-    const segment_t *target_segment = getseg(static_cast<ea_t>(*pointer));
-    if (!target_segment || (target_segment->perm & SEGPERM_EXEC) == 0)
-        return std::nullopt;
-    return *pointer;
-}
-
-std::optional<uint64_t> evaluate_target_operand(const mop_t &operand, const minsn_t *before,
-                                                int depth);
-
-std::optional<uint64_t> evaluate_target_instruction(const minsn_t *instruction, int depth)
-{
-    if (!instruction || depth > MAX_TARGET_EVAL_DEPTH || instruction->is_fpinsn())
-    {
-        return std::nullopt;
-    }
-
-    const int width = instruction->d.size > 0 ? instruction->d.size : (inf_is_64bit() ? 8 : 4);
-    switch (instruction->opcode)
-    {
-    case m_mov:
-    case m_xdu:
-    case m_xds:
-    case m_low:
-        return evaluate_target_operand(instruction->l, instruction, depth + 1);
-
-    case m_add:
-    case m_sub:
-    {
-        const std::optional<uint64_t> left =
-            evaluate_target_operand(instruction->l, instruction, depth + 1);
-        const std::optional<uint64_t> right =
-            evaluate_target_operand(instruction->r, instruction, depth + 1);
-        if (!left || !right)
-            return std::nullopt;
-        const uint64_t value = instruction->opcode == m_add ? *left + *right : *left - *right;
-        return chernobog::bitvector::truncate(value, width);
-    }
-
-    default:
-        return std::nullopt;
-    }
-}
-
-std::optional<uint64_t> evaluate_target_operand(const mop_t &operand, const minsn_t *before,
-                                                int depth)
-{
-    if (depth > MAX_TARGET_EVAL_DEPTH)
-        return std::nullopt;
-
-    if (operand.t == mop_n && operand.nnn)
-        return chernobog::bitvector::truncate(operand.nnn->value, operand.size);
-    if (operand.t == mop_a && operand.a && operand.a->t == mop_v)
-        return operand.a->g;
-    if (operand.t == mop_v)
-    {
-        // In a pointer-valued branch expression Hex-Rays uses a code-segment
-        // mop_v as the loaded address, not as a request to read code bytes.
-        const segment_t *segment = getseg(operand.g);
-        if (segment && (segment->perm & SEGPERM_EXEC) != 0)
-            return operand.g;
-        return relocated_code_pointer(operand);
-    }
-    if (operand.t == mop_d && operand.d)
-        return evaluate_target_instruction(operand.d, depth + 1);
-    if (operand.t != mop_r || !before)
-        return std::nullopt;
-
-    // At late global optimization, the exact branch target is commonly held
-    // in a register defined by pointer arithmetic in the same block. Do not
-    // cross a block boundary or accept a width-changing redefinition.
-    for (const minsn_t *definition = before->prev; definition; definition = definition->prev)
-    {
-        if (definition->d.t != mop_r || definition->d.r != operand.r)
-            continue;
-        if (definition->d.size != operand.size)
-            return std::nullopt;
-        return evaluate_target_instruction(definition, depth + 1);
-    }
-    return std::nullopt;
-}
-
 //--------------------------------------------------------------------------
 // Replace every old CFG successor and install the single direct successor.
 //--------------------------------------------------------------------------
@@ -808,6 +657,12 @@ int lower_two_way(mbl_array_t *mba, mblock_t *src, const mop_t &condition,
 {
     if (!destinations[0] || !destinations[1] || destinations[0] == destinations[1])
         return 0;
+    // At this maturity, adding another native predecessor would invalidate
+    // propagated values elsewhere. Discovery must install it after a restart.
+    for (mblock_t *destination : destinations)
+        if (std::find(src->succset.begin(), src->succset.end(), destination->serial) ==
+            src->succset.end())
+            return 0;
     mop_t predicate = condition;
     mblock_t *capture_block = nullptr;
     minsn_t *capture_before = nullptr;
@@ -985,6 +840,83 @@ int lower_boolean_switch(mbl_array_t *mba, mblock_t *src)
     return lower_two_way(mba, src, table->l, destinations);
 }
 
+int lower_finite_switch(mba_t *mba, mblock_t *src)
+{
+    minsn_t *table = src->tail;
+    if (!table || table->opcode != m_jtbl || table->r.t != mop_c || !table->r.c ||
+        table->r.c->values.size() != table->r.c->targets.size())
+        return 0;
+    const auto finite = chernobog::evaluate_finite_values(table->l, table, src);
+    if (!finite || finite->values.empty())
+        return 0;
+    std::vector<mblock_t *> destinations;
+    for (uint64_t value : finite->values)
+    {
+        int selected = -1, fallback = -1;
+        for (size_t entry = 0; entry < table->r.c->values.size(); ++entry)
+        {
+            const auto &cases = table->r.c->values[entry];
+            if (cases.empty())
+                fallback = table->r.c->targets[entry];
+            else if (std::find(cases.begin(), cases.end(), value) != cases.end())
+            {
+                if (selected != -1)
+                    return 0;
+                selected = table->r.c->targets[entry];
+            }
+        }
+        if (selected == -1)
+            selected = fallback;
+        if (selected < 0 || selected >= mba->qty ||
+            std::find(src->succset.begin(), src->succset.end(), selected) == src->succset.end())
+            return 0;
+        destinations.push_back(mba->get_mblock(selected));
+    }
+    const bool singleton =
+        std::all_of(destinations.begin(), destinations.end(),
+                    [&](mblock_t *block) { return block == destinations.front(); });
+    if ((!singleton && destinations.size() != 2) ||
+        !chernobog::remember_finite_values(mba->entry_ea, *finite))
+        return 0;
+    if (singleton)
+    {
+        if (!chernobog::preserve_indirect_target_effects(src, table, table->l))
+            return 0;
+        const int destination = destinations.front()->serial;
+        table->opcode = m_goto;
+        table->l.make_blkref(destination);
+        table->r.erase();
+        table->d.erase();
+        replace_cfg_successors(mba, src, destination);
+        src->type = BLT_1WAY;
+        src->flags &= ~(MBL_NORET | MBL_TCAL);
+        return 1;
+    }
+    // Test the already computed selector, not an earlier memory predicate.
+    // A selector with effects is evaluated once at the original transfer.
+    if (table->l.has_side_effects(true))
+    {
+        const mreg_t temporary = mba->alloc_kreg(size_t(table->l.size));
+        if (temporary == mr_none)
+            return 0;
+        auto *capture = new minsn_t(table->ea);
+        capture->opcode = m_mov;
+        capture->l = table->l;
+        capture->d.make_reg(temporary, table->l.size);
+        src->insert_into_block(capture, table->prev);
+        table->l.make_reg(temporary, table->l.size);
+        src->mark_lists_dirty();
+    }
+    minsn_t comparison(table->ea);
+    comparison.opcode = m_setz;
+    comparison.l = table->l;
+    comparison.r.make_number(finite->values[1], table->l.size);
+    comparison.d.size = 1;
+    mop_t condition;
+    condition.create_from_insn(&comparison);
+    return lower_two_way(mba, src, condition, {destinations[0], destinations[1]});
+}
+
 //--------------------------------------------------------------------------
 // Resolve the actual m_ijmp offset operand.  A target merely contained in a
 // block is insufficient: m_goto transfers to the block start, so accepting an
@@ -996,143 +928,63 @@ int resolve_ijmp(mbl_array_t *mba, mblock_t *src, deobf_ctx_t *ctx,
     minsn_t *ijmp = src->tail;
     if (!ijmp || ijmp->opcode != m_ijmp || ijmp->d.empty())
         return 0;
-
-    // In a selector/offset instruction, a global operand is address-used: its
-    // EA is the offset. In nested value expressions, mop_v instead denotes the
-    // global's contents and is handled by the immutable evaluator.
-    std::optional<uint64_t> value = evaluate_target_operand(ijmp->d, ijmp, 0);
-    if (!value)
-    {
-        value = ijmp->d.t == mop_v ? std::optional<uint64_t>(ijmp->d.g)
-                                   : opaque_eval_t::evaluate_operand(ijmp->d);
-    }
-    if (!value)
-    {
-        const auto finite =
-            chernobog::evaluate_finite_targets(ijmp->d, ijmp, src, false, arch::is_x86_64());
-        if (finite)
-        {
-            qstring comment;
-            if (finite->targets.size() == 2 && !finite->condition.empty())
-            {
-                comment.sprnt("DEOBF: conditional indirect targets: false=%a, true=%a",
-                              finite->targets_by_condition[0], finite->targets_by_condition[1]);
-            }
-            else if (finite->targets.size() == 1)
-                comment.sprnt("DEOBF: exact indirect target -> %a", finite->targets.front());
-            if (finite->authentication_guarded)
-                comment += " (authentication retained)";
-            if (std::any_of(
-                    finite->targets.begin(), finite->targets.end(), [](ea_t address)
-                    { return !is_code(get_flags(address)) || !is_head(get_flags(address)); }))
-                comment += " (disassembly boundary unresolved)";
-            record_projection(mba, ijmp->ea, *finite, comment);
-            if (finite->targets.size() == 1)
-                value = finite->targets.front();
-            else
-            {
-                const int changed = lower_conditional_targets(mba, src, *finite);
-                ctx->branches_simplified += changed;
-                return changed;
-            }
-        }
-    }
-    if (!value)
-    {
-        const auto candidates = chernobog::hybrid::hybrid_current_indirect_target_candidates(
-            uint64_t(mba->entry_ea), uint64_t(ijmp->ea));
-        for (const auto &candidate : candidates)
-        {
-            deobf::log_verbose("[indirect_branch][rax] Observed candidate %a at %a "
-                               "(%zu observations, %zu runs); retained indirect because "
-                               "concrete coverage is non-exhaustive\n",
-                               ea_t(candidate.target), ijmp->ea, candidate.observations,
-                               candidate.runs.size());
-        }
+    mop_t address = ijmp->d;
+    // A global in this top-level offset position is address-used. Nested
+    // globals retain their ordinary memory semantics in the finite evaluator.
+    if (address.t == mop_v)
+        address.make_number(address.g, inf_is_64bit() ? 8 : 4);
+    const auto finite =
+        chernobog::evaluate_finite_targets(address, ijmp, src, false, arch::is_x86_64());
+    if (!finite ||
+        (finite->targets.size() != 1 && (finite->targets.size() != 2 || finite->condition.empty())))
         return 0;
+    qstring comment;
+    if (finite->targets.size() == 2)
+        comment.sprnt("DEOBF: conditional indirect targets: false=%a, true=%a",
+                      finite->targets_by_condition[0], finite->targets_by_condition[1]);
+    else
+        comment.sprnt("DEOBF: exact indirect target -> %a", finite->targets.front());
+    if (finite->authentication_guarded)
+        comment += " (authentication retained)";
+    if (std::any_of(finite->targets.begin(), finite->targets.end(), [](ea_t target)
+                    { return !is_code(get_flags(target)) || !is_head(get_flags(target)); }))
+        comment += " (disassembly boundary unresolved)";
+    if (record_projection(mba, ijmp->ea, *finite, comment) ||
+        !discovered_targets(mba, ijmp->ea, *finite))
+        return 0;
+    if (finite->targets.size() == 2)
+    {
+        const int changes = lower_conditional_targets(mba, src, *finite);
+        ctx->branches_simplified += changes;
+        return changes;
     }
-
-    const ea_t target_ea = static_cast<ea_t>(*value);
+    const ea_t target_ea = finite->targets.front();
     const auto target = block_starts.find(target_ea);
     const int target_idx = target == block_starts.end() ? -1 : target->second;
-
     if (target_idx < 0)
     {
-        // Constant address arithmetic can take the fast evaluator above.
-        // Shared-frame admission still needs a dependency-carrying proof,
-        // including a plain address origin already canonicalized as mop_v.
-        if (ijmp->d.t == mop_v)
-        {
-            mop_t address;
-            address.make_number(target_ea, 8);
-            if (const auto direct = chernobog::evaluate_finite_targets(address, ijmp, src))
-            {
-                qstring comment;
-                comment.sprnt("DEOBF: exact indirect target -> %a", target_ea);
-                record_projection(mba, ijmp->ea, *direct, comment);
-            }
-        }
-        else if (const auto finite = chernobog::evaluate_finite_targets(ijmp->d, ijmp, src);
-                 finite && finite->targets.size() == 1 && finite->targets.front() == target_ea)
-        {
-            qstring comment;
-            comment.sprnt("DEOBF: exact indirect target -> %a", target_ea);
-            record_projection(mba, ijmp->ea, *finite, comment);
-        }
-        // An exact target outside the current MBA cannot become m_goto, but
-        // canonicalizing the ijmp operand is still semantics-preserving and
-        // exposes a tail target to ctree. Require an executable function entry
-        // so an interior address cannot be mislabeled as an external call.
         const segment_t *segment = getseg(target_ea);
         const func_t *target_function = get_func(target_ea);
-        if (segment && (segment->perm & SEGPERM_EXEC) != 0 && target_function &&
-            target_function->start_ea == target_ea)
-        {
-            if (!chernobog::preserve_indirect_target_effects(src, ijmp, ijmp->d))
-                return 0;
-            const bool already_canonical = ijmp->d.t == mop_v && ijmp->d.g == target_ea;
-            add_cref(ijmp->ea, target_ea, fl_JN);
-
-            qstring target_name;
-            if (get_func_name(&target_name, target_ea) <= 0)
-                target_name.sprnt("sub_%a", target_ea);
-            qstring comment;
-            comment.sprnt("DEOBF: exact indirect tail target -> %s (%a)", target_name.c_str(),
-                          target_ea);
-            set_cmt(ijmp->ea, comment.c_str(), false);
-            patch_arm64_indirect_tail(ijmp->ea, target_ea);
-
-            if (!already_canonical)
-            {
-                ijmp->d.make_gvar(target_ea);
-                ijmp->d.size = inf_is_64bit() ? 8 : 4;
-                src->mark_lists_dirty();
-                mba->mark_chains_dirty();
-                ++ctx->branches_simplified;
-                deobf::log("[indirect_branch] Canonicalized external ijmp in block %d "
-                           "to function %a\n",
-                           src->serial, target_ea);
-                return 1;
-            }
+        if (!segment || (segment->perm & SEGPERM_EXEC) == 0 || !target_function ||
+            target_function->start_ea != target_ea ||
+            !chernobog::preserve_indirect_target_effects(src, ijmp, ijmp->d))
             return 0;
-        }
-
-        deobf::log_verbose("[indirect_branch] Exact target %a is not a unique microblock start\n",
-                           target_ea);
-        return 0;
+        if (ijmp->d.t == mop_v && ijmp->d.g == target_ea)
+            return 0;
+        ijmp->d.make_gvar(target_ea);
+        ijmp->d.size = inf_is_64bit() ? 8 : 4;
+        src->mark_lists_dirty();
+        mba->mark_chains_dirty();
+        ++ctx->branches_simplified;
+        return 1;
     }
-
-    deobf::log("[indirect_branch] Converting block %d ijmp to goto block %d "
-               "(target %a)\n",
-               src->serial, target_idx, target_ea);
-
-    if (!chernobog::preserve_indirect_target_effects(src, ijmp, ijmp->d))
+    if (std::find(src->succset.begin(), src->succset.end(), target_idx) == src->succset.end() ||
+        !chernobog::preserve_indirect_target_effects(src, ijmp, ijmp->d))
         return 0;
     ijmp->opcode = m_goto;
     ijmp->l.make_blkref(target_idx);
     ijmp->r.erase();
     ijmp->d.erase();
-
     replace_cfg_successors(mba, src, target_idx);
     src->type = BLT_1WAY;
     ++ctx->branches_simplified;
@@ -1199,13 +1051,22 @@ int indirect_branch_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
         else if (blk && blk->tail && blk->tail->opcode == m_jtbl)
         {
             const int before = mba->qty;
-            int changed = lower_boolean_switch(mba, blk);
+            int changed = lower_finite_switch(mba, blk);
+            if (!changed)
+                changed = lower_boolean_switch(mba, blk);
             if (!changed)
             {
                 const auto finite =
                     chernobog::evaluate_finite_targets(blk->tail->l, blk->tail, blk);
                 if (finite && !finite->condition.empty())
-                    changed = lower_conditional_targets(mba, blk, *finite);
+                {
+                    qstring comment;
+                    comment.sprnt("DEOBF: discovered indirect destinations at %a", blk->tail->ea);
+                    if (record_projection(mba, blk->tail->ea, *finite, comment))
+                        break;
+                    if (discovered_targets(mba, blk->tail->ea, *finite))
+                        changed = lower_conditional_targets(mba, blk, *finite);
+                }
             }
             ctx->branches_simplified += changed;
             changes += changed;
@@ -1231,6 +1092,8 @@ int indirect_branch_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
                 record_projection(mba, blk->tail->ea, *finite, comment);
             }
         }
+        if (projection_restarts.count({get_dbctx_id(), mba->entry_ea}) != 0)
+            break;
     }
 
     deobf::log("[indirect_branch] Resolved %d exact indirect branches\n", changes);
@@ -1240,19 +1103,6 @@ int indirect_branch_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
 bool indirect_branch_handler_t::take_projection_restart(ea_t function)
 {
     return projection_restarts.erase({get_dbctx_id(), function}) != 0;
-}
-
-std::optional<std::array<ea_t, 2>> indirect_branch_handler_t::proven_targets(ea_t function,
-                                                                             ea_t site)
-{
-    const auto found = projections.find({get_dbctx_id(), function});
-    if (found == projections.end())
-        return std::nullopt;
-    const auto proof = found->second.find(site);
-    if (proof == found->second.end() || proof->second.targets.size() != 2 ||
-        !fresh_projection(proof->second))
-        return std::nullopt;
-    return std::array<ea_t, 2>{proof->second.targets[0], proof->second.targets[1]};
 }
 
 qstring indirect_branch_handler_t::recover_regions(ea_t function, unsigned flags)
@@ -1446,108 +1296,148 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
     int retained = 0;
     for (const auto &[site, proof] : found->second)
     {
-        if (!fresh_projection(proof) || proof.fragments.empty())
+        if (!fresh_projection(proof))
             continue;
         bool connected = false;
         for (int index = 0; index < mba->qty; ++index)
         {
             mblock_t *block = mba->get_mblock(index);
-            if (!block->tail || block->tail->ea != site ||
+            if (!block->tail || block->tail->ea != site || (block->flags & MBL_FAKE) != 0 ||
                 (block->tail->opcode != m_ijmp && !native_tail(block)))
                 continue;
-            if (proof.targets.empty() || proof.targets.size() > 2)
-                continue;
-            std::array<mblock_t *, 2> destinations = {nullptr, nullptr};
-            for (int destination = 0; destination < mba->qty; ++destination)
-                for (unsigned outcome = 0; outcome < proof.targets.size(); ++outcome)
-                    if (mba->get_mblock(destination)->start == proof.targets[outcome])
-                        destinations[outcome] = mba->get_mblock(destination);
-            if (!destinations[0] || (proof.targets.size() == 2 && !destinations[1]))
+            std::vector<std::pair<ea_t, mblock_t *>> destinations;
+            for (ea_t target : proof.targets)
+            {
+                mblock_t *matched = nullptr;
+                for (int destination = 0; destination < mba->qty; ++destination)
+                    if (mba->get_mblock(destination)->start == target)
+                    {
+                        if (matched)
+                        {
+                            matched = nullptr;
+                            break; // Ambiguous starts retain the native fallback.
+                        }
+                        matched = mba->get_mblock(destination);
+                    }
+                if (matched)
+                    destinations.emplace_back(target, matched);
+            }
+            if (destinations.empty())
                 continue;
             minsn_t *jump = block->tail;
-            if (native_tail(block))
-            {
-                // This was a native jump. A projected shared-frame target is
-                // internal flow, so the generated tail-call ABI is inapplicable.
-                if (jump->d.t == mop_f && jump->d.f && !jump->d.f->args.empty())
-                    continue;
-                mop_t address = jump->opcode == m_icall ? jump->r : jump->l;
-                jump->opcode = m_ijmp;
-                jump->l.erase();
-                jump->r.erase();
-                jump->d = address;
-                jump->clr_tailcall();
-            }
-            if (proof.targets.size() == 1 &&
-                !chernobog::preserve_indirect_target_effects(block, jump, jump->d))
+            const bool tail_call = native_tail(block);
+            if (tail_call && jump->d.t == mop_f && jump->d.f && !jump->d.f->args.empty())
                 continue;
-            // Function-mode generation elides the frame-pointer setup. The
-            // extra ranges must see that same frame, rather than an unrelated
-            // incoming X29 supplied by their standalone IDB prototypes.
-            if (arch::is_arm64())
+            mop_t address = tail_call ? (jump->opcode == m_icall ? jump->r : jump->l) : jump->d;
+            if (tail_call && jump->opcode == m_call)
+            {
+                insn_t native;
+                if (decode_insn(&native, site) <= 0)
+                    continue;
+                if (native.Op1.type == o_reg)
+                {
+                    if (arch::is_arm64() && chernobog::arm64e::decode(get_dword(site)))
+                        continue;
+                    const mreg_t native_register = reg2mreg(native.Op1.reg);
+                    if (native_register == mr_none)
+                        continue;
+                    address.make_reg(native_register, 8);
+                }
+                else if (native.Op1.type != o_near)
+                    continue;
+            }
+            if (!chernobog::bitvector::valid_byte_width(address.size))
+                continue;
+            // These top-level transfer operands use mop_v as an address;
+            // an ordinary mov would instead load the bytes at that address.
+            // An indirect call's operand retains its memory-value semantics.
+            if (address.t == mop_v && (!tail_call || jump->opcode == m_call))
+                address.make_number(address.g, address.size);
+            const mreg_t temporary = mba->alloc_kreg(size_t(address.size));
+            if (temporary == mr_none)
+                continue;
+            mop_t selector;
+            if (!tail_call)
+                selector = jump->r;
+            else
+                selector.make_number(getseg(site)->sel, 2);
+            // Preserve the SDK's frame handling for the root; projected ARM
+            // fragments need its omitted frame value made explicit.
+            if (arch::is_arm64() && !proof.fragments.empty())
             {
                 mop_t slot;
                 slot.make_stkvar(mba, mba->tmpstk_size + proof.frame_offset);
                 slot.size = NOSIZE;
-                minsn_t *frame = new minsn_t(site);
+                auto *frame = new minsn_t(site);
                 frame->opcode = m_mov;
                 frame->l.t = mop_a;
                 frame->l.a = new mop_addr_t(slot, NOSIZE, NOSIZE);
                 frame->l.size = 8;
                 frame->d.make_reg(reg2mreg(str2reg("X29")), 8);
-                block->insert_into_block(frame, block->tail->prev);
+                block->insert_into_block(frame, jump->prev);
             }
-            // Publish control edges before liveness can discard registers
-            // consumed by the projected fragments. KEEP alone is insufficient.
-            if (proof.targets.size() == 1)
-            {
-                jump->opcode = m_goto;
-                jump->l.make_blkref(destinations[0]->serial);
-                jump->r.erase();
-                jump->d.erase();
-                block->flags &= ~(MBL_NORET | MBL_TCAL);
-                block->mark_lists_dirty();
-                connected = true;
-                continue;
-            }
-            jump->l = jump->d;
+            // Edge discovery is not a context-independent target proof. Test
+            // the native target even for a singleton hint, evaluating it once.
+            auto *capture = new minsn_t(site);
+            capture->opcode = m_mov;
+            capture->l = address;
+            capture->d.make_reg(temporary, address.size);
+            block->insert_into_block(capture, jump->prev);
+            mblock_t *fallback = mba->insert_block(mba->qty - 1);
+            const ea_t fictitious = mba->alloc_fict_ea(site);
+            fallback->start = fictitious;
+            fallback->end = fictitious + 1;
+            fallback->flags |= MBL_FAKE;
+            fallback->flags &= ~(MBL_NORET | MBL_TCAL);
+            fallback->type = BLT_0WAY;
+            fallback->maxbsp = block->maxbsp;
+            fallback->minbstkref = block->minbstkref;
+            fallback->minbargref = block->minbargref;
+            auto *unresolved = new minsn_t(site);
+            unresolved->opcode = m_ijmp;
+            unresolved->r = selector;
+            unresolved->d.make_reg(temporary, address.size);
+            fallback->insert_into_block(unresolved, nullptr);
+            jump->opcode = m_jtbl;
+            jump->clr_tailcall();
+            jump->l.make_reg(temporary, address.size);
             jump->d.erase();
             jump->r.erase();
             jump->r.t = mop_c;
             jump->r.c = new mcases_t;
             jump->r.size = NOSIZE;
-            jump->r.c->resize(3);
-            for (unsigned outcome = 0; outcome < 2; ++outcome)
+            jump->r.c->resize(destinations.size() + 1);
+            for (size_t outcome = 0; outcome < destinations.size(); ++outcome)
             {
-                jump->r.c->values[outcome].push_back(proof.targets[outcome]);
-                jump->r.c->targets[outcome] = destinations[outcome]->serial;
+                jump->r.c->values[outcome].push_back(destinations[outcome].first);
+                jump->r.c->targets[outcome] = destinations[outcome].second->serial;
             }
-            // The exhaustive proof excludes the default; retaining one makes
-            // the initial switch valid before normal CFG construction.
-            jump->r.c->targets[2] = mba->qty - 1;
-            jump->opcode = m_jtbl;
+            jump->r.c->targets[destinations.size()] = fallback->serial;
             block->flags &= ~(MBL_NORET | MBL_TCAL);
             block->mark_lists_dirty();
+            fallback->mark_lists_dirty();
+            mba->mark_chains_dirty();
             connected = true;
+            break;
         }
         if (!connected)
             continue;
+        if (!proof.fragments.empty())
+            mba->set_mba_flags2(MBA2_HAS_OUTLINES);
         for (int index = 0; index < mba->qty; ++index)
         {
             mblock_t *block = mba->get_mblock(index);
             for (const auto &fragment : proof.fragments)
-            {
                 if (fragment.contains(block->start))
                 {
                     block->flags |= MBL_KEEP;
                     ++retained;
                     break;
                 }
-            }
         }
     }
-    deobf::log_verbose(
-        "[indirect_branch] Retained %d projected blocks through initial optimization\n", retained);
+    deobf::log_verbose("[indirect_branch] Retained %d projected blocks with native-target guards\n",
+                       retained);
     return retained;
 }
 

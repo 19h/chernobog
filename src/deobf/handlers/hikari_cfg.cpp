@@ -604,9 +604,6 @@ std::optional<std::array<ea_t, 2>> recover_table_dispatcher(func_t *function)
                                              DECOMP_NO_CACHE | DECOMP_NO_WAIT, MMAT_GLBOPT3));
     if (!mba)
         return std::nullopt;
-    if (const auto targets =
-            indirect_branch_handler_t::proven_targets(function->start_ea, items.back().ea))
-        return targets;
     for (int index = 0; index < mba->qty; ++index)
     {
         mblock_t *block = mba->get_mblock(index);

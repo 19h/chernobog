@@ -28,6 +28,17 @@ struct finite_targets_t
     std::vector<dependency_t> dependencies;
 };
 
+// A scalar case domain is not an executable-target certificate. It can only
+// refine destinations which already exist in a switch's current CFG.
+struct finite_values_t
+{
+    std::vector<uint64_t> values;
+    std::vector<finite_targets_t::dependency_t> dependencies;
+};
+std::optional<finite_values_t> evaluate_finite_values(const mop_t &operand, const minsn_t *before,
+                                                      const mblock_t *block);
+bool remember_finite_values(ea_t function, const finite_values_t &values);
+
 // Read-only proof over the actual operand and its reaching definitions. Work
 // is bounded to 4096 expression nodes, 256 assignments and 2M evaluations.
 // Undecoded executable origins are for branch diagnostics; they do not

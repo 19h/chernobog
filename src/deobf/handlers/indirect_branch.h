@@ -22,7 +22,6 @@ class indirect_branch_handler_t
     static void adjust_fragment_stack(mba_t *mba, stkpnts_t *points);
     static bool is_projected_return(const codegen_t &codegen);
     static int apply_generated_projections(mba_t *mba);
-    static std::optional<std::array<ea_t, 2>> proven_targets(ea_t function, ea_t site);
     // Explicit IDB recovery: 0 previews, 1 creates ownerless regions, 3 also
     // selects proven entries overlapping unprotected ownerless code items.
     static qstring recover_regions(ea_t function, unsigned flags);

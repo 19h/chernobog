@@ -772,4 +772,34 @@ std::optional<finite_targets_t> evaluate_finite_targets(const mop_t &operand, co
     return result;
 }
 
+std::optional<finite_values_t> evaluate_finite_values(const mop_t &operand, const minsn_t *before,
+                                                      const mblock_t *block)
+{
+    if (!before || !block)
+        return std::nullopt;
+    Builder builder(block);
+    const Id root = builder.operand(operand, before);
+    const auto values = builder.graph.enumerate(root);
+    if (!values || values->results.empty() || builder.graph.failed())
+        return std::nullopt;
+    finite_values_t result;
+    result.dependencies = std::move(builder.dependencies);
+    for (uint64_t value : values->results)
+        if (std::find(result.values.begin(), result.values.end(), value) == result.values.end())
+            result.values.push_back(value);
+    return result;
+}
+
+bool remember_finite_values(ea_t function, const finite_values_t &values)
+{
+    const HistoryKey key{get_dbctx_id(), function};
+    auto history = fold_history[key];
+    for (const auto &dependency : values.dependencies)
+        history[{dependency.address, dependency.bytes.size()}] = dependency;
+    if (history.size() > 4096)
+        return false;
+    fold_history[key] = std::move(history);
+    return true;
+}
+
 } // namespace chernobog

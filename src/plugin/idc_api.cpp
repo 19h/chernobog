@@ -266,7 +266,7 @@ const option_alias_t option_aliases[] = {
     {"native_opaque", "CHERNOBOG_NATIVE_OPAQUE", false,
      "Pre-lifting ARM64 opaque predicate resolution"},
     {"patch_branches", "CHERNOBOG_PATCH_BRANCHES", false,
-     "Reversibly patch proven ARM64 indirect tails"},
+     "Compatibility setting; optimized-IR tail targets remain unpatched"},
     {"writable_const", "CHERNOBOG_WRITABLE_CONST", false,
      "Writable scalar constant inlining tier (1 or 2)"},
     {"dead_global_stores", "CHERNOBOG_DEAD_GLOBAL_STORES", false,
