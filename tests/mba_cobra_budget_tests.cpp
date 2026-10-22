@@ -66,6 +66,46 @@ int main()
     retained.reset();
     check(ledger->live == 0 && ledger->peak <= ledger->limit,
           "cleanup outside scope balances ledger");
+    // Allocation and cancellation may interrupt a hash-table rehash or a
+    // mapped vector's growth. Unwinding must destroy both containers safely.
+    for (size_t allowance :
+         {size_t(0), size_t(1), size_t(64), size_t(128), size_t(1024), size_t(4096), size_t(16384)})
+    {
+        auto limited = std::make_shared<Ledger>(allowance);
+        {
+            Scope scope({Clock::time_point::max(), {}, {}, limited});
+            exhausted(
+                []
+                {
+                    BudgetFlatMap<uint64_t, BudgetVector<size_t>> buckets;
+                    for (size_t i = 0; i < 4096; ++i)
+                        buckets[i].push_back(i);
+                },
+                Reason::Allocation);
+        }
+        check(limited->live == 0 && limited->peak <= allowance,
+              "hash-table allocation rejection balances ledger");
+    }
+    for (size_t interrupt = 1; interrupt <= 64; ++interrupt)
+    {
+        auto limited = std::make_shared<Ledger>(1048576);
+        size_t checkpoints = 0;
+        {
+            Scope scope({Clock::time_point::max(),
+                         [&] { return ++checkpoints >= interrupt; },
+                         {},
+                         limited});
+            exhausted(
+                []
+                {
+                    BudgetFlatMap<uint64_t, BudgetVector<size_t>> buckets;
+                    for (size_t i = 0; i < 4096; ++i)
+                        buckets[i].push_back(i);
+                },
+                Reason::Cancellation);
+        }
+        check(limited->live == 0, "hash-table cancellation balances ledger");
+    }
     {
         Scope scope({Clock::time_point::max(), [] { return true; }, {}, ledger});
         exhausted([] { Checkpoint(true); }, Reason::Cancellation);

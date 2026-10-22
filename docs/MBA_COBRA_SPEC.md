@@ -280,6 +280,15 @@ dimensions for overflow and configured resource limits before allocation.
 Propagate cancellation to the adapter as `Exhausted`; never publish an
 incomplete candidate as successful.
 
+Budgeted hash maps use `std::unordered_map` with the same ledger allocator and
+hash/equality functions. Allocation and cancellation exceptions can interrupt
+rehashing or mapped-container growth; the container must remain destructible
+during unwinding. Abseil's `flat_hash_map` explicitly lacks exception safety
+(`vendor/abseil-cpp/absl/container/flat_hash_map.h`). Allocation-limit and
+cancellation probes cover nested mapped vectors and require a balanced ledger
+after every exceptional exit. Node allocation changes memory and throughput
+costs; the existing invocation and scratch limits continue to apply.
+
 ### Deadline interface and site reservation
 
 Extend `SolverSession` with the following C++17-compatible interface. The clock
