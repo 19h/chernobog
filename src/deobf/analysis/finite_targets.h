@@ -52,6 +52,7 @@ std::optional<finite_targets_t> evaluate_finite_targets(const mop_t &operand, co
 bool preserve_indirect_target_effects(mblock_t *block, minsn_t *top, const mop_t &target,
                                       const minsn_t *selected_call = nullptr);
 // Late argument rewrites require the preallocation callback to restart allocation.
+int fold_finite_load_addresses(mba_t *mba);
 int fold_finite_call_arguments(mba_t *mba);
 int fold_finite_table_expressions(mba_t *mba);
 void reset_finite_table_history(ea_t function);

@@ -141,6 +141,7 @@ bool apply_verified_proposal(MicrocodeAdapter &adapter, Analysis &analysis,
             current.registers.size() != adapter.registers.size() ||
             current.frames != adapter.frames || current.locals != adapter.locals ||
             current.local_values != adapter.local_values ||
+            current.address_values != adapter.address_values ||
             !same_program(snapshot_program, current.program))
             return false;
         for (size_t i = 0; i < current.registers.size(); ++i)
@@ -298,6 +299,13 @@ bool collect_local_candidates(mblock_t *block, minsn_t *instruction, unsigned de
         {
             return false;
         }
+    }
+    if (is_mcode_call(instruction->opcode) && instruction->d.t == mop_f && instruction->d.f)
+    {
+        for (auto &argument : instruction->d.f->args)
+            if (argument.t == mop_d &&
+                !collect_local_candidates(block, argument.d, depth + 1, visited, candidates))
+                return false;
     }
 
     switch (instruction->opcode)

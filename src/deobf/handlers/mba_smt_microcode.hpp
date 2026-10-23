@@ -10,6 +10,28 @@
 #include <tuple>
 namespace chernobog::mba_smt
 {
+struct AddressIdentity
+{
+    int bytes;
+    uint16 valnum;
+    mopt_t referent;
+    int referent_bytes;
+    uint16 referent_valnum;
+    int input_bytes;
+    int output_bytes;
+    uintptr_t owner;
+    sval_t offset;
+    int local;
+
+    bool operator==(const AddressIdentity &other) const
+    {
+        return std::tie(bytes, valnum, referent, referent_bytes, referent_valnum, input_bytes,
+                        output_bytes, owner, offset, local) ==
+               std::tie(other.bytes, other.valnum, other.referent, other.referent_bytes,
+                        other.referent_valnum, other.input_bytes, other.output_bytes, other.owner,
+                        other.offset, other.local);
+    }
+};
 struct Register
 {
     mreg_t start;
@@ -28,6 +50,7 @@ class MicrocodeAdapter
     std::map<int64_t, size_t> frames;
     std::map<std::pair<uintptr_t, int>, size_t> locals;
     std::map<std::tuple<int, int, int64_t, uint64_t, int>, size_t> local_values;
+    std::vector<std::pair<AddressIdentity, size_t>> address_values;
     size_t visits = 0;
     mblock_t *local_block = nullptr;
     minsn_t *local_instruction = nullptr;
@@ -179,6 +202,52 @@ class MicrocodeAdapter
         return value;
     }
 
+    Term translate_address_value(const mop_t &operand)
+    {
+        if (!operand.a || operand.a->oprops != 0 ||
+            !((operand.a->t == mop_S && operand.a->s && operand.a->s->mba == mba) ||
+              (operand.a->t == mop_l && operand.a->l && operand.a->l->mba == mba) ||
+              operand.a->t == mop_v))
+            throw std::invalid_argument("unsupported address value");
+        const auto &address = *operand.a;
+        AddressIdentity identity{operand.size,
+                                 operand.valnum,
+                                 address.t,
+                                 address.size,
+                                 address.valnum,
+                                 address.insize,
+                                 address.outsize,
+                                 0,
+                                 0,
+                                 0};
+        if (address.t == mop_S)
+        {
+            identity.owner = reinterpret_cast<uintptr_t>(address.s->mba);
+            identity.offset = address.s->off;
+        }
+        else if (address.t == mop_l)
+        {
+            identity.owner = reinterpret_cast<uintptr_t>(address.l->mba);
+            identity.offset = address.l->off;
+            identity.local = address.l->idx;
+        }
+        else
+            identity.offset = sval_t(address.g);
+        for (const auto &entry : address_values)
+            if (entry.first == identity)
+                return variable(entry.second, program.address_bits);
+        if (program.widths.size() >= limits::storage_regions || available.size() >= 64)
+            throw std::invalid_argument("address value budget");
+        const size_t id = program.widths.size();
+        program.widths.push_back(program.address_bits);
+        program.readonly.push_back(id);
+        address_values.emplace_back(identity, id);
+        const Term value = variable(id, program.address_bits);
+        available.emplace_back(value, operand);
+        program.available.push_back(value);
+        return value;
+    }
+
     Term translate_operand(const mop_t &op, unsigned depth = 0)
     {
         if (depth > 64 || !bitvector::valid_byte_width(op.size) || op.oprops ||
@@ -226,6 +295,8 @@ class MicrocodeAdapter
         }
         if (op.t == mop_a && op.a && bits == program.address_bits)
         {
+            if (local_instruction)
+                return translate_address_value(op);
             return translate_address(*op.a);
         }
         throw std::invalid_argument("unsupported operand identity");

@@ -62,6 +62,49 @@ void test_scalar_identity_synthesis()
     }
 }
 
+void test_masked_difference_sum()
+{
+    for (Backend backend : {Backend::Legacy, Backend::Cobra})
+    {
+        if (backend == Backend::Cobra && !cobra_backend::available())
+            continue;
+        for (unsigned bits : {8u, 16u, 32u, 64u})
+        {
+            for (bool reassociate : {false, true})
+            {
+                for (uint64_t allowed : {UINT64_MAX, UINT64_MAX - 3, uint64_t{0x5A}})
+                {
+                    auto program = make_program(bits);
+                    const Term x = read_register(0, bits);
+                    const uint64_t c = 0x4CEA06F4;
+                    const uint64_t d = ~c & allowed;
+                    const Term disjunction = expression(Op::Or, x, number(c, bits));
+                    const Term conjunction = expression(Op::And, x, number(d, bits));
+                    const Term original =
+                        reassociate ? expression(Op::Sub, add(disjunction, conjunction), x)
+                                    : add(expression(Op::Sub, disjunction, x), conjunction);
+                    program.blocks[0].statements = {Statement::assign(2, original)};
+                    Options options = Options::deep();
+                    options.backend = backend;
+                    options.max_invariants = 0;
+                    Analysis analysis(program, options);
+                    const auto proposals = analysis.run();
+                    check(!proposals.empty() &&
+                              cost(proposals.front().replacement) < cost(original),
+                          "masked subtraction sum reduces with complete and partial masks");
+                    const Term expected = expression(
+                        Op::Xor, expression(Op::And, x, number(c ^ d, bits)), number(c, bits));
+                    check(analysis.verify(0, 0, expected) == Verdict::Verified,
+                          "masked subtraction sum is proved at every scalar width");
+                    check(analysis.verify(0, 0, add(expected, number(1, bits))) ==
+                              Verdict::Disproved,
+                          "a changed masked-subtraction result has a counterexample");
+                }
+            }
+        }
+    }
+}
+
 void test_cobra_boolean_selector()
 {
     if (!cobra_backend::available())
@@ -1669,6 +1712,7 @@ int main(int argc, char **argv)
     test_snapshot_memory_values();
     test_scalar_identity_synthesis();
     test_cobra_boolean_selector();
+    test_masked_difference_sum();
     test_joins_and_memory();
     test_unconditional_chains();
     test_polynomial_loop();

@@ -221,6 +221,11 @@ bool pure_operand(const mop_t &operand, size_t &visits, unsigned depth = 0)
     case mop_S:
     case mop_l:
         return true;
+    case mop_a:
+        return operand.oprops == 0 && operand.a && operand.a->oprops == 0 &&
+               ((operand.a->t == mop_S && operand.a->s && operand.a->s->mba) ||
+                (operand.a->t == mop_l && operand.a->l && operand.a->l->mba) ||
+                operand.a->t == mop_v);
     case mop_d:
         return operand.d && pure_instruction(*operand.d) &&
                pure_operand(operand.d->l, visits, depth + 1) &&

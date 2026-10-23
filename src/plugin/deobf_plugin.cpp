@@ -760,7 +760,8 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         if (mba && !is_disabled_mode_enabled() &&
             chernobog_function_deobfuscation_enabled(mba->entry_ea))
         {
-            int changes = chernobog::fold_finite_call_arguments(mba);
+            int changes = chernobog::fold_finite_load_addresses(mba);
+            changes += chernobog::fold_finite_call_arguments(mba);
             changes += stack_alias::run(mba);
             changes += dispatcher_thread::run(mba);
             if (changes)

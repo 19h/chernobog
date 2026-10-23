@@ -32,6 +32,27 @@ std::optional<uint64_t> read_immutable(uint64_t address, int bytes)
     return ida_memory::read_integer(ea_t(address), bytes);
 }
 
+bool pure_finite_operand(const mop_t &operand)
+{
+    if (operand.has_side_effects(false))
+        return false;
+    struct Effects : minsn_visitor_t
+    {
+        bool safe = true;
+        size_t inspected = 0;
+        int idaapi visit_minsn() override
+        {
+            safe &= ++inspected <= 4096 && !is_mcode_call(curins->opcode) &&
+                    !curins->is_mbarrier() && !curins->is_persistent() && !curins->is_assert() &&
+                    !curins->is_fpinsn();
+            return safe ? 0 : 1;
+        }
+    } effects;
+    if (operand.t == mop_d && operand.d)
+        operand.d->for_all_insns(effects);
+    return effects.safe;
+}
+
 bool stable_key_interval(ea_t sign, ea_t use)
 {
     if (sign == BADADDR || use <= sign || use - sign > 256 || (sign & 3U) || (use & 3U))
@@ -654,6 +675,57 @@ void reset_finite_table_history(ea_t function)
         fold_history.erase(fold_history.begin());
 }
 
+int fold_finite_load_addresses(mba_t *mba)
+{
+    if (!mba || mba->qty > 512 || PH.id != PLFM_386 || !inf_is_64bit())
+        return 0;
+    struct Addresses : minsn_visitor_t
+    {
+        int changes = 0;
+        size_t inspected = 0;
+        size_t attempted = 0;
+        const mreg_t data_segment = reg2mreg(str2reg("ds"));
+        const std::chrono::steady_clock::time_point deadline =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(20);
+
+        int idaapi visit_minsn() override
+        {
+            if (++inspected > 4096 || attempted >= 32 ||
+                std::chrono::steady_clock::now() >= deadline)
+                return 1;
+            if (!blk || !topins || curins->opcode != m_ldx || curins->l.t != mop_r ||
+                curins->l.r != data_segment || curins->r.t != mop_d || curins->is_mbarrier() ||
+                curins->is_persistent() || curins->is_assert() || curins->is_fpinsn() ||
+                !bitvector::valid_byte_width(curins->d.size) || !pure_finite_operand(curins->r))
+                return 0;
+            ++attempted;
+            const auto result = evaluate_finite_values(curins->r, topins, blk);
+            if (!result || result->values.size() != 1 || result->dependencies.empty())
+                return 0;
+            const ea_t address = ea_t(result->values.front());
+            const segment_t *segment = getseg(address);
+            if (!segment || segment->type == SEG_XTRN || !(segment->perm & SEGPERM_READ) ||
+                !(segment->perm & SEGPERM_WRITE) || address > BADADDR - ea_t(curins->d.size) ||
+                address + ea_t(curins->d.size) > segment->end_ea ||
+                !remember_finite_values(blk->mba->entry_ea, *result))
+                return 0;
+            // Canonicalize only the address. Keep the runtime read, its width,
+            // instruction properties and destination, including mutable data.
+            curins->opcode = m_mov;
+            curins->l.make_gvar(address);
+            curins->l.size = curins->d.size;
+            curins->r.erase();
+            blk->mark_lists_dirty();
+            ++changes;
+            return 0;
+        }
+    } addresses;
+    mba->for_all_insns(addresses);
+    if (addresses.changes)
+        mba->mark_chains_dirty();
+    return addresses.changes;
+}
+
 int fold_finite_call_arguments(mba_t *mba)
 {
     if (!mba || mba->qty > 512)
@@ -684,20 +756,7 @@ int fold_finite_call_arguments(mba_t *mba)
                 if (argument.t != mop_d || !bitvector::valid_byte_width(argument.size) ||
                     argument.has_side_effects(false))
                     continue;
-                struct Effects : minsn_visitor_t
-                {
-                    bool safe = true;
-                    size_t inspected = 0;
-                    int idaapi visit_minsn() override
-                    {
-                        safe &= ++inspected <= 4096 && !is_mcode_call(curins->opcode) &&
-                                !curins->is_mbarrier() && !curins->is_persistent() &&
-                                !curins->is_assert() && !curins->is_fpinsn();
-                        return safe ? 0 : 1;
-                    }
-                } effects;
-                argument.d->for_all_insns(effects);
-                if (!effects.safe)
+                if (!pure_finite_operand(argument))
                     continue;
                 ++attempted;
                 const auto result = evaluate_finite_values(argument, topins, blk);

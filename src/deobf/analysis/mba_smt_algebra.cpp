@@ -16,6 +16,55 @@ constexpr size_t max_boolean_candidates = 65536;
 
 uint64_t width_mask(unsigned bits) { return bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1; }
 
+// (x | c) - x + (x & d) == (x & (c ^ d)) ^ c modulo 2^w.
+// The disjoint words c&~x and d&x cannot carry into one another.
+Term masked_difference_sum(const Term &root)
+{
+    if (!root->left || !root->right || !root->bits || root->bits > 64)
+        return {};
+    for (bool reverse : {false, true})
+    {
+        Term disjunction, conjunction, subtrahend;
+        if (root->op == Op::Add)
+        {
+            const Term difference = reverse ? root->right : root->left;
+            conjunction = reverse ? root->left : root->right;
+            if (difference->op != Op::Sub)
+                continue;
+            disjunction = difference->left;
+            subtrahend = difference->right;
+        }
+        else if (root->op == Op::Sub && root->left->op == Op::Add)
+        {
+            disjunction = reverse ? root->left->right : root->left->left;
+            conjunction = reverse ? root->left->left : root->left->right;
+            subtrahend = root->right;
+        }
+        else
+            return {};
+        if (disjunction->op != Op::Or || conjunction->op != Op::And)
+            continue;
+        const bool left_constant = disjunction->left->op == Op::Constant;
+        const Term c = left_constant ? disjunction->left : disjunction->right;
+        const Term input = left_constant ? disjunction->right : disjunction->left;
+        const bool and_constant = conjunction->left->op == Op::Constant;
+        const Term d = and_constant ? conjunction->left : conjunction->right;
+        const Term other = and_constant ? conjunction->right : conjunction->left;
+        if (c->op != Op::Constant || d->op != Op::Constant || input->bits != root->bits ||
+            c->bits != root->bits || d->bits != root->bits || key(input) != key(subtrahend) ||
+            key(input) != key(other))
+            continue;
+        const uint64_t mask = width_mask(root->bits);
+        const uint64_t selected = (c->value ^ d->value) & mask;
+        if (!selected)
+            return constant(c->value, root->bits);
+        Term value =
+            selected == mask ? input : expression(Op::And, input, constant(selected, root->bits));
+        return c->value ? expression(Op::Xor, value, c) : value;
+    }
+    return {};
+}
+
 // Constant masks select bits of one word. The caller proves this exact
 // template before using it; partial masks do not form the
 // uniform Boolean cube used by the general legacy reconstruction.
@@ -657,6 +706,14 @@ class AlgebraicSimplifier
         if (++visited_ > limits::expression_visits)
         {
             return original;
+        }
+
+        if (const Term candidate = masked_difference_sum(original);
+            candidate && cost(candidate) < cost(original) && prove(original, candidate))
+        {
+            const Term result = rewrite(candidate, true);
+            rewritten_.emplace(identifier, result);
+            return result;
         }
 
         Term term;

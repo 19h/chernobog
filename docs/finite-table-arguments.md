@@ -29,3 +29,8 @@ mutable table, and two stateful calls whose results must remain distinct. Its
 reconstructed C is compiled and compared with the native fixture for all 256 byte
 inputs. Run it with `tests/test_finite_table_arguments.py --ida <idat> --plugin
 <plugin> --output-dir <directory>`.
+
+Encoded addresses of mutable data are also recovered without replacing the
+pointed-to runtime values; see [address-keyed recovery](address-keyed-recovery.md).
+The fixture's additional data-read case changes the pointed-to global for every
+input and compares the compiled reconstruction against the source reference.

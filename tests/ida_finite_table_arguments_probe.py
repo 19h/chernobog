@@ -20,7 +20,7 @@ try:
     ida_auto.auto_wait()
     assert ida_hexrays.init_hexrays_plugin()
     texts = {}
-    for name in ("table_argument", "mutable_argument", "effectful_argument"):
+    for name in ("table_argument", "mutable_argument", "effectful_argument", "table_data_read"):
         ea = ida_name.get_name_ea(ida_idaapi.BADADDR, "_" + name)
         if ea == ida_idaapi.BADADDR:
             ea = ida_name.get_name_ea(ida_idaapi.BADADDR, name)
@@ -33,6 +33,9 @@ try:
     assert re.search(r"consume_value\([^)]*(?:\b97\b|0x61\b)", texts["table_argument"])
     assert "mutable_first" in texts["mutable_argument"]
     assert texts["effectful_argument"].count("next_input(") == 2
+    assert "observed_value" in texts["table_data_read"]
+    assert "data_offsets" not in texts["table_data_read"]
+    assert "first[" not in texts["table_data_read"] and "second[" not in texts["table_data_read"]
     report.update(passed=True, pseudocode=texts)
     bodies = [re.sub(r"\b(?:a[0-9]+|input|value):\s*", "", text) for text in texts.values()]
     (out / "recovered.c").write_text(
