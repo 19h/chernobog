@@ -516,6 +516,8 @@ int run(mbl_array_t *mba)
     if (!mba || mba->maturity < MMAT_LOCOPT || mba->maturity > MMAT_GLBOPT2 || mba->qty > 10000)
         return 0;
     int changes = 0;
+    // An optblock callback may still own a bypassed block. Leave block
+    // deletion to the decompiler after the callback has returned.
     for (unsigned round = 0; round < 8; ++round)
     {
         int current = run_once(mba);
@@ -527,10 +529,6 @@ int run(mbl_array_t *mba)
         changes += current;
         if (current == 0)
             break;
-        // Discard bypassed dispatcher regions before another global pass.
-        // Leaving their large expression trees detached but present can
-        // dominate value-range and local-variable allocation work.
-        mba->remove_empty_and_unreachable_blocks();
     }
     return changes;
 }
