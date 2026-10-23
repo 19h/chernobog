@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 struct hikari_cfg_stats_t;
 struct native_opaque_stats_t;
@@ -72,5 +73,12 @@ void uninstall(Host *host);
 
 // Number of chernobog_* functions the interpreter currently exposes.
 size_t function_count();
+
+// Shared by the IDC surface and the runtime settings dialog. These options
+// affect the current process; no database or per-user preferences are saved.
+std::string runtime_option(const char *name);
+bool set_runtime_option(const char *name, const char *value);
+bool runtime_auto_mode();
+bool clear_runtime_state();
 
 } // namespace chernobog::idc

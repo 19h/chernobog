@@ -341,6 +341,20 @@ Manual invocation also retries activation.
    - Or press `Ctrl+Shift+D`
 4. The function will be reanalyzed with obfuscation removed
 
+### Runtime Settings
+
+Right-click in pseudocode and select **Runtime settings... (Chernobog)**.
+The dialog controls automatic deobfuscation, writable-data constant handling
+(disabled, scalars, or scalars and arrays), and bounded stack-object recovery.
+**Apply** updates the running plugin and refreshes the current function;
+**Cancel** leaves the settings and pseudocode unchanged.
+
+These settings apply to the current IDA process and reset when it closes.
+Writable-data modes assume admitted bytes retain their initial values.
+Bounded stack-object recovery assumes exposed frame objects cannot access
+unrelated frame objects. See the [recovery contracts](docs/hikari-state-recovery.md).
+Scripts can open the same dialog with `chernobog_settings()` in IDC.
+
 ### Automatic Mode
 
 Set the environment variable `CHERNOBOG_AUTO=1` to automatically run bounded
@@ -603,6 +617,7 @@ each call, and the interpreter behaviours that are easy to get wrong.
 | `chernobog_activate()` | Install the Hex-Rays lifecycle now; `1` when ready |
 | `chernobog_get_option(name)` | Current value of an option alias or `CHERNOBOG_` variable |
 | `chernobog_set_option(name, value)` | Set an option for this process; `1` on success |
+| `chernobog_settings()` | Open the runtime settings dialog; `1` on Apply, `0` on Cancel |
 | `chernobog_list_options()` | Aliases, variables, current values, and descriptions |
 | `chernobog_detect(ea)` | Obfuscation candidates from uncached `MMAT_LOCOPT` microcode |
 | `chernobog_obf_names(mask)` | Comma-separated names for an obfuscation mask |

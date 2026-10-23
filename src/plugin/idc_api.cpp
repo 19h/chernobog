@@ -24,6 +24,7 @@
 #include "../common/warn_on.h"
 
 #include "component_registry.h"
+#include "runtime_settings.h"
 #include "../deobf/deobf_main.h"
 #include "../deobf/analysis/arch_utils.h"
 #include "../deobf/analysis/pattern_match.h"
@@ -504,31 +505,18 @@ error_t idaapi idc_set_option(idc_value_t *argv, idc_value_t *r)
     }
 
     const qstring value = arg_option_value(argv[1], address_valued);
-    if (!qsetenv(variable, value.c_str()))
+    r->set_long(set_runtime_option(variable, value.c_str()) ? 1 : 0);
+    return eOk;
+}
+
+error_t idaapi idc_settings(idc_value_t *, idc_value_t *r)
+{
+    if (ready_host() == nullptr)
     {
-        msg("[chernobog][idc] Could not set %s\n", variable);
         r->set_long(0);
         return eOk;
     }
-
-    // Apply cached settings now so
-    // the option takes effect for the current process instead of the next.
-    if (streq(variable, "CHERNOBOG_AUTO"))
-    {
-        Host *host = current_host();
-        if (host != nullptr)
-            host->set_auto_mode(option_is_true(variable));
-    }
-    else if (streq(variable, "CHERNOBOG_VERBOSE"))
-    {
-        deobf::set_verbose(option_is_true(variable));
-    }
-    else if (streq(variable, "CHERNOBOG_WRITABLE_CONST") ||
-             streq(variable, "CHERNOBOG_DEAD_GLOBAL_STORES"))
-    {
-        global_const_handler_t::reload_options();
-    }
-    r->set_long(1);
+    r->set_long(runtime_settings::show(get_widget_vdui(get_current_widget())) ? 1 : 0);
     return eOk;
 }
 
@@ -907,15 +895,7 @@ error_t idaapi idc_clear_function(idc_value_t *argv, idc_value_t *r)
 //--------------------------------------------------------------------------
 error_t idaapi idc_clear_all(idc_value_t *, idc_value_t *r)
 {
-    Host *host = current_host();
-    if (host == nullptr)
-    {
-        chernobog_clear_all_tracking();
-        r->set_long(0);
-        return eOk;
-    }
-    host->clear_state();
-    r->set_long(1);
+    r->set_long(clear_runtime_state() ? 1 : 0);
     return eOk;
 }
 
@@ -2090,6 +2070,8 @@ const idc_entry_t idc_entries[] = {
      "Current value of an option alias or CHERNOBOG_ variable"},
     {"chernobog_set_option", idc_set_option, args_str_value, "chernobog_set_option(name, value)",
      "Set an option for this process; 1 on success"},
+    {"chernobog_settings", idc_settings, args_none, "chernobog_settings()",
+     "Open the runtime settings dialog; options apply to this IDA process"},
     {"chernobog_list_options", idc_list_options, args_none, "chernobog_list_options()",
      "Aliases, variables, current values, and descriptions"},
 
@@ -2346,6 +2328,61 @@ void unregister_functions()
 //--------------------------------------------------------------------------
 // Public entry points
 //--------------------------------------------------------------------------
+std::string runtime_option(const char *name)
+{
+    qstring value;
+    const char *variable = resolve_option(name);
+    if (variable != nullptr)
+        qgetenv(variable, &value);
+    return value.c_str();
+}
+
+bool set_runtime_option(const char *name, const char *value)
+{
+    const char *variable = resolve_option(name);
+    if (variable == nullptr || value == nullptr)
+        return false;
+    if (!qsetenv(variable, value))
+    {
+        msg("[chernobog][idc] Could not set %s\n", variable);
+        return false;
+    }
+    if (streq(variable, "CHERNOBOG_AUTO"))
+    {
+        Host *host = current_host();
+        if (host != nullptr)
+            host->set_auto_mode(option_is_true(variable));
+    }
+    else if (streq(variable, "CHERNOBOG_VERBOSE"))
+    {
+        deobf::set_verbose(option_is_true(variable));
+    }
+    else if (streq(variable, "CHERNOBOG_WRITABLE_CONST") ||
+             streq(variable, "CHERNOBOG_DEAD_GLOBAL_STORES"))
+    {
+        global_const_handler_t::reload_options();
+    }
+    return true;
+}
+
+bool runtime_auto_mode()
+{
+    Host *host = current_host();
+    return host != nullptr && host->auto_mode();
+}
+
+bool clear_runtime_state()
+{
+    Host *host = current_host();
+    if (host == nullptr)
+    {
+        chernobog_clear_all_tracking();
+        return false;
+    }
+    host->clear_state();
+    return true;
+}
+
 bool install(Host *host)
 {
     if (host == nullptr)

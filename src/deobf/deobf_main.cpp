@@ -31,6 +31,7 @@
 #include "../hybrid/session.hpp"
 #include "../hybrid/z3_bridge.hpp"
 #include "../hybrid/solver_inspection.hpp"
+#include "../plugin/runtime_settings.h"
 
 #include <optional>
 #include <array>
@@ -1561,8 +1562,12 @@ static int do_deep_deobfuscate(vdui_t *vu)
 static deobf_action_handler_t ah_deobf(do_deobfuscate);
 static deobf_action_handler_t ah_analyze(do_analyze);
 static deobf_action_handler_t ah_deep(do_deep_deobfuscate);
+static deobf_action_handler_t
+    ah_settings([](vdui_t *view) { return chernobog::runtime_settings::show(view) ? 1 : 0; });
 
 static const action_desc_t actions[] = {
+    ACTION_DESC_LITERAL("chernobog:settings", "Runtime settings... (Chernobog)", &ah_settings,
+                        nullptr, "Configure deobfuscation for this IDA process", -1),
     ACTION_DESC_LITERAL("chernobog:deobfuscate", "Deobfuscate (Chernobog)", &ah_deobf,
                         "Ctrl+Shift+D", nullptr, -1),
     ACTION_DESC_LITERAL("chernobog:analyze", "Analyze obfuscation (Chernobog)", &ah_analyze,
