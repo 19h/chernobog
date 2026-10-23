@@ -81,6 +81,7 @@ Chernobog automatically detects and reverses the following Hikari obfuscation te
 - **Select-Chain Collapse** - Collapses long cascades of conditional-move (select) diamonds from LLVM select lowering into equivalent branchless expressions, keeping very long chains within Hex-Rays' structural limits
 - **Cross-Function Dispatch (opt-in, `CHERNOBOG_HIKARI_CFG`)** - Recovers Hikari's two-target ARM64 dispatch encoding across IDA function boundaries (relocation table + `CSET` index + signed bias, with an observed XOR key), adds exact IDB edges/comments, and can optionally rewrite side-effect-free dispatch tails to direct conditional branches
 - **Aliased State Recovery** - Resolves proven x86 stack-pointer aliases and threads signed comparison dispatchers, preserving shared assignments and runtime branches. Optional bounded frame-object assumptions extend call-crossing recovery; see [contracts and validation](docs/hikari-state-recovery.md).
+- **Native Forwarding Adapters** - Inlines bounded AMD64 call/return wrappers, including mutable indirect calls, using native microcode generation. Return-register restoration and other unsupported bodies remain separate calls; see [admission and validation](docs/native-forwarders.md).
 
 ### Data Obfuscation
 - **String Encryption** - Decrypts XOR- and bitwise-NOT-encrypted strings and annotates them in the disassembly

@@ -29,6 +29,7 @@
 #include "../hybrid/z3_bridge.hpp"
 #include "../ida_analysis/early_hexrays.hpp"
 #include "../ida_analysis/inline_abi.hpp"
+#include "../ida_analysis/forwarder_inline.hpp"
 #include "../ida_analysis/native_engine.hpp"
 #include "../hybrid/solver_inspection.hpp"
 #include "../vm/ida_native_trace.hpp"
@@ -711,6 +712,14 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             debug_log("[chernobog] hxe_preoptimized applied %d early rewrites at %llx\n", changes,
                       static_cast<unsigned long long>(mba != nullptr ? mba->entry_ea : BADADDR));
         }
+    }
+    else if (event == hxe_begin_inlining)
+    {
+        codegen_t *codegen = va_arg(va, codegen_t *);
+        const int decomp_flags = va_arg(va, int);
+        if (codegen && codegen->mba && !is_disabled_mode_enabled() &&
+            chernobog_function_deobfuscation_enabled(codegen->mba->entry_ea))
+            return chernobog::ida_analysis::inline_forwarders(codegen, decomp_flags);
     }
     // Inlined conventional callees must retain the native nonvolatile values
     // that their prologue and every normal epilogue save and restore.

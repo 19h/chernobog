@@ -438,6 +438,7 @@ ida_add_plugin(
     src/plugin/component_registry.cpp
     src/plugin/idc_api.cpp
     src/plugin/runtime_settings.cpp
+    src/ida_analysis/forwarder_inline.cpp
     src/ida_analysis/analysis_config.cpp
     src/ida_analysis/native_classifier.cpp
     src/ida_analysis/stack_stub.cpp
