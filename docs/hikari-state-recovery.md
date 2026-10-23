@@ -6,6 +6,10 @@ signed comparison trees, and conditional state assignments that converge
 through a shared store. It preserves the computed results of assignments on
 each selected path. A runtime condition remains a runtime condition; its two
 successors receive separate copies of required intermediate values.
+When several predecessors share one conditional state selection, each
+predecessor retains its own pair of state constants. The pass follows only
+constant assignments to that selection, reproduces the original condition
+once, and threads both resulting dispatcher paths independently.
 
 The transformations run at local optimization, calls, and before local-variable
 allocation. Late changes request a new allocation pass through the documented
@@ -19,15 +23,19 @@ function ownership. They work independently of the ARM64 cross-function
 | --- | --- | --- |
 | Stack alias | Every reachable incoming definition denotes the same frame offset and width | Conflicting joins, loop-carried rebinding, partial pointer overwrites |
 | Direct stack access | Ordinary x86 data segment; access fits the local frame | Segment-relative access, out-of-frame offset, extended store |
-| Call crossing | Separate may-pointer analysis finds no frame address passed to a call or stored externally | Address of the alias cell passed to a pointer-modifying callee |
+| Indirect-write crossing | Separate may-pointer analysis excludes access to the alias cell under the selected memory model | Address of the alias cell passed to a pointer-modifying callee or published globally |
 | Dispatcher path | Constant evaluation determines every skipped branch; all copied assignments are nontrapping register/stack operations | Unknown condition, call, indirect access, division, cyclic path |
 | Dead state assignment | No ctree observation, no remaining address in microcode, and no protected variable metadata | Address escape, volatile/user-defined/overlapping variable, observable read |
 
 The call-crossing contract uses the decompiler's calling-convention model.
 The optional `CHERNOBOG_STACK_ALIAS_OBJECTS=1` additionally assumes that a
-callee accessing a passed frame object does not access unrelated frame
-objects. This permits an unexposed alias cell to survive calls that receive
-other local buffers. It is a static-analysis model, not a proof of a callee's
+callee or indirect store accessing an exposed frame object does not access
+unrelated frame objects. This permits an unexposed alias cell to survive
+calls and stores involving other local buffers, including pointers retained
+outside the function or returned by a call. Every address-taken object remains
+excluded from private-cell protection; exposing a raw frame base excludes the
+whole frame. Definite writes still invalidate the affected pointer fact.
+It is a static-analysis model, not a proof of a callee's
 memory footprint. Leave it unset when out-of-bounds accesses or caller-frame
 inspection are relevant. Passing the alias cell's own address still rejects
 the refinement.
@@ -49,6 +57,9 @@ Unreachable blocks contribute no facts.
 
 Dispatcher threading permits at most 64 blocks and 32 copied instructions per
 path, eight rounds, and 4,096 copied instructions per direct-threading round.
+Shared conditional selection additionally permits a 64-block prefix with at
+most 32 constant assignments. One conditional is specialized per round, with
+at most 96 assignments across its prefix and two arms.
 It declines arrays over 10,000 blocks and checks cancellation between work
 items. Conditional bridges preserve the physical fallthrough required by
 Hex-Rays. No SMT timeout or guessed state value can authorize a rewrite.
@@ -66,7 +77,8 @@ The synthetic fixture is public source in
 [`tests/hikari_dispatch_fixture.c`](../tests/hikari_dispatch_fixture.c).
 Its unsigned arithmetic, signed dispatcher constants, common transitions,
 callee side effects, ambiguous aliases, escaped alias cell, partial-width
-store, and loop-carried alias rebinding are checked through actual
+store, loop-carried alias rebinding, globally escaped objects and alias cells,
+and a shared conditional dispatcher are checked through actual
 decompilation. The probe decompiles twice without a cache, verifies native
 bytes, and exports reconstructed C. The driver compiles and executes both
 original and reconstructed C over ordinary and boundary inputs, comparing
@@ -79,7 +91,7 @@ python3 tests/test_hikari_dispatch.py \
 
 python3 tests/test_hikari_dispatch.py \
     --ida /path/to/idat --plugin /path/to/chernobog.dylib \
-    --stack-alias-objects --output-dir /tmp/hikari-dispatch-objects
+    --stack-alias-objects --verify-microcode --output-dir /tmp/hikari-dispatch-objects
 ```
 
 The generated C test uses `-fwrapv` so signed temporary types chosen by the

@@ -37,11 +37,25 @@ def address(name):
 try:
     ida_auto.auto_wait()
     assert ida_hexrays.init_hexrays_plugin()
-    names = ("flattened", "alias_join", "alias_escape", "partial_write", "loop_alias", "wide_state")
+    names = (
+        "flattened",
+        "alias_join",
+        "alias_escape",
+        "partial_write",
+        "loop_alias",
+        "wide_state",
+        "object_escape",
+        "cell_escape",
+        "shared_dispatch",
+    )
     for name in (*names, "helper"):
         assert idc.SetType(address(name), "unsigned int %s(unsigned int input);" % name)
     assert idc.SetType(address("wide_state"), "unsigned long long wide_state(unsigned int input);")
     assert idc.SetType(address("redirect"), "void redirect(unsigned int **p, unsigned int *q);")
+    assert idc.SetType(address("remember"), "unsigned int *remember(unsigned int *p);")
+    assert idc.SetType(address("redirect_escaped"), "void redirect_escaped(unsigned int *p);")
+    assert idc.SetType(address("escaped_object"), "unsigned int *escaped_object;")
+    assert idc.SetType(address("escaped_cell"), "unsigned int **escaped_cell;")
     assert idc.SetType(address("observed"), "unsigned int observed;")
     assert idc.SetType(address("read_seed"), "unsigned int read_seed(void);")
     seed_name = ida_name.get_name(address("seed")).lstrip("_")
@@ -78,6 +92,21 @@ try:
                 )
             if name == "alias_escape":
                 check("escaping alias call retained on pass %d" % iteration, "redirect(" in text)
+            if name == "object_escape" and os.environ.get("CHERNOBOG_STACK_ALIAS_OBJECTS") == "1":
+                check(
+                    "unrelated escaped object permits recovery on pass %d" % iteration,
+                    "switch (" not in text and "while (" not in text,
+                )
+            if name == "cell_escape":
+                check(
+                    "globally escaped cell remains observable on pass %d" % iteration,
+                    "redirect_escaped(" in text and "escaped_cell" in text,
+                )
+            if name == "shared_dispatch":
+                check(
+                    "shared conditional dispatcher removed on pass %d" % iteration,
+                    "switch (" not in text and "while (" not in text,
+                )
             check(
                 "native bytes unchanged: %s pass %d" % (name, iteration),
                 original[name]
@@ -93,8 +122,12 @@ typedef unsigned char _BYTE;
 #define LOBYTE(x) (*((unsigned char *)&(x)))
 uint32_t observed;
 uint32_t calls;
+uint32_t *escaped_object;
+uint32_t **escaped_cell;
 uint32_t helper(uint32_t input) { ++calls; observed = input; return input ^ 0x5a; }
 void redirect(uint32_t **p, uint32_t *q) { *p = q; }
+uint32_t *remember(uint32_t *p) { ++calls; return p; }
+void redirect_escaped(uint32_t *p) { *escaped_cell = p; }
 """
     harness = """
 int main(void) {
@@ -103,9 +136,12 @@ int main(void) {
         uint32_t x = inputs[i];
         calls = 0;
         uint32_t value = flattened(x);
-        printf("%u %u %u %u %u %u %u %u %llu\\n", x, value, observed, calls,
+        uint32_t escaped = object_escape(x);
+        uint32_t cell = cell_escape(x);
+        uint32_t shared = shared_dispatch(x);
+        printf("%u %u %u %u %u %u %u %u %llu %u %u %u\\n", x, value, observed, calls,
                (uint32_t)alias_join(x), (uint32_t)alias_escape(x), (uint32_t)partial_write(x),
-               (uint32_t)loop_alias(x), (unsigned long long)wide_state(x));
+               (uint32_t)loop_alias(x), (unsigned long long)wide_state(x), escaped, cell, shared);
     }
     return 0;
 }

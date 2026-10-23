@@ -47,6 +47,8 @@ std::optional<key_t> key(const mop_t &operand)
 
 // Refine call clobbers only when a separate may-pointer analysis proves that
 // no address in this frame reaches a call or escapes through a memory store.
+// Under the optional bounded-object model, address-taken objects remain
+// exposed even after their pointers escape; unrelated cells stay private.
 // The proof uses the same calling-convention memory model as Hex-Rays.
 struct exposure_t : mop_visitor_t
 {
@@ -149,7 +151,7 @@ std::set<key_t> private_cells(mba_t *mba)
                 {
                     exposure.reads_pointer = false;
                     ins->l.for_all_ops(exposure);
-                    if (exposure.reads_pointer)
+                    if (exposure.reads_pointer && !bounded_objects)
                     {
                         deobf::log_verbose("[stack_alias] Frame may escape through store at %a\n",
                                            ins->ea);
@@ -161,8 +163,8 @@ std::set<key_t> private_cells(mba_t *mba)
                 ins->r.for_all_ops(exposure);
                 const auto destination = ins->modifies_d() ? key(ins->d) : std::nullopt;
                 const bool derived = exposure.reads_pointer;
-                if (derived && ins->modifies_d() && !destination && ins->opcode != m_stx &&
-                    !is_mcode_call(ins->opcode))
+                if (derived && !bounded_objects && ins->modifies_d() && !destination &&
+                    ins->opcode != m_stx && !is_mcode_call(ins->opcode))
                 {
                     deobf::log_verbose(
                         "[stack_alias] Frame may escape through assignment at %a: %s\n", ins->ea,
@@ -287,16 +289,19 @@ void transfer(mblock_t *block, const minsn_t &original, facts_t &facts, int poin
     const auto value =
         instruction.opcode == m_mov ? address(instruction.l, facts, pointer_size) : std::nullopt;
     const mlist_t definitions = block->build_def_list(instruction, MAY_ACCESS);
-    const bool calls = instruction.contains_call(true);
-    const mlist_t definite = calls ? block->build_def_list(instruction, MUST_ACCESS) : mlist_t();
+    const bool indirect_write = instruction.opcode == m_stx || instruction.contains_call(true);
+    const mlist_t definite =
+        indirect_write ? block->build_def_list(instruction, MUST_ACCESS) : mlist_t();
     for (auto it = facts.begin(); it != facts.end();)
     {
         mlist_t location;
         const mop_t operand = storage(block->mba, it->first);
         block->append_use_list(&location, operand, MUST_ACCESS);
-        const bool private_call =
-            calls && private_slots.count(it->first) != 0 && !definite.has_common(location);
-        it = !private_call && definitions.has_common(location) ? facts.erase(it) : std::next(it);
+        // An indirect write cannot reach an unexposed pointer cell. A direct
+        // or otherwise definite definition still kills its previous value.
+        const bool private_write =
+            indirect_write && private_slots.count(it->first) != 0 && !definite.has_common(location);
+        it = !private_write && definitions.has_common(location) ? facts.erase(it) : std::next(it);
     }
     if (destination && destination->size == pointer_size && value && facts.size() < max_facts)
         facts[*destination] = *value;

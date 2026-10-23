@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--cc")
     parser.add_argument("--stack-alias-objects", action="store_true")
+    parser.add_argument("--verify-microcode", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     output = args.output_dir.resolve()
@@ -54,6 +55,8 @@ def main():
     ]
     if args.stack_alias_objects:
         command += ["--set", "CHERNOBOG_STACK_ALIAS_OBJECTS=1"]
+    if args.verify_microcode:
+        command += ["--set", "CHERNOBOG_DEBUG=1"]
     subprocess.run(command, check=True, cwd=root)
     recovered = output / "recovered"
     subprocess.run(compiler + [str(run / "recovered.c"), "-o", str(recovered)], check=True)

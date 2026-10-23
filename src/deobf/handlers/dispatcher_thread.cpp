@@ -253,7 +253,81 @@ void remove_predecessor(mblock_t *block, int predecessor)
     auto found = std::find(block->predset.begin(), block->predset.end(), predecessor);
     if (found != block->predset.end())
         block->predset.erase(found);
-    block->mark_lists_dirty();
+    // Only the edge changed. Keep the target's instruction use/def lists,
+    // particularly the return-use list of a stop block after call analysis.
+}
+
+struct conditional_t
+{
+    minsn_t branch;
+    values_t values;
+    std::vector<minsn_t> prefix;
+    int fallthrough;
+    int taken;
+};
+
+struct clear_value_numbers_t : mop_visitor_t
+{
+    int idaapi visit_mop(mop_t *operand, const tinfo_t *, bool) override
+    {
+        if (operand)
+            operand->valnum = 0;
+        return 0;
+    }
+};
+
+// A shared conditional move may merge unrelated pairs of state constants.
+// Follow a single incoming edge with its exact values until that condition,
+// so each pair can be dispatched without losing its predecessor context.
+std::optional<conditional_t> find_conditional(mba_t *mba, int source, int first, values_t values)
+{
+    std::set<int> visited{source};
+    std::vector<minsn_t> prefix;
+    int current = first;
+    for (unsigned step = 0; step < 64; ++step)
+    {
+        if (user_cancelled() || current < 0 || current >= mba->qty ||
+            !visited.insert(current).second)
+            return std::nullopt;
+        mblock_t *block = mba->get_mblock(current);
+        for (const minsn_t *ins = block->head; ins; ins = ins->next)
+        {
+            if (ins == block->tail && (ins->opcode == m_goto || is_mcode_jcond(ins->opcode)))
+                break;
+            if (!assignment(*ins, block, values))
+                return std::nullopt;
+            if (ins->opcode == m_nop || ins->is_assert())
+                continue;
+            const auto destination = key(ins->d);
+            if (!destination || values.count(*destination) == 0 || prefix.size() >= 32)
+                return std::nullopt;
+            minsn_t copy(ins->ea);
+            copy.opcode = m_mov;
+            copy.l.make_number(values.at(*destination), ins->d.size);
+            copy.d = ins->d;
+            copy.d.valnum = 0;
+            prefix.emplace_back(copy);
+        }
+        const auto next = successor(block, values);
+        if (next)
+        {
+            current = *next;
+            continue;
+        }
+        const minsn_t *branch = block->tail;
+        if (!branch || !is_mcode_jcond(branch->opcode) || branch->d.t != mop_b ||
+            block->nsucc() != 2 || branch->has_side_effects(true))
+            return std::nullopt;
+        int fallthrough = -1;
+        for (int target : block->succset)
+            if (target != branch->d.b)
+                fallthrough = target;
+        if (fallthrough != current + 1 || branch->d.b < 0 || branch->d.b >= mba->qty)
+            return std::nullopt;
+        return conditional_t{*branch, std::move(values), std::move(prefix), fallthrough,
+                             branch->d.b};
+    }
+    return std::nullopt;
 }
 
 // A conditional state assignment often merges through a shared store before
@@ -263,20 +337,41 @@ int thread_conditional(mba_t *mba)
 {
     for (int index = 0; index < mba->qty; ++index)
     {
+        if (user_cancelled())
+            return 0;
         mblock_t *source = mba->get_mblock(index);
         minsn_t *branch = source->tail;
-        if (!branch || !is_mcode_jcond(branch->opcode) || branch->d.t != mop_b ||
-            source->nsucc() != 2)
+        if (!branch)
             continue;
-        const auto values = outgoing(source);
-        if (values.empty() || successor(source, values))
+        auto values = outgoing(source);
+        if (values.empty())
             continue;
-        const int taken = branch->d.b;
+        std::optional<conditional_t> shared;
+        int taken = -1;
         int fallthrough = -1;
-        for (int target : source->succset)
-            if (target != taken)
-                fallthrough = target;
-        if (fallthrough != index + 1 || taken < 0 || taken >= mba->qty)
+        if (is_mcode_jcond(branch->opcode) && branch->d.t == mop_b && source->nsucc() == 2 &&
+            !successor(source, values))
+        {
+            taken = branch->d.b;
+            for (int target : source->succset)
+                if (target != taken)
+                    fallthrough = target;
+            if (fallthrough != index + 1 || taken < 0 || taken >= mba->qty)
+                continue;
+        }
+        else if (source->nsucc() == 1)
+        {
+            const auto first = successor(source, values);
+            if (!first)
+                continue;
+            shared = find_conditional(mba, index, *first, values);
+            if (!shared)
+                continue;
+            values = shared->values;
+            taken = shared->taken;
+            fallthrough = shared->fallthrough;
+        }
+        else
             continue;
         auto false_path = trace(mba, index, fallthrough, values, false);
         auto true_path = trace(mba, index, taken, values, false);
@@ -288,10 +383,27 @@ int thread_conditional(mba_t *mba)
             true_path ? *true_path : rewrite_t{index, taken, {}},
         };
         mblock_t *targets[] = {mba->get_mblock(plans[0].target), mba->get_mblock(plans[1].target)};
-        mblock_t *old_targets[] = {mba->get_mblock(fallthrough), mba->get_mblock(taken)};
-        for (mblock_t *target : old_targets)
-            remove_predecessor(target, source->serial);
+        const auto old_successors = source->succset;
+        for (int target : old_successors)
+            remove_predecessor(mba->get_mblock(target), source->serial);
         source->succset.clear();
+        if (shared)
+        {
+            if (branch->opcode != m_goto)
+            {
+                branch = new minsn_t(shared->branch.ea);
+                source->insert_into_block(branch, source->tail);
+            }
+            for (const auto &ins : shared->prefix)
+                source->insert_into_block(new minsn_t(ins), branch->prev);
+            branch->opcode = shared->branch.opcode;
+            branch->l = shared->branch.l;
+            branch->r = shared->branch.r;
+            branch->d = shared->branch.d;
+            clear_value_numbers_t clear_value_numbers;
+            branch->for_all_ops(clear_value_numbers);
+            source->type = BLT_2WAY;
+        }
         mblock_t *bridges[2];
         for (int arm = 0; arm < 2; ++arm)
         {
@@ -324,7 +436,6 @@ int thread_conditional(mba_t *mba)
             bridge->succset.push_back(targets[arm]->serial);
             targets[arm]->predset.push_back(bridge->serial);
             std::sort(targets[arm]->predset.begin(), targets[arm]->predset.end());
-            targets[arm]->mark_lists_dirty();
             bridge->mark_lists_dirty();
             source->succset.push_back(bridge->serial);
         }
@@ -384,14 +495,12 @@ static int run_once(mbl_array_t *mba)
             auto predecessor = std::find(old->predset.begin(), old->predset.end(), rewrite.source);
             if (predecessor != old->predset.end())
                 old->predset.erase(predecessor);
-            old->mark_lists_dirty();
         }
         mblock_t *target = mba->get_mblock(rewrite.target);
         if (std::find(target->predset.begin(), target->predset.end(), rewrite.source) ==
             target->predset.end())
             target->predset.push_back(rewrite.source);
         std::sort(target->predset.begin(), target->predset.end());
-        target->mark_lists_dirty();
         source->mark_lists_dirty();
     }
     if (!rewrites.empty())
