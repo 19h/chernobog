@@ -30,7 +30,7 @@ Backend selected_backend() noexcept
 const char *backend_diagnostic() noexcept
 {
     const char *value = std::getenv("CHERNOBOG_MBA_BACKEND");
-    if (!value || std::strcmp(value, "legacy") == 0)
+    if (!value || !value[0] || std::strcmp(value, "auto") == 0 || std::strcmp(value, "legacy") == 0)
         return "none";
     if (std::strcmp(value, "cobra") == 0)
         return cobra_backend::available() ? "none" : "cobra_unavailable";

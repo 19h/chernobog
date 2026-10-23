@@ -200,6 +200,7 @@ struct Session::Impl
     std::unique_ptr<EmulationWorkerPool> worker;
     std::shared_ptr<const TargetEvidence> evidence;
     qtimer_t timer = nullptr;
+    int timer_start_request = -1;
     uint64_t pending_ticket = 0;
     uint32_t next_run_id = 0;
     bool pending = false;
@@ -216,6 +217,11 @@ struct Session::Impl
 
     void unregister_poll_timer()
     {
+        if (timer_start_request != -1)
+        {
+            cancel_exec_request(timer_start_request);
+            timer_start_request = -1;
+        }
         if (timer != nullptr)
         {
             unregister_timer(timer);
@@ -225,10 +231,25 @@ struct Session::Impl
 
     bool start_timer()
     {
-        if (timer != nullptr)
+        if (timer != nullptr || timer_start_request != -1)
             return true;
-        timer = register_timer(config.poll_ms, timer_callback, this);
-        return timer != nullptr;
+        // This can be reached from a Hex-Rays callback while the UI holds
+        // a notification lock. Register the polling timer after that callback
+        // returns; direct registration can wait on the same lock indefinitely.
+        struct StartTimerRequest final : ui_request_t
+        {
+            Impl *owner;
+            explicit StartTimerRequest(Impl *value) : owner(value) {}
+            bool idaapi run() override
+            {
+                owner->timer_start_request = -1;
+                if (owner->timer == nullptr && owner->config.enabled && owner->worker)
+                    owner->timer = register_timer(owner->config.poll_ms, timer_callback, owner);
+                return false;
+            }
+        };
+        timer_start_request = execute_ui_requests(new StartTimerRequest(this), nullptr);
+        return timer_start_request != -1;
     }
 
     void reset_worker()
@@ -677,6 +698,12 @@ Session::~Session()
 
 bool Session::enabled() const { return impl_->config.enabled; }
 
+void Session::reload_config()
+{
+    clear();
+    impl_->config = hybrid_load_config();
+}
+
 bool Session::explore_batch_target()
 {
     const ea_t address = action_target_address(nullptr);
@@ -962,6 +989,18 @@ Session *hybrid_current_session()
     std::lock_guard<std::mutex> lock(sessions_mutex());
     const auto found = sessions().find(database_id);
     return found == sessions().end() ? nullptr : found->second;
+}
+
+void hybrid_reload_config()
+{
+    std::vector<Session *> current;
+    {
+        std::lock_guard<std::mutex> lock(sessions_mutex());
+        for (const auto &entry : sessions())
+            current.push_back(entry.second);
+    }
+    for (Session *session : current)
+        session->reload_config();
 }
 
 EnsureExploredResult hybrid_ensure_current_function_explored(uint64_t function_start,

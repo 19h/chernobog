@@ -15,6 +15,13 @@ uint32_t **escaped_cell;
 
 NOINLINE uint32_t read_seed(void) { return seed; }
 
+NOINLINE uint32_t mba_expression(uint32_t x, uint32_t y)
+{
+    uint32_t different = x ^ y;
+    uint32_t shared = x & y;
+    return different + 2 * shared;
+}
+
 NOINLINE uint32_t helper(uint32_t value)
 {
     ++calls;

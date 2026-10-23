@@ -109,6 +109,14 @@ try:
                 "function flags unchanged: %s pass %d" % (name, iteration),
                 ida_funcs.get_func(address(name)).flags == flags[name],
             )
+    assert idc.eval_idc('chernobog_set_option("inline_forwarders", 0);') == 1
+    disabled = ida_hexrays.decompile(address("forward_caller"), flags=ida_hexrays.DECOMP_NO_CACHE)
+    disabled_text = "\n".join(ida_lines.tag_remove(line.line) for line in disabled.get_pseudocode())
+    check("forwarder inlining can be disabled at runtime", "direct_wrapper(" in disabled_text)
+    assert idc.eval_idc('chernobog_set_option("inline_forwarders", 1);') == 1
+    restored = ida_hexrays.decompile(address("forward_caller"), flags=ida_hexrays.DECOMP_NO_CACHE)
+    restored_text = "\n".join(ida_lines.tag_remove(line.line) for line in restored.get_pseudocode())
+    check("forwarder inlining can be reenabled", "direct_wrapper(" not in restored_text)
     report["passed"] = not report["errors"]
 except Exception:
     report["errors"].append(traceback.format_exc())

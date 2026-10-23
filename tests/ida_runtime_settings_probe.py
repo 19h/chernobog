@@ -24,7 +24,21 @@ from PySide6 import QtCore, QtWidgets
 
 out = Path(os.environ["IDAUSR"]).parent
 report = {"passed": False, "checks": [], "errors": []}
-options = ("auto", "writable_const", "stack_alias_objects")
+defaults = {
+    "auto": "0",
+    "writable_const": "0",
+    "stack_alias_objects": "0",
+    "rax": "0",
+    "rax_runs": "1",
+    "rax_timeout_ms": "50",
+    "rax_max_insns": "1000",
+    "mba_smt": "1",
+    "mba_affine": "0",
+    "mba_backend": "auto",
+    "inline_forwarders": "1",
+    "verbose": "0",
+}
+options = tuple(defaults)
 
 
 def check(name, condition):
@@ -41,7 +55,21 @@ def text(view):
     return "\n".join(ida_lines.tag_remove(line.line) for line in view.cfunc.get_pseudocode())
 
 
-def drive_dialog(apply, automatic=True, writable=2, objects=True):
+def drive_dialog(
+    apply,
+    automatic=True,
+    writable=2,
+    objects=True,
+    rax=False,
+    smt=True,
+    affine=True,
+    backend="legacy",
+    inline=True,
+    verbose=False,
+    runs=2,
+    timeout=100,
+    instructions=2000,
+):
     state = {"seen": False, "attempts": 0, "error": None}
     initial = values()
 
@@ -71,8 +99,34 @@ def drive_dialog(apply, automatic=True, writable=2, objects=True):
             )
             boxes["Automatic deobfuscation"].setChecked(automatic)
             boxes["Bounded stack objects"].setChecked(objects)
-            combo = dialog.findChild(QtWidgets.QComboBox)
-            assert combo is not None
+            for label, option in (
+                ("RAX emulation", "rax"),
+                ("SMT MBA synthesis", "mba_smt"),
+                ("Affine MBA reconstruction", "mba_affine"),
+                ("Inline forwarding wrappers", "inline_forwarders"),
+                ("Verbose logging", "verbose"),
+            ):
+                assert boxes[label].isChecked() == (initial[option] == "1")
+            boxes["RAX emulation"].setChecked(rax)
+            boxes["SMT MBA synthesis"].setChecked(smt)
+            boxes["Affine MBA reconstruction"].setChecked(affine)
+            boxes["Inline forwarding wrappers"].setChecked(inline)
+            boxes["Verbose logging"].setChecked(verbose)
+            combos = dialog.findChildren(QtWidgets.QComboBox)
+            combo = next(c for c in combos if c.itemText(0) == "Disabled")
+            backend_combo = next(c for c in combos if c.itemText(0) == "Default")
+            numeric = [c for c in combos if c.isEditable()]
+            assert [c.currentText() for c in numeric] == [
+                initial["rax_runs"],
+                initial["rax_timeout_ms"],
+                initial["rax_max_insns"],
+            ]
+            for field, value in zip(numeric, (runs, timeout, instructions)):
+                field.setEditText(str(value))
+            assert backend_combo.currentIndex() == ("auto", "cobra", "legacy").index(
+                initial["mba_backend"]
+            )
+            backend_combo.setCurrentIndex(("auto", "cobra", "legacy").index(backend))
             assert [combo.itemText(i) for i in range(combo.count())] == [
                 "Disabled",
                 "Scalars",
@@ -115,8 +169,8 @@ def run_test():
             "IDC settings entry registered",
             "chernobog_settings()" in idc.eval_idc("chernobog_help();"),
         )
-        for name in options:
-            assert idc.eval_idc('chernobog_set_option("%s", 0);' % name) == 1
+        for name, value in defaults.items():
+            assert idc.eval_idc('chernobog_set_option("%s", "%s");' % (name, value)) == 1
         ea = ida_name.get_name_ea(ida_idaapi.BADADDR, "_object_escape")
         if ea == ida_idaapi.BADADDR:
             ea = ida_name.get_name_ea(ida_idaapi.BADADDR, "object_escape")
@@ -139,16 +193,82 @@ def run_test():
         check("Cancel preserves options", values() == original_options)
         check("Cancel preserves pseudocode", text(view) == before)
         drive_dialog(True)
-        check(
-            "Apply updates runtime options",
-            values() == {"auto": "1", "writable_const": "2", "stack_alias_objects": "1"},
+        expected = dict(
+            defaults,
+            auto="1",
+            writable_const="2",
+            stack_alias_objects="1",
+            mba_affine="1",
+            mba_backend="legacy",
+            rax_runs="2",
+            rax_timeout_ms="100",
+            rax_max_insns="2000",
         )
+        check("Apply updates runtime options", values() == expected)
         after = text(view)
         check(
             "Apply refreshes existing pseudocode",
             "while (" not in after and "switch (" not in after,
         )
-        drive_dialog(True, automatic=False, writable=0, objects=False)
+        disabled = idc.eval_idc("chernobog_rax_explore(%d);" % ea)
+        check(
+            "RAX disabled while static recovery runs",
+            idc.eval_idc("chernobog_rax_result_name(%d);" % disabled) == "disabled",
+        )
+        check(
+            "no emulation evidence in static mode",
+            not idc.eval_idc("chernobog_rax_summary(%d).available;" % ea),
+        )
+        math_ea = ida_name.get_name_ea(ida_idaapi.BADADDR, "_mba_expression")
+        if math_ea == ida_idaapi.BADADDR:
+            math_ea = ida_name.get_name_ea(ida_idaapi.BADADDR, "mba_expression")
+        assert idc.SetType(math_ea, "unsigned int mba_expression(unsigned int x, unsigned int y);")
+        idc.eval_idc("chernobog_rule_reset_stats();")
+        math = ida_hexrays.decompile(math_ea, flags=ida_hexrays.DECOMP_NO_CACHE)
+        math_text = "\n".join(ida_lines.tag_remove(line.line) for line in math.get_pseudocode())
+        check(
+            "MBA rules operate without RAX",
+            "^" not in math_text and "&" not in math_text and "+" in math_text,
+        )
+        report["mba_without_rax"] = math_text
+        drive_dialog(
+            True, rax=True, smt=False, affine=False, backend="cobra", inline=False, verbose=True
+        )
+        check(
+            "RAX can be enabled independently",
+            values()["rax"] == "1" and values()["mba_smt"] == "0",
+        )
+        result = idc.eval_idc("chernobog_rax_explore(%d);" % ea)
+        check(
+            "enabled RAX actually explores",
+            idc.eval_idc("chernobog_rax_result_name(%d);" % result)
+            in ("explored", "already_fresh"),
+        )
+        check(
+            "enabled RAX publishes evidence",
+            bool(idc.eval_idc("chernobog_rax_summary(%d).available;" % ea)),
+        )
+        drive_dialog(True)
+        check(
+            "disabling RAX discards previous evidence",
+            not idc.eval_idc("chernobog_rax_summary(%d).available;" % ea),
+        )
+        result = idc.eval_idc("chernobog_rax_explore(%d);" % ea)
+        check(
+            "RAX stays disabled after prior execution",
+            idc.eval_idc("chernobog_rax_result_name(%d);" % result) == "disabled",
+        )
+        drive_dialog(
+            True,
+            automatic=False,
+            writable=0,
+            objects=False,
+            affine=False,
+            backend="auto",
+            runs=1,
+            timeout=50,
+            instructions=1000,
+        )
         check("settings can be disabled", values() == original_options)
         check(
             "disabling refreshes existing pseudocode",
@@ -163,7 +283,12 @@ def run_test():
         print(
             "[chernobog][runtime-settings] " + ("PASS" if report["passed"] else "FAIL"), flush=True
         )
-        ida_pro.qexit(0 if report["passed"] else 1)
+        # Dialog testing temporarily enables interactive mode. Restore batch
+        # exit behavior so save prompts cannot strand this disposable IDA.
+        idc.batch(1)
+        # Let this IDA timer return before shutdown unregisters its callbacks.
+        code = 0 if report["passed"] else 1
+        QtCore.QTimer.singleShot(0, lambda: ida_pro.qexit(code))
     return -1
 
 

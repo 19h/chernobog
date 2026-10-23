@@ -41,6 +41,8 @@ class Session
     void show_last(vdui_t *view) const;
     void cancel();
     void clear();
+    // Cancel current work and discard evidence before applying new policy.
+    void reload_config();
     void invalidate_function(uint64_t function_start);
     // Consume the one-shot signal that fresh evidence changed IDA analysis.
     // Hex-Rays flowchart callbacks use it to request a coherent rebuild.
@@ -62,6 +64,7 @@ class Session
 };
 
 Session *hybrid_current_session();
+void hybrid_reload_config();
 EnsureExploredResult hybrid_ensure_current_function_explored(uint64_t function_start,
                                                              uint64_t focus_address = UINT64_MAX);
 

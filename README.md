@@ -345,8 +345,11 @@ Manual invocation also retries activation.
 ### Runtime Settings
 
 Right-click in pseudocode and select **Runtime settings... (Chernobog)**.
-The dialog controls automatic deobfuscation, writable-data constant handling
-(disabled, scalars, or scalars and arrays), and bounded stack-object recovery.
+The dialog separates automatic deobfuscation from RAX emulation. RAX can be
+disabled while static MBA rules, SMT synthesis, and other static passes run.
+It also exposes RAX run/time/instruction limits, SMT MBA synthesis, affine
+reconstruction, the MBA backend, forwarding-wrapper inlining, verbose logging,
+writable-data constants, and bounded stack-object recovery.
 **Apply** updates the running plugin and refreshes the current function;
 **Cancel** leaves the settings and pseudocode unchanged.
 
@@ -356,10 +359,17 @@ Bounded stack-object recovery assumes exposed frame objects cannot access
 unrelated frame objects. See the [recovery contracts](docs/hikari-state-recovery.md).
 Scripts can open the same dialog with `chernobog_settings()` in IDC.
 
+For static processing without emulation, enable **Automatic deobfuscation**,
+disable **RAX emulation**, and enable **SMT MBA synthesis** as needed. RAX policy
+changes cancel outstanding work and discard its transient evidence. The fast
+MBA rule pass remains active independently of SMT synthesis.
+
 ### Automatic Mode
 
 Set the environment variable `CHERNOBOG_AUTO=1` to automatically run bounded
 rax emulation and deobfuscate functions when they are submitted to Hex-Rays.
+Set `CHERNOBOG_RAX_ENABLED=0` to keep automatic static processing without RAX
+emulation. This option and RAX limits can be changed in the runtime dialog.
 When the variable is unset, auto mode can also be enabled by creating an empty
 `~/.chernobog_auto` marker file; an explicit `CHERNOBOG_AUTO` value (including
 `0`) overrides the marker. With auto mode disabled, native IDA and early

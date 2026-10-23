@@ -110,6 +110,9 @@ ea_t call_target(const minsn_t *ins)
 
 merror_t inline_forwarders(codegen_t *codegen, int decomp_flags)
 {
+    qstring enabled;
+    if (qgetenv("CHERNOBOG_INLINE_FORWARDERS", &enabled) && enabled == "0")
+        return MERR_OK;
     if (!codegen || !codegen->mba || PH.id != PLFM_386 || !inf_is_64bit())
         return MERR_OK;
     mba_t *mba = codegen->mba;

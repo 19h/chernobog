@@ -276,6 +276,10 @@ const option_alias_t option_aliases[] = {
     {"dead_global_stores", "CHERNOBOG_DEAD_GLOBAL_STORES", false,
      "Remove dead stores to auto-named writable scalars"},
     {"mba_affine", "CHERNOBOG_MBA_AFFINE", false, "Exact-Z3 affine MBA reconstruction"},
+    {"mba_backend", "CHERNOBOG_MBA_BACKEND", false,
+     "MBA synthesis backend: auto, cobra, or legacy"},
+    {"inline_forwarders", "CHERNOBOG_INLINE_FORWARDERS", false,
+     "Inline bounded native forwarding adapters (default enabled)"},
     {"mba_smt", "CHERNOBOG_MBA_SMT", false,
      "Bounded cross-block semantic MBA synthesis (default enabled)"},
     {"vm", "CHERNOBOG_VM", false, "VM-family detection and rewriting"},
@@ -2362,6 +2366,8 @@ bool set_runtime_option(const char *name, const char *value)
     {
         global_const_handler_t::reload_options();
     }
+    if (strncmp(variable, "CHERNOBOG_RAX_", sizeof("CHERNOBOG_RAX_") - 1) == 0)
+        hybrid::hybrid_reload_config();
     return true;
 }
 

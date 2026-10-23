@@ -179,13 +179,8 @@ static bool mba_is_small_affine_candidate(const minsn_t *ins, int op_count)
 
 static bool mba_affine_enabled()
 {
-    static int cached = -1;
-    if (cached != -1)
-        return cached == 1;
-
     qstring env;
-    cached = (qgetenv("CHERNOBOG_MBA_AFFINE", &env) && !env.empty() && env[0] == '1') ? 1 : 0;
-    return cached == 1;
+    return qgetenv("CHERNOBOG_MBA_AFFINE", &env) && !env.empty() && env[0] == '1';
 }
 
 static bool mba_is_readable_modular_value(uint64_t value, uint64_t mask)
