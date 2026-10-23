@@ -751,8 +751,8 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             chernobog_function_deobfuscation_enabled(block->mba->entry_ea))
             indirect_call_handler_t::resolve_call_type(block, type);
     }
-    // Late state threading changes reaching definitions. The preallocation
-    // event explicitly permits mutation and requests a fresh allocation pass
+    // Late argument folding and state threading change reaching definitions.
+    // The preallocation event permits mutation and requests a fresh allocation pass
     // when it returns one; an optblock callback cannot make that request.
     else if (event == hxe_prealloc)
     {
@@ -760,7 +760,8 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         if (mba && !is_disabled_mode_enabled() &&
             chernobog_function_deobfuscation_enabled(mba->entry_ea))
         {
-            int changes = stack_alias::run(mba);
+            int changes = chernobog::fold_finite_call_arguments(mba);
+            changes += stack_alias::run(mba);
             changes += dispatcher_thread::run(mba);
             if (changes)
                 return 1;

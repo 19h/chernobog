@@ -91,6 +91,7 @@ Chernobog automatically detects and reverses the following Hikari obfuscation te
 - **Constant Encryption** - Resolves encrypted constants (XOR patterns with global variables)
 - **Stack String Construction** - Reconstructs strings built character-by-character on the stack
 - **Global Constant Inlining** - Replaces loads from read-only globals with immediate values
+- **Table Argument Recovery** - Simplifies correlated read-only lookups in direct-call arguments after exhaustive bounded evaluation; preserves mutable loads and effectful inputs. See [proof limits and validation](docs/finite-table-arguments.md).
 
 ### Code Transformation (108 MBA Rules)
 Mixed Boolean-Arithmetic (MBA) simplification using Z3-certified rules and lazy commutative matching:

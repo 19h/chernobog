@@ -654,6 +654,70 @@ void reset_finite_table_history(ea_t function)
         fold_history.erase(fold_history.begin());
 }
 
+int fold_finite_call_arguments(mba_t *mba)
+{
+    if (!mba || mba->qty > 512)
+        return 0;
+    // Call arguments can contain complete lookup expressions after propagation,
+    // even when the callee is already direct. Give these roots their own bounded
+    // pass so unrelated nested loads cannot consume the argument-recovery budget.
+    struct Arguments : minsn_visitor_t
+    {
+        int changes = 0;
+        size_t inspected = 0;
+        size_t attempted = 0;
+        const std::chrono::steady_clock::time_point deadline =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(20);
+
+        int idaapi visit_minsn() override
+        {
+            if (++inspected > 4096 || attempted >= 32 ||
+                std::chrono::steady_clock::now() >= deadline)
+                return 1;
+            if (!blk || !topins || !is_mcode_call(curins->opcode) || curins->d.t != mop_f ||
+                !curins->d.f)
+                return 0;
+            for (auto &argument : curins->d.f->args)
+            {
+                if (attempted >= 32 || std::chrono::steady_clock::now() >= deadline)
+                    return 1;
+                if (argument.t != mop_d || !bitvector::valid_byte_width(argument.size) ||
+                    argument.has_side_effects(false))
+                    continue;
+                struct Effects : minsn_visitor_t
+                {
+                    bool safe = true;
+                    size_t inspected = 0;
+                    int idaapi visit_minsn() override
+                    {
+                        safe &= ++inspected <= 4096 && !is_mcode_call(curins->opcode) &&
+                                !curins->is_mbarrier() && !curins->is_persistent() &&
+                                !curins->is_assert() && !curins->is_fpinsn();
+                        return safe ? 0 : 1;
+                    }
+                } effects;
+                argument.d->for_all_insns(effects);
+                if (!effects.safe)
+                    continue;
+                ++attempted;
+                const auto result = evaluate_finite_values(argument, topins, blk);
+                if (!result || result->values.size() != 1 || result->dependencies.empty() ||
+                    !remember_finite_values(blk->mba->entry_ea, *result))
+                    continue;
+                argument.make_number(result->values.front(), argument.size, argument.ea);
+                curins->d.f->flags |= FCI_FINAL;
+                blk->mark_lists_dirty();
+                ++changes;
+            }
+            return 0;
+        }
+    } arguments;
+    mba->for_all_insns(arguments);
+    if (arguments.changes > 0)
+        mba->mark_chains_dirty();
+    return arguments.changes;
+}
+
 int fold_finite_table_expressions(mba_t *mba)
 {
     if (!mba || mba->qty > 512)
