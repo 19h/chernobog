@@ -16,6 +16,8 @@ using writable_object_key_t = std::tuple<ssize_t, ea_t, ea_t>;
 std::map<writable_key_t, bool> s_writable_classification;
 std::map<writable_object_key_t, bool> s_writable_object_classification;
 std::map<writable_key_t, bool> s_write_only_classification;
+int s_writable_mode = -1;
+int s_dead_store_mode = -1;
 
 constexpr asize_t MAX_WRITABLE_OBJECT_SIZE = 4096;
 constexpr asize_t MAX_WRITABLE_ANCHOR_DISTANCE = 64;
@@ -32,7 +34,7 @@ void global_const_debug(const char *format, ...)
 
 int writable_const_mode()
 {
-    static int cached = -1;
+    int &cached = s_writable_mode;
     if (cached == -1)
     {
         qstring value;
@@ -50,7 +52,7 @@ int writable_const_mode()
 
 bool dead_global_store_mode_enabled()
 {
-    static int cached = -1;
+    int &cached = s_dead_store_mode;
     if (cached == -1)
     {
         qstring value;
@@ -794,6 +796,17 @@ bool global_const_handler_t::is_direct_write_only_data(ea_t addr, int size)
     global_const_debug("  sink result=%d\n", admitted ? 1 : 0);
     s_write_only_classification.emplace(key, admitted);
     return admitted;
+}
+
+void global_const_handler_t::reload_options()
+{
+    // Environment options are process-wide, while classifications are keyed
+    // by database. Invalidate every database when the policy changes.
+    s_writable_mode = -1;
+    s_dead_store_mode = -1;
+    s_writable_classification.clear();
+    s_writable_object_classification.clear();
+    s_write_only_classification.clear();
 }
 
 void global_const_handler_t::clear_cache()

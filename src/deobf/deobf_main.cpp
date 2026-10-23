@@ -17,6 +17,8 @@
 #include "handlers/stack_string.h"
 #include "handlers/hikari_wrapper.h"
 #include "handlers/savedregs.h"
+#include "handlers/stack_alias.h"
+#include "handlers/dispatcher_thread.h"
 #include "handlers/objc_resolve.h"
 #include "handlers/global_const.h"
 #include "handlers/ptr_resolve.h"
@@ -707,7 +709,8 @@ int idaapi chernobog_optblock_t::func(mblock_t *blk)
         icall_ctx.mba = mba;
         icall_ctx.func_ea = func_ea;
 
-        int total_changes = 0;
+        int total_changes = stack_alias::run(mba);
+        total_changes += dispatcher_thread::run(mba);
         total_changes += resolver_call_args_handler_t::run(mba, &icall_ctx);
         if (vm_mba_handler_t::detect(mba))
             total_changes += vm_mba_handler_t::run(mba, &icall_ctx);
@@ -956,6 +959,9 @@ static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx, bool rep
     // global-value memoization to one coherent pass.
     opaque_eval_t::clear_cache();
 
+    // Expose exact stack stores before detecting state-machine transitions.
+    const int stack_changes = stack_alias::run(mba);
+
     // Detect what obfuscations are present
     ctx->detected_obf = chernobog_t::detect_obfuscations(mba);
 
@@ -1024,6 +1030,8 @@ static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx, bool rep
         total_changes += changes;
         applied_changes.emplace_back(label, changes);
     };
+    record_changes("Stack aliases resolved", stack_changes);
+    record_changes("Dispatcher paths resolved", dispatcher_thread::run(mba));
 
     // Collapse compiler-lowered select cascades before general CFG passes.
     // This prevents thousands of two-way blocks from reaching ctree.
@@ -1124,6 +1132,7 @@ static int run_deobfuscation_passes(mbl_array_t *mba, deobf_ctx_t *ctx, bool rep
     {
         record_changes("Bogus branches removed", chernobog_t::remove_bogus_cf(mba, ctx));
     }
+    record_changes("Dispatcher paths resolved", dispatcher_thread::run(mba));
 
     // 7. Deflatten control flow (most complex, do last)
     if (ctx->detected_obf & OBF_FLATTENED)

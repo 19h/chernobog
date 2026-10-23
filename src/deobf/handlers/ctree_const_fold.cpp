@@ -102,13 +102,14 @@ bool is_discardable_rhs(const cexpr_t *expression)
     }
 }
 
-bool is_safe_dead_assignment_destination(const lvar_t &variable, const lvar_usage_t &usage)
+bool is_safe_dead_assignment_destination(const lvar_t &variable, const lvar_usage_t &usage,
+                                         bool stale_address_flag)
 {
     return !usage.address_taken && !variable.is_arg_var() && !variable.is_result_var() &&
-           !variable.is_fake_var() && !variable.is_used_byref() && !variable.is_overlapped_var() &&
-           !variable.is_mapdst_var() && !variable.is_shared() && !variable.is_noprop() &&
-           !variable.in_asm() && !variable.has_user_info() && variable.tif.is_scalar() &&
-           !variable.tif.is_volatile();
+           !variable.is_fake_var() && (!variable.is_used_byref() || stale_address_flag) &&
+           !variable.is_overlapped_var() && !variable.is_mapdst_var() && !variable.is_shared() &&
+           !variable.is_noprop() && !variable.in_asm() && !variable.has_user_info() &&
+           variable.tif.is_scalar() && !variable.tif.is_volatile();
 }
 
 struct rhs_lvar_collector_t final : public ctree_visitor_t
@@ -150,11 +151,53 @@ struct removable_assignment_collector_t final : public ctree_visitor_t
     const std::vector<lvar_usage_t> &usage;
     std::vector<int> internal_reads;
     std::vector<removable_assignment_t> assignments;
+    std::vector<bool> stale_address_flags;
 
     removable_assignment_collector_t(cfunc_t *function, const std::vector<lvar_usage_t> &usage)
         : ctree_visitor_t(CV_INSNS), function(function), usage(usage),
-          internal_reads(usage.size(), 0)
+          internal_reads(usage.size(), 0), stale_address_flags(usage.size(), false)
     {
+        if (!function->mba)
+            return;
+        struct addresses_t : mop_visitor_t
+        {
+            lvars_t &variables;
+            std::vector<bool> &unaddressed;
+            addresses_t(lvars_t &variables, std::vector<bool> &unaddressed)
+                : variables(variables), unaddressed(unaddressed)
+            {
+            }
+            int idaapi visit_mop(mop_t *operand, const tinfo_t *, bool) override
+            {
+                if (!operand || operand->t != mop_a || !operand->a)
+                    return 0;
+                const mop_t &target = *operand->a;
+                if (target.t == mop_l && target.l && target.l->idx >= 0 &&
+                    size_t(target.l->idx) < unaddressed.size())
+                {
+                    unaddressed[target.l->idx] = false;
+                }
+                else if (target.t == mop_S && target.s)
+                {
+                    for (size_t index = 0; index < variables.size(); ++index)
+                    {
+                        const lvar_t &variable = variables[index];
+                        if (variable.is_stk_var() &&
+                            variable.get_stkoff() < target.s->off + std::max(target.size, 1) &&
+                            target.s->off < variable.get_stkoff() + variable.width)
+                            unaddressed[index] = false;
+                    }
+                }
+                return 0;
+            }
+        };
+        auto *variables = function->get_lvars();
+        if (!variables || variables->size() != stale_address_flags.size())
+            return;
+        for (size_t i = 0; i < variables->size(); ++i)
+            stale_address_flags[i] = (*variables)[i].is_stk_var();
+        addresses_t addresses(*variables, stale_address_flags);
+        function->mba->for_all_ops(addresses);
     }
 
     int idaapi visit_insn(cinsn_t *instruction) override
@@ -176,7 +219,8 @@ struct removable_assignment_collector_t final : public ctree_visitor_t
         }
 
         const lvar_t &variable = (*variables)[index];
-        if (!is_safe_dead_assignment_destination(variable, usage[index]) ||
+        if (!is_safe_dead_assignment_destination(variable, usage[index],
+                                                 stale_address_flags[index]) ||
             !is_discardable_rhs(instruction->cexpr->y))
         {
             return 0;

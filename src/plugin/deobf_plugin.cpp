@@ -23,6 +23,8 @@
 #include "../deobf/handlers/indirect_call.h"
 #include "../deobf/handlers/jump_optimizer.h"
 #include "../deobf/handlers/native_opaque.h"
+#include "../deobf/handlers/stack_alias.h"
+#include "../deobf/handlers/dispatcher_thread.h"
 #include "../hybrid/session.hpp"
 #include "../hybrid/z3_bridge.hpp"
 #include "../ida_analysis/early_hexrays.hpp"
@@ -739,6 +741,21 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
         if (block && block->mba && !is_disabled_mode_enabled() &&
             chernobog_function_deobfuscation_enabled(block->mba->entry_ea))
             indirect_call_handler_t::resolve_call_type(block, type);
+    }
+    // Late state threading changes reaching definitions. The preallocation
+    // event explicitly permits mutation and requests a fresh allocation pass
+    // when it returns one; an optblock callback cannot make that request.
+    else if (event == hxe_prealloc)
+    {
+        mba_t *mba = va_arg(va, mba_t *);
+        if (mba && !is_disabled_mode_enabled() &&
+            chernobog_function_deobfuscation_enabled(mba->entry_ea))
+        {
+            int changes = stack_alias::run(mba);
+            changes += dispatcher_thread::run(mba);
+            if (changes)
+                return 1;
+        }
     }
     // Global optimization exposes exact register-defined tail targets that do
     // not exist at LOCOPT. Hex-Rays requires MERR_LOOP after any mutation at

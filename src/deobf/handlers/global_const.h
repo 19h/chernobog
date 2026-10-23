@@ -30,6 +30,9 @@ class global_const_handler_t
     // Clear per-database classifications after a database/cache reset.
     static void clear_cache();
 
+    // Apply process-wide writable-data policy changes to all database caches.
+    static void reload_options();
+
     // Separately gated closed-world cleanup; callable even when instruction-
     // level folding removed every load before whole-MBA detection.
     static int remove_write_only_stores(mbl_array_t *mba);

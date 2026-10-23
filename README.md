@@ -80,6 +80,7 @@ Chernobog automatically detects and reverses the following Hikari obfuscation te
 - **Recurrent-Resolver Argument Cleanup** - Neutralizes call-site argument expressions in ABI registers that a recurrent, statically closed resolver thunk provably never reads; the physical ABI slots are retained so live arguments do not shift (default-on at `MMAT_CALLS`)
 - **Select-Chain Collapse** - Collapses long cascades of conditional-move (select) diamonds from LLVM select lowering into equivalent branchless expressions, keeping very long chains within Hex-Rays' structural limits
 - **Cross-Function Dispatch (opt-in, `CHERNOBOG_HIKARI_CFG`)** - Recovers Hikari's two-target ARM64 dispatch encoding across IDA function boundaries (relocation table + `CSET` index + signed bias, with an observed XOR key), adds exact IDB edges/comments, and can optionally rewrite side-effect-free dispatch tails to direct conditional branches
+- **Aliased State Recovery** - Resolves proven x86 stack-pointer aliases and threads signed comparison dispatchers, preserving shared assignments and runtime branches. Optional bounded frame-object assumptions extend call-crossing recovery; see [contracts and validation](docs/hikari-state-recovery.md).
 
 ### Data Obfuscation
 - **String Encryption** - Decrypts XOR- and bitwise-NOT-encrypted strings and annotates them in the disassembly
@@ -447,6 +448,7 @@ without applying any deobfuscation.
 | `CHERNOBOG_MAX_FUNCSIZE_KB=<n>` | Set Hex-Rays' process-local function-size ceiling to decimal `n` KiB (1..1048576); leaves `hexrays.cfg` unchanged |
 | `CHERNOBOG_WRITABLE_CONST=1` | Inline loaded 1/2/4/8-byte writable scalars with classified direct reads, no direct writes, no address escape, and no loader fixup on the scalar |
 | `CHERNOBOG_WRITABLE_CONST=2` | Additionally admit address-taken scalars/objects (including resolved data-pointer xrefs without retained fixups) and relocation-backed code-pointer slots in writable data; requires ruling out indirect mutation |
+| `CHERNOBOG_STACK_ALIAS_OBJECTS=1` | Retain unexposed local pointer cells across calls that receive other frame objects; assumes callees stay within the passed objects. See [state-recovery contracts](docs/hikari-state-recovery.md). |
 | `CHERNOBOG_NATIVE_OPAQUE=1` | Before Hex-Rays lifting, reversibly rewrite proven constant ARM64 `B.cond`/`CBZ`/`CBNZ` terminators to `B` or `NOP`; writable seeds additionally require `CHERNOBOG_WRITABLE_CONST=1` or `2` |
 | `CHERNOBOG_PATCH_BRANCHES=1` | Retained for configuration compatibility; optimized-IR tail targets no longer authorize native branch patches |
 | `CHERNOBOG_DEAD_GLOBAL_STORES=1` | Remove direct stores to auto-named writable scalars with write xrefs but no direct reads, fixups, data references, or user/export names |

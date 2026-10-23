@@ -286,6 +286,29 @@ std::optional<uint64_t> opaque_eval_t::eval_insn(minsn_t *ins, eval_state_t &sta
         result = l_val;
         break;
 
+    case m_xdu:
+    case m_xds:
+        if (l_val && chernobog::bitvector::valid_byte_width(ins->l.size) &&
+            chernobog::bitvector::valid_byte_width(size) && size > ins->l.size)
+        {
+            const uint64_t extended =
+                ins->opcode == m_xds
+                    ? static_cast<uint64_t>(chernobog::bitvector::sign_extend(*l_val, ins->l.size))
+                    : chernobog::bitvector::truncate(*l_val, ins->l.size);
+            result = chernobog::bitvector::truncate(extended, size);
+        }
+        break;
+
+    case m_low:
+    case m_high:
+        if (l_val && chernobog::bitvector::valid_byte_width(ins->l.size) &&
+            chernobog::bitvector::valid_byte_width(size) && size < ins->l.size)
+        {
+            const unsigned shift = ins->opcode == m_high ? 8 * (ins->l.size - size) : 0;
+            result = chernobog::bitvector::truncate(*l_val >> shift, size);
+        }
+        break;
+
     case m_ldx:
     {
         // Hex-Rays defines l as the segment selector and r as the memory

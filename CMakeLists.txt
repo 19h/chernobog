@@ -518,6 +518,8 @@ ida_add_plugin(
     src/deobf/handlers/hikari_cfg.cpp
     src/deobf/handlers/native_opaque.cpp
     src/deobf/handlers/savedregs.cpp
+    src/deobf/handlers/stack_alias.cpp
+    src/deobf/handlers/dispatcher_thread.cpp
     src/deobf/handlers/objc_resolve.cpp
     src/deobf/handlers/global_const.cpp
     src/deobf/handlers/ptr_resolve.cpp

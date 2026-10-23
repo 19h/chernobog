@@ -29,6 +29,7 @@
 #include "../deobf/analysis/pattern_match.h"
 #include "../deobf/analysis/mba_diagnostics.hpp"
 #include "../deobf/handlers/hikari_cfg.h"
+#include "../deobf/handlers/global_const.h"
 #include "../deobf/handlers/indirect_branch.h"
 #include "../deobf/handlers/native_opaque.h"
 #include "../deobf/rules/rule_registry.h"
@@ -269,6 +270,8 @@ const option_alias_t option_aliases[] = {
      "Compatibility setting; optimized-IR tail targets remain unpatched"},
     {"writable_const", "CHERNOBOG_WRITABLE_CONST", false,
      "Writable scalar constant inlining tier (1 or 2)"},
+    {"stack_alias_objects", "CHERNOBOG_STACK_ALIAS_OBJECTS", false,
+     "Assume calls access only the frame objects passed to them (opt-in)"},
     {"dead_global_stores", "CHERNOBOG_DEAD_GLOBAL_STORES", false,
      "Remove dead stores to auto-named writable scalars"},
     {"mba_affine", "CHERNOBOG_MBA_AFFINE", false, "Exact-Z3 affine MBA reconstruction"},
@@ -508,7 +511,7 @@ error_t idaapi idc_set_option(idc_value_t *argv, idc_value_t *r)
         return eOk;
     }
 
-    // Two settings are cached rather than re-read per use; apply them now so
+    // Apply cached settings now so
     // the option takes effect for the current process instead of the next.
     if (streq(variable, "CHERNOBOG_AUTO"))
     {
@@ -519,6 +522,11 @@ error_t idaapi idc_set_option(idc_value_t *argv, idc_value_t *r)
     else if (streq(variable, "CHERNOBOG_VERBOSE"))
     {
         deobf::set_verbose(option_is_true(variable));
+    }
+    else if (streq(variable, "CHERNOBOG_WRITABLE_CONST") ||
+             streq(variable, "CHERNOBOG_DEAD_GLOBAL_STORES"))
+    {
+        global_const_handler_t::reload_options();
     }
     r->set_long(1);
     return eOk;
