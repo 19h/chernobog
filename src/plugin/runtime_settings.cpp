@@ -61,15 +61,11 @@ bool show(vdui_t *view)
                         (!affine.empty() && affine[0] == '1' ? 2 : 0) |
                         (idc::runtime_option("inline_forwarders") != "0" ? 4 : 0);
     const auto backend_option = idc::runtime_option("mba_backend");
-    int backend = backend_option == "cobra" ? 1 : backend_option == "legacy" ? 2 : 0;
-    qstrvec_t backends;
-    backends.push_back("Default");
-    backends.push_back("CoBRA");
-    backends.push_back("Legacy");
+    ushort backend = backend_option == "cobra" ? 1 : backend_option == "legacy" ? 2 : 0;
     const auto old_writable = idc::runtime_option("writable_const");
-    int writable = !old_writable.empty() && old_writable[0] == '2'   ? 2
-                   : !old_writable.empty() && old_writable[0] == '1' ? 1
-                                                                     : 0;
+    ushort writable = !old_writable.empty() && old_writable[0] == '2'   ? 2
+                      : !old_writable.empty() && old_writable[0] == '1' ? 1
+                                                                        : 0;
     ushort objects = idc::runtime_option("stack_alias_objects") == "1" ? 1 : 0;
     const auto verbose_option = idc::runtime_option("verbose");
     ushort verbose = !verbose_option.empty() && verbose_option != "0" &&
@@ -78,10 +74,6 @@ bool show(vdui_t *view)
                              !strieq(verbose_option.c_str(), "off")
                          ? 1
                          : 0;
-    qstrvec_t choices;
-    choices.push_back("Disabled");
-    choices.push_back("Scalars");
-    choices.push_back("Scalars and arrays");
 
     static const char form[] =
         "BUTTON YES* Apply\n"
@@ -102,11 +94,13 @@ bool show(vdui_t *view)
         "<#Synthesize and prove MBA simplifications with bounded SMT queries#SMT MBA synthesis:C6>\n"
         "<#Enable additional exact-Z3 affine reconstruction#Affine MBA reconstruction:C7>\n"
         "<#Inline supported AMD64 call/return adapters#Inline forwarding wrappers:C8>>\n"
-        "<MBA backend:b9:0:24::>\n"
+        "<##MBA backend##Default:R9> <CoBRA:R> <Legacy:R>>\n"
         "Fast MBA rules and other static simplifications do not require RAX.\n"
         "\n"
         "Memory assumptions\n"
-        "<#Assume admitted writable bytes retain their initial values#Writable data constants:b10:0:24::>\n"
+        "<#Do not treat writable data as constant#Writable data constants##Disabled:R10> "
+        "<#Assume admitted writable scalars retain their initial values#Scalars:R> "
+        "<#Also assume admitted writable arrays retain their initial values#Scalars and arrays:R>>\n"
         "<#Assume exposed stack objects cannot access unrelated stack objects#Bounded stack objects:C11>>\n"
         "These options assume stable writable values and bounded object accesses.\n"
         "\n"
@@ -115,12 +109,12 @@ bool show(vdui_t *view)
 
     while (true)
     {
-        if (ask_form(form, &execution, &runs, &timeout, &instructions, &processing, &backends,
-                     &backend, &choices, &writable, &objects, &verbose) <= 0)
+        if (ask_form(form, &execution, &runs, &timeout, &instructions, &processing, &backend,
+                     &writable, &objects, &verbose) <= 0)
             return false;
         if (runs >= 1 && runs <= 32 && timeout >= 1 && timeout <= hybrid::kHybridHardTimeoutMs &&
             instructions >= 1 && instructions <= hybrid::kHybridHardMaxInstructions &&
-            backend >= 0 && backend < 3 && writable >= 0 && writable < 3)
+            backend < 3 && writable < 3)
             break;
         warning("Use 1..32 RAX runs, 1..60000 ms per run, and 1..100000000 instructions per run.");
     }

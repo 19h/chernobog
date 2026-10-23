@@ -113,8 +113,22 @@ def drive_dialog(
             boxes["Inline forwarding wrappers"].setChecked(inline)
             boxes["Verbose logging"].setChecked(verbose)
             combos = dialog.findChildren(QtWidgets.QComboBox)
-            combo = next(c for c in combos if c.itemText(0) == "Disabled")
-            backend_combo = next(c for c in combos if c.itemText(0) == "Default")
+            radios = {
+                widget.text().replace("&", ""): widget
+                for widget in dialog.findChildren(QtWidgets.QRadioButton)
+            }
+            backend_labels = ("Default", "CoBRA", "Legacy")
+            writable_labels = ("Disabled", "Scalars", "Scalars and arrays")
+            for labels, selected in (
+                (backend_labels, ("auto", "cobra", "legacy").index(initial["mba_backend"])),
+                (writable_labels, int(initial["writable_const"] or "0")),
+            ):
+                for index, label in enumerate(labels):
+                    radio = radios[label]
+                    assert radio.isChecked() == (index == selected)
+                    check(label + " choice text fits", radio.width() >= radio.sizeHint().width())
+            radios[backend_labels[("auto", "cobra", "legacy").index(backend)]].click()
+            radios[writable_labels[writable]].click()
             numeric = [c for c in combos if c.isEditable()]
             assert [c.currentText() for c in numeric] == [
                 initial["rax_runs"],
@@ -123,17 +137,6 @@ def drive_dialog(
             ]
             for field, value in zip(numeric, (runs, timeout, instructions)):
                 field.setEditText(str(value))
-            assert backend_combo.currentIndex() == ("auto", "cobra", "legacy").index(
-                initial["mba_backend"]
-            )
-            backend_combo.setCurrentIndex(("auto", "cobra", "legacy").index(backend))
-            assert [combo.itemText(i) for i in range(combo.count())] == [
-                "Disabled",
-                "Scalars",
-                "Scalars and arrays",
-            ]
-            assert combo.currentIndex() == int(initial["writable_const"] or "0")
-            combo.setCurrentIndex(writable)
             labels = "\n".join(label.text() for label in dialog.findChildren(QtWidgets.QLabel))
             assert "Settings reset when IDA closes" in labels
             dialog.grab().save(str(out / "runtime-settings.png"))
