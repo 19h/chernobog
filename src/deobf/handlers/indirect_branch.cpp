@@ -528,7 +528,12 @@ int extend_projection(Flowchart *flowchart, bitset_t *reachable, ea_t root, mba_
                 auto &extra_ranges = const_cast<decomp_ranges_t &>(mba->get_decomp_ranges()).ranges;
                 if (std::none_of(extra_ranges.begin(), extra_ranges.end(), [&](const range_t &range)
                                  { return range.contains(fragment.start_ea); }))
+                {
                     extra_ranges.push_back(fragment);
+                    // A function's extra ranges are only accepted, also when
+                    // saved microcode is loaded again, with this flag.
+                    mba->set_mba_flags2(MBA2_HAS_OUTLINES);
+                }
             }
             bool present = false;
             for (const auto &range : ranges)
@@ -678,6 +683,14 @@ int lower_two_way(mbl_array_t *mba, mblock_t *src, const mop_t &condition,
         if (!capture_before)
             return 0;
     }
+    else if (proof && condition.has_side_effects(true))
+    {
+        // A load in the predicate is read once, before the retained target
+        // guard and at the transfer's own memory state; the branch tests that
+        // copy, so the guard's own evaluation cannot change what was tested.
+        capture_block = src;
+        capture_before = src->tail;
+    }
     mop_t left = predicate, right;
     mcode_t relation = m_jnz;
     if (condition.t == mop_d && condition.d && is_mcode_convertible_to_jmp(condition.d->opcode))
@@ -762,7 +775,7 @@ int lower_conditional_targets(mbl_array_t *mba, mblock_t *src,
                               const chernobog::finite_targets_t &finite)
 {
     if (finite.condition.empty() || finite.targets.size() != 2 ||
-        finite.condition.has_side_effects(true))
+        finite.condition.has_side_effects(false))
         return 0;
     std::array<mblock_t *, 2> destinations = {nullptr, nullptr};
     const minsn_t *table = src->tail;
@@ -1213,7 +1226,13 @@ void indirect_branch_handler_t::restore_projected_function(mba_t *mba)
     auto &decompilation = const_cast<decomp_ranges_t &>(mba->get_decomp_ranges());
     if (found->second.database == get_dbctx_id() && decompilation.is_snippet() &&
         mba->entry_ea == found->second.ranges.func_ea)
+    {
         decompilation = found->second.ranges;
+        // Without the flag, the decompiler rejects saved microcode whose
+        // function request carries extra ranges when it loads it again.
+        if (!decompilation.ranges.empty())
+            mba->set_mba_flags2(MBA2_HAS_OUTLINES);
+    }
     projected_functions.erase(found);
 }
 

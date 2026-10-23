@@ -51,7 +51,9 @@ folded base does not conceal the evidence needed to invalidate a cached result.
 
 Two-target results retain their false/true mapping. Existing switch case edges
 identify destinations even after optimization shifts their first instruction.
-The pass emits native comparison branches. If neither destination is the
+The pass emits native comparison branches. A predicate that reads memory is
+copied into a temporary at the transfer, before the retained authentication
+guard, and the branch tests that copy. If neither destination is the
 physical fallthrough, a synthetic block provides it using an SDK fictional
 address and a valid address interval. The SDK renumbers block and case
 references, and the next pass rebuilds the resolver's block index.
