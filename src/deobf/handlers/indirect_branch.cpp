@@ -861,7 +861,11 @@ int lower_finite_switch(mba_t *mba, mblock_t *src)
         return 0;
     const auto finite = chernobog::evaluate_finite_values(table->l, table, src);
     if (!finite || finite->values.empty())
+    {
+        deobf::log_verbose("[indirect_branch] jtbl %a: selector has no finite value proof\n",
+                           table->ea);
         return 0;
+    }
     std::vector<mblock_t *> destinations;
     for (uint64_t value : finite->values)
     {
@@ -882,7 +886,11 @@ int lower_finite_switch(mba_t *mba, mblock_t *src)
             selected = fallback;
         if (selected < 0 || selected >= mba->qty ||
             std::find(src->succset.begin(), src->succset.end(), selected) == src->succset.end())
+        {
+            deobf::log_verbose("[indirect_branch] jtbl %a: value %llu has no case edge\n",
+                               table->ea, (unsigned long long)value);
             return 0;
+        }
         destinations.push_back(mba->get_mblock(selected));
     }
     const bool singleton =
@@ -890,7 +898,12 @@ int lower_finite_switch(mba_t *mba, mblock_t *src)
                     [&](mblock_t *block) { return block == destinations.front(); });
     if ((!singleton && destinations.size() != 2) ||
         !chernobog::remember_finite_values(mba->entry_ea, *finite))
+    {
+        deobf::log_verbose("[indirect_branch] jtbl %a: %zu values reach %s\n", table->ea,
+                           finite->values.size(),
+                           singleton ? "an unremembered value set" : "more than two destinations");
         return 0;
+    }
     if (singleton)
     {
         if (!chernobog::preserve_indirect_target_effects(src, table, table->l))
@@ -1083,6 +1096,20 @@ int indirect_branch_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
             }
             ctx->branches_simplified += changed;
             changes += changed;
+            if (!changed)
+            {
+                const auto function = projections.find({get_dbctx_id(), mba->entry_ea});
+                const projection_t *proof = nullptr;
+                if (function != projections.end())
+                {
+                    const auto site = function->second.find(blk->tail->ea);
+                    if (site != function->second.end())
+                        proof = &site->second;
+                }
+                deobf::log_verbose(
+                    "[indirect_branch] jtbl %a retained: projection=%s targets=%zu\n",
+                    blk->tail->ea, proof ? "yes" : "no", proof ? proof->targets.size() : 0);
+            }
             if (mba->qty != before)
                 break; // Rebuild the block-start index after SDK renumbering.
         }
