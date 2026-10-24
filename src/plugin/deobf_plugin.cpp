@@ -15,6 +15,7 @@
 #include "../deobf/analysis/finite_targets.h"
 #include "../deobf/handlers/ctree_const_fold.h"
 #include "../deobf/handlers/ctree_switch_fold.h"
+#include "../deobf/handlers/ctree_helper_elide.h"
 #include "../deobf/handlers/ctree_indirect_call.h"
 #include "../deobf/handlers/ctree_string_decrypt.h"
 #include "../deobf/handlers/rotating_string_ctree.h"
@@ -131,6 +132,7 @@ struct chernobog_plugmod_t final : public plugmod_t, public chernobog::idc::Host
     // All address-keyed state belongs to this database instance.
     std::set<ea_t> ctree_const_folded;
     std::set<ea_t> ctree_switch_folded;
+    std::set<ea_t> ctree_helper_elided;
     std::set<ea_t> ctree_indirect_call_processed;
     // A no-cache decompilation creates a new cfunc for the same function.
     // Track ctree string rewrites by tree identity so every rebuilt tree
@@ -645,6 +647,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             ea_t func_ea = vu->cfunc->entry_ea;
             self->ctree_const_folded.erase(func_ea);
             self->ctree_switch_folded.erase(func_ea);
+            self->ctree_helper_elided.erase(func_ea);
             self->ctree_indirect_call_processed.erase(func_ea);
             self->ctree_string_decrypt_processed.erase(func_ea);
             self->schedule_call_refresh(vu);
@@ -675,6 +678,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             const ea_t func_ea = mba->entry_ea;
             self->ctree_const_folded.erase(func_ea);
             self->ctree_switch_folded.erase(func_ea);
+            self->ctree_helper_elided.erase(func_ea);
             self->ctree_indirect_call_processed.erase(func_ea);
             self->ctree_string_decrypt_processed.erase(func_ea);
         }
@@ -849,6 +853,12 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
                 self->ctree_switch_folded.insert(func_ea);
                 ctree_switch_fold_handler_t::run(cfunc);
             }
+            // Discarded ARM64e helper calls on literal operands
+            if (self->ctree_helper_elided.find(func_ea) == self->ctree_helper_elided.end())
+            {
+                self->ctree_helper_elided.insert(func_ea);
+                ctree_helper_elide_handler_t::run(cfunc);
+            }
             // Indirect call resolution (Hikari IndirectCall)
             if (self->ctree_indirect_call_processed.find(func_ea) ==
                 self->ctree_indirect_call_processed.end())
@@ -929,6 +939,7 @@ void chernobog_plugmod_t::clear_processing_state()
     rax_completed_functions.clear();
     ctree_const_folded.clear();
     ctree_switch_folded.clear();
+    ctree_helper_elided.clear();
     ctree_indirect_call_processed.clear();
     ctree_string_decrypt_processed.clear();
     hikari_cfg_attempted = false;

@@ -527,6 +527,7 @@ ida_add_plugin(
     src/deobf/handlers/ptr_resolve.cpp
     src/deobf/handlers/ctree_const_fold.cpp
     src/deobf/handlers/ctree_switch_fold.cpp
+    src/deobf/handlers/ctree_helper_elide.cpp
     src/deobf/handlers/ctree_indirect_call.cpp
     src/deobf/handlers/ctree_string_decrypt.cpp
     src/deobf/handlers/rotating_string_ctree.cpp
