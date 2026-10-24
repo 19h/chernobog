@@ -15,6 +15,7 @@
 #include "../deobf/analysis/finite_targets.h"
 #include "../deobf/handlers/ctree_const_fold.h"
 #include "../deobf/handlers/ctree_switch_fold.h"
+#include "../deobf/handlers/ctree_direct_call.h"
 #include "../deobf/handlers/ctree_helper_elide.h"
 #include "../deobf/handlers/ctree_indirect_call.h"
 #include "../deobf/handlers/ctree_string_decrypt.h"
@@ -133,6 +134,7 @@ struct chernobog_plugmod_t final : public plugmod_t, public chernobog::idc::Host
     std::set<ea_t> ctree_const_folded;
     std::set<ea_t> ctree_switch_folded;
     std::set<ea_t> ctree_helper_elided;
+    std::set<ea_t> ctree_direct_called;
     std::set<ea_t> ctree_indirect_call_processed;
     // A no-cache decompilation creates a new cfunc for the same function.
     // Track ctree string rewrites by tree identity so every rebuilt tree
@@ -648,6 +650,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             self->ctree_const_folded.erase(func_ea);
             self->ctree_switch_folded.erase(func_ea);
             self->ctree_helper_elided.erase(func_ea);
+            self->ctree_direct_called.erase(func_ea);
             self->ctree_indirect_call_processed.erase(func_ea);
             self->ctree_string_decrypt_processed.erase(func_ea);
             self->schedule_call_refresh(vu);
@@ -679,6 +682,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             self->ctree_const_folded.erase(func_ea);
             self->ctree_switch_folded.erase(func_ea);
             self->ctree_helper_elided.erase(func_ea);
+            self->ctree_direct_called.erase(func_ea);
             self->ctree_indirect_call_processed.erase(func_ea);
             self->ctree_string_decrypt_processed.erase(func_ea);
         }
@@ -869,6 +873,13 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
                     ctree_indirect_call_handler_t::run(cfunc, nullptr);
                 }
             }
+            // Casted calls to known targets, including the ones resolved just
+            // above, print as ordinary direct calls.
+            if (self->ctree_direct_called.find(func_ea) == self->ctree_direct_called.end())
+            {
+                self->ctree_direct_called.insert(func_ea);
+                ctree_direct_call_handler_t::run(cfunc);
+            }
         }
 
         // Runtime plaintext remains scoped to the one function currently in
@@ -940,6 +951,7 @@ void chernobog_plugmod_t::clear_processing_state()
     ctree_const_folded.clear();
     ctree_switch_folded.clear();
     ctree_helper_elided.clear();
+    ctree_direct_called.clear();
     ctree_indirect_call_processed.clear();
     ctree_string_decrypt_processed.clear();
     hikari_cfg_attempted = false;
