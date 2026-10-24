@@ -37,9 +37,14 @@ bool native_tail(const mblock_t *block)
 struct projection_t
 {
     ea_t site = BADADDR;
-    // A union of discovered destinations, not an exhaustive target proof for
-    // the current CFG. Generation must retain the actual target and fallback.
+    // A union of discovered destinations. `exhaustive` records whether that
+    // union was proved to contain every possible target; generation must
+    // retain the native fallback when it was not.
     std::vector<ea_t> targets;
+    // True when `targets` is a proof that every possible transfer lands in the
+    // set, so a generated jump table over it needs no additional fallback.
+    // Callers only record exact targets or a condition separating both ones.
+    bool exhaustive = false;
     std::vector<range_t> fragments;
     std::vector<range_t> root_ranges, source_ranges;
     std::vector<chernobog::finite_targets_t::dependency_t> dependencies;
@@ -342,6 +347,7 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
     projection_t proof;
     proof.site = site;
     proof.targets = finite.targets;
+    proof.exhaustive = finite.targets.size() == 1 || !finite.condition.empty();
     proof.dependencies = finite.dependencies;
     proof.frame_offset = mba->frsize - mba->fpd;
     const func_t *root = get_func(mba->entry_ea);
@@ -419,6 +425,8 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
             if (std::find(proof.targets.begin(), proof.targets.end(), target) ==
                 proof.targets.end())
                 proof.targets.push_back(target);
+        // Two exhaustive proofs of the same site cover their union as well.
+        proof.exhaustive |= old->second.exhaustive;
         for (const range_t &fragment : old->second.fragments)
             if (std::find(proof.fragments.begin(), proof.fragments.end(), fragment) ==
                 proof.fragments.end())
@@ -853,6 +861,71 @@ int lower_boolean_switch(mbl_array_t *mba, mblock_t *src)
     return lower_two_way(mba, src, table->l, destinations);
 }
 
+// Lower a jump table that generation built from an exhaustive target proof.
+// The finite evaluator can lose track of a selector whose value is carried
+// through a loop for several snapshots, but the proof that only these targets
+// are possible does not expire, so the selector only has to be compared with
+// the case values the table already lists.
+int lower_remembered_switch(mba_t *mba, mblock_t *src, const projection_t &proof)
+{
+    if (!proof.exhaustive || proof.targets.size() != 2 || mba->maturity < MMAT_GLBOPT2)
+        return 0;
+    minsn_t *table = src->tail;
+    if (!table || table->opcode != m_jtbl || table->r.t != mop_c || !table->r.c ||
+        table->r.c->values.size() != table->r.c->targets.size())
+        return 0;
+    std::array<mblock_t *, 2> destinations = {nullptr, nullptr};
+    std::array<uint64_t, 2> case_values = {};
+    size_t covered = 0;
+    for (size_t entry = 0; entry < table->r.c->values.size(); ++entry)
+    {
+        const auto &cases = table->r.c->values[entry];
+        const int index = table->r.c->targets[entry];
+        if (index < 0 || index >= mba->qty)
+            return 0;
+        if (cases.empty())
+            continue; // The native fallback that generation retained.
+        if (cases.size() != 1 || covered == case_values.size())
+            return 0;
+        mblock_t *block = mba->get_mblock(index);
+        if (block->start != cases[0] ||
+            std::find(proof.targets.begin(), proof.targets.end(), cases[0]) ==
+                proof.targets.end() ||
+            std::find(src->succset.begin(), src->succset.end(), index) == src->succset.end())
+            return 0;
+        case_values[covered] = cases[0];
+        destinations[covered] = block;
+        ++covered;
+    }
+    if (covered != case_values.size() || destinations[0] == destinations[1] ||
+        case_values[0] == case_values[1])
+        return 0;
+    // Test the already computed selector, not an earlier memory predicate.
+    if (table->l.has_side_effects(true))
+    {
+        const mreg_t temporary = mba->alloc_kreg(size_t(table->l.size));
+        if (temporary == mr_none)
+            return 0;
+        auto *capture = new minsn_t(table->ea);
+        capture->opcode = m_mov;
+        capture->l = table->l;
+        capture->d.make_reg(temporary, table->l.size);
+        src->insert_into_block(capture, table->prev);
+        table->l.make_reg(temporary, table->l.size);
+        src->mark_lists_dirty();
+    }
+    minsn_t comparison(table->ea);
+    comparison.opcode = m_setz;
+    comparison.l = table->l;
+    comparison.r.make_number(case_values[0], table->l.size);
+    comparison.d.size = 1;
+    mop_t condition;
+    condition.create_from_insn(&comparison);
+    // Equality selects the first case; the exhaustive proof makes every other
+    // value the second target.
+    return lower_two_way(mba, src, condition, {destinations[1], destinations[0]});
+}
+
 int lower_finite_switch(mba_t *mba, mblock_t *src)
 {
     minsn_t *table = src->tail;
@@ -862,8 +935,9 @@ int lower_finite_switch(mba_t *mba, mblock_t *src)
     const auto finite = chernobog::evaluate_finite_values(table->l, table, src);
     if (!finite || finite->values.empty())
     {
-        deobf::log_verbose("[indirect_branch] jtbl %a: selector has no finite value proof\n",
-                           table->ea);
+        deobf::log_verbose(
+            "[indirect_branch] jtbl %a: selector has no finite value proof at maturity %d\n",
+            table->ea, mba->maturity);
         return 0;
     }
     std::vector<mblock_t *> destinations;
@@ -908,6 +982,8 @@ int lower_finite_switch(mba_t *mba, mblock_t *src)
     {
         if (!chernobog::preserve_indirect_target_effects(src, table, table->l))
             return 0;
+        deobf::log_verbose("[indirect_branch] jtbl %a: singleton at maturity %d\n", table->ea,
+                           mba->maturity);
         const int destination = destinations.front()->serial;
         table->opcode = m_goto;
         table->l.make_blkref(destination);
@@ -940,6 +1016,8 @@ int lower_finite_switch(mba_t *mba, mblock_t *src)
     comparison.d.size = 1;
     mop_t condition;
     condition.create_from_insn(&comparison);
+    deobf::log_verbose("[indirect_branch] jtbl %a: two-way at maturity %d\n", table->ea,
+                       mba->maturity);
     return lower_two_way(mba, src, condition, {destinations[0], destinations[1]});
 }
 
@@ -1082,6 +1160,16 @@ int indirect_branch_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
                 changed = lower_boolean_switch(mba, blk);
             if (!changed)
             {
+                const auto function = projections.find({get_dbctx_id(), mba->entry_ea});
+                if (function != projections.end())
+                {
+                    const auto site = function->second.find(blk->tail->ea);
+                    if (site != function->second.end() && fresh_projection(site->second))
+                        changed = lower_remembered_switch(mba, blk, site->second);
+                }
+            }
+            if (!changed)
+            {
                 const auto finite =
                     chernobog::evaluate_finite_targets(blk->tail->l, blk->tail, blk);
                 if (finite && !finite->condition.empty())
@@ -1107,8 +1195,10 @@ int indirect_branch_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
                         proof = &site->second;
                 }
                 deobf::log_verbose(
-                    "[indirect_branch] jtbl %a retained: projection=%s targets=%zu\n",
-                    blk->tail->ea, proof ? "yes" : "no", proof ? proof->targets.size() : 0);
+                    "[indirect_branch] jtbl %a retained at maturity %d: projection=%s "
+                    "targets=%zu exhaustive=%d\n",
+                    blk->tail->ea, mba->maturity, proof ? "yes" : "no",
+                    proof ? proof->targets.size() : 0, proof && proof->exhaustive ? 1 : 0);
             }
             if (mba->qty != before)
                 break; // Rebuild the block-start index after SDK renumbering.
