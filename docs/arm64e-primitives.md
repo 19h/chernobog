@@ -66,6 +66,13 @@ after its intermediate register becomes dead. Any result that feeds a
 comparison, an assignment or a branch guard keeps its call, as do
 authenticated loads, whose read remains observable.
 
+A call whose callee is a known function or imported symbol prints as an ordinary
+direct call, even when the C tree carries the callee as a cast of the function
+object. The final tree replaces that cast with the object, typed by the
+prototype the call was already written against, so the argument list and the
+call's effects are unchanged. Calls through data that merely holds an address
+keep their cast.
+
 The ARM64 ABI helpers use IDA's processor-module register identifiers for X0;
 these identifiers are not the five-bit architectural register encoding. The
 hybrid driver initializes X29 as its frame-pointer register. A W0 self-move is
@@ -82,6 +89,7 @@ not a 64-bit pointer identity because it clears the upper 32 bits.
 | IDA frame/SP metadata describes a projected continuation | High | The finite-target cache revalidates the recorded metadata before reuse |
 | Projected functions retain their original request identity | Medium | The finite-dispatch probe decompiles, caches and reopens the same projected function |
 | A value-only intrinsic on constant operands has no remaining effect | Low | The finite-dispatch probe's dead AUT statement disappears; used authentications and branch guards remain |
+| A cast of a known function or imported symbol denotes that target | Low | The finite-dispatch probe's resolved call prints in direct form; the same probe's arguments stay visible |
 | Runtime signatures, key values, feature configuration and authentication outcomes | High | Unknown; no hardware authentication or exception-state emulation is claimed |
 
 The existing expression limits remain in force. Decode and emission use

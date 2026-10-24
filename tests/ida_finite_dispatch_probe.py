@@ -218,6 +218,11 @@ try:
         ida_lines.tag_remove(line.line) for line in cfunc.get_pseudocode()
     )
     check(
+        "resolved target prints as a direct call",
+        "identity_helper(" in report["pseudocode"]
+        and "identity_helper)(" not in report["pseudocode"],
+    )
+    check(
         "pseudocode uses structured conditions",
         "switch (" not in report["pseudocode"] and "BRAA" not in report["pseudocode"],
     )
