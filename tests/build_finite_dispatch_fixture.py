@@ -14,6 +14,9 @@ _main:
     mov x29, sp
     str w0, [x29, #16]
     str x28, [x29, #24]
+    mov x9, #0x1111
+    mov x17, #0x2222
+    autia x9, x17
     adrp x8, _runtime@PAGE
     ldr w9, [x8, _runtime@PAGEOFF]
     mov w11, #0xa6

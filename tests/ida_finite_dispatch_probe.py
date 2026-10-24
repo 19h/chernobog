@@ -151,9 +151,12 @@ try:
             self.guards = []
             self.arguments = []
             self.constant_guard = False
+            self.helpers = set()
 
         def visit_minsn(self):
             ins = self.curins
+            if ins.opcode == ida_hexrays.m_call and ins.l.t == ida_hexrays.mop_h:
+                self.helpers.add(ins.l.helper)
             if ins.ea == call_site and ins.opcode == ida_hexrays.m_call:
                 self.resolved = ins.l.t == ida_hexrays.mop_v and ins.l.g == helper
                 self.nested = ins != self.topins
@@ -177,6 +180,10 @@ try:
     check("helper return is nested in microcode", calls.nested)
     check("callee prototype used for native arguments", calls.arguments == [4])
     check("resolved guard target is constant", calls.constant_guard)
+    check(
+        "fixture contains a discarded authentication",
+        "__arm64e_autia" in calls.helpers,
+    )
     guard_sites = (
         (call_site, site, nested_site, single_site, register_site)
         if nested_targets
@@ -213,6 +220,14 @@ try:
     check(
         "pseudocode uses structured conditions",
         "switch (" not in report["pseudocode"] and "BRAA" not in report["pseudocode"],
+    )
+    check(
+        "discarded constant helper statements removed",
+        "__arm64e_autia" not in report["pseudocode"]
+        and not any(
+            line.lstrip().startswith("__arm64e_") and line.rstrip().endswith(");")
+            for line in report["pseudocode"].splitlines()
+        ),
     )
     check(
         "constant byte lookups removed",

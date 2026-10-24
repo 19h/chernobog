@@ -12,6 +12,16 @@ independent. Pure byte arithmetic may be replaced by an unconstrained byte,
 which overapproximates its possible values. A missing table row, mutable table,
 unsupported operation, or exhausted bound prevents a proof.
 
+An exact target or a condition-mapped pair is an exhaustive result: it proves
+every possible transfer destination. That result is recorded with the
+projection. After generation has built a jump table from the record, the
+selector may be carried through a loop and lose its finite domain in later
+snapshots. A retained exhaustive two-target proof is then sufficient to lower
+the table without re-evaluating the selector: the table lists both case values,
+so one comparison with either value separates the two proven destinations. This
+lowering requires at least two-target global optimization maturity, after every
+table that the finite evaluator can still prove has already been lowered.
+
 A wide value masked into the low byte retains its zero extension while using
 at most 256 assignments. Repeated comparisons with the same operand snapshots
 share one Boolean input, including copies nested in different expression nodes.
@@ -109,6 +119,7 @@ forms, and their bytes remain unchanged.
 | IDA frame and stack metadata describe the inherited frame | Change the root frame size/offset or the source stack delta; the cached projection is rejected |
 | An authenticated transfer passes its runtime authentication check | PAC execution is not modeled or tested; native authenticated instructions remain intact |
 | The predicate may be either Boolean value | Both are enumerated; this overapproximation does not prove that each is reachable |
+| An exact or condition-mapped target set stays exhaustive | A generated two-target table is lowered from the recorded proof at global optimization maturity even when the selector no longer has a finite domain |
 | A local stack store still reaches its use | Partial stores, aliasing indirect stores and real calls revoke the value; authentication intrinsics require explicit empty memory effects |
 | A register-only continuation consumes caller state | A nested fixture uses X28 before defining it; an independent frame and a partially admissible target set are rejected |
 | The callee's stored prototype describes its ABI | Native argument collection uses it only after an exact single-target proof; missing types retain the existing ABI |

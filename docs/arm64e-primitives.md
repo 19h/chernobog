@@ -59,6 +59,13 @@ the result is unused. Writeback follows the read, and the authenticated base is
 not written back for the offset-only form. Temporary IR operands preserve the
 architectural target register of authenticated branches and calls.
 
+A value-only intrinsic whose operands are all constants and whose result is
+discarded has no remaining effect, so the final C tree drops the call
+statement. The microcode call stays non-pure, which is why Hex-Rays keeps it
+after its intermediate register becomes dead. Any result that feeds a
+comparison, an assignment or a branch guard keeps its call, as do
+authenticated loads, whose read remains observable.
+
 The ARM64 ABI helpers use IDA's processor-module register identifiers for X0;
 these identifiers are not the five-bit architectural register encoding. The
 hybrid driver initializes X29 as its frame-pointer register. A W0 self-move is
@@ -74,6 +81,7 @@ not a 64-bit pointer identity because it clears the upper 32 bits.
 | Protected identity calls enter through the ordinary call ABI with canonical LR | High | Balanced key-A/key-B return wrappers pass; unpaired authentication, wrong return keys, BTI J and non-LR returns are rejected |
 | IDA frame/SP metadata describes a projected continuation | High | The finite-target cache revalidates the recorded metadata before reuse |
 | Projected functions retain their original request identity | Medium | The finite-dispatch probe decompiles, caches and reopens the same projected function |
+| A value-only intrinsic on constant operands has no remaining effect | Low | The finite-dispatch probe's dead AUT statement disappears; used authentications and branch guards remain |
 | Runtime signatures, key values, feature configuration and authentication outcomes | High | Unknown; no hardware authentication or exception-state emulation is claimed |
 
 The existing expression limits remain in force. Decode and emission use
@@ -91,7 +99,8 @@ Run `tests/ida_arm64e_primitives_probe.py` with `tests/run_ida_smoke.py`, an
 explicit plugin artifact, and `CHERNOBOG_ARM64E_SDK_BRIDGE` pointing to the built
 `chernobog_arm64e_sdk_bridge` module. The probe checks value intrinsics,
 authenticated targets, negative provenance cases, load writeback ordering,
-identity contracts, retained effects, unchanged bytes and function ownership.
+identity contracts, retained effects, unchanged bytes, function ownership and
+removal of discarded constant-operand value intrinsics.
 The fixture contains no bytes from an external program.
 
 Primary architecture and ABI references:
