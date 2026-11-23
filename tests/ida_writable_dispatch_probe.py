@@ -63,10 +63,8 @@ try:
     original = ida_bytes.get_dword(site)
     guarded = microcode(root)
     assert any(
-        tail.ea == site
-        and (ida_hexrays.is_mcode_jcond(tail.opcode) or tail.opcode == ida_hexrays.m_jtbl)
-        for tail in tails(guarded)
-    ), "observed xref erased runtime guard"
+        tail.ea == site and ida_hexrays.is_mcode_jcond(tail.opcode) for tail in tails(guarded)
+    ), "missing final runtime conditional for a singleton target"
 
     class Fallback(ida_hexrays.minsn_visitor_t):
         found = False

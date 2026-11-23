@@ -46,6 +46,7 @@ struct projection_t
     // set, so a generated jump table over it needs no additional fallback.
     // Callers only record exact targets or a condition separating both ones.
     bool exhaustive = false;
+    bool conditional_guard = false;
     std::vector<range_t> fragments;
     std::vector<range_t> root_ranges, source_ranges;
     std::vector<chernobog::finite_targets_t::dependency_t> dependencies;
@@ -489,6 +490,10 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
         "[indirect_branch] Discovered %zu target addresses at %a; projecting %zu frame fragments\n",
         proof.targets.size(), site, proof.fragments.size());
     sites[site] = std::move(proof);
+    // Discover new destinations with the switch representation until the
+    // projected predecessor set has stabilized again.
+    for (auto &[address, current] : sites)
+        current.conditional_guard = false;
     projection_restarts.insert(key);
     return true;
 }
@@ -560,6 +565,8 @@ int extend_projection(Flowchart *flowchart, bitset_t *reachable, ea_t root, mba_
             revoke_projection(it->second);
             projection_restarts.insert({get_dbctx_id(), root});
             it = found->second.erase(it);
+            for (auto &[site, proof] : found->second)
+                proof.conditional_guard = false;
             continue;
         }
         for (const auto &fragment : it->second.fragments)
@@ -1273,6 +1280,24 @@ bool indirect_branch_handler_t::take_projection_restart(ea_t function)
     return projection_restarts.erase({get_dbctx_id(), function}) != 0;
 }
 
+bool indirect_branch_handler_t::finalize_projection_guards(ea_t function)
+{
+    if (!arch::is_arm64())
+        return false;
+    const auto found = projections.find({get_dbctx_id(), function});
+    if (found == projections.end())
+        return false;
+    bool changed = false;
+    for (auto &[site, proof] : found->second)
+        if (!proof.exhaustive && proof.targets.size() == 1 && !proof.conditional_guard &&
+            fresh_projection(proof))
+        {
+            proof.conditional_guard = true;
+            changed = true;
+        }
+    return changed;
+}
+
 qstring indirect_branch_handler_t::recover_regions(ea_t function, unsigned flags)
 {
     if (!arch::is_x86_64() || (flags != 0 && flags != 1 && flags != 3))
@@ -1558,7 +1583,11 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
             capture->l = address;
             capture->d.make_reg(temporary, address.size);
             block->insert_into_block(capture, jump->prev);
-            mblock_t *fallback = mba->insert_block(mba->qty - 1);
+            // A singleton switch can obscure a loop backedge during
+            // structuring. In the final pass use a conditional branch whose
+            // physical fallthrough is the computed fallback.
+            const bool conditional = proof.conditional_guard && destinations.size() == 1;
+            mblock_t *fallback = mba->insert_block(conditional ? block->serial + 1 : mba->qty - 1);
             const ea_t fictitious = mba->alloc_fict_ea(site);
             fallback->start = fictitious;
             fallback->end = fictitious + 1;
@@ -1575,21 +1604,30 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
             unresolved->r = selector;
             unresolved->d.make_reg(temporary, address.size);
             fallback->insert_into_block(unresolved, nullptr);
-            jump->opcode = m_jtbl;
             jump->clr_tailcall();
             jump->l.make_reg(temporary, address.size);
-            jump->d.erase();
-            jump->r.erase();
-            jump->r.t = mop_c;
-            jump->r.c = new mcases_t;
-            jump->r.size = NOSIZE;
-            jump->r.c->resize(destinations.size() + 1);
-            for (size_t outcome = 0; outcome < destinations.size(); ++outcome)
+            if (conditional)
             {
-                jump->r.c->values[outcome].push_back(destinations[outcome].first);
-                jump->r.c->targets[outcome] = destinations[outcome].second->serial;
+                jump->opcode = m_jz;
+                jump->r.make_number(destinations.front().first, address.size);
+                jump->d.make_blkref(destinations.front().second->serial);
             }
-            jump->r.c->targets[destinations.size()] = fallback->serial;
+            else
+            {
+                jump->opcode = m_jtbl;
+                jump->d.erase();
+                jump->r.erase();
+                jump->r.t = mop_c;
+                jump->r.c = new mcases_t;
+                jump->r.size = NOSIZE;
+                jump->r.c->resize(destinations.size() + 1);
+                for (size_t outcome = 0; outcome < destinations.size(); ++outcome)
+                {
+                    jump->r.c->values[outcome].push_back(destinations[outcome].first);
+                    jump->r.c->targets[outcome] = destinations[outcome].second->serial;
+                }
+                jump->r.c->targets[destinations.size()] = fallback->serial;
+            }
             block->flags &= ~(MBL_NORET | MBL_TCAL);
             block->mark_lists_dirty();
             fallback->mark_lists_dirty();

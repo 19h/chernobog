@@ -17,6 +17,7 @@ class indirect_branch_handler_t
     static bool detect(mbl_array_t *mba);
     static int run(mbl_array_t *mba, deobf_ctx_t *ctx);
     static bool take_projection_restart(ea_t function);
+    static bool finalize_projection_guards(ea_t function);
     static void clear_projections();
     static void restore_projected_function(mba_t *mba);
     static void adjust_fragment_stack(mba_t *mba, stkpnts_t *points);
