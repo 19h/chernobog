@@ -33,8 +33,8 @@ alone cannot undo earlier value propagation. The branch pass stops discovery in
 that MBA once a restart is pending. Scalar table folds and call rewrites in the
 discarded MBA are regenerated too.
 
-Generation evaluates the native target into a temporary and constructs guarded
-case edges, even for a singleton hint. The default retains the indirect transfer
+Initial generation evaluates the native target into a temporary and constructs
+guarded case edges, even for a singleton hint. The default retains the indirect transfer
 through the same temporary. Authentication and other target-evaluation effects
 remain evaluated once. A new caller can therefore select another target without
 being redirected through the first caller's cached destination.
@@ -49,9 +49,22 @@ register-clobber/memory-effect rules. A separate scalar
 shortcut cannot bypass those rules. These CFG-dependent results do not authorize
 a native instruction patch.
 
+On ARM64 Mach-O, the optional writable-data model
+(`CHERNOBOG_WRITABLE_CONST=2`) can discharge the remaining fallbacks after
+edge discovery stabilizes. It checks for a full-width local loader rebase with
+a constant bias, loaded from either one fixed slot or two Boolean-indexed
+slots. It checks both slots even when a guard narrows the selector. Each
+slot's loader fixup must agree with the current bytes and have no direct
+write reference. The model assumes these slots remain stable, including in
+the presence of calls. It does not establish the absence of indirect writes.
+Another generation pass applies closed transfers only if every unresolved
+site fits this model, every proven destination has a unique block, and the
+slot checks still pass.
+
 Code bytes, table bytes, permissions, frame metadata and function ranges still
 invalidate stale edge hints. The cache admits at most 128 functions, 32 sites per
-function, 128 discovered addresses and 8,192 dependency records per site. It
+function (64 for snapshot discoveries), 128 discovered addresses and 8,192
+dependency records per site. It
 retains the existing range and expression-work bounds. If discovery cannot be
 recorded, the handler retains the indirect transfer rather than adding an edge
 to an already optimized CFG. During an unchanged snapshot, edge discovery is
@@ -71,6 +84,8 @@ byte changes begin another snapshot and are not included in that bound.
 | Regeneration removes values baked into the earlier MBA | High | A fixture with a shared observable store must retain both the input condition and both results across repeated decompilations |
 | A discovered address can later be selected differently or not selected | High | Guard every cached case with the actual target and retain a default indirect transfer |
 | Read-only byte and function metadata dependencies remain current | High | Existing changed-row, writable-table and function-range invalidation probes must continue to pass |
+| Writable dispatch slots remain stable when the optional model is active | High | Inject a direct write reference to one slot and require the computed fallbacks to remain |
+| Local dispatch targets move with their image | High | Rebase the IDB and verify the same number of closed dispatches |
 | Authentication is modeled at normal completion, with its guard retained | High | The authenticated join fixture checks IR behavior; plain native fixtures provide the executable outcome oracle |
 
 An address hint does not prove individual reachability or discover every native
@@ -94,6 +109,16 @@ An authenticated target which is not enumerable after the join must keep a
 computed indirect fallback and a caller-dependent observable store.
 The native fixtures establish the two outcome values independently of the
 plugin. No fixture contains instructions copied from another program.
+
+`tests/ida_hikari_demo_dispatch_probe.py` checks the Hikari indirect-branch demo's
+AES and branches executables. Run it with `tests/run_ida_smoke.py --enable-rax`
+against each `obfuscated` executable. With writable constants disabled it
+expects 33 and 4 computed fallbacks respectively. With `--set
+CHERNOBOG_WRITABLE_CONST=2` it expects zero. The probe also accepts
+`CHERNOBOG_PROBE_SLIDE` for an IDB rebase and
+`CHERNOBOG_PROBE_WRITE_RVA` for an injected write reference. It checks output
+from repeated decompilations and verifies that the native text bytes stay
+unchanged.
 
 The public SDK contracts used here are `MERR_REDO`, `hxe_flowchart_ea`,
 `hxe_microcode`, `m_jtbl`, `m_ijmp`, `mcases_t` and the block-insertion API in the

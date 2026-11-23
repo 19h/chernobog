@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <gdl.hpp>
 #include <frame.hpp>
+#include <fixup.hpp>
 
 namespace
 {
@@ -66,6 +67,8 @@ struct projection_t
 using projection_key_t = std::pair<ssize_t, ea_t>;
 std::map<projection_key_t, std::map<ea_t, projection_t>> projections;
 std::set<projection_key_t> projection_restarts;
+using dispatch_slots_t = std::map<ea_t, uint64_t>;
+std::map<projection_key_t, dispatch_slots_t> stable_dispatches;
 
 // Function ranges of the microcode arrays that a projection turned into
 // snippets, restored once the decompilation is final.
@@ -103,7 +106,7 @@ void revoke_projection(const projection_t &proof)
 bool fresh_projection(const projection_t &proof)
 {
     // This validates a discovery hint's sources, not a target proof for the
-    // current predecessor set. The native target still guards every case.
+    // current predecessor set.
     const func_t *root = get_func(proof.root);
     if (!root || root->start_ea != proof.root || root->end_ea != proof.root_end ||
         root->frsize != proof.frame_size || root->fpd != proof.frame_delta ||
@@ -1336,13 +1339,265 @@ bool indirect_branch_handler_t::take_projection_restart(ea_t function)
     return projection_restarts.erase({get_dbctx_id(), function}) != 0;
 }
 
-bool indirect_branch_handler_t::finalize_projection_guards(ea_t function)
+namespace
+{
+bool stable_dispatch_model()
+{
+    qstring mode;
+    return inf_get_filetype() == f_MACHO && qgetenv("CHERNOBOG_WRITABLE_CONST", &mode) &&
+           mode == "2";
+}
+
+// Accept only full-width local rebases. Adding a fixed bias to one of
+// these slots preserves the image slide; arbitrary pointer arithmetic does not.
+std::optional<uint64_t> read_dispatch_slot(ea_t address)
+{
+    const segment_t *segment = getseg(address);
+    fixup_data_t fixup;
+    if (address % 8 != 0 || !segment || segment->type != SEG_DATA ||
+        (segment->perm & SEGPERM_READ) == 0 || segment->end_ea - address < 8 ||
+        !segment->is_loader_segm() || !get_fixup(&fixup, address) ||
+        fixup.get_type() != FIXUP_OFF64 || fixup.get_flags() != 0 || fixup.displacement != 0)
+        return std::nullopt;
+    const auto value = chernobog::ida_memory::read_integer(address, 8);
+    if (!value || *value != fixup.get_base() + fixup.off)
+        return std::nullopt;
+    // Writable-data mode assumes stability in the absence of known writes.
+    for (ea_t cursor = address; cursor < address + 8; ++cursor)
+    {
+        xrefblk_t xref;
+        for (bool ok = xref.first_to(cursor, XREF_DATA); ok; ok = xref.next_to())
+            if (xref.type == dr_W)
+                return std::nullopt;
+    }
+    return value;
+}
+
+struct dispatch_point_t
+{
+    const mblock_t *block;
+    const minsn_t *before;
+};
+
+template <class Check>
+bool check_dispatch_definitions(const mop_t &reg, dispatch_point_t use, size_t &budget, Check check)
+{
+    std::set<int> visited;
+    std::vector<dispatch_point_t> pending{{use.block, use.before->prev}};
+    bool found = false;
+    while (!pending.empty())
+    {
+        const auto [block, last] = pending.back();
+        pending.pop_back();
+        const minsn_t *ins = last;
+        for (; ins; ins = ins->prev)
+        {
+            if (budget == 0)
+                return false;
+            --budget;
+            if (mcode_modifies_d(ins->opcode) && ins->d.t == mop_r && ins->d.r < reg.r + reg.size &&
+                reg.r < ins->d.r + ins->d.size)
+            {
+                if (ins->d.r != reg.r || ins->d.size != reg.size || !check(*ins, block))
+                    return false;
+                found = true;
+                break;
+            }
+            if (ins->opcode == m_ext ||
+                (ins->contains_call(true) &&
+                 block->build_def_list(*ins, MAY_ACCESS).has_any(reg.r, reg.size)) ||
+                (ins->is_mbarrier() && !ins->contains_call(true)))
+                return false;
+        }
+        if (ins)
+            continue;
+        if (block->predset.empty())
+            return false;
+        for (const int serial : block->predset)
+            if (visited.insert(serial).second)
+            {
+                const auto *predecessor = block->mba->get_mblock(serial);
+                pending.push_back({predecessor, predecessor->tail});
+            }
+    }
+    return found;
+}
+
+const minsn_t *dispatch_expression(const mop_t &operand, dispatch_point_t &point, size_t &budget)
+{
+    if (operand.t == mop_d)
+        return operand.d;
+    if (operand.t != mop_r)
+        return nullptr;
+    const minsn_t *definition = nullptr;
+    return check_dispatch_definitions(operand, point, budget,
+                                      [&](const minsn_t &ins, const mblock_t *block)
+                                      {
+                                          if (definition && definition != &ins)
+                                              return false;
+                                          point = {block, &ins};
+                                          definition = &ins;
+                                          return true;
+                                      })
+               ? definition
+               : nullptr;
+}
+
+std::optional<uint64_t> dispatch_literal(const mop_t &op)
+{
+    return op.t == mop_n && op.nnn ? std::optional<uint64_t>(op.nnn->value) : std::nullopt;
+}
+
+bool boolean_dispatch_index(const mop_t &op, dispatch_point_t point, size_t &budget,
+                            unsigned depth);
+
+bool boolean_dispatch_definition(const minsn_t &ins, dispatch_point_t point, size_t &budget,
+                                 unsigned depth)
+{
+    if (ins.is_fpinsn())
+        return false;
+    if (is_mcode_set(ins.opcode) || ins.opcode == m_lnot)
+        return true;
+    return (ins.opcode == m_mov || ins.opcode == m_xdu || ins.opcode == m_xds ||
+            ins.opcode == m_low) &&
+           boolean_dispatch_index(ins.l, point, budget, depth + 1);
+}
+
+bool boolean_dispatch_index(const mop_t &op, dispatch_point_t point, size_t &budget, unsigned depth)
+{
+    if (depth > 16)
+        return false;
+    if (const auto value = dispatch_literal(op))
+        return *value <= 1;
+    if (op.t == mop_d && op.d)
+        return boolean_dispatch_definition(*op.d, point, budget, depth);
+    return op.t == mop_r &&
+           check_dispatch_definitions(
+               op, point, budget, [&](const minsn_t &ins, const mblock_t *block)
+               { return boolean_dispatch_definition(ins, {block, &ins}, budget, depth); });
+}
+
+std::optional<ea_t> dispatch_address(const mop_t &operand)
+{
+    if (operand.size == 8 && operand.t == mop_a && operand.a && operand.a->t == mop_v)
+        return operand.a->g;
+    return std::nullopt;
+}
+
+std::vector<ea_t> rebased_dispatch_targets(const minsn_t &jump, const mblock_t *block,
+                                           dispatch_slots_t &slots)
+{
+    size_t budget = 8192;
+    dispatch_point_t point{block, &jump};
+    if (jump.d.size != 8)
+        return {};
+    const minsn_t *arithmetic = dispatch_expression(jump.d, point, budget);
+    if (!arithmetic || (arithmetic->opcode != m_sub && arithmetic->opcode != m_add) ||
+        arithmetic->l.size != 8 || arithmetic->r.size != 8)
+        return {};
+    const mop_t *pointer = &arithmetic->l;
+    auto bias = dispatch_literal(arithmetic->r);
+    if (!bias && arithmetic->opcode == m_add)
+    {
+        pointer = &arithmetic->r;
+        bias = dispatch_literal(arithmetic->l);
+    }
+    if (!bias)
+        return {};
+    const uint64_t offset = arithmetic->opcode == m_sub ? uint64_t(0) - *bias : *bias;
+
+    ea_t address;
+    unsigned count = 1;
+    if (pointer->t == mop_v)
+        address = pointer->g;
+    else
+    {
+        const minsn_t *load = dispatch_expression(*pointer, point, budget);
+        if (!load || load->opcode != m_ldx)
+            return {};
+        const minsn_t *sum = dispatch_expression(load->r, point, budget);
+        if (!sum || sum->opcode != m_add || sum->l.size != 8 || sum->r.size != 8)
+            return {};
+        const auto left = dispatch_address(sum->l);
+        const auto base = left ? left : dispatch_address(sum->r);
+        if (!base || *base > BADADDR - 16)
+            return {};
+        const minsn_t *scaled = dispatch_expression(left ? sum->r : sum->l, point, budget);
+        if (!scaled || scaled->opcode != m_mul || scaled->l.size != 8 || scaled->r.size != 8)
+            return {};
+        const bool scale_on_left = dispatch_literal(scaled->l) == 8;
+        if ((!scale_on_left && dispatch_literal(scaled->r) != 8) ||
+            !boolean_dispatch_index(scale_on_left ? scaled->r : scaled->l, point, budget, 0))
+            return {};
+        // Both slots are included even if the current guard narrows the
+        // selector's value range in this block.
+        address = *base;
+        count = 2;
+    }
+    std::vector<ea_t> targets;
+    for (unsigned index = 0; index < count; ++index)
+    {
+        const auto raw = read_dispatch_slot(address + index * 8);
+        if (!raw)
+            return {};
+        slots.emplace(address + index * 8, *raw);
+        const ea_t target = ea_t(*raw + offset);
+        if (std::find(targets.begin(), targets.end(), target) == targets.end())
+            targets.push_back(target);
+    }
+    return targets;
+}
+
+bool projected_dispatches_are_closed(mba_t *mba, const std::map<ea_t, projection_t> &sites,
+                                     dispatch_slots_t &slots)
+{
+    std::set<ea_t> checked;
+    for (int index = 0; index < mba->qty; ++index)
+    {
+        const mblock_t *block = mba->get_mblock(index);
+        const minsn_t *transfer = block->tail;
+        if (!transfer)
+            continue;
+        if (native_tail(block))
+            return false;
+        if (transfer->opcode != m_ijmp)
+            continue;
+        const ea_t site = mba->map_fict_ea(transfer->ea);
+        const auto projection = sites.find(site);
+        if (site == transfer->ea || projection == sites.end() || projection->second.exhaustive ||
+            !fresh_projection(projection->second))
+            return false;
+        const auto targets = rebased_dispatch_targets(*transfer, block, slots);
+        const auto &projected = projection->second.targets;
+        if (targets.size() != projected.size() ||
+            !std::is_permutation(targets.begin(), targets.end(), projected.begin()))
+            return false;
+        checked.insert(site);
+    }
+    return !checked.empty() && checked.size() == sites.size();
+}
+} // namespace
+
+bool indirect_branch_handler_t::finalize_projection_guards(mba_t *mba)
 {
     if (!arch::is_arm64())
         return false;
-    const auto found = projections.find({get_dbctx_id(), function});
+    const projection_key_t key{get_dbctx_id(), mba->entry_ea};
+    const auto found = projections.find(key);
     if (found == projections.end())
         return false;
+    dispatch_slots_t slots;
+    if (stable_dispatch_model() && projected_dispatches_are_closed(mba, found->second, slots))
+    {
+        stable_dispatches.insert_or_assign(key, std::move(slots));
+        for (auto &[site, proof] : found->second)
+            if (proof.targets.size() == 1)
+                proof.conditional_guard = true;
+        deobf::log_verbose("[indirect_branch] Verified %zu dispatches under the writable-data "
+                           "model at %a\n",
+                           found->second.size(), mba->entry_ea);
+        return true;
+    }
     bool changed = false;
     for (auto &[site, proof] : found->second)
         if (!proof.exhaustive && proof.targets.size() == 1 && !proof.conditional_guard &&
@@ -1443,6 +1698,11 @@ void indirect_branch_handler_t::clear_projections()
             it = projection_restarts.erase(it);
         else
             ++it;
+    for (auto it = stable_dispatches.begin(); it != stable_dispatches.end();)
+        if (it->first.first == database)
+            it = stable_dispatches.erase(it);
+        else
+            ++it;
     for (auto it = projected_functions.begin(); it != projected_functions.end();)
         if (it->second.database == database)
             it = projected_functions.erase(it);
@@ -1541,13 +1801,72 @@ bool indirect_branch_handler_t::is_projected_return(const codegen_t &codegen)
     return false;
 }
 
+namespace
+{
+bool plain_dispatch_block(const mblock_t *block)
+{
+    const minsn_t *tail = block->tail;
+    return (block->flags & MBL_FAKE) == 0 && tail && tail->opcode == m_ijmp && tail->d.t == mop_r &&
+           tail->d.size == 8;
+}
+
+bool can_connect_closed_dispatches(mba_t *mba, const std::map<ea_t, projection_t> &sites)
+{
+    std::map<ea_t, unsigned> starts, transfers;
+    for (int index = 0; index < mba->qty; ++index)
+    {
+        const mblock_t *block = mba->get_mblock(index);
+        ++starts[block->start];
+        if (plain_dispatch_block(block))
+            ++transfers[block->tail->ea];
+    }
+    for (const auto &[site, proof] : sites)
+    {
+        if (!fresh_projection(proof) || transfers[site] != 1)
+            return false;
+        for (const ea_t target : proof.targets)
+            if (starts[target] != 1)
+                return false;
+    }
+    return true;
+}
+
+void emit_dispatch_table(minsn_t *jump, const mop_t &selector,
+                         const std::vector<std::pair<ea_t, mblock_t *>> &destinations,
+                         mblock_t *fallback)
+{
+    jump->opcode = m_jtbl;
+    jump->l = selector;
+    jump->d.erase();
+    jump->r.erase();
+    jump->r.t = mop_c;
+    jump->r.c = new mcases_t;
+    jump->r.size = NOSIZE;
+    const size_t case_count = destinations.size() - (fallback ? 0 : 1);
+    jump->r.c->resize(case_count + 1);
+    for (size_t index = 0; index < case_count; ++index)
+    {
+        jump->r.c->values[index].push_back(destinations[index].first);
+        jump->r.c->targets[index] = destinations[index].second->serial;
+    }
+    jump->r.c->targets[case_count] = (fallback ? fallback : destinations.back().second)->serial;
+}
+} // namespace
+
 int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
 {
     if (!mba || mba->maturity > MMAT_GENERATED)
         return 0;
-    const auto found = projections.find({get_dbctx_id(), mba->entry_ea});
+    const projection_key_t key{get_dbctx_id(), mba->entry_ea};
+    const auto found = projections.find(key);
     if (found == projections.end())
         return 0;
+    const auto proof_slots = stable_dispatches.extract(key);
+    const bool stable =
+        !proof_slots.empty() && stable_dispatch_model() &&
+        can_connect_closed_dispatches(mba, found->second) &&
+        std::all_of(proof_slots.mapped().begin(), proof_slots.mapped().end(),
+                    [](const auto &slot) { return read_dispatch_slot(slot.first) == slot.second; });
     int retained = 0;
     for (const auto &[site, proof] : found->second)
     {
@@ -1558,7 +1877,8 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
         {
             mblock_t *block = mba->get_mblock(index);
             if (!block->tail || block->tail->ea != site || (block->flags & MBL_FAKE) != 0 ||
-                (block->tail->opcode != m_ijmp && !native_tail(block)))
+                (stable ? !plain_dispatch_block(block)
+                        : (block->tail->opcode != m_ijmp && !native_tail(block))))
                 continue;
             std::vector<std::pair<ea_t, mblock_t *>> destinations;
             for (ea_t target : proof.targets)
@@ -1608,8 +1928,8 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
             // An indirect call's operand retains its memory-value semantics.
             if (address.t == mop_v && (!tail_call || jump->opcode == m_call))
                 address.make_number(address.g, address.size);
-            const mreg_t temporary = mba->alloc_kreg(size_t(address.size));
-            if (temporary == mr_none)
+            const mreg_t temporary = stable ? mr_none : mba->alloc_kreg(size_t(address.size));
+            if (!stable && temporary == mr_none)
                 continue;
             mop_t selector;
             if (!tail_call)
@@ -1631,6 +1951,16 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
                 frame->l.size = 8;
                 frame->d.make_reg(reg2mreg(str2reg("X29")), 8);
                 block->insert_into_block(frame, jump->prev);
+            }
+            if (stable)
+            {
+                emit_dispatch_table(jump, address, destinations, nullptr);
+                jump->clr_tailcall();
+                block->flags &= ~(MBL_NORET | MBL_TCAL);
+                block->mark_lists_dirty();
+                mba->mark_chains_dirty();
+                connected = true;
+                break;
             }
             // Edge discovery is not a context-independent target proof. Test
             // the native target even for a singleton hint, evaluating it once.
@@ -1670,19 +2000,9 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
             }
             else
             {
-                jump->opcode = m_jtbl;
-                jump->d.erase();
-                jump->r.erase();
-                jump->r.t = mop_c;
-                jump->r.c = new mcases_t;
-                jump->r.size = NOSIZE;
-                jump->r.c->resize(destinations.size() + 1);
-                for (size_t outcome = 0; outcome < destinations.size(); ++outcome)
-                {
-                    jump->r.c->values[outcome].push_back(destinations[outcome].first);
-                    jump->r.c->targets[outcome] = destinations[outcome].second->serial;
-                }
-                jump->r.c->targets[destinations.size()] = fallback->serial;
+                mop_t captured;
+                captured.make_reg(temporary, address.size);
+                emit_dispatch_table(jump, captured, destinations, fallback);
             }
             block->flags &= ~(MBL_NORET | MBL_TCAL);
             block->mark_lists_dirty();

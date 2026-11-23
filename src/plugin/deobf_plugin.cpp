@@ -810,8 +810,7 @@ static ssize_t idaapi hexrays_callback(void *ud, hexrays_event_t event, va_list 
             }
             changes +=
                 chernobog::jump_optimizer_handler_t::run_local_constant_branches(mba, &branch_ctx);
-            if (changes == 0 &&
-                indirect_branch_handler_t::finalize_projection_guards(mba->entry_ea))
+            if (changes == 0 && indirect_branch_handler_t::finalize_projection_guards(mba))
             {
                 chernobog::hybrid::hybrid_abandon_deobfuscation_projection(uint64_t(mba->entry_ea));
                 return MERR_REDO;
