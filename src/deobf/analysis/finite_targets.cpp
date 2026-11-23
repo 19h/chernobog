@@ -880,7 +880,8 @@ int fold_finite_table_expressions(mba_t *mba)
 
 static std::optional<finite_targets_t> evaluate_targets(const mop_t &operand, const minsn_t *before,
                                                         const mblock_t *block, bool allow_imports,
-                                                        bool allow_undecoded_code, bool snapshot)
+                                                        bool allow_undecoded_code, bool snapshot,
+                                                        uint64_t target_adjustment = 0)
 {
     if (!before || !block)
         return std::nullopt;
@@ -898,7 +899,7 @@ static std::optional<finite_targets_t> evaluate_targets(const mop_t &operand, co
             result.dependencies.push_back(dependency);
     for (uint64_t value : values->results)
     {
-        const ea_t target = ea_t(value);
+        const ea_t target = ea_t(value + target_adjustment);
         const segment_t *segment = getseg(target);
         const flags64_t flags = get_flags(target);
         const bool imported =
@@ -930,7 +931,8 @@ static std::optional<finite_targets_t> evaluate_targets(const mop_t &operand, co
                 result.condition_block = point->second.first;
                 result.condition_before = point->second.second;
             }
-            result.targets_by_condition = {ea_t(values->results[0]), ea_t(values->results[1])};
+            result.targets_by_condition = {ea_t(values->results[0] + target_adjustment),
+                                           ea_t(values->results[1] + target_adjustment)};
         }
     }
     return result;
@@ -943,10 +945,12 @@ std::optional<finite_targets_t> evaluate_finite_targets(const mop_t &operand, co
     return evaluate_targets(operand, before, block, allow_imports, allow_undecoded_code, false);
 }
 
-std::optional<finite_targets_t>
-discover_snapshot_targets(const mop_t &operand, const minsn_t *before, const mblock_t *block)
+std::optional<finite_targets_t> discover_snapshot_targets(const mop_t &operand,
+                                                          const minsn_t *before,
+                                                          const mblock_t *block,
+                                                          uint64_t target_adjustment)
 {
-    auto targets = evaluate_targets(operand, before, block, false, false, true);
+    auto targets = evaluate_targets(operand, before, block, false, false, true, target_adjustment);
     if (targets &&
         std::any_of(targets->dependencies.begin(), targets->dependencies.end(),
                     [](const auto &dep) { return (dep.permissions & SEGPERM_WRITE) != 0; }))

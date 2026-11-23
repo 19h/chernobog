@@ -514,6 +514,38 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
     return true;
 }
 
+struct selector_adjustment_t
+{
+    uint64_t delta = 0;
+    ea_t known_target = BADADDR;
+};
+
+selector_adjustment_t projected_selector_adjustment(const mba_t *mba, const minsn_t *table)
+{
+    if (table->opcode != m_jtbl || table->r.t != mop_c || !table->r.c)
+        return {};
+    const auto function = projections.find({get_dbctx_id(), mba->entry_ea});
+    if (function == projections.end())
+        return {};
+    const auto site = function->second.find(table->ea);
+    if (site == function->second.end() || site->second.exhaustive ||
+        site->second.targets.size() != 1 || !fresh_projection(site->second))
+        return {};
+    const auto &cases = *table->r.c;
+    if (cases.values.size() != 2 || cases.targets.size() != 2)
+        return {};
+    const ea_t target = site->second.targets.front();
+    for (size_t index = 0; index < cases.values.size(); ++index)
+    {
+        const int destination = cases.targets[index];
+        if (cases.values[index].size() == 1 && cases.values[1 - index].empty() &&
+            destination >= 0 && destination < mba->qty &&
+            mba->get_mblock(destination)->start == target)
+            return {uint64_t(target) - cases.values[index].front(), target};
+    }
+    return {};
+}
+
 void discover_snapshot_projection(mba_t *mba, mblock_t *block, const mop_t &address)
 {
     const minsn_t *jump = block->tail;
@@ -522,8 +554,16 @@ void discover_snapshot_projection(mba_t *mba, mblock_t *block, const mop_t &addr
     const auto native = chernobog::arm64_branch::decode_indirect(get_dword(jump->ea));
     if (!native || native->call || native->authenticated)
         return;
-    const auto finite = chernobog::discover_snapshot_targets(address, jump, block);
+    // Global optimization can move a constant bias from the selector to
+    // its case labels. Translate additional candidates through the known
+    // edge. The original native target still guards every discovered edge.
+    const auto adjustment = projected_selector_adjustment(mba, jump);
+    const auto finite =
+        chernobog::discover_snapshot_targets(address, jump, block, adjustment.delta);
     if (!finite || finite->targets.size() > 2)
+        return;
+    if (adjustment.delta != 0 && std::find(finite->targets.begin(), finite->targets.end(),
+                                           adjustment.known_target) == finite->targets.end())
         return;
     record_projection(mba, jump->ea, *finite, {}, true);
 }

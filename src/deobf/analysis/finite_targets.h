@@ -49,8 +49,10 @@ std::optional<finite_targets_t> evaluate_finite_targets(const mop_t &operand, co
                                                         bool allow_undecoded_code = false);
 // Discover destinations from the current bytes of writable tables. Each
 // candidate needs an exact comparison with the original runtime target.
-std::optional<finite_targets_t>
-discover_snapshot_targets(const mop_t &operand, const minsn_t *before, const mblock_t *block);
+std::optional<finite_targets_t> discover_snapshot_targets(const mop_t &operand,
+                                                          const minsn_t *before,
+                                                          const mblock_t *block,
+                                                          uint64_t target_adjustment = 0);
 // Keep observable target evaluation when canonicalizing a transfer. Decline
 // when lifting it out of a nested expression could reorder another call.
 bool preserve_indirect_target_effects(mblock_t *block, minsn_t *top, const mop_t &target,
