@@ -21,12 +21,13 @@ using HistoryKey = std::pair<ssize_t, ea_t>;
 using ReadKey = std::pair<ea_t, size_t>;
 std::map<HistoryKey, std::map<ReadKey, finite_targets_t::dependency_t>> fold_history;
 
-std::optional<uint64_t> read_immutable(uint64_t address, int bytes)
+std::optional<uint64_t> read_table(uint64_t address, int bytes, bool snapshot)
 {
     if (!bitvector::valid_byte_width(bytes) || address > uint64_t(BADADDR) - uint64_t(bytes))
         return std::nullopt;
     const segment_t *segment = getseg(ea_t(address));
-    if (!segment || (segment->perm & SEGPERM_READ) == 0 || (segment->perm & SEGPERM_WRITE) != 0 ||
+    if (!segment || (segment->perm & SEGPERM_READ) == 0 ||
+        (!snapshot && (segment->perm & SEGPERM_WRITE) != 0) ||
         address + uint64_t(bytes) > segment->end_ea || segment->type == SEG_XTRN)
         return std::nullopt;
     return ida_memory::read_integer(ea_t(address), bytes);
@@ -77,8 +78,9 @@ bool stable_key_interval(ea_t sign, ea_t use)
 class Builder
 {
   public:
-    explicit Builder(const mblock_t *block)
-        : graph([this](uint64_t address, int bytes) { return read(address, bytes); }), block_(block)
+    explicit Builder(const mblock_t *block, bool snapshot = false)
+        : graph([this](uint64_t address, int bytes) { return read(address, bytes); }),
+          block_(block), snapshot_(snapshot)
     {
         if (block_ && block_->mba)
             for (int index = 0; index < block_->mba->qty; ++index)
@@ -153,6 +155,7 @@ class Builder
 
   private:
     const mblock_t *block_;
+    bool snapshot_;
     struct SignedPointer
     {
         Id raw;
@@ -174,7 +177,7 @@ class Builder
 
     std::optional<uint64_t> read(uint64_t address, int bytes)
     {
-        const auto value = read_immutable(address, bytes);
+        const auto value = read_table(address, bytes, snapshot_);
         if (value)
         {
             finite_targets_t::dependency_t dependency{ea_t(address), getseg(ea_t(address))->perm,
@@ -275,7 +278,7 @@ class Builder
 
     Id stack(const mop_t &op, const minsn_t *before, unsigned depth)
     {
-        if (PH.id != PLFM_386 || !inf_is_64bit())
+        if (!snapshot_ && (PH.id != PLFM_386 || !inf_is_64bit()))
             return local_stack(op, before, depth);
         if (!block_ || op.s->mba != block_->mba)
             return invalid;
@@ -343,6 +346,7 @@ class Builder
     {
         const auto owner = owners_.find(before);
         const mblock_t *block = owner == owners_.end() ? block_ : owner->second;
+        const mblock_t *use_block = block;
         std::set<int> visited;
         const minsn_t *ins = before ? before->prev : nullptr;
         while (block)
@@ -400,6 +404,27 @@ class Builder
                     return unknown(3, uint64_t(op.r), op.size, ins);
             }
             ins = ins->prev;
+        }
+        // At a join, the SDK can bound a register even when there is no
+        // single reaching definition to follow (for example, a loop's CSET
+        // and its initial value). Use that domain for discovery only.
+        if (snapshot_ && before && use_block->mba->maturity >= MMAT_GLBOPT2)
+        {
+            vivl_t location;
+            location.set_reg(op.r, op.size);
+            valrng_t range(op.size);
+            if (use_block->get_valranges(&range, location, before, VR_AT_START | VR_EXACT) &&
+                !range.empty() && !range.is_unknown())
+            {
+                uvlr_t value;
+                if (range.cvt_to_single_value(&value))
+                    return graph.constant(value, op.size);
+                valrng_t other(op.size);
+                other.set_cmp(CMP_A, 1);
+                range.intersect_with(other);
+                if (range.empty())
+                    return graph.variable(token(3, uint64_t(op.r), op.size, before), op.size, 1);
+            }
         }
         return unknown(3, uint64_t(op.r), op.size, nullptr);
     }
@@ -837,13 +862,13 @@ int fold_finite_table_expressions(mba_t *mba)
     return folder.changes;
 }
 
-std::optional<finite_targets_t> evaluate_finite_targets(const mop_t &operand, const minsn_t *before,
+static std::optional<finite_targets_t> evaluate_targets(const mop_t &operand, const minsn_t *before,
                                                         const mblock_t *block, bool allow_imports,
-                                                        bool allow_undecoded_code)
+                                                        bool allow_undecoded_code, bool snapshot)
 {
     if (!before || !block)
         return std::nullopt;
-    Builder builder(block);
+    Builder builder(block, snapshot);
     const Id root = builder.operand(operand, before);
     const auto values = builder.graph.enumerate(root);
     if (!values || values->results.empty() || builder.graph.failed())
@@ -893,6 +918,24 @@ std::optional<finite_targets_t> evaluate_finite_targets(const mop_t &operand, co
         }
     }
     return result;
+}
+
+std::optional<finite_targets_t> evaluate_finite_targets(const mop_t &operand, const minsn_t *before,
+                                                        const mblock_t *block, bool allow_imports,
+                                                        bool allow_undecoded_code)
+{
+    return evaluate_targets(operand, before, block, allow_imports, allow_undecoded_code, false);
+}
+
+std::optional<finite_targets_t>
+discover_snapshot_targets(const mop_t &operand, const minsn_t *before, const mblock_t *block)
+{
+    auto targets = evaluate_targets(operand, before, block, false, false, true);
+    if (targets &&
+        std::any_of(targets->dependencies.begin(), targets->dependencies.end(),
+                    [](const auto &dep) { return (dep.permissions & SEGPERM_WRITE) != 0; }))
+        return targets;
+    return std::nullopt;
 }
 
 std::optional<finite_values_t> evaluate_finite_values(const mop_t &operand, const minsn_t *before,

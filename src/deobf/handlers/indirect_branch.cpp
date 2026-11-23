@@ -2,6 +2,7 @@
 
 #include "../analysis/arch_utils.h"
 #include "../analysis/finite_targets.h"
+#include "../../common/arm64_branch.h"
 #include "../../common/arm64e.h"
 #include "../../common/bitvector.h"
 #include "../../common/ida_memory.h"
@@ -190,6 +191,13 @@ std::optional<range_t> incoming_frame_prefix(ea_t target, ea_t end)
             primitive->destination == 30)
             return std::nullopt;
         const uint32_t features = instruction.get_canon_feature(PH);
+        // A frameless return block can first use the incoming frame in its
+        // epilogue, by restoring the saved frame pointer and link register.
+        const bool restores_frame =
+            arm64 && instruction.itype == ARM_ldp && instruction.Op1.type == o_reg &&
+            instruction.Op1.reg == fp && instruction.Op2.type == o_reg &&
+            instruction.Op2.reg == str2reg("X30") && instruction.Op3.type == o_displ &&
+            instruction.Op3.reg == sp && sval_t(instruction.Op3.addr) >= 0;
         // Check every operand before accepting a read: a paired store can
         // read X29 before its later operand allocates a new stack frame.
         for (unsigned index = 0; index < UA_MAXOP && instruction.ops[index].type != o_void; ++index)
@@ -198,7 +206,8 @@ std::optional<range_t> incoming_frame_prefix(ea_t target, ea_t end)
             const bool memory = op.type == o_phrase || op.type == o_displ;
             const int base = !memory ? -1 : arm64 ? op.reg : x86_base_reg(instruction, op);
             if ((op.type == o_displ && base == sp && sval_t(op.addr) < 0) ||
-                (op.type == o_reg && (op.reg == fp || op.reg == sp) && has_cf_chg(features, index)))
+                (op.type == o_reg && (op.reg == fp || op.reg == sp) &&
+                 has_cf_chg(features, index) && !restores_frame))
                 return std::nullopt;
         }
         for (unsigned index = 0; index < UA_MAXOP; ++index)
@@ -340,14 +349,14 @@ recovery_region_t inspect_recovery_region(ea_t target)
 }
 
 bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targets_t &finite,
-                       const qstring &comment)
+                       const qstring &comment, bool snapshot = false)
 {
     if ((!arch::is_arm64() && !arch::is_x86_64()) || finite.targets.size() > 2)
         return false;
     projection_t proof;
     proof.site = site;
     proof.targets = finite.targets;
-    proof.exhaustive = finite.targets.size() == 1 || !finite.condition.empty();
+    proof.exhaustive = !snapshot && (finite.targets.size() == 1 || !finite.condition.empty());
     proof.dependencies = finite.dependencies;
     proof.frame_offset = mba->frsize - mba->fpd;
     const func_t *root = get_func(mba->entry_ea);
@@ -395,8 +404,8 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
     for (ea_t target : finite.targets)
     {
         const auto fragment = frame_fragment(mba->entry_ea, target);
-        if (fragment && (root->flags & FUNC_FRAME) != 0 &&
-            (finite.targets.size() == 1 || !finite.condition.empty()))
+        if (fragment && ((root->flags & FUNC_FRAME) != 0 || (snapshot && root->frsize > 0)) &&
+            (snapshot || finite.targets.size() == 1 || !finite.condition.empty()))
         {
             if (!capture_code(proof, fragment->start_ea, fragment->end_ea))
                 return false;
@@ -407,13 +416,20 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
             bool present = false;
             for (int index = 0; index < mba->qty; ++index)
                 present |= mba->get_mblock(index)->start == target;
+            if (snapshot && !present)
+                deobf::log_verbose("[indirect_branch] Candidate %a at %a is outside the frame\n",
+                                   target, site);
             all_covered &= present;
         }
     }
     // Partial projection cannot establish the complete switch before native
     // liveness analysis. Do not retain an orphan fragment with lost inputs.
     if (!all_covered)
+    {
+        if (snapshot)
+            return false;
         proof.fragments.clear();
+    }
     const projection_key_t key{get_dbctx_id(), mba->entry_ea};
     if (projections.size() >= 128 && projections.count(key) == 0)
         return false;
@@ -425,8 +441,8 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
             if (std::find(proof.targets.begin(), proof.targets.end(), target) ==
                 proof.targets.end())
                 proof.targets.push_back(target);
-        // Two exhaustive proofs of the same site cover their union as well.
-        proof.exhaustive |= old->second.exhaustive;
+        // A union carrying any advisory destination must keep its fallback.
+        proof.exhaustive &= old->second.exhaustive;
         for (const range_t &fragment : old->second.fragments)
             if (std::find(proof.fragments.begin(), proof.fragments.end(), fragment) ==
                 proof.fragments.end())
@@ -452,18 +468,21 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
         return false;
     if (old != sites.end())
         revoke_projection(old->second);
-    get_cmt(&proof.previous_comment, site, false);
-    proof.published_comment = comment;
-    for (ea_t target : proof.targets)
+    if (proof.exhaustive)
     {
-        bool present = false;
-        xrefblk_t xref;
-        for (bool ok = xref.first_from(site, XREF_FAR); ok; ok = xref.next_from())
-            present |= xref.iscode && xref.to == target;
-        if (!present && add_cref(site, target, fl_JN))
-            proof.owned_edges.push_back(target);
+        get_cmt(&proof.previous_comment, site, false);
+        proof.published_comment = comment;
+        for (ea_t target : proof.targets)
+        {
+            bool present = false;
+            xrefblk_t xref;
+            for (bool ok = xref.first_from(site, XREF_FAR); ok; ok = xref.next_from())
+                present |= xref.iscode && xref.to == target;
+            if (!present && add_cref(site, target, fl_JN))
+                proof.owned_edges.push_back(target);
+        }
+        deobf::set_cmt_if_changed(site, comment.c_str(), false);
     }
-    deobf::set_cmt_if_changed(site, comment.c_str(), false);
     // Even an internal edge can introduce another predecessor after the SDK
     // has propagated values. Discard that entire MBA before using those values.
     deobf::log_verbose(
@@ -472,6 +491,20 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
     sites[site] = std::move(proof);
     projection_restarts.insert(key);
     return true;
+}
+
+void discover_snapshot_projection(mba_t *mba, mblock_t *block, const mop_t &address)
+{
+    const minsn_t *jump = block->tail;
+    if (!arch::is_arm64() || (block->flags & MBL_FAKE) != 0)
+        return;
+    const auto native = chernobog::arm64_branch::decode_indirect(get_dword(jump->ea));
+    if (!native || native->call || native->authenticated)
+        return;
+    const auto finite = chernobog::discover_snapshot_targets(address, jump, block);
+    if (!finite || finite->targets.size() > 2)
+        return;
+    record_projection(mba, jump->ea, *finite, {}, true);
 }
 
 void rebuild_flowchart(qflow_chart_t *flowchart, const rangevec_t &ranges)
@@ -1041,7 +1074,10 @@ int resolve_ijmp(mbl_array_t *mba, mblock_t *src, deobf_ctx_t *ctx,
         chernobog::evaluate_finite_targets(address, ijmp, src, false, arch::is_x86_64());
     if (!finite ||
         (finite->targets.size() != 1 && (finite->targets.size() != 2 || finite->condition.empty())))
+    {
+        discover_snapshot_projection(mba, src, address);
         return 0;
+    }
     qstring comment;
     if (finite->targets.size() == 2)
         comment.sprnt("DEOBF: conditional indirect targets: false=%a, true=%a",
@@ -1181,6 +1217,8 @@ int indirect_branch_handler_t::run(mbl_array_t *mba, deobf_ctx_t *ctx)
                     if (discovered_targets(mba, blk->tail->ea, *finite))
                         changed = lower_conditional_targets(mba, blk, *finite);
                 }
+                else
+                    discover_snapshot_projection(mba, blk, blk->tail->l);
             }
             ctx->branches_simplified += changed;
             changes += changed;
@@ -1499,7 +1537,8 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
                 selector.make_number(getseg(site)->sel, 2);
             // Preserve the SDK's frame handling for the root; projected ARM
             // fragments need its omitted frame value made explicit.
-            if (arch::is_arm64() && !proof.fragments.empty())
+            if (arch::is_arm64() && !proof.fragments.empty() &&
+                (get_func(proof.root)->flags & FUNC_FRAME) != 0)
             {
                 mop_t slot;
                 slot.make_stkvar(mba, mba->tmpstk_size + proof.frame_offset);
@@ -1529,7 +1568,9 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
             fallback->maxbsp = block->maxbsp;
             fallback->minbstkref = block->minbstkref;
             fallback->minbargref = block->minbargref;
-            auto *unresolved = new minsn_t(site);
+            // IDA can resolve an m_ijmp from the native xrefs at its EA.
+            // The fallback represents every target outside those cases.
+            auto *unresolved = new minsn_t(proof.exhaustive ? site : fictitious);
             unresolved->opcode = m_ijmp;
             unresolved->r = selector;
             unresolved->d.make_reg(temporary, address.size);
@@ -1560,6 +1601,11 @@ int indirect_branch_handler_t::apply_generated_projections(mba_t *mba)
             continue;
         if (!proof.fragments.empty())
             mba->set_mba_flags2(MBA2_HAS_OUTLINES);
+        // The guard already supplies incoming edges. Leaving KEEP on an
+        // internal block made unreachable by optimization can give the
+        // structural analyzer an artificial entry into the continuation.
+        if (!proof.exhaustive)
+            continue;
         for (int index = 0; index < mba->qty; ++index)
         {
             mblock_t *block = mba->get_mblock(index);
