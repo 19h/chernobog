@@ -289,57 +289,73 @@ class Builder
         if (slot.mem.empty())
             return invalid;
         std::set<int> visited;
+        std::vector<int> pending;
+        const minsn_t *definition = nullptr;
         const minsn_t *epoch = before;
         const minsn_t *ins = before ? before->prev : nullptr;
-        while (block)
+        if (!snapshot_)
+            visited.insert(block->serial);
+        for (;;)
         {
+            for (; ins; ins = ins->prev)
+            {
+                epoch = ins;
+                if (++scans_ > 32768)
+                    return invalid;
+                if (mcode_modifies_d(ins->opcode) && ins->d.t == mop_S && ins->d.s &&
+                    ins->d.s->mba == op.s->mba && ins->d.s->off < op.s->off + op.size &&
+                    op.s->off < ins->d.s->off + ins->d.size)
+                {
+                    if (ins->d.s->off > op.s->off ||
+                        ins->d.s->off + ins->d.size < op.s->off + op.size ||
+                        (definition && definition != ins))
+                        return unknown(2, uint64_t(op.s->off), op.size, epoch);
+                    definition = ins;
+                    break;
+                }
+                if (ins->opcode == m_ext)
+                    return unknown(2, uint64_t(op.s->off), op.size, epoch);
+                if (ins->opcode == m_stx || ins->contains_call(true) || ins->is_mbarrier())
+                {
+                    // An escaped slot must stop at a possible alias. Other
+                    // locals can keep their definition across an ABI call.
+                    const mlist_t effects =
+                        block->build_def_list(*ins, MAY_ACCESS | INCLUDE_RESTRICTED);
+                    if (effects.has_common(slot) ||
+                        (!ins->contains_call(true) && ins->is_mbarrier()))
+                        return unknown(2, uint64_t(op.s->off), op.size, epoch);
+                }
+            }
             if (!ins)
             {
                 epoch = block->head ? block->head : before;
-                if (!visited.insert(block->serial).second || block->predset.size() != 1)
-                    break;
-                const int predecessor = block->predset.front();
-                if (predecessor < 0 || predecessor >= block->mba->qty || visited.count(predecessor))
-                    break;
-                block = block->mba->get_mblock(predecessor);
-                ins = block->tail;
-                continue;
+                if (block->predset.empty() || (!snapshot_ && block->predset.size() != 1))
+                    return unknown(2, uint64_t(op.s->off), op.size, epoch);
+                // A writable-table hint may use a common reaching store at a
+                // join. Visit each complete predecessor once, even in loops.
+                for (int predecessor : block->predset)
+                {
+                    if (predecessor < 0 || predecessor >= block->mba->qty)
+                        return unknown(2, uint64_t(op.s->off), op.size, epoch);
+                    if (visited.insert(predecessor).second)
+                        pending.push_back(predecessor);
+                }
             }
-            epoch = ins;
-            if (++scans_ > 32768)
-                return invalid;
-            if (mcode_modifies_d(ins->opcode) && ins->d.t == mop_S && ins->d.s &&
-                ins->d.s->mba == op.s->mba && ins->d.s->off < op.s->off + op.size &&
-                op.s->off < ins->d.s->off + ins->d.size)
-            {
-                if (ins->d.s->off > op.s->off || ins->d.s->off + ins->d.size < op.s->off + op.size)
-                    break;
-                Id value = instruction(*ins, ins, depth + 1);
-                if (value == invalid)
-                    return invalid;
-                if (op.s->off != ins->d.s->off)
-                    value =
-                        graph.make(Op::shr, ins->d.size, value,
-                                   graph.constant(uint64_t((op.s->off - ins->d.s->off) * 8), 1));
-                return graph.make(Op::low, op.size, value);
-            }
-            if (ins->opcode == m_ext)
+            if (pending.empty())
                 break;
-            if (ins->opcode == m_stx || ins->contains_call(true) || ins->is_mbarrier())
-            {
-                // Use the SDK's complete may-def memory effects. An escaped
-                // stack slot stops here; a disjoint unaliased local may retain
-                // its reaching definition across ordinary ABI calls.
-                const mlist_t effects =
-                    block->build_def_list(*ins, MAY_ACCESS | INCLUDE_RESTRICTED);
-                if (effects.has_common(slot))
-                    break;
-                if (!ins->contains_call(true) && ins->is_mbarrier())
-                    break;
-            }
-            ins = ins->prev;
+            block = block->mba->get_mblock(pending.back());
+            pending.pop_back();
+            ins = block->tail;
         }
-        return unknown(2, uint64_t(op.s->off), op.size, epoch);
+        if (!definition)
+            return unknown(2, uint64_t(op.s->off), op.size, epoch);
+        Id value = instruction(*definition, definition, depth + 1);
+        if (value == invalid)
+            return invalid;
+        if (op.s->off != definition->d.s->off)
+            value = graph.make(Op::shr, definition->d.size, value,
+                               graph.constant(uint64_t((op.s->off - definition->d.s->off) * 8), 1));
+        return graph.make(Op::low, op.size, value);
     }
 
     Id reg(const mop_t &op, const minsn_t *before, unsigned depth)

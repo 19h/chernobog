@@ -166,7 +166,7 @@ bool capture_function(projection_t &proof, const func_t *function, std::vector<r
 // A jump does not establish an independent call frame. Admit only small,
 // automatically named fragments that consume the incoming frame before
 // redefining it, and that have no call-site or user-prototype evidence.
-std::optional<range_t> incoming_frame_prefix(ea_t target, ea_t end)
+std::optional<range_t> incoming_frame_prefix(ea_t target, ea_t end, bool allow_direct_calls = false)
 {
     const bool arm64 = arch::is_arm64();
     const int fp = str2reg(arm64 ? "X29" : "RBP");
@@ -183,8 +183,23 @@ std::optional<range_t> incoming_frame_prefix(ea_t target, ea_t end)
         insn_t instruction;
         const int size = decode_insn(&instruction, ea);
         if (size <= 0 || size > (arm64 ? 16 : 15) || (arm64 && (size & 3) != 0) ||
-            ea + ea_t(size) > end || is_call_insn(instruction))
+            ea + ea_t(size) > end)
             return std::nullopt;
+        if (is_call_insn(instruction))
+        {
+            // A direct returning ABI call can precede the first use of the
+            // incoming SP or X29 without establishing a new frame here.
+            if (!allow_direct_calls || !arm64 || instruction.itype != ARM_bl ||
+                instruction.Op1.type != o_near)
+                return std::nullopt;
+            const ea_t callee_ea = instruction.Op1.addr;
+            const func_t *callee = get_func(callee_ea);
+            if (!callee || callee->start_ea != callee_ea ||
+                (callee_ea >= target && callee_ea < end) || !func_does_return(callee_ea))
+                return std::nullopt;
+            ea += ea_t(size);
+            continue;
+        }
         if (!arm64 && (instruction.itype == NN_push || instruction.itype == NN_enter))
             return std::nullopt;
         const auto primitive = arm64 ? chernobog::arm64e::decode(get_dword(ea)) : std::nullopt;
@@ -242,7 +257,7 @@ std::optional<range_t> incoming_frame_prefix(ea_t target, ea_t end)
     return std::nullopt;
 }
 
-std::optional<range_t> frame_fragment(ea_t root, ea_t target)
+std::optional<range_t> frame_fragment(ea_t root, ea_t target, bool allow_direct_calls)
 {
     const func_t *function = get_func(target);
     if (!function || function->start_ea != target || target == root || function->end_ea <= target ||
@@ -253,7 +268,7 @@ std::optional<range_t> frame_fragment(ea_t root, ea_t target)
     for (bool ok = xref.first_to(target, XREF_FAR); ok; ok = xref.next_to())
         if (xref.iscode && (xref.type == fl_CN || xref.type == fl_CF))
             return std::nullopt;
-    return incoming_frame_prefix(target, function->end_ea);
+    return incoming_frame_prefix(target, function->end_ea, allow_direct_calls);
 }
 
 struct recovery_region_t
@@ -404,7 +419,7 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
     bool all_covered = true;
     for (ea_t target : finite.targets)
     {
-        const auto fragment = frame_fragment(mba->entry_ea, target);
+        const auto fragment = frame_fragment(mba->entry_ea, target, snapshot);
         if (fragment && ((root->flags & FUNC_FRAME) != 0 || (snapshot && root->frsize > 0)) &&
             (snapshot || finite.targets.size() == 1 || !finite.condition.empty()))
         {
@@ -465,7 +480,8 @@ bool record_projection(mbl_array_t *mba, ea_t site, const chernobog::finite_targ
     if (old != sites.end() && old->second.targets == proof.targets &&
         old->second.fragments == proof.fragments && fresh_projection(old->second))
         return false;
-    if (sites.size() >= 32 && old == sites.end())
+    const size_t site_limit = snapshot ? 64 : 32;
+    if (sites.size() >= site_limit && old == sites.end())
         return false;
     if (old != sites.end())
         revoke_projection(old->second);
